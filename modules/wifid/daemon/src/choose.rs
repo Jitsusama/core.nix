@@ -228,7 +228,10 @@ pub struct Chooser {
     /// When the card's look ended, where it's chosen for again then.
     again: Option<Instant>,
     trial: Option<Trial>,
+    /// Each access point kept off and until when.
     spurned: HashMap<String, Instant>,
+    /// Why the last choice sent the card back, for the journal to say once.
+    went_back: Option<Against>,
     /// The access point a move on trial never reached, kept off from the
     /// last choice, for the journal to say so.
     unreached: Option<String>,
@@ -250,13 +253,29 @@ pub struct Chooser {
     joined: Option<(String, Instant)>,
 }
 
+/// Why a trial went back.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Against {
+    /// It carried worse than the point left did, this.
+    Worse(Measured),
+    /// It carried worse only than what the point left usually carries,
+    /// this, with the minute's loss.
+    Usually(Measured),
+    /// It brought a download down slower than the point left did, at this
+    /// many Mbit/s.
+    Slowed(u32),
+    /// It was for a wider band's room and carried badly there.
+    Badly,
+}
+
 struct Trial {
     from: String,
     to: String,
     before: Measured,
     /// What the point left usually carries, as loaded as the card was,
     /// where it's learned: a trial carrying worse than the quicker of this
-    /// and `before` goes back. On 19 Nov 2026 at a desk the hall's radio
+    /// and `before`'s slow end goes back, where the move was off a slow
+    /// point rather than a lossy one and the trial is as loaded. On 19 Nov 2026 at a desk the hall's radio
     /// was tried on ch52's one minute of 75.5 ms at p95, where it usually
     /// carried about 14, and kept 21 minutes at 45 to 57 ms, as it was
     /// only less bad than that minute.
@@ -347,8 +366,7 @@ impl Chooser {
         if !settled && !failing {
             return Choice::Stay;
         }
-        self.spurned
-            .retain(|_, spurned| now.duration_since(*spurned) < SPURNED);
+        self.spurned.retain(|_, until| now < *until);
         // A card on a wider band carrying well keeps off a narrower one,
         // however quick, since quickness isn't room to bring things down,
         // unless it's known to move less than `LEAST`: then it may take one
@@ -538,6 +556,11 @@ impl Chooser {
         self.unreached.take()
     }
 
+    /// Why the last choice sent the card back, if it did, said once.
+    pub fn went_back(&mut self) -> Option<Against> {
+        self.went_back.take()
+    }
+
     /// The narrower access point the last choice began keeping a wider band
     /// holding well off, if it did, said once.
     pub fn began_keeping_wide(&mut self) -> Option<String> {
@@ -571,7 +594,7 @@ impl Chooser {
         // judge nothing: the tried point is kept off rather than tried again
         // each settle, and the card isn't sent back to where it may be.
         if point != trial.to {
-            self.spurned.insert(trial.to.clone(), now);
+            self.spurned.insert(trial.to.clone(), now + SPURNED);
             self.unreached = Some(trial.to);
             return None;
         }
@@ -594,18 +617,39 @@ impl Chooser {
             return Some(Choice::Stay);
         }
         let slowed = under_load && slower(measured, &trial.before);
-        let back = if trial.widened && holds_wide {
-            slowed
+        // What the point left usually carries judges only a trial as loaded
+        // as the move was and made off a slow point rather than a lossy one:
+        // a point that loses is going wrong, and one usually quick says
+        // nothing of it now. Its loss stays the minute's, as the quicker
+        // rule's does.
+        let like = loaded(&trial.before) == loaded(measured) && trial.before.lost <= LOSSY;
+        let against = weighed_by(&trial.before, trial.usual.as_ref(), like);
+        let cut = Against::Slowed(trial.before.moving.unwrap_or(0));
+        let why = if trial.widened && holds_wide {
+            slowed.then_some(cut)
         } else if trial.banded {
-            badly(measured)
+            badly(measured).then_some(Against::Badly)
+        } else if worse(measured, &trial.before) {
+            Some(Against::Worse(trial.before.clone()))
+        } else if worse(measured, &against) {
+            Some(Against::Usually(against))
         } else {
-            worse(measured, quickest(&trial.before, trial.usual.as_ref())) || slowed
+            slowed.then_some(cut)
         };
-        back.then(|| {
-            self.spurned.insert(point.to_owned(), now);
-            self.moved = Some(now);
-            Choice::Back(trial.from)
-        })
+        let why = why?;
+        // A trial worse only than what the point left usually carries may
+        // have left a point gone slow for longer than a minute, so the one
+        // tried is kept off a settle rather than an hour: the card isn't
+        // held an hour where it's slow.
+        let kept = if matches!(why, Against::Usually(_)) {
+            SETTLE
+        } else {
+            SPURNED
+        };
+        self.spurned.insert(point.to_owned(), now + kept);
+        self.moved = Some(now);
+        self.went_back = Some(why);
+        Some(Choice::Back(trial.from))
     }
 
     /// Has a card look for what it doesn't hear, once a settle at most, so
@@ -1818,9 +1862,9 @@ pub(crate) mod tests {
     #[test]
     fn a_move_to_a_wider_band_under_load_goes_back_where_it_brings_the_download_down_slower() {
         let start = Instant::now();
-        let judged = |moving| {
+        let judged = |moving, usual: Option<Measured>| {
             let mut chooser = after_a_bad_minute(NEAR);
-            let wider = [desk_at(-43, None)];
+            let wider = [desk_at(-43, None), near_at(-35, usual)];
             let tried = chooser.choose(start, (NEAR, &downloading(89), -35, CH6), &wider, false);
             assert_eq!(tried, Choice::Try(DESK.into()), "the first move is asked");
             let there = Measured {
@@ -1831,11 +1875,16 @@ pub(crate) mod tests {
         };
 
         assert_eq!(
-            judged(30),
+            judged(30, None),
             Choice::Back(NEAR.into()),
             "30 Mbit/s of the 52 it left is a download cut, wider band or not"
         );
-        assert_eq!(judged(45), Choice::Stay, "45 of 52 stands");
+        assert_eq!(judged(45, None), Choice::Stay, "45 of 52 stands");
+        assert_eq!(
+            judged(45, Some(downloading(20))),
+            Choice::Stay,
+            "a wider band holding well stands however quick the narrower usually is"
+        );
     }
 
     #[test]
@@ -2253,34 +2302,61 @@ pub(crate) mod tests {
     #[test]
     fn a_trial_only_less_bad_than_one_slow_minute_goes_back() {
         let start = Instant::now();
-        let judged = |usual: Option<Measured>| {
+        let idle = |p95, lost| Measured {
+            moving: None,
+            ..carried(p95, lost)
+        };
+        // The trial's figures are judged a trial past its start, and the
+        // trial left behind: what was judged and the hall's keeping off.
+        let judged = |left: Measured, usual: Option<Measured>, there: Measured| {
             let mut chooser = after_a_bad_minute(DESK);
-            let own = Other {
-                point: DESK.into(),
-                ..hall(-50, Some(20), usual)
-            };
-            let around = [own, hall(-45, Some(20), None)];
-            let slow = carried(76, 0.0);
-            let tried = chooser.choose(start, (DESK, &slow, -50, CH52), &around, false);
+            let around = [desk_at(-50, usual), hall(-45, Some(20), None)];
+            let tried = chooser.choose(start, (DESK, &left, -50, CH52), &around, false);
             assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
-            chooser.choose(
-                start + TRIAL,
-                (HALL, &carried(50, 0.0), -45, CH52),
-                &[],
-                false,
-            )
+            let now = start + TRIAL;
+            let judged = chooser.judge(now, (HALL, &there), (false, false, false));
+            assert!(chooser.trial.is_none(), "the trial ended, judged");
+            let kept = chooser.spurned.get(HALL).map(|until| *until - now);
+            (judged, chooser.went_back(), kept)
         };
 
+        let (back, why, kept) = judged(idle(76, 0.0), Some(idle(14, 0.0)), idle(50, 0.0));
+        assert_eq!(back, Some(Choice::Back(DESK.into())), "as on 19 Nov");
         assert_eq!(
-            judged(Some(carried(14, 0.0))),
-            Choice::Back(DESK.into()),
-            "50 ms is worse than the 14 the desk usually carries, as on 19 Nov"
+            why,
+            Some(Against::Usually(Measured {
+                p95: Some(Duration::from_millis(14)),
+                ..idle(76, 0.0)
+            })),
+            "the usual judged"
         );
         assert_eq!(
-            judged(None),
-            Choice::Stay,
-            "with nothing learned of the desk, 50 is better than its 76"
+            kept,
+            Some(SETTLE),
+            "kept off a settle, as the desk may be slow"
         );
+
+        let stood = judged(idle(76, 0.0), None, idle(50, 0.0));
+        assert_eq!(stood, (None, None, None), "nothing learned: 50 beats 76");
+
+        let (back, why, kept) = judged(idle(45, 0.0), Some(idle(70, 0.0)), idle(60, 0.0));
+        assert_eq!(back, Some(Choice::Back(DESK.into())), "60 is worse than 45");
+        assert_eq!(
+            why,
+            Some(Against::Worse(idle(45, 0.0))),
+            "the quicker judged"
+        );
+        assert_eq!(kept, Some(SPURNED), "worse than it left, kept off an hour");
+
+        let lossy = judged(idle(76, 5.0), Some(idle(14, 0.0)), idle(30, 0.0));
+        assert_eq!(lossy.0, None, "a point losing 5% isn't gone back to");
+
+        let loaded = Measured {
+            moving: Some(40),
+            ..carried(30, 0.0)
+        };
+        let unlike = judged(idle(76, 0.0), Some(idle(14, 0.0)), loaded);
+        assert_eq!(unlike.0, None, "an idle usual doesn't judge a download");
     }
 
     #[test]

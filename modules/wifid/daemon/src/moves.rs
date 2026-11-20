@@ -11,7 +11,7 @@ use tokio::time::Instant;
 
 use crate::acts;
 use crate::air::Heard;
-use crate::choose::{self, Choice, Chooser, Other};
+use crate::choose::{self, Against, Choice, Chooser, Other};
 use crate::learn::Learned;
 use crate::measure::{self, Measured, Measures};
 use crate::service::Ask;
@@ -166,10 +166,8 @@ fn chosen(
             Some(Next::Move(to))
         }
         Choice::Back(to) => {
-            println!(
-                "<6>{} goes back to {to}, as {} carried worse",
-                on.card, on.point
-            );
+            let why = chooser.went_back();
+            println!("<6>{}", went_back(on, measured, &to, why.as_ref()));
             Some(Next::Move(to))
         }
         Choice::Look => {
@@ -274,6 +272,37 @@ fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> S
         choose::heard(measured, signal),
         measure::ms(measured.p50)
     )
+}
+
+/// Why a card goes back from a trial: what the point tried carried, and
+/// what it was judged against, so a trial judged on what the point left
+/// usually carries can be read from the journal.
+fn went_back(on: &Joined, measured: &Measured, to: &str, why: Option<&Against>) -> String {
+    let carried = format!(
+        "{} carried {} at p95 with {:.1}% lost",
+        on.point,
+        measure::ms(measured.p95),
+        measured.lost
+    );
+    let against = |than: &Measured, when: &str| {
+        format!(
+            "{carried}, worse than the {} with {:.1}% {to} carried {when}",
+            measure::ms(than.p95),
+            than.lost
+        )
+    };
+    let because = match why {
+        Some(Against::Worse(than)) => against(than, "before"),
+        Some(Against::Usually(than)) => against(than, "usually, at that minute's loss"),
+        Some(Against::Slowed(before)) => format!(
+            "{} moved {} Mbit/s under load, where {to} moved {before}",
+            on.point,
+            measured.moving.unwrap_or(0)
+        ),
+        Some(Against::Badly) => format!("{carried}, badly for a wider band's room"),
+        None => carried,
+    };
+    format!("{} goes back to {to}, as {because}", on.card)
 }
 
 /// Why a card tries another access point: what the one it's on carried,
