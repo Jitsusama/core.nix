@@ -24,7 +24,8 @@ pub const APPS: [(&str, &str); 2] = [("chrome", "chrome-ui"), ("slack", "slack-u
 /// cut to 15 bytes, which puts every frame on the screen. A main thread
 /// keeps the process's name. A utility process draws nothing. A zygote
 /// draws nothing either, but a renderer it has just forked says it is the
-/// zygote until it names itself, so one is never taken as settled.
+/// zygote until it names itself, so one is taken as settled only when it
+/// still says so a look later.
 #[derive(Debug, PartialEq, Eq)]
 enum Drawing {
     With {
@@ -32,6 +33,7 @@ enum Drawing {
         drawer: Option<&'static str>,
     },
     Nothing,
+    Zygote,
     NotYet,
 }
 
@@ -56,7 +58,7 @@ fn drawing(args: &str) -> Drawing {
             main: true,
             drawer: None,
         },
-        Some("zygote") => Drawing::NotYet,
+        Some("zygote") => Drawing::Zygote,
         Some("renderer") => Drawing::With {
             main: true,
             drawer: Some("Compositor"),
@@ -70,22 +72,25 @@ fn drawing(args: &str) -> Drawing {
 }
 
 /// A process of Joel's apps looked into: when it started, which tells it
-/// from a later process given its pid, and its threads worth reading.
+/// from a later process given its pid; its threads worth reading; and
+/// whether that's settled, or it said it was a zygote once and is looked
+/// into a second time.
 #[derive(Debug)]
 struct Known {
     started: Option<u64>,
     threads: Vec<Thread>,
+    settled: bool,
 }
 
 /// The apps' processes found so far, by pid. One of Joel's is looked into,
 /// its command line and its threads' names, only when it's new: its
-/// threads are kept and only their schedstat and stat read after, with its
-/// own stat once a minute to see it's still the same process. One is
-/// looked into again while it lacks what its kind draws with, as a
-/// renderer does in the moment before it starts its compositor, or while
-/// it says it's a zygote, a few files a minute for each. A process outside
-/// his apps has only its cgroup read, each minute, since one starts in its
-/// launcher's cgroup in the moment before it's moved into its scope.
+/// threads are kept and only their schedstat and stat read after. Each
+/// minute its stat and cgroup are read again, to see it's still the same
+/// process and still Joel's. One is looked into again while it lacks what
+/// its kind draws with, as a renderer does in the moment before it starts
+/// its compositor. A process outside his apps has only its cgroup read,
+/// each minute, since one starts in its launcher's cgroup in the moment
+/// before it's moved into its scope.
 #[derive(Debug)]
 pub struct Apps {
     slice: String,
@@ -107,26 +112,34 @@ impl Apps {
     /// opened.
     pub fn of(&mut self, pid: &str, process: &Path, label: &'static str) -> Option<Vec<Thread>> {
         let started = started(&text(&process.join("stat")));
-        if let Some(known) = self.known.get(pid).filter(|k| k.started == started) {
-            return Some(known.threads.clone());
-        }
-        self.known.remove(pid);
         if !self.launched_by_joel(&text(&process.join("cgroup"))) {
+            self.known.remove(pid);
             return None;
         }
-        let mut settle = |threads: Vec<Thread>| {
+        let mut zygote_before = false;
+        match self.known.get(pid) {
+            Some(known) if known.started == started && known.settled => {
+                return Some(known.threads.clone());
+            }
+            Some(known) => zygote_before = known.started == started,
+            None => {}
+        }
+        let mut keep = |threads: Vec<Thread>, settled: bool| {
             self.known.insert(
                 pid.to_string(),
                 Known {
                     started,
                     threads: threads.clone(),
+                    settled,
                 },
             );
             Some(threads)
         };
         let (main, drawer) = match drawing(&text(&process.join("cmdline"))) {
             Drawing::With { main, drawer } => (main, drawer),
-            Drawing::Nothing => return settle(Vec::new()),
+            Drawing::Nothing => return keep(Vec::new(), true),
+            // A zygote still one a look later is one, and stays one.
+            Drawing::Zygote => return keep(Vec::new(), zygote_before),
             Drawing::NotYet => return Some(Vec::new()),
         };
         let thread = |name: String, schedstat: PathBuf| Thread {
@@ -158,7 +171,7 @@ impl Apps {
         if found.is_empty() {
             return Some(found);
         }
-        settle(found)
+        keep(found, true)
     }
 
     /// Lets go of every process no longer running.
@@ -166,26 +179,36 @@ impl Apps {
         self.known.retain(|pid, _| running.contains(pid));
     }
 
-    /// Whether a process is one Joel opened, from its cgroup: a unit
-    /// directly in his own `app.slice`, as systemd names those he starts.
-    /// One niri, gio or the portal launches is in an `app-*.scope`, an
-    /// autostarted one in an `app-*.service`, and one from his terminal in
-    /// its `kitty-*.scope`; their children stay there. Another account's
-    /// browser, an agent's, or a test's Chrome runs elsewhere, or in a
-    /// service of its own.
-    fn launched_by_joel(&self, cgroup: &str) -> bool {
+    /// Whether a process is one Joel opened, from its cgroup: an app's unit
+    /// in his own `app.slice`, as systemd names those a desktop starts, and
+    /// which their children stay in. One niri, gio or the portal launches
+    /// is in an `app-*.scope`, an autostarted one in an `app-*.service`;
+    /// a launcher may group them in an `app-*.slice` first, as uwsm does.
+    /// Another account's browser, an agent's, a test's Chrome, or one from
+    /// his terminal, which jobs-sorter moves to the jobs slice once it's
+    /// busy, runs elsewhere or in a unit of its own.
+    pub fn launched_by_joel(&self, cgroup: &str) -> bool {
         cgroup.lines().any(|line| {
-            let Some(unit) = line
+            let Some(rest) = line
                 .strip_prefix("0::")
                 .and_then(|path| path.strip_prefix(self.slice.as_str()))
                 .and_then(|rest| rest.strip_prefix('/'))
-                .filter(|unit| !unit.contains('/'))
             else {
                 return false;
             };
+            let unit = match rest.split_once('/') {
+                None => rest,
+                Some((slice, unit))
+                    if slice.starts_with("app-")
+                        && slice.rsplit_once('.').is_some_and(|(_, k)| k == "slice")
+                        && !unit.contains('/') =>
+                {
+                    unit
+                }
+                Some(_) => return false,
+            };
             match unit.rsplit_once('.') {
-                Some((name, "scope")) => name.starts_with("app-") || name.starts_with("kitty-"),
-                Some((name, "service")) => name.starts_with("app-"),
+                Some((name, "scope" | "service")) => name.starts_with("app-"),
                 _ => false,
             }
         })
@@ -302,7 +325,8 @@ mod tests {
             "app-niri-google\\x2dchrome\\x2dstable-70.scope",
             "app-gio-chrome-70.scope",
             "app-slack@autostart.service",
-            "kitty-70-0.scope",
+            // An app a launcher grouped in a slice of its own, as uwsm does.
+            "app-graphical.slice/app-niri-a-70.scope",
         ] {
             assert!(joels(&format!("{mine}/{unit}")), "{unit} is Joel's");
         }
@@ -314,8 +338,11 @@ mod tests {
             // An agent's session, and an agent's Chrome in the work slices.
             format!("{mine}/mycelium-pi-a.scope"),
             format!("{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope"),
-            // An app in a slice of its own, nested below his.
-            format!("{mine}/app-graphical.slice/app-niri-a-70.scope"),
+            // One from his terminal, which jobs-sorter moves once it's busy.
+            format!("{mine}/kitty-70-0.scope"),
+            // A unit in a slice that isn't an app's, or two slices down.
+            format!("{mine}/tests.slice/app-niri-a-70.scope"),
+            format!("{mine}/app-a.slice/app-b.slice/app-niri-a-70.scope"),
             // Another account's app, and one in a container's account.
             format!("{theirs}/app-niri-a-70.scope"),
             format!("/machine.slice/a.scope/payload{mine}/app-niri-a-70.scope"),
@@ -339,10 +366,14 @@ mod tests {
         opened(&proc, "82", "chrome");
         write(&proc.join("82/cmdline"), "chrome --type=renderer");
         write(&proc.join("82/task/82/comm"), "chrome\n");
-        // One so new it still says it is the zygote that forked it.
+        // One so new it still says it is the zygote that forked it, and a
+        // zygote itself.
         opened(&proc, "84", "chrome");
         write(&proc.join("84/cmdline"), "chrome --type=zygote");
         write(&proc.join("84/task/84/comm"), "chrome\n");
+        opened(&proc, "88", "chrome");
+        write(&proc.join("88/cmdline"), "chrome --type=zygote");
+        write(&proc.join("88/task/88/comm"), "chrome\n");
         // A utility process, and a browser still in its launcher's cgroup.
         opened(&proc, "77", "chrome");
         write(&proc.join("77/cmdline"), "chrome --type=utility");
@@ -386,6 +417,26 @@ mod tests {
                 "chrome-ui chrome 86/task/86/schedstat",
             ]
         );
+        // A zygote still one at the second look is settled as one, its
+        // command line read no more.
+        write(&proc.join("88/cmdline"), "chrome --type=renderer");
+        write(&proc.join("88/task/89/comm"), "Compositor\n");
+        let third = drawing_threads(&proc, &mut apps);
+        assert!(
+            !third.iter().any(|t| t.contains(" 88/")),
+            "a settled zygote was looked into again: {third:?}"
+        );
+        // One of Joel's moved out of his apps, as jobs-sorter moves a busy
+        // group, is let go at the next look.
+        write(
+            &proc.join("72/cgroup"),
+            &format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n"),
+        );
+        let moved = drawing_threads(&proc, &mut apps);
+        assert!(
+            !moved.iter().any(|t| t.contains(" 72/")),
+            "a process moved out of Joel's apps was still read: {moved:?}"
+        );
     }
 
     #[test]
@@ -405,10 +456,11 @@ mod tests {
         write(&proc.join("72/stat"), &stat("72", 200));
         write(&proc.join("72/cmdline"), "chrome --type=utility");
         assert_eq!(drawing_threads(&proc, &mut apps), Vec::<String>::new());
-        // Then, gone at a look, to a browser, whose main thread alone is
-        // read.
+        // Then, gone at a look and let go, to a browser, whose main thread
+        // alone is read.
         fs::remove_dir_all(proc.join("72")).unwrap();
         assert_eq!(drawing_threads(&proc, &mut apps), Vec::<String>::new());
+        assert_eq!(apps.known.len(), 0, "an ended process is let go");
         opened(&proc, "72", "chrome");
         write(&proc.join("72/stat"), &stat("72", 300));
         write(&proc.join("72/cmdline"), "chrome\0--enable-features=A\0");
