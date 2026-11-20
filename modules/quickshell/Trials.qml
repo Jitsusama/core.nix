@@ -142,12 +142,12 @@ Scope {
     }
 
     // The answers' time, as the answers asked, the rows placed and the list
-    // shown, when the key said them, its showing with how many rows were new
-    // to the list and how long laying them out took, with how many rows that
-    // drew, built and taken back from those let go, then how long weighing
-    // every listed row's keys took, which a drawn row's cost doesn't say,
-    // what else it spent listing, putting the rows in and selecting, and
-    // last where a step back out came to.
+    // shown, when the key said them, its showing with what it spent listing,
+    // putting the rows in and selecting, then how many rows were new to the
+    // list and how long laying them out took, with how many rows that drew,
+    // built and taken back from those let go, then how long weighing every
+    // listed row's keys took, which a drawn row's cost doesn't say, and
+    // reading them, and last where a step back out came to.
     function composed(parts) {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
             + Trials.showingSaid(parts, Trials.weighingSaid(parts.weighing)

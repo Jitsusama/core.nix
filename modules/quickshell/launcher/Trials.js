@@ -131,9 +131,9 @@ function weighingSaid(ms) {
     return (ms ?? 0) >= 0.5 ? `, ${Math.round(ms)} weighing their keys` : "";
 }
 
-// A showing's parts as the trials file keeps them, in whole milliseconds as
-// it always has (RowsKept.keptWhole), though the rows' clock times them
-// finer for showingSplit's sums; the fine laying is the keeping's own.
+// A showing's parts as the trials file keeps them, whole as the keeping is
+// (RowsKept.keptWhole), the reading now too, though showingSplit sums them
+// finer; the fine laying is the keeping's own.
 function showingKept(composing) {
     const whole = {};
     for (const [part, ms] of Object.entries(composing)) {
@@ -164,8 +164,8 @@ function showingSplit(parts) {
         [putting, "putting them in besides laying and weighing"],
         [(drawer.putting ?? 0) + (drawer.selecting ?? 0), "making its drawer"],
         [(parts.selecting ?? 0) - (drawer.selecting ?? 0), "selecting and scrolling to it"]]
-        // A remainder below nothing is said, as a part timed outside its window.
-        .filter(([ms]) => Math.abs(ms) >= 0.5);
+        // What rounds to none isn't said; below nothing is, as timed outside its window.
+        .filter(([ms]) => Math.round(ms) !== 0);
     return each.map(([ms, words]) => `${Math.round(ms)} ${words}`).join(", ");
 }
 

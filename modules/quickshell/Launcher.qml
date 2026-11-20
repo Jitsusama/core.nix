@@ -14421,16 +14421,18 @@ Scope {
                                     list.laidBy = null;
                                 }
                                 const { from, whole, split } = placed;
+                                // One reading of the clock, said whole and fine.
+                                const layingTook = KeyTimes.now() - laying + aside + split;
                                 list.keptLast = {
                                     fresh: steps.reduce((all, step) => all
                                         + (step.keys ?? []).length, 0),
                                     // Whole milliseconds, as the journal has
                                     // always said it, though the rows' clock
                                     // reads finer.
-                                    laying: Math.round(KeyTimes.now() - laying + aside + split),
+                                    laying: Math.round(layingTook),
                                     // And fine, which a showing's putting
                                     // in is told less (Trials.showingSplit).
-                                    layingFine: KeyTimes.now() - laying + aside + split,
+                                    layingFine: layingTook,
                                     // Whole too, as its time was before the
                                     // rows' clock timed it.
                                     split: Object.assign({ from, took: Math.round(split), whole },
