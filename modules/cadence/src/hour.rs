@@ -304,8 +304,10 @@ fn rounds_per_merge(
 ) -> Vec<Measure> {
     use measures::rounds::{BEFORE, Main, rounds};
     let harness_git = axes::landings::harness_mirror();
-    let core_moved = |merge: &str, witness: &str| moved(core_git, merge, witness);
-    let harness_moved = |merge: &str, witness: &str| moved(&harness_git, merge, witness);
+    // Cadence keeps core's clone, so it may fetch into it; the harness's
+    // mirror is its installer's, so it is only read.
+    let core_moved = |merge: &str, witness: &str| moved(core_git, true, merge, witness);
+    let harness_moved = |merge: &str, witness: &str| moved(&harness_git, false, merge, witness);
     let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
@@ -363,48 +365,73 @@ fn rounds_per_merge(
     )
 }
 
-/// Each quest's spend today beside what it landed since midnight here,
-/// from spend-watch's collection and the mesh's landing notes, each
-/// sender taken to the quest its presence works on. spend-watch writes
-/// the collection every few minutes and dates nothing in it, so one not
-/// written within the hour, or written before midnight, is yesterday's or
-/// stuck, and isn't read as today's.
-/// Whether the change `merge` merged, its second parent, gained a commit
-/// of its own after a round read `witness`, from the `clone` its log came
-/// from. A merge from main brings none, and neither does a rebase, whose
-/// commits make the same patches as those the round read; a commit whose
-/// patch differs, a fix or a conflict settled, does. A witness the clone
-/// lacks, as a rebase can leave one, or anything else git can't read, is
-/// `None`. Only full commit names reach git, so none reads as an option.
-fn moved(clone: &Path, merge: &str, witness: &str) -> Option<bool> {
+/// Whether the change `merge` merged, its second parent, changed after a
+/// round read `witness`, from the `clone` its log came from, `None` where
+/// git can't say, which goes to the journal with why. Only full commit
+/// names reach git, so none reads as an option.
+fn moved(clone: &Path, fetch: bool, merge: &str, witness: &str) -> Option<bool> {
     let sha = |name: &str| name.len() == 40 && name.bytes().all(|b| b.is_ascii_hexdigit());
     if !sha(merge) || !sha(witness) {
+        eprintln!("cadence: rounds: {merge} or {witness} is no full commit name");
         return None;
     }
+    changed_since(clone, fetch, merge, witness)
+        .inspect_err(|err| {
+            eprintln!("cadence: rounds: can't tell whether {merge} moved after {witness}: {err}");
+        })
+        .ok()
+}
+
+/// Whether what the change `merge` merged does differs from what it did at
+/// `witness`, each its whole diff from main with no lines of context or
+/// line numbers. So a rebase, beside main's edits or not, a merge from
+/// main and an empty commit leave it as it was, and a fix or a conflict
+/// settled otherwise, in a rebase or a merge, changes it. A rebase leaves
+/// the head a round read on no branch, so a clone that keeps only main
+/// lacks it: with `fetch`, it is asked of origin by its name, as GitHub
+/// gives a commit it holds.
+fn changed_since(clone: &Path, fetch: bool, merge: &str, witness: &str) -> io::Result<bool> {
     let clone = clone.to_string_lossy();
     let git = |args: &[&str]| {
         let mut all = vec!["-C", &clone];
         all.extend_from_slice(args);
         command("git", &all)
     };
-    let head = git(&["rev-parse", "--verify", "--quiet", &format!("{merge}^2")]).ok()?;
+    let head = git(&["rev-parse", "--verify", "--quiet", &format!("{merge}^2")])?;
     if head.trim().eq_ignore_ascii_case(witness) {
-        return Some(false);
+        return Ok(false);
     }
-    git(&["cat-file", "-e", &format!("{witness}^{{commit}}")]).ok()?;
-    let own = git(&[
-        "rev-list",
-        "--no-merges",
-        "--cherry-pick",
-        "--right-only",
-        "--count",
-        &format!("{witness}...{merge}^2"),
-        &format!("^{merge}^1"),
-    ])
-    .ok()?;
-    Some(own.trim() != "0")
+    let commit = format!("{witness}^{{commit}}");
+    if fetch && git(&["cat-file", "-e", &commit]).is_err() {
+        git(&[
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            "origin",
+            witness,
+        ])?;
+    }
+    git(&["cat-file", "-e", &commit])?;
+    let main = format!("{merge}^1");
+    let base = git(&["merge-base", witness, &main])?;
+    let change = |from: &str, to: &str| {
+        let diff = git(&["diff", "-U0", "--no-color", "--no-ext-diff", from, to])?;
+        io::Result::Ok(
+            diff.lines()
+                .filter(|line| !line.starts_with("@@") && !line.starts_with("index "))
+                .map(str::to_owned)
+                .collect::<Vec<_>>(),
+        )
+    };
+    Ok(change(base.trim(), witness)? != change(&main, merge)?)
 }
 
+/// Each quest's spend today beside what it landed since midnight here,
+/// from spend-watch's collection and the mesh's landing notes, each
+/// sender taken to the quest its presence works on. spend-watch writes
+/// the collection every few minutes and dates nothing in it, so one not
+/// written within the hour, or written before midnight, is yesterday's or
+/// stuck, and isn't read as today's.
 fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     let midnight = midnight_ms(now, &TimeZone::system());
     let at = std::env::var_os("XDG_RUNTIME_DIR")
@@ -599,94 +626,144 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 mod tests {
     use super::*;
 
+    /// Runs git in `at` with a config of its own, so the test reads and
+    /// signs with nobody's, giving what it printed.
+    fn git(at: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(at)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "here")
+            .env("GIT_AUTHOR_EMAIL", "here@example.org")
+            .env("GIT_COMMITTER_NAME", "here")
+            .env("GIT_COMMITTER_EMAIL", "here@example.org")
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    }
+
+    /// Commits `text` as `file` in `at`, giving the commit.
+    fn commit(at: &Path, file: &str, text: &str) -> String {
+        std::fs::write(at.join(file), text).expect("a file written");
+        git(at, &["add", file]);
+        git(at, &["commit", "-q", "-m", file]);
+        git(at, &["rev-parse", "HEAD"])
+    }
+
     #[test]
-    fn a_change_moved_on_from_its_round_only_by_a_commit_of_its_own() {
+    fn a_change_moved_on_from_its_round_only_by_what_it_changes() {
         let root = tempfile::tempdir().expect("a scratch folder");
-        let dir = root.path();
-        // Its own config, so the test reads and signs with nobody's.
-        let git = |args: &[&str]| -> String {
-            let out = std::process::Command::new("git")
-                .arg("-C")
-                .arg(dir)
-                .args(args)
-                .env("GIT_CONFIG_GLOBAL", "/dev/null")
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .env("GIT_AUTHOR_NAME", "here")
-                .env("GIT_AUTHOR_EMAIL", "here@example.org")
-                .env("GIT_COMMITTER_NAME", "here")
-                .env("GIT_COMMITTER_EMAIL", "here@example.org")
-                .output()
-                .expect("git runs");
-            assert!(
-                out.status.success(),
-                "git {args:?} failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
-            String::from_utf8_lossy(&out.stdout).trim().to_owned()
-        };
-        let commit = |file: &str| {
-            std::fs::write(dir.join(file), file).expect("a file written");
-            git(&["add", file]);
-            git(&["commit", "-q", "-m", file]);
-            git(&["rev-parse", "HEAD"])
-        };
-        // A change read at `read`, then given `after` and merged to main
-        // past a commit of main's own, giving the merge.
-        let merged = |change: &str, after: &dyn Fn()| {
-            git(&["checkout", "-q", "-b", change, "main"]);
-            let read = commit(change);
-            git(&["checkout", "-q", "main"]);
-            commit(&format!("main-{change}"));
-            git(&["checkout", "-q", change]);
+        let dir = &root.path().join("here");
+        std::fs::create_dir(dir).expect("a repository folder");
+        git(dir, &["init", "-q", "-b", "main"]);
+        // It gives a commit on no branch by its name, as GitHub does.
+        git(dir, &["config", "uploadpack.allowAnySHA1InWant", "true"]);
+        commit(dir, "shared", "one\ntwo\nthree\nfour\n");
+        // A change making `edit`, read there, then given `after` and merged
+        // to main past main's own `beside`, giving the merge and the read.
+        let merged = |change: &str, edit: (&str, &str), beside: (&str, &str), after: &dyn Fn()| {
+            git(dir, &["checkout", "-q", "-b", change, "main"]);
+            let read = commit(dir, edit.0, edit.1);
+            git(dir, &["checkout", "-q", "main"]);
+            commit(dir, beside.0, beside.1);
+            git(dir, &["checkout", "-q", change]);
             after();
-            git(&["checkout", "-q", "main"]);
-            git(&["merge", "-q", "--no-ff", "-m", change, change]);
-            (git(&["rev-parse", "HEAD"]), read)
+            git(dir, &["checkout", "-q", "main"]);
+            git(dir, &["merge", "-q", "--no-ff", "-m", change, change]);
+            (git(dir, &["rev-parse", "HEAD"]), read)
         };
-        git(&["init", "-q", "-b", "main"]);
-        commit("base");
+        let own =
+            |change, after: &dyn Fn()| merged(change, (change, change), ("main", change), after);
+        let rebase = || drop(git(dir, &["rebase", "-q", "main"]));
         let cases = [
-            ("as-read", merged("as-read", &|| ()), Some(false)),
+            ("as read", own("as-read", &|| ()), Some(false)),
             (
-                "main-merged-in",
-                merged("main-merged-in", &|| {
-                    git(&["merge", "-q", "--no-ff", "-m", "in", "main"]);
+                "merged from main",
+                own("in", &|| {
+                    git(dir, &["merge", "-q", "--no-ff", "-m", "in", "main"]);
                 }),
                 Some(false),
             ),
+            ("rebased", own("re", &rebase), Some(false)),
             (
-                "rebased",
-                merged("rebased", &|| {
-                    git(&["rebase", "-q", "main"]);
+                "rebased beside main's edit",
+                merged(
+                    "near",
+                    ("shared", "one\ntwo\nthree\nFOUR\n"),
+                    ("shared", "ONE\ntwo\nthree\nfour\n"),
+                    &rebase,
+                ),
+                Some(false),
+            ),
+            (
+                "an empty commit",
+                own("empty", &|| {
+                    git(dir, &["commit", "-q", "--allow-empty", "-m", "nothing"]);
                 }),
                 Some(false),
             ),
             (
                 "fixed",
-                merged("fixed", &|| {
-                    commit("a-fix");
+                own("fixed", &|| {
+                    commit(dir, "a-fix", "a fix");
+                }),
+                Some(true),
+            ),
+            (
+                "fixed in a merge from main",
+                own("evil", &|| {
+                    git(dir, &["merge", "-q", "--no-ff", "--no-commit", "main"]);
+                    commit(dir, "in-the-merge", "a fix");
                 }),
                 Some(true),
             ),
         ];
         for (case, (merge, read), want) in &cases {
-            assert_eq!(moved(dir, merge, read), *want, "{case}");
+            assert_eq!(moved(dir, false, merge, read), *want, "{case}");
         }
-        let (merge, _) = &cases[0].1;
+        // A clone of main alone lacks the head the rebased change was read
+        // at, until it is fetched.
+        let there = &root.path().join("there");
+        let url = format!("file://{}", dir.display());
+        let at = there.to_string_lossy();
+        let clone = ["clone", "-q", "--bare", "--single-branch", &url, &at];
+        git(root.path(), &clone);
+        let (merge, read) = &cases[2].1;
         assert_eq!(
-            moved(dir, merge, &"0".repeat(40)),
+            moved(there, false, merge, read),
             None,
             "a witness the clone lacks"
         );
         assert_eq!(
-            moved(dir, merge, "as-read"),
+            moved(there, true, merge, read),
+            Some(false),
+            "a witness fetched"
+        );
+        let (merge, _) = &cases[0].1;
+        assert_eq!(
+            moved(dir, true, merge, &"0".repeat(40)),
             None,
-            "a witness that's no commit name"
+            "a witness nobody has"
         );
         assert_eq!(
-            moved(dir, "--all", &"0".repeat(40)),
+            moved(dir, false, merge, "as-read"),
             None,
-            "an option for a merge"
+            "a witness that's no name"
+        );
+        // main's second parent is a real witness, so only the guard keeps
+        // the ref from reading as a merge.
+        let last = git(dir, &["rev-parse", "main^2"]);
+        assert_eq!(
+            moved(dir, false, "main", &last),
+            None,
+            "a merge that's no name"
         );
     }
 

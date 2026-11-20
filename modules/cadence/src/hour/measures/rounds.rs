@@ -9,11 +9,11 @@
 //! owner when they caught nothing. What a round caught is read from the
 //! harness's record of the fixes for its findings, committed or queued, a
 //! judge's finding counting for the council it consolidated. A queued fix
-//! counts when the change gained commits of its own after its round read
-//! it, as many owners decide a finding is real and fix it without
-//! recording the commit, which left real catches on #1860's and #5614's
-//! rounds past five read as nothing. A queued fix on a change that gained
-//! none can't have been made before the merge: it is a follow-up, which
+//! counts when what the change does changed after its round read it, as
+//! many owners decide a finding is real and fix it without recording the
+//! commit, which left real catches on #1860's and #5614's rounds past
+//! five read as nothing. A queued fix on a change that didn't can't have
+//! been made before the merge: it is a follow-up, which
 //! WCJQSG's ruling makes of what a late round needn't raise, so it catches
 //! nothing and is named apart.
 
@@ -264,15 +264,16 @@ struct Late {
 impl Late {
     /// Splits what `councils` past the fifth raised on `merged`, from
     /// `fixes` by council, each round's head read from `witnesses`. A
-    /// committed fix was caught. A queued one was caught only when the
-    /// change gained commits of its own after its round read it, so its
-    /// fix could be among them; a rebase, or a merge from main, alone
-    /// doesn't count. One that gained none is a follow-up, so the drag of a
-    /// late round that queued only those shows. One whose round read no
-    /// head, or whose commits git can't read, is unread, as unread fixes
-    /// are, so it files nothing. A later round's commit moves the change
-    /// as well as a fix made for this round's finding would, so the two
-    /// aren't told apart, as WCJQSG was told on 20 November.
+    /// committed fix was caught. A queued one was caught only when what the
+    /// change does changed after its round read it, so its fix could be in
+    /// what merged; a rebase, or a merge from main, alone doesn't count.
+    /// One on a change that didn't is a follow-up, so the drag of a late
+    /// round that queued only those shows. One whose round read no head,
+    /// or whose commits git can't read, is unread, as unread fixes are, so
+    /// it files nothing. A later round's commit changes the change as a fix
+    /// made for this round's finding would, so the two aren't told apart,
+    /// as WCJQSG was told on 20 November. Git is asked once a round, and
+    /// only for a round with a queued fix.
     fn split(
         merged: &Merged,
         councils: &BTreeSet<(i64, &str)>,
@@ -281,13 +282,20 @@ impl Late {
     ) -> (Vec<String>, usize, usize) {
         let (mut caught, mut follow_ups, mut unread) = (Vec::new(), 0, 0);
         for (_, id) in councils.iter().skip(PAST) {
-            for fix in fixes.get(*id).into_iter().flatten() {
-                let moved = || {
+            let Some(each) = fixes.get(*id) else {
+                continue;
+            };
+            let moved = each
+                .iter()
+                .any(|fix| fix.queued)
+                .then(|| {
                     witnesses
                         .get(id)
                         .and_then(|read| (merged.moved)(merged.merge, read))
-                };
-                match (fix.queued, fix.queued.then(moved).flatten()) {
+                })
+                .flatten();
+            for fix in each {
+                match (fix.queued, moved) {
                     (false, _) | (true, Some(true)) => caught.push(fix.subject.clone()),
                     (true, Some(false)) => follow_ups += 1,
                     (true, None) => unread += 1,
@@ -560,7 +568,7 @@ mod tests {
             &[Main {
                 repo: CORE,
                 log: &log,
-                moved: &|_, _| panic!("asked whether a change moved though no fixes were read"),
+                moved: &|_, _| None,
             }],
             &records,
             &[],
@@ -603,13 +611,15 @@ mod tests {
         serde_json::json!({ "fixes": fixes }).to_string()
     }
 
-    /// Whether each change gained a commit of its own after a round read
-    /// the head it names: #23 did after its sixth, #24 and #26 merged what
-    /// their rounds read, and git can't read #25.
+    /// Whether each change changed after a round read the head it names:
+    /// #23 did after its sixth, #24 and #26 merged what their rounds read,
+    /// and git can't read #25. A round that only committed fixes is never
+    /// asked.
     fn moved(merge: &str, witness: &str) -> Option<bool> {
         match (merge, witness) {
             ("cccc", "c-read") => Some(true),
             ("dddd", "d-merged") | ("ffff", "f-merged") => Some(false),
+            (_, "f-fixed") => panic!("asked git of a round that queued nothing"),
             _ => None,
         }
     }
@@ -622,6 +632,7 @@ mod tests {
             "council-d-1" => Some("d-merged"),
             "council-e-1" => Some("e-read"),
             "council-f-0" => Some("f-merged"),
+            "council-f-1" => Some("f-fixed"),
             _ => None,
         }
     }
