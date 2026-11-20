@@ -9679,8 +9679,9 @@ Scope {
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
-    // as Network's does; home has none; the card's height (Steady.tallFor), the list and the
-    // rows' lines all read groupGap, so the plate's lines can't drift from the list's.
+    // as Network's does; home has none. The card's height (Steady.tallFor) and the list read
+    // groupGap, and the rows' lines read it through apart, which is groupGap whenever a row
+    // of the list has a gap, so the plate's lines can't drift from the list's.
     readonly property real groupGap: Theme.space.beat
     readonly property real apart: matches.some(row => row.gap) ? groupGap : 0
     // A length to a hundredth, as reports say one, or null for none.
