@@ -39,7 +39,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 mod machine;
@@ -272,6 +272,13 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
                 .push(format!("hold {} names no folder", hold.id));
             continue;
         }
+        if !Path::new(&hold.folder).is_absolute() {
+            found.passed.push(format!(
+                "hold {} names {:?}, a folder that isn't absolute",
+                hold.id, hold.folder
+            ));
+            continue;
+        }
         let named: Vec<&Listed> = live
             .iter()
             .copied()
@@ -405,8 +412,9 @@ enum Start {
 /// what it did with each. One started waits no more; one whose folder
 /// isn't there or that the node wouldn't start waits for another run, up
 /// to TRIES; one the node gave no answer for waits QUIET before it's asked
-/// again. What the record says is checked again before it's run, as what
-/// the node said was.
+/// again, from when its answer stopped being waited for, so a slow run
+/// doesn't shorten the wait of those asked late in it. What the record
+/// says is checked again before it's run, as what the node said was.
 fn bring_back(
     kept: &mut Kept,
     at: u64,
@@ -420,14 +428,21 @@ fn bring_back(
         }
         return;
     };
+    let began = Instant::now();
     kept.waiting.retain_mut(|waiting| {
         let session = &waiting.session;
-        if !an_id(&session.id)
-            || !PIS.contains(&session.program.as_str())
-            || !Path::new(&session.folder).is_absolute()
-        {
+        let fault = if !an_id(&session.id) {
+            Some("its id isn't plain")
+        } else if !PIS.contains(&session.program.as_str()) {
+            Some("it isn't a pi session")
+        } else if !Path::new(&session.folder).is_absolute() {
+            Some("its folder isn't absolute")
+        } else {
+            None
+        };
+        if let Some(fault) = fault {
             say(format!(
-                "passed over: the record's {:?}, as {:?} in {:?}, isn't a pi session",
+                "passed over: the record's {:?}, as {:?} in {:?}, since {fault}",
                 session.id, session.program, session.folder
             ));
             return false;
@@ -443,7 +458,7 @@ fn bring_back(
         } else {
             Start::Refused(format!("its folder, {}, isn't there", session.folder))
         };
-        let why = match outcome {
+        let (why, then) = match outcome {
             Start::Started => {
                 say(format!(
                     "{} started again in {}",
@@ -453,13 +468,13 @@ fn bring_back(
             }
             Start::Refused(why) => {
                 waiting.unanswered = None;
-                why
+                (why, "trying again next run".to_string())
             }
             Start::Unanswered(why) => {
-                waiting.unanswered = Some(at);
-                format!(
-                    "{why}, so it may yet start; it's asked again in {} min",
-                    QUIET / 60
+                waiting.unanswered = Some(at + began.elapsed().as_secs());
+                (
+                    format!("{why}, so it may yet start"),
+                    format!("asking again in {} min", QUIET / 60),
                 )
             }
         };
@@ -468,11 +483,7 @@ fn bring_back(
         say(format!(
             "{} wasn't started again ({why}); {}",
             waiting.session.id,
-            if left {
-                "trying again next run"
-            } else {
-                "leaving it"
-            }
+            if left { then.as_str() } else { "leaving it" }
         ));
         left
     });

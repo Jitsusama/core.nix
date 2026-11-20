@@ -137,6 +137,8 @@ fn what_cannot_be_kept_is_passed_over_and_said_and_the_rest_kept() {
         "not a hold\n",
         r#"{"id":"11111111","command":["pi"],"folder":"","pid":1}"#,
         "\n",
+        r#"{"id":"99999999","command":["pi"],"folder":"src","pid":9}"#,
+        "\n",
         r#"{"id":"22222222","command":["pi"],"folder":"/f","pid":2}"#,
         "\n",
         r#"{"id":"33333333","command":["pi"],"folder":"/f","pid":3}"#,
@@ -153,6 +155,7 @@ fn what_cannot_be_kept_is_passed_over_and_said_and_the_rest_kept() {
     );
     let sessions = r#"{"Ok":{"Sessions":[
         {"id":"one","machine":"mac","held":"11111111"},
+        {"id":"near","machine":"mac","held":"99999999"},
         {"id":"twice","machine":"mac","held":"22222222"},
         {"id":"again","machine":"mac","held":"22222222"},
         {"id":"x; rm -rf ~","machine":"mac","held":"33333333"},
@@ -177,6 +180,7 @@ fn what_cannot_be_kept_is_passed_over_and_said_and_the_rest_kept() {
         vec![
             found.passed[0].clone(),
             "hold 11111111 names no folder".to_string(),
+            r#"hold 99999999 names "src", a folder that isn't absolute"#.into(),
             "2 sessions name hold 22222222".into(),
             "hold 33333333's session id isn't plain".into(),
             "hold 66666666's session id isn't plain".into(),
@@ -507,6 +511,52 @@ fn a_start_the_node_gave_no_answer_to_is_not_asked_again_at_once() {
         (*asked.borrow(), kept.waiting.len()),
         (2, 1),
         "five minutes on, it's still not held, so it's asked again"
+    );
+}
+
+#[test]
+fn an_unanswered_start_waits_from_when_it_was_asked_and_says_so_once() {
+    let mut kept = waiting(&["a", "b"]);
+    let mut said = Vec::new();
+    bring_back(
+        &mut kept,
+        AT,
+        |_| true,
+        |_, session| {
+            if session.id == "a" {
+                thread::sleep(Duration::from_millis(1100));
+            }
+            Start::Unanswered("no answer within 30 s".into())
+        },
+        |line| said.push(line),
+    );
+    assert_eq!(
+        said,
+        ["a", "b"].map(|id| format!(
+            "{id} wasn't started again (no answer within 30 s, so it may yet start); \
+             asking again in 5 min"
+        )),
+        "an unanswered start says when it's asked again, and only that"
+    );
+    assert!(
+        kept.waiting[1].unanswered.is_some_and(|asked| asked > AT),
+        "one asked late in a slow run waited from the run's start, not from its own ask: {:?}",
+        kept.waiting[1].unanswered
+    );
+    kept.waiting[0].tries = TRIES - 1;
+    kept.waiting.truncate(1);
+    said.clear();
+    bring_back(
+        &mut kept,
+        AT + QUIET + 2,
+        |_| true,
+        |_, _| Start::Unanswered("no answer within 30 s".into()),
+        |line| said.push(line),
+    );
+    assert_eq!(
+        said,
+        ["a wasn't started again (no answer within 30 s, so it may yet start); leaving it"],
+        "its last try says it's left, not that it's asked again"
     );
 }
 
