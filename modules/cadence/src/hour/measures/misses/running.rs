@@ -5,6 +5,8 @@
 //! older runtime's pi. Whatever cadence can't read counts as not running,
 //! so a blind hour never tells him fixed.
 
+mod resumed;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -12,6 +14,7 @@ use serde_json::Value;
 
 use super::{Checkouts, Named, main_of, merged_numbers};
 use crate::{command, write_whole};
+pub use resumed::hosts_started;
 
 /// What a miss's line says between its change and why, after its check's
 /// note, when the change merged and doesn't run here yet. The card reads

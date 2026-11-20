@@ -20,7 +20,7 @@ mod held;
 mod running;
 
 pub use held::{BLIND, HELD, held};
-pub use running::{UNRUN, UNSEEN};
+pub use running::{UNRUN, UNSEEN, hosts_started};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
