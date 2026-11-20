@@ -34,6 +34,7 @@
     nix-offload-lines-reach-root-alone = "a line is a builder's entry in Nix's machines files, not a connection";
     pi-fence-display-passes-clippy = "a Wayland display is a compositor's socket, not a screen";
     pi-hosts-ignore-sigusr1 = "a pi host is the harness's process holding many pi conversations, not a machine";
+    pi-hosts-keep-async-context = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-refuse-an-unproven-runtime = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-refuse-code-loading-variables = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-restart-waits-on-calls = "a pi host's process restarts as systemd restarts it; the machine isn't rebooted";

@@ -2887,9 +2887,9 @@
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb, its async context in
-    V8's frame only where its realm asks for it, and pi's SSH agent
-    proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
+    conversations to share, node's heap limit set to its realm's heapMb,
+    --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
+    frame, and pi's SSH agent proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
     restart, and a machine naming none, or a Mac, gets none
   '';
@@ -2897,6 +2897,12 @@
     node 22, which pi is built with, and this tree's own node, each given the --disable-sigusr1 a
     pi host's unit gives it, outlive SIGUSR1 with their inspectors shut, beside a node without it
     whose inspector the same signal opens
+  '';
+  pi-hosts-keep-async-context = ''
+    node 22, which pi is built with, started with --disable-sigusr1 and
+    --experimental-async-context-frame as a host whose realm sets asyncContextFrame is, keeps fifty
+    concurrent AsyncLocalStorage values across awaits, timers and promises others settle, while
+    this tree's own node 24 refuses that flag and ends at once
   '';
   pi-hosts-restart-waits-on-calls = ''
     a pi host's unit names the probes its own restart waits out, as JSON the host reads: a call

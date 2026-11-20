@@ -274,6 +274,15 @@ in
     touch $out
   '';
 
+  # A realm's asyncContextFrame on the node pi is built with, as a host's
+  # unit starts it, and the tree's own node, which refuses the flag as
+  # node 24 does, so the option's version floor is shown, not only said.
+  pi-hosts-keep-async-context = pkgs.runCommandLocal "pi-hosts-keep-async-context" { } ''
+    ${lib.getExe pkgs.nodejs_22} ${./tests/pi-hosts-keep-async-context.mjs} ${lib.getExe pkgs.nodejs_22} keeps
+    ${lib.getExe pkgs.nodejs_22} ${./tests/pi-hosts-keep-async-context.mjs} ${lib.getExe pkgs.nodejs} refuses
+    touch $out
+  '';
+
   # A realm a machine names gets two hosts, attended and background, started
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
@@ -393,7 +402,7 @@ in
         # given before the entry, as node reads only flags there; quoted for
         # its =, which systemd unquotes.
         && lib.hasInfix " '--max-old-space-size=8192' /" (first unit.Service.ExecStart)
-        # Async context stays in promise hooks unless its realm asks.
+        # No async context frame flag unless its realm asks.
         && !(lib.hasInfix "async-context-frame" (first unit.Service.ExecStart))
         && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
@@ -438,7 +447,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, keeps async context in promise hooks when its realm asks for V8's frame or in the frame when it doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         readsOptions
         && starts "attended"
