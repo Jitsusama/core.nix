@@ -151,7 +151,7 @@ pub struct Window {
     /// a window without a call, and of those written before it was added.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub call: BTreeMap<String, Worst>,
-    /// How many of each app's watched threads (`kernel::APPS`) it had
+    /// How many of each app's watched threads (`apps::APPS`) it had
     /// lowered at the window's end, hidden tabs, and so left out of its
     /// wait. Left out when none was, and of windows written before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
