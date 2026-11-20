@@ -441,8 +441,17 @@ ShellRoot {
         Expect.expect("opening felt Screens' own work as one span by its name",
             JSON.stringify(opened.map(span => span.name)) === '["Screens opening"]',
             JSON.stringify(opened));
+        // Stamped inside the work, so a span read after its work, or from 0, fails.
+        let inside = -1;
+        const before = KeyTimes.now();
+        displays.felt("timed", () => {
+            inside = KeyTimes.now();
+        });
+        const timed = theLauncher.spans[theLauncher.spans.length - 1];
         Expect.expect("from before its work to after",
-            opened.length === 1 && opened[0].from <= opened[0].to, JSON.stringify(opened));
+            timed.name === "Screens timed" && before <= timed.from && timed.from <= inside
+                && inside <= timed.to,
+            `${before} ${inside} ${JSON.stringify(timed)}`);
         theLauncher.open = false;
         Expect.expect("work felt while it's shut is shutting, and gives what the work gives",
             displays.feltOpening(() => 7) === 7
