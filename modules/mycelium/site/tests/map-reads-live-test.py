@@ -874,6 +874,8 @@ PLACED = """(selector) => {
   const r = document.querySelector(selector).getBoundingClientRect();
   return [r.left + scrollX, r.top + scrollY, r.width, r.height];
 }"""
+# Whether the drawer has slid all the way in, on a page it fills.
+SLID_IN = "() => document.getElementById('panel').getBoundingClientRect().left === 0"
 # Where the field's chosen words start and end.
 CHOSEN = """(() => {
   const f = document.getElementById("sprout");
@@ -1033,8 +1035,13 @@ def test_new_works_line_holds_one_row_on_a_phone(browser: Browser, mycelium_serv
         page.locator("#map-view").focus()
         page.keyboard.press("a")
         expect(page, "a didn't open a cell").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
+        # Measured once the drawer has slid in and shows its button, as
+        # the click would scroll it there.
+        page.wait_for_function(SLID_IN)
+        start = page.locator("#panel-body").get_by_role("button", name="Start New Work From It")
+        start.scroll_into_view_if_needed()
         was = [page.evaluate(PLACED, s) for s in ("#map", "#panel-body")]
-        page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+        start.click()
         expect(page.locator("#sprout-from-words"), "the open cell wasn't offered").to_be_visible()
         # Narrow, the line says less and holds one row, so it neither
         # covers the drawer nor moves it or the map.
