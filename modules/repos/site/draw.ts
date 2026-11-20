@@ -17,6 +17,7 @@ import {
 } from "./model.ts";
 import type { Homes } from "./homes.ts";
 import { atWork, leads } from "./joins.ts";
+import { usedBriefly, usedFully } from "./using.ts";
 import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
 /** What every part of the drawer reads besides its own: the time it's drawn at, the home
@@ -268,13 +269,15 @@ function growth(repository: Repository): string {
   return week > 0 ? `${week} this week` : "";
 }
 
-/** The words of a row after its name: its size, how it grows, its changes and its weight. */
+/** The words of a row after its name: its size, how it grows, its changes, its weight and what
+ * works in it. */
 function rowMeta(repository: Repository): string {
   const parts = [
     size(repository),
     growth(repository),
     repository.changes.length > 0 ? plural(repository.changes.length, "change") : "",
     weighedBriefly(weightOfAll(repository.checkouts.map((each) => each.weight))),
+    usedBriefly(repository.using),
   ].filter(Boolean);
   return parts.map(counted).join(" · ");
 }
@@ -354,7 +357,13 @@ function cellsLine(cells: readonly Cell[], drawing: Drawing): string {
   return `<span class="at-work">${said.join("; ")}</span>`;
 }
 
-/** One tree in the drawer: its leaf, its branch, its folder and its cells. */
+/** What works in a tree, as its own line, where anything does. */
+function usedLine(use: Tree["using"]): string {
+  const said = usedFully(use);
+  return said === "" ? "" : `<span class="meta">${escaped(counted(said))}</span>`;
+}
+
+/** One tree in the drawer: its leaf, its branch, its folder, what works in it and its cells. */
 function treeRow(tree: Tree, cutIn: string | undefined, drawing: Drawing): string {
   const { now, home } = drawing;
   // A tree in the folder the drawer has already named says only its own name, and none at all
@@ -379,7 +388,7 @@ function treeRow(tree: Tree, cutIn: string | undefined, drawing: Drawing): strin
   return `<li class="tree ${tree.season}" data-path="${escaped(tree.path)}" data-home="code/${escaped(treeAddress(tree.path))}" tabindex="-1">
     <span class="g-season">${leaf(tree.season)}</span>
     <span class="tree-body"><span class="branch" translate="no">${escaped(branch)}${tree.snapshot ? ' <span class="snap">snapshot</span>' : ""}</span>
-    ${where}${cellsLine(tree.cells, drawing)}</span>
+    ${where}${usedLine(tree.using)}${cellsLine(tree.cells, drawing)}</span>
     ${change}${when(tree.writtenAt, now)}
   </li>`;
 }
@@ -430,6 +439,15 @@ function changeRow(change: Change): string {
     <span class="change-body">${number}${title}<span class="stands">${escaped(words)}</span>${failed}</span></li>`;
 }
 
+/** What works in a repository, as a sentence following its lede's, saying what it leaves out;
+ * nothing where nothing works. */
+function workingIn(repository: Repository): string {
+  const said = usedBriefly(repository.using);
+  return said === ""
+    ? ""
+    : ` ${counted(`Its processes take ${said}, not counting builds the Nix daemon runs for it.`)}`;
+}
+
 /** The repository open beside the list. */
 function drawer(
   repository: Repository,
@@ -459,8 +477,9 @@ function drawer(
         each.ahead ? `${each.ahead} ahead` : "",
       ].filter(Boolean);
       const weight = weighedFully(each.weight);
+      const used = usedFully(each.using);
       return `<li class="checkout"><span class="path" translate="no">${escaped(tilde(each.path, home))}</span>
-        <span class="meta">${escaped([at, ...drift, weight].filter(Boolean).map(counted).join(" · "))}</span>${cellsLine(each.cells, drawing)}</li>`;
+        <span class="meta">${escaped([at, ...drift, weight, used].filter(Boolean).map(counted).join(" · "))}</span>${cellsLine(each.cells, drawing)}</li>`;
     })
     .join("");
   const joined = repository.joined
@@ -480,7 +499,7 @@ function drawer(
   return `<article class="open" data-home="code/${escaped(repository.address)}">
     <p class="eyebrow">repository · <span translate="no">${escaped(where)}</span></p>
     <h2 class="open-title" id="open-title" tabindex="-1">${escaped(repository.name)}</h2>
-    <p class="open-lede">${escaped(repository.trunk === undefined ? "No trunk named" : `Its trunk is ${repository.trunk}`)}; ${escaped(plural(repository.trees.length, "tree"))} cut from ${escaped(plural(repository.checkouts.length, "checkout"))}${repository.cutIn === undefined ? "" : `, most in <span class="path" translate="no">${escaped(tilde(repository.cutIn, home))}</span>`}.</p>
+    <p class="open-lede">${escaped(repository.trunk === undefined ? "No trunk named" : `Its trunk is ${repository.trunk}`)}; ${escaped(plural(repository.trees.length, "tree"))} cut from ${escaped(plural(repository.checkouts.length, "checkout"))}${repository.cutIn === undefined ? "" : `, most in <span class="path" translate="no">${escaped(tilde(repository.cutIn, home))}</span>`}.${escaped(workingIn(repository))}</p>
     ${threads}
     <ul class="checkouts">${checkouts}</ul>
     ${changes}

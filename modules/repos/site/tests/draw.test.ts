@@ -28,6 +28,7 @@ function told(these: readonly { readonly key: string; readonly kind: string }[])
     checkout: kept("checkout"),
     tree: kept("tree"),
     change: kept("change"),
+    using: kept("using"),
   };
 }
 
@@ -81,9 +82,9 @@ const cells = cellsOf({
   cells: [{ name: HOSTILE, title: HOSTILE, standing: "moving", cwd: `${tree}/src` }],
 });
 
-/** The grove drawn from the hostile records, which must hold its one repository. */
-function grove(): Grove {
-  const drawn = groveOf(told(records), cells, NOW);
+/** The grove drawn from the hostile records, or `these`, which must hold its one repository. */
+function grove(these: Parameters<typeof told>[0] = records): Grove {
+  const drawn = groveOf(told(these), cells, NOW);
   assert.ok(drawn?.repositories[0] !== undefined, "the records drew no repository");
   return drawn;
 }
@@ -194,8 +195,8 @@ it("puts a repository's name in the grove as words", () => {
 });
 
 /** The drawer of the hostile grove's one repository, with every season open. */
-function openDrawer(): string {
-  const whole = grove();
+function openDrawer(these: Parameters<typeof told>[0] = records): string {
+  const whole = grove(these);
   const [opened] = whole.repositories;
   assert.ok(opened !== undefined, "the records drew no repository");
   const context = { now: NOW, home: "/home/ada", homes: () => HOSTILE };
@@ -221,4 +222,40 @@ it("puts a change's title, address and failed checks in the drawer as words", ()
     `the drawer put a change's address in as markup: ${markup}`,
   );
   assert.ok(asWords(markup), `the drawer put a change in as markup: ${markup}`);
+});
+
+// What works in the hostile repository: two processes in its checkout, one in its tree.
+const using = {
+  key: `using:${repository}`,
+  kind: "using",
+  repository,
+  processes: 3,
+  memory: 1_300_000_000,
+  cpu: 0.4,
+  folders: [
+    { path: checkout, processes: 2, memory: 300_000_000, cpu: 0.1 },
+    { path: tree, processes: 1, memory: 1_000_000_000, cpu: 0.3 },
+  ],
+};
+
+it("says in a row what works in its repository, its numbers held to their words", () => {
+  const markup = rows(grove([...records, using]).repositories, NOW, "");
+  const said = "40% of a core, 1.3\u00a0GB of memory";
+  assert.ok(markup.includes(said), `the row didn't say what works in it: ${markup}`);
+  assert.ok(
+    !rows(grove().repositories, NOW, "").includes("of memory"),
+    "an unmeasured row said a use",
+  );
+});
+
+it("says in the drawer what works in each checkout and tree, and what isn't counted", () => {
+  const markup = openDrawer([...records, using]);
+  for (const said of [
+    "Its processes take 40% of a core, 1.3\u00a0GB of memory, not counting builds the Nix daemon",
+    "2\u00a0processes: 10% of a core, 300\u00a0MB of memory",
+    "1\u00a0process: 30% of a core, 1.0\u00a0GB of memory",
+  ]) {
+    assert.ok(markup.includes(said), `the drawer didn't say "${said}": ${markup}`);
+  }
+  assert.ok(!openDrawer().includes("Its processes"), "an unmeasured drawer said a use");
 });
