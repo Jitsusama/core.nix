@@ -331,7 +331,10 @@ fn a_patch_runs_once_a_runtime_applied_it_as_merged_or_since() {
             .map(|(name, text)| ((*name).to_owned(), (*text).to_owned()))
             .collect()
     };
-    assert!(loads(&applied(&[("a.patch", "a1")]), &wanted));
+    assert!(
+        loads(&applied(&[("a.patch", "a1")]), &wanted),
+        "the patch as merged didn't count as carrying the change"
+    );
     assert!(
         loads(&applied(&[("a.patch", "a2")]), &wanted),
         "a later version of the patch didn't count as carrying the change"
