@@ -138,13 +138,11 @@ onLinux {
       givenSweep = given.systemd.user.services.pi-sweep.Service;
       givenHost = given.systemd.user.services.pi-host-one-background.Service;
       # The agents' SSH proxy, which the sweep gets where its realm's host
-      # does, and where it doesn't, no agent at all.
+      # does, and where it doesn't, no agent at all. Whether one runs is
+      # read from the proxy's own socket unit, not from the rule that
+      # decides it.
       proxy = ''"SSH_AUTH_SOCK=%t/pi-agent.sock"'';
-      hostProxied = lib.elem proxy (lib.toList givenHost.Environment);
-      proxied =
-        account:
-        account.jitsusama.pi.agentProxy.machines != [ ]
-        || account.jitsusama.pi.agentProxy.builderKey != null;
+      proxied = account: account.systemd.user.sockets ? pi-agent-proxy;
       givenProfile = "${given.home.profileDirectory}/bin";
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
     in
@@ -169,18 +167,17 @@ onLinux {
           lib.toList service.Service.Environment == [
             ''"PATH=${git}:${profile}:/run/current-system/sw/bin"''
           ]
-          ++ lib.optional (proxied home) proxy
+        && !(proxied home)
+        && cleared service.Service == lib.sort lib.lessThan (cleared givenHost ++ [ "SSH_AUTH_SOCK" ])
         &&
           lib.toList givenSweep.Environment == [
             ''"PATH=${pkgs.gitMinimal}/bin:/tools/bin:/100%% sure/bin:/odd\"dir\\bin:${givenProfile}:/run/current-system/sw/bin"''
             ''"PI_SWEEP_PROVIDERS=/one/providers.ts:/two/providers.ts"''
+            proxy
           ]
-          ++ lib.optional hostProxied proxy
-        && hostProxied
-        && !(proxied home)
-        &&
-          cleared givenSweep
-          == lib.sort lib.lessThan (cleared givenHost ++ lib.optional (!hostProxied) "SSH_AUTH_SOCK")
+        && proxied given
+        && lib.elem proxy (lib.toList givenHost.Environment)
+        && cleared givenSweep == cleared givenHost
         && !(mac.systemd.user.timers ? pi-sweep)
         && !(mac.systemd.user.services ? pi-sweep)
       );
