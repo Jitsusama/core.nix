@@ -53,13 +53,18 @@ counts for the deepest one holding it, its memory its proportional share,
 so libraries several share count once between them, and its processor
 time with its children's once it has waited on them, so a build's
 compilers count in the cargo that ran them, and a child already counted
-isn't counted again. The share is of the waking time between readings,
+isn't counted again. Time counts only through a process working in a
+folder at both readings: one working out of every tree, or under `sudo`,
+counts for none of that time, and one waited on by a process outside
+every folder, as the user's service manager, loses its last minute. The
+share is of the waking time between readings,
 so a suspend leaves it as it was. A build the Nix daemon runs
 for one works as its own user in its own folder, so it's counted
 nowhere, and a Mac says none of it. Where the daemon can't say, the page
-says nothing of it, and the rest of the page stands as it was; where its
-reading of `/proc` stops answering for three minutes, each repository
-says its processes are unread rather than that nothing works in it.
+says nothing of it, and the rest of the page stands as it was; until its
+reading of `/proc` first answers, and once it misses three paces in a
+row, each repository says its processes are unread rather than that
+nothing works in it.
 
 ## Keys
 

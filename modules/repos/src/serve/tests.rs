@@ -152,6 +152,28 @@ fn one_checkout(name: &str) -> (PathBuf, repos::model::Record) {
 }
 
 #[test]
+fn what_works_is_unread_until_a_first_reading_answers() {
+    // A daemon restarted while a process holds its memory map reaches
+    // that process again, so nothing it has read says nothing works.
+    let (free, freed) = mpsc::channel::<()>();
+    let freed = std::sync::Mutex::new(freed);
+    let mut working = Working::start(move |_: &[PathBuf]| {
+        let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
+        Sample::default()
+    });
+    working.read(vec![PathBuf::from("/home/someone/trees/fix")]);
+    let (at, record) = one_checkout("first");
+    let said = working.said(&record);
+    let using = said.iter().find(|said| said["kind"] == "using");
+    assert!(
+        using.is_some_and(|using| using["processes"].is_null()),
+        "a reading not yet answered says nothing works: {using:?}"
+    );
+    drop(free);
+    let _ = fs::remove_dir_all(&at);
+}
+
+#[test]
 fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     // A process holding its memory map locked holds up a read of its
     // smaps_rollup until it lets go, which may be never. The first

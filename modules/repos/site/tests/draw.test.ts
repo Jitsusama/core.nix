@@ -259,3 +259,12 @@ it("says in the drawer what works in each checkout and tree, and what isn't coun
   }
   assert.ok(!openDrawer().includes("Its processes"), "an unmeasured drawer said a use");
 });
+
+it("says what works unread where the daemon's reading stopped, never as nothing working", () => {
+  const unread = { ...using, processes: null, memory: null, cpu: null, folders: [] };
+  const drawn = openDrawer([...records, unread]);
+  assert.ok(drawn.includes("hasn't been read"), `the drawer didn't say it's unread: ${drawn}`);
+  assert.ok(!drawn.includes("Its processes take"), `the drawer said a use it hasn't: ${drawn}`);
+  const row = rows(grove([...records, unread]).repositories, NOW, "");
+  assert.ok(row.includes("processes unread"), `the row didn't say it's unread: ${row}`);
+});
