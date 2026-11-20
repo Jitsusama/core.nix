@@ -2197,14 +2197,16 @@ Provider {
         void landedMoves;
         return (rowsKind?.held ?? {})["landed-days:agents"]?.days ?? {};
     }
-    // The session here that landed `one`, by its id, else by its address,
-    // or null once it has ended.
+    // The session here that landed `one`, by its id, or by its address only
+    // for a landing that names no id, or null once it has ended. A landing
+    // naming an id no session holds now has no lander: another session at
+    // its address never saw it, and Talk would send Joel's words there.
     function landerOf(one) {
         const here = Sessions.running.concat(Sessions.parked);
         provider.tally.sought += here.length;
-        return here.find(session => one.session.id !== ""
-            && session.presence?.session === one.session.id)
-            ?? here.find(session => session.address === one.session.address) ?? null;
+        if (one.session.id !== "")
+            return here.find(session => session.presence?.session === one.session.id) ?? null;
+        return here.find(session => session.address === one.session.address) ?? null;
     }
     // What a landing's row in For You offers of the session that landed it,
     // Talk and Go To as its own row does (SessionRow.js's behindActs), so
@@ -2634,7 +2636,11 @@ Provider {
             // Asked as it's stepped into, since its session may have gone;
             // a read one's in History too, since who landed it is still
             // whom Joel would talk to of it.
-            verbs: () => [own(one)].concat(provider.landerActs(one)),
+            // Each act names the landing as the row does, so a drawer out on
+            // the row that follows into its step doesn't read the landing and
+            // take its row from To Try while Joel stands in it.
+            verbs: () => [own(one)].concat(provider.landerActs(one))
+                .map(act => Object.assign(act, { readsLanding: one.key })),
             run: () => opens(one)
         }, provider.landingShows(one), fields));
         const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
