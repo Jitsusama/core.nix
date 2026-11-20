@@ -37,11 +37,13 @@ WINDOW = 4_000_000
 # What the app sends before its share counts, so its slow start, while the
 # jobs still hold the connection, isn't counted against it.
 APP_STARTS = 500_000
-# The app's least share with the shaper: CAKE gives bulk a sixteenth while
-# anything else wants the connection, so it's near fifteen sixteenths, and
-# half is well clear of what a busy host's gaps take from it. Without the
-# shaper the router gives it one flow's share of 33, and a fifth is well
-# clear of that.
+# The app's least share with the shaper: agents keep a quarter of the rate
+# while any wait, and Joel's lane, which the app's upload rides, grows each
+# second from what it carried, so the share is read once that lane is past
+# half. Half is then well clear of what a busy host's gaps take from it,
+# and of the one flow's share of 33 the router would give it were the
+# router's queue still hiding there. Without the shaper the router gives
+# it that share, and a fifth is well clear of it.
 SHAPED_SHARE = 0.5
 UNSHAPED_SHARE = 0.2
 # How long the client may take to boot to its first queues, and the shaper
@@ -65,6 +67,14 @@ class Rig:
         """Give the rate the shaper sends at on eth1, in kbit/s, or 0 before it says."""
         status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
         return next((int(link.get("up") or 0) for link in status if link["name"] == "eth1"), 0)
+
+    def joels(self) -> float:
+        """Give Joel's lane's share of the rate the shaper sends at on eth1, or 0 before it says."""
+        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
+        link = next((link for link in status if link["name"] == "eth1"), {})
+        up = int(link.get("up") or 0)
+        joel = int((link.get("lanes") or {}).get("joel") or 0)
+        return joel / up if up else 0.0
 
     def trace(self) -> str:
         """Give what the recorder saw each second, and what the shaper said, for a failure.
@@ -114,10 +124,13 @@ class Rig:
             f" {BIN}/cat /dev/zero > /dev/tcp/{FAR}/{port}; done) & done; wait'"
         )
 
-    def app_share(self, slice_name: str = "app.slice") -> float:
+    def app_share(self, slice_name: str = "app.slice", *, shaped: bool = True) -> float:
         """Give the app's share of what the server takes, once its upload is under way.
 
         The app's one upload runs in `slice_name`, an app's own unless a test says otherwise.
+        While `shaped`, the share is read once the shaper gives Joel's lane, which the upload
+        rides, more than SHAPED_SHARE of its rate: on 19 November one read while the lane
+        was still growing gave 0.47, with the lane at 3,390 of 7,897 kbit/s.
         """
         self.uploads("app-upload", slice_name, 1, APP_PORT)
         started = self.taken().get(APP_PORT, 0)
@@ -125,6 +138,8 @@ class Rig:
             lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
             timeout=SENDING,
         )
+        if shaped:
+            retry(lambda _last_try: self.joels() > SHAPED_SHARE, timeout=SENDING)
         before = self.taken()
         retry(
             lambda _last_try: sum(self.taken().values()) - sum(before.values()) >= WINDOW,
@@ -226,5 +241,5 @@ def test_work_put_first_outruns_the_jobs(loaded: Rig, slice_name: str, name: str
 def test_unshaped(loaded: Rig) -> None:
     """Without it, the router gives the app one flow's share."""
     loaded.client.succeed("systemctl stop shaper.service")
-    share = loaded.app_share()
+    share = loaded.app_share(shaped=False)
     assert share < UNSHAPED_SHARE, f"the app got {share:.2f} of the line without the shaper"
