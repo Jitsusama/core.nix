@@ -469,11 +469,14 @@ fn a_spells_causes_are_its_own_said_late_or_after_another() {
         (0, Some(&full)),
         (30, Some(&read_only)),
         (60, None),
-        // One within ten minutes of that end, said late with its cause
-        // then, which counts as said: the same cause after says nothing.
-        (120, Some(&full)),
+        // One within ten minutes of that end, starting unsaid, which
+        // counts its cause as unsaid, and said late with its cause then,
+        // which counts as said: the same cause after says nothing, and
+        // the unsaid start's is said.
+        (120, Some(&read_only)),
         (660, Some(&full)),
         (690, Some(&full)),
+        (700, Some(&read_only)),
         (720, None),
         // A spell ten minutes on, with both causes again: each is said,
         // since the causes said in a spell are its own.
@@ -499,8 +502,36 @@ fn a_spells_causes_are_its_own_said_late_or_after_another() {
         .collect();
     assert_eq!(
         kinds,
-        ["said", "now", "told", "said", "told", "said", "now"],
-        "a late-said spell's cause was said again, or a spell's causes silenced the next's: \
+        ["said", "now", "told", "said", "now", "told", "said", "now"],
+        "a late-said spell's cause was said again, an unsaid one went unsaid, or a spell's \
+         causes silenced the next's: {heard:?}"
+    );
+}
+
+#[test]
+fn a_new_cause_in_a_spells_last_minute_says_less_than_a_minute_is_left() {
+    let heard = RefCell::new(Vec::new());
+    let say = |words: &str| heard.borrow_mut().push(words.to_owned());
+    let first = Instant::now();
+    let mut spell = Spell::default();
+    for (after, error) in [
+        (0, full_on("2026-11-13")),
+        (GIVES_UP.as_secs() - 30, read_only_on("2026-11-13")),
+    ] {
+        spell.tried(
+            Some(&error),
+            first + Duration::from_secs(after),
+            Path::new("days"),
+            &say,
+            &|_: &str| {},
+        );
+    }
+    let heard = heard.take();
+    assert!(
+        heard.len() == 2
+            && heard[1].contains(": now 2026-11-13's file: Read-only")
+            && heard[1].ends_with("every half minute for less than a minute"),
+        "a new cause in a spell's last minute said other than less than a minute left: \
          {heard:?}"
     );
 }

@@ -1,6 +1,7 @@
 //! A spell of the day's writes failing, as on a full disk, and what
-//! health says of it: once as it starts and once as it ends, and of a
-//! disk flapping at its edge, no more than once every ten minutes. A
+//! health says of it: once as it starts, once at each new kind of cause
+//! and once as it ends, and of a disk flapping at its edge, no more than
+//! once every ten minutes. A
 //! spell lasts only as long as health's run, so a start after one says
 //! the next spell at once, and a spell that outlasts a run, as one given
 //! up on does when its last try fails, is never told ended.
@@ -146,18 +147,22 @@ impl Spell {
 }
 
 /// What health says of a day it can't write into `into` for `cause`, its
-/// writes having failed for `lasted`, if said late, with the time left.
+/// writes having failed for `lasted`, if said late, with the time left,
+/// which in a spell's last minute is less than a minute.
 fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
     let already = if lasted.is_zero() {
         String::new()
     } else {
         format!(" having tried for {},", lasting(lasted))
     };
+    let left = match GIVES_UP.saturating_sub(lasted).as_secs() / 60 {
+        0 => "less than a minute".to_owned(),
+        minutes => format!("up to {minutes} minutes"),
+    };
     format!(
         "health: can't write the day into {}: {cause},{already} so it keeps the day and tries \
-         again every half minute for up to {} minutes",
-        into.display(),
-        GIVES_UP.saturating_sub(lasted).as_secs() / 60
+         again every half minute for {left}",
+        into.display()
     )
 }
 
