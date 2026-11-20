@@ -1534,9 +1534,8 @@ const UNBILLED_STALE_HOURS: i64 = crate::picture::LISTED_HOURS - UNBILLED_HOURS;
 /// settled past now is wrong, and one billing with no settled hour holds
 /// the window back; each is told in place of any budget, the wrong row
 /// first, since a feed that holds back hides nothing. Both sides are pi's
-/// alone: the
-/// bill's `pi` tool, and the logs' list prices as the picture's series
-/// attributed them, a run's agents to the budget of the session that
+/// alone: the bill's `pi` tool, and the logs' list prices as the
+/// picture's series attributed them, a run's agents to the budget of the session that
 /// started them. Only budgets a feed billed pi for before the window are
 /// judged, since one no feed bills is estimated from the logs and can't
 /// disagree with them, and a feed new within the day hasn't billed all of
@@ -1701,7 +1700,7 @@ fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Settled,
 /// than as no budget unbilled.
 fn held_finding(feed: &str) -> Finding {
     let mut f = finding(
-        UNBILLED_HELD.into(),
+        format!("{UNBILLED_HELD}:{feed}"),
         "unbilled",
         Severity::Note,
         format!("the {feed} feed hasn't said how far pi's bill is settled"),
@@ -1731,7 +1730,8 @@ fn unsettled_finding(picture: &Picture, feed: &str, through: i64) -> Finding {
             format!(
                 "The {feed} feed says it has settled pi's bill to {since}, which \
                  hasn't come yet, so no budget's bill is held against its logs until \
-                 the feed's settled row in spend-watch's history is put right."
+                 the feed's row is deleted from the settled table of spend-watch's \
+                 history, which settling again never moves back."
             ),
         )
     } else {
@@ -1745,7 +1745,7 @@ fn unsettled_finding(picture: &Picture, feed: &str, through: i64) -> Finding {
         )
     };
     let mut f = finding(
-        UNBILLED_UNSETTLED.into(),
+        format!("{UNBILLED_UNSETTLED}:{feed}"),
         "unbilled",
         Severity::Warning,
         title,
@@ -1763,7 +1763,9 @@ fn unsettled_finding(picture: &Picture, feed: &str, through: i64) -> Finding {
 pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";
 
 /// The key of the note that says a feed billing pi hasn't said how far it
-/// has settled, which cadence also reads as the count unjudged.
+/// has settled, which cadence also reads as the count unjudged. Each of
+/// the two is told behind the feed's name, so a mark on one feed's leaves
+/// another's to be told.
 pub const UNBILLED_HELD: &str = "unbilled-held";
 
 /// Each budget a session asked for in the last day and the harness
@@ -3125,7 +3127,7 @@ mod tests {
         settled_to(&history, "proxy", "2026-10-12T12:00:00Z");
         // 11:30 on 12 October, in the last hour it settled.
         turn_on(&history, NOW - 51.0 * HOUR, 100.0, Some("teal"));
-        assert_eq!(unbilled_keys(&history), [UNBILLED_UNSETTLED]);
+        assert_eq!(unbilled_keys(&history), ["unbilled-unsettled:proxy"]);
     }
 
     // A feed the config no longer runs keeps its settled row, and doesn't
@@ -3221,7 +3223,10 @@ mod tests {
         );
         turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
         let both = config_running(&["proxy", "second"]);
-        assert_eq!(unbilled_keys_running(&history, &both), [UNBILLED_HELD]);
+        assert_eq!(
+            unbilled_keys_running(&history, &both),
+            ["unbilled-held:second"]
+        );
         let picture = Picture::read(&history, &both, NOW).unwrap();
         let found = unbilled(&picture, &history, &both).unwrap();
         assert_eq!(
@@ -3253,28 +3258,43 @@ mod tests {
             let all = config_running(&["proxy", "second", "third"]);
             let picture = Picture::read(&history, &all, NOW).unwrap();
             let found = unbilled(&picture, &history, &all).unwrap();
-            (
-                found[0].key.clone(),
-                found[0].severity,
-                found[0].title.clone(),
-            )
+            found
+                .into_iter()
+                .map(|f| (f.key, f.severity, f.title))
+                .collect::<Vec<_>>()
+        };
+        let told = |title: &str| {
+            vec![(
+                "unbilled-unsettled:third".to_owned(),
+                Severity::Warning,
+                title.to_owned(),
+            )]
         };
         assert_eq!(
             wrong("2026-10-15T00:00:00Z"),
-            (
-                UNBILLED_UNSETTLED.to_owned(),
-                Severity::Warning,
-                "the third feed's bill is settled past now".to_owned()
-            )
+            told("the third feed's bill is settled past now")
         );
         assert_eq!(
             wrong("2026-10-12T12:00:00Z"),
-            (
-                UNBILLED_UNSETTLED.to_owned(),
-                Severity::Warning,
-                "the third feed's bill stopped settling".to_owned()
-            )
+            told("the third feed's bill stopped settling")
         );
+    }
+
+    // The one feed the config runs, billing pi with no settled hour at
+    // all, holds the day back as a note rather than saying nothing.
+    #[test]
+    fn a_lone_feed_never_settled_is_told() {
+        let history = History::memory();
+        billed_on(
+            &history,
+            "proxy",
+            "2026-10-07T12:00:00Z",
+            "pi",
+            "teal",
+            10.0,
+        );
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        assert_eq!(unbilled_keys(&history), ["unbilled-held:proxy"]);
     }
 
     // Of two feeds that hold back, the first by name is told, whichever
@@ -3312,7 +3332,7 @@ mod tests {
         assert_eq!(
             (found[0].key.as_str(), found[0].title.as_str()),
             (
-                UNBILLED_UNSETTLED,
+                "unbilled-unsettled:second",
                 "the second feed's bill stopped settling"
             )
         );
@@ -3344,7 +3364,10 @@ mod tests {
         settled_to(&history, "second", "2026-10-15T00:00:00Z");
         turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
         let both = config_running(&["proxy", "second"]);
-        assert_eq!(unbilled_keys_running(&history, &both), [UNBILLED_UNSETTLED]);
+        assert_eq!(
+            unbilled_keys_running(&history, &both),
+            ["unbilled-unsettled:second"]
+        );
         let picture = Picture::read(&history, &both, NOW).unwrap();
         let found = unbilled(&picture, &history, &both).unwrap();
         assert_eq!(found[0].title, "the second feed's bill is settled past now");
@@ -3365,7 +3388,7 @@ mod tests {
                     [through],
                 )
                 .unwrap();
-            unbilled_keys(&history) == [UNBILLED_UNSETTLED]
+            unbilled_keys(&history) == ["unbilled-unsettled:proxy"]
         };
         assert!(told(now + 1), "an hour past now");
         assert!(!told(now), "the hour under way");
@@ -3389,7 +3412,7 @@ mod tests {
             .unwrap();
         turn_on(&history, NOW - 2.0 * HOUR, 100.0, Some("teal"));
         turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
-        assert_eq!(unbilled_keys(&history), [UNBILLED_UNSETTLED]);
+        assert_eq!(unbilled_keys(&history), ["unbilled-unsettled:proxy"]);
         let config = fed_config();
         let picture = Picture::read(&history, &config, NOW).unwrap();
         let findings = unbilled(&picture, &history, &config).unwrap();

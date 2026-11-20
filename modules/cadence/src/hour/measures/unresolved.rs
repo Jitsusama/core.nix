@@ -85,7 +85,8 @@ mod tests {
         {"key": "finding:unresolved:slate", "name": "1 session couldn't draw on Slate",
          "role": "expected"},
         {"key": "finding:unbilled:umber", "name": "Umber billed $0 of $90 logged"},
-        {"key": "finding:unbilled-unsettled", "name": "the warehouse's bill stopped settling"}
+        {"key": "finding:unbilled-unsettled:proxy",
+         "name": "the proxy feed's bill stopped settling"}
     ]}"#;
 
     #[test]

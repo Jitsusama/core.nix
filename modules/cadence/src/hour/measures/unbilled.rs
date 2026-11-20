@@ -19,14 +19,15 @@ pub const KEY: &str = "budgets-billed-under-logged";
 const FINDING: &str = "finding:unbilled:";
 
 /// The keys of the findings that say no budget was judged: the one a
-/// spend-watch on hold writes, the one saying a feed's settled row is
-/// wrong or stopped, and the one saying a feed hasn't settled at all.
-/// The check `cadence-reads-the-keys-spend-watch-writes` finds each in
+/// spend-watch on hold writes, and what begins those saying a feed's
+/// settled row is wrong or stopped, or that it hasn't settled at all,
+/// each behind the feed's name. The check
+/// `cadence-reads-the-keys-spend-watch-writes` finds each in
 /// spend-watch's source.
 const UNJUDGED: [&str; 3] = [
     "held",
-    "finding:unbilled-unsettled",
-    "finding:unbilled-held",
+    "finding:unbilled-unsettled:",
+    "finding:unbilled-held:",
 ];
 
 /// How old spend-watch's heartbeat may be for its collection to be its
@@ -99,7 +100,7 @@ pub(super) fn told(
         .filter(|findings| {
             !findings
                 .iter()
-                .any(|f| key(f).is_some_and(|key| unjudged.contains(&key)))
+                .any(|f| key(f).is_some_and(|key| unjudged.iter().any(|u| says(key, u))))
         })?;
     Some(
         findings
@@ -109,6 +110,16 @@ pub(super) fn told(
             .filter_map(|f| f.get("name")?.as_str().map(str::to_owned))
             .collect(),
     )
+}
+
+/// Whether `key` is the unjudged key `unjudged`, or, for one ending in a
+/// colon, one it begins.
+fn says(key: &str, unjudged: &str) -> bool {
+    if unjudged.ends_with(':') {
+        key.starts_with(unjudged)
+    } else {
+        key == unjudged
+    }
 }
 
 fn key(finding: &Value) -> Option<&str> {
@@ -176,9 +187,9 @@ mod tests {
     #[test]
     fn no_collection_leaves_it_unjudged() {
         let held = r#"{"findings": [{"key": "held", "name": "Watch on hold"}]}"#;
-        let unsettled = r#"{"findings": [{"key": "finding:unbilled-unsettled",
+        let unsettled = r#"{"findings": [{"key": "finding:unbilled-unsettled:proxy",
             "name": "the proxy feed's bill stopped settling"}]}"#;
-        let unsaid = r#"{"findings": [{"key": "finding:unbilled-held",
+        let unsaid = r#"{"findings": [{"key": "finding:unbilled-held:proxy",
             "name": "the proxy feed hasn't said how far pi's bill is settled"}]}"#;
         for collection in [
             None,
