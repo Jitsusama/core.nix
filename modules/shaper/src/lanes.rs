@@ -37,7 +37,8 @@
 //! part of the quarter that agents waiting straight are owed.
 //!
 //! Agents get what Joel
-//! leaves, split evenly between the lanes on which some wait, but for
+//! leaves, split evenly between the lanes on which some wait, to within the
+//! twentieth the VPN's share stays still inside, but for
 //! what's held of his straight lane for a few seconds after he stops,
 //! which agents straight borrow back while it lasts, so a push
 //! straight to a builder gets half rather than the sixteenth CAKE's bulk
@@ -90,7 +91,8 @@ const WAITING_BYTES: u64 = 3_000;
 /// quiet stretches, and costs the VPN at most that long after it ends.
 const PRESSED_S: f64 = 20.0;
 /// The most the VPN's share, or what Joel needs straight on the
-/// connection, falls in a second, as a share of itself. What Joel needs
+/// connection, falls in a second, as a share of itself; but the VPN gives
+/// agents waiting straight their part of the quarter at once. What Joel needs
 /// falls by it for each second of a gap, since he was quiet through them;
 /// the VPN's share falls by it once however long the gap, as it always
 /// has, since a loop that stalled read nothing of its agents meanwhile.
@@ -285,6 +287,10 @@ impl Lanes {
         let vpn = self
             .hold(joel_vpn + to_vpn, joel_vpn, rate, dt)
             .min(rate - straight_now - straight_floor);
+        // What the cap left is what the VPN has, so it falls from there: held
+        // above it, it would climb back the next second into the room held
+        // for Joel, where its own CAKE would leave it unused.
+        self.share = Some(vpn / rate);
         // What's held of his straight lane past what he carries comes only
         // from agents straight on the connection, past their part of the
         // floor: they borrow it back while he leaves it, where the VPN's
@@ -833,8 +839,10 @@ mod tests {
         );
     }
 
+    // The running shaper never takes its rate under its floor, so this is
+    // the type's own promise, as it always was for the VPN's share.
     #[test]
-    fn a_second_the_line_read_nothing_forgets_what_joel_held() {
+    fn a_rate_of_zero_forgets_what_joel_held() {
         let mut lanes = Lanes::default();
         let agents = (waiting(32), Agents::default());
         lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
@@ -846,7 +854,7 @@ mod tests {
         let after = lanes.split(&seen((0.0, 0.0), agents), 1.0).joel;
         assert!(
             near(after, need(0.0)),
-            "a line gone for a second still held {after} of Joel's lane"
+            "a rate of zero still held {after} of Joel's lane"
         );
     }
 
@@ -946,6 +954,15 @@ mod tests {
             "Joel moving straight got {} of the {carries} he carries",
             moved.joel
         );
+        // The VPN's share falls from what the cap left it, so a dip the
+        // second after doesn't hand it back the room held for Joel.
+        let dip = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        let held = need(5_000.0) * (1.0 - FALL);
+        assert!(
+            near(dip.joel, held),
+            "a dip after moving from the VPN took Joel's lane to {}, not {held}",
+            dip.joel
+        );
         let mut lanes = Lanes::default();
         lanes.split(&seen((0.0, 0.0), (Agents::default(), waiting(30))), 1.0);
         let quiet = lanes.split(&seen((0.0, 0.0), agents), 1.0);
@@ -965,7 +982,9 @@ mod tests {
 
     // The VPN's share stays put inside a twentieth of what it's asked, so
     // the room past Joel's two lanes can be all there is: his hold mustn't
-    // take the agents' quarter from it.
+    // take the agents' quarter from it. The quarter is theirs between both
+    // lanes: the still share leaves the VPN's agents a little under half of
+    // it here, 1,050 of 1,250, and those straight the rest.
     #[test]
     fn a_still_vpn_share_leaves_agents_their_quarter() {
         let agents = (waiting(32), waiting(10));
@@ -990,9 +1009,18 @@ mod tests {
         let agents = (waiting(32), waiting(10));
         lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
         let quiet = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        let mut fresh = Lanes::default();
+        fresh.split(&seen((0.0, 0.0), agents), 1.0);
+        let unheld = fresh.split(&seen((0.0, 0.0), agents), 1.0);
         assert!(
             adds_up(quiet, RATE),
             "the classes don't add up to the rate: {quiet:?}"
+        );
+        assert!(
+            near(quiet.vpn, unheld.vpn),
+            "Joel's hold left the VPN {} of its {}",
+            quiet.vpn,
+            unheld.vpn
         );
         assert!(
             near(quiet.agents, RATE * AGENTS_FLOOR / 2.0),
