@@ -6,6 +6,7 @@ takes the machine it acts on, since a module can't see the driver's globals.
 """
 
 import datetime as dt
+import json
 import operator
 import os
 import re
@@ -301,3 +302,33 @@ def settled(  # noqa: PLR0913 # The clock is the stand-ins' way in; where and al
         f"the screen never stood still for {STILL_SPANS} spans of {span:.1f} s"
         f" in {within:.0f} s: it last changed{where(last, before)}, {shell} meanwhile"
     )
+
+
+def until_heard(
+    first: Any,  # noqa: ANN401 # Whatever JSON the state is, as it was said.
+    test: Callable[[Any], object],
+    hear: Callable[[Callable[[str], object]], object],
+    who: str,
+) -> None:
+    """Wait until a state passes the test, from the first read and each change heard after.
+
+    Hear calls what it's given with each change said, as JSON, until that passes, and raises
+    AssertionError when none does. That error then says what was last heard, since a journal
+    holds a line only for each change, and a state settled wrong before the wait began says
+    none. It's kept as it's heard rather than asked for again, since asking a program that
+    hung or went is what would fail then, in place of the failure it's meant to explain.
+    """
+    heard = [first]
+    if test(first):
+        return
+
+    def passes(said: str) -> object:
+        heard[0] = json.loads(said)
+        return test(heard[0])
+
+    try:
+        hear(passes)
+    except AssertionError as never:
+        last = json.dumps(heard[0], ensure_ascii=False)
+        message = f"{never}; {who}, last heard: {last}"
+        raise AssertionError(message) from never

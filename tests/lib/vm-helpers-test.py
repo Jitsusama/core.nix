@@ -508,3 +508,25 @@ def test_a_tap_whose_write_fails_counts_as_tried() -> None:
     with pytest.raises(RuntimeError, match="cut off"):
         taps.send(cut_off)
     assert taps.sent == 1, f"a tap whose write failed counted as {taps.sent} tried"
+
+
+def test_a_wait_never_passed_says_the_last_state_it_heard() -> None:
+    def hear(passes: Callable[[str], object]) -> None:
+        for said in ('{"rows": ["Firmware"]}', '{"rows": ["Install 1.13.0"]}'):
+            passes(said)
+        message = "never heard rows of Restart"
+        raise AssertionError(message)
+
+    with pytest.raises(AssertionError) as never:
+        vm_helpers.until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
+    wanted = 'never heard rows of Restart; it, last heard: {"rows": ["Install 1.13.0"]}'
+    assert str(never.value) == wanted, f"the wait that never passed said: {never.value}"
+
+
+def test_a_state_passing_at_first_read_hears_nothing() -> None:
+    def hear(_passes: Callable[[str], object]) -> None:
+        message = "heard though the first read passed"
+        raise AssertionError(message)
+
+    restart = {"rows": ["Restart"]}
+    vm_helpers.until_heard(restart, lambda now: now == restart, hear, "it")

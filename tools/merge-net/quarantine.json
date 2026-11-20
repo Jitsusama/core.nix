@@ -3,7 +3,7 @@
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "due": "2026-11-21",
-    "due_why": "Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00. 9 of its 40 net runs from 15 Nov to 18 Nov 05:30 UTC named a listed subtest, so a rerun alone wouldn't take it off. Moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. Only the time here is still excused: firmware failed because the test stepped out past where the launcher had already stepped back by itself, which the wait it now has fixes, and the other two failed in none of the 25 net runs to 20 Nov, while the time here failed 2, racing the rows of Now as it steps in",
+    "due_why": "The time here failed 2 of the 25 net runs to 20 Nov, racing the rows of Now as it steps in, so a rerun alone wouldn't take it off. Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00, moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. The other three subtests once listed beside it, which with it failed 9 of 40 net runs from 15 Nov to 18 Nov 05:30 UTC, are excused no longer: firmware failed because the test stepped out past where the launcher had already stepped back by itself, which the wait it now has fixes, and the other two failed in none of the 25",
     "owner_pr": 3304,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 042387bc604a",
