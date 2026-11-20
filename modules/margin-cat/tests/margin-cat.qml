@@ -99,6 +99,8 @@ QtObject {
             Plays.level(heard({ paused: true, locked: true })), "still");
         expect("as where it's drawn on no screen, fullscreen or shared",
             Plays.level(heard({ paused: true, unseen: true })), "still");
+        expect("as while the launcher's card is up, his keys in it",
+            Plays.level(heard({ paused: true, idle: true, launched: true })), "still");
 
         // Five minutes with no keys, as MarginCat.qml's timers take them:
         // paused at 10 s, idle at a minute and asleep at three, each change

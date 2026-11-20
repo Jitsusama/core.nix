@@ -6,14 +6,15 @@ module (modules/margin-cat). Where over a column it sits, beside the margin's ma
 is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml), as are a walk's beats; here,
 only that niri's real layout reaches it, that it rests two seconds before walking over a step
 every frame with none dropped, and never for a tap along the columns, each walk's steps kept as
-the check's result, that its layer is one taking no keys, that it goes in fullscreen, where the
-gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
-screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
-check's result, and that a move between workspaces has it ride the one it leaves off the screen
-and come in beyond, a second move cutting it short holding on from where the first got to, that
-on a workspace with no windows it sits on the floor until one opens there, that a row of a
-column closed under it has it fall at once, and that a pointer moved onto it leans it in while
-one it came to under doesn't, a click beside it reaching the window.
+the check's result, that a walk holds where it got to while the launcher is up, that its layer
+is one taking no keys, that it goes in fullscreen, where the gap it sits in is gone, that it
+dozes off after a minute with no keys and stretches as the screen unlocks, that niri draws it in
+whole pixels at 1.5 and at 2, each screen kept as the check's result, and that a move between
+workspaces has it ride the one it leaves off the screen and come in beyond, a second move cutting
+it short holding on from where the first got to, that on a workspace with no windows it sits on
+the floor until one opens there, that a row of a column closed under it has it fall at once, and
+that a pointer moved onto it leans it in while one it came to under doesn't, a click beside it
+reaching the window.
 
 Long because every case shares the one shell, started with the cat's own doze and scenes, and
 the readers of what it reports; the moves between workspaces could go to a check of their own,
@@ -70,6 +71,8 @@ SMOOTH = 50
 # The farthest, in the cat's own size, a step of a move may take it between two frames
 # the shell says, a builder's dropped frames included.
 STEPS_ON = 2
+# How long, in seconds, the launcher is held open over a walk, which steps none of it then.
+HELD = 2.0
 # How long, in seconds, the cat may take to tell of its walk once it sits: it waits up to 2 s
 # for niri's answers on the frames still on their way (MarginCatShown.js's ANSWERS).
 TOLD = 5.0
@@ -352,6 +355,45 @@ def test_tapping_along_the_columns_never_sets_it_walking(shell: Shell) -> None:
     time.sleep(RESTS + 1)
     walked = steps(shell, since)
     assert not walked, f"tapping set the cat walking: {walked[:3]}"
+
+
+def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> None:
+    """The launcher opened mid-walk holds the cat where it got to, and it goes on as it closes.
+
+    Joel's keys are in the launcher then, and each frame the cat draws is one the shell draws
+    beside theirs: on his laptop it drew 10 to 19 minutes an hour as he worked (2026-11-19).
+    It's held rather than cut short or skipped ahead, so it's never put anywhere it didn't get
+    to (WCJQSG 2bd7c7c6): its first step once the launcher closes is a step from its last.
+    """
+    since = shell.mark()
+    first = shell.opened("a column a held walk goes to")
+    second = shell.opened("a column a held walk sets off from")
+    sits_over(shell, second, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-column-left")
+    heard(shell, walking, since)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    # A step drawn as the card went up may be said a moment after it, as niri answers.
+    time.sleep(LANDS)
+    held = shell.mark()
+    time.sleep(HELD)
+    under = steps(shell, held)
+    before = steps(shell, since)
+    shell.close_launcher()
+    shell.launcher_closed()
+    sits_over(shell, first, held)
+    after = steps(shell, held)
+    assert not under, f"the cat walked on under the launcher: {under[:3]}"
+    assert before, "the cat took no step before the launcher opened"
+    last = before[-1]
+    assert after, "the cat took no step once the launcher closed, its walk done before it opened"
+    # Its walk's clock goes on from where it was held, rather than the walk set off again.
+    assert after[0]["walk"]["t"] >= last["walk"]["t"], (
+        f"the cat's walk began again at {after[0]['walk']['t']} ms from {last['walk']['t']}"
+    )
+    gone = math.hypot(after[0]["x"] - last["x"], after[0]["y"] - last["y"])
+    assert gone <= STEPS_ON * last["size"], f"the cat went on from {after[0]}, having got to {last}"
 
 
 def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:

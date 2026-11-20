@@ -463,7 +463,7 @@ PanelWindow {
             begunAt = window.FramePresentation.framesBegun;
         }
         going = plan;
-        walker.restart();
+        goes(walker);
         if (window.FramePresentation.available)
             window.FramePresentation.ask();
     }
@@ -486,7 +486,7 @@ PanelWindow {
         unseen = 0;
         steps = 0;
         begunAt = window.FramePresentation.framesBegun;
-        mover.restart();
+        goes(mover);
         if (window.FramePresentation.available)
             window.FramePresentation.ask();
     }
@@ -927,7 +927,7 @@ PanelWindow {
         goingTo = wanted;
         under = column;
         going = playing;
-        walker.restart();
+        goes(walker);
         // Set once it's going, so the seat moving under it is its
         // own walk's end, and sets no walk off.
         if (playing.to.x !== place.x || playing.to.y !== place.y)
@@ -995,6 +995,32 @@ PanelWindow {
             window.sat = window.wanted;
             window.place = null;
         }
+    }
+
+    // Under the launcher's card it holds where it got to: a walk, a
+    // play or a move is paused, never cut short or skipped ahead, and
+    // goes on from there as the card goes, since a paused clock keeps
+    // its elapsedTime. Joel's keys are in the launcher then, and each
+    // of the cat's frames is one the shell draws beside theirs: on his
+    // laptop it drew 10 to 19 minutes an hour while he worked
+    // (2026-11-19), one walk running under every round of a lab's
+    // keys.
+    readonly property bool stilled: Launched.up
+    onStilledChanged: {
+        for (const clock of [walker, mover]) {
+            if (stilled)
+                clock.pause();
+            else
+                clock.resume();
+        }
+    }
+
+    // Sets `clock`, the walker or the mover, going from its start, held
+    // at once while the launcher's card is up.
+    function goes(clock: var): void {
+        clock.restart();
+        if (stilled)
+            clock.pause();
     }
 
     // Until the keys rest on the column, so a tap along them never

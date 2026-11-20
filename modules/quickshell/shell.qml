@@ -44,6 +44,15 @@ ShellRoot {
         launcher: theLauncher
     }
 
+    // What lives beside the launcher keeps still while its card is up, from
+    // the moment it begins drawing, so nothing else draws while Joel's keys
+    // are in it (Launched.qml).
+    Binding {
+        target: Launched
+        property: "up"
+        value: theLauncher.cardUp
+    }
+
     // The machine queue is drawn only in the launcher, so the node's record
     // of it is watched only while that's open (Jobs.qml).
     Binding {
