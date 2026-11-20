@@ -109,13 +109,21 @@ onLinux {
   # Tuple says only that it started, so the service says when it can take
   # a call, after systemd's own line, where health takes it: its own
   # ExecStartPost, run against a stand-in systemctl and a log of its own
-  # (tests/tuple-says-when-ready.sh).
+  # (tests/tuple-says-when-ready.sh). Health files a ready time under the
+  # name its line goes out with, so the unit must give it Tuple's, not the
+  # script's, which changes with each build.
   tuple-says-when-ready =
     let
       home = account graphical;
-      post = home.systemd.user.services.tuple.Service.ExecStartPost;
+      service = home.systemd.user.services.tuple.Service;
+      post = service.ExecStartPost;
+      named = service.SyslogIdentifier or "";
     in
     pkgs.runCommandLocal "tuple-says-when-ready" { } ''
+      if [ ${lib.escapeShellArg named} != tuple ]; then
+        echo "tuple.service names its lines "${lib.escapeShellArg named}", not tuple"
+        exit 1
+      fi
       ${lib.getExe pkgs.bash} ${./tests/tuple-says-when-ready.sh} ${
         lib.escapeShellArgs [
           (lib.removeSuffix " %n" (lib.removePrefix "-" post))

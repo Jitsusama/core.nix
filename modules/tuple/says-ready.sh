@@ -10,7 +10,9 @@
 # with "launching from pid", which has no time, and is new each start, the
 # last kept as log.1.txt before it (home.nix's keepsLogs). A time past the
 # wait, as a clock stepped back gives, says nothing rather than a wrong
-# figure.
+# figure. A wait that runs out once the unit is active says so, in words
+# health doesn't read as a ready line, so a Tuple whose log stops saying it
+# the same way shows in the journal rather than only going quiet.
 #
 # It runs as the unit's ExecStartPost, which systemd finishes before it
 # writes "Started", and health takes a ready line only after that line. So
@@ -18,7 +20,9 @@
 # once the unit is active too, on the unit's own output, which the journal
 # files under the unit and the name the unit gives it. Nothing it does can
 # fail the unit: signed out or unreachable, the daemon never connects, and
-# it says nothing.
+# it says only that. When `tuple start` forked no daemon, as it doesn't when
+# one already runs outside the unit, systemd finds no main process, and the
+# waiter would be all that kept the unit up: so it leaves at once.
 #
 # Given systemctl, the unit's name, the daemon's log and how many seconds to
 # wait.
@@ -43,13 +47,24 @@ millis() {
 }
 
 waits() {
-  local state active="" first connected began ended took
+  local shown key value state main active="" first connected began ended took
   while ((SECONDS < wait)); do
     if [[ -z ${active} ]]; then
-      state=$(timeout 2 "${systemctl}" --user show --property=ActiveState --value "${unit}") ||
-        state=""
+      shown=$(timeout 2 "${systemctl}" --user show --property=ActiveState,MainPID "${unit}") ||
+        shown=""
+      state="" main=""
+      while IFS='=' read -r key value; do
+        case ${key} in
+        ActiveState) state=${value} ;;
+        MainPID) main=${value} ;;
+        *) ;;
+        esac
+      done <<<"${shown}"
       # The unit leaves active only by stopping, which ends this with it.
-      [[ ${state} == active ]] && active=yes
+      if [[ ${state} == active ]]; then
+        [[ ${main} != 0 ]] || return
+        active=yes
+      fi
     fi
     if [[ -n ${active} ]] &&
       connected=$(grep -m1 -E "${timed}signaler state changed: [a-z]+ -> connected$" "${log}"); then
@@ -67,6 +82,9 @@ waits() {
     # a tenth of a second on: the line lands that close behind the daemon.
     sleep 0.1
   done
+  if [[ -n ${active} ]]; then
+    echo "tuple: its signaller hadn't connected ${wait} s after it started"
+  fi
 }
 
 waits </dev/null 2>/dev/null &
