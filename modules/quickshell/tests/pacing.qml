@@ -896,7 +896,11 @@ QtObject {
             Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
             "window:org.gnome.Evolution");
         check(failures, "one with nothing after its app is said as a window alone",
-            Presented.keyShown("window:Quarterly report", false), "window");
+            Presented.keyShown("window:Inbox", false), "window");
+        check(failures, "as is one that names no app",
+            Presented.keyShown("window:null:Inbox", false), "window");
+        check(failures, "but an app whose id starts with a digit is said",
+            Presented.keyShown("window:1Password:Vault", false), "window:1Password");
         check(failures, "as is one whose app holds a page's address, as a browser's may",
             Presented.keyShown("window:chrome-docs.google.com__document_d_1x_edit-Default:Plan",
                 false), "window");
@@ -924,6 +928,8 @@ QtObject {
             Presented.keyShown("alsa_output.pci-0000_00_1f.3:by-ear", false), "");
         check(failures, "and a key that came as a number is read as text",
             Presented.keyShown(42, false), "");
+        check(failures, "and said as text with reports on, so the line quotes it",
+            Presented.rowShown({ key: 42 }, true), "42");
         check(failures, "a row with neither key nor name is said as a row",
             Presented.rowShown({}, false), "row");
         check(failures, "as is one missing, whether reports are on or off",
