@@ -255,11 +255,14 @@ def loaded(rig: Rig) -> Rig:
         if shed_more or not ours:
             since, shed_then = time.monotonic(), shed
             if shed == 0:
-                why = "the router shed nothing, so the jobs never filled it"
+                why = (
+                    "the router shed nothing, so the jobs never filled it, or the shaper"
+                    " started under it"
+                )
             elif shed_more:
                 why = f"the router kept shedding, at {shed}, with the shaper at {up} kbit/s"
-            elif heard is None:
-                why = f"the shaper said nothing of what it heard, at {up} kbit/s"
+            elif not (heard or {}).get("ours"):
+                why = f"the shaper said nothing of its queue, at {up} kbit/s"
             else:
                 why = f"the shaper held no queue of its own, at {up} kbit/s"
         held = shed > 0 and time.monotonic() - since >= HELD.total_seconds()
