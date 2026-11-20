@@ -1131,6 +1131,92 @@ ShellRoot {
             now.waiting.side === "1 to do" && ForYouHolds.count === 1,
             JSON.stringify([now.waiting.side, ForYouHolds.count]));
         expect("and home's row names it", now.homeSays() === "Battery at 5%", now.homeSays());
+        // What's pressing leads For You, so Return, Return reaches it: a
+        // critical notice comes before a look waiting, never under it
+        // (42P0R4, 2026-11-20; Y2YBTS's ruling).
+        const beforeLook = now.lookTexts;
+        now.lookTexts = { "p.json": JSON.stringify({ v: 1, id: "p", kind: "page",
+            at: root.lookedAt, target: "https://example.com", title: "Read P",
+            why: "Because.", state: "waiting", session: "" }) };
+        const pressing = now.waitingRows();
+        expect("a critical notice unread leads For You, ahead of a look waiting",
+            pressing[0]?.forYou?.source === "desktop" && pressing.findIndex(row => row.key
+                === "on:waitingOnYou:kind:look") > 0,
+            JSON.stringify(pressing.map(row => [row.key, row.forYou?.source ?? ""])));
+        const filtered = now.filterable();
+        expect("and leads what :filter narrows, as the list does",
+            filtered[0]?.forYou?.source === "desktop",
+            JSON.stringify(filtered.map(row => [row.key, row.forYou?.source ?? ""])));
+        now.lookTexts = beforeLook;
+        // Ahead of a session's question too, in For You and home alike.
+        Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
+            session: "s-c", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        const askFirst = now.waitingRows().map(row => row.forYou?.source ?? row.key);
+        const homeAsked = now.homeSays();
+        Sessions.wanting = [];
+        expect("a critical notice leads For You and home's row before a session's question",
+            askFirst[0] === "desktop" && homeAsked.startsWith("Battery at 5%")
+                && homeAsked.includes("1 more"),
+            JSON.stringify([askFirst, homeAsked]));
+        // Home's row names For You's first, so it names the notice before a
+        // thing to do too, its minutes not said beside the notice's name.
+        const toSign = { title: "Sign in to the bank", minutes: 2 };
+        WaitingOnYou.now = [toSign];
+        WaitingOnYou.foremost = toSign;
+        const signFirst = now.waitingRows().map(row => row.forYou?.source ?? row.key);
+        const homeFirst = now.homeSays();
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
+        expect("a critical notice leads For You and home's row before a thing to do",
+            signFirst[0] === "desktop" && homeFirst.startsWith("Battery at 5%")
+                && !homeFirst.includes("Sign in") && !homeFirst.includes("2 min")
+                && homeFirst.includes("1 more"),
+            JSON.stringify([signFirst, homeFirst]));
+        // One saying nothing still leads both, home naming the row it
+        // leads For You with, never the session or to-do under it.
+        Notices.history = [Object.assign({}, Notices.history[0], { summary: "" })];
+        WaitingOnYou.now = [toSign];
+        WaitingOnYou.foremost = toSign;
+        const blankRows = now.waitingRows();
+        const homeBlank = now.homeSays();
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
+        expect("a critical notice saying nothing leads home by its row's name",
+            blankRows[0]?.forYou?.source === "desktop" && homeBlank !== ""
+                && homeBlank.startsWith(blankRows[0].name) && !homeBlank.includes("Sign in"),
+            JSON.stringify([blankRows[0]?.name ?? null, homeBlank]));
+        Notices.history = [Object.assign({}, Notices.history[0], { summary: "Battery at 5%" })];
+        // Read while the launcher is open, its row stays leading For You
+        // while it holds another to read, so home names the row, and a
+        // session's question is still one more. With none left, the row goes.
+        const openedBefore = now.openedAt;
+        now.openedAt = Date.now() - 1000;
+        Sessions.wanting = [{ address: "WANTR", title: "Session R", presence: {
+            session: "s-r", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        Notices.history = [Notices.history[0], { id: 12, at: Date.now(), app: "power",
+            summary: "Charging", urgency: "normal", read: false }];
+        Notices.history = [Object.assign({}, Notices.history[0], { read: true }),
+            Notices.history[1]];
+        const readRows = now.waitingRows();
+        const homeRead = now.homeSays();
+        Notices.history = [Object.assign({}, Notices.history[0], { read: false })];
+        Sessions.wanting = [];
+        now.openedAt = openedBefore;
+        expect("its notice read while open, home names the row and counts the question",
+            readRows[0]?.forYou?.source === "desktop" && homeRead.startsWith(readRows[0].name)
+                && homeRead.includes("1 more") && !homeRead.includes("Battery"),
+            JSON.stringify([readRows[0]?.name ?? null, homeRead]));
+        // With Slack's critical too, home names the notice of whichever row leads.
+        Notices.history = [Notices.history[0], { id: 11, at: Date.now(), app: "Slack",
+            summary: "Pager", urgency: "critical", read: false }];
+        const twoRows = now.waitingRows();
+        const homeTwo = now.homeSays();
+        const twoLead = twoRows[0]?.forYou?.source;
+        Notices.history = [Notices.history[0]];
+        expect("of two sources' critical notices, home names the leading row's",
+            (twoLead === "slack" || twoLead === "desktop")
+                && homeTwo.startsWith(twoLead === "slack" ? "Pager" : "Battery at 5%"),
+            JSON.stringify([twoLead ?? null, homeTwo]));
         Notices.live = { "7": {} };
         expect("its card up, neither counts it",
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
