@@ -74,16 +74,17 @@ Provider {
     readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
         Recorder.windowSession)
     // Asks is never kept to draw at once at the launcher's next opening
-    // (Arming.keepsPlace), so a share starting while it's shut never has
-    // a copy from before it to draw.
+    // (Arming.keepsPlace). A kept place's rows aren't drawn under a share
+    // (Wanted.keptPlaceListed), but its steps are (Launcher.qml's
+    // intoKept), and one held in an ask would name it in the crumb.
     readonly property bool keptNever: true
     onHidingChanged: {
         forget();
         ready.remade();
         // What was told before a share goes, since it names what's hidden
         // now. After one only the foot's word for a held Return goes, as
-        // the ask would now arm: what was told during it hid the ask, and
-        // stays for him to read.
+        // the ask would now arm, and any arm (Arming.shareTurns): what was
+        // told during it hid the ask, and stays for him to read.
         if (hiding)
             launcher?.untold?.();
         else
@@ -99,7 +100,8 @@ Provider {
         if (!hiding)
             return;
         // The foot's word for a Return held while it was unknown goes,
-        // since the row now gives the share as why.
+        // since the row now gives the share as why, and any arm with it
+        // (Arming.shareTurns).
         launcher?.unheld?.();
         ready.remade();
         heldAgain();
@@ -321,10 +323,13 @@ Provider {
     // so the daemon must never serve one on an ask: row.rs serves none.
     // Its state, hue and attention go too, since row.rs serves each
     // differently for a waiting ask and an answered one, and one watching
-    // a share would tell the hidden rows apart. Two things read from them
-    // stay on the row on purpose (made): whether it waits and when it was
-    // asked, which For You orders by, and neither is a name, words or a
-    // source. How many wait still shows, in For You, the tray and Asks'
+    // a share would tell the hidden rows apart by them. Two things read
+    // from them stay on the row on purpose (made), read and never drawn on
+    // it: whether it waits, which puts it in For You, and when it was
+    // asked, which orders For You and which its drawer's weight may say
+    // as a wait. Both tell a waiting ask from an answered one, which For
+    // You's count says anyway, and neither is a name, words or a source.
+    // How many wait still shows, in For You, the tray and Asks'
     // own count, since an agent blocked on one needs Joel; which is which
     // never does.
     readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "glyph", "order"]
