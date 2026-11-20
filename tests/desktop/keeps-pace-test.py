@@ -17,10 +17,10 @@ from keeps_pace import (
     Gauge,
     Ledger,
     builders_share,
-    stretched_bar,
     every_tick,
     holdable,
     looped,
+    stretched_bar,
     ticks,
 )
 
@@ -272,14 +272,14 @@ def test_b508ac2es_keys_fail_the_bar_unstretched() -> None:
     """On a normal builder the keys b508ac2e took on its slow one still fail."""
     bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, 1.0)
     assert bar == B508_BAR, f"b508ac2e's keys bar read {bar}, unstretched"
-    assert B508_KEYS > bar, f"b508ac2e's keys passed {bar} unstretched"
+    assert bar < B508_KEYS, f"b508ac2e's keys passed {bar} unstretched"
 
 
 def test_b508ac2es_keys_pass_the_bar_its_slow_builder_stretched() -> None:
     """The keys b508ac2e failed on its slow builder pass the bar its frozen loops stretched."""
     slowed = gauged(frozen=SLOW_LOOPS).slowed()
     bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, slowed)
-    assert B508_KEYS <= bar, f"b508ac2e's keys failed {bar}, stretched {slowed} times"
+    assert bar >= B508_KEYS, f"b508ac2e's keys failed {bar}, stretched {slowed} times"
 
 
 def test_only_the_frozen_share_of_a_bar_is_stretched() -> None:
@@ -292,7 +292,7 @@ def test_keys_six_times_as_slow_fail_on_the_slowest_builder() -> None:
     """At b508ac2e's frozen key, keys six times as slow fail however slow the builder."""
     slowed = gauged(frozen=(BUILDER_LOOP * SLOWEST_BUILDER * 2,)).slowed()
     bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, slowed)
-    assert SIX_TIMES * B508_FROZEN > bar, f"keys six times as slow passed {bar}"
+    assert bar < SIX_TIMES * B508_FROZEN, f"keys six times as slow passed {bar}"
 
 
 def test_the_ledger_says_no_share_for_a_turn_it_never_counted() -> None:
