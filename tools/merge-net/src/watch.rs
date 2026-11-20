@@ -421,7 +421,11 @@ fn run_once(
             return None;
         }
         if code == Some(UNCOMPARED) {
-            state.say(&format!("{check} at {} compared nothing", short(commit)));
+            state.say(&format!(
+                "{check} at {} compared nothing; {} says why",
+                short(commit),
+                log.display()
+            ));
             return None;
         }
         if code != Some(UNSENT) {
@@ -1297,6 +1301,11 @@ fn hand_skipped_macs(
     for merge in world.merges(base, head)? {
         if world.mac_skipped(&merge) {
             let check = crate::macs::check(&world.parent(&merge)?);
+            // A round that ended unfinished hands its merges again, and one
+            // resting would lose its rest and its day.
+            if settler.keeps(&check) {
+                continue;
+            }
             settler.hand(Job::Mac {
                 merge,
                 check,
@@ -3141,6 +3150,123 @@ mod tests {
         assert!(
             world.reverted.lock().unwrap().is_empty(),
             "a merge was reverted for a comparison that compared nothing"
+        );
+    }
+
+    #[test]
+    fn a_failure_a_mac_saw_before_two_stalls_is_told_with_its_log() {
+        let state = state("mac-failed-then-stalled");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[1, STALL, STALL]);
+        round(&world, &state, "s").unwrap();
+        let log = state.log("m1", &check, 1).display().to_string();
+        let told = findings(&state);
+        assert!(
+            told.iter().any(|finding| finding["kind"] == "mac-unrun"
+                && finding["stalled"] == true
+                && finding["failed_log"] == log.as_str()),
+            "a failure a Mac saw before two stalls wasn't told with its log: {told:?}"
+        );
+    }
+
+    #[test]
+    fn a_resting_mac_comparison_keeps_its_rest_when_its_merge_is_handed_again() {
+        // A round that ends unfinished hands its merges again from the same
+        // base, and one resting would lose its rest and its day.
+        let state = state("mac-rest-kept");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNCOMPARED]);
+        round(&world, &state, "s").unwrap();
+        let resting = state.settling();
+        let settler = Settler::new(&world, &state);
+        hand_skipped_macs(&world, &settler, "s", "h").unwrap();
+        assert!(
+            !settler.holds(&check),
+            "a resting comparison was handed again and queued"
+        );
+        assert_eq!(
+            state.settling(),
+            resting,
+            "a resting comparison handed again lost its rest or its day"
+        );
+    }
+
+    #[test]
+    fn a_held_net_rests_a_mac_comparison_rather_than_sending_it() {
+        let state = state("mac-held");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNCOMPARED]);
+        round(&world, &state, "s").unwrap();
+        let mut rested = state.settling().remove(0);
+        let since = rested["since"].clone();
+        rested["after"] = json!(0);
+        state.keep_settling(&check, &rested).unwrap();
+        *world.paused.lock().unwrap() = Some("a hold".into());
+        round(&world, &state, "s").unwrap();
+        assert_eq!(
+            world
+                .built()
+                .iter()
+                .filter(|(commit, built)| commit == "m1" && *built == check)
+                .count(),
+            1,
+            "a held net sent a rested comparison"
+        );
+        let kept = state.settling();
+        assert!(
+            kept.iter().any(|job| job["merge"] == "m1"
+                && job["since"] == since
+                && job["after"].as_u64() >= Some(now() + 9 * 60)),
+            "a rested comparison a held net took up wasn't rested again with its day: {kept:?}"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_rests_longer_the_longer_it_has_waited_up_to_an_hour() {
+        // Tried every ten minutes all day, a Mac outage would keep the
+        // builders busy with comparisons that compare nothing.
+        let state = state("mac-rest-grows");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNCOMPARED, UNCOMPARED]);
+        round(&world, &state, "s").unwrap();
+        let mut rested = state.settling().remove(0);
+        rested["since"] = json!(now() - 2 * 60 * 60);
+        rested["after"] = json!(0);
+        state.keep_settling(&check, &rested).unwrap();
+        round(&world, &state, "s").unwrap();
+        let after = state.settling()[0]["after"].as_u64().unwrap_or(0);
+        assert!(
+            (now() + 59 * 60..=now() + 60 * 60).contains(&after),
+            "a comparison two hours unanswered didn't rest an hour: {} s",
+            after.saturating_sub(now())
         );
     }
 

@@ -26,6 +26,12 @@ pub struct Unrun {
     pub commit: String,
     /// The merge's first parent, which its Mac checks compare against.
     pub base: String,
+    /// Whether a Mac took them and they stalled twice, which may be a hang
+    /// the change made, rather than no Mac taking them.
+    pub stalled: bool,
+    /// The log of a run a Mac failed before the ones that compared
+    /// nothing, when one did.
+    pub failed_log: Option<String>,
 }
 
 /// The merges the net let go unrun on a Mac since `since`, oldest first,
@@ -41,6 +47,8 @@ pub fn unrun(findings: &Path, since: i64) -> Vec<Unrun> {
                 owner_pr: finding["owner_pr"].as_u64(),
                 commit: finding["commit"].as_str()?.to_owned(),
                 base: finding["test"].as_str()?.strip_prefix(CHECK)?.to_owned(),
+                stalled: finding["stalled"] == true,
+                failed_log: finding["failed_log"].as_str().map(str::to_owned),
             })
         })
         .collect()
@@ -68,10 +76,23 @@ pub fn due(unrun: &[Unrun], landings: &str, told: &mut Told, now: i64) -> Vec<Te
 /// `named` the owner.
 fn said_to(merge: &Unrun, named: bool) -> String {
     let short = merge.commit.get(..12).unwrap_or(&merge.commit);
+    let how = if merge.stalled {
+        format!(
+            "a Mac took its Mac checks at {short} and they stalled twice, past two hours or \
+             silent for half an hour, so they may hang"
+        )
+    } else {
+        format!("no Mac compared its Mac checks at {short}")
+    };
+    let failed = merge
+        .failed_log
+        .as_ref()
+        .map(|log| format!(" A Mac failed them once before that; its log is {log}."))
+        .unwrap_or_default();
     let what = format!(
-        "no Mac compared its Mac checks at {short}, so the net let them go unchecked. \
-         Build them on a Mac, in a tree at {}: nix-offload there --changed --build --no-vm \
-         --base {} --system aarch64-darwin, and fix forward if any fail.",
+        "{how}, so the net let them go unchecked.{failed} Build them on a Mac, in a tree at \
+         {}: nix-offload there --changed --build --no-vm --base {} --system aarch64-darwin, \
+         and fix forward if any fail.",
         merge.commit, merge.base
     );
     match (merge.owner_pr, named) {
@@ -112,10 +133,10 @@ mod tests {
             "210-cccc.json",
             unrun_at(210, "cccc", serde_json::Value::Null),
         );
-        keep(
-            "200-dddd.json",
-            unrun_at(200, "dddd", serde_json::json!(4925)),
-        );
+        let mut stalled = unrun_at(200, "dddd", serde_json::json!(4925));
+        stalled["stalled"] = serde_json::json!(true);
+        stalled["failed_log"] = serde_json::json!("/net/logs/dddd-1.log");
+        keep("200-dddd.json", stalled);
         keep(
             "220-eeee.json",
             serde_json::json!({"kind": "failed", "test": "vm-a", "owner_pr": 4930, "at": 220}),
@@ -129,15 +150,19 @@ mod tests {
                     owner_pr: Some(4925),
                     commit: "dddd".to_owned(),
                     base: "bbbb".to_owned(),
+                    stalled: true,
+                    failed_log: Some("/net/logs/dddd-1.log".to_owned()),
                 },
                 Unrun {
                     owner_pr: None,
                     commit: "cccc".to_owned(),
                     base: "bbbb".to_owned(),
+                    stalled: false,
+                    failed_log: None,
                 },
             ],
-            "an unrun merge since then wasn't read, oldest first with its PR and base, or an \
-             older one or another kind of finding was"
+            "an unrun merge since then wasn't read, oldest first with its PR, base, stall \
+             and failed run, or an older one or another kind of finding was"
         );
     }
 
@@ -150,7 +175,35 @@ mod tests {
             owner_pr,
             commit: "fb4676a1c0ffee0123456789abcdef0123456789".to_owned(),
             base: "e279db1b".to_owned(),
+            stalled: false,
+            failed_log: None,
         }
+    }
+
+    #[test]
+    fn a_stall_and_a_failure_a_mac_saw_are_told_as_they_were() {
+        let plain = said_to(&merge(Some(4925)), true);
+        let stalled = said_to(
+            &Unrun {
+                stalled: true,
+                failed_log: Some("/net/logs/fb46-1.log".to_owned()),
+                ..merge(Some(4925))
+            },
+            true,
+        );
+        assert!(
+            plain.contains("no Mac compared")
+                && !plain.contains("stalled")
+                && !plain.contains("failed them"),
+            "a merge no Mac took was told as more than that: {plain}"
+        );
+        assert!(
+            stalled.contains("stalled twice")
+                && stalled.contains("may hang")
+                && !stalled.contains("no Mac compared")
+                && stalled.contains("its log is /net/logs/fb46-1.log"),
+            "a stall or a failure a Mac saw was told as no Mac comparing: {stalled}"
+        );
     }
 
     #[test]

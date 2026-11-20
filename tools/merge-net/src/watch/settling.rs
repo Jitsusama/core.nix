@@ -28,7 +28,7 @@ use super::{
     fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
     same_drv, search, settle,
 };
-use crate::state::{State, now, short};
+use crate::state::{Ran, State, now, short};
 
 /// Something a round found that takes longer than its tests to settle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -360,6 +360,12 @@ impl<'a> Settler<'a> {
         lock(&self.queue).held.iter().any(|held| held == test)
     }
 
+    /// Whether a job for `test` is held or kept on disk, as one resting
+    /// is, so a round handing it again would write over its rest and day.
+    pub fn keeps(&self, test: &str) -> bool {
+        self.holds(test) || self.state.keeps_settling(test)
+    }
+
     /// Run `write` while nothing else writes the hold.
     pub fn write<R>(&self, write: impl FnOnce() -> R) -> R {
         while self.leaving() {
@@ -580,7 +586,23 @@ impl<'a> Settler<'a> {
     /// told the same way at once, since it compared nothing either.
     fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
-        match attempt(world, state, merge, check) {
+        // A held net starts nothing, so a rested comparison taken up while
+        // it's held rests again rather than being sent.
+        if let Some(why) = world.held() {
+            state.say(&format!(
+                "{check} at {} waits while the net is held: {why}",
+                short(merge)
+            ));
+            return rest(state, merge, check, since, RESTS.0);
+        }
+        let outcome = attempt(world, state, merge, check);
+        // A failure a Mac saw before the runs that compared nothing is the
+        // owner's to read, so the finding names its log.
+        let failed = state
+            .runs(merge, check)
+            .contains(&Ran::Failed)
+            .then(|| state.log(merge, check, 1).display().to_string());
+        match outcome {
             Outcome::Unsent if now().saturating_sub(since) >= UNRUN => {
                 state.say(&format!(
                     "no Mac compared {check} at {} in a day: told, and let go",
@@ -589,24 +611,18 @@ impl<'a> Settler<'a> {
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge,
                     "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
+                    "failed_log": failed,
                 });
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }
             Outcome::Unsent => {
-                let rest = now().saturating_sub(since).clamp(RESTS.0, RESTS.1);
+                let after = now().saturating_sub(since).clamp(RESTS.0, RESTS.1);
                 state.say(&format!(
                     "no Mac compared {check} at {}: it's tried again in {} min",
                     short(merge),
-                    rest / 60
+                    after / 60
                 ));
-                let mut kept = Job::Mac {
-                    merge: merge.to_owned(),
-                    check: check.to_owned(),
-                    since,
-                }
-                .to_json();
-                kept["after"] = json!(now() + rest);
-                state.keep_settling(check, &kept)
+                rest(state, merge, check, since, after)
             }
             Outcome::Failed => {
                 let subject = world.subject(merge);
@@ -631,6 +647,7 @@ impl<'a> Settler<'a> {
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge, "stalled": true,
                     "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
+                    "failed_log": failed,
                 });
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }
@@ -676,6 +693,19 @@ fn clear_an_unsettled_revert(state: &State, test: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Keep a Mac's comparison of `merge` as `check`, handed `since`, to be
+/// taken up again `secs` from now.
+fn rest(state: &State, merge: &str, check: &str, since: u64, secs: u64) -> Result<(), String> {
+    let mut kept = Job::Mac {
+        merge: merge.to_owned(),
+        check: check.to_owned(),
+        since,
+    }
+    .to_json();
+    kept["after"] = json!(now() + secs);
+    state.keep_settling(check, &kept)
 }
 
 #[cfg(test)]
