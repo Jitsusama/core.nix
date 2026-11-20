@@ -829,6 +829,9 @@ impl Air<'_> {
         // An attempt at a network begins as the card starts authenticating
         // with it, or associating where it skips that.
         let step = changed.get("State").map(|step| &**step);
+        // Whether this signal's step ended a join, so a point it names in
+        // the same signal doesn't end the move again.
+        let mut landed = false;
         if let Some(zvariant::Value::Str(step)) = step {
             let step = step.to_string();
             if let Some(card) = self.named(bus, path).await {
@@ -841,6 +844,7 @@ impl Air<'_> {
                     change(&self.state, |state| state.attempting(&card));
                 }
                 if step == "completed" && before != "completed" {
+                    landed = true;
                     let said = match changed.get("CurrentBSS").map(|point| &**point) {
                         Some(zvariant::Value::ObjectPath(point)) => Some(point.to_string()),
                         _ => self.at.get(path.as_str()).cloned(),
@@ -868,20 +872,21 @@ impl Air<'_> {
             }
         }
         let point = changed.get("CurrentBSS").map(|point| &**point);
-        if let Some(zvariant::Value::ObjectPath(point)) = point {
-            self.at.insert(path.to_string(), point.to_string());
+        if let Some(zvariant::Value::ObjectPath(said)) = point {
             // wpa_supplicant says only where a card's steps have got to when
             // it sends, so a move can come as a new point alone, the card
             // joined throughout.
             let bssid = self
                 .points
-                .get(point.as_str())
+                .get(said.as_str())
                 .and_then(air::AccessPoint::heard);
-            let point = joined_to(point);
+            let point = joined_to(said);
             if let Some(card) = self.named(bus, path).await {
+                // Kept only for a card, so a path no card has adds nothing.
+                self.at.insert(path.to_string(), said.to_string());
                 change(&self.state, |state| state.at(&card, point));
                 let joined = self.cards.get(path.as_str());
-                let joined = joined.is_some_and(|(_, step)| step == "completed");
+                let joined = !landed && joined.is_some_and(|(_, step)| step == "completed");
                 let arrived = bssid.filter(|_| joined).and_then(|heard| {
                     self.arrivals
                         .borrow_mut()
@@ -1592,8 +1597,11 @@ impl Wifid<'_> {
         // card is off the network Joel picked; while it's on it, they stay
         // off, or its next look could move it (supplicant::holds_a_network).
         // wpa_supplicant adds a network off, so one newly saved is on.
+        // A card in a move keeps them off until the move ends, whatever its
+        // step, as a Keep, Forget or Trust can come meanwhile.
         let picked = self.picked.borrow().contains(&card.name);
-        if !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
+        let alone = self.alone.borrow().contains(&card.name);
+        if !alone && !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
             for (_, network) in &joinable {
                 self.joinable(network).await?.set_enabled(true).await?;
             }
@@ -2168,7 +2176,7 @@ impl Wifid<'_> {
                     .into_iter()
                     .find(|joined| joined.card == card)
                     .map(|joined| joined.point);
-                self.keep_alone(&card, &interface, &network).await?;
+                self.keep_alone(&card, &interface, &network).await;
                 self.arrivals
                     .borrow_mut()
                     .asked(&card, from.as_deref(), bssid, Instant::now());
@@ -2219,6 +2227,8 @@ impl Wifid<'_> {
         free: bool,
     ) -> bool {
         if !free {
+            println!("<6>{card} is left to the join asked for, short of {to}");
+            self.alone.borrow_mut().remove(&card);
             return false;
         }
         let held = self.held.borrow().get(&card).cloned();
@@ -2364,20 +2374,31 @@ impl Wifid<'_> {
     /// fails. Left on, it was joining the Roadside Inn as wifid heard
     /// the move had failed, and turning that join down as the card went
     /// back had it blame the point the card went back to, ignore it for
-    /// ten seconds and look 800 ms for another (2026-11-20).
+    /// ten seconds and look 800 ms for another (2026-11-20). The move
+    /// doesn't need them off, and a way back still works with one on, so
+    /// a network that won't turn off, as one forgotten meanwhile, is said
+    /// and the move goes on.
     async fn keep_alone(
         &self,
         card: &str,
         interface: &InterfaceProxy<'_>,
         network: &OwnedObjectPath,
-    ) -> zbus::Result<()> {
+    ) {
         self.alone.borrow_mut().insert(card.to_owned());
-        for other in interface.networks().await? {
-            if other != *network {
-                self.joinable(&other).await?.set_enabled(false).await?;
+        let others = match interface.networks().await {
+            Ok(others) => others,
+            Err(error) => {
+                println!("<4>{card} moves with its networks on, unlisted: {error}");
+                return;
+            }
+        };
+        for other in others.iter().filter(|other| *other != network) {
+            let off = async { self.joinable(other).await?.set_enabled(false).await };
+            if let Err(error) = off.await {
+                let other = other.as_str();
+                println!("<4>{card} moves with {other} on, as it wouldn't turn off: {error}");
             }
         }
-        Ok(())
     }
 
     /// Turns the card's other networks on again where a move kept them
