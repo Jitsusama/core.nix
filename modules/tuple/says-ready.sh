@@ -5,11 +5,12 @@
 # start, not to the daemon serving again.
 #
 # It's ready once its signaller, which calls come through, has connected,
-# which its log says; the time runs from the log's first line, the daemon
-# beginning, to that one, both on the log's own clock. The log is new each
-# start, the last kept as log.1.txt before it (home.nix's keepsLogs). A
-# time that clock can't give, from a line with no time or a clock stepped
-# back, or past the wait, says nothing rather than a wrong figure.
+# which its log says; the time runs from the log's first timed line, the
+# daemon beginning, to that one, both on the log's own clock. The log opens
+# with "launching from pid", which has no time, and is new each start, the
+# last kept as log.1.txt before it (home.nix's keepsLogs). A time past the
+# wait, as a clock stepped back gives, says nothing rather than a wrong
+# figure.
 #
 # It runs as the unit's ExecStartPost, which systemd finishes before it
 # writes "Started", and health takes a ready line only after that line. So
@@ -28,9 +29,12 @@ unit=$2
 log=$3
 wait=$4
 
-# A line of Tuple's log, its time of day leading, then its pid, thread and
-# level, the place in its source sometimes, and what it says.
-timed='^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}\|[0-9]+\|[0-9]+\|[a-z()_]+\|([^|]*\|)?'
+# A line of Tuple's log with a time, which it leads with.
+stamped='^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}\|'
+# One whole: its time, pid, thread and level, the place in its source
+# sometimes, a file and line, and what it says, so a caller's name in what
+# a line says can't pose as another.
+timed="${stamped}[0-9]+\\|[0-9]+\\|[a-z()_]+\\|([A-Za-z0-9_.]+:[0-9]+\\|)?"
 
 # A log line's time, HH:MM:SS.mmm, in milliseconds since midnight.
 millis() {
@@ -49,8 +53,7 @@ waits() {
     fi
     if [[ -n ${active} ]] &&
       connected=$(grep -m1 -E "${timed}signaler state changed: [a-z]+ -> connected$" "${log}"); then
-      first=$(head -n1 "${log}") || return
-      [[ ${first} =~ ${timed} ]] || return
+      first=$(grep -m1 -E "${stamped}" "${log}") || return
       began=$(millis "${first}")
       ended=$(millis "${connected}")
       took=$((ended - began))

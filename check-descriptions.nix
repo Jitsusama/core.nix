@@ -5137,8 +5137,8 @@
   '';
   tuple-says-when-ready = ''
     Tuple's service returns from starting at once, then, only once it's active and its log says the
-    daemon can take a call, says how long that took from the log's first line, in the words health
-    reads
+    daemon can take a call, says how long that took from the log's first timed line, in the words
+    health reads, and says nothing for a clock stepped back or a caller's name posing as the line
   '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it

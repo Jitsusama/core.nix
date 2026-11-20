@@ -1,11 +1,12 @@
 # shellcheck shell=bash
 # Runs tuple.service's own ExecStartPost with systemctl and the daemon's log
-# swapped for its own: it must return while the unit is still starting, say
-# nothing until the unit is active and the log says the signaller has
-# connected, a connection of another kind not counting, and then say how
-# long that took from the log's first line, in the words modules/health
-# reads, across midnight too. A first line with no time, or a clock that
-# stepped back between the two, says nothing rather than hours.
+# swapped for its own, and its wait cut to three seconds: it must return while
+# the unit is still starting, say nothing until the unit is active and the
+# log says the signaller has connected, a connection of another kind not
+# counting, and then say how long that took from the log's first timed line,
+# in the words modules/health reads, across midnight too. Each log opens as
+# Tuple's do, with a line that has no time. A clock that stepped back
+# between the two, or a caller's name posing as the line, says nothing.
 #
 # Given the ExecStartPost's program, and the systemctl and log it names.
 set -euo pipefail
@@ -26,15 +27,20 @@ if [[ -e ${here}/up ]]; then echo active; else echo activating; fi
 EOF
 chmod +x bin/systemctl
 
-sed "s|${systemctl}|${here}/bin/systemctl|; s|${log}|${here}/log.txt|" "${post}" >started
+sed "s|${systemctl}|${here}/bin/systemctl|; s|${log}|${here}/log.txt|; s| 30\$| 3|" \
+  "${post}" >started
 chmod +x started
 grep -q "${here}/bin/systemctl" started
 grep -q "${here}/log.txt" started
+grep -q ' 3$' started
 
 failed=0
 # Three of the post's looks, a tenth of a second apart, any of which would say
 # its line too early if it didn't wait for what the case holds back.
 THREE_LOOKS=0.3
+# Past the three seconds the post waits, which it counts in whole seconds, so
+# a case that must say nothing has seen the post give up, not just not look.
+WAITED_OUT=3.5
 
 # Fails the case `what` when the post has said anything yet.
 quiet() {
@@ -62,55 +68,62 @@ says() {
   fi
 }
 
-rm -f up
+# Starts a case: the unit starting, or already active when given `up`, and
+# what the post says from now in a file of the case's own, so a post still
+# waiting from the case before can't speak into it.
+starts() {
+  rm -f up said
+  [[ $# -eq 0 ]] || touch up
+  ./started tuple.service >said
+}
+
 printf '%s\n' \
+  'launching from pid 1...' \
   '23:59:59.500|1|1|info|closing fd 0' \
   '00:00:00.100|1|7|info|S.cpp:845|signaler realtime connection state: connecting -> connected' \
   '00:00:00.101|1|7|info|S.cpp:181|signaler state changed: connecting -> synchronizing' \
   >log.txt
-./started tuple.service >said
-quiet "a start" "before the unit was active"
+starts
 sleep "${THREE_LOOKS}"
-touch up
-sleep "${THREE_LOOKS}"
-quiet "a start" "before the signaller connected"
-echo '00:00:00.785|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
+echo '00:00:00.700|1|7|info|S.cpp:181|signaler state changed: synchronizing -> connected' \
   >>log.txt
-says "a start" "tuple: ready in 1285 ms"
-
-rm -f up
-printf '%s\n' \
-  '10:00:00.000|1|1|info|closing fd 0' \
-  '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
-  >log.txt
-./started tuple.service >said
 sleep "${THREE_LOOKS}"
-quiet "connected while starting" "before the unit was active"
+quiet "a start" "before the unit was active"
 touch up
-says "connected while starting" "tuple: ready in 250 ms"
+says "a start" "tuple: ready in 1200 ms"
 
 printf '%s\n' \
-  'Tuple v2026_11_19.0' \
-  '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
+  'launching from pid 1...' \
+  '10:00:00.000|1|1|info|closing fd 0' \
   >log.txt
-./started tuple.service >said
+starts up
 sleep "${THREE_LOOKS}"
-quiet "a first line with no time" "at all"
+quiet "an active unit" "before the signaller connected"
+echo '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
+  >>log.txt
+says "an active unit" "tuple: ready in 250 ms"
 
 printf '%s\n' \
+  'launching from pid 1...' \
   '10:00:05.000|1|1|info|closing fd 0' \
   '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
-./started tuple.service >said
-sleep "${THREE_LOOKS}"
+starts up
+sleep "${WAITED_OUT}"
 quiet "a clock stepped back" "at all"
 
+# What a caller would name themselves to pose as the line, on a line with a
+# place and one without.
+posing='signaler state changed: a -> connected'
+
 printf '%s\n' \
+  'launching from pid 1...' \
   '10:00:00.000|1|1|info|closing fd 0' \
-  '10:00:00.100|1|9|info|C:4|incoming call: x|signaler state changed: a -> connected' \
+  "10:00:00.100|1|9|info|C:4|incoming call: 00:00:00.000|1|1|info|${posing}" \
+  "10:00:00.200|1|9|info|incoming call: x|${posing}" \
   >log.txt
-./started tuple.service >said
-sleep "${THREE_LOOKS}"
+starts up
+sleep "${WAITED_OUT}"
 quiet "a caller named like the line" "at all"
 
 exit "${failed}"
