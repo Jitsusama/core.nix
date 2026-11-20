@@ -95,6 +95,9 @@ PHASE = 20
 # 58 ms more, 78 against 20. Twice the frozen wait and 10 ms more failed 5 of those 48 runs with
 # the weights as they should be, four where the frozen wait came in at 17 to 20 ms; and it failed
 # #2724 on 9 November at 21.8 to 26.1 against 3.9 to 6.9, 18 to 19 ms more.
+# Each bar of twice the frozen time and more is stretched for a slow builder (bound), but the
+# wait isn't: the slow builders that failed keys at 9ca37a94 and b508ac2e on 20 November waited
+# 29 and 26.8 ms more under load, within it.
 WAITED = 45
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
@@ -376,6 +379,7 @@ class Timing:
         finally:
             print(self.ledger.said())
             print(self.gauge.said())
+            print(f"so the builder stretches each bar {self.gauge.slowed():.2f} times")
             # Let run as main always tried, the last count failed or not: nothing reads the
             # ledger now, so the thaw counts nothing first, which could fail as the last did.
             if not self.loading or self.ledger.between:
@@ -552,16 +556,29 @@ class Timing:
             f"against {unswapped[False]:.0f} ms frozen, and less its wait for its frame to begin "
             f"too, {judged[True]:.0f} ms against {judged[False]:.0f} ms"
         )
-        assert judged[True] <= SLOWER_MOST * judged[False] + MIDDLE_MORE, (
+        slowed = self.gauge.slowed()
+        bar = bound(judged[False], MIDDLE_MORE, slowed)
+        assert judged[True] <= bar, (
             f"half the keys under load took {judged[True]:.0f} ms to their frames less their "
             f"swaps and their waits for them to begin, against {judged[False]:.0f} ms with the "
-            f"load frozen; "
+            f"load frozen, past {bar:.0f}, the bar stretched {slowed:.2f} times for the builder; "
             f"as written, {middle:.0f} ms against {middle_free:.0f}"
         )
         assert wait <= wait_free + WAITED, (
             f"under load the compositor and the shell waited {wait:.1f} ms a key for a processor "
             f"in the middle turn, against {wait_free:.1f} ms with the load frozen"
         )
+
+
+def bound(frozen: float, more: float, slowed: float) -> float:
+    """Give the most a middle under load may take, against its middle with the load frozen.
+
+    That's SLOWER_MOST times the frozen and `more`, stretched by how many times slower than a
+    normal builder the subtest's frozen loops ran (keeps_pace.py's Gauge.slowed), which is 1 on a
+    normal builder. The frozen time alone can't see a slow builder: at b508ac2e the frozen key
+    took 24 ms, as at 9c79f541, and the keys under load 102 against 42.
+    """
+    return slowed * (SLOWER_MOST * frozen + more)
 
 
 def ranked(times: Sequence[float], share: float) -> float:
@@ -678,10 +695,11 @@ def makings_said(desktop: Desktop, since: str) -> list[str]:
     return [line.strip() for line in said.splitlines() if line.strip()]
 
 
-def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
+def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], slowed: float) -> list[str]:
     """Say each place's drawers by turns, and give those the load slowed past their bound.
 
-    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it.
+    Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it, its
+    bound stretched `slowed` times for the builder.
     """
     slowed = []
     for place in sorted(drawn[True]):
@@ -692,8 +710,8 @@ def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]]) -> list[str]:
             f" against {sorted(drawn[False].get(place, []))}, made in {frozen},"
             " with the load frozen"
         )
-        if frozen and loaded[(len(loaded) - 1) // 2] > (
-            SLOWER_MOST * frozen[(len(frozen) - 1) // 2] + STEPPED_MORE
+        if frozen and loaded[(len(loaded) - 1) // 2] > bound(
+            frozen[(len(frozen) - 1) // 2], STEPPED_MORE, slowed
         ):
             slowed.append(place)
     return slowed
@@ -772,6 +790,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
     def middle(times: list[int]) -> int:
         return sorted(times)[(len(times) - 1) // 2]
 
+    stretched = timing.gauge.slowed()
     slowed = []
     for place in sorted(under):
         print(
@@ -779,17 +798,20 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
             f" {sorted(searching[place])} of it searching, against {sorted(free.get(place, []))}"
             f" with the load frozen; its slowest said {slowest[place][1]}"
         )
-        if place in free and middle(under[place]) > (
-            SLOWER_MOST * middle(free[place]) + STEPPED_MORE
+        if place in free and middle(under[place]) > bound(
+            middle(free[place]), STEPPED_MORE, stretched
         ):
             slowed.append(place)
-    drawers_slowed = slowed_drawers(drawn)
+    drawers_slowed = slowed_drawers(drawn, stretched)
     print("under load, made by their parts:", *made[True], sep="\n  ")
     assert "Programs" in under, f"no step into Programs was timed: {sorted(under)}"
     assert "Programs" in drawn[True], f"no drawer in Programs was timed: {drawn}"
     assert not drawers_slowed, f"the load slowed the drawers of {drawers_slowed}: {drawn}"
     assert not early, f"keys done at and timed by frames begun before: {early}"
-    assert not slowed, f"the load slowed stepping into {slowed}: {under} against {free}"
+    assert not slowed, (
+        f"the load slowed stepping into {slowed}: {under} against {free}, each bar stretched "
+        f"{stretched:.2f} times for the builder"
+    )
 
 
 def openings(desktop: Desktop) -> list[Json]:
@@ -897,9 +919,12 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     assert not unusable, f"an opening never answered on time for 100 ms: {unusable}"
     weighing = [after for _, _, after in said if after.get("verbs") != 0]
     assert not weighing, f"an opening after the first weighed the verbs again: {weighing}"
-    assert middle(first[True]) <= SLOWER_MOST * middle(first[False]) + STEPPED_MORE, (
+    slowed = timing.gauge.slowed()
+    bar = bound(middle(first[False]), STEPPED_MORE, slowed)
+    assert middle(first[True]) <= bar, (
         f"the load slowed the first opening after a start: {first[True]} ms against "
-        f"{first[False]} ms frozen"
+        f"{first[False]} ms frozen, past {bar:.0f}, the bar stretched {slowed:.2f} times for "
+        "the builder"
     )
 
 
@@ -922,8 +947,10 @@ def storm(desktop: Desktop) -> Iterator[None]:
         yield
     finally:
         # Bracketed, so the pattern never matches the shell running it. Its windows are given as
-        # long to go as to come, under the same load.
-        desktop.as_account("pkill -f 'window-stor[m]'")
+        # long to go as to come, under the same load. A storm already gone, as when
+        # xwayland-satellite fell over beneath it at b508ac2e, leaves pkill nothing to stop, which
+        # mustn't fail here and hide why the wait for its windows failed.
+        desktop.as_account("pkill -f 'window-stor[m]' || true")
         gone = '! niri msg --json windows | grep -q \'"title":"storm \''
         machine.wait_until_succeeds(desktop.in_session(gone), timeout=STORM_PATIENCE)
 
@@ -998,9 +1025,12 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
         f"an opening through the storm took {readied[-1]} ms to be ready to draw: {readied}"
     )
     drawing = {loaded: [one["after"]["drawing"] for one in each[loaded]] for loaded in each}
-    assert middle(drawing[True]) <= SLOWER_MOST * middle(drawing[False]) + STEPPED_MORE, (
+    slowed = timing.gauge.slowed()
+    bar = bound(middle(drawing[False]), STEPPED_MORE, slowed)
+    assert middle(drawing[True]) <= bar, (
         f"the load slowed drawing an opening through the storm: {drawing[True]} ms against "
-        f"{drawing[False]} ms frozen"
+        f"{drawing[False]} ms frozen, past {bar:.0f}, the bar stretched {slowed:.2f} times for "
+        "the builder"
     )
 
 
