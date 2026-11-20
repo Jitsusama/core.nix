@@ -5,8 +5,8 @@
 //! (`dictation::wer`).
 //!
 //! Each of the reference's lines is also heard alone, cut from its side
-//! where the reference says it was said, none longer than a take: a
-//! second reading, with no cutting, sifting or echo filter but no context
+//! where the reference says it was said, with a little sound either side,
+//! and none too long for Parakeet's window: a second reading, with no cutting, sifting or echo filter but no context
 //! either. It's no floor for the model alone, since a clip also hears
 //! whoever talks over its speaker; the gap between the two readings says
 //! what context and the cutting are worth, a side at a time.
@@ -14,7 +14,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use dictation::parakeet::RATE;
+use dictation::parakeet::{RATE, WINDOW};
 use dictation::transcript::{self, Line, Side, markdown};
 use dictation::wav;
 use dictation::wer::{Errors, said, words};
@@ -27,8 +27,15 @@ use crate::{Settings, takes};
 const AROUND: f64 = 0.2;
 
 /// The longest a reference line may run, in seconds: the longest a take
-/// runs (`dictation::takes`), so heard alone it fits Parakeet's window.
+/// runs (`dictation::takes`), so heard alone, with `AROUND` either side, it
+/// fits Parakeet's window.
 const LONGEST: f64 = 14.0;
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "the window is a few hundred thousand samples"
+)]
+const _: () = assert!(LONGEST + 2.0 * AROUND < WINDOW as f64 / RATE as f64);
 
 /// One line of a reference: when it was said, by whom, and its words.
 struct Said {
@@ -47,16 +54,23 @@ struct Scored {
 
 /// Scores every meeting of `set` with the speech model in `model`, says
 /// each one's errors and the set's, and fails when the set's, as written
-/// down, are above `ceiling` percent.
-pub fn score(model: &Path, set: &Path, ceiling: Option<f64>) -> Result<(), String> {
-    let mut speech = Settings::read(model.to_owned()).load()?;
+/// down, are above `ceiling` tenths of a percent.
+pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), String> {
+    // Every reference is read before the model loads, so a bad one is
+    // refused at once rather than after the meetings before it are heard.
     let sides = read(&set.join("sides"))?;
-    let mut all = Scored::default();
+    let mut meetings = Vec::new();
     for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
         let (name, mine) = entry
             .split_once(' ')
             .ok_or_else(|| format!("sides: {entry:?} isn't a meeting and a speaker"))?;
-        let reference = reference(&read(&set.join(format!("{name}.ref")))?)?;
+        let file = format!("{name}.ref");
+        let lines = reference(&read(&set.join(&file))?).map_err(|e| format!("{file}: {e}"))?;
+        meetings.push((name, mine, lines));
+    }
+    let mut speech = Settings::read(model.to_owned()).load()?;
+    let mut all = Scored::default();
+    for (name, mine, reference) in meetings {
         let mut scored = Scored::default();
         let mut lines = Vec::new();
         for side in [Side::Mine, Side::Theirs] {
@@ -109,33 +123,41 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<f64>) -> Result<(), Strin
         return Err(format!("{} has no words to hear", set.display()));
     }
     match ceiling {
-        Some(most) => verdict(total.rate(), most).map(|passed| println!("{passed}")),
+        Some(most) => verdict(total.tenths(), most).map(|passed| println!("{passed}")),
         None => Ok(()),
     }
 }
 
-/// The ceiling given as `text`, when it's a finite percentage: one such
-/// as "nan" would pass every score.
-pub fn ceiling(text: &str) -> Option<f64> {
-    text.parse::<f64>()
-        .ok()
-        .filter(|most| most.is_finite() && *most >= 0.0)
+/// The ceiling given as `text`, in tenths of a percent, when it's a
+/// percentage to one place at most: one such as "nan" would pass every
+/// score, and one with two places would print as another.
+pub fn ceiling(text: &str) -> Option<usize> {
+    let (whole, tenth) = text.split_once('.').unwrap_or((text, "0"));
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    if !digits(whole) || !digits(tenth) || tenth.len() > 1 {
+        return None;
+    }
+    Some(whole.parse::<usize>().ok()? * 10 + tenth.parse::<usize>().ok()?)
 }
 
-/// Whether `rate` percent wrong passes a ceiling of `most`, said either
-/// way. The rate is held to the ceiling as it's said, to one place, so a
-/// failure never reads as being at the ceiling.
-fn verdict(rate: f64, most: f64) -> Result<String, String> {
-    let said = (rate * 10.0).round() / 10.0;
-    if said > most {
+/// Whether `tenths` of a percent wrong passes a ceiling of `most`, said
+/// either way, as the report says it.
+fn verdict(tenths: usize, most: usize) -> Result<String, String> {
+    let (said, may) = (percent(tenths), percent(most));
+    if tenths > most {
         Err(format!(
-            "it misheard {said:.1}% of the words, above the {most:.1}% it may"
+            "it misheard {said} of the words, above the {may} it may"
         ))
     } else {
         Ok(format!(
-            "it misheard {said:.1}% of the words, within the {most:.1}% it may"
+            "it misheard {said} of the words, within the {may} it may"
         ))
     }
+}
+
+/// Tenths of a percent, as a percentage to one place.
+fn percent(tenths: usize) -> String {
+    format!("{}.{}%", tenths / 10, tenths % 10)
 }
 
 /// A meeting's errors, a line each way it was heard.
@@ -161,7 +183,7 @@ fn report(name: &str, scored: &Scored) -> String {
 }
 
 fn rate(errors: &Errors) -> String {
-    format!("{:.1}% of {} words", errors.rate(), errors.words)
+    format!("{} of {} words", percent(errors.tenths()), errors.words)
 }
 
 fn kinds(errors: &Errors) -> String {
@@ -185,7 +207,9 @@ fn reference(text: &str) -> Result<Vec<Said>, String> {
                     .ok_or_else(|| format!("a reference line without its times: {line:?}"))
             };
             let (start, end) = (seconds()?, seconds()?);
-            let fits = start <= end && end - start <= LONGEST;
+            // Held in hundredths, as the times are written, so a line
+            // just 14 s long isn't refused for a float's last bit.
+            let fits = start <= end && ((end - start) * 100.0).round() <= LONGEST * 100.0;
             if !fits {
                 return Err(format!(
                     "a reference line has to end after it starts, within {LONGEST} s: {line:?}"
@@ -287,13 +311,18 @@ mod tests {
             reference("0.00 14.00 A Okay\n").is_ok(),
             "a line as long as a take was refused"
         );
+        assert!(
+            reference("80.49 94.49 A Okay\n").is_ok(),
+            "a line as long as a take, not from the start, was refused"
+        );
     }
 
     #[test]
-    fn only_a_finite_percentage_is_a_ceiling() {
-        assert_eq!(ceiling("19.9"), Some(19.9));
-        assert_eq!(ceiling("0"), Some(0.0));
-        for refused in ["nan", "inf", "-1", "nineteen", ""] {
+    fn only_a_percentage_to_one_place_is_a_ceiling() {
+        assert_eq!(ceiling("19.9"), Some(199));
+        assert_eq!(ceiling("20"), Some(200));
+        assert_eq!(ceiling("0"), Some(0));
+        for refused in ["nan", "inf", "-1", "nineteen", "", "19.96", "19.", ".9"] {
             assert_eq!(ceiling(refused), None, "{refused:?} was taken as a ceiling");
         }
     }
@@ -301,12 +330,26 @@ mod tests {
     #[test]
     fn a_rate_is_held_to_its_ceiling_as_it_is_said() {
         assert_eq!(
-            verdict(19.94, 19.9),
+            verdict(199, 199),
             Ok("it misheard 19.9% of the words, within the 19.9% it may".to_owned())
         );
         assert_eq!(
-            verdict(19.96, 19.9),
+            verdict(200, 199),
             Err("it misheard 20.0% of the words, above the 19.9% it may".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_report_and_the_verdict_say_the_same_rate() {
+        let errors = Errors {
+            words: 4000,
+            substituted: 798,
+            ..Errors::default()
+        };
+        assert_eq!(rate(&errors), "20.0% of 4000 words");
+        assert!(
+            verdict(errors.tenths(), 199).is_err_and(|said| said.contains("20.0%")),
+            "the verdict says the rate the report does"
         );
     }
 

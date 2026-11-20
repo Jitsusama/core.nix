@@ -24,7 +24,8 @@ const HESITATIONS: [&str; 13] = [
 /// `text`'s words as they're compared, heard.
 #[must_use]
 pub fn words(text: &str) -> Vec<String> {
-    let lower = text.to_lowercase();
+    // A curly apostrophe is an apostrophe, as tidy.rs reads one.
+    let lower = text.to_lowercase().replace('’', "'");
     lower
         .split(|c: char| !(c.is_alphanumeric() || matches!(c, '\'' | '-' | '_')))
         .map(|word| word.replace('_', ""))
@@ -110,16 +111,16 @@ impl Errors {
         self.substituted + self.deleted + self.inserted
     }
 
-    /// The errors as a percentage of the words said; none said is none
+    /// The errors as a percentage of the words said, in tenths of a
+    /// percent, a half rounded up: counted in whole numbers, so what's
+    /// said and what's held to a ceiling are the same; none said is none
     /// wrong.
     #[must_use]
-    pub fn rate(&self) -> f64 {
+    pub fn tenths(&self) -> usize {
         if self.words == 0 {
-            return 0.0;
+            return 0;
         }
-        #[expect(clippy::cast_precision_loss, reason = "a set's words are thousands")]
-        let rate = 100.0 * self.total() as f64 / self.words as f64;
-        rate
+        (1000 * self.total() + self.words / 2) / self.words
     }
 }
 
@@ -171,7 +172,12 @@ mod tests {
 
     #[test]
     fn a_hesitation_with_a_hyphen_is_left_out_in_its_parts() {
-        assert_eq!(words("Mm-hm, uh-oh, mm-kay"), ["oh", "kay"]);
+        assert_eq!(words("Mm-hm, uh-oh, mm-kay, uh-huh"), ["oh", "kay"]);
+    }
+
+    #[test]
+    fn a_curly_apostrophe_keeps_its_word_whole() {
+        assert_eq!(words("don’t"), ["don't"]);
     }
 
     #[test]
@@ -233,10 +239,10 @@ mod tests {
     fn nothing_heard_deletes_every_word_and_nothing_said_inserts() {
         assert_eq!(errors("move it", "").deleted, 2);
         assert_eq!(errors("", "move it").inserted, 2);
-        let rate = errors("", "move it").rate();
-        assert!(
-            rate.abs() < f64::EPSILON,
-            "nothing said has a rate of 0, not {rate}"
+        assert_eq!(
+            errors("", "move it").tenths(),
+            0,
+            "nothing said has a rate of 0"
         );
     }
 
@@ -246,17 +252,19 @@ mod tests {
             "move the review to thursday",
             "move a review thursday please",
         );
-        let rate = all.rate();
-        assert!(
-            (rate - 60.0).abs() < 1e-9,
-            "3 errors in 5 words are 60%, not {rate}"
-        );
+        assert_eq!(all.tenths(), 600, "3 errors in 5 words are 60.0%");
         all += errors("thank you", "thank you");
         assert_eq!(all.words, 7);
-        let rate = all.rate();
-        assert!(
-            (rate - 300.0 / 7.0).abs() < 1e-9,
-            "3 errors in 7 words are 42.9%, not {rate}"
-        );
+        assert_eq!(all.tenths(), 429, "3 errors in 7 words are 42.9%");
+    }
+
+    #[test]
+    fn a_rate_halfway_between_tenths_rounds_up() {
+        let errors = Errors {
+            words: 4000,
+            substituted: 798,
+            ..Errors::default()
+        };
+        assert_eq!(errors.tenths(), 200, "798 errors in 4000 words are 20.0%");
     }
 }
