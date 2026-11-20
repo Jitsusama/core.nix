@@ -4356,7 +4356,9 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
 
     The wheel moves the view by pixels, so it can stop inside a row; once it stops, the list
     rests on the top of the first row at or below where it stopped (Launcher.qml's
-    onMovementEnded, Headings.rested).
+    onMovementEnded, Headings.rested). The selection stays on the first row, which the wheel
+    takes wholly out of view and back, so a selected row the wheel leaves across the foot
+    isn't asked here.
     """
     home_network_in_normal(shell)
     card = shell.showing()["card"]
@@ -4389,13 +4391,14 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     shell.close_launcher()
 
 
-def test_the_home_network_rests_whole_again_once_its_find_is_gone(shell: Shell) -> None:
-    """Once a find in the Home Network is taken away, its list ends on a whole row again.
+def test_the_home_network_draws_nothing_cut_once_its_find_is_gone(shell: Shell) -> None:
+    """Once a find in the Home Network is taken away, G lands on its last row with nothing cut.
 
     A find drops headings and sets its own rows, so the list rests whole only on the place's
     own list (Headings.restsWhole); once the letters are gone, it's that list again, and G
-    lands on its last row drawn whole. Where a find leaves the view as it goes is a case of
-    its own, not this one.
+    lands on its last row drawn whole. Where G leaves the view's top isn't asked: it was seen
+    resting off a row's top, a fault of its own. Where a find leaves the view as it goes is a
+    case of its own, not this one.
     """
     home_network_in_normal(shell)
     whole = shell.showing()["count"]
