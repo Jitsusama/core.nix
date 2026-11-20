@@ -4278,14 +4278,17 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     shell.close_launcher()
 
 
-def none_drawn_cut(shell: Shell, where: str) -> None:
-    """Fail, naming them, where a box cuts a row's words, or the selected row's ground, down.
+def none_drawn_cut(shell: Shell, where: str, *, selection_in_view: bool = True) -> None:
+    """Fail, naming them, where a box cuts a row's words or the selection down, or it's off its row.
 
     Read from where each text's line is drawn and what clips it (Launcher.qml's drawnTexts),
     and the selection's ground from where it's drawn (groundCut), not from the rule's own
-    extents, so a row the rule took for whole and drew cut is caught. Where the view rests is
-    `restsOnARow`'s, from the rows' tops. A row's name reading on is clipped across, never
-    down, so it's no cut.
+    extents, so a row the rule took for whole and drew cut is caught; and the selection against
+    where its row's band is drawn (laidOut's selection), so one wholly in view on the wrong row
+    is caught too. A key keeps the selection in view; the wheel moves the view alone, so it
+    may leave the selected row out of it (`selection_in_view`), when only a drawn one is held
+    to its row. Where the view rests is `restsOnARow`'s, from the rows' tops. A row's name
+    reading on is clipped across, never down, so it's no cut.
     """
     cut = rows_drawn_cut(shell)
     assert cut == [], f"{where}: drawn cut: {cut}"
@@ -4295,6 +4298,12 @@ def none_drawn_cut(shell: Shell, where: str) -> None:
         shown["current"],
         shown["scrolled"],
     )
+    selection = laid_out(shell)["selection"]
+    assert selection is not None or not selection_in_view, f"{where}: the selected row isn't drawn"
+    if selection is not None:
+        assert selection["y"] == selection["row"], (
+            f"{where}: the selection is off its row: {selection}"
+        )
 
 
 def rows_drawn_cut(shell: Shell) -> list[str]:
@@ -4376,7 +4385,7 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
         shown = shell.showing()
         print(f"the wheel by {by} rested at {shown['scrolled']}")
         assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
-        none_drawn_cut(shell, f"the wheel by {by}")
+        none_drawn_cut(shell, f"the wheel by {by}", selection_in_view=False)
     shell.close_launcher()
 
 
