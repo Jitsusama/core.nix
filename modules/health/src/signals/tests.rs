@@ -72,6 +72,9 @@ const LEAVES: i32 = 3;
 /// What a stop that ended health before its run returned says.
 const UNWRITTEN: &str = "a stop ended health before it wrote the day";
 
+/// What a stop that ended health before a follower's end says.
+const LEFT: &str = "a stop left a follower running";
+
 /// The mask a process's status gives for `signal`.
 fn bit(signal: c_int) -> u64 {
     1 << (signal - 1)
@@ -116,18 +119,18 @@ struct Stopped {
 impl Stopped {
     /// The copy started, once it has said its follower.
     fn start() -> Self {
-        Self::starting(None)
+        Self::starting(&[])
     }
 
-    /// The copy started with `asked` set, if any (`HANGS`, `REPLAYS`,
+    /// The copy started with each of `asked` set (`HANGS`, `REPLAYS`,
     /// `FAILS_FIRST`, `ENDS_NEVER`, `RETURNS_AT_ONCE` or `HEARS_HANGUPS`),
     /// once it has said its follower.
-    fn starting(asked: Option<&str>) -> Self {
+    fn starting(asked: &[&str]) -> Self {
         let folder = tempfile::tempdir().expect("a folder");
         let health = Command::new(std::env::current_exe().expect("this test"))
             .args([STOPPED_TEST, "--exact", "--ignored", "--quiet"])
             .env(TOLD_IN, folder.path().join("follower"))
-            .envs(asked.map(|name| (name, "")))
+            .envs(asked.iter().map(|&name| (name, "")))
             .process_group(0)
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(folder.path().join("stderr")).expect("its stderr"))
@@ -401,6 +404,7 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
     assert!(
         took < WRITES_WITHIN
             && !stopped.failed().contains(UNWRITTEN)
+            && !stopped.failed().contains(LEFT)
             && stopped
                 .failed()
                 .contains(&format!("health: {FAILS_ENDING}")),
@@ -456,7 +460,7 @@ fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
     // `ending` fails past `WAITS`, well past the `WRITES_WITHIN` this stop
     // takes, so a stop that waited for good fails. The ender returns
     // `ENDS_LATE` on, so a stop counted from its return ends health late.
-    let mut stopped = Stopped::starting(Some(HANGS));
+    let mut stopped = Stopped::starting(&[HANGS]);
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
@@ -469,9 +473,32 @@ fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
     assert!(
         took >= WRITES_WITHIN
             && took < WRITES_WITHIN + ENDS_LATE
-            && stopped.failed().contains(UNWRITTEN),
-        "a stop to a run that never returns ended health {took:?} on, or didn't say the day \
-         went unwritten: {}",
+            && stopped.failed().contains(UNWRITTEN)
+            && !stopped.failed().contains(LEFT),
+        "a stop to a run that never returns ended health {took:?} on, didn't say the day \
+         went unwritten, or said its ended follower was left: {}",
+        stopped.failed()
+    );
+}
+
+#[test]
+fn a_stop_whose_run_and_followers_never_end_takes_one_bound() {
+    // As a stalled disk may hold both a follower past its kill and the
+    // run's write, so a bound for each wait would end health past the
+    // reboot's own.
+    let mut stopped = Stopped::starting(&[HANGS, ENDS_NEVER]);
+    let since = Instant::now();
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    let took = since.elapsed();
+    assert!(
+        ended.signal() == Some(libc::SIGTERM)
+            && took >= WRITES_WITHIN
+            && took < WRITES_WITHIN + ENDS_LATE
+            && stopped.failed().contains(UNWRITTEN)
+            && stopped.failed().contains(LEFT),
+        "a stop whose run and followers never end ended health ({ended}) {took:?} on, or \
+         didn't say both: {}",
         stopped.failed()
     );
 }
@@ -498,7 +525,7 @@ fn a_follower_that_ends_just_before_health_is_stopped_says_nothing() {
 fn a_replay_that_ends_just_before_health_is_stopped_says_nothing() {
     // As a stop to the whole group may reach the day's replay and end it
     // before health's catch runs, as it may a follower.
-    let mut stopped = Stopped::starting(Some(REPLAYS));
+    let mut stopped = Stopped::starting(&[REPLAYS]);
     // SAFETY: the copy's history, which it waits on only once it ends.
     unsafe { libc::kill(stopped.history(), libc::SIGTERM) };
     thread::sleep(ENDED_BEFORE);
@@ -515,7 +542,7 @@ fn a_replay_that_ends_just_before_health_is_stopped_says_nothing() {
 fn a_stop_says_the_error_a_run_returned_just_before_it() {
     // The run's error is left for `main`, which a stop's end of health
     // never lets run.
-    let mut stopped = Stopped::starting(Some(FAILS_FIRST));
+    let mut stopped = Stopped::starting(&[FAILS_FIRST]);
     stopped.returned();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
@@ -535,7 +562,7 @@ fn a_stop_says_the_error_a_run_returned_just_before_it() {
 fn a_stop_ends_the_followers_before_health_though_its_run_returns_at_once() {
     // As health's run writes and returns on a stop without waiting for its
     // followers' end, which the ender makes late.
-    let mut stopped = Stopped::starting(Some(RETURNS_AT_ONCE));
+    let mut stopped = Stopped::starting(&[RETURNS_AT_ONCE]);
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
@@ -545,7 +572,8 @@ fn a_stop_ends_the_followers_before_health_though_its_run_returns_at_once() {
             && gone(stopped.follower)
             && stopped.wrote()
             && took >= ENDS_LATE
-            && !stopped.failed().contains(UNWRITTEN),
+            && !stopped.failed().contains(UNWRITTEN)
+            && !stopped.failed().contains(LEFT),
         "a stop ended health ({ended}) {took:?} on, before its follower or the day's write: {}",
         stopped.failed()
     );
@@ -575,7 +603,7 @@ fn a_rest_with_no_stop_waits_its_whole_time() {
 fn a_hangup_heard_again_is_the_same_stop() {
     // As a terminal closing sends one hangup from its shell and another
     // from the kernel, so the second mustn't cut off the day's write.
-    let mut stopped = Stopped::starting(Some(HEARS_HANGUPS));
+    let mut stopped = Stopped::starting(&[HEARS_HANGUPS]);
     stopped.send(libc::SIGHUP, false);
     stopped.caught();
     stopped.send(libc::SIGHUP, false);
@@ -591,7 +619,7 @@ fn a_hangup_heard_again_is_the_same_stop() {
 fn a_hangup_after_another_stop_is_the_same_stop() {
     // As a session's scope stopped sends its stop and a hangup just after,
     // or a terminal is closed on a health already interrupted.
-    let mut stopped = Stopped::starting(Some(HEARS_HANGUPS));
+    let mut stopped = Stopped::starting(&[HEARS_HANGUPS]);
     stopped.send(libc::SIGTERM, false);
     stopped.caught();
     stopped.send(libc::SIGHUP, false);
@@ -608,7 +636,7 @@ fn a_stop_whose_followers_never_end_still_ends_health_in_time() {
     // As a follower stuck on a stalled disk outlives its kill, so health's
     // end of it never returns, and the stop's bound must count without it.
     // The run writes all the same, not waiting on its followers.
-    let mut stopped = Stopped::starting(Some(ENDS_NEVER));
+    let mut stopped = Stopped::starting(&[ENDS_NEVER]);
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
@@ -618,7 +646,7 @@ fn a_stop_whose_followers_never_end_still_ends_health_in_time() {
             && took >= WRITES_WITHIN
             && stopped.wrote()
             && !stopped.failed().contains(UNWRITTEN)
-            && stopped.failed().contains("left a follower running"),
+            && stopped.failed().contains(LEFT),
         "a stop whose followers never end ended health ({ended}) {took:?} on, didn't write \
          the day, or didn't say it left one: {}",
         stopped.failed()
@@ -640,6 +668,11 @@ fn a_second_stop_ends_health_at_once_leaving_its_follower() {
             (ended.signal(), gone(stopped.follower)),
             (Some(second), false),
             "a second stop ({second}) waited for the first ({first}) to end health ({ended})"
+        );
+        assert!(
+            stopped.failed().contains("a second stop ended health"),
+            "a second stop ended health without saying so: {}",
+            stopped.failed()
         );
     }
 }

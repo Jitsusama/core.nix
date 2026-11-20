@@ -640,7 +640,8 @@ pub fn follow(into: &Path) -> io::Result<()> {
     // What health ends on once the run returns well, kept out of the run's
     // own error, which a stop says.
     let mut ended = None;
-    // A stop ends the followers first, then health (`signals.rs`).
+    // A stop ends the followers as the run writes the day, then health,
+    // within `WRITES_WITHIN` of the stop (`signals.rs`).
     signals::until_stopped(followers.ender(), || {
         ended = Some(ended_by(
             source.start(&now, &lines, &followers),

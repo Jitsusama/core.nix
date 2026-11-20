@@ -21,7 +21,8 @@
 //! the same stop ended, as a terminal's interrupt ends its whole group,
 //! says nothing of its end, and health's own end waits for the signal's.
 //! A second stop before the first has ended health ends it at once,
-//! leaving any follower not yet ended and the day unwritten, but a hangup
+//! saying so, leaving any follower not yet ended and the day unwritten,
+//! as one who interrupts twice asks; but a hangup
 //! during a stop is the same stop: a terminal closing sends one from its
 //! shell and another from the kernel, and a session's scope stopped sends
 //! one just after its stop. The first stop's `WRITES_WITHIN` bounds it all
@@ -51,6 +52,12 @@ static CAUGHT: AtomicI32 = AtomicI32::new(-1);
 
 /// Whether a stop has been caught.
 static STOPPED: AtomicBool = AtomicBool::new(false);
+
+/// What a second stop says as it ends health, written within its catch,
+/// where nothing that formats is safe, so whoever interrupted twice knows
+/// what it cost.
+const CUT_SHORT: &[u8] =
+    b"health: a second stop ended health at once, not waiting for the day's write\n";
 
 /// How long a follower that ends waits for health to catch a stop before
 /// it says so: a stop to health's whole group, as a service manager's,
@@ -257,7 +264,7 @@ fn catch(signals: &[c_int]) -> io::Result<PipeReader> {
 /// The catch: the stop marked and its signal written for the thread
 /// waiting on it, as little else is safe within a catch; or, for a stop
 /// caught while one is under way, health ended by its signal as the catch
-/// returns, unless it's a hangup, the same stop.
+/// returns, saying so, unless it's a hangup, the same stop.
 extern "C" fn heard(signal: c_int) {
     // SAFETY: errno is this thread's, and kept for the code the catch
     // interrupted, which may be about to read it.
@@ -268,10 +275,16 @@ extern "C" fn heard(signal: c_int) {
             unsafe { *errno() = kept };
             return;
         }
-        // SAFETY: both are safe within a catch; the signal's own action
-        // restored and raised ends the process once the catch returns, as
-        // the signal caught waits until then.
+        // SAFETY: all three are safe within a catch; the signal's own
+        // action restored and raised ends the process once the catch
+        // returns, as the signal caught waits until then. A stderr that
+        // fails only goes unsaid.
         unsafe {
+            libc::write(
+                libc::STDERR_FILENO,
+                CUT_SHORT.as_ptr().cast(),
+                CUT_SHORT.len(),
+            );
             libc::signal(signal, libc::SIG_DFL);
             libc::raise(signal);
         }
