@@ -64,8 +64,9 @@ its checks or with changes asked, newest first. In `--json` that's each
 change's `asks_your_review`, which a refresh sets against the declared
 login and which holds no login, and its `author`. Whose review a change
 asks is as of the last refresh that succeeded, the time the head gives as
-"changes from GitHub": every five minutes on Linux while GitHub answers,
-and only at `repos refresh` on a Mac, which has no timer.
+"changes from GitHub": every five minutes on Linux while GitHub answers.
+A Mac has no GitHub broker to ask, so nothing is refreshed there and no
+review asked of him leads.
 
 A name two repositories share is refused with exit 64 and each one's key, so
 ask again by `owner/name` or key. An unknown name exits 66 and names the
