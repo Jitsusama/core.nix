@@ -1,5 +1,6 @@
-//! What a call's words amount to. A take that's only what a speech model
-//! writes for a click or a breath is no turn; a call of greetings and
+//! What a call's words amount to. A take is what was said in it, without
+//! what a speech model writes of the sound itself, and a lone "No." or
+//! "Okay." is an answer kept like any other; a call of greetings and
 //! little else is too little to sum up, so no model is asked to make
 //! something of it.
 
@@ -16,8 +17,8 @@ pub const TOO_LITTLE: &str = "Too little was said to sum up.";
 const LEAST_WORDS: usize = 6;
 
 /// Words that carry nothing a summary could use: greetings, thanks,
-/// short answers, and what a speech model writes for a click or a breath
-/// (Whisper's "You", "Thank you.").
+/// short answers, and what Whisper wrote for a click or a breath ("You",
+/// "Thank you.").
 const FILLER: [&str; 22] = [
     "bye", "cool", "go", "great", "hello", "hey", "hi", "hmm", "huh", "mm", "no", "oh", "ok",
     "okay", "so", "thank", "thanks", "uh", "um", "wow", "yeah", "you",
@@ -25,8 +26,10 @@ const FILLER: [&str; 22] = [
 
 /// What a take's words say, without what a speech model writes of the
 /// sound itself in brackets ("[static]", "(wind blowing)"); or nothing
-/// when that leaves only filler, which is what one writes for sound that
-/// holds no speech.
+/// when that leaves no word. A take of filler alone is kept: Parakeet,
+/// unlike Whisper, writes nothing for a click or a breath, so a lone
+/// "Yeah." was said, and dropping it cost meetings' transcripts their
+/// short answers.
 pub fn spoken(text: &str) -> Option<String> {
     let mut said = String::new();
     let mut depth = 0_usize;
@@ -39,8 +42,8 @@ pub fn spoken(text: &str) -> Option<String> {
         }
     }
     let said = said.split_whitespace().collect::<Vec<_>>().join(" ");
-    let speech = words(&said).any(|word| !FILLER.contains(&word.as_str()));
-    speech.then_some(said)
+    let any = words(&said).next().is_some();
+    any.then_some(said)
 }
 
 /// Whether too little was said in `transcript` to sum it up.
@@ -86,12 +89,17 @@ mod tests {
          **Others**, 10:54: You\n";
 
     #[test]
-    fn what_whisper_writes_for_a_sound_is_no_turn() {
-        assert_eq!(spoken("You"), None);
-        assert_eq!(spoken("Thank you."), None);
+    fn a_take_of_sounds_alone_is_no_turn() {
         assert_eq!(spoken(" "), None);
         assert_eq!(spoken("[static]"), None);
-        assert_eq!(spoken("(wind blowing) You"), None);
+        assert_eq!(spoken("(wind blowing) [click] ."), None);
+    }
+
+    #[test]
+    fn a_short_answer_of_filler_alone_is_a_turn() {
+        assert_eq!(spoken("No.").as_deref(), Some("No."));
+        assert_eq!(spoken("Okay, yeah.").as_deref(), Some("Okay, yeah."));
+        assert_eq!(spoken("(laughs) Thank you.").as_deref(), Some("Thank you."));
     }
 
     #[test]
