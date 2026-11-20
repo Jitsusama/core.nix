@@ -295,7 +295,7 @@ class Timing:
         self.open: tuple[int, float] | None = None
         # The guest's ticks the builder stole, and its busy ones with them, by turn.
         self.ledger = Ledger(desktop.machine.succeed("head -1 /proc/stat"))
-        # How long a fixed loop took as each turn ended, by turn (keeps_pace.py's Gauge).
+        # How long a fixed loop took each time the load turned, by turn (keeps_pace.py's Gauge).
         self.gauge = Gauge()
         show = "show --property=ControlGroup --value"
         self.groups = [
@@ -321,7 +321,7 @@ class Timing:
         self.ledger.turning()
         # Timed once the turn's ticks are counted, so the loop's own are passed over with the
         # turning's, and after a turn of keys is caught up, so no key waits behind it.
-        self.gauged()
+        self.time_loop()
         self.thaw_or_freeze(on=on)
         # The ticks while the load turned are neither turn's, so they're passed over, and only
         # then is the turn done: one that fails here leaves the ledger between turns.
@@ -342,19 +342,20 @@ class Timing:
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
 
-    def gauged(self) -> None:
-        """Time a fixed loop in the guest, kept with the turn ending.
+    def time_loop(self) -> None:
+        """Time a fixed loop in the guest, kept with the load as it stands.
 
         It runs where the test's own commands do, so under load the guest's weights give it a
         share among the load, and it takes the builder's speed and that share together; frozen,
-        the builder's speed alone. The guest's own clock times it, so the command's round trip
-        doesn't.
+        the builder's speed and whatever the subtest itself runs, such as its storm of windows.
+        The guest's own clock times it, so the command's round trip doesn't, and in the C locale,
+        whose EPOCHREALTIME has the point float() reads.
         """
         loop = (
             f"began=$EPOCHREALTIME; for ((i = 0; i < {LOOPED}; i++)); do :; done; "
             'echo "$began $EPOCHREALTIME"'
         )
-        said = self.desktop.machine.succeed(f"bash -c {shlex.quote(loop)}")
+        said = self.desktop.machine.succeed(f"LC_ALL=C bash -c {shlex.quote(loop)}")
         self.gauge.add(turn=self.loading, took=looped(said))
 
     def count(self, *, kept: bool) -> None:
@@ -371,8 +372,7 @@ class Timing:
         """
         try:
             self.count(kept=True)
-            # The last turn's loop, after its ticks are counted, as every other turn's is.
-            self.gauged()
+            self.last_loop()
         finally:
             print(self.ledger.said())
             print(self.gauge.said())
@@ -380,6 +380,20 @@ class Timing:
             # ledger now, so the thaw counts nothing first, which could fail as the last did.
             if not self.loading or self.ledger.between:
                 self.thaw_or_freeze(on=True)
+
+    def last_loop(self) -> None:
+        """Time the last turn's loop, after its ticks are counted, as every other turn's is.
+
+        A load left between turns has no turn to keep it with, so it gets none. The loop is
+        judged by nothing, so one that fails is said rather than raised, and can't take the
+        place of a failure the subtest met first.
+        """
+        if self.ledger.between:
+            return
+        try:
+            self.time_loop()
+        except Exception as failed:  # noqa: BLE001 # Any failure of the loop's is only said.
+            print(f"the last fixed loop couldn't be timed: {failed!r}")
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""

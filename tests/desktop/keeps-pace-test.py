@@ -176,7 +176,10 @@ def test_a_loops_time_is_read_from_the_guests_two_stamps() -> None:
 
 
 def test_the_gauge_says_each_turns_loops_and_their_middles() -> None:
-    """What a subtest says names each loop by its turn, and the middle one of each kind."""
+    """What a subtest says keeps each kind's loops in the order they ran, and the middle one.
+
+    In order, so a slow loop can be matched to the turn of keys it ended.
+    """
     gauge = Gauge()
     for took in (300.4, 250.0, 279.6):
         gauge.add(turn=True, took=took)
@@ -184,8 +187,8 @@ def test_the_gauge_says_each_turns_loops_and_their_middles() -> None:
         gauge.add(turn=False, took=took)
     said = gauge.said()
     assert said == (
-        f"a fixed loop of {LOOPED} turns took a middle 280 ms under load against 80 ms frozen,"
-        " each under load [250, 280, 300] and frozen [80, 90]"
+        f"a fixed loop of {LOOPED} rounds took a middle 280 ms under load against 80 ms frozen,"
+        " each in the order run under load [300, 250, 280] and frozen [90, 80]"
     ), f"the gauge said {said!r}"
 
 
@@ -195,8 +198,8 @@ def test_the_gauge_says_none_for_a_turn_it_never_timed() -> None:
     gauge.add(turn=True, took=300.0)
     said = gauge.said()
     assert said == (
-        f"a fixed loop of {LOOPED} turns took a middle 300 ms under load against none frozen,"
-        " each under load [300] and frozen []"
+        f"a fixed loop of {LOOPED} rounds took a middle 300 ms under load against none frozen,"
+        " each in the order run under load [300] and frozen []"
     ), f"the gauge said {said!r}"
 
 

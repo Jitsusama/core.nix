@@ -27,8 +27,10 @@ stolen, so the guest counts that time as its own and steal can't show it. On the
 20 November the frozen key took 15 to 31 ms, and each ms more frozen gave about 7 more under
 load, where the bar allows 2: 9ca37a94 failed keys at 122 ms against 30 on 20 November and
 passed its retry at 31 against 16, its launcher the same. So each subtest also times a fixed
-loop in the guest at the end of each turn, said beside the ticks and judged by nothing yet, to
-say how fast the builder ran the guest in each.
+loop in the guest each time the load turns and as it finishes, said beside the ticks and judged
+by nothing yet, to say how fast the builder ran the guest in each. On a builder on 20 November
+it took 96 to 114 ms under load against 96 to 99 frozen in most turns, so the load barely
+slows it and it reads the builder's own speed.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ from __future__ import annotations
 PROCESSORS = 4
 # PF_NO_SETAFFINITY, the flag on a thread whose processors the kernel lets no one set.
 UNHOLDABLE = 0x04000000
-# The turns of the bash loop timed at the end of each turn: about 200 ms of a busy laptop's on 20
+# The rounds of the bash loop timed as each turn ends: about 200 ms of a busy laptop's on 20
 # November, short beside a turn of keys.
 LOOPED = 50_000
 
@@ -103,7 +105,7 @@ def holdable(stat: str) -> bool:
 
 
 class Gauge:
-    """The fixed loop's times in ms, one a turn, under load (True) and frozen (False)."""
+    """The fixed loop's times in ms, under load (True) and frozen (False), in the order run."""
 
     def __init__(self) -> None:
         """Start with no loop timed."""
@@ -114,19 +116,23 @@ class Gauge:
         self.times[turn].append(took)
 
     def said(self) -> str:
-        """Say the middle loop of each kind of turn, the lower of two, and each loop's time."""
+        """Say the middle loop of each kind of turn, the lower of two, and each loop's time.
+
+        Each kind's loops keep the order they ran in, so a slow one can be matched to its turn.
+        """
 
         def middle(times: list[float]) -> str:
             ranked = sorted(times)
             return f"{ranked[(len(ranked) - 1) // 2]:.0f} ms" if ranked else "none"
 
         def each(times: list[float]) -> list[int]:
-            return [round(took) for took in sorted(times)]
+            return [round(took) for took in times]
 
         under, frozen = self.times[True], self.times[False]
         return (
-            f"a fixed loop of {LOOPED} turns took a middle {middle(under)} under load against"
-            f" {middle(frozen)} frozen, each under load {each(under)} and frozen {each(frozen)}"
+            f"a fixed loop of {LOOPED} rounds took a middle {middle(under)} under load against"
+            f" {middle(frozen)} frozen, each in the order run under load {each(under)} and"
+            f" frozen {each(frozen)}"
         )
 
 
