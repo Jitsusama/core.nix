@@ -44,6 +44,9 @@ CARD_LEAST = 0.02
 MARGIN_HIGH = 48
 # A part of a picture: its left, top, right and bottom.
 type Box = tuple[int, int, int, int]
+# The loudest a recording's sound may peak and still count as silence, in dB: the
+# microphone's test tone peaks near 0, and silence at minus infinity.
+SILENT = -60.0
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -138,6 +141,17 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
         taken = kept(desktop, frame)
         box = the_card_in(taken, seen, bare)
         the_mark_in(taken, marked.crop(box), seen.crop(box))
+    # It carries the sound, the microphone's tone mixed with what the speakers play, which
+    # no recording did (Joel, 2026-11-20: "why does a screen recording not record audio?").
+    heard = machine.succeed(
+        f"{ffmpeg} -v info -i {video} -map 0:a:0 -af volumedetect -f null - 2>&1"
+        " | grep -o 'max_volume: [-0-9.]*'"
+    )
+    loudest = float(heard.split()[-1])
+    assert loudest > SILENT, f"the recording's sound peaks at {loudest} dB, silence"
+    # The mix it was made from goes with it, its sink and both loops.
+    mixes = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
+    assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
 
 
 def the_mark_drawn(desktop: Desktop, unmarked: Image.Image) -> Image.Image:
