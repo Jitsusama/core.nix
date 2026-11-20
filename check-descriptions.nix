@@ -4987,6 +4987,11 @@
     go once it's a texture, rather than keeping them beside it, and is read again from its
     file for a window it moves to
   '';
+  still-windows-draw-nothing-as-animations-start-on-niri = ''
+    a window the shell shows standing still draws no frame while another window's animation
+    starts ten times, through Qt's threaded render loop with its timer advancing animations,
+    and the moving window draws
+  '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,
     even one come up while the new shell loaded or opened by a chord heard just after it was
