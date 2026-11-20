@@ -14,6 +14,10 @@ use std::path::Path;
 
 use crate::rules::matches;
 
+mod given;
+
+use given::{called, given_by};
+
 /// The VM tests that own one of `files`, read from the checkout at `root`,
 /// or nothing when its `checks.nix` or `flake.nix` can't be read.
 pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
@@ -89,7 +93,7 @@ fn gathered(checks: &str) -> Vec<String> {
 /// `let`: until 20 November four tests written so named no file at all.
 pub fn vm_tests(checks: &str) -> Vec<VmTest> {
     let mut found = Vec::new();
-    let mut lines = checks.lines().map(str::trim);
+    let mut lines = checks.lines().map(str::trim).peekable();
     while let Some(line) = lines.next() {
         let Some((name, rest)) = line.split_once(" =") else {
             continue;
@@ -99,7 +103,7 @@ pub fn vm_tests(checks: &str) -> Vec<VmTest> {
         }
         let mut rest = rest.trim();
         if rest.is_empty() {
-            let Some(call) = lines.by_ref().find(|line| line.starts_with("import ")) else {
+            let Some(call) = called(&mut lines) else {
                 continue;
             };
             rest = call;
@@ -123,53 +127,6 @@ pub fn vm_tests(checks: &str) -> Vec<VmTest> {
         });
     }
     found
-}
-
-/// The strings a call, opening on `call` and running on through `lines`,
-/// gives by name, read only at its own depth: a nested set's `area` is not
-/// the call's. A call opening a nested set on its one line gives nothing,
-/// so a value built from it owns each file it could name.
-fn given_by<'a>(call: &str, lines: &mut impl Iterator<Item = &'a str>) -> BTreeMap<String, String> {
-    let count = |text: &str, what: &str| isize::try_from(text.matches(what).count()).unwrap_or(0);
-    // A `${` opens a value, not a set, and its own `}` closes it.
-    let opens = |text: &str| count(text, "{") - count(text, "${");
-    let depth = |text: &str| count(text, "{") - count(text, "}");
-    let mut given = BTreeMap::new();
-    if opens(call) <= 1 {
-        strings_given(call, &mut given);
-    }
-    let mut at = depth(call);
-    while at > 0 {
-        let Some(line) = lines.next() else { break };
-        if at == 1 {
-            strings_given(line, &mut given);
-        }
-        at += depth(line);
-    }
-    given
-}
-
-/// Into `given`, each `name = "value";` in `text` whose value is a plain
-/// string, built from no other value.
-fn strings_given(text: &str, given: &mut BTreeMap<String, String>) {
-    let is_name = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
-    for part in text.split(';') {
-        let Some((name, value)) = part.split_once('=') else {
-            continue;
-        };
-        let name = name.rsplit('{').next().unwrap_or_default().trim();
-        let value = value.trim();
-        let plain = value
-            .strip_prefix('"')
-            .and_then(|value| value.strip_suffix('"'))
-            .filter(|value| !value.contains(['"', '$', '\\']));
-        if let Some(value) = plain
-            && !name.is_empty()
-            && name.chars().all(is_name)
-        {
-            given.insert(name.to_owned(), value.to_owned());
-        }
-    }
 }
 
 /// The folder each module, role or hardware lives in, by its module
@@ -240,19 +197,40 @@ pub fn owned(
     paths
 }
 
-/// Whether `text` binds `name` again, `name = ...;` or a function's
-/// `name:`, so a `${name}` in it may not be the value the import gave.
+/// Whether `text` may bind `name` again, so a `${name}` in it may not be
+/// the value the import gave: `name = ...;` anywhere, a function's
+/// `name:`, an `inherit (from)` naming it, or a second argument set naming
+/// it beyond the file's own. A plain `inherit name;` passes the same value
+/// on. It errs towards yes, which costs only the narrowing.
 fn rebinds(text: &str, name: &str) -> bool {
     let is_name = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
-    let bound = text.lines().map(str::trim).any(|line| {
-        line.strip_prefix(name)
-            .and_then(|rest| rest.trim_start().strip_prefix('='))
-            .is_some_and(|rest| !rest.starts_with('='))
-    });
-    let argument = text
-        .match_indices(&format!("{name}:"))
-        .any(|(at, _)| !text[..at].ends_with(is_name));
-    bound || argument
+    let mut formals = 0;
+    for (at, _) in text.match_indices(name) {
+        let before = &text[..at];
+        let after = &text[at + name.len()..];
+        if before.ends_with(is_name) || before.ends_with('.') || after.starts_with(is_name) {
+            continue;
+        }
+        let lead = before.trim_end();
+        if lead.ends_with("${") {
+            continue;
+        }
+        let next = after.trim_start();
+        let bound = next.starts_with('=') && !next.starts_with("==");
+        let statement = before.rsplit([';', '{']).next().unwrap_or_default();
+        let inherited = statement
+            .rsplit_once("inherit")
+            .is_some_and(|(_, from)| from.trim_start().starts_with('('));
+        if bound || next.starts_with(':') || inherited {
+            return true;
+        }
+        if (lead.ends_with('{') || lead.ends_with(','))
+            && (next.starts_with(',') || next.starts_with('?') || next.starts_with('}'))
+        {
+            formals += 1;
+        }
+    }
+    formals > 1
 }
 
 /// The VM tests, of `tests` with what each owns, that own one of `files`.

@@ -187,6 +187,46 @@ fn a_nested_set_in_the_call_gives_the_call_nothing() {
         vec![Some("captures"), None],
         "a nested set's area is not the call's, and one on a single line gives none"
     );
+    let listed = vm_tests(
+        "vm-c = import ./c.nix {\n  screens = [\n    { area = \"left\"; }\n  ];\n  \
+         both = { a = 1; }; area = \"right\";\n};",
+    );
+    assert_eq!(
+        listed.first().map(|test| test.given.get("area")),
+        Some(None),
+        "a set inside a list, or beside one on its line, is not the call's own"
+    );
+}
+
+#[test]
+fn a_test_bound_without_an_import_leaves_the_next_test_its_own() {
+    let checks = "
+      vm-built =
+        pkgs.testers.runNixOSTest {
+          name = \"built\";
+        };
+      vm-next =
+        import ./next.nix { };
+      vm-after = import ./after.nix { };
+      vm-bare =
+        somethingElse;
+      other = import ./not-a-test.nix { };
+      vm-let =
+        let
+          folder = \"x\";
+          made = import ./made.nix { };
+        in
+        import ./let.nix { };
+    ";
+    assert_eq!(
+        files(&vm_tests(checks)),
+        vec![
+            ("vm-next", "next.nix"),
+            ("vm-after", "after.nix"),
+            ("vm-let", "let.nix"),
+        ],
+        "a search past a test's own value took the next one's import and dropped it"
+    );
 }
 
 #[test]
@@ -210,6 +250,26 @@ fn a_value_the_file_binds_again_owns_each_file_it_could_name() {
         owns("let\n  area = \"looks\";\nin ./d-${area}.py"),
         words("tests/d-*.py tests/d.nix"),
         "a let's own area is not the one given"
+    );
+    for text in [
+        "{ area, ... }: let inherit (other) area; in ./d-${area}.py",
+        "{ area, ... }: let inherit (other)\n  area\n  ;\nin ./d-${area}.py",
+        "{ area, ... }: map ({ area, ... }: ./d-${area}.py) areas",
+        "{ area, ... }: let area = \"looks\"; in ./d-${area}.py",
+    ] {
+        assert_eq!(
+            owns(text),
+            words("tests/d-*.py tests/d.nix"),
+            "{text} binds its area again"
+        );
+    }
+    assert_eq!(
+        owns(
+            "{\n  area,\n}: {\n  again = import ./d.nix {\n    inherit\n      area\n      \
+             ;\n  };\n  t = ./d-${area}.py;\n}"
+        ),
+        words("tests/d-captures.py tests/d.nix"),
+        "a plain inherit passes the same area on"
     );
 }
 
