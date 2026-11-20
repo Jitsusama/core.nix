@@ -37,13 +37,15 @@ WINDOW = 4_000_000
 # What the app sends before its share counts, so its slow start, while the
 # jobs still hold the connection, isn't counted against it.
 APP_STARTS = 500_000
-# The app's least share with the shaper: agents keep a quarter of the rate
+# The app's least share with the shaper. Agents keep a quarter of the rate
 # while any wait, and Joel's lane, which the app's upload rides, grows each
-# second from what it carried, so the share is read once that lane is past
-# half. Half is then well clear of what a busy host's gaps take from it,
-# and of the one flow's share of 33 the router would give it were the
-# router's queue still hiding there. Without the shaper the router gives
-# it that share, and a fifth is well clear of it.
+# second from what it carried, settling near two thirds of the rate here, so
+# the share is read once that lane is past half. Were the router's queue
+# still hiding there, the app would carry one flow's share of 33, its lane
+# would never pass half, and the wait for it fails first; past it, the app
+# reads under half only if the lanes don't hold what the shaper says. Without
+# the shaper the router gives it that one flow's share, and a fifth is well
+# clear of it.
 SHAPED_SHARE = 0.5
 UNSHAPED_SHARE = 0.2
 # How long the client may take to boot to its first queues, and the shaper
@@ -63,15 +65,18 @@ class Rig:
     client: BaseMachine
     server: BaseMachine
 
+    def link(self) -> Json:
+        """Give what the shaper says of eth1, or nothing before it says."""
+        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
+        return next((link for link in status if link["name"] == "eth1"), {})
+
     def up(self) -> int:
         """Give the rate the shaper sends at on eth1, in kbit/s, or 0 before it says."""
-        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
-        return next((int(link.get("up") or 0) for link in status if link["name"] == "eth1"), 0)
+        return int(self.link().get("up") or 0)
 
-    def joels(self) -> float:
+    def joel_share(self) -> float:
         """Give Joel's lane's share of the rate the shaper sends at on eth1, or 0 before it says."""
-        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
-        link = next((link for link in status if link["name"] == "eth1"), {})
+        link = self.link()
         up = int(link.get("up") or 0)
         joel = int((link.get("lanes") or {}).get("joel") or 0)
         return joel / up if up else 0.0
@@ -129,24 +134,34 @@ class Rig:
 
         The app's one upload runs in `slice_name`, an app's own unless a test says otherwise.
         While `shaped`, the share is read once the shaper gives Joel's lane, which the upload
-        rides, more than SHAPED_SHARE of its rate: on 19 November one read while the lane
-        was still growing gave 0.47, with the lane at 3,390 of 7,897 kbit/s.
+        rides, more than SHAPED_SHARE of its rate: on 19 November one read soon after the
+        upload began gave 0.47, where reads once the lane had grown gave 0.71 and over.
+        The upload is stopped however this ends, so a failure leaves the next test the line.
         """
+
+        def grown(last_try: bool) -> bool:
+            share = self.joel_share()
+            if last_try and share <= SHAPED_SHARE:
+                print(f"Joel's lane never passed {SHAPED_SHARE} of the rate:\n{self.trace()}")
+            return share > SHAPED_SHARE
+
         self.uploads("app-upload", slice_name, 1, APP_PORT)
-        started = self.taken().get(APP_PORT, 0)
-        retry(
-            lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
-            timeout=SENDING,
-        )
-        if shaped:
-            retry(lambda _last_try: self.joels() > SHAPED_SHARE, timeout=SENDING)
-        before = self.taken()
-        retry(
-            lambda _last_try: sum(self.taken().values()) - sum(before.values()) >= WINDOW,
-            timeout=SENDING,
-        )
-        after = self.taken()
-        self.client.succeed("systemctl -M alice@ --user stop app-upload.service")
+        try:
+            started = self.taken().get(APP_PORT, 0)
+            retry(
+                lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
+                timeout=SENDING,
+            )
+            if shaped:
+                retry(grown, timeout=SENDING)
+            before = self.taken()
+            retry(
+                lambda _last_try: sum(self.taken().values()) - sum(before.values()) >= WINDOW,
+                timeout=SENDING,
+            )
+            after = self.taken()
+        finally:
+            self.client.execute("systemctl -M alice@ --user stop app-upload.service")
         moved = {port: after[port] - before.get(port, 0) for port in after}
         print(f"what the server took while the app uploaded: {moved}")
         return moved.get(APP_PORT, 0) / sum(moved.values())
