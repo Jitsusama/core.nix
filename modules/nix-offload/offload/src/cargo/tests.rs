@@ -306,10 +306,13 @@ fn warmed(shell: &str, home: &Path, script: &str, vars: &[(&str, &str)]) -> Comm
     warmed_for("k", shell, home, script, vars)
 }
 
-/// [`warmed`] for the key `key`.
+/// [`warmed`] for the key `key`. It runs in `home` unless a test says
+/// where: run on a builder, the suite's own folder is a copy, which the
+/// script would take into the test's target, leaving the suite nowhere.
 fn warmed_for(key: &str, shell: &str, home: &Path, script: &str, vars: &[(&str, &str)]) -> Command {
     let mut warm = Command::new(shell);
     warm.args(["-c", WARM, "nix-offload-warm", key, "sh", "-c", script])
+        .current_dir(home)
         .env("HOME", home)
         .env_remove("CARGO_TARGET_DIR")
         .env_remove("CARGO_BUILD_BUILD_DIR")
@@ -424,6 +427,9 @@ fn a_run_in_no_copy_stays_where_it_is() {
         let home = tempfile::tempdir().unwrap();
         let here = home.path().join("here");
         fs::create_dir_all(&here).unwrap();
+        // The shell says the folder as the system finds it, and a temporary
+        // folder may be reached through a link.
+        let here = here.canonicalize().unwrap();
         let mut warm = warmed(shell, home.path(), "pwd", &[]);
         warm.current_dir(&here);
         let (ran, _) = said(warm);
