@@ -21,6 +21,18 @@ pub(super) fn home() -> &'static Path {
     Path::new(HOME)
 }
 
+/// The collection as a machine declaring no login draws it, as most of
+/// these tests ask of it; those of what waits on someone name theirs.
+fn repositories(
+    record: &Record,
+    clock: &Clock,
+    home: Option<&Path>,
+    pen: &Pen,
+    room: Room,
+) -> String {
+    super::repositories(record, clock, home, None, pen, room)
+}
+
 pub(super) fn clock() -> Clock {
     Clock {
         now: NOW,
@@ -434,6 +446,154 @@ fn no_checkout_under_the_roots_says_so() {
         Room::Cells(80),
     );
     assert!(text.contains("no checkout is there"), "{text}");
+}
+
+/// The refreshed record with changes waiting on `joel`: one asking his
+/// review, newer than another that does, his own failing, his own with
+/// changes asked, and someone else's failing, which waits on him not at
+/// all.
+fn waiting_on_joel() -> Record {
+    let mut record = refreshed();
+    let changes = &mut record.repositories[0].changes;
+    let mut asked = change(
+        4795,
+        "someone/asks",
+        ChecksState::Passing,
+        Review::Waiting,
+        5,
+    );
+    asked.review_asked_of = vec!["Joel".to_owned(), "someone".to_owned()];
+    let mut asked_before = change(
+        4794,
+        "someone/asked-before",
+        ChecksState::Pending,
+        Review::Waiting,
+        86_400,
+    );
+    asked_before.review_asked_of = vec!["joel".to_owned()];
+    let mut failing = change(
+        4793,
+        "joel/fails",
+        ChecksState::Failing,
+        Review::ChangesAsked,
+        60,
+    );
+    failing.author = Some("JOEL".to_owned());
+    let mut asked_to_change = change(
+        4792,
+        "joel/changes",
+        ChecksState::Passing,
+        Review::ChangesAsked,
+        30,
+    );
+    asked_to_change.author = Some("joel".to_owned());
+    changes.splice(0..0, [asked, failing, asked_to_change, asked_before]);
+    record
+}
+
+/// The rows of the table the collection leads with, each by its change.
+fn for_you(text: &str) -> Vec<&str> {
+    text.lines()
+        .skip_while(|line| !line.starts_with("FOR YOU"))
+        .skip(1)
+        .take_while(|line| !line.is_empty())
+        .filter_map(|line| line.split_whitespace().find(|word| word.contains('#')))
+        .collect()
+}
+
+#[test]
+fn what_waits_on_the_login_leads_the_collection() {
+    let record = waiting_on_joel();
+    for room in ROOMS {
+        let text = super::repositories(
+            &record,
+            &clock(),
+            Some(home()),
+            Some("joel"),
+            &Pen::plain(),
+            room,
+        );
+        assert_eq!(layout::overrun(&text, room), None, "{text}");
+        assert_eq!(
+            for_you(&text),
+            [
+                "core.nix#4795",
+                "core.nix#4794",
+                "core.nix#4792",
+                "core.nix#4793"
+            ],
+            "reviews asked of him, then his own, each newest first: {text}"
+        );
+        let leads = text.find("FOR YOU").expect("it leads");
+        assert!(
+            leads < text.find("REPOSITORY").expect("the collection follows"),
+            "{text}"
+        );
+        let row = |change: &str| {
+            text.lines()
+                .find(|line| line.contains(change))
+                .unwrap_or_else(|| panic!("{change} has no row: {text}"))
+        };
+        assert!(row("core.nix#4795 ").starts_with("your review "), "{text}");
+        assert!(row("core.nix#4792 ").starts_with("changes asked "), "{text}");
+        assert!(
+            row("core.nix#4793 ").starts_with("failing · changes asked "),
+            "{text}"
+        );
+    }
+    let text = super::repositories(
+        &record,
+        &clock(),
+        Some(home()),
+        Some("joel"),
+        &Pen::plain(),
+        Room::Unbounded,
+    );
+    assert!(
+        text.contains("Change number 4795, which says what it does at some length"),
+        "into a pipe a title is whole: {text}"
+    );
+    assert!(
+        !for_you(&text).contains(&"core.nix#4791"),
+        "someone else's failing change waits on nobody here: {text}"
+    );
+}
+
+#[test]
+fn nothing_leads_where_nothing_waits_or_no_login_is_declared() {
+    for (record, login) in [
+        (waiting_on_joel(), None),
+        (waiting_on_joel(), Some("someone-else")),
+        (refreshed(), Some("joel")),
+    ] {
+        let text = super::repositories(
+            &record,
+            &clock(),
+            Some(home()),
+            login,
+            &Pen::plain(),
+            Room::Cells(80),
+        );
+        assert!(!text.contains("FOR YOU"), "login {login:?}: {text}");
+    }
+}
+
+#[test]
+fn the_collection_reads_whole_at_forty() {
+    let mut record = waiting_on_joel();
+    record.roots.push(format!("{HOME}/world/trees"));
+    let room = Room::Cells(40);
+    let text = super::repositories(
+        &record,
+        &clock(),
+        Some(home()),
+        Some("joel"),
+        &Pen::plain(),
+        room,
+    );
+    assert_eq!(layout::overrun(&text, room), None, "{text}");
+    assert_eq!(for_you(&text).len(), 4, "{text}");
+    assert!(text.contains("under ~/src and ~/world/trees"), "{text}");
 }
 
 #[test]

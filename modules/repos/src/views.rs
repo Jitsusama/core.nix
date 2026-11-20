@@ -287,6 +287,7 @@ pub fn repositories(
     record: &Record,
     clock: &Clock,
     home: Option<&Path>,
+    _login: Option<&str>,
     pen: &Pen,
     room: Room,
 ) -> String {

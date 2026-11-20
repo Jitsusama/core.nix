@@ -82,7 +82,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         [] => {
             let record = record(home, now)?;
             show(context, &views::repositories_json(&record), || {
-                views::repositories(&record, &clock, home, &context.out, context.room)
+                views::repositories(&record, &clock, home, None, &context.out, context.room)
             })
         }
         [name] => {
