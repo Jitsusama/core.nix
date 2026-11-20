@@ -180,6 +180,11 @@ let
             # below. It refuses the word of a host started otherwise, and
             # logs why.
             "--disable-sigusr1"
+          ]
+          # After the flag above, which must come first; asyncContextFrame's
+          # description says why a realm sets it.
+          ++ lib.optional host.asyncContextFrame "--experimental-async-context-frame"
+          ++ [
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
             "--max-old-space-size=${toString host.heapMb}"
@@ -402,6 +407,23 @@ in
               aborts alone, rather than slowing every agent beside it.
             '';
           };
+          asyncContextFrame = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Whether the realm's hosts keep each conversation's async context
+              in V8's own frame rather than in promise hooks, which run on
+              every await of every conversation a host holds: on node 22.23 a
+              million awaits under one AsyncLocalStorage took 420 to 740 ms
+              through the hooks and 170 to 200 ms through the frame. It passes
+              --experimental-async-context-frame, which only node 22 and 23
+              know: node 24 and later keep the frame by default and refuse the
+              flag as a bad option. A host on one exits as it starts, is
+              started twice more in ten minutes, then left down and said to be.
+              Evaluation can't see which node a realm names, so set it only
+              for a node 22 or 23, and turn it off with any move to 24.
+            '';
+          };
           environment = lib.mkOption {
             type = lib.types.attrsOf lib.types.str;
             default = { };
@@ -500,7 +522,7 @@ in
         assertion = given == [ ];
         message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make the host's node run code nobody gave it. NODE_OPTIONS does so through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
           if one then "Drop it." else "Drop each one."
-        } A host's node takes no option from a realm but its heap, set with heapMb. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
+        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
 
