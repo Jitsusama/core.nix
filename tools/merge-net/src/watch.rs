@@ -248,7 +248,8 @@ pub trait World: Sync {
     /// it runs.
     fn drv(&self, commit: &str, check: &str) -> Result<String, String>;
     /// Build a check at a commit, its log written to `log`, and give its
-    /// exit, none when it was stopped.
+    /// exit, none when it was stopped. A Mac's comparison gives `UNSENT`
+    /// when no Mac took it and `UNCOMPARED` when it compared nothing.
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32>;
     /// The tests quarantined whole at `head`.
     fn quarantined(&self, head: &str) -> Vec<String>;
@@ -420,10 +421,7 @@ fn run_once(
             return None;
         }
         if code == Some(UNCOMPARED) {
-            state.say(&format!(
-                "{check} at {} compared nothing: it's tried again next round",
-                short(commit)
-            ));
+            state.say(&format!("{check} at {} compared nothing", short(commit)));
             return None;
         }
         if code != Some(UNSENT) {
@@ -3026,6 +3024,37 @@ mod tests {
     }
 
     #[test]
+    fn a_mac_comparison_that_compared_nothing_for_a_day_is_told_and_let_go() {
+        let state = state("mac-uncompared-day");
+        let check = crate::macs::check("s");
+        state.set_heads("h", "h").unwrap();
+        state
+            .keep_settling(
+                &check,
+                &json!({"kind": "mac", "merge": "m1", "test": check, "since": 0, "after": 0}),
+            )
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNCOMPARED]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            findings(&state)
+                .iter()
+                .any(|finding| finding["kind"] == "mac-unrun" && finding["commit"] == "m1"),
+            "a Mac's comparison that compared nothing for a day wasn't told"
+        );
+        assert!(
+            state.settling().is_empty(),
+            "a Mac's comparison told as unrun was still kept to try again"
+        );
+    }
+
+    #[test]
     fn a_mac_comparison_that_stalled_twice_is_told_to_its_owner() {
         // A comparison a builder took that stalled twice compared nothing,
         // and was let go as if it had passed, unchecked and unsaid.
@@ -3042,7 +3071,7 @@ mod tests {
         round(&world, &state, "s").unwrap();
         let told: Vec<Value> = findings(&state)
             .into_iter()
-            .filter(|finding| finding["kind"] == "stalled")
+            .filter(|finding| finding["kind"] == "mac-unrun" && finding["stalled"] == true)
             .collect();
         assert!(
             told.iter()
@@ -3065,7 +3094,7 @@ mod tests {
     }
 
     #[test]
-    fn a_mac_comparison_that_compared_nothing_waits_for_the_next_round() {
+    fn a_mac_comparison_that_compared_nothing_rests_before_it_is_tried_again() {
         // On 17 November a hold on the Mac's load stopped 135 comparisons
         // before a builder took them, and 65 merges were let go unchecked.
         let state = state("mac-uncompared");
@@ -3090,9 +3119,20 @@ mod tests {
         );
         let kept: Vec<Value> = state.settling();
         assert!(
-            kept.iter()
-                .any(|job| job["kind"] == "mac" && job["merge"] == "m1"),
-            "a comparison that compared nothing wasn't kept for the next round: {kept:?}"
+            kept.iter().any(|job| job["kind"] == "mac"
+                && job["merge"] == "m1"
+                && job["after"].as_u64() >= Some(now() + 9 * 60)),
+            "a comparison that compared nothing wasn't kept to rest ten minutes: {kept:?}"
+        );
+        round(&world, &state, "s").unwrap();
+        assert_eq!(
+            world
+                .built()
+                .iter()
+                .filter(|(commit, built)| commit == "m1" && *built == check)
+                .count(),
+            1,
+            "a comparison resting was taken up again by the next round"
         );
         assert!(
             findings(&state).is_empty(),

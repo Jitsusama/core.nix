@@ -1,4 +1,4 @@
-//! Telling a merge's owner that no Mac took its Mac checks in a day. The
+//! Telling a merge's owner that no Mac compared its Mac checks. The
 //! net compares a Mac's checks at each merge whose gate passed without a
 //! Mac, and when none answers for a day it keeps a `mac-unrun` finding
 //! naming the merge's PR and lets it go (#4925). Nothing read that
@@ -17,7 +17,8 @@ const REMEMBER: i64 = 24 * 3600;
 /// before the merge's first parent it compares against.
 const CHECK: &str = "a-macs-checks-since-";
 
-/// A merge whose Mac checks no Mac took in a day.
+/// A merge whose Mac checks no Mac compared: none took them in a day,
+/// or one that took them stalled twice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unrun {
     /// The PR the merge's subject names, when it names one.
@@ -68,7 +69,7 @@ pub fn due(unrun: &[Unrun], landings: &str, told: &mut Told, now: i64) -> Vec<Te
 fn said_to(merge: &Unrun, named: bool) -> String {
     let short = merge.commit.get(..12).unwrap_or(&merge.commit);
     let what = format!(
-        "no Mac took its Mac checks at {short} in a day, so the net let them go unchecked. \
+        "no Mac compared its Mac checks at {short}, so the net let them go unchecked. \
          Build them on a Mac, in a tree at {}: nix-offload there --changed --build --no-vm \
          --base {} --system aarch64-darwin, and fix forward if any fail.",
         merge.commit, merge.base
@@ -168,7 +169,7 @@ mod tests {
         );
         assert!(
             tells[0].text.contains("#4925")
-                && tells[0].text.contains("fb4676a1c0ff ")
+                && tells[0].text.contains("at fb4676a1c0ff,")
                 && tells[0].text.contains(
                     "nix-offload there --changed --build --no-vm --base e279db1b --system \
                      aarch64-darwin"

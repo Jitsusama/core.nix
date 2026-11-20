@@ -639,12 +639,23 @@ impl Real {
     ) -> Option<i32> {
         // One that couldn't be started compared nothing, and says nothing
         // of the merge, so it waits for the next round rather than being
-        // read as a stall told to the merge's owner.
-        let Ok(apart) = Comparing::at(self, commit) else {
-            return Some(UNCOMPARED);
+        // read as a stall told to the merge's owner. Why is said in the
+        // net's journal, since a cause that lasts, as a full disk, is the
+        // net's to mend and not the merge's.
+        let unstarted = |why: String| {
+            eprintln!(
+                "merge-net: a Mac's comparison at {} couldn't start: {why}",
+                commit.get(..12).unwrap_or(commit)
+            );
+            Some(UNCOMPARED)
         };
-        let Ok(output) = file(log) else {
-            return Some(UNCOMPARED);
+        let apart = match Comparing::at(self, commit) {
+            Ok(apart) => apart,
+            Err(why) => return unstarted(why),
+        };
+        let output = match file(log) {
+            Ok(output) => output,
+            Err(why) => return unstarted(format!("{}: {why}", log.display())),
         };
         let mut clock = Clock::new(log, Instant::now());
         let child = output.try_clone().and_then(|out| {
@@ -656,12 +667,19 @@ impl Real {
                 .stderr(output)
                 .spawn()
         });
-        let Ok(child) = child else {
-            return Some(UNCOMPARED);
+        let child = match child {
+            Ok(child) => child,
+            Err(why) => return unstarted(format!("nix-offload: {why}")),
         };
         let code = ended(child, &mut clock, commit, log, dropped);
-        mac_ending(code, clock.ours(log).as_deref())
+        mac_ended(code, &clock, log)
     }
+}
+
+/// How a Mac's comparison that ended with `code` is read, from its own
+/// part of `log`, which the runs before it on the same merge share.
+fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
+    mac_ending(code, clock.ours(log).as_deref())
 }
 
 /// Whether a run's part of its log says a builder took it.
@@ -709,10 +727,15 @@ const NETWORK_ERRORS: [(&str, &str); 6] = [
     ("Build failed due to failed dependency", ""),
 ];
 
+/// What changed-checks says after any build that failed, a cache's too,
+/// when it builds a Mac's checks itself: what failed is in the errors
+/// above it, so it says nothing more of the change.
+const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
+
 /// Whether a failed run's log says it failed on the network alone: some
 /// error names a host that couldn't be resolved, every error is one
 /// `NETWORK_ERRORS` names, every reason is that dependencies failed, and
-/// no check is said to have failed. An evaluation error, a builder that
+/// no other line says why, as one that a check no longer evaluates. An evaluation error, a builder that
 /// failed (which a fetch failing on the network prints too, so that stays
 /// a failure) or a check that failed beside a lookup error is a failure.
 fn unresolved(words: &str) -> bool {
@@ -734,7 +757,7 @@ fn unresolved(words: &str) -> bool {
             {
                 return false;
             }
-        } else if line.starts_with('\u{2715}') {
+        } else if line.starts_with('\u{2715}') && line != CHANGED_FAILED {
             return false;
         }
     }
@@ -2109,8 +2132,13 @@ error: some references of path \
 error: some substitutes for the outputs of derivation \
 '/nix/store/js8vczs3xzm3gkx4iysycvmhzlrlb5hj-clippy-1.99.1.drv' failed (usually happens due \
 to networking issues); try '--fallback' to build derivation from source
+\u{2705} path:/Users/someone/.cache/nix-offload/there/1840030#checks.aarch64-darwin.stands-alone
+\u{274c} path:/Users/someone/.cache/nix-offload/there/1840030#checks.aarch64-darwin.\
+system-judges-each-part
 error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.drv'.
        Reason: 3 dependencies failed.
+       Output paths:
+         /nix/store/zixb1jiaqlxc129m1lgdzx8mdl1w8my1-system-0.1.0
 ";
 
     #[test]
@@ -2144,6 +2172,23 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             Some(UNCOMPARED),
             "a comparison that failed only because its builder couldn't name a cache counted"
         );
+        let built_here = format!("{LOOKUPS}{CHANGED_FAILED}\n");
+        assert_eq!(
+            mac_ending(Some(1), Some(built_here.as_bytes())),
+            Some(UNCOMPARED),
+            "changed-checks' own word that a check failed, said after any failed build, counted"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_that_names_no_unresolved_host_still_fails() {
+        let words = "error: Cannot build '/nix/store/x-check.drv'.\n       \
+                     Reason: 2 dependencies failed.\n";
+        assert_eq!(
+            mac_ending(Some(1), Some(words.as_bytes())),
+            Some(1),
+            "a failure whose every line could follow a lookup's, but with no lookup, was let off"
+        );
     }
 
     #[test]
@@ -2154,12 +2199,12 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         );
         let evaluated = format!("{LOOKUPS}error: attribute 'example-darwin' missing\n");
         let bare = format!("{LOOKUPS}error:\n       \u{2026} while evaluating\n");
-        let told = format!("{LOOKUPS}\u{2715} a check the change touched failed\n");
+        let told = format!("{LOOKUPS}\u{2715} a check the change touched no longer evaluates\n");
         for (words, what) in [
             (built, "a build that failed"),
             (evaluated, "an evaluation that failed"),
             (bare, "an evaluation whose error is on the lines after"),
-            (told, "a check that failed"),
+            (told, "a check that no longer evaluates"),
         ] {
             assert_eq!(
                 mac_ending(Some(1), Some(words.as_bytes())),
@@ -2181,6 +2226,13 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             Some(UNSENT),
             "an unreached Mac wasn't read as unsent"
         );
+        for code in [UNSENT, UNREACHED] {
+            assert_eq!(
+                mac_ending(Some(code), Some(LOOKUPS.as_bytes())),
+                Some(UNSENT),
+                "a run no Mac took waited a round, rather than being sent again"
+            );
+        }
         assert_eq!(
             mac_ending(Some(1), Some(b"Reason: builder failed with exit code 1.")),
             Some(1),
@@ -2204,7 +2256,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         let mut file = fs::OpenOptions::new().append(true).open(&log).unwrap();
         writeln!(file, "comparing aarch64-darwin's checks at 7103329c5f54").unwrap();
         assert_eq!(
-            mac_ending(None, clock.ours(&log).as_deref()),
+            mac_ended(None, &clock, &log),
             Some(UNCOMPARED),
             "a run ended before a builder took it was read as taken from the run before"
         );
