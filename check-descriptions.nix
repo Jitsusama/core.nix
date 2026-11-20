@@ -3322,9 +3322,10 @@
     plainly is passed over and said once; the machine is the one most sessions name; a node
     silent past its limit is stopped with all it started; a record it can't read is set aside
     and said, one kept more than four days before brings nothing back, and one is kept before
-    any start; one whose folder isn't there or that the node refuses is tried again for a
-    quarter of an hour, and one it gave no answer for waits five minutes first; and a run beside
-    another leaves the realm to it
+    any start; one whose folder isn't there or that the node refuses is tried again fifteen
+    times, one it gave no answer for waits five minutes first, and a new boot gives each its
+    tries again; a realm's .off file keeps nothing and brings nothing back, then or after; and a
+    run beside another leaves the realm to it
   '';
   sessions-come-back-passes-clippy = ''
     clippy finds nothing in sessions-come-back or its tests

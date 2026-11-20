@@ -20,10 +20,12 @@
 //! hold whose pi is no longer running holds nothing, as cadence reads it.
 //! A session whose folder isn't there, or that the node won't start yet,
 //! as while it's still linking after the boot, is tried again each run,
-//! for a quarter of an hour, since pi started elsewhere would ask to fork
-//! it. A record last kept more than four days before the boot brings
-//! nothing back, since what it held is from long ago; removing a realm's
-//! record keeps its sessions from coming back at all.
+//! fifteen times, since pi started elsewhere would ask to fork it. A
+//! record last kept more than four days before the boot brings nothing
+//! back, since what it held is from long ago. A realm's `.off` file beside
+//! its record keeps its sessions from coming back while it's there: the
+//! record is removed and none is kept, so a file removed again later
+//! brings back nothing from before it.
 //!
 //!   sessions-come-back MYCELIUM REALM...    keeps, or brings back, each realm's sessions
 //!
@@ -45,9 +47,10 @@ use machine::{Unheard, era, runs, within};
 #[cfg(test)]
 use machine::{console_login, era_of};
 
-/// How many runs a session waits to be started again before it's left,
-/// a quarter of an hour at one a minute: past that, the node isn't coming,
-/// or the folder isn't.
+/// How many runs a session waits to be started again before it's left:
+/// past that, the node isn't coming, or the folder isn't. At one a minute
+/// that's a quarter of an hour when each try is refused, and up to about
+/// 75 minutes when each goes unanswered, since each of those waits QUIET.
 const TRIES: u32 = 15;
 
 /// How many runs in a row a session goes unseen before it counts as ended
@@ -197,6 +200,15 @@ fn plain(word: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
+/// Whether a word can only be read as a session's id, as pi makes one:
+/// letters, digits and `-`, not first. Narrower than `plain`, since an id
+/// with a `.` in it, as a file's name, `pi --session` would read as a path.
+fn an_id(word: &str) -> bool {
+    !word.is_empty()
+        && !word.starts_with('-')
+        && word.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
 /// Whether a hold's pi still runs: one parked holds its session, and one
 /// whose pid is 0, or no longer runs, holds nothing.
 fn holds_its_pi(hold: &Hold, runs: impl Fn(u32) -> bool) -> bool {
@@ -275,7 +287,7 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
                 continue;
             }
         };
-        if !plain(&listed.id) {
+        if !an_id(&listed.id) {
             found
                 .passed
                 .push(format!("hold {}'s session id isn't plain", hold.id));
@@ -351,6 +363,10 @@ fn next(kept: Option<Kept>, era: &str, now: &Held, at: u64) -> Kept {
             }
         }
     } else if !is_stale {
+        for waiting in &mut waiting {
+            waiting.tries = 0;
+            waiting.unanswered = None;
+        }
         let lately = before.unseen.into_iter().map(|u| u.session);
         for session in before.sessions.into_iter().chain(lately) {
             if !waiting.iter().any(|w| w.session.id == session.id) {
@@ -380,7 +396,8 @@ enum Start {
     Started,
     /// The node said no, or the folder wasn't there: try again next run.
     Refused(String),
-    /// The node said nothing in time, and may have started it.
+    /// The node's client gave no answer, in time or at all, so the node may
+    /// have started it.
     Unanswered(String),
 }
 
@@ -405,10 +422,13 @@ fn bring_back(
     };
     kept.waiting.retain_mut(|waiting| {
         let session = &waiting.session;
-        if !plain(&session.id) || !PIS.contains(&session.program.as_str()) {
+        if !an_id(&session.id)
+            || !PIS.contains(&session.program.as_str())
+            || !Path::new(&session.folder).is_absolute()
+        {
             say(format!(
-                "passed over: the record's {:?}, as {:?}, isn't a pi session",
-                session.id, session.program
+                "passed over: the record's {:?}, as {:?} in {:?}, isn't a pi session",
+                session.id, session.program, session.folder
             ));
             return false;
         }
@@ -564,7 +584,8 @@ fn say(realm: &str, line: &str) {
 
 /// Writes a realm's record whole, or not at all, and on the disk before
 /// it takes the old one's place, since the restarts it's for include
-/// those with no clean shutdown. One unchanged isn't written again.
+/// those with no clean shutdown. One unchanged since this run kept it, as
+/// after a run that started nothing, isn't written again.
 fn keep(file: &Path, kept: &Kept) -> Result<(), Failure> {
     let unkept = |why: String| {
         Failure::new(Exit::Failed, "it couldn't keep the sessions")
@@ -611,8 +632,27 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
         .map_err(|e| failed(Exit::Failed, "it couldn't keep the sessions", e.to_string()))?;
     let lock = fs::File::create(folder.join(format!("{realm}.lock")))
         .map_err(|e| failed(Exit::Failed, "it couldn't keep the sessions", e.to_string()))?;
-    if lock.try_lock().is_err() {
-        (world.say)("another run is keeping it, so this one leaves it");
+    match lock.try_lock() {
+        Ok(()) => {}
+        Err(fs::TryLockError::WouldBlock) => {
+            (world.say)("another run is keeping it, so this one leaves it");
+            return Ok(());
+        }
+        Err(fs::TryLockError::Error(e)) => {
+            return Err(failed(
+                Exit::Failed,
+                "it couldn't keep the sessions",
+                format!("its lock couldn't be taken: {e}"),
+            ));
+        }
+    }
+    let file = folder.join(format!("{realm}.json"));
+    if folder.join(format!("{realm}.off")).exists() {
+        if fs::remove_file(&file).is_ok() {
+            (world.say)(&format!(
+                "it's off while {realm}.off is there, so its record is removed"
+            ));
+        }
         return Ok(());
     }
     let unanswered = |why: Unheard| {
@@ -627,16 +667,17 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
     let sessions = (world.ask)(&["sessions".into()], LOOK_WITHIN).map_err(unanswered)?;
     let now = held(&holds, &sessions, world.runs)
         .map_err(|why| failed(Exit::BadInput, "the node's sessions couldn't be read", why))?;
-    let file = folder.join(format!("{realm}.json"));
     let before = read_record(&file)
         .and_then(|text| recall(text.as_deref()))
         .unwrap_or_else(|why| {
             let aside = file.with_extension("json.unread");
+            let moved = match fs::rename(&file, &aside) {
+                Ok(()) => format!("it's set aside as {}", aside.display()),
+                Err(e) => format!("it couldn't be set aside ({e})"),
+            };
             (world.say)(&format!(
-                "its record couldn't be read ({why}), so it's set aside as {} and kept afresh",
-                aside.display()
+                "its record couldn't be read ({why}), so {moved}, and it's kept afresh"
             ));
-            let _ = fs::rename(&file, &aside);
             None
         });
     let said_before = before
@@ -665,8 +706,7 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
         |machine, session| match (world.ask)(&start_words(machine, session), START_WITHIN) {
             Ok(said) if started(&said) => Start::Started,
             Ok(said) => Start::Refused(said.trim().to_string()),
-            Err(late @ Unheard::Late(_)) => Start::Unanswered(late.to_string()),
-            Err(why) => Start::Refused(why.to_string()),
+            Err(unheard) => Start::Unanswered(unheard.to_string()),
         },
         |line| (world.say)(&line),
     );
@@ -714,8 +754,8 @@ fn help() -> Help {
         "what its agent runs each minute, keeping or bringing back the work realm's sessions",
     )
     .example(
-        "rm ~/.local/state/sessions-come-back/work.json",
-        "keeps the work realm's sessions from coming back after the next reboot",
+        "touch ~/.local/state/sessions-come-back/work.off",
+        "keeps the work realm's sessions from coming back until the file is removed",
     )
     .exit(Exit::Failed, "it couldn't keep the sessions")
     .exit(Exit::BadInput, "the node's sessions couldn't be read")
@@ -734,6 +774,11 @@ fn main() -> ExitCode {
         };
         if realms.is_empty() {
             return Err(Failure::new(Exit::Usage, "it takes at least one realm")
+                .try_this("sessions-come-back mycelium work"));
+        }
+        if let Some(realm) = realms.iter().find(|realm| !plain(realm)) {
+            return Err(Failure::new(Exit::Usage, "a realm is named plainly")
+                .because(format!("{realm:?} would name a file elsewhere"))
                 .try_this("sessions-come-back mycelium work"));
         }
         run(mycelium, realms)

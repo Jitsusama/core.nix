@@ -36,7 +36,8 @@ impl fmt::Display for Unheard {
 /// Which boot and login a Mac's are: its boot session uuid and when the
 /// account logged in at the console, from `who`. One with no console line
 /// is said, rather than read as a new login. A clock step changes
-/// neither, and a login starting over changes the second, to the minute:
+/// neither, nor does a change of time zone, since `who` is asked in UTC,
+/// and a login starting over changes the second, to the minute:
 /// one that ends and starts again in the same minute goes unseen.
 pub(super) fn era_of(uuid: &str, who: &str, user: &str) -> Result<String, String> {
     let uuid = uuid.trim();
@@ -59,7 +60,7 @@ pub(super) fn era() -> Result<String, Failure> {
     let ran =
         |command: &mut Command| within(command, LOOK_WITHIN).map_err(|e| unread(e.to_string()));
     let uuid = ran(Command::new("/usr/sbin/sysctl").args(["-n", "kern.bootsessionuuid"]))?;
-    let who = ran(&mut Command::new("/usr/bin/who"))?;
+    let who = ran(Command::new("/usr/bin/who").env("TZ", "UTC0"))?;
     let user = ran(Command::new("/usr/bin/id").arg("-un"))?;
     era_of(&uuid, &who, user.trim()).map_err(unread)
 }
@@ -77,7 +78,12 @@ pub(super) fn console_login(who: &str, user: &str) -> Option<String> {
 
 /// Whether a process runs: Linux's /proc, or a Mac's `kill -0`, which a
 /// process of another account's refuses, and that isn't this one's pi.
+/// A pid past what `kill` reads as one process, which it would read as a
+/// group, runs nothing.
 pub(super) fn runs(pid: u32) -> bool {
+    if pid == 0 || i32::try_from(pid).is_err() {
+        return false;
+    }
     if Path::new("/proc/self").exists() {
         return Path::new(&format!("/proc/{pid}")).exists();
     }
@@ -87,6 +93,15 @@ pub(super) fn runs(pid: u32) -> bool {
     )
     .is_ok()
 }
+
+/// The program that stops a command's process group: a Mac's own, by its
+/// path as every program here is, or on Linux, where this runs only under
+/// test, the one on the PATH.
+const KILL: &str = if cfg!(target_os = "macos") {
+    "/bin/kill"
+} else {
+    "kill"
+};
 
 /// Reads a pipe whole on a thread of its own, and sends what it read.
 fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<String> {
@@ -116,7 +131,7 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
     let out = drain(child.stdout.take());
     let err = drain(child.stderr.take());
     let stop = |child: &mut std::process::Child| {
-        let _ = Command::new("kill")
+        let _ = Command::new(KILL)
             .args(["-KILL", "--", &format!("-{}", child.id())])
             .stdout(Stdio::null())
             .stderr(Stdio::null())

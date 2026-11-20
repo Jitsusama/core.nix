@@ -8,6 +8,7 @@
 use super::*;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::thread;
 use std::time::Instant;
 
 const HOLDS: &str = concat!(
@@ -391,14 +392,14 @@ fn a_second_reboot_before_they_are_back_keeps_each_waiting_once() {
         ..waits(&[session("a", "/f")])[0].clone()
     };
     let kept = Some(Kept {
-        waiting: vec![tried.clone()],
+        waiting: vec![tried],
         ..holding(&[session("a", "/f"), session("c", "/h")])
     });
     let after = next(kept, "two", &Held::default(), AT);
     assert_eq!(
         after.waiting,
-        vec![tried, waits(&[session("c", "/h")])[0].clone()],
-        "a, both waiting and held before the reboot, waits once, keeping its tries"
+        waits(&[session("a", "/f"), session("c", "/h")]),
+        "a, both waiting and held before the reboot, waits once, with its tries given back"
     );
 }
 
@@ -519,6 +520,8 @@ fn what_the_record_says_is_checked_again_before_it_is_started() {
                 ..session("b", "/g")
             },
             session("c", "/h"),
+            session("d.jsonl", "/i"),
+            session("e", "src"),
         ]),
         ..holding(&[])
     };
@@ -539,7 +542,12 @@ fn what_the_record_says_is_checked_again_before_it_is_started() {
         vec!["c"],
         "a record written by another hand starts no other program"
     );
-    assert_eq!(said.len(), 3, "each passed over is said: {said:?}");
+    assert_eq!(
+        said.len(),
+        5,
+        "each passed over is said, the id pi would read as a file and the folder no path \
+         names among them: {said:?}"
+    );
     assert!(said[0].starts_with("passed over: "), "{}", said[0]);
 }
 
@@ -682,14 +690,33 @@ fn a_command_that_hangs_is_stopped_at_its_limit() {
 #[test]
 fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
     let begun = Instant::now();
+    let folder = folder("held-open");
+    fs::create_dir_all(&folder).expect("a folder is made");
+    let pid = folder.join("pid");
     let said = within(
-        Command::new("sh").args(["-c", "sleep 30 & echo held"]),
+        Command::new("sh").args([
+            "-c",
+            &format!("sleep 30 & echo $! > {}; echo held", pid.display()),
+        ]),
         Duration::from_secs(1),
     );
     assert_eq!(said, Err(Unheard::Late(Duration::from_secs(1))));
     assert!(
         begun.elapsed() < Duration::from_secs(5),
         "it didn't wait for the sleep to close the pipe"
+    );
+    let sleep = fs::read_to_string(&pid).expect("the sleep's pid was written");
+    let state = || fs::read_to_string(format!("/proc/{}/stat", sleep.trim())).ok();
+    let stopped = (0..40).any(|_| {
+        let dead = state().is_none_or(|stat| stat.contains(") Z "));
+        if !dead {
+            thread::sleep(Duration::from_millis(50));
+        }
+        dead
+    });
+    assert!(
+        stopped,
+        "the sleep it left holding the pipe was stopped with it"
     );
 }
 
@@ -736,6 +763,7 @@ fn folder(name: &str) -> PathBuf {
 struct Node {
     holds: String,
     sessions: Result<String, Unheard>,
+    answer: Result<String, Unheard>,
     starts: RefCell<Vec<String>>,
     said: RefCell<Vec<String>>,
 }
@@ -745,6 +773,7 @@ impl Node {
         Self {
             holds: holds.into(),
             sessions: Ok(sessions.into()),
+            answer: Ok(r#"{"Ok":{"Started":{}}}"#.into()),
             starts: RefCell::default(),
             said: RefCell::default(),
         }
@@ -765,7 +794,7 @@ impl Node {
                 self.starts
                     .borrow_mut()
                     .push(words.last().cloned().unwrap_or_default());
-                Ok(r#"{"Ok":{"Started":{}}}"#.into())
+                self.answer.clone()
             }
         };
         let say = |line: &str| self.said.borrow_mut().push(line.into());
@@ -875,6 +904,90 @@ fn a_realm_says_what_it_passes_over_once() {
         (first.said.borrow().len(), second.said.borrow().len()),
         (1, 0),
         "a hold passed over each minute is said when it's new, not 1,440 times a day"
+    );
+}
+
+#[test]
+fn a_start_the_node_refused_is_tried_next_run_and_one_unheard_waits() {
+    for (answer, unanswered, case) in [
+        (Ok(r#"{"Err":"busy"}"#.to_string()), None, "a refusal"),
+        (
+            Err(Unheard::Late(START_WITHIN)),
+            Some(AT + 60),
+            "no answer in time",
+        ),
+        (
+            Err(Unheard::Failed("broken pipe".into())),
+            Some(AT + 60),
+            "a client that failed, after the node may have taken it",
+        ),
+    ] {
+        let folder = folder("answers");
+        Node::new(ONE_HOLD, ONE_SESSION)
+            .run("one", &folder, AT, &|_| {})
+            .expect("the first run keeps");
+        let mut rebooted = Node::new("", NONE_HELD);
+        rebooted.answer = answer;
+        rebooted
+            .run("two", &folder, AT + 60, &|_| {})
+            .expect("the run after the reboot keeps");
+        let kept = recall(fs::read_to_string(folder.join("work.json")).ok().as_deref())
+            .ok()
+            .flatten()
+            .expect("the record reads");
+        assert_eq!(
+            kept.waiting
+                .iter()
+                .map(|w| (w.session.id.as_str(), w.tries, w.unanswered))
+                .collect::<Vec<_>>(),
+            vec![("a", 1, unanswered)],
+            "{case} keeps it waiting"
+        );
+    }
+}
+
+#[test]
+fn a_realm_that_is_off_brings_nothing_back_even_once_it_is_on_again() {
+    let folder = folder("off");
+    Node::new(ONE_HOLD, ONE_SESSION)
+        .run("one", &folder, AT, &|_| {})
+        .expect("the first run keeps");
+    fs::write(folder.join("work.off"), "").expect("the realm is turned off");
+    let off = Node::new("", NONE_HELD);
+    off.run("two", &folder, AT + 60, &|_| {})
+        .expect("a run while it's off ends well");
+    assert!(
+        off.starts.borrow().is_empty() && !folder.join("work.json").exists(),
+        "while it's off nothing starts and nothing is kept"
+    );
+    fs::remove_file(folder.join("work.off")).expect("the realm is turned on");
+    let on = Node::new("", NONE_HELD);
+    on.run("three", &folder, AT + 120, &|_| {})
+        .expect("a run once it's on keeps");
+    assert!(
+        on.starts.borrow().is_empty(),
+        "what was held before it was off doesn't come back"
+    );
+}
+
+#[test]
+fn a_new_boot_gives_what_still_waits_its_tries_again() {
+    let before = Kept {
+        waiting: vec![Waiting {
+            session: session("a", "/f"),
+            tries: TRIES - 1,
+            unanswered: Some(AT),
+        }],
+        ..holding(&[])
+    };
+    let kept = next(Some(before), "two", &now(&[]), AT + 60);
+    assert_eq!(
+        kept.waiting
+            .iter()
+            .map(|w| (w.tries, w.unanswered))
+            .collect::<Vec<_>>(),
+        vec![(0, None)],
+        "a try and a wait from the boot before mean nothing after this one"
     );
 }
 
