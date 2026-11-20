@@ -22,6 +22,9 @@
 # reading and the words in each worth keeping, and the daemon copies
 # those words from the line, keeping none it doesn't find there, so the
 # summary holds only quotes, each with who said it to whom and when.
+# It's kept in the call's one file, transcript.md, under a Summary
+# heading over the Transcript heading's whole transcript, so the call
+# is read and shared as one; a call from before keeps its summary.md.
 # Every model before wrote sentences of its own, and each bent or made
 # up what was said, and a wrong summary is worse than none. The model
 # runs in a process of its own, `call-transcripts ask`, for one summary

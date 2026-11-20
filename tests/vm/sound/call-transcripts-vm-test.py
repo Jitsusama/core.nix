@@ -339,14 +339,21 @@ def test_a_call_starting_stops_a_summary_which_writes_nothing(
 
 def test_the_summary_is_the_calls_own_words(joel: Joel, written: dict[str, Any]) -> None:
     """Started again once the other call ended, the summary quotes Joel's line, word for word."""
-    summary = joel.run(f"cat {shlex.quote(written['folder'])}/summary.md")
-    print(summary)
-    assert summary == f"{written['summary']}\n"
-    assert summary.startswith(f"# {MEETING}\n\n{HOW_MADE}")
+    summary = written["summary"]
+    whole = transcript(joel, written)
+    assert whole.startswith(f"# {MEETING}\n\n## Summary\n\n{summary}\n\n## Transcript\n\n"), (
+        "the call's one file holds its summary over its transcript"
+    )
+    assert summary.startswith(HOW_MADE), summary
+    assert joel.run(f"test -e {shlex.quote(written['folder'])}/summary.md || echo none") == (
+        "none\n"
+    ), "a call summed up keeps no summary file beside its one file"
     [asked] = [
         line
-        for line in transcript(joel, written).splitlines()
-        if "thursday" in line.lower() and not line.startswith("**Others**")
+        for line in whole.splitlines()
+        if line.startswith("**")
+        and "thursday" in line.lower()
+        and not line.startswith("**Others**")
     ]
     said = asked.split(": ", 1)[1]
     stamp = asked.split(", ", 1)[1].split(": ", 1)[0]
@@ -377,7 +384,7 @@ def test_the_notice_opens_the_summary_in_the_sessions_reader(
     except Exception:
         joel.explain()
         raise
-    assert joel.run("cat read").strip() == f"{SCREEN} {written['folder']}/summary.md"
+    assert joel.run("cat read").strip() == f"{SCREEN} {written['folder']}/transcript.md"
 
 
 def test_a_call_starting_offers_the_line_for_its_chat(joel: Joel, call: dict[str, Any]) -> None:

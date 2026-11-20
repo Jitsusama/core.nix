@@ -298,6 +298,9 @@ fn start(
     record.known = record.known.or(known);
     record.ended = None;
     record.transcribing = true;
+    // A summary of the call's first legs would read as the whole of it,
+    // so a rejoined call says its summary is to come until it ends.
+    record.summary = None;
     let since = usize::try_from((at - record.started) / 1000).unwrap_or(0) * RATE;
     book.lock().put(record.clone());
     let recorders = Recorder::start(

@@ -29,9 +29,9 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::ask::SHORT_OF_MEMORY;
-use crate::book::{Record, SUMMARY, Shared, write_whole};
+use crate::book::{Record, SUMMARY, Shared, TRANSCRIPT, write_whole};
 use crate::hear::Job;
-use crate::{notices, said, summary};
+use crate::{filed, notices, said, summary};
 
 /// How often what the summarizer waits on is looked at again.
 const LOOK: Duration = Duration::from_secs(5);
@@ -120,7 +120,7 @@ pub fn run(summarizer: &Summarizer, book: &Shared, keys: &Receiver<String>, agai
 fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, String)> {
     let record = book.lock().record(key).cloned()?;
     let file = record.transcript.clone()?;
-    match std::fs::read_to_string(file) {
+    match std::fs::read_to_string(file).map(|text| filed::transcript(&text).to_owned()) {
         Ok(text) if said::too_little(&text) => {
             eprintln!("call-transcripts: too little was said on {key} to sum up");
             keep(book, &record, said::TOO_LITTLE, again);
@@ -430,25 +430,55 @@ fn not_summed_up(record: &Record, why: &str, can_pass: bool, again: &Sender<Job>
     });
 }
 
-/// Writes `written` as the call's summary, says it's ready, and puts it
-/// in the call's record. A disk with no room can pass, as room is made,
-/// so failing to write offers Try Again.
+/// Writes `written` as the call's summary, over its transcript in its
+/// one file, says it's ready, and puts it in the call's record. The
+/// transcript is read and the file written under the book's lock, as
+/// the transcript writes it, so neither loses what the other wrote. A
+/// call rejoined meanwhile keeps no summary, since one of part of a
+/// call reads as the whole; it's summed up again once it ends. A
+/// summary.md from before goes, the file holding the summary now. A
+/// disk with no room can pass, as room is made, so failing to write
+/// offers Try Again.
 fn keep(book: &Shared, record: &Record, written: &str, again: &Sender<Job>) {
-    let file = record.folder.join(SUMMARY);
-    if let Err(why) = write_whole(&file, &format!("{written}\n")) {
-        let why = format!("{} couldn't be written: {why}", file.display());
-        not_summed_up(record, &why, true, again);
+    let file = record.folder.join(TRANSCRIPT);
+    let mut book = book.lock();
+    let now = book.record(&record.key).cloned();
+    if now.as_ref().is_some_and(|now| now.transcribing) {
+        eprintln!(
+            "call-transcripts: {} was rejoined while summed up",
+            record.key
+        );
         return;
     }
-    eprintln!("call-transcripts: {} summed up", record.key);
-    tell(&record.title, written, &file);
-    let mut book = book.lock();
-    if let Some(now) = book.record(&record.key).cloned() {
+    let title = now.as_ref().map_or(&record.title, |now| &now.title);
+    let kept = std::fs::read_to_string(&file).and_then(|text| {
+        let whole = filed::whole(title, Some(written), filed::transcript(&text));
+        write_whole(&file, &whole).map(|()| whole)
+    });
+    let whole = match kept {
+        Ok(whole) => whole,
+        Err(why) => {
+            drop(book);
+            let why = format!("{} couldn't be written: {why}", file.display());
+            not_summed_up(record, &why, true, again);
+            return;
+        }
+    };
+    let before = record.folder.join(SUMMARY);
+    if let Err(why) = std::fs::remove_file(&before)
+        && why.kind() != std::io::ErrorKind::NotFound
+    {
+        eprintln!("call-transcripts: removing {}: {why}", before.display());
+    }
+    if let Some(now) = now {
         book.put(Record {
-            summary: Some(written.to_owned()),
+            summary: filed::summary(&whole),
             ..now
         });
     }
+    drop(book);
+    eprintln!("call-transcripts: {} summed up", record.key);
+    tell(&record.title, written, &file);
 }
 
 /// Says a call is written down, with no summarizer to sum it up, in a

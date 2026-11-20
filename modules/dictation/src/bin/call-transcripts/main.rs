@@ -58,6 +58,7 @@
 
 mod ask;
 mod book;
+mod filed;
 mod follow;
 mod hear;
 mod meeting;
@@ -271,9 +272,12 @@ fn summarize(
     them: Option<&str>,
     transcript: &Path,
 ) -> Result<(), String> {
-    let text = std::fs::read_to_string(transcript)
+    let file = std::fs::read_to_string(transcript)
         .map_err(|e| format!("reading {}: {e}", transcript.display()))?;
-    if said::too_little(&text) {
+    // A call's one file is summed up from its transcript alone, never
+    // from a summary already over it.
+    let text = filed::transcript(&file);
+    if said::too_little(text) {
         println!("{}", said::TOO_LITTLE);
         return Ok(());
     }
@@ -289,7 +293,7 @@ fn summarize(
         },
         title,
         them,
-        &text,
+        text,
     )?;
     println!("{written}");
     Ok(())

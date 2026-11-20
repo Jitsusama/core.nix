@@ -116,7 +116,7 @@ fn named<'a>(
         .filter(|&(event, ended, folder)| {
             now.checked_sub(ended).is_some_and(|age| age < NAMED_FOR)
                 && is_event(event)
-                && written_since(&folder.join(book::SUMMARY), ended)
+                && written_since(&summary_file(folder), ended)
         })
         .map(|(event, ended, _)| (ended, event))
         .collect();
@@ -127,6 +127,19 @@ fn named<'a>(
         .take(MOST_EVENTS)
         .map(|(_, event)| event.to_owned())
         .collect()
+}
+
+/// The file holding a call's summary: summary.md in the folder of a call
+/// from before the one file, while it's there, else the one file. Only
+/// a summed-up call is asked about, and the summarizer writes the one
+/// file last as it sums a call up, so its time is the summary's.
+fn summary_file(folder: &Path) -> std::path::PathBuf {
+    let before = folder.join(book::SUMMARY);
+    if std::fs::symlink_metadata(&before).is_ok() {
+        before
+    } else {
+        folder.join(book::TRANSCRIPT)
+    }
 }
 
 /// Whether `summary` is a plain file written at or after `ended`, in
@@ -919,6 +932,30 @@ mod tests {
             [EVENT, "abcdef6", "abcdef4"],
             "a summary gone, linked or from before the last end, one past its days, a title \
              or a repeat was named"
+        );
+    }
+
+    #[test]
+    fn an_event_kept_in_one_file_is_named_while_that_file_stands_since_it_ended() {
+        let folder = tempfile::tempdir().unwrap();
+        let one = folder.path().join("one");
+        std::fs::create_dir_all(&one).unwrap();
+        written(&one.join(book::TRANSCRIPT), "summed up", NOW);
+        // A folder from before, rejoined after its summary.md was
+        // written, waits on that file rather than on its transcript.
+        let before = folder.path().join("before");
+        std::fs::create_dir_all(&before).unwrap();
+        written(&before.join(book::TRANSCRIPT), "still heard", NOW);
+        written(&before.join(book::SUMMARY), "first leg", NOW - 10);
+        let held = [
+            (EVENT, NOW - 5, one.as_path()),
+            ("abcdef1", NOW - 5, before.as_path()),
+        ];
+        assert_eq!(
+            named(held, NOW),
+            [EVENT],
+            "a one file wasn't taken for the summary, or a summary.md from before the last end \
+             was passed over"
         );
     }
 

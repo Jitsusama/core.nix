@@ -9,10 +9,11 @@
 //! the event or person, its folder, its transcript's path once there's one, how the
 //! transcript opens (its first few paragraphs, so the launcher can show
 //! them without reading the folder), its summary once written, and
-//! whether it's being transcribed. Each call's folder
-//! holds a meta.json saying what isn't in its files, so the calls are read
-//! back as the daemon starts, and only then: the shell never reads the
-//! folder.
+//! whether it's being transcribed. Each call's folder holds its one
+//! file, its summary over its transcript (filed.rs), and a meta.json
+//! saying what isn't in it, so the calls are read back as the daemon
+//! starts, and only then: the shell never reads the folder. A folder
+//! from before keeps its summary in summary.md, beside its transcript.
 
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
@@ -23,6 +24,7 @@ use std::time::UNIX_EPOCH;
 pub use dictation::daemon::now;
 use dictation::daemon::{self, Answers, VERSION, Watches, error};
 
+use crate::filed;
 use crate::meeting::{self, Known};
 use crate::private::make_folder;
 pub use crate::private::write_whole;
@@ -46,10 +48,14 @@ const LARGEST_META: u64 = 64 * 1024;
 #[derive(Debug)]
 struct Unreadable;
 
-/// The transcript's file in a call's folder.
+/// A call's one file in its folder, its summary over its transcript. Its
+/// name is the transcript's, as it was before the summary joined it, so
+/// what opened, copied or followed it before still finds it.
 pub const TRANSCRIPT: &str = "transcript.md";
 
-/// The summary's file in a call's folder.
+/// The summary's own file in the folder of a call from before the one
+/// file, read while it's there and let go once the call's summed up
+/// again.
 pub const SUMMARY: &str = "summary.md";
 
 /// How many of the transcript's paragraphs its opening holds, and how many
@@ -227,9 +233,14 @@ impl Record {
                 .and_then(|since| u64::try_from(since.as_millis()).ok())
         };
         let transcript = folder.join(TRANSCRIPT);
-        let opening = std::fs::read_to_string(&transcript)
-            .ok()
-            .and_then(|text| opening(&text));
+        let text = std::fs::read_to_string(&transcript).ok();
+        let opening = text
+            .as_deref()
+            .and_then(|text| opening(filed::transcript(text)));
+        let summary = text
+            .as_deref()
+            .and_then(filed::summary)
+            .or_else(|| std::fs::read_to_string(folder.join(SUMMARY)).ok());
         Ok(Some(Self {
             key: key.to_owned(),
             title: meta["title"].as_str().unwrap_or_default().to_owned(),
@@ -248,7 +259,7 @@ impl Record {
             folder: folder.to_owned(),
             transcript: transcript.exists().then_some(transcript),
             opening,
-            summary: std::fs::read_to_string(folder.join(SUMMARY)).ok(),
+            summary,
             transcribing: false,
         }))
     }
@@ -505,6 +516,48 @@ mod tests {
         assert_eq!(
             Book::read(folder.path()).record("call:e1").unwrap().ended,
             Some(99)
+        );
+    }
+
+    #[test]
+    fn a_calls_summary_is_read_from_its_one_file_or_from_the_summary_md_it_had_before() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut book = Book::default();
+        let said = "# Transcript\n\n**Joel**, 0:00: Can we move it?\n";
+        let one = call(folder.path(), "call:e1", 10);
+        let before = call(folder.path(), "call:e2", 20);
+        let pending = call(folder.path(), "call:e3", 30);
+        for record in [&one, &before, &pending] {
+            book.put(record.clone());
+        }
+        let file = filed::whole("Planning", Some("# Planning\n\n- Joel: \"move it\""), said);
+        std::fs::write(one.folder.join(TRANSCRIPT), file).unwrap();
+        std::fs::write(before.folder.join(TRANSCRIPT), said).unwrap();
+        std::fs::write(before.folder.join(SUMMARY), "# Planning\n\n- kept\n").unwrap();
+        let file = filed::whole("Planning", None, said);
+        std::fs::write(pending.folder.join(TRANSCRIPT), file).unwrap();
+        let read = Book::read(folder.path());
+        let summary = |key| read.record(key).unwrap().summary.clone();
+        let opening = |key| read.record(key).unwrap().opening.clone();
+        assert_eq!(
+            summary("call:e1").as_deref(),
+            Some("- Joel: \"move it\""),
+            "one file"
+        );
+        assert_eq!(
+            opening("call:e1").as_deref(),
+            Some("**Joel**, 0:00: Can we move it?"),
+            "its opening is what was said, never its summary"
+        );
+        assert_eq!(
+            summary("call:e2").as_deref(),
+            Some("# Planning\n\n- kept\n"),
+            "before"
+        );
+        assert_eq!(
+            summary("call:e3"),
+            None,
+            "a summary still to come is none yet"
         );
     }
 

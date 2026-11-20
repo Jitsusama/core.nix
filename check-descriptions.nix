@@ -5337,8 +5337,10 @@
     another program played; then a stand-in for the summarizer's model is started, holding a
     delay on sleep, and ended with nothing written when another call starts, and started again
     once it ends; its summary quotes Joel's line word for word with who it was said to and when,
-    in summary.md and its record, the model's process and the delay are let go after, and a
-    notice from Calls says the summary is ready, whose Read It opens it in the session's reader;
+    in its record and under the Summary heading of the call's one file, over its transcript,
+    with no summary.md beside it, the model's process and the delay are let go after, and a
+    notice from Calls says the summary is ready, whose Read It opens the file in the session's
+    reader;
     a notice raised as the call started offers the line for its chat, and the next meeting,
     stopped from that notice's Stop Transcribing, lets its recorders go with the call still on
     and isn't recorded once rejoined; a call holds logind's lock against going idle while it's
