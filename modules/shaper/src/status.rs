@@ -688,7 +688,13 @@ mod tests {
     fn the_processor_s_lines_fit_the_room() {
         let (first, later) = spent();
         let whole = first.said(&later, Room::Unbounded);
-        let words = |lines: &[String]| lines.join(" ").split_whitespace().collect::<String>();
+        let words = |lines: &[String]| {
+            lines
+                .join(" ")
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
         for cells in [40, 60] {
             let lines = first.said(&later, Room::Cells(cells));
             assert!(
