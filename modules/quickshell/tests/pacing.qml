@@ -905,6 +905,12 @@ QtObject {
             Presented.rowShown({ name: "Re: my offer" }, false), "answer");
         check(failures, "and its name while they're on",
             Presented.rowShown({ name: "Address" }, true), "Address");
+        check(failures, "a key of no kind is said as nothing",
+            Presented.keyShown("github.com", false), "");
+        check(failures, "so its row is said only as a row with reports off",
+            Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, false), "row");
+        check(failures, "and whole while they're on",
+            Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, true), "stopwatch");
         check(failures, "a row's key is what's said of a row that has one",
             Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
             "window:kitty");
