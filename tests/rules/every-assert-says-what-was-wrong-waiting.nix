@@ -31,7 +31,6 @@
   "modules/console/font/src/main.rs" = 10;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
-  "modules/dictation/src/bin/call-transcripts/book.rs" = 1;
   "modules/dictation/src/bin/call-transcripts/meeting.rs" = 1;
   "modules/dictation/src/bin/call-transcripts/notices.rs" = 6;
   "modules/dictation/src/bin/call-transcripts/said.rs" = 3;
