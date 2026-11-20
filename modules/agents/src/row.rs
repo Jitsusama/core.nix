@@ -3,6 +3,10 @@
 //! glyph's and hue's roles, how deep it sits, what Return does and its
 //! acts by id, and itself as it reads ranked flat. The launcher draws it
 //! and maps each act's id to what it does; it works nothing out.
+//!
+//! Long because its cases are near two fifths of it: each part of a row
+//! (its words, mark, folding and acts) is built by the same helpers from
+//! a session's record, so the cases stay beside what they check.
 
 use serde::Serialize;
 use serde_json::{Value, json};
