@@ -180,6 +180,10 @@ let
             # below. It refuses the word of a host started otherwise, and
             # logs why.
             "--disable-sigusr1"
+          ]
+          # After the flag above, which must come first; the option says why.
+          ++ lib.optional host.asyncContextFrame "--experimental-async-context-frame"
+          ++ [
             # The harness's package.json names no module type, on purpose.
             "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
             "--max-old-space-size=${toString host.heapMb}"
@@ -400,6 +404,21 @@ in
               together stay under it: 8 GB each fits a 64 GB machine, and a
               machine with less memory sets less. A host past its limit still
               aborts alone, rather than slowing every agent beside it.
+            '';
+          };
+          asyncContextFrame = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Whether the realm's hosts keep each conversation's async context
+              in V8's own frame rather than in promise hooks, which run on
+              every await of every conversation a host holds: on node 22.23 a
+              million awaits under one AsyncLocalStorage took 420 to 740 ms
+              through the hooks and 170 to 200 ms through the frame. It passes
+              --experimental-async-context-frame, which only node 22 and 23
+              know: node 24 and later always keep the frame, and refuse the
+              flag, so a host on one would stop as it starts. Set it only for
+              a node 22 or 23.
             '';
           };
           environment = lib.mkOption {
