@@ -4,11 +4,13 @@
 # each of their windows, so the patch (untitled-instance.patch) titles a
 # window that has no name with its instance, and its tests, which start an
 # Xwayland of their own, run as it builds. It panics when the compositor
-# falls behind enough to fill its socket, as under a storm of windows, so
-# the second patch (flush-when-full.patch) waits for room instead, its test
-# filling the socket against a stand-in compositor, and the third
-# (newer-backend.patch) takes the wayland-backend whose buffer grows while
-# it waits, so its vendored crates are fetched again. The script in front of it
+# falls behind enough to fill its socket, as under a storm of windows. The
+# patch applied after it (newer-backend.patch) takes the wayland-backend
+# whose buffer grows while the socket is full, so its vendored crates are
+# fetched again, and the last (flush-when-full.patch) waits for room
+# rather than panicking, leaving what it can't send to the main loop,
+# which now wakes when the socket has room; its test fills the socket
+# against a stand-in compositor. The script in front of it
 # (xwayland-satellite.sh) gives Xwayland a cookie, so only Joel's programs
 # connect. nixos.nix installs it, and checks.nix starts it on a nested niri.
 {
