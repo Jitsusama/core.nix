@@ -2265,9 +2265,9 @@
     again, but not for a size of the grown width at another height or of the grown area on its
     side; of fourteen sizes nearly filling the screen, it takes back one three others followed,
     and takes it back whole again once it is the oldest the pool holds whole, so the pool holds
-    at least about 63 MiB and, at a cap under about 69 MiB, takes a new set before keeping the one
-    given up, but keeps none of the first when it comes back to it, so it holds less than about
-    85 MiB
+    at least about 63 MiB and an effect takes back the set kept for its size before keeping the
+    one it gave up, and the pool never says it keeps more than 64 MiB once it lets go, so it
+    holds less than about 68 MiB
   '';
   niri-keeps-secret-copies-from-sandboxes = ''
     the session's niri, nested in the sandbox, offers a sandbox's focused window no copy a password
