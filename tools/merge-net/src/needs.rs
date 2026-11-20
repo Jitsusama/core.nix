@@ -43,10 +43,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     let areas = rules::areas();
     let known = known_vm_tests();
     let root = git(&["rev-parse", "--show-toplevel"])?;
-    let owning = owners::in_tree(Path::new(&root), &files).unwrap_or_else(|| {
-        println!("(checks.nix or flake.nix didn't read, so no VM test is named for its files)");
-        Vec::new()
-    });
+    let owning = owning(&root, &files);
     let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
     let came_before = |commit: &str| {
         Command::new("git")
@@ -139,6 +136,22 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The VM tests that own one of `files` in the checkout at `root`, saying
+/// which the reading couldn't find, each named for any change.
+fn owning(root: &str, files: &[String]) -> Vec<String> {
+    let Some(owning) = owners::in_tree(Path::new(root), files) else {
+        println!("(checks.nix or flake.nix didn't read, so no VM test is named for its files)");
+        return Vec::new();
+    };
+    if !owning.unread.is_empty() {
+        println!(
+            "({} couldn't be read from checks.nix, so each is named for any change)",
+            owning.unread.join(" ")
+        );
+    }
+    owning.tests
 }
 
 /// Name the VM tests that own a file the change touches, each of which is
