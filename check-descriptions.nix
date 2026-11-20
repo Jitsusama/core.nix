@@ -2631,6 +2631,12 @@
     passwords completes in zsh with keys, help and keys' --json, and none of the commands that
     reached an entry or a secret before the daemon answered the shell alone
   '';
+  passwords-copier-keeps-a-secret-in-memory-on-niri = ''
+    on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
+    it, pastes it whole on Joel's display, makes nothing under TMPDIR, runs nothing from PATH,
+    can't be read through /proc and holds it in locked memory, and refuses a standard input it
+    can't read whole
+  '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
     given with its secrets on, answers over its standard input and output as the shell runs it, a
@@ -2672,7 +2678,8 @@
   passwords-runs-each-password-manager = ''
     on a machine with 1Password, the launcher's Passwords place runs the passwords daemon as the
     shell's own child with 1Password's manager through the system's op, with no unit and no
-    socket, names no copier, stays off until agents are fenced, and knows 1Password's program
+    socket, is on, copies through Passwords' own wl-copy by its store path, and knows
+    1Password's program
   '';
   pause-all-agents-asks-once-on-a-second-return = ''
     in a nested niri, Pause All Agents is found by typing, arms on a first Return asking nothing,
@@ -4751,15 +4758,15 @@
     launcher finding no entry and asking nothing, with a stand-in for 1Password's manager
   '';
   the-passwords-place-off-gives-the-shell-no-daemon = ''
-    while the launcher's Passwords place is off, the shell's own config names no passwords daemon
-    command, so rewriting the off setting gives the shell nothing to run
+    with the launcher's Passwords place turned off, the shell's own config names no passwords
+    daemon command, so rewriting the off setting gives the shell nothing to run
   '';
   the-passwords-place-off-goes-into-its-drawer-on-niri = ''
     on a nested niri, the Passwords place off with no password manager set up holds its one row,
     whose Return, with nothing to open, puts the keys in its drawer, which says why
   '';
   the-passwords-place-says-why-its-off-on-niri = ''
-    on a nested niri, with the Passwords place off as the module leaves it, Home's Passwords row
+    on a nested niri, with the Passwords place turned off, Home's Passwords row
     and the place's one row each have a drawer saying why it's off and that Return opens a
     stand-in Chrome, where 1Password's extension fills in sign-ins
   '';
@@ -5555,7 +5562,10 @@
     gives it back into the window it opened over, and the launcher forgets it all when asked; and a
     copy marked secret reaches Joel's own X11 client but never a command fenced as pi fences one,
     given the display: handed the cookie it reaches no socket, with the sockets open it holds no
-    cookie, and with both walls gone it reads it
+    cookie, and with both walls gone it reads it; and a password Passwords copies by its Return
+    pastes into a terminal and into a page, Super+V never lists it and the history keeps nothing
+    of it, a command whose wl-paste is the fence's shim is refused it by the clipboard door while
+    an ordinary copy after it reaches that command, and it's held till about 30 s and then gone
   '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in

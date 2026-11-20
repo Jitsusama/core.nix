@@ -22,12 +22,9 @@
   the-passwords-place-copies-through-its-daemon-on-niri = launcherOnNiri {
     name = "the-passwords-place-copies-through-its-daemon-on-niri";
     tests = ../tests/passwords-on-niri-test.py;
-    # On here, where no agent runs and no secret is real, copying through
-    # wl-copy, its one manager the stand-in, which logs where the test's
-    # environment says.
+    # On and copying through wl-copy, as on a machine, its one manager the
+    # stand-in, which logs where the test's environment says.
     shell.launcher.providers.passwords = {
-      off = lib.mkForce false;
-      copier = "wl-copy";
       daemon = lib.mkForce [
         (lib.getExe (pkgs.callPackage ../../passwords/package.nix { }))
         "daemon"
@@ -49,12 +46,14 @@
     };
   };
 
-  # Off, as the module leaves it until agents are fenced off, Home's Passwords
-  # row and the place's one row each have a drawer saying why and what Return
-  # opens meanwhile (modules/quickshell/tests/passwords-off-on-niri-test.py).
+  # Turned off, as `off = true` takes it back off a machine, Home's
+  # Passwords row and the place's one row each have a drawer saying why
+  # and what Return opens meanwhile
+  # (modules/quickshell/tests/passwords-off-on-niri-test.py).
   the-passwords-place-says-why-its-off-on-niri = launcherOnNiri {
     name = "the-passwords-place-says-why-its-off-on-niri";
     tests = ../tests/passwords-off-on-niri-test.py;
+    shell.launcher.providers.passwords.off = true;
   };
 
   # Off, with no password manager set up, the place's one row can open
@@ -63,6 +62,9 @@
   the-passwords-place-off-goes-into-its-drawer-on-niri = launcherOnNiri {
     name = "the-passwords-place-off-goes-into-its-drawer-on-niri";
     tests = ../tests/passwords-off-into-its-drawer-on-niri-test.py;
-    shell.launcher.providers.passwords.managers = lib.mkForce [ ];
+    shell.launcher.providers.passwords = {
+      off = true;
+      managers = lib.mkForce [ ];
+    };
   };
 }

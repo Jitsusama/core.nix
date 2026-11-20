@@ -15,12 +15,13 @@
 # would answer them with whatever 1Password let it read (2026-11-10, Joel:
 # "we can't have a password backdoor here"); 1Password lets in each
 # process tree apart, so a daemon an agent starts must ask Joel itself. A
-# secret goes from its manager only to the ask for it; nothing is copied
-# while no copier is named, which nothing names until agents are fenced
-# off the clipboard. An audit, only when Joel asks, reads every password
-# to find those reused and those breached, hashing each in the daemon's
-# memory and sending Have I Been Pwned the first five characters of a
-# hash alone. What the last check found, each troubled entry's two counts
+# secret goes from its manager only to the ask for it, or to the clipboard
+# through a wl-copy that holds it in its own memory alone, marked
+# sensitive, which niri keeps from every fenced agent's Wayland client.
+# An audit, only when Joel asks,
+# reads every password to find those reused and those breached, hashing
+# each in the daemon's memory and sending Have I Been Pwned the first five
+# characters of a hash alone. What the last check found, each troubled entry's two counts
 # and when trouble was found and cleared, is kept in the account's state
 # folder, so For You's to-do for it outlives a reboot; never a hash or a
 # password.
@@ -249,10 +250,14 @@ in
     jitsusama.quickshell.launcher.providers.passwords = {
       order = 48;
       source = ./Passwords.qml;
-      # Off, reaching no daemon, until agents are fenced off Joel's runtime
-      # folder and Wayland; the checks that walk it turn it on, where no
-      # agent runs and no secret is real.
-      off = true;
+      # On, now that agents are fenced off Joel's runtime folder and
+      # Wayland. A machine's `off = true` takes it back off there, reaching
+      # no daemon. Taking it off everywhere reverts the change that turned
+      # it on, since passwords-runs-each-password-manager holds it on here.
+      # Copies go through Passwords' own wl-copy, by its full path, as a
+      # sensitive offer niri hands no fenced agent, held in its memory
+      # alone rather than in a temp file (copier.nix).
+      copier = lib.getExe' (pkgs.callPackage ./copier.nix { }) "wl-copy";
       managers = map (manager: {
         inherit (manager)
           name
@@ -295,8 +300,8 @@ in
     warnings = lib.optional (config.jitsusama.passwords.releases != [ ] && !answersAsks) ''
       jitsusama.passwords.releases lists releases, but the launcher's
       Passwords place is off, so no secret ask is answered or drawn until
-      jitsusama.quickshell.launcher.providers.passwords.off is lib.mkForce false,
-      since this module already sets it to true.
+      jitsusama.quickshell.launcher.providers.passwords.off is no longer set
+      to true.
     '';
   };
 }

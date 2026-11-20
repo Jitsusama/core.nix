@@ -78,8 +78,9 @@ Provider {
         // The shell's own child, with no socket another process could
         // reach, so what Joel's manager lets it read is the shell's alone.
         // Never run while the place is off. It copies nothing unless a
-        // copier is named, which only the checks do until agents are
-        // fenced off the clipboard; null keeps one out of its environment.
+        // copier is named, as the module names wl-copy, whose sensitive
+        // offer niri keeps from fenced agents; null keeps one out of its
+        // environment.
         command: provider.off ? [] : provider.settings.daemon ?? []
         environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
         // Where secret asks are listed, its asks' rows come beside the
@@ -111,11 +112,12 @@ Provider {
     readonly property bool answersAsks: settings.answersAsks === true
     readonly property var asksLink: answersAsks ? daemon : null
 
-    // Whether the place is off, as it is until agents are fenced off Joel's
-    // runtime folder and Wayland: every agent runs as his uid, so a daemon
-    // his manager let in would answer any of them (2026-11-10, Joel: "we
-    // can't have a password backdoor here"). It then holds one row, saying
-    // so and opening the browser his manager's own extension fills in.
+    // Whether the place is off, as `off = true` takes it back off where
+    // agents aren't fenced off Joel's runtime folder and Wayland: every
+    // agent runs as his uid, so a daemon his manager let in would answer
+    // any of them (2026-11-10, Joel: "we can't have a password backdoor
+    // here"). It then holds one row, saying so and opening the browser his
+    // manager's own extension fills in.
     readonly property bool off: settings.off === true
     // Whether the launcher is walked from outside it, as `qs ipc call
     // launcher run`, `doing` and `show` walk it for any process of the

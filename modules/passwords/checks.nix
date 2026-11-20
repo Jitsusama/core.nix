@@ -95,15 +95,52 @@ onLinux {
           ${pkgs.callPackage ./completion.nix { }}/share/zsh/site-functions/_passwords
         touch $out
       '';
+  # Passwords' copier, run as the daemon runs it on the account's niri
+  # nested in the sandbox, keeps a secret it's given on its standard input
+  # in its own memory, locked and unreadable through /proc: it pastes on
+  # Joel's display, and nothing is made under TMPDIR, where any process of
+  # the account's could read it, nor run from PATH. One it can't read whole
+  # is refused (tests/copier-keeps-a-secret-in-memory.py).
+  passwords-copier-keeps-a-secret-in-memory-on-niri =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      copier = pkgs.callPackage ./copier.nix { };
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "passwords-copier-keeps-a-secret-in-memory-on-niri"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+          pkgs.wl-clipboard
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests/copier-keeps-a-secret-in-memory.py} \
+          ${lib.getExe' copier "wl-copy"} ${lib.getExe pkgs.bash}
+        touch $out
+      '';
   # clippy finds nothing in the passwords daemon, its tests included.
   passwords-passes-clippy = passesClippy "passwords-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
   # On a machine with 1Password, the launcher's Passwords provider runs the
   # daemon itself, with 1Password's manager, and nothing else can: there's
-  # no unit and no socket for it, and no copier is named, so nothing is
-  # copied until agents are fenced off the clipboard. The place stays off
-  # meanwhile, and the provider knows 1Password's program.
+  # no unit and no socket for it, and it copies through Passwords' own
+  # wl-copy by its full path, which holds a copy in its memory alone, now
+  # that niri keeps a sensitive copy from fenced agents. The place is on,
+  # and the provider knows 1Password's program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -116,8 +153,8 @@ onLinux {
         lib.hasInfix "/bin/passwords daemon /nix/store/" daemon
         && !(home.systemd.user.services ? passwords)
         && !(home.systemd.user.sockets ? passwords)
-        && !(provider ? copier)
-        && (provider.off or false)
+        && provider.copier or "" == lib.getExe' (graphical.pkgs.callPackage ./copier.nix { }) "wl-copy"
+        && !(provider.off or false)
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
@@ -142,10 +179,8 @@ onLinux {
             ];
           }
         ]);
-      off = releasing { };
-      on = releasing {
-        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkForce false;
-      };
+      off = releasing { jitsusama.quickshell.launcher.providers.passwords.off = true; };
+      on = releasing { };
       offProviders = off.jitsusama.quickshell.launcher.providers;
       onProviders = on.jitsusama.quickshell.launcher.providers;
     in
@@ -161,14 +196,17 @@ onLinux {
         && on.xdg.configFile ? "quickshell/launcher/Shown.js"
         && !lib.any (lib.hasInfix "jitsusama.passwords.releases") on.warnings
       );
-  # While the place is off, the shell's own config names no passwords
-  # daemon, so an unfenced process that rewrites the off setting finds
-  # nothing for the shell to run. It closes that one setting, not Joel's
-  # session: such a process can still start the daemon itself, as it can
-  # today, until the agent fence covers every session.
+  # With `off = true` set, as a machine may still set it, the shell's own
+  # config names no passwords daemon, so an unfenced process that rewrites
+  # the off setting finds nothing for the shell to run.
   the-passwords-place-off-gives-the-shell-no-daemon =
     let
-      shellConfig = (account graphical).xdg.configFile."quickshell/Providers.qml".text;
+      turnedOff = graphical.extendModules {
+        modules = [
+          { home-manager.users.someone.jitsusama.quickshell.launcher.providers.passwords.off = true; }
+        ];
+      };
+      shellConfig = (account turnedOff).xdg.configFile."quickshell/Providers.qml".text;
     in
     holds "the-passwords-place-off-gives-the-shell-no-daemon"
       "The shell's config names the passwords daemon while the Passwords place is off."
