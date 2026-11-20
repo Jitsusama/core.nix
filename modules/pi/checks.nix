@@ -238,6 +238,16 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi freezes each context entry it reads without putting its
+  # objects in a weak set, whose in-place rehash held a host's thread 95 s.
+  pi-hosted-freezes-context-without-a-set =
+    pkgs.runCommandLocal "pi-hosted-freezes-context-without-a-set" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-freezes-context-without-a-set.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A run a hosted pi's agent starts itself, carrying a conversation on with
   # no starting message, is prepared by extensions and settled by pi as a
   # prompt's run is, so a carried turn keeps every section they add. The

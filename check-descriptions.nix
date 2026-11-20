@@ -2744,6 +2744,11 @@
     once to check them, dropping ones that don't fit as before, where unpatched it built before the
     handlers and after each, read or not
   '';
+  pi-hosted-freezes-context-without-a-set = ''
+    pi built with the host's patches, applied exactly, freezes a context entry it reads and everything
+    in it without putting any of its objects in a weak set, where unpatched every object went into one
+    set for the process's life
+  '';
   pi-hosted-runs-its-own-turns-through-pi = ''
     pi built with the host's patches, applied exactly, runs work the host's agent starts itself as
     one of its own runs: busy from its start, before_agent_start told it carries on, the same prompt

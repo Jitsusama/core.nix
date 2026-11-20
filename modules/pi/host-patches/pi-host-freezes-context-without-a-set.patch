@@ -1,0 +1,42 @@
+A host freezes the context entries it reads without a set of them.
+
+pi-durable freezes each context entry it reads, everything in it, and
+put every object it froze into one weak set for the process's life, to
+skip what it had frozen before. The scheduler keeps each conversation's
+range, so a host's set held every object of every live context, millions
+of keys. V8 rehashes a weak table in place, on the thread: with a
+million live keys one add after a collection held it 3 s, and on 19
+November one held a host's thread 95 s, past its watchdog, which ended
+every conversation on it. Each value frozen here is fresh from storage
+or a commit, which the set never skipped, so dropping it costs only a
+second walk of a head marker already frozen.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/durable/src/harness/context.ts
++++ b/packages/durable/src/harness/context.ts
+@@ -288,16 +288,17 @@
+ 	);
+ }
+ 
+-/** Objects `freezeJson()` froze with everything in them. `Object.isFrozen()` holds for shallow freezes too. */
+-const deeplyFrozen = new WeakSet<object>();
++// pi-host: no set of every object frozen. The scheduler keeps each conversation's range, so a host's set held every
++// object of every live context, millions of keys, and V8 rehashes a weak table in place on the thread: with a million
++// live keys one add after a collection held it 3 s, and on 19 November one held a host 95 s, past its watchdog.
++// Each value frozen here is fresh from Storage or a commit, which the set never skipped; only a head marker already
++// frozen is walked again, one entry a read.
+ 
+ /** Freeze a JSON value and everything in it. */
+ function freezeJson<T>(value: T): T {
+-	if (value === null || typeof value !== "object" || deeplyFrozen.has(value)) return value;
++	if (value === null || typeof value !== "object") return value;
+ 	for (const child of Object.values(value)) freezeJson(child);
+-	Object.freeze(value);
+-	deeplyFrozen.add(value);
+-	return value;
++	return Object.freeze(value);
+ }
+ 
+ /**
