@@ -128,6 +128,24 @@ fn a_date_moved_in_place_after_it_passed_still_slipped() {
 }
 
 #[test]
+fn a_date_promised_has_not_caught_up_with_still_counts() {
+    // Its list moved `expected` to 2 h ago without adding it to `promised`,
+    // and another's `promised` is empty: each passed date still counts.
+    let mut lagging: serde_json::Value =
+        serde_json::from_str(&moved("lagging", &[(-DAY, 20 * 3600)])).expect("an ask made");
+    lagging["expected"] = at(NOW - 2 * 3600).into();
+    let mut empty: serde_json::Value =
+        serde_json::from_str(&moved("empty", &[(3600, 20 * 3600)])).expect("an ask made");
+    empty["promised"] = serde_json::json!([]);
+    let text = [lagging.to_string(), empty.to_string()].join("\n");
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        ["lagging · Y2YBTS", "empty · Y2YBTS"],
+        "an ask's current date was dropped where its promised dates lag it"
+    );
+}
+
+#[test]
 fn the_lists_own_asks_and_mends_have_lines_of_their_own() {
     let text = list();
     let slipped = slips(&text, NOW, Tracking::Derived);

@@ -103,11 +103,13 @@ impl Measure {
 }
 
 /// The measure to move this hour: the first class with one past its
-/// target, and within it the one furthest past.
+/// target, and within it the one furthest past. A merge's rounds past five
+/// can't move, so they are filed to its owner apart and never lead.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
+        .filter(|m| !m.key.starts_with(rounds::FRUITLESS))
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
@@ -198,16 +200,19 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
 }
 
 /// Each date `ask` was given, with when the date after it was given, if
-/// one was: its `promised`, oldest first, or its `expected` alone.
+/// one was: its `promised`, oldest first, then its `expected` where that
+/// isn't the last promised, given at a time unknown.
 fn promised(ask: &Value) -> Vec<(i64, Option<i64>)> {
-    let given: Vec<(Option<i64>, Option<i64>)> = ask["promised"].as_array().map_or_else(
-        || vec![(seconds(&ask["expected"]), None)],
-        |all| {
-            all.iter()
-                .map(|p| (seconds(&p["expected"]), seconds(&p["given"])))
-                .collect()
-        },
-    );
+    let mut given: Vec<(Option<i64>, Option<i64>)> = ask["promised"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| (seconds(&p["expected"]), seconds(&p["given"])))
+        .collect();
+    let current = seconds(&ask["expected"]);
+    if current.is_some() && given.last().map(|(date, _)| *date) != Some(current) {
+        given.push((current, None));
+    }
     given
         .iter()
         .enumerate()

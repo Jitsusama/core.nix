@@ -688,6 +688,9 @@ mod tests {
             "\n",
             r#"{"USER_UNIT":"y2ybts-first-red2-1236.service","USER_INVOCATION_ID":"e5"}"#,
             "\n",
+            // Red by name, but no run of systemd-run's, so still told.
+            r#"{"USER_UNIT":"red-light.service","USER_INVOCATION_ID":"f6"}"#,
+            "\n",
             r#"{"USER_UNIT":"camera.service"}"#,
         );
         let held = |unit: &str| unit.starts_with("y2ybts-");
@@ -697,6 +700,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 ("camera.service".to_owned(), 1),
+                ("red-light.service".to_owned(), 1),
                 ("spent-check1.service".to_owned(), 1),
                 ("y2ybts-race-timers-*.service".to_owned(), 1),
             ],

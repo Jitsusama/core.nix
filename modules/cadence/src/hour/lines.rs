@@ -73,11 +73,14 @@ fn behind(m: &Measure) -> Vec<String> {
 /// A class's lines on the card. Clean zones read some sixty measures, so
 /// only those past their target are listed, and the rest are counted in a
 /// line of their own; every other class lists each of its measures, with
-/// what's behind one past its target.
+/// what's behind one past its target. A merge whose rounds past five fixed
+/// nothing is already named under the rounds median, so its own measure,
+/// kept only to be filed to its owner, isn't listed again.
 pub fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {
     if class != Class::Clean {
         return of_class
             .iter()
+            .filter(|m| !m.key.starts_with(rounds::FRUITLESS))
             .flat_map(|m| std::iter::once(line(m)).chain(behind(m)))
             .collect();
     }
@@ -159,6 +162,14 @@ mod tests {
             shown_lines(Class::Ship, &[&other]).len(),
             1,
             "others stay bare"
+        );
+        let mut fruitless = measure(Class::Ship, 6.0, &[]);
+        fruitless.key = format!("{}core.nix#12", rounds::FRUITLESS);
+        fruitless.target = Some(5.0);
+        assert_eq!(
+            shown_lines(Class::Ship, &[&rounds, &fruitless]).len(),
+            2,
+            "a merge named under the median was listed again on its own line"
         );
     }
 
