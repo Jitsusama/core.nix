@@ -122,6 +122,7 @@ mod tests {
             waits,
             call: BTreeMap::new(),
             lowered: BTreeMap::new(),
+            unwatched: BTreeMap::new(),
             niri: Answers {
                 p50_ms: 1.2,
                 p99_ms: 3.4,

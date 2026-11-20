@@ -23,7 +23,8 @@ pub const APPS: [(&str, &str); 2] = [("chrome", "chrome-ui"), ("slack", "slack-u
 /// takes his input; a renderer, with a `Compositor`, whose main thread and
 /// compositor lay out and draw a page; and the GPU process, with a
 /// `VizCompositorThread` cut to 15 bytes, which puts every frame on the
-/// screen. A main thread keeps the process's name. Any other draws
+/// screen, and whose main thread runs the GPU work the others ask for. A
+/// main thread keeps the process's name. Any other draws
 /// nothing: a utility process, with only a `Chrome_ChildIOThread`, or a
 /// zygote, with none. A renderer just forked has none of them either for
 /// a moment, so one is settled as drawing nothing only when it still has
@@ -46,7 +47,7 @@ fn drawing(threads: &[(String, PathBuf)]) -> Drawing {
     let has = |kind: &str| threads.iter().any(|(name, _)| name == kind);
     if has("VizCompositorTh") {
         Drawing::With {
-            main: false,
+            main: true,
             drawer: Some("VizCompositorTh"),
         }
     } else if has("Compositor") {
@@ -83,11 +84,14 @@ struct Known {
 /// its kind draws with, as a renderer does in the moment before it starts
 /// its compositor. A process outside his apps has only its cgroup read,
 /// each minute, since one starts in its launcher's cgroup in the moment
-/// before it's moved into its scope.
+/// before it's moved into its scope. One in his own `app.slice` but in no
+/// app's unit, as a browser started from his terminal is, is counted by
+/// its label, so a gap in what's watched shows rather than reads as quiet.
 #[derive(Debug)]
 pub struct Apps {
     slice: String,
     known: BTreeMap<String, Known>,
+    outside: BTreeMap<String, &'static str>,
 }
 
 impl Apps {
@@ -97,18 +101,38 @@ impl Apps {
         Apps {
             slice: format!("{account}/app.slice"),
             known: BTreeMap::new(),
+            outside: BTreeMap::new(),
         }
+    }
+
+    /// How many processes of each app's label run in Joel's own
+    /// `app.slice` but outside his apps' units, and so go unwatched.
+    pub fn unwatched(&self) -> BTreeMap<String, usize> {
+        let mut counted = BTreeMap::new();
+        for label in self.outside.values() {
+            *counted.entry((*label).to_string()).or_default() += 1;
+        }
+        counted
     }
 
     /// The threads of `process`, an app's labelled `label`, from what was
     /// found when it was new, or found now; none when it isn't one Joel
     /// opened.
     pub fn of(&mut self, pid: &str, process: &Path, label: &'static str) -> Option<Vec<Thread>> {
-        let started = started(&text(&process.join("stat")));
-        if !self.launched_by_joel(&text(&process.join("cgroup"))) {
+        // Its cgroup first, so a process that isn't Joel's has nothing else
+        // read.
+        let cgroup = text(&process.join("cgroup"));
+        if !self.launched_by_joel(&cgroup) {
             self.known.remove(pid);
+            if self.in_his_slice(&cgroup) {
+                self.outside.insert(pid.to_string(), label);
+            } else {
+                self.outside.remove(pid);
+            }
             return None;
         }
+        self.outside.remove(pid);
+        let started = started(&text(&process.join("stat")));
         let mut unsure_before = false;
         match self.known.get(pid) {
             Some(known) if known.started == started && known.settled => {
@@ -157,6 +181,16 @@ impl Apps {
     /// Lets go of every process no longer running.
     pub fn keep_only(&mut self, running: &BTreeSet<String>) {
         self.known.retain(|pid, _| running.contains(pid));
+        self.outside.retain(|pid, _| running.contains(pid));
+    }
+
+    /// Whether `cgroup` is anywhere in Joel's own `app.slice`.
+    fn in_his_slice(&self, cgroup: &str) -> bool {
+        cgroup.lines().any(|line| {
+            line.strip_prefix("0::")
+                .and_then(|path| path.strip_prefix(self.slice.as_str()))
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
     }
 
     /// Whether a process is one Joel opened, from its cgroup: an app's unit
@@ -208,7 +242,8 @@ impl Apps {
                     .and_then(|path| path.strip_prefix(self.slice.as_str()))
                     .and_then(|rest| rest.strip_prefix('/'))
                     .is_some_and(|unit| {
-                        unit.starts_with("kitty-")
+                        !unit.contains('/')
+                            && unit.starts_with("kitty-")
                             && unit.rsplit_once('.').is_some_and(|(_, k)| k == "scope")
                     })
             })
@@ -268,7 +303,7 @@ mod tests {
         write(&proc.join("72/task/72/comm"), "chrome\n");
         write(&proc.join("72/task/73/comm"), "Compositor\n");
         write(&proc.join("72/task/74/comm"), "Chrome_ChildIOT\n");
-        // The GPU process: its compositor, not its main thread.
+        // The GPU process: its compositor and its main thread.
         opened(&proc, "75", "chrome");
         write(&proc.join("75/task/75/comm"), "chrome\n");
         write(&proc.join("75/task/76/comm"), "VizCompositorTh\n");
@@ -289,19 +324,46 @@ mod tests {
         );
         write(&proc.join("92/task/92/comm"), "chrome\n");
         write(&proc.join("92/task/93/comm"), "Chrome_IOThread\n");
+        // One Joel started from his terminal, in his app.slice but no app's
+        // unit, goes unwatched and is counted; an agent's, in its own
+        // slice, is neither.
+        write(&proc.join("96/comm"), "slack\n");
+        write(
+            &proc.join("96/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/kitty-70-0.scope\n"),
+        );
+        write(&proc.join("98/comm"), "chrome\n");
+        write(
+            &proc.join("98/cgroup"),
+            &format!("0::{ACCOUNT}/agents.slice/agent.scope\n"),
+        );
         // Neither an app nor a call: nothing of it is read.
         write(&proc.join("90/comm"), "bash\n");
+        let mut apps = Apps::of_account(ACCOUNT);
         assert_eq!(
-            drawing_threads(&proc, &mut Apps::of_account(ACCOUNT)),
+            drawing_threads(&proc, &mut apps),
             [
                 "chrome-ui Compositor 72/task/73/schedstat",
                 "chrome-ui VizCompositorTh 75/task/76/schedstat",
                 "chrome-ui chrome 70/task/70/schedstat",
                 "chrome-ui chrome 72/task/72/schedstat",
+                "chrome-ui chrome 75/task/75/schedstat",
                 "slack-ui Compositor 80/task/81/schedstat",
                 "slack-ui slack 80/task/80/schedstat",
             ]
         );
+        assert_eq!(
+            apps.unwatched(),
+            BTreeMap::from([("chrome-ui".to_string(), 1), ("slack-ui".to_string(), 1)])
+        );
+        // Once one has ended, it's no longer counted.
+        fs::remove_dir_all(proc.join("96")).unwrap();
+        drawing_threads(&proc, &mut apps);
+        assert_eq!(
+            apps.unwatched(),
+            BTreeMap::from([("chrome-ui".to_string(), 1)])
+        );
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -356,6 +418,8 @@ mod tests {
             // A terminal an agent's session opened, and one in a slice below.
             format!("{ACCOUNT}/agents.slice/kitty-70-0.scope"),
             format!("{mine}/tests.slice/kitty-70-0.scope"),
+            // A cgroup a program made below a terminal's scope.
+            format!("{mine}/kitty-70-0.scope/payload/app-a.scope"),
             // A test's Chrome, and another account's terminal.
             format!("{mine}/apps-under-load.service"),
             "/user.slice/user-1001.slice/user@1001.service/app.slice/kitty-70-0.scope".into(),
@@ -443,6 +507,7 @@ mod tests {
             !moved.iter().any(|t| t.contains(" 72/")),
             "a process moved out of Joel's apps was still read: {moved:?}"
         );
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -475,5 +540,6 @@ mod tests {
             drawing_threads(&proc, &mut apps),
             ["chrome-ui chrome 72/task/72/schedstat"]
         );
+        fs::remove_dir_all(&root).unwrap();
     }
 }
