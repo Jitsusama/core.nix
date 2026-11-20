@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -121,18 +122,27 @@ onLinux {
   # histograms and its GPU and Dawn caches, are links into the runtime
   # folder once the account's command runs on a profile Chrome has already
   # filled, its old files gone and the rest of the profile left alone; a
-  # second run changes nothing, and with Chrome running nothing is touched
-  # (tests/chrome-maps-land-in-memory.sh).
+  # second run, a boot's empty runtime folder and a lock Chrome left behind
+  # are each handled, and with Chrome running nothing in the profile is
+  # touched (tests/chrome-maps-land-in-memory.sh). The unit runs as the
+  # account's manager starts, before the session that starts Chrome.
   chrome-maps-land-in-memory =
     let
       home = account (bareNixos [
         self.nixosModules.graphical
         { home-manager.users.someone.imports = [ self.homeModules.chrome ]; }
       ]);
-      command = pkgs.writeText "chrome-maps-in-memory" (
-        toString (home.systemd.user.services.chrome-maps-in-memory.Service.ExecStart or "")
-      );
+      unit =
+        home.systemd.user.services.chrome-maps-in-memory
+          or (throw "the account has no chrome-maps-in-memory service");
+      command = pkgs.writeText "chrome-maps-in-memory" (toString unit.Service.ExecStart);
     in
+    assert lib.assertMsg (lib.elem "default.target" (
+      unit.Install.WantedBy or [ ]
+    )) "chrome-maps-in-memory isn't started with the account's manager.";
+    assert lib.assertMsg (lib.elem "graphical-session-pre.target" (
+      unit.Unit.Before or [ ]
+    )) "chrome-maps-in-memory isn't ordered before the session that starts Chrome.";
     pkgs.runCommandLocal "chrome-maps-land-in-memory" { } ''
       bash ${./tests/chrome-maps-land-in-memory.sh} ${command}
       touch $out

@@ -360,9 +360,12 @@ let
   # freezing the picture, and never with these folders in memory. Chrome
   # takes no setting to move them, and turning histograms off still leaves
   # the file mapped, so each folder is a link into the runtime folder, made
-  # again at each login (maps-in-memory.sh). A cache Chrome finds broken it
-  # may move aside and make again on the disk, until the next login links
-  # it back.
+  # again each time the account's manager starts (maps-in-memory.sh). A
+  # cache Chrome finds broken, a link left pointing at nothing included, it
+  # makes again on the disk, until the manager's next start links it back.
+  # Only the Default profile's caches move; a profile added later keeps its
+  # own on the disk, as all of them were before. The caches are Chrome's
+  # own size, tens of megabytes, against the runtime folder's gigabytes.
   mappedFolders = [
     "BrowserMetrics"
     "Default/GPUCache"
