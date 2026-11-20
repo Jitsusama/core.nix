@@ -67,8 +67,8 @@ const LOUD_PER_VOICED: usize = 20;
 /// period of 400 Hz down to 60 Hz. A higher pitch repeats at a multiple
 /// of its period too, so it's voiced, while a hum below about 50 Hz
 /// repeats only past the longest, so it isn't. Mains hum at 60 Hz is
-/// voiced, as a 50 Hz one near a pure tone is, and Parakeet writes
-/// nothing for it.
+/// voiced; at 50 Hz it's on the line, voiced or not by where its cycles
+/// fall in a frame, and Parakeet writes nothing for either.
 const SHORTEST_PERIOD: usize = RATE / 400;
 const LONGEST_PERIOD: usize = RATE / 60;
 /// Each sample is compared less the one this far before it, 6 samples at
@@ -533,13 +533,15 @@ mod tests {
     #[test]
     fn noise_takes_three_frames_voiced_with_the_one_before_to_be_heard() {
         // Each frame is read with the one before it, so 60 ms of voice
-        // after noise holds two voiced frames and 80 ms holds three.
+        // after noise holds two voiced frames and 80 ms holds three. The
+        // take is short enough that one voiced frame in twenty loud ones
+        // asks for only two, so the three are what's tested.
         for (heard, seconds) in [(false, 0.06), (true, 0.08)] {
             let sound = [
                 quiet(2.0),
-                noise(0.5, 0.05, false),
+                noise(0.2, 0.05, false),
                 voice(seconds, 150.0),
-                noise(0.5, 0.05, false),
+                noise(0.2, 0.05, false),
                 quiet(2.0),
             ]
             .concat();
@@ -549,6 +551,20 @@ mod tests {
                 "{seconds} s of voice"
             );
         }
+    }
+
+    #[test]
+    fn a_short_answer_in_a_long_loud_take_is_a_take() {
+        // 0.3 s of voice in 4 s of loud noise is one frame in sixteen.
+        let sound = [
+            quiet(2.0),
+            noise(2.0, 0.05, false),
+            voice(0.3, 150.0),
+            noise(2.0, 0.05, false),
+            quiet(2.0),
+        ]
+        .concat();
+        assert_eq!(cut(&sound).len(), 1, "the answer in the noise");
     }
 
     #[test]
