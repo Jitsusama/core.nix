@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 
 const root = resolve(process.argv[2]);
 // pi-durable sits beside the coding agent in an installed tree, or in the
-// workspace's packages where the tree is the monorepo itself.
+// workspace's packages where the tree is pi's own source.
 const contextModule = [
   `${root}/node_modules/@earendil-works/pi-durable/dist/harness/context.js`,
   `${root}/packages/durable/dist/harness/context.js`,
