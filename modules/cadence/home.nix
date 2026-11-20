@@ -444,6 +444,13 @@ in
           }${lib.optionalString (realms != [ ]) ":${config.home.profileDirectory}/bin"}"
         ];
         Slice = "background.slice";
+        # The hour's ten days of journals and World's history pass through
+        # this unit as file pages: at 23:10 on 19 November they charged
+        # 7.1 GiB in seven seconds, against 284 MiB of its own memory with
+        # the map check's headless browser at its height. Past this mark the
+        # kernel takes those pages back from the hour rather than from what
+        # Joel is using. No hard limit: a kill would lose the hour's card.
+        MemoryHigh = "512M";
       };
     };
     systemd.user.timers.cadence-hour = {
