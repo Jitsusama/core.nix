@@ -1,5 +1,9 @@
 # cadence, built from this directory, its tests run as it builds.
-{ lib, rustPlatform }:
+{
+  git,
+  lib,
+  rustPlatform,
+}:
 rustPlatform.buildRustPackage rec {
   pname = "cadence";
   version = "0.1.0";
@@ -16,6 +20,9 @@ rustPlatform.buildRustPackage rec {
   };
   sourceRoot = "${src.name}/cadence";
   cargoLock.lockFile = ./Cargo.lock;
+  # The tests read which versions of a host patch carry a change from a
+  # history of their own, as cadence reads core's.
+  nativeCheckInputs = [ git ];
   meta = {
     description = "Watches the delivery cycle and asks the session keeping it fast when a target slips";
     license = lib.licenses.mit;

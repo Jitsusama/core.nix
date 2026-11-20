@@ -272,6 +272,16 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi keeps a copy of each patch it applied, since a running
+  # host's copies are what cadence reads before it tells a miss fixed.
+  pi-hosted-keeps-the-patches-it-applied =
+    pkgs.runCommandLocal "pi-hosted-keeps-the-patches-it-applied" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/pi-hosted-keeps-the-patches-it-applied.sh} \
+          ${./host-patches} ${hostedPi} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A run a hosted pi's agent starts itself, carrying a conversation on with
   # no starting message, is prepared by extensions and settled by pi as a
   # prompt's run is, so a carried turn keeps every section they add. The

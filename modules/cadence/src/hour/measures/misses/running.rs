@@ -33,50 +33,48 @@ const RUN_HERE: &[&str] = &["core", "world", "mycelium", "harness"];
 /// of core's input for each.
 const PINNED_BY_CORE: &[&str] = &["mycelium"];
 
-/// The files of core a change carries into the pi hosts' runtime, which a
-/// host loads only once it restarts onto a runtime built with them, apart
-/// from any switch.
-const HOSTED: &[&str] = &["modules/pi/host-patches/", "modules/pi/hosted-pi.nix"];
+/// Where core keeps the patches a pi host's runtime applies, which a host
+/// loads only once it restarts onto a runtime built with them, apart from
+/// any switch. Whoever builds a runtime chooses which it applies, from
+/// which core, so neither a switch nor a lock says.
+const PATCHES: &str = "modules/pi/host-patches/";
+
+/// Where a runtime keeps a copy of each patch it applied, by its name, as
+/// core's `hosted-pi.nix` does: the one record of what a host loads.
+const APPLIED: &str = "share/pi-host/patches";
 
 /// The pi hosts' own unit, which a switch leaves a running host keeping
 /// (its `X-SwitchMethod` is `keep-old`) until the host next starts.
 const HOST_UNIT: &str = "modules/pi/host.nix";
 
-/// How far back the commit pinning a host's runtime is looked for. A
-/// runtime first pinned before then can't be placed.
-const PINNED_WITHIN: &str = "--since=30.days";
+/// How core builds the runtime its own checks run, applying its patches.
+const HOSTED_PI: &str = "modules/pi/hosted-pi.nix";
 
-/// Where the pi hosts' runtime is pinned: the checkout cadence reads, by the
-/// name `--checkout` gives it, and the folder in it whose `flake.nix` names
-/// the runtime by store path and whose `flake.lock` pins core, as
-/// `NAME=FOLDER`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pin<'a> {
-    checkout: &'a str,
-    folder: &'a str,
-}
+/// The patches a runtime applied, by name, each as its copy reads.
+type Applied = BTreeMap<String, String>;
 
-impl<'a> Pin<'a> {
-    #[must_use]
-    pub fn parse(named: &'a str) -> Option<Self> {
-        let (checkout, folder) = named.split_once('=')?;
-        let folder = folder.trim_matches('/');
-        (!checkout.is_empty() && !folder.is_empty()).then_some(Pin { checkout, folder })
-    }
-}
+/// A pi host as listed, before its copies are read: the runtime it loads,
+/// when it started, and whether it was stopped.
+type Listed = (Option<std::path::PathBuf>, Option<i64>, bool);
 
-/// A running pi host as cadence reads it: the core its runtime was pinned
-/// with, and when it started, each `None` where that couldn't be read.
+/// The states of each patch of a change, by name, that carry it: its
+/// text, or `None` for one the change removed.
+type Wanted = BTreeMap<String, Vec<Option<String>>>;
+
+/// A pi host as cadence reads it: the patches its runtime applied, and
+/// when it started, each `None` where that couldn't be read, and whether
+/// it was stopped, with no process to keep an older unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Host {
-    core: Option<String>,
+    applied: Option<Applied>,
     started: Option<i64>,
+    stopped: bool,
 }
 
 /// Which of `merged` don't run here yet, each with why. A change runs once
 /// its repository's running revision carries its merge, a core change to
-/// the hosts' runtime once every running host also loads a runtime `pin`
-/// shows built from a core carrying it, and one to the hosts' unit once
+/// the hosts' patches once every running host also loads a runtime that
+/// applied each as merged or since, and one to the hosts' unit once
 /// every host started after the switch that carried it. A change seen
 /// running is kept in `folder`'s `ran.json` and never read again, so a
 /// closed miss isn't reopened, and told fixed twice, by an hour that can't
@@ -86,7 +84,6 @@ pub fn unrun(
     merged: &BTreeSet<Named>,
     repos: &Checkouts,
     switches: &str,
-    pin: Option<Pin<'_>>,
     folder: &Path,
 ) -> BTreeMap<Named, &'static str> {
     let ran_at = folder.join("ran.json");
@@ -95,16 +92,6 @@ pub fn unrun(
         .and_then(|kept| serde_json::from_str(&kept).ok())
         .unwrap_or_default();
     let revs = running(switches, repos);
-    let pin = pin.filter(|pin| {
-        let known = repos.contains_key(pin.checkout);
-        if !known {
-            eprintln!(
-                "cadence: --host-runtime names {}, which no --checkout gives",
-                pin.checkout
-            );
-        }
-        known
-    });
     let mut hosts: Option<Option<Vec<Host>>> = None;
     let mut unrun = BTreeMap::new();
     for change in merged.iter().filter(|change| !ran.contains(*change)) {
@@ -119,13 +106,18 @@ pub fn unrun(
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
             |sha, reaches| {
-                let read = hosts.get_or_insert_with(|| read_hosts(pin, repos));
+                let read = hosts.get_or_insert_with(read_hosts);
                 let switched_at = reaches
                     .unit
                     .then(|| first_switched(switches, |rev| carries(&path, sha, rev) == Some(true)))
                     .flatten();
-                hosts_lack(read.as_deref(), pin, reaches, switched_at, |rev| {
-                    carries(&path, sha, rev) == Some(true)
+                // Walked only once a host keeps copies to compare with it.
+                let merged = std::cell::OnceCell::new();
+                hosts_lack(read.as_deref(), &reaches, switched_at, |applied| {
+                    merged
+                        .get_or_init(|| versions(&path, sha, &reaches.patches))
+                        .as_ref()
+                        .map(|wanted| loads(applied, wanted))
                 })
             },
         );
@@ -153,10 +145,10 @@ pub fn unrun(
 }
 
 /// What a core change reaches that only a host's restart brings in: the
-/// hosts' runtime, or their unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// patches the hosts' runtime applies, by path, or their unit.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Reaches {
-    runtime: bool,
+    patches: Vec<String>,
     unit: bool,
 }
 
@@ -196,57 +188,68 @@ fn judge(
         return Some("cadence can't read what it changed");
     };
     let reaches = Reaches {
-        runtime: files
+        patches: files
             .lines()
-            .any(|file| HOSTED.iter().any(|hosted| file.starts_with(hosted))),
+            .filter(|file| {
+                file.starts_with(PATCHES)
+                    && std::path::Path::new(file)
+                        .extension()
+                        .is_some_and(|it| it == "patch")
+            })
+            .map(str::to_owned)
+            .collect(),
         unit: files.lines().any(|file| file == HOST_UNIT),
     };
-    (reaches.runtime || reaches.unit)
+    // A fix to how core builds its runtime can't be seen in a runtime built
+    // elsewhere, which copies only its patches, so it isn't told fixed;
+    // `changed` leaves the build out where it only listed the patches.
+    if files.lines().any(|file| file == HOSTED_PI) {
+        return Some("cadence can't tell what a pi host loads");
+    }
+    (!reaches.patches.is_empty() || reaches.unit)
         .then(|| hosts(sha, reaches))
         .flatten()
 }
 
 /// Why the pi hosts lack a change that `reaches` them, if they do: each
-/// host's runtime must be pinned with a core that `carries` it, and each
-/// must have started after `switched_at`, when a switch first carried a
-/// change to their unit, `None` when no switch read did. `hosts` is `None`
-/// when they couldn't be listed.
+/// host's runtime must have applied its patches, as `loads` says of what a
+/// runtime applied (`None` when it can't tell), and each must have started
+/// after `switched_at`, when a switch first carried a change to their
+/// unit, `None` when no switch read did. `hosts` is `None` when they
+/// couldn't be listed.
 /// Something lacking outranks what can't be read, so the owner is asked.
 fn hosts_lack(
     hosts: Option<&[Host]>,
-    pin: Option<Pin<'_>>,
-    reaches: Reaches,
+    reaches: &Reaches,
     switched_at: Option<i64>,
-    carries: impl Fn(&str) -> bool,
+    loads: impl Fn(&Applied) -> Option<bool>,
 ) -> Option<&'static str> {
-    if reaches.runtime && pin.is_none() {
-        return Some("cadence can't see what the pi hosts load");
-    }
+    let runtime = !reaches.patches.is_empty();
     let Some(hosts) = hosts else {
         return Some("cadence can't list the pi hosts");
     };
     if hosts.is_empty() {
         return Some("no pi host runs to load it");
     }
-    if reaches.runtime
-        && hosts
-            .iter()
-            .any(|host| host.core.as_deref().is_some_and(|core| !carries(core)))
-    {
+    let loaded: Vec<Option<bool>> = hosts
+        .iter()
+        .map(|host| host.applied.as_ref().and_then(&loads))
+        .collect();
+    if runtime && loaded.contains(&Some(false)) {
         return Some("the pi hosts don't load it yet");
     }
+    // A stopped host keeps no unit: it starts on the one switched in.
+    let running = || hosts.iter().filter(|host| !host.stopped);
     if reaches.unit
         && let Some(at) = switched_at
-        && hosts
-            .iter()
-            .any(|host| host.started.is_some_and(|started| started < at))
+        && running().any(|host| host.started.is_some_and(|started| started < at))
     {
         return Some("a pi host keeps its unit from before it");
     }
-    if reaches.runtime && hosts.iter().any(|host| host.core.is_none()) {
+    if runtime && loaded.contains(&None) {
         return Some("cadence can't tell what a pi host loads");
     }
-    if reaches.unit && (switched_at.is_none() || hosts.iter().any(|host| host.started.is_none())) {
+    if reaches.unit && (switched_at.is_none() || running().any(|host| host.started.is_none())) {
         return Some("cadence can't tell when a pi host started");
     }
     None
@@ -401,85 +404,198 @@ fn carries(path: &str, sha: &str, rev: &str) -> Option<bool> {
     )
 }
 
-/// The files the merge `sha` changed on its main, if git could say.
+/// The files the merge `sha` changed on its main, one a line, if git could
+/// say, leaving out core's runtime build where all it changed was the list
+/// of the patches the merge changed.
 fn changed(path: &str, sha: &str) -> Option<String> {
-    command(
+    let parent = format!("{sha}^1");
+    // A rename would hide the name a runtime still applies the patch by,
+    // and a name git quotes or splits would miss the patches' folder and
+    // read as reaching no host, so names come whole, apart by NUL.
+    let names = command(
         "git",
-        &["-C", path, "diff", "--name-only", &format!("{sha}^1"), sha],
+        &[
+            "-C",
+            path,
+            "diff",
+            "-z",
+            "--no-renames",
+            "--name-only",
+            &parent,
+            sha,
+        ],
     )
-    .ok()
+    .ok()?;
+    let mut files: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
+    if files.iter().any(|name| name.contains('\n')) {
+        return None;
+    }
+    if files.contains(&HOSTED_PI) {
+        let diff = command(
+            "git",
+            &["-C", path, "diff", "-U0", &parent, sha, "--", HOSTED_PI],
+        )
+        .ok()?;
+        if only_lists(&diff, &files) {
+            files.retain(|name| *name != HOSTED_PI);
+        }
+    }
+    Some(files.join("\n"))
 }
 
-/// Each running pi host, with the core its runtime was pinned with where
-/// `pin` shows it, or `None` when the hosts couldn't be listed.
-fn read_hosts(pin: Option<Pin<'_>>, repos: &Checkouts) -> Option<Vec<Host>> {
-    let running = hosts()?;
-    let checkout = pin
-        .and_then(|pin| repos.get(pin.checkout))
-        .map(|path| path.to_string_lossy().into_owned());
-    let core_of = |runtime: &str| {
-        let (pin, checkout) = (pin?, checkout.as_deref()?);
-        pinned_core(checkout, pin.folder, runtime)
-    };
+/// Whether each line `diff` of core's runtime build adds or removes is the
+/// line listing one of the patches in `files`, so it changed no step of the
+/// build a runtime built elsewhere would lack.
+fn only_lists(diff: &str, files: &[&str]) -> bool {
+    diff.lines()
+        .filter(|line| !line.starts_with("+++") && !line.starts_with("---"))
+        .filter_map(|line| line.strip_prefix('+').or_else(|| line.strip_prefix('-')))
+        .all(|listed| {
+            files.iter().any(|file| {
+                file.strip_prefix(PATCHES)
+                    .is_some_and(|name| listed.trim() == format!("./host-patches/{name}"))
+            })
+        })
+}
+
+/// Each pi host, with the patches its runtime applied where it keeps them,
+/// or `None` when the hosts couldn't be listed.
+fn read_hosts() -> Option<Vec<Host>> {
     Some(
-        running
+        hosts()?
             .into_iter()
-            .map(|(runtime, started)| Host {
-                core: runtime.as_deref().and_then(core_of),
+            .map(|(runtime, started, stopped)| Host {
+                applied: runtime.and_then(|runtime| applied(&runtime)),
                 started,
+                stopped,
             })
             .collect(),
     )
 }
 
-/// The core the commit first naming `runtime` in `folder`'s `flake.nix`
-/// pins, the core the runtime was built with; `None` when it was first
-/// named before the window looked at, or nowhere.
-fn pinned_core(checkout: &str, folder: &str, runtime: &str) -> Option<String> {
-    let flake = format!("{folder}/flake.nix");
-    let show = |commit: &str, file: &str| {
-        command(
-            "git",
-            &["-C", checkout, "show", &format!("{commit}:{file}")],
-        )
-        .ok()
+/// The patches the runtime at `root` applied, from the copies it keeps;
+/// `None` for a runtime that keeps none, built before it kept them.
+fn applied(root: &Path) -> Option<Applied> {
+    let mut applied = Applied::new();
+    for entry in std::fs::read_dir(root.join(APPLIED)).ok()? {
+        let path = entry.ok()?.path();
+        let name = path.file_name()?.to_str()?.to_owned();
+        applied.insert(name, std::fs::read_to_string(&path).ok()?);
+    }
+    Some(applied)
+}
+
+/// Each of `patches` by name, with every state of it a runtime may hold and
+/// carry the change: as the merge `sha` left it, `None` where it removed
+/// it, and as each merge on main's own line has left it since, up to the
+/// first that removes it or brings back a state it had without the change,
+/// as a revert does: what follows is built on the patch without it. A state
+/// without the change is one from before `sha`, on any branch, or one on a
+/// branch cut before it and merged since, which a merge may bring to main.
+/// `None` when git can't say.
+fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
+    let log = |how: &[&str], patch: &str| {
+        let mut args = vec!["-C", path, "log", "--format=%H"];
+        args.extend_from_slice(how);
+        args.extend(["--", patch]);
+        command("git", &args).ok()
     };
-    let touched = command(
+    let range = format!("{sha}..{}", main_of(path));
+    let parent = format!("{sha}^1");
+    // The merge and the commits it brought, which a revert names.
+    let fix = command(
+        "git",
+        &["-C", path, "rev-list", &format!("{parent}..{sha}")],
+    )
+    .ok()?;
+    let fix: Vec<&str> = fix.lines().collect();
+    let mut versions = Wanted::new();
+    for patch in patches {
+        let read = |commit: &str| state(path, commit.trim(), patch).ok();
+        // The log fails for a merge cadence doesn't have, and a state git
+        // can't read fails the whole, so a patch missing from a commit is
+        // one it lacks, not one unfetched.
+        let since = log(&["--first-parent", &range], patch)?;
+        let earlier = log(&["--full-history", &parent], patch)?;
+        let apart = log(&["--full-history", &range], patch)?;
+        // Asked of each commit, since `--ancestry-path` under a path leaves
+        // out a merge that descends from `sha` and keeps its text. One git
+        // can't place counts as apart, which only stops the walk sooner.
+        let descends = |commit: &&str| {
+            command(
+                "git",
+                &["-C", path, "merge-base", "--is-ancestor", sha, commit],
+            )
+            .is_ok()
+        };
+        let mut before: Vec<Option<String>> = earlier
+            .lines()
+            .chain(apart.lines().filter(|commit| !descends(commit)))
+            .map(read)
+            .collect::<Option<_>>()?;
+        before.push(read(&parent)?);
+        let mut states = vec![read(sha)?];
+        for commit in since.lines().rev() {
+            let later = read(commit)?;
+            if later.is_none() || before.contains(&later) || reverts(path, commit, &fix)? {
+                break;
+            }
+            states.push(later);
+        }
+        let name = Path::new(patch).file_name()?.to_str()?.to_owned();
+        versions.insert(name, states);
+    }
+    Some(versions)
+}
+
+/// Whether the commit `commit` on main, or one it merged, says it reverts
+/// one of `fix`, as `git revert` writes: a revert made after the patch
+/// changed again leaves a text found nowhere before, without the fix.
+/// `None` when git can't say.
+fn reverts(path: &str, commit: &str, fix: &[&str]) -> Option<bool> {
+    let commit = commit.trim();
+    let said = command(
         "git",
         &[
             "-C",
-            checkout,
+            path,
             "log",
-            "--format=%H",
-            PINNED_WITHIN,
-            "-S",
-            runtime,
-            main_of(checkout),
-            "--",
-            &flake,
+            "--format=%B",
+            &format!("{commit}^1..{commit}"),
         ],
     )
     .ok()?;
-    let names = |commit: &str| show(commit, &flake).is_some_and(|text| text.contains(runtime));
-    let commit = first_naming(&touched, names)?;
-    // A runtime its parent names already was pinned before the window, by
-    // a lock this commit may have moved on from.
-    if names(&format!("{commit}^")) {
-        return None;
-    }
-    input_pin(&show(commit, &format!("{folder}/flake.lock"))?, "core")
+    Some(said.lines().any(|line| {
+        let Some(named) = line.trim().strip_prefix("This reverts commit ") else {
+            return false;
+        };
+        let named: String = named.chars().take_while(char::is_ascii_hexdigit).collect();
+        named.len() >= 7 && fix.iter().any(|fixed| fixed.starts_with(&named))
+    }))
 }
 
-/// The oldest of `touched`, commits newest first, that `names` the runtime:
-/// git's `-S` gives the commit that dropped a runtime as well as the one
-/// that pinned it, and the first pin is what the runtime was built with.
-fn first_naming(touched: &str, names: impl Fn(&str) -> bool) -> Option<&str> {
-    touched
-        .lines()
-        .map(str::trim)
-        .filter(|commit| !commit.is_empty())
-        .rev()
-        .find(|commit| names(commit))
+/// The patch at `file` as `commit` holds it, `None` where it holds none, or
+/// an error where git can't read the commit: a failure taken for absence
+/// would read a patch the merge added as one it removed, and tell a runtime
+/// lacking it fixed.
+fn state(path: &str, commit: &str, file: &str) -> std::io::Result<Option<String>> {
+    let listed = command(
+        "git",
+        &["-C", path, "ls-tree", "--name-only", commit, "--", file],
+    )?;
+    if listed.trim().is_empty() {
+        return Ok(None);
+    }
+    command("git", &["-C", path, "show", &format!("{commit}:{file}")]).map(Some)
+}
+
+/// Whether a runtime that `applied` these loads a change, holding each of
+/// its patches in one of the states `wanted` names for it, a patch it
+/// removed by applying none.
+fn loads(applied: &Applied, wanted: &Wanted) -> bool {
+    wanted
+        .iter()
+        .all(|(name, states)| states.contains(&applied.get(name).cloned()))
 }
 
 /// The revision a `flake.lock` pins its root's `input` at.
@@ -492,18 +608,22 @@ fn input_pin(lock: &str, input: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The runtime each running pi host loads its pi from and when it started,
-/// each `None` where it couldn't be read. A host is the main process of a
-/// unit core's host module names `pi-host-REALM-KIND`, so what it starts,
-/// which keeps its environment after the host moves on, isn't read.
-fn hosts() -> Option<Vec<(Option<String>, Option<i64>)>> {
+/// The runtime each pi host loads its pi from and when it started, each
+/// `None` where it couldn't be read, and whether it was stopped. A host is
+/// the main process of a unit core's host module names
+/// `pi-host-REALM-KIND`, so what it starts, which keeps its environment
+/// after the host moves on, isn't read. A host stopped comes back on the
+/// runtime its unit names, so it's judged by that rather than left out.
+/// One failed or restarting may never load that runtime, as when it
+/// can't start on it, so what it loads can't be told.
+fn hosts() -> Option<Vec<Listed>> {
     let units = command(
         "systemctl",
         &[
             "--user",
             "list-units",
             "--type=service",
-            "--state=active",
+            "--all",
             "--no-legend",
             "--plain",
             "pi-host-*",
@@ -513,9 +633,8 @@ fn hosts() -> Option<Vec<(Option<String>, Option<i64>)>> {
     Some(
         units
             .lines()
-            .filter_map(|line| line.split_whitespace().next())
-            .filter(|unit| host_unit(unit))
-            .map(|unit| {
+            .filter_map(listed_host)
+            .map(|(unit, stopped)| {
                 let shown = command(
                     "systemctl",
                     &[
@@ -526,18 +645,38 @@ fn hosts() -> Option<Vec<(Option<String>, Option<i64>)>> {
                         "MainPID",
                         "-p",
                         "ActiveEnterTimestamp",
+                        "-p",
+                        "Environment",
                         unit,
                     ],
                 )
                 .unwrap_or_default();
                 let (pid, started) = shown_host(&shown);
-                let runtime = pid
-                    .and_then(|pid| std::fs::read(format!("/proc/{pid}/environ")).ok())
-                    .and_then(|environ| runtime(&environ));
-                (runtime, started)
+                match pid {
+                    Some(pid) => {
+                        let runtime = std::fs::read(format!("/proc/{pid}/environ"))
+                            .ok()
+                            .and_then(|environ| runtime(&environ));
+                        (runtime, started, false)
+                    }
+                    None if stopped => (unit_runtime(&shown), None, true),
+                    None => (None, None, false),
+                }
             })
             .collect(),
     )
+}
+
+/// The host unit a line of `systemctl list-units --all` names, and whether
+/// it was stopped, unless it's one gone from the config and stopped: a host
+/// still running after its unit's file went still loads its runtime, so
+/// it's read.
+fn listed_host(line: &str) -> Option<(&str, bool)> {
+    let mut fields = line.split_whitespace();
+    let unit = fields.next().filter(|unit| host_unit(unit))?;
+    let (load, active) = (fields.next(), fields.next());
+    let stopped = active == Some("inactive");
+    (load == Some("loaded") || !stopped).then_some((unit, stopped))
 }
 
 /// A host unit's main process and when it started, from `systemctl show`.
@@ -564,15 +703,40 @@ fn host_unit(unit: &str) -> bool {
         .is_some_and(|named| !named.contains('@') && named.contains('-'))
 }
 
-/// The runtime a pi host loads its pi from, as the hash of the store path
-/// its `PI_PACKAGE_DIR` names: a host's node may come from a newer runtime
+/// The runtime a pi host loads its pi from, as the store path its
+/// `PI_PACKAGE_DIR` lies in: a host's node may come from a newer runtime
 /// while it still loads the older one's pi, as the background host did from
 /// 20:24 on 19 November.
-fn runtime(environ: &[u8]) -> Option<String> {
+fn runtime(environ: &[u8]) -> Option<std::path::PathBuf> {
     let dir = environ
         .split(|&b| b == 0)
         .find_map(|var| var.strip_prefix(b"PI_PACKAGE_DIR="))?;
-    let dir = Path::new(std::str::from_utf8(dir).ok()?);
+    store_root(std::str::from_utf8(dir).ok()?)
+}
+
+/// The runtime a host's unit starts it on, from its `Environment` as
+/// `systemctl show` gives it, for a host with no process to read.
+fn unit_runtime(shown: &str) -> Option<std::path::PathBuf> {
+    let environment = shown
+        .lines()
+        .find_map(|line| line.strip_prefix("Environment="))?;
+    let dir = environment
+        .split_whitespace()
+        .find_map(|var| var.trim_matches('"').strip_prefix("PI_PACKAGE_DIR="))?;
+    store_root(dir)
+}
+
+/// The store path `dir` lies in, whatever it's named: what makes it a host's
+/// runtime is the copies of its patches it keeps, which `applied` reads.
+fn store_root(dir: &str) -> Option<std::path::PathBuf> {
+    let dir = Path::new(dir);
+    // `..` would name one store path while pi loads from another.
+    if dir
+        .components()
+        .any(|part| part == std::path::Component::ParentDir)
+    {
+        return None;
+    }
     let name = dir
         .strip_prefix("/nix/store")
         .ok()?
@@ -580,8 +744,8 @@ fn runtime(environ: &[u8]) -> Option<String> {
         .next()?
         .as_os_str()
         .to_str()?;
-    let (hash, rest) = name.split_once('-')?;
-    (hash.len() == 32 && rest.starts_with("pi-host-runtime-")).then(|| hash.to_owned())
+    let (hash, _) = name.split_once('-')?;
+    (hash.len() == 32).then(|| Path::new("/nix/store").join(name))
 }
 
 #[cfg(test)]
