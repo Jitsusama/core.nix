@@ -216,8 +216,12 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
         said.len() == 1 && said[0].contains("/days") && said[0].contains("60 minutes"),
         "an hour of failed writes wasn't said once, naming the folder and how long: {said:?}"
     );
-    // Past midnight, the day before is held, and a start after giving up
-    // replays only the new one, so health says it loses the day before.
+}
+
+#[test]
+fn health_giving_up_past_midnight_names_the_day_held_from_before() {
+    // A start after giving up replays only the new day, so what the day
+    // before it couldn't write is lost, and said to be.
     let Outcome { result, .. } = Ran {
         before: 1,
         tomorrow: 1,
@@ -227,9 +231,12 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
     }
     .outcome();
     assert!(
-        result.as_ref().is_err_and(|error| error
-            .to_string()
-            .contains("trying, losing 2026-11-12, held from before: ")),
+        result.as_ref().is_err_and(|error| {
+            let words = error.to_string();
+            words
+                .contains("trying, losing what it couldn't write of 2026-11-12, held from before: ")
+                && !words.ends_with(": ")
+        }),
         "giving up past midnight didn't name the day held from before: {result:?}"
     );
 }
@@ -502,17 +509,64 @@ fn how_long_a_spell_lasted_reads_to_the_minute() {
 }
 
 #[test]
-fn health_ending_unable_to_write_names_the_days_held_it_loses() {
+fn health_gives_up_only_on_a_last_try_that_fails() {
+    // The run's harness makes room only as it looks at the lid, before a
+    // tick's write, so a last try that writes is reached here instead.
+    let into = tempfile::tempdir().expect("a folder");
+    let days = into.path().join("days");
+    fs::write(&days, "").expect("a file in the folder's place");
+    let mut follower = Follower::new("2026-11-12", &days, TimeZone::UTC);
+    follower.take(&warning(NOON)).expect("a line taken");
+    let noticed = RefCell::new(Vec::new());
+    let notice = |words: &str| noticed.borrow_mut().push(words.to_owned());
+    let mut spell = Spell::default();
+    let started = Instant::now();
+    let failed = follower.write().expect_err("a write into a file");
+    spell.tried(Some(&failed), started, &days, &|_| {}, &notice);
+    let gave_up = started + GIVES_UP;
+    let ended = spell
+        .last_try(&mut follower, gave_up, &|_| {}, &notice)
+        .expect_err("a last try into a file");
+    assert!(
+        ended
+            .to_string()
+            .starts_with("health gave up writing the day into ")
+            && spell.is_on(),
+        "a last try that failed didn't end health: {ended}"
+    );
+    fs::remove_file(&days).expect("room made for the day");
+    spell
+        .last_try(&mut follower, gave_up, &|_| {}, &notice)
+        .expect("a last try that wrote everything carried on");
+    assert!(
+        !spell.is_on()
+            && file_of(&days, "2026-11-12").exists()
+            && noticed
+                .borrow()
+                .iter()
+                .any(|words| words.contains(" again, after trying")),
+        "a last try that wrote everything didn't end the spell, write the day and say so: {:?}",
+        noticed.borrow()
+    );
+}
+
+#[test]
+fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
+    // The spell's first failure was a day held from before, written
+    // since, so only the latest, as a final try's, names the day still
+    // failing.
     let held = |dates: &[&str]| dates.iter().map(|date| Day::new(date)).collect::<Vec<_>>();
     let mut spell = Spell::default();
-    let full = io::Error::other("no space left on device");
-    spell.tried(
-        Some(&full),
-        Instant::now(),
-        Path::new("days"),
-        &|_| {},
-        &|_| {},
-    );
+    for date in ["2026-11-10", "2026-11-13"] {
+        let full = io::Error::other(format!("{date}'s file: no space left on device"));
+        spell.tried(
+            Some(&full),
+            Instant::now(),
+            Path::new("days"),
+            &|_| {},
+            &|_| {},
+        );
+    }
     assert_eq!(
         [
             spell::losing(&held(&[])),
@@ -520,18 +574,19 @@ fn health_ending_unable_to_write_names_the_days_held_it_loses() {
             spell
                 .given_up(
                     Path::new("days"),
-                    &spell::losing(&held(&["2026-11-11", "2026-11-12", "2026-11-13"]))
+                    &spell::losing(&held(&["2026-11-11", "2026-11-12", "2026-11-13"])),
                 )
                 .to_string(),
         ],
         [
             String::new(),
-            ", losing 2026-11-12, held from before".to_owned(),
-            "health gave up writing the day into days after 60 minutes of trying, losing \
-             2026-11-11, 2026-11-12 and 2026-11-13, held from before: no space left on device"
+            ", losing what it couldn't write of 2026-11-12, held from before".to_owned(),
+            "health gave up writing the day into days after 60 minutes of trying, losing what it \
+             couldn't write of 2026-11-11, 2026-11-12 and 2026-11-13, held from before: \
+             2026-11-13's file: no space left on device"
                 .to_owned(),
         ],
-        "the days held that health lost as it ended went unnamed"
+        "health gave up without naming the days held it lost, or what failed last"
     );
 }
 

@@ -67,7 +67,7 @@ pub struct Follower {
     write_failed: bool,
     // The days before, oldest first, held until written, so the new day's
     // lines and ticks go on in it; a sleep, which stops `GIVES_UP`'s
-    // clock, can pass more than one midnight.
+    // clock, can pass more than one midnight. A stop drops them unsaid.
     held: Vec<Day>,
     into: PathBuf,
     zone: TimeZone,
@@ -585,8 +585,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let mut follower = Follower::new(&today, into, zone.clone())
         .reading(source)
         .knowing(source.ends()?);
-    // The detector and pi-keys keep their days beside health's, in the
-    // account's state.
+    // The detector and pi-keys keep their days beside health's, in the account's state.
     if let Some(state) = into.parent() {
         follower = follower
             .feeling(&state.join("pain-points"))
@@ -697,10 +696,11 @@ fn ended_by(
 /// tries every half minute for as long as `GIVES_UP`, as a start frees no
 /// room and, past midnight, would lose the old day; a new day starts as
 /// ever meanwhile, holding the old, so what's heard and seen goes into it.
+/// Then it tries once more, and carries on if that writes everything.
 ///
 /// # Errors
 ///
-/// When the day can't be written as health ends, or it gave up.
+/// When the day can't be written as health ends, or on that last try.
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
@@ -715,12 +715,13 @@ fn run(
     let mut ended = false;
     let mut hearing = true;
     let mut spell = Spell::default();
-    let mut gave_up;
     loop {
         let at = now();
         let ran = at.saturating_duration_since(started);
-        gave_up = spell.gave_up(at);
-        if ((ended && !spell.is_on()) || gave_up) && ran >= SETTLED {
+        if spell.gave_up(at) && ran >= SETTLED {
+            spell.last_try(follower, at, say, notice)?;
+        }
+        if ended && !spell.is_on() && ran >= SETTLED {
             break;
         }
         let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
@@ -774,10 +775,6 @@ fn run(
     }
     let written = follower.write();
     let lost = spell::losing(&follower.held);
-    // A start that gave up says so, whatever its last try came to.
-    if gave_up {
-        return Err(spell.given_up(&follower.into, &lost));
-    }
     written.map_err(|error| {
         io::Error::new(
             error.kind(),
@@ -786,15 +783,12 @@ fn run(
     })
 }
 
-// A spell of failed writes, and what health says of it, in a file of
-// its own so the follower reads whole.
+// A spell of failed writes and what health says of it, follow/spell.rs.
 mod spell;
 
-// How the follower hears the person's other machines' calls, in a file of
-// its own, follow/peers.rs.
+// How the follower hears the person's other machines' calls, follow/peers.rs.
 mod peers;
 
-// The tests keep a file of their own, follow/tests.rs, so the follower
-// reads whole.
+// The tests keep a file of their own, follow/tests.rs, so this reads whole.
 #[cfg(test)]
 mod tests;

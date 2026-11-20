@@ -3,13 +3,13 @@
 //! disk flapping at its edge, no more than once every ten minutes. A
 //! spell lasts only as long as health's run, so a start after one says
 //! the next spell at once, and a spell that outlasts a run, as one given
-//! up on does, is never told ended.
+//! up on does when its last try fails, is never told ended.
 
 use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use super::{GIVES_UP, SETTLED};
+use super::{Follower, GIVES_UP, SETTLED};
 use crate::day::Day;
 
 /// How long after a spell's end was told that a new one goes unsaid, as a
@@ -22,12 +22,15 @@ use crate::day::Day;
 /// minute.
 const QUIET_FOR: Duration = SETTLED;
 
-/// A spell of the day's writes failing: since when and for what, while
-/// they do, whether it was said, and when a spell's end was last told.
+/// A spell of the day's writes failing: since when and for what, first
+/// and latest, while they do, whether it was said, and when a spell's end
+/// was last told. The two causes differ once the day failing does, as
+/// when a day held from before is written and today goes on failing.
 #[derive(Debug, Default)]
 pub(super) struct Spell {
     since: Option<Instant>,
     cause: String,
+    latest: String,
     said: bool,
     told: Option<Instant>,
 }
@@ -46,15 +49,33 @@ impl Spell {
     }
 
     /// What health ends on once it has given up writing the day into
-    /// `into`, with the spell's cause, since its start was said long ago,
-    /// and the days held from before it `lost` (`losing`).
+    /// `into`, with the days held from before it `lost` (`losing`) and the
+    /// spell's latest error, its final try's first failure, since a first
+    /// said long ago may name a day written since.
     pub(super) fn given_up(&self, into: &Path, lost: &str) -> io::Error {
         io::Error::other(format!(
             "health gave up writing the day into {} after {} minutes of trying{lost}: {}",
             into.display(),
             GIVES_UP.as_secs() / 60,
-            self.cause
+            self.latest
         ))
+    }
+
+    /// Health's last try at `at`, once it `gave_up`: the `follower`'s days
+    /// written once more and `tried`. One that fails is what health ends
+    /// on (`given_up`); one that writes everything ends the spell, and
+    /// health carries on, as it lost nothing.
+    pub(super) fn last_try(
+        &mut self,
+        follower: &mut Follower,
+        at: Instant,
+        say: &dyn Fn(&str),
+        notice: &dyn Fn(&str),
+    ) -> io::Result<()> {
+        let written = follower.write();
+        self.tried(written.as_ref().err(), at, &follower.into, say, notice);
+        let lost = losing(&follower.held);
+        written.map_err(|_| self.given_up(&follower.into, &lost))
     }
 
     /// Take a write's `error` at `at`, if any. A spell's start is said
@@ -73,6 +94,9 @@ impl Spell {
         say: &dyn Fn(&str),
         notice: &dyn Fn(&str),
     ) {
+        if let Some(error) = error {
+            self.latest = error.to_string();
+        }
         match (error, self.since) {
             (Some(error), None) => {
                 self.since = Some(at);
@@ -108,6 +132,7 @@ impl Spell {
                 }
                 self.since = None;
                 self.cause.clear();
+                self.latest.clear();
                 self.said = false;
             }
             (None, None) => {}
@@ -138,8 +163,13 @@ pub(super) fn losing(held: &[Day]) -> String {
     let dates: Vec<&str> = held.iter().map(|day| day.date.as_str()).collect();
     match dates.split_last() {
         None => String::new(),
-        Some((last, [])) => format!(", losing {last}, held from before"),
-        Some((last, rest)) => format!(", losing {} and {last}, held from before", rest.join(", ")),
+        Some((last, [])) => {
+            format!(", losing what it couldn't write of {last}, held from before")
+        }
+        Some((last, rest)) => format!(
+            ", losing what it couldn't write of {} and {last}, held from before",
+            rest.join(", ")
+        ),
     }
 }
 
