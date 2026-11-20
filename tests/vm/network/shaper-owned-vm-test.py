@@ -67,7 +67,7 @@ class Rig:
     server: BaseMachine
 
     def link(self) -> Json:
-        """Give what the shaper says of eth1, or nothing before it says."""
+        """Give what the shaper says of eth1, or nothing before it says; fails once it stops."""
         status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
         return next((link for link in status if link["name"] == "eth1"), {})
 
@@ -169,13 +169,13 @@ class Rig:
             after = self.taken()
             # The lanes as the share was read, since the trace reads them after the stop; with
             # the shaper stopped there is no status to read.
-            lanes = self.link().get("lanes") if shaped else None
+            lanes_said = f", with the lanes {self.link().get('lanes')}" if shaped else ", unshaped"
         except BaseException:
             self.client.execute(stop)
             raise
         self.client.succeed(stop)
         moved = {port: after[port] - before.get(port, 0) for port in after}
-        print(f"what the server took while the app uploaded: {moved}, with the lanes {lanes}")
+        print(f"what the server took while the app uploaded: {moved}{lanes_said}")
         return moved.get(APP_PORT, 0) / sum(moved.values())
 
 
