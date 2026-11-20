@@ -278,9 +278,9 @@ pub fn threads(
         }
         running.insert(name.clone());
         if comm.trim() == "chrome" {
-            // A Chrome Joel didn't open, an agent's or a test's with a fake
+            // A Chrome Joel didn't start, an agent's or a test's with a fake
             // microphone, carries no call of his.
-            if !joels {
+            if !joels && !apps.may_call(&text(&entry.path().join("cgroup"))) {
                 continue;
             }
             chrome.extend(
@@ -492,6 +492,22 @@ pub mod tests {
         );
         write(&proc.join("50/task/51/comm"), "AudioInputDevic\n");
         assert_eq!(chrome(&proc), []);
+        // Nor an agent's, in the jobs slice.
+        write(&proc.join("55/comm"), "chrome\n");
+        write(
+            &proc.join("55/cgroup"),
+            &format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n"),
+        );
+        write(&proc.join("55/task/56/comm"), "AudioInputDevic\n");
+        assert_eq!(chrome(&proc), []);
+        // A Chrome Joel started from a terminal carries his call, though
+        // its drawing isn't read.
+        write(&proc.join("45/comm"), "chrome\n");
+        write(
+            &proc.join("45/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/kitty-70-0.scope\n"),
+        );
+        write(&proc.join("45/task/46/comm"), "WebRTC_Network\n");
         opened(&proc, "40", "chrome");
         write(&proc.join("40/task/41/comm"), "AudioInputDevic\n");
         assert_eq!(
@@ -500,6 +516,7 @@ pub mod tests {
                 found("chrome", "AudioInputDevic", task("40", "41"), true),
                 found("chrome", "AudioOutputDevi", task("30", "33"), false),
                 found("chrome", "WebRTC_Network", task("30", "31"), false),
+                found("chrome", "WebRTC_Network", task("45", "46"), false),
                 found("tuple", ".tuple-wrapped", task("60", "60"), false),
                 found("tuple", "AudioEncoder", task("60", "62"), true),
                 found("tuple", "Signaling", task("60", "61"), false),

@@ -213,6 +213,26 @@ impl Apps {
             }
         })
     }
+
+    /// Whether a Chrome in `cgroup` may carry Joel's call: one of his apps,
+    /// or one he started from a terminal, in its kitty scope. A call is his
+    /// however he opened the browser, so this is looser than the drawing
+    /// test, which a terminal's work fails since jobs-sorter moves it once
+    /// it's busy. A test's or an agent's Chrome, whose fake microphone would
+    /// read as a call, is in neither. One jobs-sorter has moved into the
+    /// jobs slice can't be told from an agent's there, and is left out.
+    pub fn may_call(&self, cgroup: &str) -> bool {
+        self.launched_by_joel(cgroup)
+            || cgroup.lines().any(|line| {
+                line.strip_prefix("0::")
+                    .and_then(|path| path.strip_prefix(self.slice.as_str()))
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .is_some_and(|unit| {
+                        unit.starts_with("kitty-")
+                            && unit.rsplit_once('.').is_some_and(|(_, k)| k == "scope")
+                    })
+            })
+    }
 }
 
 /// Whether a thread is an app's, read with its nice: a tab the app lowered
