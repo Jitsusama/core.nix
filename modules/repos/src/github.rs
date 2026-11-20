@@ -545,9 +545,6 @@ pub fn post(endpoint: &str, token: &Token, query: &str) -> Result<Value, Failed>
     send(endpoint, token, query)
 }
 
-/// The keeping of what a refresh saw at `file`, written whole through a
-/// file beside it and renamed over it, so a reading never finds half of
-/// one, and readable by its owner alone, since it names private changes.
 /// Keeps what a refresh saw, as `keep` does, each change first marked by
 /// whether it asks the review of `login`, the one the machine declares, so
 /// the collection can lead with the reviews asked of him once the refresh
@@ -559,6 +556,9 @@ pub fn keep_marked(file: &Path, seen: &mut Seen, login: Option<&str>) -> io::Res
     keep(file, seen)
 }
 
+/// The keeping of what a refresh saw at `file`, written whole through a
+/// file beside it and renamed over it, so a reading never finds half of
+/// one, and readable by its owner alone, since it names private changes.
 pub fn keep(file: &Path, seen: &Seen) -> io::Result<()> {
     kept::write(file, &serde_json::to_vec(seen).map_err(io::Error::other)?)
 }

@@ -13,8 +13,9 @@ use crate::views::tests::{HOME, NOW, ROOMS, change, clock, home, record, refresh
 
 /// The refreshed record with changes waiting on `joel`: one asking his
 /// review in core.nix, a newer one in walgit-rs, his own failing, newer
-/// than a review asked of him, his own with changes asked, one of his own that waits on nobody, and someone
-/// else's failing, which waits on him not at all. Only what a refresh
+/// than a review asked of him, his own with changes asked, one of his own
+/// that waits on nobody, and someone else's failing, which waits on him
+/// not at all. Only what a refresh
 /// keeps is set, so no change holds the logins it asked.
 fn waiting_on_joel() -> Record {
     let mut record = refreshed();

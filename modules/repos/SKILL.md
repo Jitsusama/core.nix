@@ -63,8 +63,9 @@ waits on him: each change asking his review, then each of his own failing
 its checks or with changes asked, newest first. In `--json` that's each
 change's `asks_your_review`, which a refresh sets against the declared
 login and which holds no login, and its `author`. Whose review a change
-asks is as of the last refresh, five minutes at most on Linux, and until
-`repos refresh` on a Mac, which has no timer.
+asks is as of the last refresh that succeeded, the time the head gives as
+"changes from GitHub": every five minutes on Linux while GitHub answers,
+and only at `repos refresh` on a Mac, which has no timer.
 
 A name two repositories share is refused with exit 64 and each one's key, so
 ask again by `owner/name` or key. An unknown name exits 66 and names the
@@ -76,7 +77,9 @@ nearest. `repos --help` lists both.
 repositories}`. Each repository is `{key, name, owner, remotes [{name, url}],
 trunk, written_at, changes, checkouts}`, the one written to last first; each
 change `{title, author, draft, branch, base, commit, updated_at, checks
-{state, passed, failed, pending}, review, github {number, url}}`, where a
+{state, passed, failed, pending}, review, github {number, url},
+asks_your_review}`, where `asks_your_review` is false until a refresh
+with a declared login has marked it, a
 check's `state` is passing, failing, pending or none and `review` is approved,
 changes_asked, waiting or none; each checkout
 `{path, bare, head {branch, commit}, written_at, weight, branches, config_bytes,
