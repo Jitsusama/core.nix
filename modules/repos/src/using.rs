@@ -14,21 +14,26 @@
 //! children's once it has waited on them, in the ticks of a hundredth of
 //! a second Linux's interface always counts in. A build's compilers start
 //! and end between two readings, so they're counted in the cargo that
-//! waited on them; a child that lived across a reading is counted again
-//! for its time before it, which runs a little high rather than missing
-//! the build. A folder's is a share of one core between two readings no
-//! more than `LONGEST` apart: a process new since the first is counted
-//! from its start, and one that only moved in since isn't counted, as
-//! nothing says how long it has worked there. A process whose working
-//! folder was removed works nowhere.
+//! waited on them. A child a reading saw was counted as it worked, and
+//! when it's waited on the kernel moves its whole time into its parent,
+//! so what the reading last saw of it is taken off the nearest of its
+//! ancestors still working; only where one between them works outside
+//! every folder, and so was never read, is it counted twice. A folder's
+//! is a share of one core over the waking time between two readings, no
+//! more than `LONGEST` apart, each read whole within `EVEN`: a process
+//! new since the first is counted from its start, and one that only moved
+//! in since isn't counted, as nothing says how long it has worked there.
+//! A process whose working folder was removed works nowhere.
 //!
 //! Only `/proc` says any of it, so only Linux has it, and only for the
 //! processes the reader may look in: Joel's own. A build the Nix daemon
 //! runs works in its own folder as its own user, and is counted nowhere.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use serde::Serialize;
 
@@ -37,27 +42,44 @@ use serde::Serialize;
 pub const TICKS: u64 = 100;
 
 /// The furthest apart two readings may be and still measure a share,
-/// three of the daemon's minutes: the time since boot runs on through a
-/// suspend, when nothing works, so a share of it would read near none.
+/// three of the daemon's waking minutes, so a share is of one recent span
+/// and not of the time since one long gone.
 pub const LONGEST: u64 = 3 * 60 * TICKS;
 
-/// Whether `now` measures processor time since `before`: some time, and
-/// no more than `LONGEST`, passed between them.
+/// The longest a reading may take to walk `/proc` and still measure a
+/// share, two seconds: one held up by a process's memory map reads those
+/// after it late, so its time isn't theirs.
+pub const EVEN: u64 = 2 * TICKS;
+
+/// Whether `now` measures processor time since `before`: both were read
+/// whole within `EVEN`, and some waking time, no more than `LONGEST`,
+/// passed between them.
 pub fn measured(before: Option<&Sample>, now: &Sample) -> bool {
     between(before, now).is_some()
 }
 
-/// The ticks between two readings, where they measure a share.
+/// The waking ticks between two readings, where they measure a share.
 fn between(before: Option<&Sample>, now: &Sample) -> Option<u64> {
-    before
-        .map(|before| now.at.saturating_sub(before.at))
-        .filter(|between| (1..=LONGEST).contains(between))
+    let (before, now) = (before?.awake?, now.awake?);
+    Some(now.saturating_sub(before)).filter(|between| (1..=LONGEST).contains(between))
+}
+
+/// The waking time since the daemon first asked, in ticks. Rust's `Instant`
+/// is Linux's monotonic clock, which stops while the machine sleeps, as
+/// processor time does; the time since boot runs on.
+fn awake() -> u64 {
+    static FIRST: OnceLock<Instant> = OnceLock::new();
+    let elapsed = FIRST.get_or_init(Instant::now).elapsed();
+    u64::try_from(elapsed.as_millis() / u128::from(1000 / TICKS)).unwrap_or(u64::MAX)
 }
 
 /// One process placed in a folder, as one reading saw it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Process {
     pub pid: u32,
+    /// The process that started it, or took it on, which its time moves
+    /// into once it has waited on it.
+    pub parent: u32,
     /// The checkout's or tree's folder it works in.
     pub folder: PathBuf,
     /// When it started, in ticks since the machine booted, which tells a
@@ -69,10 +91,13 @@ pub struct Process {
     pub memory: Option<u64>,
 }
 
-/// One reading: when, in ticks since boot, and each process it placed.
+/// One reading: when, and each process it placed.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Sample {
+    /// In ticks since boot, as each process's start is said.
     pub at: u64,
+    /// In waking ticks (`awake`), where it was read whole within `EVEN`.
+    pub awake: Option<u64>,
     pub processes: Vec<Process>,
 }
 
@@ -106,6 +131,7 @@ pub fn sample(proc: &Path, folders: &[PathBuf]) -> Sample {
     else {
         return Sample::default();
     };
+    let began = awake();
     let Ok(entries) = fs::read_dir(proc) else {
         return Sample::default();
     };
@@ -122,12 +148,13 @@ pub fn sample(proc: &Path, folders: &[PathBuf]) -> Sample {
                 return None;
             }
             let folder = placed(folders, &working)?.to_path_buf();
-            let (started, ticks) = stat(&fs::read_to_string(own.join("stat")).ok()?)?;
+            let (parent, started, ticks) = stat(&fs::read_to_string(own.join("stat")).ok()?)?;
             let memory = fs::read_to_string(own.join("smaps_rollup"))
                 .ok()
                 .and_then(|said| shared(&said));
             Some(Process {
                 pid,
+                parent,
                 folder,
                 started,
                 ticks,
@@ -135,7 +162,12 @@ pub fn sample(proc: &Path, folders: &[PathBuf]) -> Sample {
             })
         })
         .collect();
-    Sample { at, processes }
+    let walked = awake().saturating_sub(began);
+    Sample {
+        at,
+        awake: (walked <= EVEN).then_some(began),
+        processes,
+    }
 }
 
 /// The time since boot `/proc/uptime` gives first, in ticks: its seconds
@@ -147,16 +179,17 @@ fn uptime(said: &str) -> Option<u64> {
     Some(whole.parse::<u64>().ok()? * TICKS + hundredths.parse::<u64>().ok()?)
 }
 
-/// When a process started and the processor time it and its waited-on
-/// children have taken, from its `stat`: fields 22, and 14 to 17, counted
-/// from after its name, which is read to its last bracket since a name
-/// may hold one.
-fn stat(said: &str) -> Option<(u64, u64)> {
+/// A process's parent, when it started and the processor time it and its
+/// waited-on children have taken, from its `stat`: fields 4, 22, and 14
+/// to 17, counted from after its name, which is read to its last bracket
+/// since a name may hold one.
+fn stat(said: &str) -> Option<(u32, u64, u64)> {
     let (_, rest) = said.rsplit_once(')')?;
     let fields: Vec<&str> = rest.split_whitespace().collect();
     // Field 3, its state, is the first after the name.
     let field = |number: usize| fields.get(number - 3)?.parse::<u64>().ok();
     Some((
+        u32::try_from(field(4)?).ok()?,
         field(22)?,
         field(14)? + field(15)? + field(16)? + field(17)?,
     ))
@@ -181,14 +214,21 @@ pub fn using(before: Option<&Sample>, now: &Sample) -> BTreeMap<PathBuf, Use> {
         each.map(|process| ((process.pid, process.started), process.ticks))
             .collect()
     });
+    let counted = before
+        .map(|before| counted_already(before, now))
+        .unwrap_or_default();
     let mut using: BTreeMap<PathBuf, (Use, u64)> = BTreeMap::new();
     for process in &now.processes {
         let (folder, worked) = using.entry(process.folder.clone()).or_default();
         folder.processes += 1;
         folder.memory += process.memory.unwrap_or(0);
         if let (Some(before), Some(earlier)) = (before, &earlier) {
-            *worked += match earlier.get(&(process.pid, process.started)) {
-                Some(ticks) => process.ticks.saturating_sub(*ticks),
+            let key = (process.pid, process.started);
+            *worked += match earlier.get(&key) {
+                Some(ticks) => process
+                    .ticks
+                    .saturating_sub(*ticks)
+                    .saturating_sub(counted.get(&key).copied().unwrap_or(0)),
                 None if process.started >= before.at => process.ticks,
                 None => 0,
             };
@@ -202,6 +242,42 @@ pub fn using(before: Option<&Sample>, now: &Sample) -> BTreeMap<PathBuf, Use> {
             (path, folder)
         })
         .collect()
+}
+
+/// The ticks each process working in both readings took in from children
+/// `before` saw and counted, now gone: each gone one's last-seen time, taken
+/// from the nearest ancestor still working, through any gone between.
+fn counted_already(before: &Sample, now: &Sample) -> HashMap<(u32, u64), u64> {
+    let working: HashSet<(u32, u64)> = now
+        .processes
+        .iter()
+        .map(|process| (process.pid, process.started))
+        .collect();
+    let seen: HashMap<u32, &Process> = before
+        .processes
+        .iter()
+        .map(|process| (process.pid, process))
+        .collect();
+    let mut counted = HashMap::new();
+    for gone in &before.processes {
+        if working.contains(&(gone.pid, gone.started)) {
+            continue;
+        }
+        // One reading's parents can't loop, but its length bounds the walk.
+        let mut parent = gone.parent;
+        for _ in 0..before.processes.len() {
+            let Some(ancestor) = seen.get(&parent) else {
+                break;
+            };
+            let key = (ancestor.pid, ancestor.started);
+            if working.contains(&key) {
+                *counted.entry(key).or_insert(0) += gone.ticks;
+                break;
+            }
+            parent = ancestor.parent;
+        }
+    }
+    counted
 }
 
 /// `worked` ticks of `between` as a share of one core.
