@@ -414,14 +414,21 @@ ended() {
 # are read by path, so every case ends its waiter before the next. Once the
 # post returns, as systemd sees ExecStartPost end, the stand-in hears so; a
 # post that doesn't return within POST_RETURNS is stopped, as systemd would
-# stop it, and fails the run, rather than holding the check without a word.
+# stop it, killed KILL_AFTER seconds on if it won't stop, and fails the run,
+# rather than holding the check without a word. One that returns at once but
+# fails says so apart, since it points at the post's top half, not a hang.
 POST_RETURNS=20
+KILL_AFTER=5
 starts() {
-  local each
+  local each status=0
   rm -f up many alone hangs returned lost said asked
   for each in "$@"; do touch "${each}"; done
-  if ! timeout "${POST_RETURNS}" ./started tuple.service >said; then
+  timeout -k "${KILL_AFTER}" "${POST_RETURNS}" ./started tuple.service >said || status=$?
+  if ((status == 124 || status == 137)); then
     echo "the post didn't return within ${POST_RETURNS} seconds, as systemd would stop it"
+    failed=1
+  elif ((status != 0)); then
+    echo "the post exited ${status} rather than returning as it should"
     failed=1
   fi
   touch returned
@@ -481,8 +488,7 @@ since_boot
 if [[ -e lost ]]; then
   echo "a start that forked no daemon: the stand-in found no waiter above the post's ask"
   failed=1
-fi
-if ((now - began >= WAITED_OUT)); then
+elif grep -qF "${no_daemon}" said && ((now - began >= WAITED_OUT)); then
   echo "a start that forked no daemon: the waiter sat out its wait rather than leaving"
   failed=1
 fi
