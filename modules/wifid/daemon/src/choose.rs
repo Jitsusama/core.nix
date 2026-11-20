@@ -117,6 +117,11 @@ const WIDE: u32 = 5000;
 /// tried.
 const FAINTEST: i16 = -67;
 
+/// How many echoes a span must have sent for its share lost to say a wider
+/// band holds well: half of `SPAN`'s one a second. A span with none, as
+/// when the gateway can't be reached to echo, reads none lost.
+const ECHOED: usize = 60;
+
 /// How much fainter than `FAINTER` a radio on a wider band may be heard
 /// and still be tried for it: the same access point's 5 GHz radio was 2 to
 /// 9 dB fainter than its 2.4 GHz one, hour by hour, on 15 and 16 Nov 2026.
@@ -227,9 +232,12 @@ pub struct Chooser {
     unreached: Option<String>,
     /// When a card on a wider band was last slowed by its own download.
     queued: Option<Instant>,
-    /// The narrower access point a wider band holding well kept the card
-    /// off at the last choice, where the card would once have tried it.
-    kept_wide: Option<String>,
+    /// The card's access point and the narrower one a wider band holding
+    /// well kept it off at this choice, where it would once have tried it.
+    kept_wide: Option<(String, String)>,
+    /// The same from the choice before, which any choice that returns
+    /// early leaves empty, so a hold after a call or a move is said anew.
+    kept_lately: Option<(String, String)>,
     /// The same, from the choice that began keeping it off, for the
     /// journal to say once.
     began_keeping: Option<String>,
@@ -244,6 +252,9 @@ struct Trial {
     /// than the narrower one left. One made idle, the wider band known no
     /// slower, is judged as any other.
     banded: bool,
+    /// Whether the move was from a narrower band to a wider one, which
+    /// doesn't go back while the wider band holds well.
+    widened: bool,
 }
 
 impl Chooser {
@@ -259,6 +270,7 @@ impl Chooser {
         calling: bool,
     ) -> Choice {
         let (point, measured, signal, frequency) = on;
+        self.kept_lately = self.kept_wide.take();
         let failing = measured.lost > FAILING;
         let carried_badly = badly(measured);
         // A card on a wider band bringing a download down is slowed by the
@@ -284,7 +296,23 @@ impl Chooser {
         if calling && !failing {
             return Choice::Stay;
         }
-        if let Some(judged) = self.judge(now, (point, measured), failing, queued_lately) {
+        // A wider band losing at most `LOSSY` and heard at `FAINTEST` or
+        // louder is never left for a narrower one, by a trial's going back
+        // or any rule below: on 19 Nov 2026 the card left ch52 for 2.4 GHz
+        // twice, idle at 10 to 24 Mbit/s, on a tail of 34.3 and 51.6 ms
+        // with none lost, for 2.4 GHz's 11.8 ms at that hour. Once a
+        // download came, 2.4 GHz carried 183 and 101 ms, and a call begun
+        // there would have kept it there. It goes by the fainter of the
+        // scan's signal and the station's own, as the scan's may be old.
+        let heard = measured
+            .signal
+            .map_or(i32::from(signal), |live| live.min(i32::from(signal)));
+        let holds_wide = wide(frequency)
+            && measured.echoes >= ECHOED
+            && measured.lost <= LOSSY
+            && heard >= i32::from(FAINTEST);
+        let judging = (failing, queued_lately, holds_wide);
+        if let Some(judged) = self.judge(now, (point, measured), judging) {
             return judged;
         }
         let settled = self
@@ -309,13 +337,7 @@ impl Chooser {
         // kept off its 2.4 GHz radio, which had carried 25 to 81 at a mean
         // 37.5 ms. A narrower band may bring the download down slower, so
         // its trial goes back where it does (`MOVED_BY`).
-        // None of that leaves a wider band losing at most `LOSSY` and heard
-        // at `FAINTEST` or louder: on 19 Nov 2026 the card left ch52 for
-        // 2.4 GHz twice, idle at 10 to 24 Mbit/s, on a tail of 34.3 and
-        // 51.6 ms with none lost, for 2.4 GHz's 11.8 ms at that hour. Once
-        // a download came, 2.4 GHz carried 183 and 101 ms, and a call begun
-        // there would have kept it there.
-        let holds_wide = wide(frequency) && measured.lost <= LOSSY && signal >= FAINTEST;
+        // None of that leaves a wider band holding well (`holds_wide`).
         let resting = resting(measured);
         let may_narrow = queued && !used(measured);
         let untried = others.iter().filter(|other| {
@@ -370,7 +392,7 @@ impl Chooser {
         let kept = holds_wide && chosen.is_none();
         self.keep_wide(kept, (point, signal, frequency), others, once, &ours);
         let Some(chosen) = chosen else {
-            return self.unchosen(now, on, others, bad, crowded);
+            return self.unchosen(now, on, others, (bad, holds_wide && !queued), crowded);
         };
         self.moved = Some(now);
         self.trial = Some(Trial {
@@ -378,23 +400,30 @@ impl Chooser {
             to: chosen.point.clone(),
             before: measured.clone(),
             banded: banded.is_some() && used(measured),
+            widened: !wide(frequency) && wide(chosen.frequency),
         });
         Choice::Try(chosen.point.clone())
     }
 
     /// What a card none was chosen for does: looks for another access point
-    /// where it hears none of its network, a wider band where it uses its
-    /// narrower one's room, or a quieter channel where its own is crowded.
+    /// where it hears none of its network it may take, a wider band where
+    /// it uses its narrower one's room, or a quieter channel where its own
+    /// is crowded. A wider band holding well may take no narrower one, so
+    /// carrying badly, not for its own download (`held`), and hearing only
+    /// those, it looks for another.
     fn unchosen(
         &mut self,
         now: Instant,
         (point, measured, signal, frequency): (&str, &Measured, i16, u32),
         others: &[Other],
-        bad: bool,
+        (bad, held): (bool, bool),
         crowded: Option<u8>,
     ) -> Choice {
         let narrow = frequency != 0 && !wide(frequency);
-        let alone = bad && others.iter().all(|other| other.point == point);
+        let alone = bad
+            && others
+                .iter()
+                .all(|other| other.point == point || (held && !wide(other.frequency)));
         let hemmed = hemmed_in(crowded, (signal, frequency), others);
         let unbanded = narrow
             && !bad
@@ -413,32 +442,39 @@ impl Chooser {
         self.look(now, look)
     }
 
-    /// Takes in the narrower access point a wider band holding well keeps
-    /// the card off, where the card would once have tried it: on a bad
-    /// minute not its own download's (`once.0`), or one known far quicker
-    /// while it rests or isn't using its room (`once.1`). It's said once a
-    /// spell, so the journal shows the hold.
+    /// Takes in the narrower access point a wider band holding well, with
+    /// nothing chosen (`kept`), keeps the card off, where the card would
+    /// once have tried it: one known quicker on a bad minute not its own
+    /// download's (`bad`) or while it rests or isn't using its room
+    /// (`quick`), or one not yet measured on a channel not past `BUSIEST`
+    /// on such a bad minute. It's said once a spell, so the journal shows
+    /// the hold.
     fn keep_wide(
         &mut self,
-        holds_wide: bool,
+        kept: bool,
         (point, signal, frequency): (&str, i16, u32),
         others: &[Other],
-        once: (bool, bool),
+        (bad, quick): (bool, bool),
         ours: &Measured,
     ) {
-        let kept = others.iter().find(|other| {
-            holds_wide
-                && other.point != point
-                && !wide(other.frequency)
-                && !self.spurned.contains_key(&other.point)
-                && within_reach(other, signal, frequency)
-                && (once.0
-                    || (once.1
-                        && (other.measured.as_ref()).is_some_and(|theirs| quicker(theirs, ours))))
-        });
-        let kept = kept.map(|other| other.point.clone());
-        if self.kept_wide.is_none() {
-            self.began_keeping.clone_from(&kept);
+        let would = |other: &&Other| {
+            let known_quicker =
+                (other.measured.as_ref()).is_some_and(|theirs| quicker(theirs, ours));
+            let unknown = other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST);
+            (known_quicker && (bad || quick)) || (unknown && bad)
+        };
+        let narrower = others
+            .iter()
+            .filter(|other| {
+                kept && other.point != point
+                    && !wide(other.frequency)
+                    && !self.spurned.contains_key(&other.point)
+                    && within_reach(other, signal, frequency)
+            })
+            .find(would);
+        let kept = narrower.map(|other| (point.to_owned(), other.point.clone()));
+        if kept.is_some() && kept != self.kept_lately {
+            self.began_keeping = kept.as_ref().map(|(_, narrower)| narrower.clone());
         }
         self.kept_wide = kept;
     }
@@ -471,13 +507,13 @@ impl Chooser {
     /// One made under load and over under load is judged at once, like
     /// with like, and goes back where it brings the download down slower
     /// too; one made for a wider band's room is left to wait, since its
-    /// download's queue there says nothing of the room.
+    /// download's queue there says nothing of the room. One that widened
+    /// the card's band stands while the wider band holds well.
     fn judge(
         &mut self,
         now: Instant,
         on: (&str, &Measured),
-        failing: bool,
-        queued: bool,
+        (failing, queued, holds_wide): (bool, bool, bool),
     ) -> Option<Choice> {
         let (point, measured) = on;
         let trial = self.trial.take()?;
@@ -508,7 +544,9 @@ impl Chooser {
             self.trial = Some(trial);
             return Some(Choice::Stay);
         }
-        let back = if trial.banded {
+        let back = if trial.widened && holds_wide {
+            false
+        } else if trial.banded {
             badly(measured)
         } else {
             worse(measured, &trial.before) || (under_load && slower(measured, &trial.before))
@@ -980,6 +1018,14 @@ pub(crate) mod tests {
             (Some("6c:ae:f6:ba:85:87".to_owned()), None),
             "the hold is said once a spell"
         );
+        let called = chooser.choose(start + Duration::from_secs(120), on, &[far_on_ch6()], true);
+        assert_eq!(called, Choice::Stay, "a call keeps the card where it is");
+        chooser.choose(start + Duration::from_secs(180), on, &[far_on_ch6()], false);
+        assert_eq!(
+            chooser.began_keeping_wide(),
+            Some("6c:ae:f6:ba:85:87".to_owned()),
+            "a hold after the call is a new spell, said again"
+        );
     }
 
     #[test]
@@ -1007,8 +1053,69 @@ pub(crate) mod tests {
 
         assert_eq!(
             choice,
-            Choice::Stay,
-            "a slow tail with nothing lost is no reason for 2.4 GHz"
+            Choice::Look,
+            "a slow tail with nothing lost looks for another 5 GHz radio, not 2.4 GHz"
+        );
+        assert_eq!(
+            chooser.began_keeping_wide(),
+            Some("6c:ae:f6:ba:85:87".to_owned()),
+            "the hold is said"
+        );
+    }
+
+    #[test]
+    fn a_wider_band_holds_at_the_edges_of_lossy_and_faintest() {
+        let point = "6c:ae:f6:ba:85:86";
+        let judged = |lost, signal| {
+            let measured = Measured {
+                lost,
+                signal: Some(signal),
+                ..idle_on_ch52(52, 24)
+            };
+            let on = (point, &measured, i16::try_from(signal).unwrap_or(-38), CH52);
+            let far = Other {
+                signal: -66,
+                ..far_on_ch6()
+            };
+            after_a_bad_minute(point).choose(Instant::now(), on, &[far], false)
+        };
+
+        assert_eq!(
+            judged(2.0, -67),
+            Choice::Look,
+            "2% lost at -67 dBm still holds"
+        );
+        let far = Choice::Try("6c:ae:f6:ba:85:87".into());
+        assert_eq!(judged(2.1, -67), far, "past 2% it doesn't");
+        assert_eq!(judged(2.0, -68), far, "nor past -67 dBm");
+    }
+
+    #[test]
+    fn a_wider_band_unechoed_or_fading_on_its_own_station_doesnt_hold() {
+        let point = "6c:ae:f6:ba:85:86";
+        let unechoed = Measured {
+            echoes: 0,
+            ..idle_on_ch52(52, 24)
+        };
+        let fading = Measured {
+            signal: Some(-72),
+            ..idle_on_ch52(52, 24)
+        };
+        let judged = |measured: &Measured| {
+            let on = (point, measured, -38, CH52);
+            after_a_bad_minute(point).choose(Instant::now(), on, &[far_on_ch6()], false)
+        };
+
+        let far = Choice::Try("6c:ae:f6:ba:85:87".into());
+        assert_eq!(
+            judged(&unechoed),
+            far,
+            "a span with no echoes says nothing of loss"
+        );
+        assert_eq!(
+            judged(&fading),
+            far,
+            "the station hears -72 though the scan said -38"
         );
     }
 
@@ -1142,7 +1249,12 @@ pub(crate) mod tests {
         let mut lossy = slow_middle.clone();
         lossy.lost = 2.1;
         let cases = [
-            ("a 20 ms middle heard well", &slow_middle, -40, Choice::Stay),
+            (
+                "a 20 ms middle heard well looks for 5 GHz",
+                &slow_middle,
+                -40,
+                Choice::Look,
+            ),
             ("2.1% lost", &lossy, -40, Choice::Try(NEAR.into())),
             ("heard at -68", &slow_middle, -68, Choice::Try(NEAR.into())),
         ];
@@ -1349,23 +1461,28 @@ pub(crate) mod tests {
 
     #[test]
     fn a_trial_made_under_load_is_judged_under_load() {
-        let mut chooser = after_a_bad_minute(NEAR);
         let start = Instant::now();
-        let wider = [desk_at(-43, None)];
-        let tried = chooser.choose(start, (NEAR, &downloading(89), -35, CH6), &wider, false);
-        assert_eq!(tried, Choice::Try(DESK.into()), "the first move is asked");
-
-        let judged = chooser.choose(
-            start + TRIAL,
-            (DESK, &downloading(136), -43, CH52),
-            &[],
-            false,
-        );
+        let judged = |lost| {
+            let mut chooser = after_a_bad_minute(NEAR);
+            let wider = [desk_at(-43, None)];
+            let tried = chooser.choose(start, (NEAR, &downloading(89), -35, CH6), &wider, false);
+            assert_eq!(tried, Choice::Try(DESK.into()), "the first move is asked");
+            let worse = Measured {
+                lost,
+                ..downloading(136)
+            };
+            chooser.choose(start + TRIAL, (DESK, &worse, -43, CH52), &[], false)
+        };
 
         assert_eq!(
-            judged,
+            judged(3.0),
             Choice::Back(NEAR.into()),
-            "136 ms under load is worse than the 89 it left under load"
+            "136 ms under load losing 3% is worse than the 89 it left under load"
+        );
+        assert_eq!(
+            judged(0.0),
+            Choice::Stay,
+            "losing nothing, the wider band holds"
         );
     }
 
@@ -2607,32 +2724,59 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_move_to_a_wider_band_goes_back_only_if_it_carries_badly() {
+    fn a_move_to_a_wider_band_goes_back_only_if_it_carries_badly_and_lossy_or_faint() {
         let start = Instant::now();
         let well = carried(9, 0.0);
         let on = (NEAR, &well, -34, CH6);
-        let (mut kept, mut left) = (Chooser::default(), Chooser::default());
-        for chooser in [&mut kept, &mut left] {
+        let near = [near_at(-34, Some(well.clone()))];
+        let judged = |measured: &Measured, signal| {
+            let mut chooser = Chooser::default();
             let tried = chooser.choose(start, on, &[desk_at(-45, None)], false);
             assert_eq!(tried, Choice::Try(DESK.into()), "the first move is made");
-        }
-        let near = near_at(-34, Some(well.clone()));
-        let (slower, slow) = (carried(25, 0.0), carried(90, 0.0));
+            chooser.choose(start + TRIAL, (DESK, measured, signal, CH52), &near, false)
+        };
+        let (slower, slow, lossy) = (carried(25, 0.0), carried(90, 0.0), carried(90, 3.0));
 
-        let stayed = kept.choose(
-            start + TRIAL,
-            (DESK, &slower, -45, CH52),
-            std::slice::from_ref(&near),
-            false,
-        );
-        let back = left.choose(start + TRIAL, (DESK, &slow, -45, CH52), &[near], false);
-
-        assert_eq!(stayed, Choice::Stay, "25 ms on 5 GHz still carries well");
         assert_eq!(
-            back,
-            Choice::Back(NEAR.into()),
-            "90 ms, 30 at its middle, doesn't"
+            judged(&slower, -45),
+            Choice::Stay,
+            "25 ms on 5 GHz still carries well"
         );
+        assert_eq!(
+            judged(&slow, -45),
+            Choice::Stay,
+            "90 ms with none lost is no reason for 2.4 GHz"
+        );
+        let back = Choice::Back(NEAR.into());
+        assert_eq!(judged(&lossy, -45), back, "90 ms losing 3% is the air");
+        assert_eq!(
+            judged(&slow, -68),
+            back,
+            "90 ms heard past FAINTEST is fading"
+        );
+    }
+
+    #[test]
+    fn an_idle_move_to_a_wider_band_carrying_worse_stands_while_it_holds() {
+        let start = Instant::now();
+        let well = idle(carried(9, 0.0));
+        let on = (NEAR, &well, -34, CH6);
+        let wider = [desk_at(-45, Some(idle(carried(9, 0.0))))];
+        let near = [near_at(-34, Some(well.clone()))];
+        let judged = |lost| {
+            let mut chooser = Chooser::default();
+            let tried = chooser.choose(start, on, &wider, false);
+            assert_eq!(tried, Choice::Try(DESK.into()), "the first move is made");
+            let worse = idle(carried(30, lost));
+            chooser.choose(start + TRIAL, (DESK, &worse, -45, CH52), &near, false)
+        };
+
+        assert_eq!(
+            judged(0.0),
+            Choice::Stay,
+            "30 ms against 9, losing nothing, holds"
+        );
+        assert_eq!(judged(3.0), Choice::Back(NEAR.into()), "losing 3% doesn't");
     }
 
     #[test]
@@ -2759,7 +2903,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn an_idle_card_s_move_to_5_ghz_no_slower_goes_back_if_it_carries_worse() {
+    fn an_idle_card_s_move_to_5_ghz_no_slower_goes_back_if_it_carries_worse_and_faint() {
         let start = Instant::now();
         let mut chooser = Chooser::default();
         let quick = idle(carried(15, 0.0));
@@ -2769,8 +2913,12 @@ pub(crate) mod tests {
         let near = [near_at(-36, Some(quick.clone()))];
         let worse = idle(carried(30, 0.0));
 
-        let back = chooser.choose(start + TRIAL, (DESK, &worse, -45, CH52), &near, false);
+        let back = chooser.choose(start + TRIAL, (DESK, &worse, -68, CH52), &near, false);
 
-        assert_eq!(back, Choice::Back(NEAR.into()), "30 ms is worse than 15");
+        assert_eq!(
+            back,
+            Choice::Back(NEAR.into()),
+            "30 ms heard at -68 is worse than 15"
+        );
     }
 }
