@@ -1732,7 +1732,9 @@ works the same way everywhere.
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
   the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
-  in For You, after To Read and before Later, only while one of its own
+  in For You, leading it ahead of the sessions' asks, with home's row
+  naming it, so Super+O, Return, Return reaches a low battery (42P0R4
+  and Y2YBTS, 2026-11-20), only while one of its own
   notices is critical, unread and off the screen, so Mail's, which holds
   no notices, never does; while Slack's daemon answers, a critical
   notice of Slack's lifts Slack's row only if it lists one of the
