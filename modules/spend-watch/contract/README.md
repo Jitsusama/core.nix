@@ -83,6 +83,8 @@ hour again as often as it likes.
 
 `source` has billed everything before `through`, an hour boundary. Hours a
 source has settled are its exact bill; hours it hasn't, it may still change.
+A feed that bills pi from the warehouse sends one: until it does, no budget's
+bill is held against its logs, a note says so, and after 48 hours a warning.
 
 ### cap
 

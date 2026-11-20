@@ -109,8 +109,9 @@ feed speaks.
   can't say, over a fallback already spent, is warned while it stands,
   since the cap refuses the moment it ends and no day can be warned
   ahead of; one the feed could know and gives no end isn't, since it has
-  none. The clock's middle path says by which hour the allowance is
-  reached at this pace, over the hours its paths cover, and the warning
+  none. The clock's middle path says in which hour the allowance is
+  reached at this pace, over the hours its paths cover, said by the
+  hour's start so a warning is never late, and the warning
   and the near one carry it with the hour the pace was judged in.
 - **Detectors.** Each threshold is set for a stated false-alarm rate. A
   burn is a minute CUSUM against twice a working hour's rate (the median

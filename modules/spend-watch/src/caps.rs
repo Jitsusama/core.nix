@@ -384,12 +384,14 @@ pub fn clock(
     // later than any that do: none when fewer than half reach it.
     reached.sort_unstable();
     let middle = paths.len().div_ceil(2).max(1);
-    // The paths are hourly, so the reach is the end of its hour on the
-    // clock rather than a time carrying now's minute, which no path knows
-    // and which would move on every pass.
+    // The paths are hourly, so the reach falls somewhere in the k-th hour
+    // from now, and is said as the clock hour starting within it rather
+    // than a time carrying now's minute, which no path knows and which
+    // would move on every pass. The hour's start, not its end, since a
+    // warning nearly an hour late is the worse error.
     let reaches_at = reached
         .get(middle - 1)
-        .map(|k| ((now + count(*k) * HOUR) / HOUR).ceil() * HOUR);
+        .map(|k| ((now + count(*k) * HOUR) / HOUR).floor() * HOUR);
     let n = count(paths.len().max(1));
     let frees_at = (spent >= allowance).then(|| window.frees(spent, allowance, now));
     Clock {
@@ -689,17 +691,17 @@ mod tests {
         assert_eq!(within.cap_before_end, Some(1.0), "{within:?}");
     }
 
-    // The paths are hourly, so the reach is the end of its hour on the
-    // clock, not now's minute carried along: from 00:10, ten hours of
-    // $100 reach the $1,000 left by 11:00, the end of the hour, where
-    // the nearest hour would be 10:00.
+    // The paths are hourly, so the reach is a clock hour, not now's minute
+    // carried along: from 00:50, ten hours of $100 reach the $1,000 left
+    // in the hour to 10:50, said as 10:00, the clock hour starting within
+    // it, where the nearest hour or the hour's end would be 11:00.
     #[test]
     fn a_reach_is_said_by_the_hour() {
-        let now = 1_791_936_000.0 + 10.0 * 60.0;
+        let now = 1_791_936_000.0 + 50.0 * 60.0;
         let paths = vec![vec![2400.0; 7]; 10];
         assert_eq!(
             reaching(&paths, now).reaches_at,
-            Some(1_791_936_000.0 + 11.0 * HOUR)
+            Some(1_791_936_000.0 + 10.0 * HOUR)
         );
     }
 

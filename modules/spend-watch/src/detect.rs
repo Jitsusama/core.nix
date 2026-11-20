@@ -2529,6 +2529,19 @@ mod tests {
         assert!(near.ends_with(" by Thu 15 Oct 21:00."), "{near}");
     }
 
+    // A reach on the hour a known end comes is still the raise's to say,
+    // since the allowance stands until that moment, and the hour after
+    // isn't. An end on 15 October is the start of the 16th, 33.5 hours on.
+    #[test]
+    fn a_reach_at_a_known_end_is_said() {
+        let at = ending_in("2026-10-15", true, NOW + 33.5 * HOUR);
+        let near = &at.iter().find(|(key, _)| key == "near").unwrap().1;
+        assert!(near.ends_with(" by Fri 16 Oct 00:00."), "{near}");
+        let after = ending_in("2026-10-15", true, NOW + 34.5 * HOUR);
+        let near = &after.iter().find(|(key, _)| key == "near").unwrap().1;
+        assert!(!near.contains("pace it's reached"), "{near}");
+    }
+
     // A fall is told once it has stood, and only while the cap stays down:
     // once it's back, the fall is past and its return is the news.
     #[test]
