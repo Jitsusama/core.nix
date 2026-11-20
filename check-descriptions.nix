@@ -1366,8 +1366,8 @@
     programs byte for byte as sbsign does, and finds every program it runs
   '';
   health-gives-back-the-pages-it-reads = ''
-    health's unit gives back the journals' pages its start's replay reads past 256 MiB, and no
-    hard limit ends it there
+    health's unit holds a high mark of 256 MiB, past which the kernel takes back the pages its
+    start's replay reads, and no hard limit that would end it
   '';
   health-passes-clippy = ''
     clippy finds nothing in health or its tests

@@ -1,12 +1,10 @@
 # The checks of health, which checks.nix gathers with every other folder's.
 {
-  account,
-  bareNixos,
+  exampleLaptop,
   holds,
   onLinux,
   passesClippy,
   pkgs,
-  self,
   ...
 }:
 # Its tests run on Linux, a Mac's lines read from fixtures, so the
@@ -31,16 +29,13 @@ onLinux {
   # clippy finds nothing in health, its tests included.
   health-passes-clippy = passesClippy "health-passes-clippy" (pkgs.callPackage ./package.nix { });
 
-  # The day's replay at each start passes the journals' pages through its
-  # own cgroup, and is made to give them back at 256 MiB, slowed rather
-  # than ended there.
+  # Health's unit holds a high mark of 256 MiB and no hard limit, so the
+  # day's replay at each start, which passes the journals' pages through
+  # its cgroup, is slowed there rather than ended; what that bought was
+  # measured once, on 19 November, as home.nix says.
   health-gives-back-the-pages-it-reads =
     let
-      service =
-        (account (bareNixos [
-          self.nixosModules.workstation
-          { home-manager.users.someone.imports = [ self.homeModules.health ]; }
-        ])).systemd.user.services.health.Service;
+      service = exampleLaptop.config.home-manager.users.joel.systemd.user.services.health.Service;
     in
     holds "health-gives-back-the-pages-it-reads"
       "health has no high mark at 256 MiB, so the day's replay at each start grows the page cache by gigabytes unchecked, or it has a hard limit that ends it mid-replay."
