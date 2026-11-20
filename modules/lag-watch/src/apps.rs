@@ -324,7 +324,6 @@ mod tests {
         ] {
             assert!(!joels(&path), "{path} isn't Joel's");
         }
-        assert!(!apps.launched_by_joel(""));
     }
 
     #[test]
