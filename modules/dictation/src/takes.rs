@@ -409,6 +409,19 @@ mod tests {
     }
 
     #[test]
+    fn a_low_voice_on_a_hissy_line_is_a_take() {
+        // The hiss is 10 dB under the voice, as a far end's noisy
+        // microphone or a laptop's fan puts it.
+        let hissy: Vec<f32> = voice(0.4, 85.0)
+            .iter()
+            .zip(noise(0.4, 0.014, false))
+            .map(|(voice, hiss)| voice + hiss)
+            .collect();
+        let sound = [quiet(2.0), hissy, quiet(2.0)].concat();
+        assert_eq!(cut(&sound).len(), 1);
+    }
+
+    #[test]
     fn a_rumble_below_a_voice_makes_no_take() {
         let step = std::f32::consts::TAU * 40.0 / 16_000.0;
         let sound = [quiet(2.0), tone(1.0, 0.1, step), quiet(2.0)].concat();
