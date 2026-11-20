@@ -98,10 +98,12 @@ function mayBegin(text, now) {
 // each opens as before. Anything else, handed over or started alone,
 // opens as it always did, going home first.
 function broughtBack(walk, kept, arranged) {
-    if (!walk)
+    if (!walk) {
         return { window: true, home: true };
-    if (kept !== null && kept !== undefined)
+    }
+    if (kept !== null && kept !== undefined) {
         return { window: true, home: false };
+    }
     return arranged ? { window: false, home: false } : { window: true, home: true };
 }
 
