@@ -67,7 +67,11 @@ Scope {
     // into Now spent 30 and 44 ms of their longest stalls in "opening",
     // the turn of the launcher's open, against 14 the fill's own laps
     // named (2026-11-20). What a binding on the launcher's open does in
-    // that turn stays the launcher's "opening".
+    // that turn stays the launcher's "opening", as does the work of a
+    // source whose own handler doesn't come through here (Warp's).
+    // Applications, Capture, Networks, Orchestrators, Quests, Screens
+    // and Traffic come through here; Agents and Now feel theirs through
+    // felt, below.
     function feltOpening(work) {
         return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
     }
