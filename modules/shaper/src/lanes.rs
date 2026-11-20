@@ -57,10 +57,12 @@
 //! a copy's queue emptying between bursts doesn't swing it. It gives up at
 //! once only what Joel carries straight now and what agents straight are
 //! owed, and a move under a twentieth isn't made at all. It's held as a
-//! share, so a rate the controller cuts cuts V with it at once, and a rate
-//! moved and moved back between seconds leaves it as it was; a cut lasting
-//! past a second caps it at that rate, and it falls from there. room.rs,
-//! which did
+//! share, so a rate the controller cuts cuts V with it at once. A rate moved
+//! and moved back between two seconds' splits leaves the share as it was,
+//! but one still moved at a split stores what that rate gave, capped lower
+//! or, as Joel's part is a larger share of less, raised, and it moves from
+//! there once the rate comes back; most of the controller's cuts outlast a
+//! split. room.rs, which did
 //! this for the two bulk tins alone, flipped its two lines about 2,200
 //! times in two days.
 //!
@@ -1026,8 +1028,10 @@ mod tests {
         );
     }
 
-    // The cap stores what it left the VPN; when the VPN's agents wait again
-    // the share still rises at once to give them their half.
+    // When the VPN's agents wait again after the cap trimmed its share, it
+    // rises at once to give them their half, and agents straight keep theirs
+    // beside it. That the trimmed share is the one stored is pinned by the
+    // dip in the_vpn_s_fall_leaves_agents_straight_their_floor.
     #[test]
     fn a_capped_vpn_share_rises_when_its_agents_wait() {
         let straight = (waiting(32), Agents::default());
@@ -1070,6 +1074,35 @@ mod tests {
             "a cut between seconds left the VPN {} of the {} it held",
             back.vpn,
             held.vpn
+        );
+    }
+
+    // A cut still in place at a second's split stores the share that rate
+    // gave, here raised, as Joel's part inside the VPN is a larger share of
+    // less, and it comes back with the rate. This pins what the module doc
+    // says until the VPN's hold is kept in kbit/s rather than as a share.
+    #[test]
+    fn a_cut_held_across_a_second_keeps_the_share_it_stored() {
+        let straight = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 0.0), straight), 1.0);
+        lanes.split(&seen((200.0, 0.0), straight), 1.0);
+        let cut_rate = RATE * 0.3;
+        lanes.at(cut_rate);
+        let cut = lanes.split(
+            &Seen {
+                rate: cut_rate,
+                ..seen((200.0, 0.0), straight)
+            },
+            1.0,
+        );
+        let back = lanes.at(RATE);
+        assert!(
+            near(back.vpn, cut.vpn / cut_rate * RATE),
+            "a cut held across a second came back with the VPN at {}, not the {} its share \
+             at the cut gives",
+            back.vpn,
+            cut.vpn / cut_rate * RATE
         );
     }
 
