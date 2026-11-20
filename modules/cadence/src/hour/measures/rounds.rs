@@ -9,11 +9,11 @@
 //! owner when they caught nothing. What a round caught is read from the
 //! harness's record of the fixes for its findings, committed or queued, a
 //! judge's finding counting for the council it consolidated. A queued fix
-//! counts when the change gained commits after its round read it, as many
-//! owners decide a finding is real and fix it without recording the
-//! commit, which left real catches on #1860's and #5614's rounds past five
-//! read as nothing. A queued fix on a change merged at the head its round
-//! read can't have been made before the merge: it is a follow-up, which
+//! counts when the change gained commits of its own after its round read
+//! it, as many owners decide a finding is real and fix it without
+//! recording the commit, which left real catches on #1860's and #5614's
+//! rounds past five read as nothing. A queued fix on a change that gained
+//! none can't have been made before the merge: it is a follow-up, which
 //! WCJQSG's ruling makes of what a late round needn't raise, so it catches
 //! nothing and is named apart.
 
@@ -55,23 +55,24 @@ pub const BEFORE: i64 = 3 * super::DAY;
 
 /// One repository's main: its key as the review record names it, such as
 /// `github:Jitsusama/core.nix`, `git log --first-parent --format='%H
-/// %ct %s'` of it, and the head each merge commit merged, its second
-/// parent, where git can say.
+/// %ct %s'` of it, and whether the change a merge commit merged gained
+/// commits of its own after a round read the head it names, `None` where
+/// git can't say.
 pub struct Main<'a> {
     pub repo: &'a str,
     pub log: &'a str,
-    pub head: &'a dyn Fn(&str) -> Option<String>,
+    pub moved: &'a dyn Fn(&str, &str) -> Option<bool>,
 }
 
 /// A change merged to a main: its repository, number and branch, when,
-/// and its merge commit, with how to read the head it merged.
+/// and its merge commit, with how to read whether it moved after a round.
 struct Merged<'a> {
     repo: &'a str,
     number: &'a str,
     branch: &'a str,
     at: i64,
     merge: &'a str,
-    head: &'a dyn Fn(&str) -> Option<String>,
+    moved: &'a dyn Fn(&str, &str) -> Option<bool>,
 }
 
 /// The changes `main` merged in the day before `now`, each from its merge
@@ -95,7 +96,7 @@ fn merged<'a>(main: &Main<'a>, now: i64) -> Vec<Merged<'a>> {
                 branch,
                 at,
                 merge,
-                head: main.head,
+                moved: main.moved,
             })
         })
         .filter(|m| m.at > now - super::DAY && m.at <= now)
@@ -247,45 +248,53 @@ fn caught(fixes: &[String], bases: &BTreeMap<&str, &str>) -> BTreeMap<String, Ve
     caught
 }
 
-/// What one merge's rounds past five led to: what they caught, and how
-/// many fixes they queued as follow-ups.
+/// What one merge's rounds past five led to: what they caught, how many
+/// fixes they queued as follow-ups, and how many queued fixes couldn't be
+/// told either way.
 struct Late {
     rounds: usize,
     change: String,
     caught: Vec<String>,
     follow_ups: usize,
+    /// Queued fixes whose rounds' heads couldn't be read, so they are
+    /// neither caught nor follow-ups.
+    unread: usize,
 }
 
 impl Late {
     /// Splits what `councils` past the fifth raised on `merged`, from
-    /// `fixes` by council. A committed fix was caught. A queued one was
-    /// caught only when its round read a head the change moved on from
-    /// before merging, so its fix could be in what merged; otherwise, or
-    /// when either head can't be read, it is a follow-up, so the drag of a
-    /// late round that queued only those shows.
+    /// `fixes` by council, each round's head read from `witnesses`. A
+    /// committed fix was caught. A queued one was caught only when the
+    /// change gained commits of its own after its round read it, so its
+    /// fix could be among them; a rebase, or a merge from main, alone
+    /// doesn't count. One that gained none is a follow-up, so the drag of a
+    /// late round that queued only those shows. One whose round read no
+    /// head, or whose commits git can't read, is unread, as unread fixes
+    /// are, so it files nothing. A later round's commit moves the change
+    /// as well as a fix made for this round's finding would, so the two
+    /// aren't told apart, as WCJQSG was told on 20 November.
     fn split(
         merged: &Merged,
         councils: &BTreeSet<(i64, &str)>,
         fixes: &BTreeMap<String, Vec<Fix>>,
         witnesses: &BTreeMap<&str, &str>,
-    ) -> (Vec<String>, usize) {
-        let head = std::cell::OnceCell::new();
-        let mut caught = Vec::new();
-        let mut follow_ups = 0;
+    ) -> (Vec<String>, usize, usize) {
+        let (mut caught, mut follow_ups, mut unread) = (Vec::new(), 0, 0);
         for (_, id) in councils.iter().skip(PAST) {
             for fix in fixes.get(*id).into_iter().flatten() {
-                let moved_on = || {
-                    let head = head.get_or_init(|| (merged.head)(merged.merge));
-                    matches!((witnesses.get(id), head), (Some(read), Some(head)) if read != head)
+                let moved = || {
+                    witnesses
+                        .get(id)
+                        .and_then(|read| (merged.moved)(merged.merge, read))
                 };
-                if !fix.queued || moved_on() {
-                    caught.push(fix.subject.clone());
-                } else {
-                    follow_ups += 1;
+                match (fix.queued, fix.queued.then(moved).flatten()) {
+                    (false, _) | (true, Some(true)) => caught.push(fix.subject.clone()),
+                    (true, Some(false)) => follow_ups += 1,
+                    (true, None) => unread += 1,
                 }
             }
         }
-        (caught, follow_ups)
+        (caught, follow_ups, unread)
     }
 
     /// The merge's line under the median.
@@ -295,11 +304,16 @@ impl Late {
             change,
             caught,
             follow_ups,
+            unread,
         } = self;
         let queued = match follow_ups {
             0 => String::new(),
             1 => ", 1 queued as a follow-up".to_owned(),
             many => format!(", {many} queued as follow-ups"),
+        } + &match unread {
+            0 => String::new(),
+            1 => ", 1 queued fix unread".to_owned(),
+            many => format!(", {many} queued fixes unread"),
         };
         match caught.as_slice() {
             _ if !fixes_read => format!("{change}: {n} rounds, what they caught unread"),
@@ -324,7 +338,8 @@ impl Late {
 /// `landed` it, else `owner`; `landed` is asked only when there is one.
 /// With no fixes record read, what the rounds caught can't be told, so
 /// the line says so and none is filed. A fix queued as a follow-up, as
-/// `Late::split` tells, is named but caught nothing. A council counts toward a merge
+/// `Late::split` tells, is named but caught nothing; one it can't tell is
+/// named unread, and its merge isn't filed. A council counts toward a merge
 /// when it started in the `BEFORE` up to it, and once by its id however
 /// many records hold it. A change with a record but no council counts
 /// nought; one with no record at all may be one the matching can't see,
@@ -371,13 +386,14 @@ pub fn rounds(
                 .filter(|(_, at)| *at <= m.at && *at >= m.at - BEFORE)
                 .map(|(id, at)| (at, id))
                 .collect();
-            let (after_fifth, follow_ups) = Late::split(&m, &councils, &caught, &witnesses);
+            let (after_fifth, follow_ups, unread) = Late::split(&m, &councils, &caught, &witnesses);
             let label = m.repo.rsplit('/').next().unwrap_or(m.repo);
             Some(Late {
                 rounds: councils.len(),
                 change: format!("{label}#{}", m.number),
                 caught: after_fifth,
                 follow_ups,
+                unread,
             })
         })
         .collect();
@@ -408,7 +424,7 @@ pub fn rounds(
         owner: owner.to_owned(),
         behind: each.iter().map(|late| late.line(fixes_read)).collect(),
     };
-    each.retain(|late| fixes_read && late.caught.is_empty());
+    each.retain(|late| fixes_read && late.caught.is_empty() && late.unread == 0);
     let landed = if each.is_empty() {
         BTreeMap::new()
     } else {
@@ -544,7 +560,7 @@ mod tests {
             &[Main {
                 repo: CORE,
                 log: &log,
-                head: &|_| panic!("asked a merge's head though no fixes record was read"),
+                moved: &|_, _| panic!("asked whether a change moved though no fixes were read"),
             }],
             &records,
             &[],
@@ -587,23 +603,25 @@ mod tests {
         serde_json::json!({ "fixes": fixes }).to_string()
     }
 
-    /// The heads the test's merges #23 and #24 merged; #25's can't be read.
-    fn head(merge: &str) -> Option<String> {
-        match merge {
-            "cccc" => Some("c-merged".to_owned()),
-            "dddd" => Some("d-merged".to_owned()),
+    /// Whether each change gained a commit of its own after a round read
+    /// the head it names: #23 did after its sixth, #24 and #26 merged what
+    /// their rounds read, and git can't read #25.
+    fn moved(merge: &str, witness: &str) -> Option<bool> {
+        match (merge, witness) {
+            ("cccc", "c-read") => Some(true),
+            ("dddd", "d-merged") | ("ffff", "f-merged") => Some(false),
             _ => None,
         }
     }
 
-    /// The head each sixth round read: #23's moved on before merging, #24
-    /// merged at the head its round read, and #25's round read one that
-    /// can't be compared.
+    /// The head each round past five read, where its record names one;
+    /// #23's seventh names none, as records from before witnesses don't.
     fn witness(id: &str) -> Option<&'static str> {
         match id {
             "council-c-1" => Some("c-read"),
             "council-d-1" => Some("d-merged"),
             "council-e-1" => Some("e-read"),
+            "council-f-0" => Some("f-merged"),
             _ => None,
         }
     }
@@ -634,16 +652,18 @@ mod tests {
              bbbb {} Merge pull request #22 from Jitsusama/here/b\n\
              cccc {} Merge pull request #23 from Jitsusama/here/c\n\
              dddd {} Merge pull request #24 from Jitsusama/here/d\n\
-             eeee {} Merge pull request #25 from Jitsusama/here/e\n",
+             eeee {} Merge pull request #25 from Jitsusama/here/e\n\
+             ffff {} Merge pull request #26 from Jitsusama/here/f\n",
             NOW - 60,
             NOW - 120,
             NOW - 180,
             NOW - 240,
-            NOW - 300
+            NOW - 300,
+            NOW - 360
         );
-        let records: Vec<String> = ["21", "22", "23", "24", "25"]
+        let records: Vec<String> = ["21", "22", "23", "24", "25", "26"]
             .iter()
-            .zip(["a", "b", "c", "d", "e"])
+            .zip(["a", "b", "c", "d", "e", "f"])
             .map(|(number, change)| {
                 let mut runs = seven(change);
                 // A judge that consolidated #23's seventh.
@@ -659,10 +679,12 @@ mod tests {
         // #21's fifth round fixed one, which isn't past five, and its sixth's
         // fix ended in a way the record doesn't name; #23's seventh caught
         // two, one through its judge, and its sixth one still queued, made
-        // before the merge since the change moved on; #22's sixth was only
-        // answered and its seventh's fix skipped; #24's sixth queued one on
-        // the head that merged, a follow-up; #25's sixth queued two whose
-        // merge can't be told, follow-ups too.
+        // before the merge since the change moved on, and its seventh one
+        // whose round names no head, unread; #22's sixth was only answered
+        // and its seventh's fix skipped; #24's sixth queued one on the head
+        // that merged, a follow-up; #25's sixth queued two whose merge git
+        // can't read, unread, so it files nothing; #26's sixth fixed one and
+        // its seventh queued a follow-up.
         let fixed = [fixes(&[
             ("council-a-2", "in the fifth", Some("committed")),
             ("judge-c", "a test that never failed", Some("committed")),
@@ -674,13 +696,16 @@ mod tests {
             ("council-d-1", "queued alone", None),
             ("council-e-1", "one queued", None),
             ("council-e-1", "two queued", None),
+            ("council-c-0", "unwitnessed", None),
+            ("council-f-1", "fixed", Some("committed")),
+            ("council-f-0", "a follow-up", None),
         ])];
         let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
         let all = rounds(
             &[Main {
                 repo: CORE,
                 log: &log,
-                head: &head,
+                moved: &moved,
             }],
             &records,
             &fixed,
@@ -693,12 +718,13 @@ mod tests {
             [
                 "core.nix#21: 7 rounds, those past five caught nothing",
                 "core.nix#22: 7 rounds, those past five caught nothing",
-                "core.nix#23: 7 rounds, past five caught queued and 2 more",
+                "core.nix#23: 7 rounds, past five caught queued and 2 more, 1 queued fix unread",
                 "core.nix#24: 7 rounds, those past five caught nothing, 1 queued as a follow-up",
-                "core.nix#25: 7 rounds, those past five caught nothing, 2 queued as follow-ups",
+                "core.nix#25: 7 rounds, those past five caught nothing, 2 queued fixes unread",
+                "core.nix#26: 7 rounds, past five caught fixed, 1 queued as a follow-up",
             ],
-            "a fix queued before the merge wasn't counted as caught, or a follow-up or an \
-             outcome the record doesn't name was"
+            "a fix queued before the merge wasn't counted as caught, or a follow-up, an \
+             unread fix or an outcome the record doesn't name was"
         );
         let fruitless: Vec<(&str, &str, f64)> = all[1..]
             .iter()
@@ -710,7 +736,6 @@ mod tests {
                 ("rounds-past-five-fixed-nothing:core.nix#21", "ORCH", 7.0),
                 ("rounds-past-five-fixed-nothing:core.nix#22", "B8RBNW", 7.0),
                 ("rounds-past-five-fixed-nothing:core.nix#24", "ORCH", 7.0),
-                ("rounds-past-five-fixed-nothing:core.nix#25", "ORCH", 7.0),
             ],
             "a merge whose rounds past five caught nothing goes to who landed it"
         );
@@ -730,7 +755,7 @@ mod tests {
             &[Main {
                 repo: CORE,
                 log: &log,
-                head: &|_| None,
+                moved: &|_, _| None,
             }],
             &[],
             &[],

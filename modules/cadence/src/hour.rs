@@ -303,27 +303,9 @@ fn rounds_per_merge(
     now: i64,
 ) -> Vec<Measure> {
     use measures::rounds::{BEFORE, Main, rounds};
-    // The head a merge commit merged is its second parent, read from the
-    // clone its log came from; one git can't read is none.
-    fn second_parent(clone: &Path, merge: &str) -> Option<String> {
-        let head = command(
-            "git",
-            &[
-                "-C",
-                &clone.to_string_lossy(),
-                "rev-parse",
-                "--verify",
-                "--quiet",
-                &format!("{merge}^2"),
-            ],
-        )
-        .ok()?;
-        let head = head.trim();
-        (!head.is_empty()).then(|| head.to_owned())
-    }
     let harness_git = axes::landings::harness_mirror();
-    let core_head = |merge: &str| second_parent(core_git, merge);
-    let harness_head = |merge: &str| second_parent(&harness_git, merge);
+    let core_moved = |merge: &str, witness: &str| moved(core_git, merge, witness);
+    let harness_moved = |merge: &str, witness: &str| moved(&harness_git, merge, witness);
     let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
@@ -363,12 +345,12 @@ fn rounds_per_merge(
         Main {
             repo: "github:Jitsusama/core.nix",
             log: core,
-            head: &core_head,
+            moved: &core_moved,
         },
         Main {
             repo: "github:Jitsusama/agentic-harness.pi",
             log: harness,
-            head: &harness_head,
+            moved: &harness_moved,
         },
     ];
     rounds(
@@ -387,6 +369,42 @@ fn rounds_per_merge(
 /// the collection every few minutes and dates nothing in it, so one not
 /// written within the hour, or written before midnight, is yesterday's or
 /// stuck, and isn't read as today's.
+/// Whether the change `merge` merged, its second parent, gained a commit
+/// of its own after a round read `witness`, from the `clone` its log came
+/// from. A merge from main brings none, and neither does a rebase, whose
+/// commits make the same patches as those the round read; a commit whose
+/// patch differs, a fix or a conflict settled, does. A witness the clone
+/// lacks, as a rebase can leave one, or anything else git can't read, is
+/// `None`. Only full commit names reach git, so none reads as an option.
+fn moved(clone: &Path, merge: &str, witness: &str) -> Option<bool> {
+    let sha = |name: &str| name.len() == 40 && name.bytes().all(|b| b.is_ascii_hexdigit());
+    if !sha(merge) || !sha(witness) {
+        return None;
+    }
+    let clone = clone.to_string_lossy();
+    let git = |args: &[&str]| {
+        let mut all = vec!["-C", &clone];
+        all.extend_from_slice(args);
+        command("git", &all)
+    };
+    let head = git(&["rev-parse", "--verify", "--quiet", &format!("{merge}^2")]).ok()?;
+    if head.trim().eq_ignore_ascii_case(witness) {
+        return Some(false);
+    }
+    git(&["cat-file", "-e", &format!("{witness}^{{commit}}")]).ok()?;
+    let own = git(&[
+        "rev-list",
+        "--no-merges",
+        "--cherry-pick",
+        "--right-only",
+        "--count",
+        &format!("{witness}...{merge}^2"),
+        &format!("^{merge}^1"),
+    ])
+    .ok()?;
+    Some(own.trim() != "0")
+}
+
 fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     let midnight = midnight_ms(now, &TimeZone::system());
     let at = std::env::var_os("XDG_RUNTIME_DIR")
@@ -580,6 +598,97 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_moved_on_from_its_round_only_by_a_commit_of_its_own() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let dir = root.path();
+        // Its own config, so the test reads and signs with nobody's.
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_AUTHOR_NAME", "here")
+                .env("GIT_AUTHOR_EMAIL", "here@example.org")
+                .env("GIT_COMMITTER_NAME", "here")
+                .env("GIT_COMMITTER_EMAIL", "here@example.org")
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_owned()
+        };
+        let commit = |file: &str| {
+            std::fs::write(dir.join(file), file).expect("a file written");
+            git(&["add", file]);
+            git(&["commit", "-q", "-m", file]);
+            git(&["rev-parse", "HEAD"])
+        };
+        // A change read at `read`, then given `after` and merged to main
+        // past a commit of main's own, giving the merge.
+        let merged = |change: &str, after: &dyn Fn()| {
+            git(&["checkout", "-q", "-b", change, "main"]);
+            let read = commit(change);
+            git(&["checkout", "-q", "main"]);
+            commit(&format!("main-{change}"));
+            git(&["checkout", "-q", change]);
+            after();
+            git(&["checkout", "-q", "main"]);
+            git(&["merge", "-q", "--no-ff", "-m", change, change]);
+            (git(&["rev-parse", "HEAD"]), read)
+        };
+        git(&["init", "-q", "-b", "main"]);
+        commit("base");
+        let cases = [
+            ("as-read", merged("as-read", &|| ()), Some(false)),
+            (
+                "main-merged-in",
+                merged("main-merged-in", &|| {
+                    git(&["merge", "-q", "--no-ff", "-m", "in", "main"]);
+                }),
+                Some(false),
+            ),
+            (
+                "rebased",
+                merged("rebased", &|| {
+                    git(&["rebase", "-q", "main"]);
+                }),
+                Some(false),
+            ),
+            (
+                "fixed",
+                merged("fixed", &|| {
+                    commit("a-fix");
+                }),
+                Some(true),
+            ),
+        ];
+        for (case, (merge, read), want) in &cases {
+            assert_eq!(moved(dir, merge, read), *want, "{case}");
+        }
+        let (merge, _) = &cases[0].1;
+        assert_eq!(
+            moved(dir, merge, &"0".repeat(40)),
+            None,
+            "a witness the clone lacks"
+        );
+        assert_eq!(
+            moved(dir, merge, "as-read"),
+            None,
+            "a witness that's no commit name"
+        );
+        assert_eq!(
+            moved(dir, "--all", &"0".repeat(40)),
+            None,
+            "an option for a merge"
+        );
+    }
 
     #[test]
     fn the_card_asks_the_wish_lists_keeper_besides_telling_the_orchestrator() {
