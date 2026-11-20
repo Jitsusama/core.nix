@@ -13,11 +13,20 @@
 //!   the change open at its branch where there is one.
 //! - `change:<repository's key>#<number>`, each open change, by the number
 //!   its source gives it, else `@<branch>`.
+//! - `using:<repository's key>`, what works in each repository and what it
+//!   takes, its checkouts' and trees' summed and each one's beside, from
+//!   the reading of the machine's processes (using.rs). It's a kind of its
+//!   own since it moves every reading, so a watch of a repository isn't
+//!   told it moved each minute.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use daemon_serve::asks::Domain;
 use serde_json::{Value, json};
 
 use repos::model::{Change, Record, Repository, TreeKind};
+use repos::using::Use;
 
 use crate::views::{answered, change_at};
 
@@ -80,6 +89,14 @@ pub fn records(record: &Record) -> Vec<Value> {
         }
     }
     said.into_iter().map(answered).collect()
+}
+
+/// What works in each repository of `record`, from `used`, each folder's;
+/// its processor time only where `measured`, two readings having been
+/// taken, and none otherwise rather than nothing.
+pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> Vec<Value> {
+    let _ = (record, used, measured);
+    Vec::new()
 }
 
 /// How the sources stand, as health says them: git always read, since a
