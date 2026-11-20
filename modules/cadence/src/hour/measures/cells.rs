@@ -415,7 +415,7 @@ const COMING_BACK: &str = "its cells still coming back";
 
 /// The measures of the node's list of cells, left unjudged and saying so
 /// where a pi host in `started`, when each on this machine last resumed,
-/// did so within `RESUMING` of `now`, or after it, as one starting while
+/// did so within `RESUMING` of `now`, either side, as one starting while
 /// the hour reads. Unjudged, the card names none of their lines and no
 /// owner is filed or let off, since most are the resume's; they're kept
 /// in the hour's record. Any host's resume does it, since the node can't
@@ -429,7 +429,9 @@ pub fn mid_resume(measures: &mut [Measure], started: Option<&[i64]>, now: i64) {
         .unwrap_or_default()
         .iter()
         .copied()
-        .filter(|&at| now - at < RESUMING)
+        // Within `RESUMING` either side: a host may start while the hour
+        // reads, but a start far ahead is a clock stepped back.
+        .filter(|&at| (now - at).abs() < RESUMING)
         .max()
     else {
         return;
@@ -968,11 +970,16 @@ pub(super) mod tests {
         let other = Measure {
             key: "reports-unasked".into(),
             ..measure(
-                &cells(&[answer(&[])], None, HERE, &zone(), NOW, "F"),
+                &cells(&[answer(&[])], Some(&quests), HERE, &zone(), NOW, "F"),
                 "cells-idle",
             )
             .clone()
         };
+        assert_eq!(
+            other.target,
+            Some(0.0),
+            "the stand-in measure wasn't judged"
+        );
         let read = |started: Option<&[i64]>| {
             let mut all = cells(&[answer(&[])], Some(&quests), HERE, &zone(), NOW, "F");
             all.push(other.clone());
@@ -1021,7 +1028,12 @@ pub(super) mod tests {
                 "the quests read mid-resume were no longer kept in the hour's record"
             );
         }
-        for started in [None, Some(&[NOW - 15 * 60][..]), Some(&[][..])] {
+        for started in [
+            None,
+            Some(&[NOW - 15 * 60][..]),
+            Some(&[NOW + 15 * 60][..]),
+            Some(&[][..]),
+        ] {
             assert_eq!(
                 read(started),
                 judged,

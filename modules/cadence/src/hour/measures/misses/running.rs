@@ -5,6 +5,8 @@
 //! older runtime's pi. Whatever cadence can't read counts as not running,
 //! so a blind hour never tells him fixed.
 
+mod resumed;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -12,6 +14,7 @@ use serde_json::Value;
 
 use super::{Checkouts, Named, main_of, merged_numbers};
 use crate::{command, write_whole};
+pub use resumed::hosts_started;
 
 /// What a miss's line says between its change and why, after its check's
 /// note, when the change merged and doesn't run here yet. The card reads
@@ -456,80 +459,6 @@ fn only_lists(diff: &str, files: &[&str]) -> bool {
                     .is_some_and(|name| listed.trim() == format!("./host-patches/{name}"))
             })
         })
-}
-
-/// When each pi host on this machine last resumed its conversations, as
-/// `resumed` reads it, or `None` when the hosts couldn't be listed.
-#[must_use]
-pub fn hosts_started(now: i64) -> Option<Vec<i64>> {
-    let units = command(
-        "systemctl",
-        &[
-            "--user",
-            "list-units",
-            "--type=service",
-            "--no-legend",
-            "--plain",
-            "pi-host-*",
-        ],
-    )
-    .ok()?;
-    Some(
-        units
-            .lines()
-            .filter_map(|line| {
-                line.split_whitespace()
-                    .next()
-                    .filter(|unit| host_unit(unit))
-            })
-            .filter_map(|unit| {
-                let shown = command(
-                    "systemctl",
-                    &[
-                        "--user",
-                        "show",
-                        "--timestamp=unix",
-                        "-p",
-                        "ActiveState",
-                        "-p",
-                        "ExecMainStartTimestamp",
-                        "-p",
-                        "ActiveEnterTimestamp",
-                        unit,
-                    ],
-                )
-                .ok()?;
-                resumed(&shown, now)
-            })
-            .collect(),
-    )
-}
-
-/// When a pi host, from its `systemctl show`, last resumed its
-/// conversations, or `None` when it isn't running. A host tells systemd
-/// it's ready only once it has resumed each, which under load has taken 8
-/// to 9 minutes, so one still activating resumes `now`, and one active
-/// resumed when it became so, or when its process began if that was later.
-/// An active host always carries the time it became so; one without it is
-/// taken as long started, which leaves the hour judged as it was.
-fn resumed(shown: &str, now: i64) -> Option<i64> {
-    let field = |name: &str| {
-        shown
-            .lines()
-            .find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
-            .map(str::trim)
-    };
-    let at = |name: &str| {
-        field(name)
-            .and_then(|at| at.strip_prefix('@')?.parse::<i64>().ok())
-            .filter(|&at| at > 0)
-    };
-    match field("ActiveState")? {
-        "activating" | "reloading" => Some(now),
-        "active" => at("ActiveEnterTimestamp")
-            .map(|entered| entered.max(at("ExecMainStartTimestamp").unwrap_or(entered))),
-        _ => None,
-    }
 }
 
 /// Each pi host, with the patches its runtime applied where it keeps them,

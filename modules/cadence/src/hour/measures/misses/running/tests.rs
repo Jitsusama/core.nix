@@ -276,45 +276,6 @@ fn a_host_is_read_by_its_units_main_process() {
 }
 
 #[test]
-fn a_host_resumes_while_it_activates_and_from_when_it_became_active() {
-    let now = 1_795_200_000;
-    let shown = |state: &str, began: &str, entered: &str| {
-        format!(
-            "ActiveState={state}\nExecMainStartTimestamp={began}\n\
-             ActiveEnterTimestamp={entered}\n"
-        )
-    };
-    assert_eq!(
-        resumed(&shown("activating", "@1795199500", "@1795100000"), now),
-        Some(now),
-        "a host still resuming its conversations was read by its last activation"
-    );
-    assert_eq!(
-        resumed(&shown("active", "@1795199000", "@1795199500"), now),
-        Some(1_795_199_500),
-        "an active host wasn't read from when it became so"
-    );
-    assert_eq!(
-        resumed(&shown("active", "@1795199700", "@1795199500"), now),
-        Some(1_795_199_700),
-        "a process begun since the host became active was left out"
-    );
-    assert_eq!(
-        resumed(&shown("active", "@1795199700", ""), now),
-        None,
-        "an active host with no time it became so was read as just started"
-    );
-    for state in ["failed", "deactivating", "inactive"] {
-        assert_eq!(
-            resumed(&shown(state, "@1795199900", "@1795199900"), now),
-            None,
-            "a host {state} was read as resuming"
-        );
-    }
-    assert_eq!(resumed("", now), None, "nothing shown was read as a host");
-}
-
-#[test]
 fn a_lock_pins_each_input_by_the_roots_name_for_it() {
     let lock = r#"{"nodes": {
         "root": {"inputs": {"core": "core_2", "mycelium": "mycelium"}},
