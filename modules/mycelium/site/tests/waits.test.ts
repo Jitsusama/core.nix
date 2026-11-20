@@ -12,6 +12,8 @@ import {
   holdingFirst,
   holdTarget,
   holdWords,
+  needsFirst,
+  nextNeeding,
   owedWords,
   type Seen,
   sharedWords,
@@ -206,4 +208,31 @@ it("lists the cells held up and holding, the oldest first", () => {
     ],
     "only cells with a question or a hold should be listed, the oldest first",
   );
+});
+
+/** Five cells: two stuck and two asking, interleaved, and one quiet. */
+const standing = [
+  cell("S1", { standing: "stuck" }),
+  cell("A1", { standing: "asks", wants: "a yes" }),
+  cell("Q"),
+  cell("S2", { standing: "stuck" }),
+  cell("A2", { standing: "asks" }),
+];
+
+it("lists every cell asking the reader, then every one stuck, each in its order", () => {
+  assert.deepEqual(
+    needsFirst(standing).map((s) => s.address),
+    ["A1", "A2", "S1", "S2"],
+    "a cell asking should come before one stuck, and a quiet one not at all",
+  );
+  assert.deepEqual(needsFirst([cell("Q")]), [], "nothing should be listed when none needs him");
+});
+
+it("steps to the next cell that needs the reader, round to the first", () => {
+  assert.deepEqual(
+    [null, "A1", "A2", "S1", "S2", "Q", "gone"].map((from) => nextNeeding(standing, from)),
+    ["A1", "A2", "S1", "S2", "A1", "A1", "A1"],
+    "each step should go to the next in Now's order, and from none or a quiet cell to the first",
+  );
+  assert.equal(nextNeeding([cell("Q")], null), null, "no step should be taken when none needs him");
 });

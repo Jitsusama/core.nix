@@ -117,10 +117,14 @@ Nothing on it acts on the network.
   and only when those change. A
   drawer slides in from the right over an empty gutter the map keeps
   for it, so opening it never moves the map; on a narrow screen it
-  covers the map instead. It holds what is open, or Now: how the whole
-  network stands, what it spent today, how to read the map and the
-  network as a tree. Full stop, or the last control over the map,
-  opens Now.
+  covers the map instead. It holds what is open, or Now: first every
+  cell that needs him, those asking something before those stuck, and
+  the questions waiting and holds standing that hold the flow; then how
+  the whole network stands, what it spent today, how to read the map
+  and the network as a tree. Full stop, or the last control over the
+  map, opens Now. A cell's drawer talks to it in the Launcher, and one
+  with a forage opens the forage page on it, saying what it is for and
+  how far its plans have come.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's
@@ -196,6 +200,8 @@ The keyboard comes first and the pointer works too.
   Return goes to the first match, n and N step to the next and previous,
   and Escape closes the line.
 - **Full stop** opens Now in the drawer, and closes it again.
+- **a** opens the next cell that needs him, in Now's order, and again
+  the one after; **t** talks to the open cell in the Launcher.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,
   h closes it or climbs, g and G go to the first and last, and Return

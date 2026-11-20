@@ -73,7 +73,7 @@ it("leaves every chord to the browser, on the map, the tree and the page", () =>
   const asked = {
     map: ["j", "ArrowUp", "Enter", " "],
     tree: ["j", "Home", "Enter"],
-    page: ["?", "F1", "/", "Escape", "-", "m", "n"],
+    page: ["?", "F1", "/", "Escape", "-", "m", "n", "a", "t"],
   };
   const everything = standing({ findOpen: true, finding: true, chosen: true, nowOpen: true });
   for (const held of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
@@ -114,7 +114,7 @@ it("lists every act it can ask, so the drawing can say it does each", () => {
     pageKey(press("Escape"), standing({ nowOpen: true })),
     pageKey(press("n"), all),
     pageKey(press("N", { shiftKey: true }), all),
-    ...[".", "m", "0", "i", "o", "-"].map((key) => pageKey(press(key), standing())),
+    ...[".", "a", "t", "m", "0", "i", "o", "-"].map((key) => pageKey(press(key), standing())),
   ];
   assert.deepEqual(new Set(page), new Set(EVERY_PAGE_ACT), "the page's list isn't what it asks");
 });
@@ -152,6 +152,8 @@ it("says what each of the page's letters asks, with nothing open", () => {
     F1: "keys",
     "/": "find",
     ".": "now",
+    a: "needs-you",
+    t: "talk",
     m: "machines",
     "0": "fit",
     "+": "zoom-in",
