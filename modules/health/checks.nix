@@ -1,5 +1,7 @@
 # The checks of health, which checks.nix gathers with every other folder's.
 {
+  exampleLaptop,
+  holds,
   onLinux,
   passesClippy,
   pkgs,
@@ -26,4 +28,17 @@ onLinux {
   health-tallies-the-days-warnings = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in health, its tests included.
   health-passes-clippy = passesClippy "health-passes-clippy" (pkgs.callPackage ./package.nix { });
+
+  # Health's unit holds a high mark of 256 MiB, so the day's replay at
+  # each start, which passes the journals' pages through its cgroup, gives
+  # them back there, and no hard limit, whose kill would lose what health
+  # holds unwritten; what the mark bought was measured once, on 19
+  # November, as home.nix says.
+  health-gives-back-the-pages-it-reads =
+    let
+      service = exampleLaptop.config.home-manager.users.joel.systemd.user.services.health.Service;
+    in
+    holds "health-gives-back-the-pages-it-reads"
+      "health has no high mark at 256 MiB, so the day's replay at each start grows the page cache by gigabytes unchecked, or it has a hard limit, whose kill would lose what health holds unwritten."
+      ((service.MemoryHigh or null) == "256M" && !(service ? MemoryMax));
 }
