@@ -14777,6 +14777,12 @@ Scope {
                                 list.pickY = list.fillAt(root.current);
                             }
 
+                            // The selection onto its row, from where Qt has
+                            // just laid it.
+                            function pickOn(entry) {
+                                list.pickY = entry.y + list.rowHeight(entry.index) - root.rowTall;
+                            }
+
                             // Where a row's own place starts and ends in the
                             // list, its gap above it included.
                             function rowTop(at) {
@@ -14943,20 +14949,17 @@ Scope {
                                 return drawn;
                             }
 
-                            // Whether the selected row's ground is drawn
-                            // partly outside the list's box, from where its
-                            // row is laid on the box rather than from
-                            // extentOf, so a check sees its foot cut where
-                            // the rule took it for whole. One wholly out of
-                            // view is hidden, not cut.
+                            // Whether the selection's ground, as drawn
+                            // (picked, which follows no row's opacity), is
+                            // partly outside the list's box, so a check
+                            // sees it cut whatever the rule took its row
+                            // for. One wholly out of view is hidden, not
+                            // cut.
                             function groundCut() {
-                                const entry = root.current < 0 ? null
-                                    : list.itemAtIndex(root.current);
-                                if (entry === null || entry.opacity === 0)
+                                if (!picked.visible)
                                     return false;
-                                const ground = entry.drawnRow;
-                                const top = ground.mapToItem(listBox, 0, 0).y;
-                                const bottom = top + ground.height;
+                                const top = picked.mapToItem(listBox, 0, 0).y;
+                                const bottom = top + picked.height;
                                 return bottom > 0.5 && top < listBox.height - 0.5
                                     && (top < -0.5 || bottom > listBox.height + 0.5);
                             }
@@ -15061,11 +15064,26 @@ Scope {
                                     entry.aside = false;
                                     root.rowsDrawn += 1;
                                     entry.laid(taken, root.feltRow(taken));
+                                    entry.placed();
                                 }
                                 Component.onCompleted: {
                                     root.rowsDrawn += 1;
                                     root.rowsBuilt += 1;
                                     entry.laid(entry.feltBegun, root.feltRow(entry.feltBegun));
+                                    entry.placed();
+                                }
+                                // Where it's laid, told to the selection when
+                                // it's the selected row, since Qt lays a row
+                                // it hadn't drawn only after the key that
+                                // selected it, and pick reads where an undrawn
+                                // row stands from those drawn: gg from the
+                                // Home Network's foot left the selection's
+                                // ground off its row, cut at the list's top
+                                // (2026-11-20).
+                                onYChanged: entry.placed()
+                                function placed() {
+                                    if (!entry.aside && entry.index === root.current)
+                                        list.pickOn(entry);
                                 }
                                 // What it took, from `from` to `to`, added to
                                 // its kind's while a laying listens, so a
