@@ -389,6 +389,7 @@
         screen-text = dictation;
         secret-asks = pkgs.callPackage ../../modules/secret-asks/package.nix { };
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        sessions-come-back = pkgs.callPackage ../../modules/sessions-come-back/package.nix { };
         shaper = pkgs.callPackage ../../modules/shaper/package.nix { };
         shell-preview = pkgs.callPackage ../../tools/shell-preview/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };

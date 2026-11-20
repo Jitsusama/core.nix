@@ -118,6 +118,10 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
+  a-macs-sessions-come-back-in-each-realm = ''
+    a Mac whose account joins realms runs sessions-come-back as its login starts and each
+    minute, on mycelium and every realm it joins, and a Mac in no realm runs none
+  '';
   a-notice-comes-forward = ''
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
@@ -3319,6 +3323,21 @@
   session-memory-is-protected = ''
     session.slice and app.slice carry hard memory floors and agents.slice a soft one, and every
     slice above them carries one hard and one soft floor, the same at each
+  '';
+  sessions-come-back-after-a-reboot = ''
+    after a new boot or console login, sessions-come-back starts each pi session held before it
+    again on the machine, in its own folder, as the pi it ran as with --session and its id, once;
+    one that ended while the machine ran, or whose pi died, stays ended; a hold it can't read
+    plainly is passed over and said once; the machine is the one most sessions name; a node
+    silent past its limit is stopped with all it started; a record it can't read is set aside
+    and said, one kept more than four days before brings nothing back, and one is kept before
+    any start; one whose folder isn't there or that the node refuses is tried again fifteen
+    times, one it gave no answer for waits five minutes first, and a new boot gives each its
+    tries again; a realm's .off file keeps nothing and brings nothing back, then or after; and a
+    run beside another leaves the realm to it
+  '';
+  sessions-come-back-passes-clippy = ''
+    clippy finds nothing in sessions-come-back or its tests
   '';
   sessions-sit-beside-the-programs = ''
     agents' sessions have a slice beside Joel's programs, which outweigh it ten times over on the

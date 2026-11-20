@@ -667,6 +667,7 @@ gather {
     ./modules/sd-switch/checks.nix
     ./modules/secret-asks/checks.nix
     ./modules/session-backup/checks.nix
+    ./modules/sessions-come-back/checks.nix
     ./modules/shaper/checks.nix
     ./modules/signing/checks.nix
     ./modules/slack/checks.nix
