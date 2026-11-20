@@ -91,6 +91,8 @@ pub fn run() -> Result<(), String> {
         .max_redirects(0)
         .build()
         .into();
+    // Each TV's last answer, so a minute it's silent keeps its name.
+    let mut tvs = samsung::Heard::new();
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -119,7 +121,9 @@ pub fn run() -> Result<(), String> {
             .map(samsung::listed)
             .unwrap_or_default()
             .into_iter()
-            .map(|(mac, address)| (mac, read_television(&at_home, &address)))
+            .map(|(mac, address)| {
+                samsung::remember(&mut tvs, mac, read_television(&at_home, &address))
+            })
             .collect();
         let said = Said {
             eero: heard,
@@ -235,12 +239,19 @@ fn read_apple_tv(agent: &Agent, address: &str) -> Result<airplay::Answer, String
         .map_err(|error| format!("it didn't answer: {error}"))
 }
 
-/// What a Samsung TV says of itself, as its text, which samsung.rs reads.
+/// What a Samsung TV says of itself, as its text, which samsung.rs reads,
+/// no longer than a TV's answer could be.
 fn read_television(agent: &Agent, address: &str) -> Result<samsung::Answer, String> {
     agent
         .get(&samsung::url(address))
         .call()
-        .and_then(|mut answer| answer.body_mut().read_to_string())
+        .and_then(|mut answer| {
+            answer
+                .body_mut()
+                .with_config()
+                .limit(samsung::LONGEST)
+                .read_to_string()
+        })
         .map_err(|error| format!("it didn't answer: {error}"))
 }
 

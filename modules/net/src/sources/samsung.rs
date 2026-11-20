@@ -7,9 +7,16 @@
 //! `detail.samsung`, apart from its ids and the addresses eero already
 //! gives.
 //!
+//! A TV heard once is remembered while the daemon runs, so a minute it
+//! doesn't answer keeps its name and role rather than handing it back to
+//! eero's name for it; a box never heard as a TV says nothing, so a phone
+//! eero can't place doesn't count against the source.
+//!
 //! Only that page is read, without pairing: sending it a key waits on
 //! Joel pressing Allow on the TV, and what it's playing, its volume and
 //! its input are said only through Samsung's cloud.
+
+use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
@@ -21,6 +28,11 @@ pub const NAME: &str = "samsung";
 /// The port a Samsung TV says what it is on, to anyone, without signing in.
 pub const PORT: u16 = 8001;
 
+/// The most of an answer read: a TV's is under 2 KB, so anything past
+/// this isn't one, and a box on the network can't fill each minute's
+/// record.
+pub const LONGEST: u64 = 64 * 1024;
+
 /// What a TV answers at `/api/v2/`: JSON, as its text.
 pub type Answer = String;
 
@@ -29,15 +41,30 @@ pub type Answer = String;
 const A_TV: &str = "Samsung SmartTV";
 
 /// The kinds eero gives a Samsung box that could be a TV: one it can't
-/// place, as it does Joel's, and one that streams. A phone, a tablet or a
-/// computer is never asked.
+/// place, as it does Joel's, and one that streams. A box eero places as
+/// a phone, a tablet or a computer isn't asked; one it can't place is,
+/// and says nothing unless it answers as a TV.
 const KINDS: [&str; 2] = ["generic", "media_streamer"];
 
 /// The keys of an answer, and of its `device`, that net leaves out: ids
 /// that say nothing of the network, and the addresses eero's device for
-/// it already holds.
+/// it already holds, the hardware address of the radio it's on (which
+/// the TV calls its `ssid`) among them.
 const LEFT_OUT: [&str; 2] = ["id", "uri"];
-const LEFT_OUT_OF_DEVICE: [&str; 6] = ["duid", "id", "udn", "ip", "wifiMac", "developerIP"];
+const LEFT_OUT_OF_DEVICE: [&str; 7] = ["duid", "id", "udn", "ip", "wifiMac", "developerIP", "ssid"];
+
+/// Each TV's last answer, by its hardware address, kept while the daemon
+/// runs.
+pub type Heard = BTreeMap<String, Answer>;
+
+/// One Samsung box asked this minute: what it answered, and its last
+/// answer as a TV when it has given one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Asked {
+    pub mac: String,
+    pub answer: Result<Answer, String>,
+    pub earlier: Option<Answer>,
+}
 
 /// Where a Samsung TV says what it is.
 pub fn url(address: &str) -> String {
@@ -52,7 +79,9 @@ pub struct Found {
     pub name: Option<String>,
     pub model: Option<String>,
     pub television: Television,
-    pub detail: Value,
+    /// Its answer, kept whole but for its ids and addresses; none in a
+    /// minute it didn't answer.
+    pub detail: Option<Value>,
 }
 
 /// The Samsung boxes eero lists that could be a TV, each by its hardware
@@ -76,21 +105,59 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Each TV as it answered, and the source, or none when eero lists no
-/// Samsung box that could be one. The source answers while any TV does.
-pub fn read(said: Vec<(String, Result<Answer, String>)>, now: u64) -> (Option<Source>, Vec<Found>) {
-    if said.is_empty() {
-        return (None, Vec::new());
+/// What `mac` answered this minute, beside its last answer as a TV; an
+/// answer that is a TV's becomes the one remembered.
+pub fn remember(heard: &mut Heard, mac: String, answer: Result<Answer, String>) -> Asked {
+    if let Ok(said) = &answer
+        && television(String::new(), said).is_ok()
+    {
+        heard.insert(mac.clone(), said.clone());
     }
+    Asked {
+        earlier: heard.get(&mac).cloned(),
+        mac,
+        answer,
+    }
+}
+
+/// Each TV as it answered, or as it last answered while it's silent, and
+/// the source, or none when no box has answered as a TV. The source
+/// answers while any TV does, and is unreachable while every TV it has
+/// heard is silent.
+pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
     let mut found = Vec::new();
-    let mut reason = None;
-    for (mac, answer) in said {
-        match answer.and_then(|answer| heard(mac, &answer)) {
-            Ok(one) => found.push(one),
-            Err(why) => reason = reason.or(Some(why)),
+    let mut answering = false;
+    let mut silent = None;
+    for one in asked {
+        match (one.answer, one.earlier) {
+            (Ok(answer), _) => {
+                // A box that answers as something else isn't a TV, so it's
+                // left out rather than counted as the source failing.
+                if let Ok(tv) = television(one.mac, &answer) {
+                    answering = true;
+                    found.push(tv);
+                }
+            }
+            (Err(why), Some(earlier)) => {
+                if let Ok(tv) = television(one.mac, &earlier) {
+                    let name = tv.name.clone().unwrap_or_else(|| "a TV".into());
+                    silent = silent.or(Some(format!("{name} didn't answer: {why}")));
+                    found.push(Found {
+                        television: Television {
+                            power: None,
+                            answering: false,
+                        },
+                        detail: None,
+                        ..tv
+                    });
+                }
+            }
+            (Err(_), None) => {}
         }
     }
-    let answering = !found.is_empty();
+    if found.is_empty() {
+        return (None, found);
+    }
     let source = Source {
         name: NAME.into(),
         what: "the Samsung TVs eero lists, read and never changed".into(),
@@ -101,14 +168,14 @@ pub fn read(said: Vec<(String, Result<Answer, String>)>, now: u64) -> (Option<So
         },
         read_at: answering.then_some(now),
         since: (!answering).then_some(now),
-        reason: if answering { None } else { reason },
+        reason: if answering { None } else { silent },
     };
     (Some(source), found)
 }
 
 /// One TV from its answer, kept whole in its own words but for its ids
-/// and addresses.
-fn heard(mac: String, answer: &str) -> Result<Found, String> {
+/// and addresses, or why the answer isn't a TV's.
+fn television(mac: String, answer: &str) -> Result<Found, String> {
     let Ok(Value::Object(mut detail)) = serde_json::from_str::<Value>(answer) else {
         return Err("its answer isn't a JSON object".into());
     };
@@ -136,8 +203,11 @@ fn heard(mac: String, answer: &str) -> Result<Found, String> {
         mac,
         name,
         model,
-        television: Television { power },
-        detail: Value::Object(detail),
+        television: Television {
+            power,
+            answering: true,
+        },
+        detail: Some(Value::Object(detail)),
     })
 }
 
@@ -154,6 +224,9 @@ pub mod tests {
     pub const MAC: &str = "02:00:00:00:00:90";
     pub const ADDRESS: &str = "10.0.0.90";
 
+    /// Another box eero lists, by its hardware address.
+    const OTHER: &str = "02:00:00:00:00:92";
+
     const NOW: u64 = 1_794_702_033;
 
     /// What the contract's TV answered.
@@ -163,6 +236,11 @@ pub mod tests {
             env!("CARGO_MANIFEST_DIR")
         );
         fs::read_to_string(&file).expect("the contract has the TV's answer")
+    }
+
+    /// The contract's TV, asked once, as the daemon's first minute asks it.
+    pub fn asked() -> Asked {
+        remember(&mut Heard::new(), MAC.into(), Ok(answer()))
     }
 
     /// The TV as eero lists it: by the name it gives when it takes an
@@ -177,8 +255,15 @@ pub mod tests {
         })
     }
 
+    fn silent() -> Result<Answer, String> {
+        Err("it didn't answer: timed out".into())
+    }
+
     fn one(answer: Answer) -> (Option<Source>, Vec<Found>) {
-        read(vec![(MAC.into(), Ok(answer))], NOW)
+        read(
+            vec![remember(&mut Heard::new(), MAC.into(), Ok(answer))],
+            NOW,
+        )
     }
 
     #[test]
@@ -187,7 +272,7 @@ pub mod tests {
         phone["mac"] = json!("02:00:00:00:00:91");
         phone["kind"] = json!("phone");
         let mut streamer = listing();
-        streamer["mac"] = json!("02:00:00:00:00:92");
+        streamer["mac"] = json!(OTHER);
         streamer["kind"] = json!("media_streamer");
         let mut lg = listing();
         lg["mac"] = json!("02:00:00:00:00:93");
@@ -197,9 +282,21 @@ pub mod tests {
             listed(&eero),
             vec![
                 (MAC.to_owned(), ADDRESS.to_owned()),
-                ("02:00:00:00:00:92".to_owned(), ADDRESS.to_owned())
+                (OTHER.to_owned(), ADDRESS.to_owned())
             ],
             "only the Samsung boxes that could be a TV are asked"
+        );
+    }
+
+    #[test]
+    fn eeros_golden_record_lists_its_generic_samsung_and_no_other() {
+        let eero: Value = serde_json::from_str(include_str!("../../../eero/home-network.json"))
+            .expect("eero's golden record reads");
+        let asked = listed(&eero);
+        assert_eq!(
+            asked.len(),
+            1,
+            "eero's one generic Samsung isn't asked alone: {asked:?}"
         );
     }
 
@@ -210,16 +307,9 @@ pub mod tests {
         assert_eq!(found.name.as_deref(), Some("Living Room"), "its own name");
         assert_eq!(found.model.as_deref(), Some("QN55Q70CAFXZC"), "its model");
         assert_eq!(found.television.power.as_deref(), Some("on"), "its power");
-        assert_eq!(
-            found.detail["device"]["OS"],
-            json!("Tizen"),
-            "its answer is kept"
-        );
-        assert_eq!(
-            found.detail["version"],
-            json!("2.0.25"),
-            "its answer is kept"
-        );
+        let detail = found.detail.as_ref().expect("its answer is kept");
+        assert_eq!(detail["device"]["OS"], json!("Tizen"), "its answer is kept");
+        assert_eq!(detail["version"], json!("2.0.25"), "its answer is kept");
         assert_eq!(
             source.map(|source| source.state),
             Some(SourceState::Answering),
@@ -243,55 +333,105 @@ pub mod tests {
     #[test]
     fn its_ids_and_addresses_are_left_out() {
         let (_, found) = one(answer());
-        let detail = &found.first().expect("the TV is heard").detail;
-        for key in LEFT_OUT {
-            assert!(detail.get(key).is_none(), "{key} is kept");
+        let detail = found.first().and_then(|found| found.detail.clone());
+        let kept = serde_json::to_string(&detail).expect("its detail writes");
+        for said in [
+            "00000000-0000-0000-0000-000000000090",
+            ADDRESS,
+            MAC,
+            "02:00:00:00:20:01",
+            "0.0.0.0",
+        ] {
+            assert!(!kept.contains(said), "{said} is kept: {kept}");
         }
-        for key in LEFT_OUT_OF_DEVICE {
-            assert!(detail["device"].get(key).is_none(), "device.{key} is kept");
-        }
+        assert!(
+            kept.contains("QN55Q70CAFXZC"),
+            "the rest of its answer went too: {kept}"
+        );
     }
 
     #[test]
-    fn a_samsung_that_isnt_a_tv_says_what_it_is() {
+    fn a_samsung_that_isnt_a_tv_is_left_out_without_a_source() {
         let soundbar = answer().replace(A_TV, "Samsung Soundbar");
-        let (source, found) = one(soundbar);
+        let mut heard = Heard::new();
+        let asked = remember(&mut heard, MAC.into(), Ok(soundbar));
+        assert!(heard.is_empty(), "a soundbar is remembered as a TV");
+        assert_eq!(
+            read(vec![asked], NOW),
+            (None, Vec::new()),
+            "a soundbar says something"
+        );
+    }
+
+    #[test]
+    fn a_box_never_heard_as_a_tv_says_nothing_when_silent() {
+        let asked = remember(&mut Heard::new(), OTHER.into(), silent());
+        assert_eq!(
+            read(vec![asked], NOW),
+            (None, Vec::new()),
+            "a silent phone says something"
+        );
+    }
+
+    #[test]
+    fn a_tv_heard_once_keeps_its_name_while_silent() {
+        let mut heard = Heard::new();
+        remember(&mut heard, MAC.into(), Ok(answer()));
+        let asked = remember(&mut heard, MAC.into(), silent());
+        let (source, found) = read(vec![asked], NOW);
+        let [tv] = found.as_slice() else {
+            panic!("the silent TV should be one: {found:?}");
+        };
+        assert_eq!(
+            tv.name.as_deref(),
+            Some("Living Room"),
+            "its name went with its answer"
+        );
+        assert_eq!(
+            tv.television,
+            Television {
+                power: None,
+                answering: false
+            },
+            "its power is said from an old answer"
+        );
+        assert_eq!(tv.detail, None, "an old answer is kept as this minute's");
         let source = source.expect("the source is said");
-        assert!(found.is_empty(), "a soundbar is heard as a TV");
-        assert_eq!(source.state, SourceState::Unreachable, "the source answers");
+        assert_eq!(
+            source.state,
+            SourceState::Unreachable,
+            "a silent TV reads as answering"
+        );
         assert_eq!(
             source.reason.as_deref(),
-            Some("it isn't a TV: it says it's Samsung Soundbar"),
-            "the reason doesn't say what it is"
+            Some("Living Room didn't answer: it didn't answer: timed out"),
+            "the reason doesn't name the TV"
         );
     }
 
     #[test]
-    fn an_answer_that_isnt_json_says_so() {
-        let (source, found) = one("<html>".into());
-        assert!(found.is_empty(), "nothing is heard from a page");
-        assert!(
-            source
-                .and_then(|source| source.reason)
-                .is_some_and(|why| why.contains("JSON")),
-            "the reason doesn't say what was wrong"
-        );
+    fn an_answer_that_isnt_json_is_never_remembered() {
+        let mut heard = Heard::new();
+        remember(&mut heard, MAC.into(), Ok("<html>".into()));
+        assert!(heard.is_empty(), "a page is remembered as a TV");
     }
 
     #[test]
     fn one_tv_answering_keeps_the_source_answering() {
+        let mut heard = Heard::new();
+        remember(&mut heard, OTHER.into(), Ok(answer()));
         let (source, found) = read(
             vec![
-                ("02:00:00:00:00:92".into(), Err("it didn't answer".into())),
-                (MAC.into(), Ok(answer())),
+                remember(&mut heard, OTHER.into(), silent()),
+                remember(&mut heard, MAC.into(), Ok(answer())),
             ],
             NOW,
         );
-        assert_eq!(found.len(), 1, "the TV that answered isn't heard");
+        assert_eq!(found.len(), 2, "both TVs aren't said");
         assert_eq!(
             source.map(|source| (source.state, source.reason)),
             Some((SourceState::Answering, None)),
-            "one silent box makes the source unreachable"
+            "one silent TV makes the source unreachable"
         );
     }
 
@@ -301,12 +441,8 @@ pub mod tests {
         lg["make"] = json!("LG");
         let asked = listed(&json!({"devices": [lg]}));
         assert!(asked.is_empty(), "another maker's box is asked: {asked:?}");
-        let said = asked
-            .into_iter()
-            .map(|(mac, _)| (mac, Ok(answer())))
-            .collect();
         assert_eq!(
-            read(said, NOW),
+            read(Vec::new(), NOW),
             (None, Vec::new()),
             "a source is said for nothing"
         );

@@ -22,9 +22,9 @@ pub struct Said {
     pub printers: Vec<(String, Result<hp::Answers, String>)>,
     /// What each Apple TV eero lists answered, by its hardware address.
     pub apple_tvs: Vec<(String, Result<airplay::Answer, String>)>,
-    /// What each Samsung box eero lists that could be a TV answered, by
-    /// its hardware address.
-    pub televisions: Vec<(String, Result<samsung::Answer, String>)>,
+    /// What each Samsung box eero lists that could be a TV answered, and
+    /// its last answer as a TV.
+    pub televisions: Vec<samsung::Asked>,
 }
 
 pub fn network(said: Said, now: u64) -> Network {
@@ -123,9 +123,9 @@ fn hear_the_apple_tv(devices: &mut [Device], found: airplay::Found) {
 
 /// Puts what a TV said on eero's device for it: it's a television rather
 /// than a client, its model and whether it's on are its own, and its
-/// answer sits beside eero's. The name it was given on its own screen
-/// stands for eero's, which is only what it calls itself taking an
-/// address, unless Joel nicknamed it in eero.
+/// answer, when it gave one this minute, sits beside eero's. The name it
+/// was given on its own screen stands for eero's, which is only what it
+/// calls itself taking an address, unless Joel nicknamed it in eero.
 fn hear_the_television(devices: &mut [Device], found: samsung::Found) {
     let id = format!("mac:{}", found.mac);
     let Some(device) = devices.iter_mut().find(|device| device.id == id) else {
@@ -142,7 +142,9 @@ fn hear_the_television(devices: &mut [Device], found: samsung::Found) {
     device.roles = vec![crate::model::Role::Television];
     device.model = found.model.or(device.model.take());
     device.television = Some(found.television);
-    device.detail.insert(samsung::NAME.into(), found.detail);
+    if let Some(detail) = found.detail {
+        device.detail.insert(samsung::NAME.into(), detail);
+    }
 }
 
 /// Gives eero's cable to the switch the switch's end: when one port alone
@@ -226,7 +228,7 @@ mod tests {
             receivers: vec![(sony::tests::MAC.into(), Ok(sony::tests::answers()))],
             printers: vec![(hp::tests::MAC.into(), Ok(hp::tests::answers()))],
             apple_tvs: vec![(airplay::tests::MAC.into(), Ok(airplay::tests::answer()))],
-            televisions: vec![(samsung::tests::MAC.into(), Ok(samsung::tests::answer()))],
+            televisions: vec![samsung::tests::asked()],
         }
     }
 

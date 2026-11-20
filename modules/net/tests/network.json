@@ -6672,7 +6672,8 @@
         }
       },
       "television": {
-        "power": "on"
+        "power": "on",
+        "answering": true
       },
       "detail": {
         "eero": {
@@ -6715,7 +6716,6 @@
             "networkType": "wireless",
             "resolution": "3840x2160",
             "smartHubAgreement": "true",
-            "ssid": "02:00:00:00:20:01",
             "type": "Samsung SmartTV"
           },
           "isSupport": "{\"DMP_DRM_PLAYREADY\":\"false\",\"DMP_DRM_WIDEVINE\":\"false\",\"DMP_available\":\"true\",\"EDEN_available\":\"true\",\"FrameTVSupport\":\"false\",\"ImeSyncedSupport\":\"true\",\"TokenAuthSupport\":\"true\",\"remote_available\":\"true\",\"remote_fourDirections\":\"true\",\"remote_touchPad\":\"true\",\"remote_voiceControl\":\"true\"}\n",

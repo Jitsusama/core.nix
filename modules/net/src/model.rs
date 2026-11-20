@@ -357,9 +357,12 @@ pub struct Modem {
 /// What a television says of itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Television {
-    /// Whether it's on or in standby, in its own word; a TV switched off
-    /// at the wall says nothing, so it has no figures at all.
+    /// Whether it's on or in standby, in its own word; none in a minute
+    /// it didn't answer.
     pub power: Option<String>,
+    /// Whether it answered this minute; a TV heard before keeps its name
+    /// and role while it's silent.
+    pub answering: bool,
 }
 
 /// What a receiver says it's doing.
