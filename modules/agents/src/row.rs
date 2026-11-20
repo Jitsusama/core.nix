@@ -113,6 +113,11 @@ pub struct Row {
     /// and quest, and what the harness lists an orchestrator as.
     pub also: String,
     pub glyph: &'static str,
+    /// The mark it wears while it doesn't wait on Joel, its team's shape
+    /// or the agent's, which For You's rows keep: every session there
+    /// waits on him, and the person with a clock is a to-do's there
+    /// (ForYou.js).
+    pub mark: &'static str,
     pub hue: &'static str,
     pub side: String,
     pub side_items: Vec<Item>,
@@ -327,13 +332,11 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
     // An orchestrator's row wears the shape its network is drawn by in
     // place of the agent's mark, so the row and the map agree, until it
     // waits on Joel (standing::glyph).
-    let glyph = standing::glyph(
-        stands,
-        place
-            .orchestrates
-            .then(|| (known.shape)(session.id()))
-            .flatten(),
-    );
+    let shape = place
+        .orchestrates
+        .then(|| (known.shape)(session.id()))
+        .flatten();
+    let glyph = standing::glyph(stands, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
         keep: 1,
@@ -346,6 +349,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         name: title,
         also: format!("{address} {folder} {quest}{known_as}"),
         glyph,
+        mark: shape.unwrap_or("agent"),
         hue: standing::hue(stands, !full.is_empty()),
         side: said_of(&items),
         side_items: items,
@@ -643,6 +647,10 @@ mod tests {
             depth: 0,
             orchestrates: true,
         };
+        assert!(
+            made(&asking, Place::default()).side.contains("90% full"),
+            "its limit nears, so alert is shown over the warning's hue"
+        );
         let marks = |record: &Value, place: Place| {
             let row = made(record, place, &given());
             format!("{}:{}:{}", row.state, row.glyph, row.hue)
@@ -660,6 +668,14 @@ mod tests {
             ],
             "one waiting on Joel wears his mark in the alert's hue, over a team's shape and a \
              nearing limit, so a row cut narrow still says it waits on him (Joel, 2026-11-20)"
+        );
+        assert_eq!(
+            [
+                made(&asking, Place::default()).mark,
+                made(&asking, orchestrating).mark
+            ],
+            ["agent", "shapeSquare"],
+            "the mark it wears when it doesn't wait is kept for For You"
         );
     }
 

@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use crate::figures::Item;
 use crate::row::{Row, Shown, Words};
 use crate::said::Said;
+use crate::standing::{self, Stands};
 use crate::talks::{self, Talk};
 
 /// The launcher's place for the top level.
@@ -149,6 +150,16 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     if !members.is_empty() {
         acts.push(more());
     }
+    // One of its sessions waiting on Joel puts his mark on the row, as its
+    // lead waiting does, since the row is all he sees of them folded.
+    let (glyph, hue) = if members.iter().any(|one| one.state == "needs") {
+        (
+            standing::glyph(Stands::Needs, None),
+            standing::hue(Stands::Needs, false),
+        )
+    } else {
+        (row.glyph, row.hue)
+    };
     acts.extend(
         row.acts
             .iter()
@@ -160,7 +171,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
         json!({
             "key": key_of(address), "thing": row.key, "place": PLACE,
             "kind": if members.is_empty() { "session" } else { "orchestration" },
-            "name": row.name, "glyph": row.glyph, "hue": row.hue, "depth": 0,
+            "name": row.name, "glyph": glyph, "hue": hue, "depth": 0,
             "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
@@ -415,6 +426,7 @@ mod tests {
             name: format!("{address}'s quest"),
             also: address.to_owned(),
             glyph: "agent",
+            mark: "agent",
             hue: "program",
             side: state.to_owned(),
             side_items: vec![Item {
@@ -689,6 +701,26 @@ mod tests {
             alone.len(),
             1,
             "one with no sessions under it has no step, so its acts stay its row's: {alone:?}"
+        );
+    }
+
+    #[test]
+    fn an_orchestration_wears_joels_mark_while_any_session_in_it_waits_on_him() {
+        let mark = |shown: &[Shown]| {
+            let rows = top(shown);
+            let head = found(&rows, "row:agents-top:O");
+            format!("{}:{}", head["glyph"], head["hue"])
+        };
+        assert_eq!(
+            [
+                mark(&[row("O", "listening", 0, LIVE), row("A", "needs", 1, LIVE)]),
+                mark(&[row("O", "listening", 0, LIVE), row("A", "working", 1, LIVE)]),
+            ],
+            [
+                "\"waitsOnJoel\":\"alert\"",
+                "\"agent\":\"program\""
+            ],
+            "a session inside waiting marks the folded row; none waiting leaves its own"
         );
     }
 

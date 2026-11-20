@@ -191,6 +191,7 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     let acts: Vec<Value> = row.acts.iter().map(|id| row.act(id)).collect();
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "doing": row.doing,
+        "mark": row.mark,
         "rank": crate::standing::rank(row.state),
         "gone": row.gone,
         "orchestrates": row.orchestrates,
@@ -366,6 +367,7 @@ mod tests {
             name: address.to_owned(),
             also: String::new(),
             glyph: "agent",
+            mark: "agent",
             hue: "program",
             side: side.to_owned(),
             side_items: vec![Item {

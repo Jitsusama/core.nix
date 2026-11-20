@@ -1882,6 +1882,9 @@ Provider {
         const row = member(Object.assign({}, made, {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
+            // The mark it wears not waiting: every session here waits, and
+            // the person with a clock is a to-do's here (ForYou.js).
+            glyph: made.mark ?? made.glyph,
             // Its Return is stepping in, not Agents' own act on the session.
             returns: null,
             verb: "more",
@@ -2000,6 +2003,7 @@ Provider {
         const row = member(Object.assign({}, made, {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
+            glyph: made.mark ?? made.glyph,
             side: count === 1 ? said.answerOne ?? ""
                 : filledIn(said.answer ?? "", { count: String(count) }),
             drawer: () => ({
