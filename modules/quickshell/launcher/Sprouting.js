@@ -43,8 +43,19 @@ function ask(text, folder) {
 // MOST_WORDS: a few sentences, so a page can't fill the field with a book.
 const OFFERED_MOST = 1000;
 
-// Any control character, which a line of words never needs.
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
+// The control characters, which a line of words never needs: C0, then
+// DEL and C1, by their codes.
+const LAST_C0 = 0x1f;
+const FIRST_C1 = 0x7f;
+const LAST_C1 = 0x9f;
+
+// `word` with every control character left out.
+function uncontrolled(word) {
+    return Array.prototype.filter.call(word, unit => {
+        const code = unit.charCodeAt(0);
+        return code > LAST_C0 && (code < FIRST_C1 || code > LAST_C1);
+    }).join("");
+}
 
 // A character written as a pair of UTF-16 halves, as an emoji is.
 const PAIRED = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
@@ -66,7 +77,7 @@ function offered(words, from, nameOf) {
         return null;
     }
     const plain = said.slice("words:".length).split(/\s+/)
-        .map(word => word.replace(CONTROLS, ""))
+        .map(uncontrolled)
         .filter(word => word !== "")
         .join(" ");
     // Counted by characters, as mycelium-link's chars() counts them: QML's
