@@ -140,10 +140,6 @@ fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, St
 /// waits too while the call is written, rejoined, and reads the
 /// transcript again for each try, so a try is of the whole call as it
 /// stands.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "each is a different thing the one summary needs"
-)]
 fn sum_up(
     summarizer: &Summarizer,
     program: &Path,
