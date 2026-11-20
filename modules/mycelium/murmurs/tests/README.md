@@ -17,5 +17,7 @@ a node.
   the sites' server in Chromium, beside a stand-in node holding three
   murmurs said minutes before it runs: arriving, settling, going and
   unreadable murmurs, the node and the server going, words kept as
-  words, the keys and a tap on those the head shows, and the web-design
-  skill's page checks (`murmurs-site-reads-live`).
+  words, the keys and a tap on those the head shows, a tab whose
+  renderer dies before its first reading opened once more (and only
+  once, and only for a crash), and the web-design skill's page checks
+  (`murmurs-site-reads-live`).

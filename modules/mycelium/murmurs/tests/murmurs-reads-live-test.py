@@ -11,22 +11,25 @@ goes, draw a murmur's words as words and never as markup, step its cursor by
 the keys and by a tap on the keys its head shows, and pass the web-design
 skill's page checks at a phone's width and a desk's in both looks. Anything
 the page logs fails it. The server, the browser and the tab are
-modules/local-sites/tests/live_page.py's.
+modules/local-sites/tests/live_page.py's, which opens once more a tab whose
+renderer died before its first reading, as a busy builder's sometimes does.
 """
 
+import contextlib
 import json
 import os
 import time
+import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Error, Page, expect
 from stand_in_daemon import StandIn
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from pathlib import Path
+    from collections.abc import Callable, Iterator
 
 # A murmur shows the moment the feed hands it on, so a change must show well inside this.
 PACE_MS = 6000
@@ -37,6 +40,10 @@ BACK_MS = 12000
 # A page that dropped what it drew on a change shows it within a redraw;
 # waiting this long lets it, before the test looks for what should stay.
 REDRAWN_MS = 1500
+# How many times a tab crashed at its first reading is read: once in the tab
+# that crashed, once in the tab opened in its place. And what it warns.
+TWICE = 2
+REOPENED = "crashed and was opened once more"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
 # What a first visit to the page may cost, drawn from the three murmurs.
@@ -97,8 +104,17 @@ def murmurs_served(tmp_path: Path, murmuring_node: StandIn) -> Iterator[Served]:
 def murmurs_opened(browser: Browser, murmurs_served: Served) -> Iterator[Opened]:
     root, _ = murmurs_served
     opened = Opened(browser, f"{root}web/", SIZES[-1], "dark")
-    yield opened
-    opened.close()
+    try:
+        opened.first(drawn)
+        yield opened
+    finally:
+        opened.close()
+
+
+def drawn(page: Page) -> None:
+    """Read the page live with every murmur counted, its first reading."""
+    the_page_stands(page, "live")
+    the_page_counts(page, COUNTED, "the page miscounted the murmurs")
 
 
 def the_page_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
@@ -293,12 +309,93 @@ def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(
     expect(page.locator("#keys"), "a tap on ? didn't show the keys").to_be_visible()
 
 
+def test_a_tab_that_crashes_before_its_first_reading_is_opened_once_more(
+    browser: Browser, murmurs_served: Served
+) -> None:
+    root, _ = murmurs_served
+    read: list[Page] = []
+
+    def crashed_then_counted(page: Page) -> None:
+        read.append(page)
+        if len(read) == 1:
+            crash(page)
+        the_page_counts(page, COUNTED, "the tab opened once more miscounted the murmurs")
+
+    warned: list[str] = []
+    read_first(browser, f"{root}web/", crashed_then_counted, warned)
+    assert len(read) == TWICE, f"the first reading was taken {len(read)} times, not twice"
+    assert read[0] is not read[1], "the reading was taken again in the tab that crashed"
+    assert warned, "the tab was opened once more without a warning"
+    here = f"{Path(__file__).name}: "
+    astray = [said for said in warned if not said.startswith(here) or REOPENED not in said]
+    assert astray == [], f"a warning said {astray}, not the test's tab opened once more"
+
+
+def test_a_tab_that_crashes_again_at_its_second_reading_fails(
+    browser: Browser, murmurs_served: Served
+) -> None:
+    root, _ = murmurs_served
+    read: list[Page] = []
+
+    def crashed(page: Page) -> None:
+        read.append(page)
+        crash(page)
+        the_page_counts(page, COUNTED, "the crashed tab counted the murmurs")
+
+    warned: list[str] = []
+    with pytest.raises(AssertionError, match="Target crashed"):
+        read_first(browser, f"{root}web/", crashed, warned)
+    assert len(read) == TWICE, f"a tab crashing at each reading was read {len(read)} times"
+    assert any(REOPENED in said for said in warned), f"the tab was reopened saying {warned}"
+
+
+def test_a_first_reading_that_fails_without_a_crash_is_not_taken_again(
+    browser: Browser, murmurs_served: Served
+) -> None:
+    root, _ = murmurs_served
+    read: list[Page] = []
+
+    def miscounted(page: Page) -> None:
+        read.append(page)
+        # Waiting for the crash's own words, which the failure then quotes, as
+        # it would a page that drew them: a quote is not a crash.
+        expect(page.locator("#headline"), "the page counted").to_have_text("Target crashed")
+
+    # Two readings would say it was taken again; a warning alone could be a
+    # load that crashed on a busy builder.
+    with pytest.raises(AssertionError, match="the page counted"):
+        read_first(browser, f"{root}web/", miscounted, [])
+    assert len(read) == 1, f"a miscount was read {len(read)} times, not once"
+
+
+def read_first(
+    browser: Browser, address: str, reading: Callable[[Page], None], warned: list[str]
+) -> None:
+    """Open the page, take its first reading, and keep each warning with where it named."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            opened = Opened(browser, address, SIZES[-1], "dark")
+            try:
+                opened.first(reading)
+            finally:
+                opened.close()
+        finally:
+            warned.extend(f"{Path(said.filename).name}: {said.message}" for said in caught)
+
+
+def crash(page: Page) -> None:
+    """Kill the tab's renderer, as a builder short of memory does."""
+    # The navigation's own error says nothing the next reading's won't.
+    with contextlib.suppress(Error):
+        page.goto("chrome://crash")
+
+
 def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:
     root, _ = murmurs_served
     opened = Opened(browser, f"{root}web/", SIZES[-1], "dark")
     try:
-        the_page_stands(opened.page, "live")
-        the_page_counts(opened.page, COUNTED, "the murmurs page didn't draw")
+        opened.first(drawn)
         opened.keeps_to(BUDGET)
         the_page_stands(opened.page, "live")
     finally:
@@ -313,8 +410,7 @@ def test_the_murmurs_page_passes_the_skills_page_checks(
     root, _ = murmurs_served
     opened = Opened(browser, f"{root}web/", size, look)
     try:
-        the_page_stands(opened.page, "live")
-        the_page_counts(opened.page, COUNTED, "the murmurs page didn't draw")
+        opened.first(drawn)
         opened.passes_the_skills_checks()
     finally:
         opened.close()

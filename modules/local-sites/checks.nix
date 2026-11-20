@@ -542,7 +542,8 @@ in
   # one it can't read said, broken while the node is away with the murmurs
   # kept and live once it's back, stale once the server goes with them kept,
   # words drawn as words and never as markup, its keys and a tap on those its
-  # head shows stepping the cursor, and the web-design skill's page checks
+  # head shows stepping the cursor, a tab whose renderer dies before its first
+  # reading opened once more, and the web-design skill's page checks
   # passing at two widths in both looks with nothing logged. Chromium builds
   # only on Linux. The node's feed is the one home.nix declares for a machine
   # in a realm, so the server under test passes the page what a machine's does.
