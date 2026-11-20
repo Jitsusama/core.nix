@@ -1185,10 +1185,12 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
         };
         (buses, trees)
     };
+    // The registry's listing counts in the read's time, so health says
+    // when a slow PipeWire is where a read's time went.
+    let started = Instant::now();
     if kinds.contains("camera") {
         shared.pipewire.refresh();
     }
-    let started = Instant::now();
     let (records, kinds_took) = lock(&shared.reader).read(kinds, &trees, &buses);
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);
