@@ -40,6 +40,10 @@ pub struct Heard {
     pub up_delay_ms: Option<f64>,
     pub down_delay_ms: Option<f64>,
     pub gateway_ms: Option<f64>,
+    /// The most the gateway's round trip took in the second, which the
+    /// download is judged against (src/oneway.rs's Air).
+    #[serde(default)]
+    pub gateway_most_ms: Option<f64>,
     /// Whose the upload's queue was, and what was sent again and dropped.
     pub ours: Option<Ours>,
     /// A call's round trip through the VPN, and the least it was taken to
@@ -278,6 +282,7 @@ impl Follow {
             up_delay_ms: second.up_delay_ms,
             down_delay_ms: second.down_delay_ms,
             gateway_ms: second.gateway_ms,
+            gateway_most_ms: second.gateway_most_ms,
             ours: second.up_ours,
             vpn_ms: second.vpn_ms,
             vpn_base_ms: self.controller.vpn_base(),

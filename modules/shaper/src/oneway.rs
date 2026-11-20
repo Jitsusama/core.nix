@@ -172,6 +172,11 @@ const IDLE: f64 = 0.1;
 /// With no timestamps answered for this long, the connection goes
 /// unlimited.
 const UNANSWERED_S: f64 = 10.0;
+/// How long the download may pass over seconds since it was last judged
+/// clear, as ones an air's burst may have hidden a queue of ours in, before
+/// the rest are judged on the air's median: bursts in so many seconds
+/// with no clear one between are taken for a queue that stands.
+const PASSED_OVER_S: f64 = 10.0;
 /// The live guard's limits.
 const GUARD_WINDOW_S: f64 = 60.0;
 /// A delay standing this long, cuts and all, isn't this machine's queue.
@@ -316,6 +321,9 @@ pub struct Seen {
     pub up_delay_ms: Option<f64>,
     pub down_delay_ms: Option<f64>,
     pub gateway_ms: Option<f64>,
+    /// The most the gateway's round trip took in the second, which only the
+    /// download is judged on; None takes the round trip itself.
+    pub gateway_most_ms: Option<f64>,
     pub up_kbit: f64,
     pub down_kbit: f64,
     /// Whose the upload's queue is, when the live shaper can tell; a
@@ -455,6 +463,9 @@ pub struct Way {
     last_cut: f64,
     last_at: Option<f64>,
     under_half_since: Option<f64>,
+    /// How long the download has passed over seconds since it was last
+    /// judged clear, in seconds.
+    passed_s: f64,
     /// What it carried each moment of the clear spell it is in, for the
     /// last `PROVEN_S`, and when the spell began.
     clear: VecDeque<(f64, f64)>,
@@ -517,6 +528,7 @@ impl Way {
             last_cut: f64::NEG_INFINITY,
             last_at: None,
             under_half_since: None,
+            passed_s: 0.0,
             clear: VecDeque::new(),
             clear_since: None,
             proven: 0.0,
@@ -1273,6 +1285,7 @@ impl Way {
         self.elsewhere = None;
         self.under_half_since = None;
         self.late_since = None;
+        self.passed_s = 0.0;
         self.crowded.clear();
         self.last_at = None;
     }
@@ -1306,6 +1319,20 @@ impl Air {
             self.base = Some(base);
             (gateway - base - AIR_MARGIN_MS).max(0.0)
         })
+    }
+
+    /// Give the air's delay in ms at the most a second's round trips took,
+    /// past the baseline its usual round trip keeps, after `delay` took
+    /// that in. A busy access point's waits land on some of a second's
+    /// probes and not others, so the reflectors' can meet a burst the
+    /// gateway's median missed. Only the download is judged on it: the
+    /// bursts seen came down, and an upload queue a burst hid would cost a
+    /// call what the upload's cuts keep for it. It's never under `air`, the
+    /// air's delay at the usual round trip, which it is without a most.
+    pub fn most(&self, most_ms: Option<f64>, air: f64) -> f64 {
+        most_ms
+            .zip(self.base)
+            .map_or(air, |(most, base)| (most - base - AIR_MARGIN_MS).max(air))
     }
 }
 
@@ -1689,6 +1716,7 @@ impl Controller {
             self.down.start_over();
         }
         let air = self.air.delay(seen.gateway_ms, dt);
+        let air_most = self.air.most(seen.gateway_most_ms, air);
         if seen.up_delay_ms.is_some() || seen.down_delay_ms.is_some() {
             self.answered_at = Some(at);
         }
@@ -1743,11 +1771,14 @@ impl Controller {
         let idle_up = self.up.idle(seen.up_kbit);
         let idle_down = self.down.idle(seen.down_kbit);
         let cuts = self.up.last_cut;
-        // The download's own delay, with an idle upload's path taken off.
-        let down_own = down.map(|delay| {
-            let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
-            (delay - beside).max(0.0)
-        });
+        // The download's own delay less an air's, with an idle upload's
+        // path taken off.
+        let beside = if idle_up { up.unwrap_or(0.0) } else { 0.0 };
+        let own = |air: f64| {
+            seen.down_delay_ms
+                .map(|d| ((d - air).max(0.0) - beside).max(0.0))
+        };
+        let down_own = own(air);
         // The upload's acks come back the download's way, as the probes
         // that read its delay do, through the queue a flowing download
         // fills. An idle download's delay is the path's, which the
@@ -1757,12 +1788,7 @@ impl Controller {
             let beside = if idle_down { down.unwrap_or(0.0) } else { 0.0 };
             self.step_up(seen, (delay - beside).max(0.0), heeded, acks_late)
         });
-        if let Some(delay) = down_own {
-            // The download's queue at home is the cable's, first come,
-            // first served, which the delay finds.
-            self.down
-                .step(at, delay, seen.down_kbit, None, Tunnel::Unheard);
-        }
+        self.step_down(seen, dt, down_own, own(air_most));
         for way in [&mut self.up, &mut self.down] {
             if way.misbehaving(at) {
                 way.reset();
@@ -1791,6 +1817,47 @@ impl Controller {
             up: self.up.limit(),
             down: self.down.limit(),
         }
+    }
+
+    /// Steps the download on its own delay less the most the air took,
+    /// `judged`, where `usual`, its delay less the air's median, agrees.
+    fn step_down(&mut self, seen: &Seen, dt: f64, usual: Option<f64>, judged: Option<f64>) {
+        let late = self.down.tuning.late_ms;
+        let Some(mut delay) = judged else {
+            return;
+        };
+        // A second the median finds late and the most doesn't may be a
+        // burst hiding a queue of ours, so it says nothing: it neither
+        // cuts, nor counts a standing queue again from the start, nor
+        // climbs, nor counts toward a rate held under half its base for no
+        // queue, nor proves a clear spell. A queue between bursts still
+        // stands and is cut. A late spell's clock runs on through such
+        // seconds, so past a few of them since the download was last judged
+        // clear the rest are judged on the median, and the guard never
+        // reads a late spell no cut could run in.
+        match usual.filter(|&usual| delay <= late && usual > late) {
+            Some(usual) => {
+                self.down.clear.clear();
+                self.down.clear_since = None;
+                // A gap is one moment, not a spell all through it.
+                self.down.passed_s += dt.min(1.0);
+                if self.down.passed_s <= PASSED_OVER_S {
+                    if let Some(since) = self.down.under_half_since.as_mut() {
+                        *since += dt;
+                    }
+                    return;
+                }
+                delay = usual;
+            }
+            // A second judged late is a queue of ours between bursts, so
+            // the spell of them goes on through it.
+            None if delay <= late => self.down.passed_s = 0.0,
+            None => {}
+        }
+        // The download's queue at home is the cable's, first come, first
+        // served, which the delay finds.
+        self.down
+            .step(seen.at_s, delay, seen.down_kbit, None, Tunnel::Unheard);
     }
 
     /// Steps the upload on its own delay, `seen_delay`, and on the queue
@@ -1931,6 +1998,7 @@ impl crate::replay::Controller for Controller {
             up_delay_ms: s.up_delay_ms,
             down_delay_ms: s.down_delay_ms,
             gateway_ms: s.gateway_ms,
+            gateway_most_ms: s.gateway_most_ms,
             up_kbit: s.up_kbit,
             down_kbit: s.down_kbit,
             up_ours: s.up_ours,
@@ -2104,6 +2172,7 @@ mod tests {
             up_delay_ms: Some(0.0),
             down_delay_ms: Some(down_ms),
             gateway_ms: Some(3.0),
+            gateway_most_ms: Some(3.0),
             up_ours: None,
             vpn_ms: None,
             ceiling: None,
@@ -2153,6 +2222,7 @@ mod tests {
             up_delay_ms: Some(0.0),
             down_delay_ms: Some(down_ms),
             gateway_ms: Some(3.0),
+            gateway_most_ms: Some(3.0),
             up_ours: None,
             vpn_ms: None,
             ceiling: None,
@@ -2767,6 +2837,88 @@ mod tests {
             ..Seen::default()
         });
         assert_eq!(limits.down, Some(200_000));
+    }
+
+    // A second an air's burst may have hidden a queue in says nothing, so
+    // it counts neither toward a rate held under half its base for no
+    // queue nor against it: the minute it waits is a minute of the rest.
+    #[test]
+    fn held_under_half_its_base_through_the_air_s_bursts_waits_them_out() {
+        let bursty = |at: f64| {
+            let burst = at.fract() < 0.15;
+            Seen {
+                up_delay_ms: Some(1.0),
+                down_delay_ms: Some(if burst { 60.0 } else { 10.0 }),
+                gateway_ms: Some(3.0),
+                gateway_most_ms: Some(if burst { 120.0 } else { 3.0 }),
+                up_kbit: 300.0,
+                // Carrying under its rate, it doesn't climb.
+                down_kbit: 20_000.0,
+                ..Seen::default()
+            }
+        };
+        let mut c = Controller::new(None, Some(200_000.0));
+        run(&mut c, 0.0, 1.2, queued(40.0, 50_000.0));
+        let limits = run(&mut c, 1.2, 62.5, bursty);
+        assert!(
+            limits.down.is_some_and(|down| down < 100_000) && c.returns == 0,
+            "held at {:?}, its bursts counted as no queue",
+            limits.down
+        );
+        // A tenth or two of each second passed over, the minute it waits
+        // ends by about 76 s, before its drift takes it past half at about
+        // 85 s. Counted through, it would end at 61 s; started again at
+        // each burst, never.
+        run(&mut c, 62.5, 80.0, bursty);
+        assert_eq!(c.returns, 1, "its bursts counted as a queue");
+    }
+
+    // A second an air's burst may have hidden a queue in is no clear
+    // moment either, so clear seconds either side of a run of them prove
+    // no more than each alone: the line is learned from clear spells.
+    #[test]
+    fn clear_seconds_either_side_of_the_air_s_bursts_prove_no_line() {
+        let mut c = Controller::new(None, Some(200_000.0));
+        run(&mut c, 0.0, 40.0, |at| {
+            let clear = at % 4.0 >= 3.0;
+            Seen {
+                up_delay_ms: Some(1.0),
+                down_delay_ms: Some(if clear { 1.0 } else { 60.0 }),
+                gateway_ms: Some(3.0),
+                gateway_most_ms: Some(if clear { 3.0 } else { 120.0 }),
+                up_kbit: 300.0,
+                down_kbit: if clear { 300_000.0 } else { 20_000.0 },
+                ..Seen::default()
+            }
+        });
+        assert_eq!(
+            c.down.connection(),
+            Some(200_000.0),
+            "its bursts were proven clear"
+        );
+    }
+
+    // A second no reflector answered says nothing of the download, so a
+    // run of bursts goes on through it, as through a gap: ten seconds
+    // passed over, the queue is cut. Counted from none again at each, it
+    // would never be.
+    #[test]
+    fn a_queue_under_a_burst_in_every_second_is_cut_through_unanswered_ones() {
+        let mut c = Controller::new(None, Some(200_000.0));
+        let limits = run(&mut c, 0.0, 16.5, |at| Seen {
+            up_delay_ms: Some(1.0),
+            down_delay_ms: (at % 5.0 < 4.0).then_some(60.0),
+            gateway_ms: Some(3.0),
+            gateway_most_ms: Some(120.0),
+            up_kbit: 300.0,
+            down_kbit: 40_000.0,
+            ..Seen::default()
+        });
+        assert!(
+            limits.down.is_some_and(|down| down < 40_000),
+            "held at {:?}, its unanswered seconds held its cuts off",
+            limits.down
+        );
     }
 
     #[test]
