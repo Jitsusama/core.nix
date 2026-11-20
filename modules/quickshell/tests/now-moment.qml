@@ -1273,13 +1273,13 @@ ShellRoot {
         // choice, its choices first in its step, and its drawer what happens
         // if Joel does nothing, with no weight (Joel, 2026-11-19: "I almost
         // never know what I am supposed to do with it").
-        const asking = JSON.stringify({ v: 1, id: "q", kind: "pr", at: root.lookedAt,
+        const askingText = JSON.stringify({ v: 1, id: "q", kind: "pr", at: root.lookedAt,
             target: "https://example.com/pull/1", title: "History overlays stop rescanning",
             why: "Each read re-listed an empty folder.", state: "waiting", address: "leftq",
             asker: "The trunk disk incident", ask: "Merge it now, or hold it for review?",
             ifNothing: "It waits, unmerged, and the rescans go on.",
             choices: [{ value: "merge", label: "Queue It" }, { value: "hold", label: "Hold It" }] });
-        now.lookTexts = { "q.json": asking, "a.json": lookAt("a", "Read A") };
+        now.lookTexts = { "q.json": askingText, "a.json": lookAt("a", "Read A") };
         const askingRow = () => looked().find(row => row.key === "on:look:q");
         const asked = askingRow();
         const stepKeys = (asked?.verbs() ?? []).map(act => act.key);

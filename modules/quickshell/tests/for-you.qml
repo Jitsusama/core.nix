@@ -408,7 +408,8 @@ QtObject {
             ["The trunk disk incident", "Trunkd Disk Saturation During Compaction",
                 "Plain Words", ""]);
         expect("what it asks and what happens if nothing, as written, else none",
-            [told.ask, told.ifNothing, read.waiting[1].ask, read.waiting[1].ifNothing],
+            [Looks.askOf(told), Looks.ifNothingOf(told), Looks.askOf(read.waiting[1]),
+                Looks.ifNothingOf(read.waiting[1])],
             ["Merge it now, or hold it?", "It waits, unmerged, and the rescans go on.", "", ""]);
         const posted = { value: "posted", label: "Posted" };
         expect("an answer, to the session while it runs",
