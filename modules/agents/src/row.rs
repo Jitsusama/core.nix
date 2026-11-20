@@ -648,7 +648,9 @@ mod tests {
             orchestrates: true,
         };
         assert!(
-            made(&asking, Place::default()).side.contains("90% full"),
+            made(&asking, Place::default(), &given())
+                .side
+                .contains("90% full"),
             "its limit nears, so alert is shown over the warning's hue"
         );
         let marks = |record: &Value, place: Place| {
@@ -671,8 +673,8 @@ mod tests {
         );
         assert_eq!(
             [
-                made(&asking, Place::default()).mark,
-                made(&asking, orchestrating).mark
+                made(&asking, Place::default(), &given()).mark,
+                made(&asking, orchestrating, &given()).mark
             ],
             ["agent", "shapeSquare"],
             "the mark it wears when it doesn't wait is kept for For You"
