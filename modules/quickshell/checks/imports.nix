@@ -114,10 +114,7 @@
     "launcher/Program.js"
     "launcher/Recent.js"
   ];
-  "launcher/Ask.qml" = [
-    "Fuzzy.js"
-    "launcher/SessionRow.js"
-  ];
+  "launcher/Ask.qml" = [ "Fuzzy.js" ];
   "launcher/Awaited.js" = [
     "launcher/Pacing.js"
     "launcher/Trials.js"
@@ -185,7 +182,6 @@
     "launcher/HomeNetwork.js"
     "launcher/Interfaces.js"
     "launcher/Order.js"
-    "launcher/SessionRow.js"
   ];
   "launcher/Machines.qml" = [
     "Fuzzy.js"

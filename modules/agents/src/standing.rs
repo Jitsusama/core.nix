@@ -180,6 +180,17 @@ pub fn closing_costs(state: &str) -> bool {
         .any(|stands| stands.id() == state)
 }
 
+/// Where a session standing as `state` (its id) comes in the one order
+/// every list keeps, served on its row so the launcher, picking one of
+/// several (Ask's orchestrator), keeps the order Agents lists in rather
+/// than a copy of its own; one not running comes after them all.
+pub fn rank(state: &str) -> usize {
+    RUNNING
+        .iter()
+        .position(|stands| stands.id() == state)
+        .unwrap_or(RUNNING.len())
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -288,6 +299,13 @@ mod tests {
             said.join(" "),
             "needs working inLine listening paused parked off"
         );
+        let ranked: Vec<_> = order.iter().map(|stands| rank(stands.id())).collect();
+        assert_eq!(
+            ranked,
+            [0, 1, 2, 3, 4, 5, 6],
+            "a served rank keeps the same order, one off last"
+        );
+        assert_eq!(rank("lost"), RUNNING.len(), "a state not known comes last");
     }
 
     #[test]

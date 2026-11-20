@@ -2380,6 +2380,59 @@ def test_a_folder_filling_the_disk_offers_to_talk_to_the_session_working_in_it(
             one.unlink()
 
 
+def test_a_folder_filling_the_disk_says_its_session_as_agents_says_it(shell: Shell) -> None:
+    """A folder's session waiting on Joel's yes says so on its Talk row, in Agents' own words.
+
+    Disk worded how a session stands itself, from its own copy of the agents daemon's rule, so
+    one asking for his approval read "needs you" there while Agents said "needs your yes"
+    (2026-11-19); a session stands one way, in one order, wherever the launcher shows it.
+    """
+    folder = STATE / "yeses"
+    folder.mkdir(parents=True, exist_ok=True)
+    named = f"~/{folder.relative_to(Path.home())}"
+    status = Path(os.environ["XDG_RUNTIME_DIR"]) / "disk-guard" / "status.json"
+    wants = {"kind": "approval", "since": datetime.now(UTC).isoformat(), "said": "May I?"}
+    lay("YESES", "Asking Quest", {"state": "listening", "busy": False, "wants": wants})
+    guard_holds(
+        status,
+        {
+            "path": str(folder),
+            "name": named,
+            "bytes": 12_300_000_000,
+            "clears": 0,
+            "grew": None,
+            "owner": {"kind": "worktree", "name": "yeses"},
+            "clearable": False,
+            "why": None,
+            "kept": None,
+            "says": f"{named} holds 11.5 GiB.",
+        },
+    )
+    try:
+        shell.answer("disk")
+        shell.step_in()
+        shell.type_in("filling", selecting="What's Filling It")
+        shell.step_in()
+        held = f"machine:disk:holder:{folder}"
+        shell.launcher_until(lambda shown: shown["things"][0]["is"] == held)
+        shell.step_in()
+        shell.normal()
+        shell.launcher_until(lambda shown: "Talk to Its Session" in shown["rows"])
+        shell.down_to("Talk to Its Session")
+        side = "Asking Quest \u00b7 needs your yes"
+        shell.launcher_until(lambda shown: shown["selected"]["side"] == side)
+    finally:
+        shell.close_launcher()
+        status.unlink()
+        (PRESENCE / "yeses.json").unlink()
+        # A session asking for Joel's yes, left for the cases after, would stand first in
+        # For You and Agents, so it's gone from the node before they begin.
+        deadline = time.monotonic() + 10
+        while "session:s-yeses" in held_by_node():
+            assert time.monotonic() < deadline, "the node still holds the asking session"
+            time.sleep(0.1)
+
+
 def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: Shell) -> None:
     """A look's choice, a step into its row in For You, reaches its session's inbox as an answer.
 

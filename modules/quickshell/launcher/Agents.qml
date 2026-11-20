@@ -14,7 +14,7 @@
 // Sessions on the realm's other machines are in the same list, drawn the
 // same, their machine leading the note (VKCF3Z, 2026-10-29, G8 of
 // mycelium's plan), in the one order every list of sessions keeps
-// (SessionRow.js): those needing Joel, then those working, in line,
+// (the agents daemon's standing.rs): those needing Joel, then those working, in line,
 // listening and paused, then those parked, this machine's first in each,
 // then the others by when each last changed. Go To joins one elsewhere
 // through its node; one on a machine out of reach stays, dimmed, saying
@@ -788,11 +788,22 @@ Provider {
             : [row]), []);
     }
 
-    // How a session stands (SessionRow.js), from its presence, whether its
-    // want is truly Joel's and whether it waits its turn in line.
+    // How a session stands as the agents daemon's row says it, in the one
+    // rule and order every list keeps (modules/agents/src/standing.rs), so
+    // nothing here works it out a second way; "off" before it's said.
     function stateOf(session) {
-        return SessionRow.state(session.presence, Sessions.asks(session),
-            inLine(session.presence) !== "");
+        void placings;
+        const served = rowsKind?.held?.[`row:agents:${session.address}`]?.row;
+        return String(served?.held?.state ?? "off");
+    }
+
+    // Where a session stands in that order, as the daemon's row says it,
+    // so Ask's pick keeps the order Agents lists in; after them all before
+    // it's said.
+    function rankOf(session) {
+        void placings;
+        const served = rowsKind?.held?.[`row:agents:${session.address}`]?.row;
+        return Number(served?.held?.rank ?? Number.MAX_SAFE_INTEGER);
     }
 
     // One of the vocabulary's words for a session, filled in.
@@ -843,13 +854,6 @@ Provider {
                 provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
                 Theme.alert]]);
         }
-    }
-
-    // Where a session's first job waiting for its turn stands in line.
-    function inLine(presence) {
-        const waiting = presence && presence.session
-            ? Jobs.of(presence.session).find(job => job.state === "waiting") : undefined;
-        return waiting ? word("inLine", { place: Numbers.ordinal(waiting.place) }) : "";
     }
 
     // What a session spent today as spend-watch says, and, for one that
@@ -1267,8 +1271,8 @@ Provider {
         }
     }
 
-    // A session's own acts, in the one order every session keeps
-    // (SessionRow.js), each steering it through its inbox but Go To; an
+    // A session's own acts, in the order SessionRow.js gives them for how
+    // the agents daemon says it stands, each steering it through its inbox but Go To; an
     // orchestrator's row is its session's, with its talks after them.
     function sessionActs(session) {
         return SessionRow.acts(stateOf(session), windowedOf(session), session.here)

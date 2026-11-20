@@ -183,13 +183,15 @@ fn items(items: &[Item]) -> Value {
 /// A session's row in the launcher's form: its acts by their verbs' keys,
 /// each with the ask that does it, the line the shell sends back (with
 /// its own id) as it is; and what
-/// only Agents reads, how it's found, its note, how it stands, what
-/// Return does and itself ranked flat, held.
+/// only Agents reads, how it's found, its note, how it stands and where
+/// that comes in the one order (`rank`), what Return does and itself
+/// ranked flat, held.
 fn session(row: &Row, fold: Option<&str>) -> Value {
     let address = row.key.trim_start_matches("agent:");
     let acts: Vec<Value> = row.acts.iter().map(|id| row.act(id)).collect();
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "doing": row.doing,
+        "rank": crate::standing::rank(row.state),
         "gone": row.gone,
         "orchestrates": row.orchestrates,
         "returns": format!("verb:agent:{}", row.returns),
@@ -428,6 +430,11 @@ mod tests {
             json!({"key": "verb:agent:talk", "ask": {"ask": "talk", "address": "P"}})
         );
         assert_eq!(row["held"]["returns"], "verb:agent:switch");
+        assert_eq!(
+            (row["held"]["state"].as_str(), row["held"]["rank"].as_u64()),
+            (Some("working"), Some(1)),
+            "it says how it stands and where that comes, second after needing Joel"
+        );
         assert_eq!(row["order"], SPACING);
         assert_eq!(
             served

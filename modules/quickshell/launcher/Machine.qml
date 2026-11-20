@@ -66,7 +66,6 @@ import "Interfaces.js" as Interfaces
 import "HomeNetwork.js" as HomeNetwork
 import "Order.js" as Order
 import "Holders.js" as Holders
-import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
@@ -468,18 +467,20 @@ Provider {
         // stands, as Agents says them, and absent where none is, never
         // dimmed (VKCF3Z, 2026-11-08).
         const talk = Words.of("verb:disk:talk");
-        const standing = Words.of("agents").said ?? {};
+        // How each stands is the agents daemon's row's, as Agents says it, so one
+        // asking for his yes reads "needs your yes" here too, and one waiting
+        // its turn its place in line (modules/agents/src/standing.rs).
+        const agents = (provider.launcher?.sources ?? [])
+            .find(one => one.settings.name === "agents") ?? null;
         // The folder as the guard names it, "~/src/reef/target", as Joel reads it too.
         const about = (talk.said?.about ?? "").replace("{path}", holder.name || holder.path)
             .replace("{size}", HomeNetwork.bytes(holder.bytes, settings));
         for (const session of Holders.owners(Sessions.running.concat(Sessions.parked),
             holder)) {
-            const state = SessionRow.state(session.presence, Sessions.asks(session), false);
-            const sided = Holders.talkSide(session.title, String(standing[state] ?? ""));
+            const sided = Holders.talkSide(session.title,
+                agents?.standingOf(session.address)?.doing ?? "");
             // Its talk shows under the field as Agents' Talk shows one.
-            const talking = (provider.launcher?.sources ?? [])
-                .find(one => one.settings.name === "agents")
-                ?.talking(session.address, session.title) ?? null;
+            const talking = agents?.talking(session.address, session.title) ?? null;
             rows.push(act("talk", {
                 key: `verb:disk:talk:${holder.path}:${session.address}`,
                 side: sided.map(item => item.said).join(" \u00b7 "),

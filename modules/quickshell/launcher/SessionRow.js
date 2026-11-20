@@ -11,42 +11,10 @@
 // What a session is, as the launcher's components name their kinds.
 const KIND = "session";
 
-// How a running session can stand, in the one order every list of
-// sessions keeps: what only Joel can move first, then what's under way,
-// then what waits for work, then what he put down, then what gave its
-// memory back until it's wanted (the harness's park-workflow). One idle
-// is listening, never waiting, which is only ever said of something
-// waiting on Joel.
-const STATES = ["needs", "working", "inLine", "listening", "paused", "parked"];
-
-// How a session stands, from its presence, whether its want is Joel's
-// (`asks`) and whether it waits in the queue (`queued`); "off" with none.
-// A want not his reads as what it does; one parked stays parked, its want
-// For You's (Sessions.wanting), since Wake is its only act.
-function state(presence, asks, queued) {
-    if (!presence) {
-        return "off";
-    }
-    if (presence.state === "parked") {
-        return "parked";
-    }
-    if (asks) {
-        return "needs";
-    }
-    if (presence.state === "paused") {
-        return "paused";
-    }
-    if (queued) {
-        return "inLine";
-    }
-    return presence.busy || presence.state === "busy" ? "working" : "listening";
-}
-
-// Where a state stands in that order; one not running after them all.
-function rank(standing) {
-    const at = STATES.indexOf(standing);
-    return at < 0 ? STATES.length : at;
-}
+// How a session stands, and where that comes in the one order every list
+// keeps, are the agents daemon's (modules/agents/src/standing.rs), served
+// on each row as its `state` and `rank` and read by Agents.qml's stateOf
+// and rankOf, so nothing here works them out a second way.
 
 // The acts a running session offers, by their vocabulary's ids, in the
 // order every kind keeps (docs/design.md, the order of actions): what
