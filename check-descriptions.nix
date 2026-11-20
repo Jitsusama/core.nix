@@ -242,7 +242,9 @@
     as another user, to sudo
   '';
   a-theme-changes-everything = ''
-    another theme leaves none of the first's colours behind, but in the web kit's other look
+    another theme leaves none of the first's colours behind, gh's markdown style among them, but
+    in the web kit's other look, and the search can't pass on a link it can't follow, a path
+    that isn't there or a colour it found
   '';
   a-things-drawer-says-its-parts = ''
     a thing's drawer says each part as a fact, its acts left out, a holder of figures opened in

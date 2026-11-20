@@ -720,11 +720,12 @@ in
         { home-manager.users.someone.jitsusama.theme.name = "flexoki-light"; }
       ];
       home = account machine;
+      colours = pkgs.writeText "osaka-jade-colours" (lib.concatLines (lib.attrValues osakaJade));
     in
     pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
-      $BASH ${./a-theme-changes-everything.sh} \
-        ${lib.escapeShellArg home.jitsusama.theme.colours.background} \
-        ${pkgs.writeText "osaka-jade-colours" (lib.concatLines (lib.attrValues osakaJade))} \
+      test ${lib.escapeShellArg home.jitsusama.theme.colours.background} = '#FFFCF0'
+      $BASH ${./a-theme-changes-everything-test.sh} ${./a-theme-changes-everything.sh} ${colours}
+      $BASH ${./a-theme-changes-everything.sh} ${colours} \
         ${home.home-files}/ ${home.home.sessionVariables.GLAMOUR_STYLE}
       touch $out
     '';
