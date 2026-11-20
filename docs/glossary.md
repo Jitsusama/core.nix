@@ -61,8 +61,8 @@ own, are never places.
 
 - **Desktop shows every context.** Each launcher place belongs to one; Now is a
   view onto the others' rows, each kept in its own place, with rows of its
-  own first: For You, the moment (the time, the date, the weather and the
-  next meeting), then Lately's. A filling
+  own first: For You, the moment (the time, the date, the location, the
+  weather and the next meeting), then Lately's. A filling
   disk shows in Now, with its forecast, while it fills.
 - **Agents works in Code**: a session works in a tree of a repository, and
   its work is put up as a change.

@@ -1734,9 +1734,10 @@ works the same way everywhere.
   the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
   in For You, after To Read and before Later, only while one of its own
   notices is critical, unread and off the screen, so Mail's, which holds
-  no notices, never does; Slack's lifts on a critical notice of Slack's
-  even while Slack's daemon answers and its row lists the daemon's
-  messages, not that notice. Once
+  no notices, never does; while Slack's daemon answers, a critical
+  notice of Slack's lifts Slack's row only if it lists one of the
+  daemon's messages, and then not that notice, and with none no row
+  lifts, though the tray counts it. Once
   there it stays until the launcher next opens, unless it comes to hold
   nothing, and one that turns critical while Joel is under Now's own
   rows waits until he steps into For You or out of Now. Otherwise it's
