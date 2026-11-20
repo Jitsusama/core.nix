@@ -577,12 +577,17 @@ impl Chooser {
         // judge nothing: the tried point is kept off rather than tried again
         // each settle, and the card isn't sent back to where it may be.
         // Back on the point it left, never having stood on the one tried,
-        // the card was sent back as the move didn't get there in time
-        // (arrive.rs), so the move doesn't hold the card from choosing
-        // again for a settle.
+        // the move never got the card off it: it was sent back as the move
+        // didn't get there in time (arrive.rs), refused, found the point
+        // gone or kept the card in place. So the move doesn't hold the card
+        // from choosing again for a settle, only for a `SPAN`: the next
+        // choices then judge a span without the failed move's own outage,
+        // which would read as loss wifid caused, and a card hearing stale
+        // points tries one a span at most, each kept off once missed.
         if point != trial.to {
             if point == trial.from && !trial.stood {
-                self.moved = trial.moved_before;
+                let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
+                self.moved = trial.moved_before.max(spanned);
             }
             self.spurned.insert(trial.to.clone(), now);
             self.unreached = Some(trial.to);
@@ -2281,6 +2286,41 @@ pub(crate) mod tests {
             next,
             Choice::Try(DESK.into()),
             "tried once the first move has settled, not the second"
+        );
+    }
+
+    #[test]
+    fn a_first_move_sent_back_where_it_began_waits_a_span_not_a_settle() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let badly = carried(119, 0.5);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+        assert_eq!(
+            tried,
+            Choice::Try(HALL.into()),
+            "the card's first move is asked"
+        );
+
+        // The move never got there, and the card was sent back to the desk.
+        let near = [hall(-53, Some(20), None), quicker_still()];
+        let back = start + Duration::from_secs(60);
+        let waits = chooser.choose(back, (DESK, &badly, -50, CH52), &near, false);
+        let short = back + SPAN - Duration::from_secs(1);
+        let still = chooser.choose(short, (DESK, &badly, -50, CH52), &near, false);
+        let spanned = back + SPAN;
+        let next = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
+
+        assert_eq!(
+            waits,
+            Choice::Stay,
+            "its span still holds the failed move's outage"
+        );
+        assert_eq!(still, Choice::Stay, "short of a span since it came back");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "tried a span on, long before a settle, with the hall kept off"
         );
     }
 
