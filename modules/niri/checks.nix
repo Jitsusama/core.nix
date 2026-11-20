@@ -461,10 +461,11 @@ onLinux {
   # than making them again in the frame that shows it
   # (blur-kept-for-its-size.patch). The account's niri, nested in the
   # sandbox, says where each blur's textures came from while a stand-in
-  # opens, shuts and opens one, grows it and takes it back to its size, and
-  # walks it through more sizes than the pool's 64 MB keeps, going back to
-  # one it holds after three newer sizes. That bounds the cap between about
-  # 23 and 96 MB, not at 64 (tests/keeps-a-blur-ready.py).
+  # opens, shuts and opens one, grows it and takes it back to its size,
+  # tries sizes sharing only a width or an area with a kept set, and walks
+  # it through more sizes than the pool's 64 MiB keeps, going back to one it
+  # holds after three newer sizes. That bounds the cap between about 22 and
+  # 85 MiB, not at 64 (tests/keeps-a-blur-ready.py).
   niri-keeps-a-blur-ready =
     let
       files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;

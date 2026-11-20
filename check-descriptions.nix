@@ -2251,10 +2251,11 @@
   niri-keeps-a-blur-ready = ''
     the session's niri, nested in the sandbox, takes back the textures a launcher-named layer's blur
     let go while its blur region was empty, making none when it opens again, and takes back the set
-    it gave up on growing when it goes back to its first size; of fourteen sizes nearly filling the
-    screen, it takes back one three others followed, so the pool holds more than the launcher's
-    set on a 4K screen, but no longer keeps the first when it comes back to it, so it holds less
-    than about 96 MB
+    it gave up on growing when it goes back to its first size, and the grown set when it grows
+    again, but not for a size of the grown width at another height or of the grown area on its
+    side; of fourteen sizes nearly filling the screen, it takes back one three others followed, so
+    the pool holds more than the launcher's set on a 4K screen, but keeps none of the first when
+    it comes back to it, so it holds less than about 85 MiB
   '';
   niri-keeps-secret-copies-from-sandboxes = ''
     the session's niri, nested in the sandbox, offers a sandbox's focused window no copy a password
