@@ -73,7 +73,9 @@ fn the_pi_sessions_held_here_are_found_by_their_holds() {
                 },
             ],
             passed: vec![],
-            live: ["01a1-a", "01a1-b", "01a1-f"].map(String::from).to_vec(),
+            live: ["01a1-a", "01a1-b", "01a1-c", "01a1-d", "01a1-e", "01a1-f"]
+                .map(String::from)
+                .to_vec(),
         }),
         "a pi held by name or path, or as pi-claude, is found by its hold and kept as the \
          program it ran as; a sprout's wrapper and a hold the node names no session for are not"
@@ -393,11 +395,46 @@ fn a_session_held_again_no_longer_waits() {
     let holds = r#"{"id":"11111111","command":["pi"],"folder":"src","pid":1}"#;
     let sessions = r#"{"Ok":{"Sessions":[{"id":"a","machine":"mac","held":"11111111"}]}}"#;
     let passed_over = held(holds, sessions, running).expect("the listing reads");
-    let after = next(kept, "one", &passed_over, AT);
+    let after = next(kept.clone(), "one", &passed_over, AT);
     assert_eq!(
         after.waiting,
         waits(&[session("b", "/g")]),
         "one held again in a hold that's passed over would be started a second time"
+    );
+    let none_listed = r#"{"Ok":{"Sessions":[]}}"#;
+    let ways = [
+        (
+            "run by hand, in no hold",
+            "",
+            r#"{"Ok":{"Sessions":[{"id":"a","machine":"mac"}]}}"#,
+        ),
+        (
+            "run on another machine",
+            "",
+            r#"{"Ok":{"Sessions":[{"id":"a","machine":"other","held":"22222222"}]}}"#,
+        ),
+        (
+            "held before the node links it",
+            r#"{"id":"33333333","command":["pi","--session","a"],"folder":"/f","pid":1}"#,
+            none_listed,
+        ),
+    ];
+    for (way, holds, sessions) in ways {
+        let now = held(holds, sessions, running).expect("the listing reads");
+        let after = next(kept.clone(), "one", &now, AT);
+        assert_eq!(
+            after.waiting,
+            waits(&[session("b", "/g")]),
+            "one that runs again, {way}, would be started a second time"
+        );
+    }
+    let ended = r#"{"Ok":{"Sessions":[{"id":"a","machine":"mac","state":"ended"}]}}"#;
+    let none_running = held("", ended, running).expect("it reads");
+    let after = next(kept, "one", &none_running, AT);
+    assert_eq!(
+        after.waiting.len(),
+        2,
+        "one whose pi ended, as every pi from before a reboot has, still waits"
     );
 }
 
@@ -1025,8 +1062,8 @@ fn a_start_the_node_refused_is_tried_next_run_and_one_unheard_waits() {
             back.said
                 .borrow()
                 .iter()
-                .any(|line| line.contains("a is held again, so it waits no more")),
-            "after {case}, one found held again is said to be back: {:?}",
+                .any(|line| line.contains("a runs again, so it waits no more")),
+            "after {case}, one found running again is said to be back: {:?}",
             back.said.borrow()
         );
     }

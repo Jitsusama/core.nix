@@ -139,8 +139,10 @@ struct Kept {
 
 /// What the node holds here now: the machine's name and its pi sessions,
 /// and what in its answer was passed over, and why; and the id of every
-/// live session a running pi hold names, kept or passed over, since one
-/// held again in a hold it passes over mustn't be started a second time.
+/// session whose pi runs, on any machine, held or not, and of every one a
+/// running pi hold here names in its command, kept or passed over: one
+/// that runs again mustn't be started a second time, and the node lists
+/// a session as not ended only while its pi's process runs.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Held {
     machine: Option<String>,
@@ -216,6 +218,16 @@ fn an_id(word: &str) -> bool {
         && word.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// The session a pi's command names after `--session`, as every start this
+/// makes does, so one started is known before the node links its hold.
+fn session_of(command: &[String]) -> Option<&str> {
+    let at = command.iter().position(|word| word == "--session")?;
+    command
+        .get(at + 1)
+        .map(String::as_str)
+        .filter(|id| an_id(id))
+}
+
 /// Whether a hold's pi still runs: one parked holds its session, and one
 /// whose pid is 0, or no longer runs, holds nothing.
 fn holds_its_pi(hold: &Hold, runs: impl Fn(u32) -> bool) -> bool {
@@ -255,7 +267,10 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
         .iter()
         .filter(|listed| listed.state.as_deref() != Some("ended"))
         .collect();
-    let mut found = Held::default();
+    let mut found = Held {
+        live: live.iter().map(|listed| listed.id.clone()).collect(),
+        ..Held::default()
+    };
     let mut joined = Vec::new();
     for line in holds.lines().filter(|line| !line.trim().is_empty()) {
         let hold: Hold = match serde_json::from_str(line) {
@@ -273,10 +288,9 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
         if !holds_its_pi(&hold, &runs) {
             continue;
         }
-        let names_it = |listed: &&&Listed| listed.held.as_deref() == Some(hold.id.as_str());
         found
             .live
-            .extend(live.iter().filter(names_it).map(|listed| listed.id.clone()));
+            .extend(session_of(&hold.command).map(String::from));
         if hold.folder.is_empty() {
             found
                 .passed
@@ -324,6 +338,8 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
         };
         joined.push((machine, session));
     }
+    found.live.sort();
+    found.live.dedup();
     found.machine = most_named(joined.iter().map(|(machine, _)| *machine));
     for (machine, session) in joined {
         match &found.machine {
@@ -350,7 +366,7 @@ fn stale(before: &Kept, era: &str, at: u64) -> bool {
 /// What to keep after this run's look, at `at`, before any start: what's
 /// held now, and what's waiting, which a newer boot or login fills with
 /// what was held before it, unless that was kept too long before. A
-/// session held again no longer waits.
+/// session that runs again no longer waits.
 fn next(kept: Option<Kept>, era: &str, now: &Held, at: u64) -> Kept {
     let Some(before) = kept else {
         return Kept {
@@ -647,6 +663,7 @@ struct World<'a> {
 /// couldn't keep it starts nothing a later run would start again. A run
 /// beside it on the same realm, as one by hand, leaves it to that one.
 fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> Result<(), Failure> {
+    let began = Instant::now();
     let failed = |exit: Exit, what: &str, why: String| {
         Failure::new(exit, format!("{what} in the {realm} realm")).because(why)
     };
@@ -723,16 +740,18 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
         .filter(|id| now.live.contains(id))
         .collect();
     for id in &waited {
-        (world.say)(&format!("{id} is held again, so it waits no more"));
+        (world.say)(&format!("{id} runs again, so it waits no more"));
     }
     let mut kept = next(before, era, &now, at);
     keep(&file, &kept).map_err(|f| f.because(format!("in the {realm} realm")))?;
     if kept.waiting.is_empty() {
         return Ok(());
     }
+    // The looks may have taken a while, and a start is stamped by when it
+    // was asked, so it's given the time it's asked at rather than the run's.
     bring_back(
         &mut kept,
-        at,
+        at + began.elapsed().as_secs(),
         world.there,
         |machine, session| match (world.ask)(&start_words(machine, session), START_WITHIN) {
             Ok(said) if started(&said) => Start::Started,
