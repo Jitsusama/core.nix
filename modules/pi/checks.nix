@@ -278,7 +278,7 @@ import ./host-checks.nix args
     pkgs.runCommandLocal "pi-hosted-keeps-the-patches-it-applied" { }
       ''
         ${lib.getExe pkgs.bash} ${./tests/pi-hosted-keeps-the-patches-it-applied.sh} \
-          ${./host-patches} ${hostedPi}
+          ${./host-patches} ${hostedPi} ${hostedPi}/lib/node_modules/pi-monorepo
         touch $out
       '';
 
