@@ -151,16 +151,17 @@ fn said(error: &zbus::Error) -> Refused {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::{Mutex, MutexGuard};
 
-    /// Held by each test that writes a program and runs it: a program run
-    /// while another thread's fork still holds it open to be written fails
-    /// as a busy file, so one test at a time writes and runs.
+    /// Held by each test that writes a program and runs it, here and in
+    /// camera.rs: a program run while another thread's fork still holds
+    /// it open to be written fails as a busy file, so one test at a time
+    /// writes and runs.
     static RUNNING: Mutex<()> = Mutex::new(());
 
-    fn alone() -> MutexGuard<'static, ()> {
+    pub(crate) fn alone() -> MutexGuard<'static, ()> {
         RUNNING
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

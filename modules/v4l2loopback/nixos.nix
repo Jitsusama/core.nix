@@ -3,13 +3,15 @@
 # a loopback imports it, and takes v4l2loopback-ctl from its package, so the
 # module loaded and the program making its cameras are the same build.
 #
-# Nothing says which program has a loopback camera open: PipeWire doesn't
-# offer these cameras, and a relay hears only that a reader came or went.
-# So for each camera in holders, a service watches its node, and on every
-# open and close writes the programs holding it to /run/camera-holders/<name>
-# for a shell to watch, one name a line and empty while none does or the
-# camera is down. The folder lasts the boot, since a shell's watch on it
-# would be lost with it.
+# Nothing says which program has a loopback camera open: a relay hears only
+# that a reader came or went. So for each camera in holders, a service
+# watches its node, and on every open and close writes the programs holding
+# it to /run/camera-holders/<name> for a shell to watch, one name a line and
+# empty while none does or the camera is down, and the node it is to
+# .devices/<name> beside it. A camera PipeWire offers is held by PipeWire
+# for whoever reads it there, so the machine daemon finds those in
+# PipeWire's registry by that node. The folder lasts the boot, since a shell's
+# watch on it would be lost with it.
 {
   config,
   lib,
@@ -143,8 +145,21 @@ in
               output
             ]
           );
-          # Stopped with its camera, it may not get to say nobody itself.
-          ExecStopPost = "${pkgs.coreutils}/bin/truncate -s 0 ${output}";
+          # Stopped with its camera, or killed, it may not get to say nobody
+          # itself, nor take back the node it said the camera was.
+          ExecStopPost = [
+            (lib.escapeShellArgs [
+              "${pkgs.coreutils}/bin/truncate"
+              "-s"
+              "0"
+              output
+            ])
+            (lib.escapeShellArgs [
+              "${pkgs.coreutils}/bin/rm"
+              "-f"
+              "${holdersDir}/.devices/${name}"
+            ])
+          ];
           Restart = "on-failure";
           RestartSec = 1;
           # It lists every process's open files, which takes reading past

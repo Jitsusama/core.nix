@@ -23,14 +23,17 @@ onLinux {
   # clippy finds nothing in the machine daemon, its tests included.
   machine-passes-clippy = passesClippy "machine-passes-clippy" (pkgs.callPackage ./package.nix { });
   # The shell brings the daemon, on the socket the shell's daemons share,
-  # held by systemd whether or not the daemon runs.
+  # held by systemd whether or not the daemon runs, and handed pw-cli, by
+  # which it finds who reads a camera through PipeWire, beside what the
+  # shell hands it.
   machine-runs-beside-the-shell =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.quickshell ]; } ]);
       service = home.systemd.user.services.machine;
+      pwCli = setting: builtins.match "MACHINE_PW_CLI=/nix/store/[^/]+/bin/pw-cli" setting != null;
     in
     holds "machine-runs-beside-the-shell"
-      "The machine daemon doesn't run beside the shell on its socket, held by systemd."
+      "The machine daemon doesn't run beside the shell on systemd's socket, with pw-cli."
       (
         # Home Manager keeps a unit's ExecStart as a list of its lines.
         lib.hasInfix "%t/daemons/machine.sock" (
@@ -39,5 +42,6 @@ onLinux {
         && service.Unit.X-SwitchMethod == "restart"
         && builtins.elem "machine.socket" service.Unit.Requires
         && home.systemd.user.sockets.machine.Socket.ListenStream == "%t/daemons/machine.sock"
+        && lib.any pwCli (lib.toList (service.Service.Environment or [ ]))
       );
 }

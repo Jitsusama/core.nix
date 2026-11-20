@@ -243,6 +243,9 @@ struct Reader {
     behind: using::Behind,
     /// What each battery's charging is set to, read once a minute.
     charging: supply::Settings,
+    /// Where who reads a camera through `PipeWire` is found, as `Shared`
+    /// holds it too.
+    pipewire: Arc<camera::PipeWire>,
 }
 
 impl Reader {
@@ -277,7 +280,7 @@ impl Reader {
             }
         }
         if wants("camera") {
-            records.extend(camera::cameras(&self.root));
+            records.extend(camera::cameras(&self.root, &self.pipewire));
             spent.ended("camera", Instant::now());
         }
         if wants("link") {
@@ -530,6 +533,9 @@ struct Shared {
     daemon: Mutex<Daemon>,
     reader: Mutex<Reader>,
     woken: Condvar,
+    /// `PipeWire`'s registry, listed before the reader's lock is taken, so
+    /// a `PipeWire` slow to answer holds up no other read.
+    pipewire: Arc<camera::PipeWire>,
 }
 
 /// What `machine --help` says, as its unit runs it.
@@ -687,7 +693,12 @@ fn serve(args: Args) -> Result<(), Failure> {
     {
         let shared = Arc::clone(&shared);
         let folders = vec![root.path(camera::FOLDER)];
-        std::thread::spawn(move || heard_loop(&shared, &["camera"], &folders, camera::names));
+        // Read again on a clock too while `PipeWire` holds a camera, since
+        // who reads it there changes with no file written.
+        let due = |shared: &Shared| shared.pipewire.due();
+        std::thread::spawn(move || {
+            heard_until(&shared, &["camera"], &folders, camera::names, due);
+        });
     }
     {
         let shared = Arc::clone(&shared);
@@ -835,6 +846,7 @@ fn hear_keyboards_and_watchers(shared: &Arc<Shared>, root: &Root) {
 fn shared(root: &Root, words: Option<Words>, served: Arc<Served>) -> Shared {
     // SAFETY: sysconf only reads a constant of the running system.
     let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    let pipewire = Arc::new(camera::PipeWire::from_environment(root));
     Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
@@ -879,8 +891,10 @@ fn shared(root: &Root, words: Option<Words>, served: Arc<Served>) -> Shared {
             statuses: status::Kept::asking(units::standing),
             behind: using::Behind::default(),
             charging: supply::Settings::default(),
+            pipewire: Arc::clone(&pipewire),
         }),
         woken: Condvar::new(),
+        pipewire,
     }
 }
 
@@ -1171,7 +1185,12 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
         };
         (buses, trees)
     };
+    // The registry's listing counts in the read's whole time, though in
+    // none of its kinds', so a slow PipeWire still shows as a slow read.
     let started = Instant::now();
+    if kinds.contains("camera") {
+        shared.pipewire.refresh();
+    }
     let (records, kinds_took) = lock(&shared.reader).read(kinds, &trees, &buses);
     let took = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut daemon = lock(&shared.daemon);

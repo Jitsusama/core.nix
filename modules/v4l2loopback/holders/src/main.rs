@@ -32,6 +32,13 @@
 //! the packets it sent in error, and its controls (src/record.rs says
 //! how).
 //!
+//! Beside the file, `.devices/<its name>` says which node the camera is,
+//! as its real path, for as long as there's one: a reader that sees
+//! `PipeWire` holding it finds the camera in `PipeWire`'s registry by it, and
+//! names who reads it there (modules/machine's camera.rs). A node a link
+//! names, as the relay's is, changes with each plug-in, so the link is
+//! followed first.
+//!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
 //! holds costs nothing. Its help, its failures and its exits take the
 //! terminal kit's shape (`help()`).
@@ -147,6 +154,45 @@ fn write(output: &Path, names: &BTreeSet<String>) -> io::Result<()> {
         .iter()
         .flat_map(|name| [name.as_str(), "\n"])
         .collect();
+    replace(output, &body)
+}
+
+/// Where the node the output's camera is gets said: `.devices/` beside
+/// it, under its name, a folder every reader of the cameras' files passes
+/// over, as its name begins with a dot.
+fn device_file(output: &Path) -> Option<PathBuf> {
+    let name = output.file_name()?;
+    let folder = output.parent().unwrap_or_else(|| Path::new(""));
+    Some(folder.join(".devices").join(name))
+}
+
+/// Says which node the output's camera is, as its real path, or with none,
+/// removes what said it, so a reader never finds the camera by a node it
+/// no longer is.
+fn say_device(output: &Path, node: Option<&Path>) {
+    let Some(file) = device_file(output) else {
+        return;
+    };
+    let said = match node {
+        Some(node) => {
+            let node = fs::canonicalize(node).unwrap_or_else(|_| node.to_owned());
+            let folder = file.parent().unwrap_or_else(|| Path::new(""));
+            fs::create_dir_all(folder)
+                .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
+                .and_then(|()| replace(&file, &format!("{}\n", node.display())))
+        }
+        None => match fs::remove_file(&file) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
+        },
+    };
+    if let Err(error) = said {
+        complain(format_args!("{}: {error}", file.display()));
+    }
+}
+
+/// Replaces the file whole with the body, readable by all.
+fn replace(output: &Path, body: &str) -> io::Result<()> {
     let mut temporary = output.as_os_str().to_owned();
     temporary.push(format!(".{}", std::process::id()));
     let mut file = OpenOptions::new()
@@ -294,6 +340,10 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         .because(format!("{}: {error}", node.display()))
     })?;
     tidy(&output);
+    if let Some(file) = device_file(&output) {
+        tidy(&file);
+    }
+    say_device(&output, Some(&node));
     let mut record = Record::new(&options.sysfs, &options.debugfs);
     let ended = watch(
         events,
@@ -308,6 +358,7 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     if let Some(line) = record.ended(then(&ended, node.exists())) {
         say(&line);
     }
+    say_device(&output, None);
     match fs::remove_file(&output) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
             Exit::Failed,
@@ -327,11 +378,15 @@ fn loopback(events: &mut Events, options: &Options) {
         }
     };
     tidy(&options.output);
+    if let Some(file) = device_file(&options.output) {
+        tidy(&file);
+    }
     let mut gone = false;
     loop {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
             if !gone {
+                say_device(&options.output, None);
                 say_nobody();
                 gone = true;
             }
@@ -341,13 +396,16 @@ fn loopback(events: &mut Events, options: &Options) {
             continue;
         };
         gone = false;
+        say_device(&options.output, Some(&node));
         let ended = watch(events, &node, &options.output, &options.units, None, None);
         say_nobody();
         if let Ended::Stopped = ended {
+            say_device(&options.output, None);
             return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
+            say_device(&options.output, None);
             return;
         }
     }
@@ -437,6 +495,41 @@ mod tests {
         write(&output, &BTreeSet::new()).unwrap();
         assert_eq!(fs::read_to_string(&output).unwrap(), "");
         assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn the_node_is_said_by_its_real_path_until_the_camera_goes() {
+        let root = scratch("device");
+        let node = root.join("video32");
+        fs::write(&node, "").unwrap();
+        let link = root.join("device");
+        std::os::unix::fs::symlink(&node, &link).unwrap();
+        let output = root.join("MX Brio 705 for Business");
+        let file = root.join(".devices/MX Brio 705 for Business");
+        // A folder left narrower, as a umask might make it, is widened.
+        fs::create_dir(root.join(".devices")).unwrap();
+        fs::set_permissions(root.join(".devices"), fs::Permissions::from_mode(0o700)).unwrap();
+        say_device(&output, Some(&link));
+        let real = fs::canonicalize(&node).unwrap();
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            format!("{}\n", real.display())
+        );
+        assert_eq!(
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
+        assert_eq!(
+            fs::metadata(root.join(".devices"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+        assert_eq!(fs::read_dir(root.join(".devices")).unwrap().count(), 1);
+        say_device(&output, None);
+        assert!(!file.exists(), "the camera gone, its node is said no more");
     }
 
     #[test]

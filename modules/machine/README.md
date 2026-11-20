@@ -292,7 +292,11 @@ running tells nobody anything, and a watcher is said silent once no
 heartbeat has come for its silence (30 seconds for lag-watch, 120 for a
 guard), counted on the clock a suspend stops. All of them are heard as
 they're written while watched, through inotify, and read at no other
-time, but for a status read again once its watcher's silence runs out.
+time, but for a status read again once its watcher's silence runs out,
+and `camera` read again every two seconds while PipeWire holds one,
+since who reads it through PipeWire changes with no file written:
+PipeWire's registry is listed then (`pw-cli ls`) to name them in its
+place, and PipeWire stays named wherever one can't be.
 A guard fallen silent may only be restarting, as every switch restarts
 it, so its unit is asked once as it falls silent, over systemd's bus
 (the session's for the account's guard, the system's for the machine's),

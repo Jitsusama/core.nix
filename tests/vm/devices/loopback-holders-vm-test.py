@@ -9,6 +9,7 @@ camera are Nix's, given as the `values` fixture.
 
 from __future__ import annotations
 
+import posixpath
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,10 @@ class Camera:
         """Act on the stand-in in that machine, with the programs Nix built to hold it."""
         self.machine = machine
         self.file: str = values["file"]
+        # Where the node the camera is gets said, for a reader through PipeWire to find it by.
+        self.node_file = posixpath.join(
+            posixpath.dirname(self.file), ".devices", posixpath.basename(self.file)
+        )
         self.bash: str = values["bash"]
         self.sleep: str = values["sleep"]
         # A program as Nix wraps one, which waits until it's stopped.
@@ -70,6 +75,13 @@ class Camera:
     def nobody(self) -> None:
         """Wait until the file names nobody."""
         self.machine.wait_until_succeeds(f"! test -s {self.file}", timeout=FOLLOWING)
+
+    def said_as(self, device: str) -> None:
+        """Wait until the camera is said to be that node, by its real path."""
+        real = self.machine.succeed(f"readlink -f {device}").strip()
+        self.machine.wait_until_succeeds(
+            f'test "$(cat {self.node_file})" = {real}', timeout=FOLLOWING
+        )
 
 
 @pytest.fixture(scope="module")
@@ -199,6 +211,7 @@ def test_its_folder_outlives_the_cameras_service_and_says_nobody_while_its_down(
         "systemctl is-active stand-in-holders.service", timeout=FOLLOWING
     )
     assert camera.machine.succeed(f"cat {camera.file}") == ""
+    camera.machine.fail(f"test -e {camera.node_file}")
     camera.machine.succeed("systemctl stop stopping.service", "systemctl start stand-in.service")
     camera.machine.wait_for_unit("stand-in-holders.service")
     assert camera.machine.succeed("stat -c %i /run/camera-holders").strip() == folder
@@ -210,6 +223,7 @@ def test_it_follows_the_camera_to_the_next_loopback(
     """It follows the camera to the next loopback the camera's service makes."""
     camera.machine.succeed("systemctl restart stand-in.service")
     camera.machine.wait_for_unit("stand-in-holders.service")
+    camera.said_as(camera.device())
     hold("again", camera.holding(camera.sleep, camera.device()))
     camera.named("sleep")
 
@@ -238,6 +252,8 @@ def test_it_waits_while_the_camera_isnt_there_and_finds_it_when_it_is(
     restarts = camera.machine.succeed("systemctl show -P NRestarts stand-in-holders.service")
     assert restarts.strip() == "0"
     assert camera.holders() == []
+    camera.machine.fail(f"test -e {camera.node_file}")
     camera.machine.succeed(f"echo {device} > {DEVICE}")
+    camera.said_as(device)
     hold("found", camera.holding(camera.sleep, device))
     camera.named("sleep")

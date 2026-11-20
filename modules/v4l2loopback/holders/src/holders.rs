@@ -50,11 +50,22 @@ fn arguments(proc: &Path) -> io::Result<Vec<Vec<u8>>> {
         .collect())
 }
 
+/// A process's program by its own name, or `?` for one that gives none,
+/// since a blank line reads as nobody and its camera would read as off.
+pub fn program(proc: &Path) -> io::Result<String> {
+    let name = own_name(proc)?;
+    Ok(if name.is_empty() {
+        "?".to_owned()
+    } else {
+        name
+    })
+}
+
 /// A process's program by its own name. The kernel cuts that name at 15
 /// characters, so a Nix wrapper's, or one that long, is taken from the
 /// executable or the name it was run by. An interpreter is named by the
 /// script it runs.
-pub fn program(proc: &Path) -> io::Result<String> {
+fn own_name(proc: &Path) -> io::Result<String> {
     let name = text(&fs::read(proc.join("comm"))?);
     if INTERPRETERS.contains(&name.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.')) {
         // Its script, the first argument that's a file: not an option, and
@@ -223,5 +234,17 @@ mod tests {
         let named = program(Path::new("/proc/self")).unwrap();
         assert_ne!(named, "");
         assert!(!named.contains('\n'));
+    }
+
+    #[test]
+    fn a_process_that_gives_no_name_is_still_named() {
+        let proc = std::env::temp_dir().join(format!("holders-nameless-{}", std::process::id()));
+        fs::create_dir_all(&proc).unwrap();
+        for comm in ["\n", " \n"] {
+            fs::write(proc.join("comm"), comm).unwrap();
+            fs::write(proc.join("cmdline"), "").unwrap();
+            assert_eq!(program(&proc).unwrap(), "?", "a comm of {comm:?}");
+        }
+        fs::remove_dir_all(&proc).unwrap();
     }
 }
