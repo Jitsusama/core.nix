@@ -453,6 +453,22 @@ impl Table {
         self.rows.push(Row::Across(line));
     }
 
+    /// Whether every row's cell in `column` is a dash, a missing figure,
+    /// in a table with at least one row.
+    fn says_nothing(&self, column: usize) -> bool {
+        let mut cells = self
+            .rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Cells(cells) => Some(cells.get(column)),
+                Row::Header(_) | Row::Across(_) => None,
+            })
+            .peekable();
+        cells.peek().is_some()
+            && cells
+                .all(|cell| cell.is_none_or(|cell| cell.iter().all(|run| run.text.trim() == "–")))
+    }
+
     /// The part of a cell its figure takes, its first run, and the part
     /// after it, its unit.
     fn split(cell: &[Run]) -> (usize, usize) {
@@ -517,7 +533,16 @@ impl Table {
                 size
             })
         };
-        for group in &self.gives_way {
+        // A column that gives way and says nothing in any row, a dash in
+        // each, goes before the rest, since room spent on it shows no more
+        // than its heading: eero's cloud answers most reads with no speed
+        // for any device, and a narrow devices table otherwise kept its
+        // empty down and up and lost tx, which had figures.
+        let (silent, speaking): (Vec<&Vec<usize>>, Vec<&Vec<usize>>) = self
+            .gives_way
+            .iter()
+            .partition(|group| group.iter().all(|column| self.says_nothing(*column)));
+        for group in silent.into_iter().chain(speaking) {
             if least(&kept) <= cells {
                 break;
             }
@@ -841,6 +866,48 @@ mod tests {
              device             last on\n\
              printer            2 d ago\n",
             "the kind the first table gave way to 32 cells goes from the second too"
+        );
+    }
+
+    #[test]
+    fn a_column_saying_nothing_in_any_row_gives_way_first() {
+        let table = || {
+            let mut table = Table::new(&[Align::Left, Align::Left, Align::Point, Align::Point]);
+            table.header(&["device", "kind", "down", "speed"]);
+            table.gives_way_by(&["kind", "down"]);
+            table.row(vec![
+                vec![plain("laptop")],
+                vec![plain("laptop")],
+                vec![muted("–")],
+                figure("11.5", "Mb/s"),
+            ]);
+            table.row(vec![
+                vec![plain("printer")],
+                vec![plain("printer")],
+                vec![muted("–")],
+                figure("98", "b/s"),
+            ]);
+            table
+        };
+        let headings = |room| {
+            let mut page = Page::default();
+            page.table(0, table());
+            let text = set(page, room);
+            let header = text.lines().next().unwrap_or_default().to_owned();
+            header
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            headings(Room::Cells(28)),
+            ["device", "kind", "speed"],
+            "a down that no row has a figure for goes before the kind named first"
+        );
+        assert_eq!(
+            headings(Room::Unbounded),
+            ["device", "kind", "down", "speed"],
+            "where the table fits, a column saying nothing still keeps its place"
         );
     }
 
