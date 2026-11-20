@@ -5,7 +5,9 @@ disturb, waiting, the microphone, dictation, what's playing and caps lock.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
-(desktop_session.py), and waits at its start for what it needs, so any test runs alone.
+(desktop_session.py), and waits at its start for what it needs, so any test runs alone. Long
+because the lid's sleep needs its letting go said step by step, and splitting the margin's
+things into another area would boot another machine to prove a few lines of wiring each.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from desktop_session import Desktop
 
 
@@ -129,11 +133,44 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
 ) -> None:
     """Kept awake, a lid shut on battery locks the screen and runs on; let go, it sleeps."""
     machine = desktop.machine
-    locked = desktop.in_session("qs ipc call lock isLocked | grep -q true")
+    locked = desktop.in_session("qs ipc call lock isLocked | grep -qx true")
+    # Said outright, since the lock failing to answer isn't it being unlocked.
+    unlocked = desktop.in_session("qs ipc call lock isLocked | grep -qx false")
     desktop.as_account("systemctl --user start keep-awake.service keep-awake-lid.service")
     machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
     # Joel keeps it awake to run with no power and the lid shut (2026-11-10).
     desktop.power("off")
+
+    def let_go(*, quietly: bool) -> None:
+        steps: list[tuple[str, Callable[[], object]]] = [
+            ("opening the lid", lambda: desktop.lid(shut=False)),
+            # The stand-in sleep ends once logind sees the lid open, so it settles first.
+            (
+                "settling",
+                lambda: machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1)),
+            ),
+            ("forgetting the sleeps", lambda: machine.succeed("rm -f /run/suspended")),
+            ("powering on", lambda: desktop.power("on")),
+            (
+                "stopping Keep Awake",
+                lambda: desktop.as_account("systemctl --user stop keep-awake.service"),
+            ),
+            # The sleep locked the screen, so it's let go.
+            ("releasing the lock", lambda: desktop.as_account("qs ipc call lock release")),
+        ]
+        for name, step in steps:
+            if not quietly:
+                step()
+                continue
+            # After a failure each step is tried on its own and what it raised only logged,
+            # so a sleep that never settled still leaves the power on and the lock let go.
+            try:
+                step()
+            # Any error, since the first failure is the one reported, and each later step's
+            # is only logged so the rest still run.
+            except Exception as missed:  # noqa: BLE001
+                machine.log(f"letting go after a failure, {name} failed: {missed!r}")
+
     try:
         machine.succeed(LID_HELD)
         desktop.lid(shut=True)
@@ -145,27 +182,31 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         desktop.lid(shut=False)
         desktop.as_account("qs ipc call lock release && systemctl --user stop keep-awake.service")
         machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
+        # Unlocked first, so the lock after the sleep starts can only be the sleep's own.
+        machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
-        # A sleep lasts until the lid opens, so a lid shut long enough for logind to start a
-        # second sleeps once: each repeated sleep locked the screen again after its release.
+        # The sleep locks the screen before it starts, as it does before every one.
+        machine.wait_until_succeeds(locked, timeout=timedelta(seconds=10))
+        # A sleep lasts until the lid opens, so one shut lid sleeps once. This holds the
+        # stand-in to it: one that returned at once had logind sleep again for as long as
+        # the lid stayed shut, each sleep locking the screen again after its release.
         machine.sleep(LOOKING)
         desktop.lid(shut=False)
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         slept = int(machine.succeed("wc -l < /run/suspended"))
         assert slept == 1, f"one shut lid slept {slept} times"
-    finally:
-        desktop.lid(shut=False)
-        # The stand-in sleep ends once logind sees the lid open, so it settles first.
-        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
-        machine.succeed("rm -f /run/suspended")
-        desktop.power("on")
-        # The sleep locked the screen first, as it does before every one.
-        desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
-        machine.wait_until_fails(locked, timeout=timedelta(seconds=10))
-        # Unlocked, it stays so; relocked, every subtest after failed on it (2026-11-19).
+        let_go(quietly=False)
+        # The release takes, and nothing locks the screen again; relocked, every subtest
+        # after failed on it (2026-11-19).
+        machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
         machine.sleep(LOOKING)
-        machine.fail(locked)
+        machine.succeed(unlocked)
+    except Exception:
+        # Let go without raising, so the failure above is the one told; a lock still queued,
+        # or a sleep that never ended, may then fail the subtests that follow.
+        let_go(quietly=True)
+        raise
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(

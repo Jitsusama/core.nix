@@ -147,7 +147,13 @@ let
   # that returned at once had logind, with no holdoff, sleep again for as
   # long as the lid stayed shut, and swayidle, which runs its before-sleep
   # lock once for each and one at a time, locked the screen again after the
-  # test had unlocked it, failing every subtest after it (2026-11-19).
+  # test had unlocked it, failing every subtest after it (2026-11-19). Its
+  # wait has no bound of its own. If logind never sees the lid open, the
+  # test's minute-long waits for it to settle fail the test, and the sleep
+  # runs on. A bound shorter than those waits would end the sleep with the
+  # lid still shut on battery, and logind would sleep it again, with another
+  # lock; whether one past them, once the clean-up has powered on, would
+  # leave it awake is left to the stand-ins' follow-up.
   lidOpen = pkgs.lib.concatStringsSep " " [
     "${pkgs.systemd}/bin/busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
     "org.freedesktop.login1.Manager LidClosed | ${pkgs.gnugrep}/bin/grep -qx 'b false'"
