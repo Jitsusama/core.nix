@@ -9665,7 +9665,7 @@ Scope {
     function tallOf(row, at) {
         if (Headings.isHeading(row))
             return (at === 0 ? 0 : Theme.space.rung.groups) + headingTall;
-        return rowTall + (row?.gap ? apart : 0);
+        return rowTall + (row?.gap ? groupGap : 0);
     }
     // The rows as a search shows them: its ranking mixes the groups, so
     // none is headed (Headings.js).
@@ -9679,11 +9679,10 @@ Scope {
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
-    // as Network's does; home has none. The card's height (Steady.tallFor) and the rows that
-    // fit (rows) read groupGap; the list's rows, and so the plate's lines, read it through
-    // apart (tallOf), which is groupGap whenever a row of the list has a gap.
+    // as Network's does; home has none. The card's height (Steady.tallFor), the rows that
+    // fit (rows) and each row's height in the list (tallOf) all read it, so the plate's
+    // lines can't drift from the list's.
     readonly property real groupGap: Theme.space.beat
-    readonly property real apart: matches.some(row => row.gap) ? groupGap : 0
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
