@@ -12,6 +12,17 @@ use crate::source::Followers;
 /// only for that copy.
 const TOLD_IN: &str = "HEALTH_STOPPED_TELLS_IN";
 
+/// Set only for a copy whose run never returns once its follower ends.
+const HANGS: &str = "HEALTH_STOPPED_HANGS";
+
+/// How long the stopped copy's run takes to write once its follower
+/// ends, so a stop that didn't wait for it would end health first.
+const WRITES_LATE: Duration = Duration::from_millis(500);
+
+/// How long a follower stopped on its own has ended before health is
+/// stopped, well within the `CAUGHT_WITHIN` it waits to say so.
+const ENDED_BEFORE: Duration = Duration::from_millis(20);
+
 /// The test the stopped copy runs.
 const STOPPED_TEST: &str = "signals::tests::a_health_to_stop";
 
@@ -75,10 +86,17 @@ struct Stopped {
 impl Stopped {
     /// The copy started, once it has said its follower.
     fn start() -> Self {
+        Self::starting(false)
+    }
+
+    /// The copy started, its run never returning once its follower ends
+    /// if it `hangs`, once it has said its follower.
+    fn starting(hangs: bool) -> Self {
         let folder = tempfile::tempdir().expect("a folder");
         let health = Command::new(std::env::current_exe().expect("this test"))
             .args([STOPPED_TEST, "--exact", "--ignored", "--quiet"])
             .env(TOLD_IN, folder.path().join("follower"))
+            .envs(hangs.then_some((HANGS, "")))
             .process_group(0)
             .stdout(Stdio::null())
             .spawn()
@@ -102,6 +120,11 @@ impl Stopped {
     /// What the follower said of its end, if it said anything.
     fn said(&self) -> Option<String> {
         std::fs::read_to_string(self.told_in().with_extension("said")).ok()
+    }
+
+    /// Whether the copy's run wrote as it ended.
+    fn wrote(&self) -> bool {
+        self.told_in().with_extension("written").exists()
     }
 
     /// Wait for the copy to have caught a stop, as its ender marks.
@@ -201,7 +224,9 @@ impl Drop for Stopped {
 
 /// The health to stop, run only as the copy `Stopped` starts, which says
 /// where to say its follower: started as under `nohup`, it catches
-/// health's stops, starts a follower, and leaves once its follower ends.
+/// health's stops, starts a follower, and once its follower ends, writes
+/// a little later, as health writes the day, and leaves, or never returns
+/// if it hangs.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
 fn a_health_to_stop() {
@@ -242,6 +267,13 @@ fn a_health_to_stop() {
             std::fs::write(&saying, format!("{follower}{masks}")).expect("said");
             std::fs::rename(&saying, told).expect("said");
             while let Ok(Some(_)) = sent.recv() {}
+            if std::env::var_os(HANGS).is_some() {
+                loop {
+                    thread::park();
+                }
+            }
+            thread::sleep(WRITES_LATE);
+            std::fs::write(told.with_extension("written"), "").expect("its write");
             Err::<(), _>(io::Error::other("the follower ended"))
         },
     );
@@ -263,9 +295,10 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
     assert_eq!(
-        (ended.signal(), gone(stopped.follower)),
-        (Some(libc::SIGTERM), true),
-        "a stop didn't end health by its signal ({ended}), or left its follower running"
+        (ended.signal(), gone(stopped.follower), stopped.wrote()),
+        (Some(libc::SIGTERM), true, true),
+        "a stop didn't end health by its signal ({ended}), left its follower running, or \
+         didn't wait for health's run to write the day"
     );
     // Were the stops blocked rather than caught, every follower would block
     // them too, as a run that blocked them showed (`SigBlk` 0x4003, though
@@ -297,6 +330,36 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
         (Some(libc::SIGTERM), true, None),
         "a stop to health's group didn't end health by its signal ({ended}), left its \
          follower running, or had it say its end"
+    );
+}
+
+#[test]
+fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
+    let mut stopped = Stopped::starting(true);
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    assert_eq!(
+        (ended.signal(), stopped.wrote()),
+        (Some(libc::SIGTERM), false),
+        "a stop waited on a run that never returns ({ended})"
+    );
+}
+
+#[test]
+fn a_follower_that_ends_just_before_health_is_stopped_says_nothing() {
+    // As a stop to the whole group may reach the follower and end it
+    // before health's catch runs.
+    let mut stopped = Stopped::start();
+    let follower = libc::pid_t::try_from(stopped.follower).expect("its id");
+    // SAFETY: the copy's follower, which it hasn't waited on while it runs.
+    unsafe { libc::kill(follower, libc::SIGTERM) };
+    thread::sleep(ENDED_BEFORE);
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    assert_eq!(
+        (ended.signal(), stopped.said()),
+        (Some(libc::SIGTERM), None),
+        "a follower that ended just before health's stop said its end ({ended})"
     );
 }
 
