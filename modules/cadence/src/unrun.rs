@@ -30,6 +30,10 @@ pub struct Unrun {
     /// Whether a Mac took them and they stalled twice, which may be a hang
     /// the change made, rather than no Mac taking them.
     pub stalled: bool,
+    /// Whether a Mac took them once and that run stopped unfinished,
+    /// before a day of runs that compared nothing. Its log isn't named,
+    /// since the next run wrote over it.
+    pub stalled_once: bool,
     /// The log of a run a Mac failed before the ones that compared
     /// nothing, when one did.
     pub failed_log: Option<String>,
@@ -51,6 +55,7 @@ pub fn unrun(findings: &Path, since: i64) -> Vec<Unrun> {
                 commit: finding["commit"].as_str()?.to_owned(),
                 base: finding["test"].as_str()?.strip_prefix(CHECK)?.to_owned(),
                 stalled: finding["stalled"] == true,
+                stalled_once: finding["stalled_once"] == true,
                 failed_log: finding["failed_log"].as_str().map(str::to_owned),
                 stalled_log: finding["log"].as_str().map(str::to_owned),
             })
@@ -83,16 +88,24 @@ fn said_to(merge: &Unrun, named: bool) -> String {
     // The net knows a stalled run was taken and didn't end by itself, not
     // why: past its two hours, gone silent, or stopped by a signal from
     // outside, so each is said as what may have been.
-    let how = match (merge.stalled, &merge.failed_log) {
-        (true, _) => format!(
+    let how = match (merge.stalled, merge.stalled_once, &merge.failed_log) {
+        (true, _, _) => format!(
             "a Mac took its Mac checks at {short} twice and both runs stopped unfinished: they \
              may hang, may take longer than the net's two hours, may print nothing for half an \
              hour, or something else stopped them"
         ),
-        (false, Some(_)) => {
+        (false, true, Some(_)) => format!(
+            "a Mac failed its Mac checks at {short} once, a later run a Mac took stopped \
+             unfinished, and no Mac compared them again"
+        ),
+        (false, true, None) => format!(
+            "a Mac took its Mac checks at {short} once and the run stopped unfinished, and no \
+             Mac compared them again"
+        ),
+        (false, false, Some(_)) => {
             format!("a Mac failed its Mac checks at {short} once, and no Mac compared them again")
         }
-        (false, None) => format!("no Mac compared its Mac checks at {short}"),
+        (false, false, None) => format!("no Mac compared its Mac checks at {short}"),
     };
     let failed = match (merge.stalled, &merge.failed_log) {
         (true, Some(log)) => format!(" A Mac failed them once before that; its log is {log}."),
@@ -152,6 +165,9 @@ mod tests {
         stalled["failed_log"] = serde_json::json!("/net/logs/dddd-1.log");
         stalled["log"] = serde_json::json!("/net/logs/dddd-2.log");
         keep("200-dddd.json", stalled);
+        let mut once = unrun_at(205, "ffff", serde_json::Value::Null);
+        once["stalled_once"] = serde_json::json!(true);
+        keep("205-ffff.json", once);
         keep(
             "220-eeee.json",
             serde_json::json!({"kind": "failed", "test": "vm-a", "owner_pr": 4930, "at": 220}),
@@ -166,14 +182,25 @@ mod tests {
                     commit: "dddd".to_owned(),
                     base: "bbbb".to_owned(),
                     stalled: true,
+                    stalled_once: false,
                     failed_log: Some("/net/logs/dddd-1.log".to_owned()),
                     stalled_log: Some("/net/logs/dddd-2.log".to_owned()),
+                },
+                Unrun {
+                    owner_pr: None,
+                    commit: "ffff".to_owned(),
+                    base: "bbbb".to_owned(),
+                    stalled: false,
+                    stalled_once: true,
+                    failed_log: None,
+                    stalled_log: None,
                 },
                 Unrun {
                     owner_pr: None,
                     commit: "cccc".to_owned(),
                     base: "bbbb".to_owned(),
                     stalled: false,
+                    stalled_once: false,
                     failed_log: None,
                     stalled_log: None,
                 },
@@ -193,6 +220,7 @@ mod tests {
             commit: "fb4676a1c0ffee0123456789abcdef0123456789".to_owned(),
             base: "e279db1b".to_owned(),
             stalled: false,
+            stalled_once: false,
             failed_log: None,
             stalled_log: None,
         }
@@ -213,6 +241,36 @@ mod tests {
                 && !failed.contains("no Mac compared its")
                 && !failed.contains("may hang"),
             "a failure a Mac saw was told as no Mac comparing, or as a hang: {failed}"
+        );
+    }
+
+    #[test]
+    fn a_single_stall_before_a_day_of_no_mac_is_told_as_a_stall() {
+        let once = said_to(
+            &Unrun {
+                stalled_once: true,
+                ..merge(Some(4925))
+            },
+            true,
+        );
+        let after = said_to(
+            &Unrun {
+                stalled_once: true,
+                failed_log: Some("/net/logs/fb46-1.log".to_owned()),
+                ..merge(Some(4925))
+            },
+            true,
+        );
+        assert!(
+            once.contains("a Mac took its Mac checks at fb4676a1c0ff once and the run stopped")
+                && !once.contains("no Mac compared its")
+                && !once.contains("may hang"),
+            "a single stall was told as no Mac comparing, or as a hang: {once}"
+        );
+        assert!(
+            after.contains("failed its Mac checks at fb4676a1c0ff once, a later run")
+                && after.contains("The failure's log is /net/logs/fb46-1.log."),
+            "a failure then a stall wasn't told as both: {after}"
         );
     }
 

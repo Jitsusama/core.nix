@@ -3157,13 +3157,47 @@ mod tests {
             told.iter().any(|finding| finding["kind"] == "mac-unrun"
                 && finding["commit"] == "m1"
                 && finding["failed_log"] == log.as_str()
-                && finding.get("stalled").is_none()),
+                && finding.get("stalled").is_none()
+                && finding["stalled_once"] == false),
             "a failure a Mac saw before a day of comparing nothing wasn't told with its log, \
              or was told as a stall: {told:?}"
         );
         assert!(
             world.reverted.lock().unwrap().is_empty(),
             "a merge was reverted on one failure and a run that compared nothing"
+        );
+    }
+
+    #[test]
+    fn a_stall_before_a_day_of_comparing_nothing_is_told_as_one() {
+        // A Mac took it once and the run stopped unfinished, then nothing
+        // compared it for the day: the owner hears a Mac took it, not that
+        // none did.
+        let state = state("mac-stalled-then-uncompared");
+        let check = crate::macs::check("s");
+        state.set_heads("h", "h").unwrap();
+        state
+            .keep_settling(
+                &check,
+                &json!({"kind": "mac", "merge": "m1", "test": check, "since": 0, "after": 0}),
+            )
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[STALL, UNCOMPARED]);
+        rounds_past_rests(&world, &state, "s", 3);
+        let told = findings(&state);
+        assert!(
+            told.iter().any(|finding| finding["kind"] == "mac-unrun"
+                && finding["commit"] == "m1"
+                && finding["stalled_once"] == true
+                && finding.get("stalled").is_none()),
+            "a stall before a day of comparing nothing was told as no Mac comparing it, or \
+             as two stalls: {told:?}"
         );
     }
 
@@ -3543,9 +3577,10 @@ mod tests {
     #[test]
     fn a_mac_comparison_told_and_let_go_is_not_handed_again() {
         // A round from the same base hands its merges again: one told
-        // after a day would start another day of tries, and one reverted
-        // would be reverted again.
-        for kind in ["mac-unrun", "failed"] {
+        // after a day would start another day of tries, one reverted would
+        // be reverted again, and one let go as fixed forward would have its
+        // revert decided again.
+        for kind in ["mac-unrun", "failed", "fixed-forward"] {
             let state = state(&format!("mac-told-kept-{kind}"));
             let check = crate::macs::check("s");
             let world = Stand {
