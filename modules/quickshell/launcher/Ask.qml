@@ -172,8 +172,9 @@ Provider {
     // Talking it over with an orchestrator (P9R1KI, 2026-10-26: a row
     // under Ask's answer sending the question on to it): the first one
     // running in the one order of how sessions stand, as the agents
-    // daemon's rows rank them (TalkOn.js), so one waiting on Joel comes
-    // first. Its words go to its inbox as Talk's
+    // daemon's rows rank them (modules/agents/src/standing.rs), picked by
+    // TalkOn.js, so one waiting on Joel comes first. Its words go to its
+    // inbox as Talk's
     // do, and the launcher lands inside its row in Agents, where the talk
     // says how it went as its session replies. With none running, there's
     // no row.

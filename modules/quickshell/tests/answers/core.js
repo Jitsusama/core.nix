@@ -6,6 +6,7 @@
 .import "../Cameras.js" as Cameras
 .import "../Seen.js" as Seen
 .import "../TalkOn.js" as TalkOn
+.import "../SessionRow.js" as SessionRow
 
 function run(failures) {
     let asked = 0;
@@ -304,20 +305,24 @@ function run(failures) {
 
     // Ask talks a question over with the orchestrator running first in how
     // sessions stand, as the agents daemon ranks them, whatever order the
-    // Orchestrators place lists them in; one not ranked yet goes last.
+    // Orchestrators place lists them in; one not ranked yet goes last. Each
+    // rank is read from a row as the daemon serves it, as Agents reads it.
     const orchestrator = named => ({ one: { address: named }, session: { address: named } });
-    const ranks = new Map([["KELP", 3], ["REEF", 0], ["TERN", 0]]);
-    const ranked = named => ranks.get(named);
-    const talkTo = (listed, rankOf) => TalkOn.firstToTalk(listed.map(orchestrator),
-        running => rankOf(running.address))?.one.address ?? null;
-    machine("Ask talks to the one needing Joel, though listed after one working",
-        talkTo(["KELP", "REEF", "TERN"], ranked), "REEF");
-    machine("one the daemon hasn't ranked goes after one it has",
-        talkTo(["SKUA", "KELP"], ranked), "KELP");
-    machine("one ranked null goes after one ranked too",
-        talkTo(["SKUA", "KELP"], named => ranked(named) ?? null), "KELP");
-    machine("none ranked, the first listed",
-        talkTo(["SKUA", "GULL"], () => undefined), "SKUA");
-    machine("none running, none to talk to", talkTo([], () => 0), null);
+    const talkTo = (listed, daemonRows) => TalkOn.firstToTalk(listed.map(orchestrator),
+        running => SessionRow.rankOf(daemonRows.get(running.address)))?.one.address ?? null;
+    const rows = given => new Map(given.map(([named, rank]) => [named, { held: { rank } }]));
+    const served = rows([["KELP", 3], ["REEF", 0], ["TERN", 0]]);
+    machine("Ask talks to the one needing Joel, though listed after one listening",
+        talkTo(["KELP", "REEF", "TERN"], served), "REEF");
+    machine("one the daemon hasn't served a row for goes after one it has",
+        talkTo(["SKUA", "KELP"], served), "KELP");
+    machine("one served with no rank goes after one ranked",
+        talkTo(["SKUA", "KELP"], new Map([["SKUA", { held: {} }], ["KELP", { held: { rank: 3 } }]])),
+        "KELP");
+    machine("one ranked null, empty, false or a word goes after one ranked",
+        [null, "", false, "0"].map(odd => talkTo(["SKUA", "KELP"], rows([["SKUA", odd],
+            ["KELP", 3]]))), ["KELP", "KELP", "KELP", "KELP"]);
+    machine("none ranked, the first listed", talkTo(["SKUA", "GULL"], new Map()), "SKUA");
+    machine("none running, none to talk to", talkTo([], served), null);
     return asked;
 }

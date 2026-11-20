@@ -799,11 +799,10 @@ Provider {
 
     // Where a session stands in that order, as the daemon's row says it,
     // so Ask's pick keeps the order Agents lists in; after them all before
-    // it's said.
+    // it's said (SessionRow.rankOf).
     function rankOf(session) {
         void placings;
-        const served = rowsKind?.held?.[`row:agents:${session.address}`]?.row;
-        return Number(served?.held?.rank ?? Number.MAX_SAFE_INTEGER);
+        return SessionRow.rankOf(rowsKind?.held?.[`row:agents:${session.address}`]?.row);
     }
 
     // One of the vocabulary's words for a session, filled in.
