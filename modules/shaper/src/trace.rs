@@ -267,6 +267,7 @@ mod tests {
             up_delay_ms: Some(1.0),
             down_delay_ms: None,
             gateway_ms: None,
+            gateway_most_ms: None,
             up_ours: None,
             vpn_ms: None,
             ceiling: None,

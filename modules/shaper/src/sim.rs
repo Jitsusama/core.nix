@@ -234,6 +234,7 @@ fn run(scenario: &Scenario, bases: Option<[Option<f64>; 2]>, rough: bool) -> Sco
                 up_delay_ms: Some(delays[0]),
                 down_delay_ms: Some(delays[1]),
                 gateway_ms: Some(gateway),
+                gateway_most_ms: None,
                 up_kbit: carried[0],
                 down_kbit: carried[1],
                 up_ours: None,
@@ -484,6 +485,7 @@ fn flow_queued(shaped: bool) -> (f64, f64) {
                 up_delay_ms: Some(2.0 + 3.0 * noise.next()),
                 down_delay_ms: Some(1.0),
                 gateway_ms: Some(3.0 + noise.next()),
+                gateway_most_ms: None,
                 up_kbit: carried,
                 down_kbit: 300.0,
                 up_ours: Some(Ours {
