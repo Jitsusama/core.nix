@@ -38,7 +38,7 @@ in
     default = [ ];
     example = [ "/path/to/a/package/sweep-providers.ts" ];
     description = ''
-      Modules the sweep of ended sessions' work trees loads its providers
+      On Linux, modules the sweep of ended sessions' work trees loads its providers
       other than git's from, each one's default export a function giving
       them, as the hosts load them from their own packages. The sweep
       judges the trees of each provider it loads, and the hosts stand
@@ -48,14 +48,17 @@ in
 
   options.jitsusama.pi.sweep.path = lib.mkOption {
     type = lib.types.listOf lib.types.str;
-    default = [ ];
+    # The folders every realm's hosts put first, where the programs its
+    # providers run already are, so a machine names them once.
+    default = lib.unique (lib.concatMap (host: host.path) (lib.attrValues config.jitsusama.pi.hosts));
+    defaultText = lib.literalExpression "every realm's jitsusama.pi.hosts.<realm>.path";
     example = [ "/path/to/a/toolchain/bin" ];
     description = ''
-      Folders the sweep of ended sessions' work trees finds what its
-      providers run in, after the store's git and before the account's
-      own: a provider that removes its trees with a program of its own
-      finds it here, since the sweep's PATH is a fixed list rather than
-      the user manager's, as a pi host's is.
+      On Linux, folders the sweep of ended sessions' work trees finds what its
+      providers run in, after the account's git and before its profile: a
+      provider that removes its trees with a program of its own finds it
+      here, since the sweep's PATH is a fixed list rather than the user
+      manager's. By default, the folders each realm's hosts put first.
     '';
   };
 
@@ -177,7 +180,12 @@ in
         # What would have node run code nobody gave it, as a pi host's unit
         # clears (host.nix's loadsCode), since this sweep runs git in every
         # session's trees as a host's would.
+        # Nor either SSH agent, which a host hides from its conversations
+        # too: the sweep signs in nowhere, and a command an agent's tree
+        # names would otherwise reach Joel's keys past nothing but a gate.
         UnsetEnvironment = [
+          "SSH_AUTH_SOCK"
+          "SSH_TPM_AUTH_SOCK"
           "NODE_OPTIONS"
           "NODE_PATH"
           "NODE_COMPILE_CACHE"

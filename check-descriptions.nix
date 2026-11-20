@@ -2796,8 +2796,9 @@
   pi-sweeps-work-trees-in-a-unit-of-its-own = ''
     ended pi sessions' work trees are swept by one oneshot unit of their own at the top of each
     hour, catching up an hour missed while off, among agents' commands in jobs-work.slice, with
-    the store's node, the account's git, a machine's folders and provider modules as it gave
-    them, and none of the variables a pi host's unit clears, rather than on a host's thread;
+    the store's node, the account's git, its hosts' folders, provider modules as a machine gave
+    them, no SSH agent and none of the variables a pi host's unit clears, rather than on a
+    host's thread;
     left running through a switch for up to two hours, skipped where the harness isn't
     installed, and never on a Mac
   '';

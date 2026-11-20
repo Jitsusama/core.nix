@@ -1,6 +1,6 @@
 # The checks of the harness's scripts that Linux runs on a schedule or at
 # login, which pi's checks.nix gathers beside its own, kept apart since they
-# change with timers.nix and nothing else.
+# change with timers.nix, and the sweep's with what a host's unit clears.
 {
   account,
   bareNixos,
@@ -98,23 +98,24 @@ onLinux {
       script = first service.Unit.ConditionPathExists;
       git = lib.makeBinPath [ home.programs.git.package ];
       profile = "${home.home.profileDirectory}/bin";
-      # A machine giving both settings, with a realm whose host shows what
-      # a host's unit clears.
+      # A machine giving provider modules, a git of its own and a realm whose
+      # host shows what a host's unit clears and whose folders the sweep's
+      # PATH takes, written as systemd needs whatever they hold.
       given = account (bareNixos [
         self.nixosModules.workstation
         {
+          home-manager.users.someone.programs.git.package = pkgs.gitMinimal;
           home-manager.users.someone.jitsusama.pi = {
-            sweep = {
-              providerModules = [
-                "/one/providers.ts"
-                "/two/providers.ts"
-              ];
+            sweep.providerModules = [
+              "/one/providers.ts"
+              "/two/providers.ts"
+            ];
+            hosts.one = {
               path = [
                 "/tools/bin"
                 "/100% sure/bin"
+                ''/odd"dir\bin''
               ];
-            };
-            hosts.one = {
               pi = "${pkgs.emptyDirectory}/pi";
               node = "${pkgs.emptyDirectory}/node";
               proof = builtins.toFile "pi-host-proof.json" (
@@ -133,12 +134,11 @@ onLinux {
         }
       ]);
       givenSweep = given.systemd.user.services.pi-sweep.Service;
-      givenGit = lib.makeBinPath [ given.programs.git.package ];
       givenProfile = "${given.home.profileDirectory}/bin";
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, has a PATH other than the account's git, a machine's folders and the account's own, names provider modules other than a machine gave it, leaves a variable that loads code that a pi host's unit clears, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, leaves an SSH agent or a variable that loads code that a pi host's unit clears, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
@@ -160,12 +160,14 @@ onLinux {
           ]
         &&
           lib.toList givenSweep.Environment == [
-            ''"PATH=${givenGit}:/tools/bin:/100%% sure/bin:${givenProfile}:/run/current-system/sw/bin"''
+            ''"PATH=${pkgs.gitMinimal}/bin:/tools/bin:/100%% sure/bin:/odd\"dir\\bin:${givenProfile}:/run/current-system/sw/bin"''
             ''"PI_SWEEP_PROVIDERS=/one/providers.ts:/two/providers.ts"''
           ]
         &&
-          cleared givenSweep == lib.remove "SSH_TPM_AUTH_SOCK" (
-            cleared given.systemd.user.services.pi-host-one-background.Service
+          cleared givenSweep == lib.sort lib.lessThan (
+            lib.unique (
+              [ "SSH_AUTH_SOCK" ] ++ cleared given.systemd.user.services.pi-host-one-background.Service
+            )
           )
         && !(mac.systemd.user.timers ? pi-sweep)
         && !(mac.systemd.user.services ? pi-sweep)
