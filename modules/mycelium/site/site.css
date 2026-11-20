@@ -623,6 +623,27 @@ body {
   stroke-linecap: round;
 }
 
+/* A receptor's dot is its dish's cream, never a session's gold, so at
+   the whole map's size, where a cell is a few pixels across and its dot
+   is most of what shows, a sensor still reads apart from a session. */
+.m-sensing {
+  fill: var(--strong);
+}
+
+.m-sensed {
+  fill: none;
+  stroke: var(--strong);
+  stroke-width: 2;
+}
+
+/* A cell that leads a network: a second ring in the session's gold round
+   its membrane, so who holds a network reads before its name does. */
+.m-leads {
+  fill: none;
+  stroke: var(--action);
+  stroke-width: 1.75;
+}
+
 .m-off {
   stroke: var(--machine);
 }

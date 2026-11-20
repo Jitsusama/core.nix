@@ -358,6 +358,7 @@ import {
   // What waits and what holds are waits.ts's, said against the reading.
   const holdWords = (h) => holdWordsAt(h, current, current.at);
   const WAIT_GAP = 3; // between a mark and its waiting ring
+  const LEADS_GAP = 3.5; // between a membrane and the ring of a cell that leads a network
   const HOLD_REACH = 7; // how far a hold's wall stands out past any waiting ring
   const WAIT_FULL_MS = 30 * 60_000; // a question this old swells its ring fully
   const SWELL_BASE = 2;
@@ -1019,6 +1020,13 @@ import {
     cellWidest,
     cellWidestCarried,
   });
+  // What one cell's marks were painted in, by its key, for the page's
+  // checks: which kind of cell it reads as is in these inks.
+  groundEl.marksOf = (key) =>
+    cellLayer.filter((p) => p.key === key).map((p) => {
+      const ink = inkOf(p.tag, p.cls, p.parent);
+      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke };
+    });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
     const box = groundEl.getBoundingClientRect();
@@ -1163,19 +1171,23 @@ import {
     if (s.kind === "receptor") {
       const [x, y] = at;
       parts.push({ tag: "path", cls: "m-receptor", line: [[x - R, y - R * DISH_LIP], [x, y + R * DISH_DEPTH], [x + R, y - R * DISH_LIP]], key, parent });
-      disc(s.standing === "moving" ? "m-nucleus" : "m-quiet", QUIET_DOT);
+      disc(s.standing === "moving" ? "m-sensing" : "m-sensed", QUIET_DOT);
       return parts;
     }
+    // A cell that leads a network wears a second ring, so the one holding
+    // a network reads apart from those working in it at any size.
+    const leads = s.leads.length ? LEADS_GAP : 0;
+    if (leads) disc("m-leads", R + leads);
     // A ring round what holds others up: dashed, since it waits rather than
     // works, and wider with each question and with the oldest one's age.
     const grow = swell(s.owes);
-    if (grow) disc("m-waits", R + WAIT_GAP + grow);
+    if (grow) disc("m-waits", R + leads + WAIT_GAP + grow);
     // A hold is a wall across the cell's hypha, as a septum closes one:
     // a bar through it, painted under the membrane, so only its ends show.
     // It stands upright, since a cell's name sits beside it.
     if (s.holds.length) {
       const [x, y] = at;
-      const reach = R + WAIT_GAP + grow + HOLD_REACH;
+      const reach = R + leads + WAIT_GAP + grow + HOLD_REACH;
       parts.push({ tag: "path", cls: "m-holds", line: [[x, y - reach], [x, y], [x, y + reach]], key, parent });
     }
     if (s.standing === "dormant") disc("m-dormant", R);
@@ -2964,7 +2976,8 @@ import {
       s.standing === "dormant"
         ? `<circle class="m-dormant" r="9"/>`
         : `<circle class="m-membrane${ring}" r="9"/>${s.standing === "quiet" ? '<circle class="m-quiet" r="4.5"/>' : '<circle class="m-nucleus" r="5.2"/>'}`;
-    return `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true">${inner}</svg>`;
+    const leads = s.leads.length ? '<circle class="m-leads" r="11.25"/>' : "";
+    return `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true">${leads}${inner}</svg>`;
   };
 
   const cellRow = (s) =>
@@ -3204,7 +3217,8 @@ import {
       `<dl>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
-      `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot filled while it is reading</dd></div>` +
+      `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, all in cream, never a cell's gold; its dot filled while it is reading</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-leads" r="13"/><circle class="m-membrane" r="9"/><circle class="m-nucleus" r="5.2"/></svg></dt><dd>A cell that leads a network: a second gold ring round it</dd></div>` +
       (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dot-and-dash arc from a receptor to the one cell it fed something from outside, such as a review asked of you or a call's summary, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
@@ -3859,7 +3873,7 @@ import {
   // A machine's mark in small: its box, a cord leaving each side.
   const MACHINE_GLYPH = `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cord" d="M-12,0H-7M7,0H12" style="--w:1.5px"/><rect class="m-box" x="-7" y="-5" width="14" height="10"/></svg>`;
   const RECEPTOR_GLYPH = (hearing) =>
-    `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-receptor" d="M-9,-5.4Q0,14.4 9,-5.4"/>${hearing ? '<circle class="m-nucleus" r="4.5"/>' : '<circle class="m-quiet" r="4"/>'}</svg>`;
+    `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-receptor" d="M-9,-5.4Q0,14.4 9,-5.4"/>${hearing ? '<circle class="m-sensing" r="4.5"/>' : '<circle class="m-sensed" r="4"/>'}</svg>`;
   const TWISTY = `<svg class="twisty" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5L3 8.5"/></svg>`;
   const treeRow = perReading((key) => {
     const { name, fact, mono } = rowWords(current, key);

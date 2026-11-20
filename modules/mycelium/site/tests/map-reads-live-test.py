@@ -1149,6 +1149,42 @@ def test_every_cell_is_drawn_until_too_small_to_read(mycelium_opened: Opened) ->
     assert cells.count() < CELLS, "every cell was drawn too small to read"
 
 
+# One cell of each kind node.json holds: a receptor, a session leading a
+# network, and a quiet one working in it.
+SENSOR = f"c:{FED_RECEPTOR}"
+LEADER = "c:SKIFF1"
+WORKER = "c:TERN03"
+MARKS = "document.getElementById('map-ground').marksOf({!r})"
+
+
+def paints(marks: list[dict[str, str | None]]) -> set[str]:
+    """Every ink a cell's marks were painted in, fill or stroke."""
+    return {ink for mark in marks for ink in (mark["fill"], mark["stroke"]) if ink}
+
+
+def test_each_kind_of_cell_reads_apart_at_the_whole_map(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    sensor, leader, worker = (page.evaluate(MARKS.format(key)) for key in (SENSOR, LEADER, WORKER))
+    assert sensor, f"the receptor {SENSOR} wasn't drawn at the whole map"
+    assert leader, f"the leader {LEADER} wasn't drawn at the whole map"
+    assert worker, f"the worker {WORKER} wasn't drawn at the whole map"
+    # A session's dot is its gold, which is most of what shows of a cell
+    # a few pixels across, so a receptor must carry none of it.
+    dot = next(mark for mark in worker if mark["cls"] == "m-quiet")
+    gold = dot["stroke"]
+    assert gold, f"the worker's quiet dot had no ink: {worker}"
+    assert gold not in paints(sensor), f"a receptor was painted in a session's gold: {sensor}"
+    # A leader wears a ring in that gold, which a cell working in a
+    # network doesn't.
+    rings = [mark for mark in leader if mark["cls"] == "m-leads"]
+    assert [ring["stroke"] for ring in rings] == [gold], f"the leader wore no gold ring: {leader}"
+    assert all(mark["cls"] != "m-leads" for mark in worker), f"a worker wore a ring: {worker}"
+
+
 def test_a_line_thins_as_the_map_steps_out_past_its_own_size(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
