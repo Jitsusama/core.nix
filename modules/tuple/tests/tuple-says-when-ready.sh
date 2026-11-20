@@ -93,8 +93,10 @@ quiet() {
   fi
 }
 
-# Sets `taken` to whether health would read what the post said as a ready
-# line. A pattern grep can't read ends the run, rather than reading as none.
+# Sets `taken` to whether journalctl, given health's ready pattern, would pick
+# what the post said; health's parser then times only `X: ready in N ms`,
+# which its own tests pin. A pattern grep can't read ends the run, rather
+# than reading as none.
 taken() {
   local found=0
   grep --quiet --perl-regexp "${fold}" -- "${ready}" said || found=$?
@@ -108,7 +110,7 @@ taken() {
   esac
 }
 
-# Fails the case `what` when health wouldn't read what the post said as ready.
+# Fails the case `what` when health's pattern wouldn't pick what the post said.
 readable() {
   taken
   if [[ ${taken} == no ]]; then
@@ -117,7 +119,7 @@ readable() {
   fi
 }
 
-# Fails the case `what` when health would read what the post said as ready.
+# Fails the case `what` when health's pattern would pick what the post said.
 unready() {
   taken
   if [[ ${taken} == yes ]]; then

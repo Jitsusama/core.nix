@@ -111,8 +111,10 @@ onLinux {
   # ExecStartPost, run against a stand-in systemctl and a log of its own
   # (tests/tuple-says-when-ready.sh). Health files a ready time under the
   # name its line goes out with, so the unit must give it Tuple's, not the
-  # script's, which changes with each build. What health takes for a ready
-  # line is read from health's own source, so the two can't drift apart.
+  # script's, which changes with each build. The pattern journalctl picks
+  # health's ready lines with is read from health's own source, so the two
+  # can't drift apart; the words health's parser times after it, `X: ready
+  # in N ms`, are pinned by health's own tests, as the test pins Tuple's.
   tuple-says-when-ready =
     let
       home = account graphical;
