@@ -5917,7 +5917,8 @@
   '';
   vm-wifi-moves = ''
     the card moves between the access points of one network: on at once from one that doesn't
-    answer, to another when an account asks, keeping its neighbours, and back within a second
+    answer, to another when an account asks, keeping its neighbours, to another within seconds
+    of its echoes being lost during a call, and back within a second
     past any wait the point bids, its other networks off, from one gone since it was heard;
     another network forgets them
   '';

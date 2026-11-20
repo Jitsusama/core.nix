@@ -24,8 +24,9 @@
 # network or forget one, though never one Nix declares; on the launcher's
 # rows socket it can move the card to another access point of its network,
 # and the card still knows its neighbours there, forgetting them only on a
-# network of another name; a move to one gone takes it back to the one it
-# left within a second past any wait that one bids. The tests are in
+# network of another name; a call losing its echoes gives way to another
+# at once; a move to one gone takes it back to the one it left within a
+# second past any wait that one bids. The tests are in
 # wifi/, an area to a file, each run in order through pytest on a machine
 # of its own, so the areas run side by side; wifid as they reach it is
 # wifi/wifi_session.py.

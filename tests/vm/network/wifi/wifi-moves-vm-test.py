@@ -1,8 +1,9 @@
 """The Wi-Fi test's moves area.
 
 Here the card moves between the access points of one network: on from one that doesn't answer, to
-another when an account asks, keeping its neighbours, and back to the one it left when the one it
-was asked to has gone; a network of another name forgets those neighbours.
+another when an account asks, keeping its neighbours, to another at once when its echoes are lost
+during a call, and back to the one it left when the one it was asked to has gone; a network of
+another name forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The tests run in the order written, each taking the
 machine on from where the one before left it, so one run alone with -k starts from Lantern joined
@@ -168,6 +169,61 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
     machine.succeed("ping -c 1 -W 2 10.42.0.1")
     unheard = wifid.acting({"act": "roam", "bssid": "02:00:00:00:09:00"})
     assert unheard["error"]["refused"] == "NotNearby", unheard
+    machine.succeed("systemctl stop lantern-two")
+    machine.wait_until_succeeds(
+        "s=$(wpa_cli -i wlan2 status)"
+        ' && echo "$s" | grep -qx wpa_state=COMPLETED'
+        ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
+        timeout=timedelta(seconds=60),
+    )
+
+
+# On 17 Nov 2026 a call's link faded for four minutes before the card
+# moved, once a minute had lost over a quarter of its echoes. During a
+# call wifid now gives way as soon as ten seconds lose two echoes.
+def test_a_card_losing_its_echoes_during_a_call_gives_way_to_another_at_once(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card losing its echoes during a call gives way to another of its network at once."""
+    machine.succeed("systemctl start lantern-two")
+    # Both heard alike, since a lossy link gives way to none heard over 6 dB fainter.
+    for radio in ("wlan0", "wlan5"):
+        machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
+
+    def hears_the_second(_: bool) -> bool:
+        """Have the cards look, and say whether they heard Lantern's second."""
+        wifid.ask("Scan")
+        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
+
+    retry(hears_the_second, timeout=timedelta(seconds=60))
+    machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
+    machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    answer = wifid.acting({"act": "calling", "on": True})
+    assert answer == {"id": 1, "done": True}, answer
+    since = wifid.journal_now()
+    # Nothing the first sends the card arrives, its echoes' answers among it, while what
+    # manages the link passes beside the queue.
+    machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem loss 100%")
+    try:
+        # Two lost come within about three seconds, an echo waited on a second, where the
+        # minute's choice would hold the card until two minutes had lost a tenth.
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qE '^wlan2 gives way to 02:00:00:00:05:00, heard at -[0-9]+ dBm,"
+            " during a call, as 02:00:00:00:00:00 lost [0-9]+ echoes in 10 s$'",
+            timeout=timedelta(seconds=20),
+        )
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qE '^wlan2 reached 02:00:00:00:05:00 [0-9]+ ms after it was asked'",
+            timeout=timedelta(seconds=30),
+        )
+    finally:
+        machine.succeed("ip netns exec air tc qdisc del dev wlan0 root")
+        answer = wifid.acting({"act": "calling", "on": False})
+        assert answer == {"id": 1, "done": True}, answer
+    wifid.holds_address("10.42.0.")
+    machine.succeed("ping -c 1 -W 2 10.42.0.1")
     machine.succeed("systemctl stop lantern-two")
     machine.wait_until_succeeds(
         "s=$(wpa_cli -i wlan2 status)"
