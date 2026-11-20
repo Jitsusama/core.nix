@@ -778,7 +778,8 @@ mod tests {
         }
     }
 
-    /// A context for `line`, its shared flags taken as main takes them.
+    /// A context for `line` with its shared flags taken, as a body gets
+    /// once the kit has answered help and refused any unknown word.
     fn context_of(line: &[&str]) -> Context {
         let args = line.iter().map(|word| (*word).to_owned()).collect();
         Context::new(Environment::of([false; 3], &[]), args, &[])
