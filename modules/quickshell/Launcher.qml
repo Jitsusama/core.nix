@@ -8848,7 +8848,12 @@ Scope {
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
                 const id = drawn.length + 1;
+                // `cutDown` where a box it's in cut its letters' top or
+                // foot, as a list's box cuts a row it holds in part, so a
+                // check can say a row was drawn cut from what's drawn
+                // rather than from the rule that placed it.
                 drawn.push({ id, ink, room: own, within, from: here,
+                    cutDown: ink.height < inked.height - 0.5,
                     said: item.text.replace(/\s+/g, " ").slice(0, 60) });
                 holding = within.concat([id]);
             }

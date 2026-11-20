@@ -4258,6 +4258,7 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     shell.launcher_until(rested)
     opened = shell.showing()
     assert rested(opened), parts(opened)
+    none_drawn_cut(shell, "opened")
     count = opened["count"]
     assert count > 2 * opened["drawnRows"], parts(opened)
     for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
@@ -4273,6 +4274,90 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
         shell.launcher_until(landed)
         shown = shell.showing()
         assert landed(shown), (key, *parts(shown))
+        none_drawn_cut(shell, key)
+    shell.close_launcher()
+
+
+def none_drawn_cut(shell: Shell, where: str) -> None:
+    """Fail, naming them, where the card's list's box cuts any row's words at top or foot.
+
+    Read from where each text's letters are drawn and what clips them (Launcher.qml's
+    drawnTexts), not from the rule that placed the view, so a row the rule took for whole and
+    drew cut is caught. A row's name reading on is clipped across, never down, so it's no cut.
+    """
+    cut = rows_drawn_cut(shell)
+    assert cut == [], f"{where}: drawn cut: {cut}"
+
+
+def rows_drawn_cut(shell: Shell) -> list[str]:
+    """Give the words of the card's rows that its list's box cuts at their top or foot."""
+    card = json.loads(shell.as_account(shell.ipc("drawnTexts")))[0]
+    listed = [text for text in card if "/QQuickListView" in text["from"]]
+    assert listed, f"no row's words were drawn: {card}"
+    return [text["said"] for text in listed if text["cutDown"]]
+
+
+def home_network_in_normal(shell: Shell) -> None:
+    """Open the Home Network's list, a gap above each eero, rested whole, and go to normal."""
+    shell.answer("eero")
+    shell.launcher_until(functools.partial(selecting, "Home Network"))
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Study" in shown["rows"] and shown["restsOnARow"])
+    shell.normal()
+
+
+def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) -> None:
+    """The wheel leaves the Home Network's list on a row's top, no row drawn cut at its foot.
+
+    The wheel moves the view by pixels, so it stops anywhere; the list then rests on the row
+    the view stopped in, as a step does (Launcher.qml's onMovementEnded).
+    """
+    home_network_in_normal(shell)
+    card = shell.showing()["card"]
+    wlrctl = os.environ["WLRCTL"]
+    shell.as_account(f"{wlrctl} pointer move -100000 -100000")
+    middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
+    shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
+    # Down by less than two rows, so the view stops inside one, then back up the same.
+    for by in [70, -70]:
+        was = shell.showing()["scrolled"]
+        # Said, so a wait that runs out names which way the wheel went and from where.
+        print(f"the wheel by {by} from {was}")
+        shell.as_account(f"{wlrctl} pointer scroll {by} 0")
+
+        def rested(shown: Json, was: int = was, by: int = by) -> bool:
+            return bool(
+                (shown["scrolled"] - was) * by > 0 and shown["restsOnARow"] and shown["cut"] == []
+            )
+
+        shell.launcher_until(rested)
+        # Read again once it's stood, so a view the wheel only passed through doesn't count.
+        time.sleep(0.5)
+        shown = shell.showing()
+        assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
+        none_drawn_cut(shell, f"the wheel by {by}")
+    shell.close_launcher()
+
+
+def test_the_home_network_rests_whole_again_once_its_find_is_gone(shell: Shell) -> None:
+    """A find in the Home Network keeps the old rule, and taking it away gives the whole row.
+
+    A find drops headings and sets its own rows, so the list rests whole only on the place's
+    own list (Headings.restsWhole); once the letters are gone, it's that list again.
+    """
+    home_network_in_normal(shell)
+    whole = shell.showing()["count"]
+    shell.type_in("st")
+    shell.launcher_until(lambda shown: shown["count"] < whole)
+    for _ in "st":
+        shell.send_key("backspace")
+    shell.launcher_until(
+        lambda shown: shown["typed"] == "" and shown["count"] == whole and shown["restsOnARow"]
+    )
+    shell.normal()
+    shell.send_chars("G")
+    shell.launcher_until(lambda shown: shown["current"] == whole - 1 and shown["cut"] == [])
+    none_drawn_cut(shell, "after the find, at the foot")
     shell.close_launcher()
 
 
