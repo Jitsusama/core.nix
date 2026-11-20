@@ -897,8 +897,17 @@ QtObject {
             "window:org.gnome.Evolution");
         check(failures, "and whole while they are",
             Presented.keyShown("window:kitty:~/src", true), "window:kitty:~/src");
-        check(failures, "and any other row's key is said whole",
+        check(failures, "and the launcher's own ids are said whole",
             Presented.keyShown("place:emoji", false), "place:emoji");
+        check(failures, "but any other key only by its kind, as a network's name is",
+            Presented.keyShown("wifi:Harbour House", false), "wifi");
+        check(failures, "a row named but with no key says nothing of it with reports off",
+            Presented.rowShown({ name: "Re: my offer" }, false), "");
+        check(failures, "and its name while they're on",
+            Presented.rowShown({ name: "Address" }, true), "Address");
+        check(failures, "a row's key is what's said of a row that has one",
+            Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
+            "window:kitty");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

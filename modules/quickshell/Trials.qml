@@ -139,7 +139,8 @@ Scope {
     function drawerTimed(key, drawn, parts) {
         if (Trials.felt(drawn))
             console.info(`launcher: drawer for ${Presented.quoted(key)} took ${drawn} ms`
-                + ` to its frame, ${parts.making} ms making${Trials.makingSplit(parts.making, parts.split)},`
+                + ` to its frame, ${parts.making} ms making`
+                + `${Trials.makingSplit(parts.making, parts.split)},`
                 + ` ${parts.waiting} waiting for its frame,`
                 + ` ${parts.drawing} drawing it, ${parts.came}`);
     }

@@ -25,6 +25,8 @@ const joiner = 0x2060;
 const zeroWidth = 0x200b;
 const highFirst = 0xd800;
 const highLast = 0xdbff;
+const lowFirst = 0xdc00;
+const lowLast = 0xdfff;
 
 // A text as it's searched: what's passed over taken out, in lower case
 // unless `byCase`, with where each of its letters starts and ends in the
@@ -50,14 +52,18 @@ function seen(text, byCase) {
 // holds a hyphenated name, and making, testing and lowering each letter of
 // it alone took a median 56 ms a key over its parts, in Qt's engine, where
 // read by code they take 10 (2026-11-20). A pair of units is one letter, so
-// each of the two stands where the pair does.
+// each of the two stands where the pair does; a half with no other half
+// after it, as a title cut mid-pair leaves, is a letter of its own, as
+// seenByLetter reads it, so what follows keeps its place.
 function keptUnits(text) {
     const starts = [];
     const ends = [];
     for (let unit = 0; unit < text.length; unit++) {
         const code = text.charCodeAt(unit);
         if (code !== joiner && code !== zeroWidth) {
-            const paired = code >= highFirst && code <= highLast && unit + 1 < text.length;
+            const next = text.charCodeAt(unit + 1);
+            const paired = code >= highFirst && code <= highLast && next >= lowFirst
+                && next <= lowLast;
             const end = paired ? unit + 2 : unit + 1;
             starts.push(unit);
             ends.push(end);

@@ -1124,7 +1124,9 @@ in
       Whether the shell writes what it does to the journal, a line for each,
       such as a surface drawn or taking the keys, a notice held back, or the
       launcher's state. The desktop test turns it on and waits on these lines
-      rather than guessing how long something takes.
+      rather than guessing how long something takes. While it's on, the
+      launcher's timing lines name each row whole, so window titles, which
+      may be a mail's subject or a document's name, go to the journal too.
     '';
   };
 

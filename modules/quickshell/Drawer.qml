@@ -1094,8 +1094,16 @@ Floating {
         keepCursor();
     }
     // What a part laid under the run moves nowhere, as its lines were last
-    // read: all but what follows the run.
+    // read: all but what follows the run. None once the parts have moved
+    // since, as the page laid out before the going-in frame moves them,
+    // since pieces kept from before would then sit where the parts were,
+    // and the frame's partsMoved, reading where they stood from the last
+    // read, would never move them back.
     function keptAbove() {
+        const was = laidAt.parts;
+        const now = runPartsBox.mapToItem(column, 0, 0);
+        if (was && (now.x !== was.x || now.y !== was.y))
+            return null;
         const moved = new Set(actsShown.texts().concat(foldShown.texts()));
         return new Map(Array.from(laidPieces.of).filter(([text]) => !moved.has(text)));
     }
@@ -1243,10 +1251,9 @@ Floating {
         // laid, as G does each time, lays the rest whole (DrawerPage.runStep).
         let parts = 0;
         for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
-            const reach = Page.runReach(moved, end,
-                { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top });
-            const step = Page.runStep(reach,
-                { parts, quiet: runQuiet, onEnd: moved.line >= end });
+            const step = Page.runStep(moved, end,
+                { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top },
+                { parts, quiet: runQuiet });
             if (step === "whole")
                 layWhole();
             else if (step === "show")

@@ -418,7 +418,8 @@ DRAWN_IN = "Machine"
 # A drawer's line as the shell says it once niri presented it (launcher/Presented.js), how it
 # came last but for the screen it was shown on.
 DRAWER_PRESENTED = re.compile(
-    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: (.*), ([^,;]+)(?:; on .*)?$'
+    r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: (.*), ([^,;]+)'
+    r"(?:; on .*)?$"
 )
 
 

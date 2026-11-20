@@ -271,16 +271,36 @@ function intoKept(keyAt, into, whole) {
     return whole || keyAt - into < intoSoon ? into : undefined;
 }
 
+// The kinds of key whose rest is an id of the launcher's own, which says
+// nothing a person or another program wrote, so it's said whole.
+const keysOwn = ["place:", "category:"];
+
 // A row's key as a line in the journal may say it: whole where `whole`,
-// as while reports are on, but a window's without its title, which may
-// be a mail's subject or a document's name, so `window:<app>:<title>`
-// is said as `window:<app>`.
+// as while reports are on; otherwise only its kind, since most keys carry
+// what someone else wrote, a network's name, a program's or a window's
+// title, which may be a mail's subject. The launcher's own ids are said
+// whole, and a window's app, `window:<app>:<title>` said as
+// `window:<app>`. A new kind says nothing more until it's named here.
 function keyShown(key, whole) {
-    if (whole || !key.startsWith("window:")) {
+    if (whole || keysOwn.some(own => key.startsWith(own))) {
         return key;
     }
-    const app = key.indexOf(":", "window:".length);
-    return app < 0 ? key : key.slice(0, app);
+    if (key.startsWith("window:")) {
+        const app = key.indexOf(":", "window:".length);
+        return app < 0 ? key : key.slice(0, app);
+    }
+    const kind = key.indexOf(":");
+    return kind < 0 ? "" : key.slice(0, kind);
+}
+
+// The row a drawer is for as the journal may say it: by its key, or by
+// its name where it has none, as a place's own answers have, but only
+// while reports are on, since a name is what a source wrote.
+function rowShown(row, whole) {
+    if (whole) {
+        return row?.key || row?.name || "";
+    }
+    return keyShown(row?.key || "", false);
 }
 
 // The drawers presented since the launcher opened, a line a place, as a
