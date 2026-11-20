@@ -150,19 +150,22 @@ def awake(shell: Shell) -> Iterator[None]:
     with the launcher up would leave the cat held for the next, so each
     closes it, to fail alone. The cat is held from the card's first frame,
     while it's still opening, when the launcher doesn't yet say it's open,
-    so the opening is waited out first. One that never ends is closed as
-    it stands, a toggle unopening it, and the wait's failure is still said.
+    so the opening is waited out first. One that never ends is unopened by
+    a toggle, and then closed if it had already opened, as the launcher's
+    own shut does; the wait's failure is still said.
     """
     wake(shell)
     yield
     try:
         shell.launcher_until(lambda shown: not shown["opening"])
     finally:
-        if shell.showing()["opening"]:
-            print("the launcher was left opening, so it's closed for the next test")
-            shell.as_account(shell.ipc("toggle"))
-            shell.launcher_until(lambda shown: not shown["opening"] and not shown["open"])
-        shell.launcher_left_closed()
+        try:
+            if shell.showing()["opening"]:
+                print("the launcher was left opening, so it's unopened for the next test")
+                shell.as_account(shell.ipc("toggle"))
+                shell.launcher_until(lambda shown: not shown["opening"], timedelta(seconds=10))
+        finally:
+            shell.launcher_left_closed()
 
 
 def wake(shell: Shell) -> None:
@@ -170,9 +173,11 @@ def wake(shell: Shell) -> None:
 
     Asleep, it keeps its place as a workspace goes, so a case that runs past
     its 45 s doze on a loaded builder wakes it again before each move it
-    watches (2026-11-20, cat-niri10). A move made only to reach a workspace,
-    and one made straight after another, goes without: the cat isn't
-    watched on the first, and has just moved before the second.
+    watches (2026-11-20, cat-niri10). Two go without: a case's first move,
+    made only to reach a workspace a window then opens on, seconds after
+    the case's own wake; and one made straight after another, since a wake
+    between them would let the first finish. The doze is niri's idle
+    timer, so the moves themselves don't keep the cat awake.
     """
     since = shell.mark()
     shell.send_key("F24")
@@ -1177,6 +1182,7 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)
+    wake(shell)
     first = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, first)
