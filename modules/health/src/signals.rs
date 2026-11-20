@@ -130,7 +130,7 @@ fn catch(signals: &[c_int]) -> io::Result<PipeReader> {
 extern "C" fn heard(signal: c_int) {
     // SAFETY: errno is this thread's, and kept for the code the catch
     // interrupted, which may be about to read it.
-    let errno = unsafe { *errno() };
+    let kept = unsafe { *errno() };
     if STOPPED.swap(true, Ordering::SeqCst) {
         // SAFETY: both are safe within a catch; the signal's own action
         // restored and raised ends the process.
@@ -143,7 +143,7 @@ extern "C" fn heard(signal: c_int) {
     // SAFETY: write is safe within a catch, and a pipe full only fails it.
     unsafe { libc::write(CAUGHT.load(Ordering::SeqCst), (&raw const number).cast(), 1) };
     // SAFETY: as above.
-    unsafe { *errno() = errno };
+    unsafe { *errno() = kept };
 }
 
 /// This thread's errno.
