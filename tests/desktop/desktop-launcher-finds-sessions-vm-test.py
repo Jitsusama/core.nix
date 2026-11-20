@@ -1029,7 +1029,15 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
             ' wtype "$(seq -f "w%.0f " $((i+1)) $((i+10)) | tr -d "\\n")"; i=$((i+10));'
             " echo $i > ~/typing-count; done; wtype -k Return"
         )
-        desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
+        # The count starts at none typed, written before the typing starts:
+        # it was written only once the first ten words were, and the session
+        # handed over showed in about 3 s, before a loaded builder's first
+        # wtype ended, so reading the count failed first in each of the seven
+        # failed runs from 17 to 19 Nov, and in five the subtests after it
+        # failed too.
+        desktop.as_account(
+            f"echo 0 > ~/typing-count; setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &"
+        )
         record_the_screen(desktop)
         # As a quest's spawn hands it over: the one that asked, no focus asked for.
         aside = {"id": "01c7-aside", "cwd": "/home/jitsusama/aside", "from": "01c7-sender"}
@@ -1060,6 +1068,9 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         assert set(workspaces) <= {notes["workspace_id"]}, workspaces
         assert changed == [], f"the window Joel types in changed in frames {changed}"
     finally:
+        # The typer is ended, not only told to stop after its next ten words,
+        # so a case that fails mid-way leaves nothing typing into the next.
+        desktop.as_account("pkill -f 'typing-don[e]'; pkill -x wtype; true")
         desktop.as_account(
             "touch ~/typing-done; pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
             f" pkill -f 'sleep 60[0]'; niri msg action close-window --id {notes['id']};"
