@@ -268,6 +268,29 @@ fn a_run_that_ends_in_the_quiet_tells_the_short_spells_it_kept() {
 }
 
 #[test]
+fn a_stop_that_cant_write_the_day_ends_the_run_saying_so() {
+    // A day never writable, as on a full disk, a busy journal so it has
+    // lines to write, and a stop past three ticks, so the stop's write
+    // fails as any end's would.
+    let Outcome { result, .. } = Ran {
+        held_for: SETTLED * 2,
+        step: EVERY,
+        busy: true,
+        unwritable_for: usize::MAX,
+        stops: 8,
+        ..Ran::default()
+    }
+    .outcome();
+    let error = result.map_err(|error| error.to_string());
+    assert!(
+        error
+            .as_ref()
+            .is_err_and(|error| error.starts_with("the day couldn't be written as health ended")),
+        "a stop that couldn't write the day ended the run as if it had: {error:?}"
+    );
+}
+
+#[test]
 fn a_stop_ends_a_run_at_once_telling_the_short_spells_it_kept() {
     // As a restart or a reboot stops health: its followers still hold
     // their senders, and the second spell is a minute old, well within
