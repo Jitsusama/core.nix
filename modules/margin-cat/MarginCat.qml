@@ -17,8 +17,9 @@
 // a hop or a short wander and back, on the same walk. Each wait is one
 // timer, never a poll, a key ends any play at once, and it keeps still in
 // Do Not Disturb, on a call, locked, and where no screen draws it; while
-// the launcher's card is up, a walk under way holds where it got to, too
-// (MarginCatScreen.qml). This is
+// the launcher's card is up, a walk under way holds where it got to, too,
+// but for what Joel's hand sets off, a drop, fetch or chase, which runs on
+// beside the card (MarginCatScreen.qml). This is
 // the scene every screen shares; each screen's cat, where it sits and how
 // it moves and is drawn, is MarginCatScreen.qml's.
 pragma ComponentBehavior: Bound

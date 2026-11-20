@@ -397,7 +397,10 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     before = steps(shell, since)
     said, _ = shell.said_since(since)
     # A walk run on under the card is the cat's fault, said before the case's timing is, since
-    # such a walk ends under the card as one done before it would.
+    # such a walk ends under the card as one done before it would; a step it says it took held
+    # is too, from the card's rise, before the launcher said it was ready.
+    held_steps = [step for step in steps(shell, toggled) if step.get("stilled")]
+    assert not held_steps, f"the cat stepped while held under the launcher: {held_steps[:3]}"
     sat = [report for report in under if report.startswith(SITS)]
     assert not sat, f"the cat walked on under the launcher: {sat[:3]}"
     sat_last = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)][-1:]
