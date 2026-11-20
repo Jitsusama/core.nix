@@ -156,11 +156,26 @@ pub fn git_in(tree: &std::path::Path, args: &[&str]) {
     assert!(ran.status.success(), "git {args:?} failed: {ran:?}");
 }
 
-/// A stand-in for wl-copy in the foreground: what it's given goes to its
-/// file, and it holds on until it's ended, as wl-copy holds the clipboard.
+/// A stand-in for Passwords' wl-copy in the foreground: it says it's ready,
+/// what it's given goes to its file, it says it holds it, and it holds on
+/// until it's ended, as wl-copy holds the clipboard. A test sets how it
+/// strays: `COPIER_WAITS` has it wait a second before saying it's ready,
+/// noting in `.early` a byte it was given before then; `COPIER_SILENT` has
+/// it never say it's ready; and `COPIER_REFUSES` has it refuse the copy for
+/// that reason, as Passwords' wl-copy refuses one it can't hold whole.
 const COPIER: &str = r#"
+if [ -n "$COPIER_WAITS" ]; then
+  sleep 1
+  dd iflag=nonblock bs=1 count=1 of="$COPIED.early" 2>/dev/null
+fi
+[ -n "$COPIER_SILENT" ] || echo ready
 cat > "$COPIED"
 printf '%s\n' "$*" > "$COPIED.flags"
+if [ -n "$COPIER_REFUSES" ]; then
+  echo "wl-copy: refused a sensitive copy: $COPIER_REFUSES" >&2
+  exit 1
+fi
+echo held
 while :; do sleep 1; done
 "#;
 
