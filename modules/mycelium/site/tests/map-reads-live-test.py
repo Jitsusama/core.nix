@@ -1150,12 +1150,14 @@ def test_every_cell_is_drawn_until_too_small_to_read(mycelium_opened: Opened) ->
 
 
 # One cell of each kind node.json holds: a receptor, a moving session
-# leading a network, and a quiet one working in it.
+# leading a network, a stuck one leading another, and a quiet one that
+# leads none.
 SENSOR = f"c:{FED_RECEPTOR}"
 LEADER = f"c:{FED_CELL}"
+STUCK_LEADER = f"c:{GROWN_CELL}"
 WORKER = "c:TERN03"
 MARKS = "document.getElementById('map-ground').marksOf({!r})"
-LOOKED = "(look) => {{ document.documentElement.dataset.theme = look; }}"
+LOOKED = "(look) => { document.documentElement.dataset.theme = look; }"
 
 type Mark = dict[str, str | float | None]
 
@@ -1189,16 +1191,25 @@ def test_each_kind_of_cell_is_painted_apart(
 ) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
+    opened_in = next(m for m in marks_of(page, WORKER) if m["cls"] == "m-quiet")["stroke"]
     page.evaluate(LOOKED, look)
     worker = marks_of(page, WORKER)
     dot = next((mark for mark in worker if mark["cls"] == "m-quiet"), None)
     assert dot, f"the quiet worker {WORKER} was drawn with no quiet dot: {worker}"
     gold = dot["stroke"]
     assert gold, f"the worker's quiet dot had no ink: {worker}"
+    # The page opens dark, so the light look must have changed the inks,
+    # or every comparison below would only read the dark ones again.
+    assert (gold == opened_in) == (look == "dark"), (
+        f"the {look} look painted the dot {gold}, opened in {opened_in}"
+    )
     # A session's dot is its gold, which is most of what shows of a cell
     # a few pixels across, so a receptor carries none of it, quiet or
     # reading.
     quiet = marks_of(page, SENSOR)
+    assert any(mark["cls"] == "m-sensed" and mark["stroke"] for mark in quiet), (
+        f"a quiet receptor was drawn with no dot: {quiet}"
+    )
     assert gold not in paints(quiet), f"a quiet receptor was painted in a session's ink: {quiet}"
     mycelium_node.tell("cell", changed=[{"key": f"cell:{FED_RECEPTOR}", "state": "reading"}])
     # Waited on by the quiet dot going, whatever the reading one is drawn as.
@@ -1216,6 +1227,17 @@ def test_each_kind_of_cell_is_painted_apart(
     assert float(led["width"] or 0) > float(worked["width"] or 0), (
         f"the leader's membrane was no heavier than a worker's: {led}, {worked}"
     )
+    # A leader that is stuck keeps the ring that says so.
+    stuck = membrane_of(marks_of(page, STUCK_LEADER))
+    assert stuck["stroke"] not in {gold, worked["stroke"]}, (
+        f"a stuck leader lost its stuck ring: {stuck}"
+    )
+    # The drawer's rows mark a leader as the map does.
+    page.evaluate("location.hash = '#net=orchestration.skiff1'")
+    expect(
+        page.locator(f".row[data-go='cell={FED_CELL}'] .glyph .m-leads").first,
+        "the drawer's row didn't mark the leader",
+    ).to_be_attached()
 
 
 def test_a_line_thins_as_the_map_steps_out_past_its_own_size(mycelium_opened: Opened) -> None:
