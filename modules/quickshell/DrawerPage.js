@@ -165,6 +165,33 @@ function shifted(pieces, dx, dy) {
         { x: piece.x + dx, top: piece.top + dy, base: piece.base + dy }));
 }
 
+// The parts shown, each with its pieces as last read, moved by what their
+// box moved since that read, `was`, to `now`. None with no part shown, no
+// read, or a part that wasn't read, since the rest would then be kept
+// without it and its lines lost.
+function partsKept(pieces, texts, was, now) {
+    if (!was || texts.length === 0)
+        return null;
+    const kept = new Map();
+    for (const text of texts) {
+        const read = pieces.get(text);
+        if (!read)
+            return null;
+        kept.set(text, shifted(read, now.x - was.x, now.y - was.y));
+    }
+    return kept;
+}
+
+// The pieces a part laid under the run leaves where they were read: all
+// but those it moves. None once the parts' box has moved since its last
+// read, `was`, to `now`, since pieces kept then would sit where the parts
+// were, and nothing reading from that read would ever move them back.
+function keptStill(pieces, moved, was, now) {
+    if (was && (now.x !== was.x || now.y !== was.y))
+        return null;
+    return new Map(Array.from(pieces).filter(([text]) => !moved.has(text)));
+}
+
 // Whether a view's top cuts a line partway, which Vim's never does, its
 // topline always a whole line. An eyebrow or a title isn't a pitch tall,
 // so a pitch can fall inside one (VKCF3Z, 2026-11-05: "Deploy log" as

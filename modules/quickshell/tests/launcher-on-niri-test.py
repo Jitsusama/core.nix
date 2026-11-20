@@ -2789,9 +2789,9 @@ def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> N
     said = said_once(shell, since, DRAWERS_SAID)
     lines = [line for line in said.splitlines() if "drawer" in line and "presented" in line]
     assert lines, f"no drawer walked in Network was said presented, of {rows}"
-    # A drawer that loses its row is said as `row` now, never as nothing, so that's what a
-    # walk whose rows all have names must not say.
-    unnamed = [line for line in lines if 'drawer for "row"' in line]
+    # A drawer that loses its row is said as `row` now, as it once was as nothing, so a walk
+    # whose rows all have names must say neither.
+    unnamed = [line for line in lines if any(f"drawer for {no}" in line for no in ('"row"', '""'))]
     assert not unnamed, f"drawers said with no row: {unnamed}"
     in_home = [line for line in lines if " in home " in line]
     assert not in_home, f"Network's drawers were tallied in home: {in_home}"

@@ -236,6 +236,17 @@ function intoSaid(one) {
         + `${one.laid === 1 ? "line" : "lines"} laid first${screensSaid([one])}`;
 }
 
+// A slow drawer's time from the work begun for it to the frame that drew
+// it, said as a slow key is, by its row's key, quoted so a title in it
+// can't end the line early or forge another: `parts` what of it went on
+// making it, `split` what of that went on which, as Trials.makingSplit
+// says it, then waiting for its frame and drawing it.
+function drawerTook(key, drawn, parts, split) {
+    return `launcher: drawer for ${quoted(key)} took ${drawn} ms to its frame,`
+        + ` ${parts.making} ms making${split}, ${parts.waiting} waiting for its frame,`
+        + ` ${parts.drawing} drawing it, ${parts.came}`;
+}
+
 // A row's key quoted as JSON, so a quote or a line break in a row's name
 // can't end the line early or forge another, with the line ends JSON
 // leaves raw escaped too, since a reader may split on any of them.

@@ -133,16 +133,12 @@ Scope {
     // each place's drawer comes can be read from Joel's own use (2026-11-10:
     // "as fast as thought"). `parts` says how much of it was the launcher
     // making it, what of that went on which (Trials.makingSplit), then
-    // waiting for its frame to begin, then drawing it. Its key is quoted as
-    // the drawer's other lines are (Presented.quoted), so a window's title in
-    // it can't end the line early or forge another.
+    // waiting for its frame to begin, then drawing it, its key quoted as the
+    // drawer's other lines are (Presented.drawerTook).
     function drawerTimed(key, drawn, parts) {
         if (Trials.felt(drawn))
-            console.info(`launcher: drawer for ${Presented.quoted(key)} took ${drawn} ms`
-                + ` to its frame, ${parts.making} ms making`
-                + `${Trials.makingSplit(parts.making, parts.split)},`
-                + ` ${parts.waiting} waiting for its frame,`
-                + ` ${parts.drawing} drawing it, ${parts.came}`);
+            console.info(Presented.drawerTook(key, drawn, parts,
+                Trials.makingSplit(parts.making, parts.split)));
     }
 
     // The answers' time, as the answers asked, the rows placed and the list
