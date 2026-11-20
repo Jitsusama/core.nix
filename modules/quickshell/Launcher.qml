@@ -85,6 +85,7 @@ import "launcher/Joined.js" as Joined
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
 import "launcher/Wanted.js" as Wanted
@@ -11112,6 +11113,10 @@ Scope {
     // meets after each switch (Y2YBTS, 2026-11-10: the start is slow), so
     // it says so, and the keeps-pace check times it under load.
     property real openAsked: -1
+    // Where the heap stood against the collector as the opening was asked,
+    // once its room was left, so an opening the collector stalled says which
+    // limit it met (Collector.standingSaid). Read without walking the heap.
+    property var openAskedHeap: null
     property var openParts: ({})
     property real openWorked: 0
     property var openingsTimed: []
@@ -11120,6 +11125,7 @@ Scope {
         toldFromOutside += 1;
         if (!open && !opening) {
             Heap.leaveRoom(openingRoom);
+            openAskedHeap = Heap.standing();
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
@@ -12974,8 +12980,9 @@ Scope {
             ? `, ${Math.round(stallAt - feltFrom)} ms in: `
                 + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
             : "";
-        const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
+        const collecting = Collector.collectorSaid(feltTicks.stallCollected,
             Heap.collected() - feltCollectedFrom)
+            + Collector.standingSaid(feltTicks.stallCollected, openAskedHeap)
             + Thread.said(feltTicks.stall, feltTicks.stallThread, "the stall");
         feltSpans = [];
         console.info(usable >= 0

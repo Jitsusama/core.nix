@@ -33,6 +33,14 @@ public:
     // starts. Read after a collection, live is what survived it.
     Q_INVOKABLE QVariantMap weigh() const;
 
+    // Where the heap stands against the collector, as weigh() says it but
+    // without walking a chunk, so it's cheap enough to read as an opening
+    // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
+    // in megabytes, and `collecting`, whether a collection is under way
+    // between its slices. Openings whose longest stall the collector ran
+    // in say it, since which limit they met isn't otherwise known.
+    Q_INVOKABLE QVariantMap standing() const;
+
     // How many milliseconds Qt's collector has spent collecting since the
     // module was made, its slices between other work included, so a key
     // timed from one reading to the next says how much of it was the

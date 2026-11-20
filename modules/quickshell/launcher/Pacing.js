@@ -423,17 +423,6 @@ function feltTicked(felt, now, pace, clocks = {}) {
             : felt.stallThread };
 }
 
-// What the collector took of an opening, in its longest stall and in all,
-// said after the stall's parts, or nothing when it took under a
-// millisecond.
-function collectorSaid(inStall, inAll) {
-    const all = Math.round(inAll);
-    if (all < 1) {
-        return "";
-    }
-    return `; the collector ${Math.round(inStall)} ms of the stall, ${all} of the opening`;
-}
-
 // Each frame's own work while an opening is felt, as spans for
 // stallSpent. Its rows are laid out as ListView polishes it, from the
 // first row begun to the last made. Its sync runs from its animating,

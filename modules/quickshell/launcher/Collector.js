@@ -1,0 +1,32 @@
+.pragma library
+
+// What an opening's line says of Qt's collector, from the counts
+// Pacing.feltTicked keeps and Heap gives (modules/quickshell/heap).
+
+// What the collector took of an opening, in its longest stall and in all,
+// said after the stall's parts, or nothing when it took under a
+// millisecond.
+function collectorSaid(inStall, inAll) {
+    const all = Math.round(inAll);
+    if (all < 1) {
+        return "";
+    }
+    return `; the collector ${Math.round(inStall)} ms of the stall, ${all} of the opening`;
+}
+
+// Where the heap stood against the collector as the opening was asked, as
+// Heap.standing says it, said after the collector's part when it took a
+// millisecond or more of the longest stall, or nothing. Collections ran
+// inside 19 of 670 of Joel's openings' stalls, 57 to 136 ms each, and
+// were most of the slowest, but which limit started them, the chunks', the
+// strings' outside the heap, or one begun while the launcher was shut,
+// went unsaid (2026-11-20).
+function standingSaid(inStall, stood) {
+    if (Math.round(inStall) < 1 || !stood || stood.chunks === undefined) {
+        return "";
+    }
+    const under = stood.collecting ? ", a collection under way" : "";
+    return `; at the ask, chunks ${Math.round(stood.chunks)} of`
+        + ` ${Math.round(stood.collectsAt)} MB and outside ${Math.round(stood.outside)} of`
+        + ` ${Math.round(stood.collectsOutsideAt)}${under}`;
+}

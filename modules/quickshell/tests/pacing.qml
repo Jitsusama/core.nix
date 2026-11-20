@@ -22,6 +22,7 @@
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
+import "Collector.js" as Collector
 import "Flash.js" as Flash
 import "Makings.js" as Makings
 import "Pacing.js" as Pacing
@@ -232,10 +233,22 @@ QtObject {
         check(failures, "a shorter gap's collecting isn't the stall's",
             Pacing.feltTicked(felt, 160, pace, { collected: 60 }).stallCollected, 30);
         check(failures, "it's said after the stall's parts, with the opening's",
-            Pacing.collectorSaid(felt.stallCollected, 38.4),
+            Collector.collectorSaid(felt.stallCollected, 38.4),
             "; the collector 30 ms of the stall, 38 of the opening");
         check(failures, "an opening the collector didn't reach says nothing of it",
-            Pacing.collectorSaid(0, 0.4), "");
+            Collector.collectorSaid(0, 0.4), "");
+        const stoodAtAsk = { chunks: 300.4, collectsAt: 331.6, outside: 27.2,
+            collectsOutsideAt: 56, collecting: false };
+        check(failures, "a stall the collector ran in says where the heap stood at the ask",
+            Collector.standingSaid(30, stoodAtAsk),
+            "; at the ask, chunks 300 of 332 MB and outside 27 of 56");
+        check(failures, "and says a collection was under way as it was asked",
+            Collector.standingSaid(30, Object.assign({}, stoodAtAsk, { collecting: true })),
+            "; at the ask, chunks 300 of 332 MB and outside 27 of 56, a collection under way");
+        check(failures, "a stall the collector didn't run in says nothing of the heap",
+            Collector.standingSaid(0.4, stoodAtAsk), "");
+        check(failures, "nor does one with no standing read",
+            Collector.standingSaid(30, null) + Collector.standingSaid(30, {}), "");
         check(failures, "a tick without a count keeps the last",
             Pacing.feltTicked(Pacing.feltBegun(0, { collected: 5 }), 16, pace).collected, 5);
     }

@@ -22,7 +22,9 @@
 // live and names a shape kept by its property names, but no key taken from
 // data. And what it says of jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
-// neither is more than what's resident. It exits 0 once all of it holds,
+// neither is more than what's resident. And where it stands, read without a
+// walk, is where weigh() says the collector starts, with none under way
+// once one has run to its end. It exits 0 once all of it holds,
 // and otherwise 1, saying what didn't. Long because each case reads one
 // engine's heap through the same helpers, in the one program linked with
 // Qt's private engine and jemalloc as the shell is: split, each part would
@@ -718,6 +720,44 @@ bool placesWhatMadeIt() {
     return !made.isError() && !odd.isError() && called && closed && hidden;
 }
 
+// Whether standing() says what weigh() does of where the collector starts,
+// without its walk, on a scattered heap left room, and says no collection
+// is under way once one has run to its end.
+bool standsAsWeighed() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = keepScattered(engine);
+    heap.leaveRoom(SMALL_ROOM_MB);
+    engine.collectGarbage();
+    const QVariantMap weighs = heap.weigh();
+    const QVariantMap stands = heap.standing();
+    const auto same = [&weighs, &stands](const char *name) {
+        const QString key = QString::fromLatin1(name);
+        return stands.contains(key) &&
+               std::abs(stands.value(key).toDouble() - weighs.value(key).toDouble()) < SAME_MB;
+    };
+    const bool agrees =
+        same("chunks") && same("collectsAt") && same("outside") && same("collectsOutsideAt");
+    const QVariant collecting = stands.value(QStringLiteral("collecting"));
+    const bool idle = collecting.typeId() == QMetaType::Bool && !collecting.toBool();
+    if (!agrees || !idle)
+        std::fprintf(stderr,
+                     "FAIL standing() says what weigh() does of the collector's limits, and no "
+                     "collection under way after one: chunks %.2f and %.2f MB, collecting at "
+                     "%.2f and %.2f MB, outside %.2f and %.2f MB collecting at %.2f and %.2f "
+                     "MB, collecting %s\n",
+                     stands.value(QStringLiteral("chunks")).toDouble(),
+                     weighs.value(QStringLiteral("chunks")).toDouble(),
+                     stands.value(QStringLiteral("collectsAt")).toDouble(),
+                     weighs.value(QStringLiteral("collectsAt")).toDouble(),
+                     stands.value(QStringLiteral("outside")).toDouble(),
+                     weighs.value(QStringLiteral("outside")).toDouble(),
+                     stands.value(QStringLiteral("collectsOutsideAt")).toDouble(),
+                     weighs.value(QStringLiteral("collectsOutsideAt")).toDouble(),
+                     qPrintable(collecting.toString()));
+    return agrees && idle;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -808,9 +848,11 @@ int main(int argc, char **argv) {
     const bool whole = leavesLargeRunsWhole();
     const bool census = namesWhatsKept();
     const bool placed = placesWhatMadeIt();
+    const bool stands = standsAsWeighed();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
-                   reckoned && ownLimits && follows && given && fits && whole && census && placed
+                   reckoned && ownLimits && follows && given && fits && whole && census &&
+                   placed && stands
                ? 0
                : 1;
 }
