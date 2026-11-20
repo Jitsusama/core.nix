@@ -1,5 +1,14 @@
 //! Every date an ask in the orchestrator's `asks.jsonl` was given, read for
 //! the slips measure.
+//!
+//! The list's keeper writes each date as an entry of the ask's `promised`,
+//! oldest first: `expected`, when it was due, and `given`, when it was set,
+//! each an RFC 3339 time with its offset. A step kept by its date before
+//! the ask moves on, such as an account sent ahead of its fix, gets `met`
+//! in the same form on its own entry, as on 18 November's
+//! `{"expected":"2026-11-19T21:00:00-05:00","given":"2026-11-19T18:28:31-05:00",
+//! "met":"2026-11-19T19:59:00-05:00"}`. An ask written again is read from
+//! its latest line, so the keeper carries `met` forward on each rewrite.
 
 use serde_json::Value;
 
@@ -15,6 +24,9 @@ pub struct Promise {
 
 /// Each date `ask` was given: its `promised`, oldest first, then its
 /// `expected` where that isn't the last promised, given at a time unknown.
+/// A `met` holds only on a date the ask has since moved on from, so its
+/// last date is kept by landing alone, and only when it came after its
+/// date was given, since a step can't be kept before it was promised.
 pub fn promised(ask: &Value) -> Vec<Promise> {
     let mut given: Vec<(Option<i64>, Option<i64>, Option<i64>)> = ask["promised"]
         .as_array()
@@ -35,11 +47,12 @@ pub fn promised(ask: &Value) -> Vec<Promise> {
     given
         .iter()
         .enumerate()
-        .filter_map(|(i, (date, _, met))| {
+        .filter_map(|(i, &(date, set, met))| {
+            let moved = given.get(i + 1).and_then(|(_, moved, _)| *moved);
             Some(Promise {
-                expected: (*date)?,
-                moved: given.get(i + 1).and_then(|(_, moved, _)| *moved),
-                met: *met,
+                expected: date?,
+                moved,
+                met: met.filter(|&met| moved.is_some() && set.is_none_or(|set| met >= set)),
             })
         })
         .collect()
