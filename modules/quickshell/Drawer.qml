@@ -328,8 +328,41 @@ Floating {
     // as much again to take down (the launcher lab, 2026-11-18). As far as
     // it's scrolled too, since the keys leaving keep the view where they
     // left it; at rest nothing else scrolls it, so a walk lays it once.
-    property bool runWhole: false
     readonly property int runMost: Figure.runMost(scrolled, tall, pitch)
+    // While the keys are in a run, its words keep the lines they had as
+    // the keys came in (`runHead`), and the rest is laid under them a part
+    // a turn, `runPart` lines each, in texts of their own (runParts),
+    // from the item the next begins on (`runNext`, -1 once it's whole).
+    // Laid whole at once, Emoji's 1,833 lines held the shell's thread some
+    // 850 ms, and a key typed just after going in waited a median 827 ms
+    // for its frame in the drawer lab (2026-11-19); each part is laid
+    // apart, never re-laying those above it. What the parts hold, their
+    // items and what they were laid from, nothing binds to.
+    property int runHead: 0
+    property int runNext: -1
+    readonly property int runPart: 40
+    readonly property var runRest: ({ items: [], from: "", wide: 0 })
+    property int runPartsLines: 0
+    property string runPartsSaid: ""
+    ListModel {
+        id: runParts
+    }
+    // While its rest is laid quietly (`runQuiet`), the parts are hidden and
+    // the drawer stands as its head alone, so nothing it shows moves and
+    // no frame is drawn for a part: each drawn one had niri compose every
+    // window again, and with 80 a key typed meanwhile was heard and shown
+    // late, a median 342 ms to its frame in the drawer lab, the margin cat
+    // moving beside it, and 102 without it (2026-11-19). Each part's lines
+    // are read aside as it's laid (`runQuietRead`), and the parts are shown
+    // at once with the last of them, or as soon as a key reads past the
+    // head (runShow).
+    property bool runQuiet: false
+    // Whether its rest is still to be laid, for the launcher to report: a
+    // property of its own, so the report is told only as it starts and
+    // ends, never of each part, for each it was told of forced a frame of
+    // nothing (Launcher.qml's showingTurnDue).
+    readonly property bool runLaying: runNext >= 0
+    readonly property var runQuietRead: ({ of: new Map() })
     // Whether its title and prose are shown whole (`whole: true`), as a
     // landing asking Joel something is: the title on as many lines as it
     // takes and the prose never cut, since it's one line by contract
@@ -398,7 +431,8 @@ Floating {
         const given = shown;
         const words = given?.body ?? "";
         if (given?.runs === true)
-            return itemsKept(words, bodyFace, wordsBox.width, runWhole ? 0 : runMost);
+            return itemsKept(words, bodyFace, wordsBox.width,
+                keys && runHead > 0 ? runHead : runMost);
         if (!laysProse(given))
             return words;
         const laid = laidFor(given);
@@ -408,7 +442,12 @@ Floating {
     }
     // How many lines Qt draws its words in, for the launcher to report: a
     // run laid as one is as many as bodySaid's, Qt wrapping none further.
-    readonly property int bodyLines: bodyText.lineCount
+    // A run's parts laid under its words count too, as they're drawn.
+    readonly property int bodyLines: bodyText.lineCount + (runQuiet ? 0 : runPartsLines)
+    // Its words as drawn, a run's parts with them once they're shown, for
+    // the launcher to report.
+    readonly property string bodyDrawn: runQuiet || runPartsSaid === "" ? bodySaid
+        : `${bodySaid}\n${runPartsSaid}`
     // Its groups of facts that hold any: a group with nothing to show
     // gives up its place, so a day with no weather or meeting leaves no
     // empty lines in the middle of the plate (docs/design.md, Space
@@ -650,8 +689,13 @@ Floating {
             // back into never says it went round before anything's sought.
             lastSought = null;
             landing = "";
-            runWhole = false;
+            runCut();
         }
+    }
+    // A search being typed reads every line, as Return's does.
+    onSeekingChanged: {
+        if (seeking !== "")
+            layWhole();
     }
     // Visual, as on a page: what it chooses by, "letters" or "lines", or
     // "" while it chooses nothing, which the launcher sets from its mode;
@@ -739,8 +783,14 @@ Floating {
     function flashStarts() {
         flash.restart();
     }
-    onShownChanged: relay()
-    onWidthChanged: relay()
+    onShownChanged: {
+        runRenew();
+        relay();
+    }
+    onWidthChanged: {
+        runRenew();
+        relay();
+    }
     Connections {
         target: view
         function onContentHeightChanged() {
@@ -752,8 +802,12 @@ Floating {
     function texts() {
         return [eyebrowText, timeText, secondsText, titleText]
             .concat(groupsShown.texts(), previewRows.texts(), factRows.texts(), [bodyText],
-                actsShown.texts(), foldShown.texts())
+                runTexts(), actsShown.texts(), foldShown.texts())
             .filter(text => text);
+    }
+    // A run's parts laid under its words, top to bottom.
+    function runTexts() {
+        return Array.from({ length: runPartTexts.count }, (_, at) => runPartTexts.itemAt(at));
     }
 
     // Every line of words it shows, top to bottom down its content: each
@@ -762,31 +816,55 @@ Floating {
     // them (`words`), where it starts across, and how many there are. Two
     // texts sharing a baseline, as a fact's name and its value, are one
     // line, read left to right. Each text shown is read from here on, its
-    // reader made at once, as a Loader makes it.
-    function lines() {
+    // reader made at once, as a Loader makes it. A text `kept` gives is
+    // taken as it was read last rather than read again: a run's parts and
+    // what stands above them, which a part laid under them moves nowhere.
+    // What each text gave is kept (`laidPieces`) for the next part.
+    readonly property var laidPieces: ({ of: new Map() })
+    function lines(kept = null) {
         const pieces = [];
+        const read = new Map();
         for (const text of texts()) {
-            if (!text.visible)
-                continue;
-            text.reading = true;
-            const words = text.reader;
-            if (!words || words.length === 0)
-                continue;
-            for (let at = 0; at < words.lineCount; at++) {
-                const step = text.leading > 0 ? text.leading
-                    : words.contentHeight / words.lineCount;
-                const y = words.drop + at * step + 1;
-                const from = words.positionAt(0, y);
-                const next = at + 1 < words.lineCount ? words.positionAt(0, y + step)
-                    : words.length;
-                const box = words.positionToRectangle(from);
-                const place = words.mapToItem(column, box.x, box.y);
-                pieces.push({ text, words, from, y,
-                    length: words.getText(from, next).replace(/\s+$/, "").length,
-                    x: place.x, top: place.y, height: box.height,
-                    base: place.y + words.baselineOffset, caps: words.caps });
-            }
+            const these = kept?.get(text) ?? piecesOf(text);
+            read.set(text, these);
+            for (const piece of these)
+                pieces.push(piece);
         }
+        laidPieces.of = read;
+        return linesOf(pieces);
+    }
+    // Every line's piece of one text, its reader made to read them: none of
+    // one hidden, but for a run's part, drawn only near the view, whose
+    // lines are there all the same. One laid quietly is read where it
+    // stands in its parts' box, apart from the page (runShow).
+    function piecesOf(text) {
+        const pieces = [];
+        const part = text.runPart === true;
+        if (!text.visible && !part)
+            return pieces;
+        const into = part && runQuiet ? runPartsBox : column;
+        text.reading = true;
+        const words = text.reader;
+        if (!words || words.length === 0)
+            return pieces;
+        for (let at = 0; at < words.lineCount; at++) {
+            const step = text.leading > 0 ? text.leading
+                : words.contentHeight / words.lineCount;
+            const y = words.drop + at * step + 1;
+            const from = words.positionAt(0, y);
+            const next = at + 1 < words.lineCount ? words.positionAt(0, y + step)
+                : words.length;
+            const box = words.positionToRectangle(from);
+            const place = words.mapToItem(into, box.x, box.y);
+            pieces.push({ text, words, from, y,
+                length: words.getText(from, next).replace(/\s+$/, "").length,
+                x: place.x, top: place.y, height: box.height,
+                base: place.y + words.baselineOffset, caps: words.caps });
+        }
+        return pieces;
+    }
+    // Pieces as lines, top to bottom, those sharing a baseline one line.
+    function linesOf(pieces) {
         pieces.sort((one, other) => one.base - other.base || one.x - other.x);
         const found = [];
         for (const piece of pieces) {
@@ -858,19 +936,19 @@ Floating {
     property int entries: 0
     // Into it: the cursor on the title's first letter where it's in view,
     // else the first line in view, so nothing moves as the keys come in.
-    // Its frame lays only what shows, a run as it's laid at rest, and its
-    // whole run once that frame is drawn: laid first, going into Emoji's
-    // 1,914 names, in 1,833 lines, took a median 558 ms from the key in the
-    // drawer lab, and 81 laid after, where its view shows some 37 lines
-    // (2026-11-19; docs/testing.md's Timing the Launcher). Its lines down
-    // to the short run's cut are the whole run's too, so the cursor's line
-    // still stands once it's laid whole.
-    // The keys leaving lay the run short again; a page shown anew while
-    // they stay keeps it whole, rather than laid short and whole again.
+    // Its frame lays only what shows, a run as it's laid at rest, and the
+    // rest of its run a part a turn once that frame is drawn (runLaidOn):
+    // laid first, going into Emoji's 1,914 names, in 1,833 lines, took a
+    // median 558 ms from the key in the drawer lab, and 81 laid after,
+    // where its view shows some 37 lines (2026-11-19; docs/testing.md's
+    // Timing the Launcher). Its lines down to the short run's cut are the
+    // whole run's too, so the cursor's line still stands as the rest is
+    // laid under it. The keys leaving lay the run short again.
     function enter() {
         lastChosen = null;
         began = choosing !== "" ? began : null;
-        laid = lines();
+        runBegin();
+        readLaid();
         const titled = laid.findIndex(line => line.parts.some(part => part.text === titleText));
         const top = drawer.shownFrom;
         const held = laid.map((line, at) => at).filter(at => laid[at].top >= top
@@ -878,42 +956,173 @@ Floating {
         const line = held.includes(titled) ? titled : held.length > 0 ? held[0] : 0;
         cursor = { line, letter: 0, want: laid.length > 0 ? xOf(laid[line], 0) : 0 };
         const entry = ++entries;
-        afterFrame(() => {
-            if (keys && entry === entries)
-                layWhole();
-        });
+        afterFrame(() => runLaidOn(entry, true));
     }
-    // The whole run laid, its lines read again and the cursor kept where
-    // it is, as relay keeps it. A key that reads past what shows, as G, a
-    // search, o, gv or y does, lays it first, should it come before the
-    // frame the keys came in is drawn. What follows the run is moved down
-    // at once, not at the next frame's polish, so its lines are read where
-    // they'll be drawn rather than amid the run.
-    function layWhole() {
-        if (runWhole || !keys)
+    // The lines read as they're laid, with what they were read at, so a
+    // relay asked as a part laid moves the view's end reads nothing again.
+    readonly property var laidAt: ({ shown: null, width: -1, height: -1 })
+    function readLaid(kept = null) {
+        laid = lines(kept);
+        laidAt.shown = shown;
+        laidAt.width = width;
+        laidAt.height = view.contentHeight;
+    }
+    // A run's head and where its rest begins, as the keys come in.
+    function runBegin() {
+        runCut();
+        if (!runs || !keys)
             return;
-        runWhole = true;
+        const words = shown?.body ?? "";
+        runRest.items = Figure.runItems(unbroken(words));
+        runRest.from = words;
+        runRest.wide = wordsBox.width;
+        runHead = runMost;
+        runNext = Figure.runFrom({ items: runRest.items, from: 0 }, wordsBox.width,
+            widthIn(bodyFace), runHead).next;
+        runQuiet = runNext >= 0;
+    }
+    // Its parts taken down, its words laid short again.
+    function runCut() {
+        runQuiet = false;
+        runQuietRead.of = new Map();
+        runParts.clear();
+        runPartsLines = 0;
+        runPartsSaid = "";
+        runHead = 0;
+        runNext = -1;
+        runRest.items = [];
+        runRest.from = "";
+    }
+    // A run given anew while the keys are in it, its words or its width
+    // changed, laid again from its head, as the keys coming in lay it.
+    function runRenew() {
+        if (!keys || (runRest.from === "" && !runs))
+            return;
+        if (runs && runRest.from === (shown?.body ?? "") && runRest.wide === wordsBox.width)
+            return;
+        runBegin();
+        const entry = ++entries;
+        afterFrame(() => runLaidOn(entry, true));
+    }
+    // After the frame the keys came in, the next part of its run, and
+    // another at each turn after, so a key typed meanwhile waits on one
+    // part at most, and no frame is asked for between them: the parts are
+    // shown with the last. The first reads every line again once Qt has
+    // laid the page out, as a drawer's that's no run is read. Nothing once
+    // the keys have left, or come in anew.
+    function runLaidOn(entry, first) {
+        if (!keys || entry !== entries)
+            return;
+        if (first) {
+            flow.forceLayout();
+            readLaid();
+            keepCursor();
+        }
+        if (runNext < 0)
+            return;
+        layPart(runPart, true);
+        if (runNext < 0)
+            runShow();
+        else
+            Qt.callLater(() => runLaidOn(entry, false));
+    }
+    // The next `count` lines of its run, or all that's left given none, in
+    // a text of their own under the last, and its lines read again: only
+    // the part's and what follows the run, which it moves down, where
+    // `keeping`. What follows is moved at once, not at the next frame's
+    // polish, so its lines are read where they'll be drawn. Laid quietly,
+    // only the part's are read, aside, and nothing moves.
+    function layPart(count, keeping) {
+        const wide = wordsBox.width;
+        const width = widthIn(bodyFace);
+        const part = Figure.runFrom({ items: runRest.items, from: runNext }, wide, width, count);
+        const words = part.lines.map(line => width(line) <= wide ? line.replace(/ /g, "\u00a0")
+            : line).join("\n");
+        runParts.append({ partSaid: words, partAt: bodyText.lineCount + runPartsLines });
+        const laidNow = runPartTexts.itemAt(runPartTexts.count - 1);
+        runPartsLines += laidNow?.lineCount ?? 0;
+        runPartsSaid = runPartsSaid === "" ? words : `${runPartsSaid}\n${words}`;
+        runNext = part.next;
+        if (runQuiet) {
+            if (laidNow)
+                runQuietRead.of.set(laidNow, piecesOf(laidNow));
+            return;
+        }
         flow.forceLayout();
-        laid = lines();
+        readLaid(keeping ? keptAbove() : null);
+        keepCursor();
+    }
+    // What a part laid under the run moves nowhere, as its lines were last
+    // read: all but what follows the run.
+    function keptAbove() {
+        const moved = new Set(actsShown.texts().concat(foldShown.texts()));
+        return new Map(Array.from(laidPieces.of).filter(([text]) => !moved.has(text)));
+    }
+    // The parts laid quietly shown, and what follows the run moved under
+    // them, in one frame: only what follows is read again, the parts'
+    // lines being those read aside.
+    function runShow() {
+        if (!runQuiet)
+            return;
+        const kept = keptAbove();
+        const read = runQuietRead.of;
+        runQuiet = false;
+        runQuietRead.of = new Map();
+        flow.forceLayout();
+        const at = runPartsBox.mapToItem(column, 0, 0);
+        for (const [text, pieces] of read)
+            kept.set(text, pieces.map(piece => Object.assign(piece,
+                { x: piece.x + at.x, top: piece.top + at.y, base: piece.base + at.y })));
+        readLaid(kept);
+        keepCursor();
+    }
+    // The cursor kept on its line and letter where they still are.
+    function keepCursor() {
         if (laid.length === 0)
             return;
         const line = Math.max(0, Math.min(cursor.line, laid.length - 1));
         const most = Math.max(0, laid[line].length - 1);
         cursor = { line, letter: Math.min(cursor.letter, most), want: cursor.want };
     }
+    // The rest of its run laid at once. A key that reads past what's laid,
+    // as G, a search, o, gv or y does, lays it first, should it come before
+    // the last part.
+    function layWhole() {
+        if (!keys)
+            return;
+        if (runNext >= 0)
+            layPart(0, true);
+        runShow();
+    }
+    // The line the run's last part ends on, where what follows the run
+    // begins under it, or -1 with no run: its head's, while the rest is
+    // laid quietly.
+    function runEnd() {
+        const parts = runQuiet ? [] : runTexts();
+        const last = parts.length > 0 ? parts[parts.length - 1] : bodyText;
+        for (let at = laid.length - 1; at >= 0; at--) {
+            if (laid[at].parts.some(part => part.text === last))
+                return at;
+        }
+        return -1;
+    }
     // Another page shown while it holds the keys, as its list of keys is:
-    // read from its top once Qt has laid it out, as a window opened on it.
+    // read from its top once Qt has laid it out, as a window opened on it,
+    // and timed as going in is. A run is laid as going into it lays it.
     function anew() {
         if (keys) {
             // At once, so the new page's first frame draws none of it.
             unflash();
+            runCut();
             Qt.callLater(() => {
                 // Not once the keys have gone meanwhile, which would
-                // lay the run whole at rest.
+                // lay the run at rest.
                 if (!keys)
                     return;
                 scrolled = 0;
+                keysComing();
                 enter();
+                keysIn();
             });
         }
     }
@@ -931,15 +1140,16 @@ Floating {
     // laid out yet gives no lines, as the drawer comes in over the card,
     // and that says nothing of where the cursor was: clamped into it, the
     // cursor would fall from the title to the eyebrow and stay.
+    // Lines read since at the same page, width and height aren't read
+    // again: a run's part laid reads its own, and moves the view's end.
     function relay() {
         if (keys)
             Qt.callLater(() => {
-                laid = lines();
-                if (laid.length === 0)
+                if (laidAt.shown === shown && laidAt.width === width
+                    && laidAt.height === view.contentHeight)
                     return;
-                const line = Math.max(0, Math.min(cursor.line, laid.length - 1));
-                const most = laid.length > 0 ? Math.max(0, laid[line].length - 1) : 0;
-                cursor = { line, letter: Math.min(cursor.letter, most), want: cursor.want };
+                readLaid();
+                keepCursor();
             });
     }
 
@@ -950,9 +1160,31 @@ Floating {
             fold();
             return;
         }
-        layWhole();
+        let moved = movedBy(act, count);
+        // While its run is still being laid, a move past what's laid of it
+        // lays it all first, as G's does, and one that comes near its end,
+        // or shows what's under it, shows the parts laid quietly or lays a
+        // part more, and moves again, so it never lands on what follows the
+        // run while the run's rest is still to come.
+        for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
+            if (moved.line > end)
+                layWhole();
+            else if (moved.line + drawer.scrolloff >= end
+                || moved.top + drawer.viewRoom > laid[end].top) {
+                if (runQuiet)
+                    runShow();
+                else
+                    layPart(runPart, true);
+            } else
+                break;
+            moved = movedBy(act, count);
+        }
+        cursor = { line: moved.line, letter: moved.letter, want: moved.want };
+        scrollTo(moved.top);
+    }
+    function movedBy(act, count) {
         const page = laid;
-        const moved = Page.moved(act, count, {
+        return Page.moved(act, count, {
             lines: page,
             line: cursor.line,
             letter: cursor.letter,
@@ -967,8 +1199,6 @@ Floating {
             xOf: (line, letter) => xOf(page[line], letter),
             letterAt: (line, x) => letterAt(page[line], x)
         });
-        cursor = { line: moved.line, letter: moved.letter, want: moved.want };
-        scrollTo(moved.top);
     }
     // A search run in it, from the cursor, the way it goes and a count on,
     // nothing sought seeking the last again, as Vim's / Return does; and n
@@ -1006,14 +1236,26 @@ Floating {
         return { none: "", wrapped: landed.wrapped, pattern };
     }
 
-    // Its lines as a search reads them, each with its letters as shown.
-    readonly property var lettered: laid.map(line => Object.assign({}, line, {
-        text: line.parts.map(part => part.words.getText(part.from, part.from + part.length))
-            .join("") }))
+    // Its lines as a search reads them, each with its letters as shown:
+    // read only as a search asks, and once for the lines laid, since a
+    // binding read every letter of Emoji's 1,833 lines each time a part of
+    // its run was laid.
+    readonly property var letters: ({ of: null, lines: [] })
+    function lettered() {
+        const page = laid;
+        if (letters.of !== page) {
+            letters.lines = page.map(line => Object.assign({}, line, {
+                text: line.parts.map(part => part.words.getText(part.from,
+                    part.from + part.length)).join("") }));
+            letters.of = page;
+        }
+        return letters.lines;
+    }
     // The page as DrawerPage moves on it, from the cursor and the view.
     function paged() {
+        const lines = lettered();
         return {
-            lines: lettered,
+            lines,
             line: cursor.line,
             letter: cursor.letter,
             want: cursor.want,
@@ -1024,8 +1266,8 @@ Floating {
             pitch: drawer.pitch,
             off: drawer.scrolloff,
             tops: wholeTops,
-            xOf: (line, letter) => xOf(lettered[line], letter),
-            letterAt: (line, x) => letterAt(lettered[line], x)
+            xOf: (line, letter) => xOf(lines[line], letter),
+            letterAt: (line, x) => letterAt(lines[line], x)
         };
     }
     // Which match of how many, { at, of }, for the foot to count as his
@@ -1036,7 +1278,7 @@ Floating {
         if (!keys || washing === "" || laid.length === 0)
             return null;
         if (seeking === "")
-            return Page.found(lettered, washing, cursor.line, cursor.letter);
+            return Page.found(lettered(), washing, cursor.line, cursor.letter);
         const landed = Page.sought(paged(), seeking, seekingForward, 1);
         return landed === null ? null : { at: landed.at, of: landed.of };
     }
@@ -1726,7 +1968,7 @@ Floating {
     // sight changes nothing za shows. Read off the things after the words,
     // never the flow's height, which the words' own sets.
     readonly property int wordsKept: {
-        const lines = bodyText.lineCount;
+        const lines = drawer.bodyLines;
         if (drawer.folded || drawer.keys || drawer.nerd.length === 0 || drawer.body === "")
             return lines;
         // Each thing after the words stands a pitch, the flow's spacing,
@@ -1756,7 +1998,7 @@ Floating {
     readonly property var wordsFade: {
         const line = wordsKept - 1;
         const ink = fadedInk.text;
-        if (line < 0 || wordsKept >= bodyText.lineCount || ink === "")
+        if (line < 0 || wordsKept >= bodyLines || ink === "")
             return null;
         const to = Math.min(wordsBox.width, Math.ceil(fadedInk.implicitWidth));
         return { line, from: Math.max(0, to - Theme.space.rung.mark), to };
@@ -1806,7 +2048,7 @@ Floating {
     // last letter.
     readonly property string fadedLetters: {
         const line = wordsKept - 1;
-        if (line < 0 || wordsKept >= bodyText.lineCount)
+        if (line < 0 || wordsKept >= bodyLines)
             return "";
         return proseLines[line]?.letters ?? "";
     }
@@ -1880,7 +2122,7 @@ Floating {
             run(flow.y + previewBox.y, previewBox.lines.length);
         if (drawer.body !== "") {
             run(flow.y + wordsBox.y, drawer.wordsKept, true);
-            for (let at = drawer.wordsKept; at < bodyText.lineCount; at++)
+            for (let at = drawer.wordsKept; at < drawer.bodyLines; at++)
                 spans.push({ top: Infinity, bottom: Infinity, line: at });
         }
         // Shut, the fold's line alone is cut wherever it falls, as before
@@ -2826,7 +3068,7 @@ Floating {
                     // Its lines laid, the rest given up for the fold
                     // (wordsKept) clipped away whole.
                     height: drawer.wordsKept * drawer.pitch
-                    clip: drawer.wordsKept < bodyText.lineCount
+                    clip: drawer.wordsKept < drawer.bodyLines
                     visible: drawer.body !== "" && drawer.wordsKept > 0
                     // Seen through its fade while its last line fades
                     // (wordsFade), as a name reading on is (ReadsOn.qml),
@@ -2858,6 +3100,39 @@ Floating {
                         font.family: bodyText.level.family
                         font.pointSize: bodyText.level.pointSize
                         font.variableAxes: bodyText.level.variableAxes
+                    }
+                    // A run's parts laid under its words while the keys are
+                    // in it (runParts), each on the pitch where the last
+                    // ended, set as the words are.
+                    Item {
+                        id: runPartsBox
+                        parent: drawer.runQuiet ? null : wordsBox
+                        width: wordsBox.width
+                        Repeater {
+                            id: runPartTexts
+                            model: runParts
+                            delegate: PageText {
+                                required property string partSaid
+                                required property int partAt
+                                // Its lines are read though it's hidden.
+                                readonly property bool runPart: true
+                                // Drawn only within a view's room of what
+                                // the view shows, so the frame the parts
+                                // are shown in draws a few of them rather
+                                // than all of a run's 1,833 lines.
+                                readonly property real above: flow.y + wordsBox.y + y
+                                visible: !drawer.runQuiet
+                                    && above + height >= drawer.shownFrom - drawer.viewRoom
+                                    && above <= drawer.shownFrom + 2 * drawer.viewRoom
+                                sought: drawer.washing
+                                width: runPartsBox.width
+                                y: bodyText.y + partAt * drawer.pitch
+                                plain: partSaid
+                                leading: drawer.pitch
+                                ink: Theme.text
+                                font: bodyText.font
+                            }
+                        }
                     }
                 }
 

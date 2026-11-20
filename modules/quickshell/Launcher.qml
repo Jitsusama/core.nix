@@ -9989,10 +9989,13 @@ Scope {
                 values: (root.drawerShows?.facts ?? []).filter(fact => fact)
                     .map(fact => String(fact.value ?? "")),
                 body: root.drawerShows?.body ?? "",
-                // Its words as drawn, a run laid in lines (Drawer.qml's bodySaid).
-                bodyDrawn: drawerCard.bodySaid,
+                // Its words as drawn, a run laid in lines (Drawer.qml's bodySaid),
+                // with the parts of it laid under them while the keys are in it.
+                bodyDrawn: drawerCard.bodyDrawn,
                 // How many lines Qt draws them in.
                 bodyLines: drawerCard.bodyLines,
+                // Whether a run's rest is still being laid.
+                laying: drawerCard.runLaying,
                 // How wide each line the drawer lays them in measures
                 // (Drawer.qml's proseLines), rounded up.
                 laidWidths: drawerCard.proseLines.map(line => Math.ceil(line.width)),
@@ -12590,9 +12593,35 @@ Scope {
     // asked, and a quick second going-in neither silences the first nor
     // takes a frame that began before it.
     property var intoGoing: null
+    // When the keys last went in, which a key in the drawer is timed after
+    // too (keyInTimed).
+    property real intoFrom: 0
     function intoComing() {
         const pressed = KeyTimes.pressed();
         intoGoing = { from: pressed > 0 ? pressed : KeyTimes.now(), laid: -1 };
+        intoFrom = intoGoing.from;
+    }
+    // A key in the drawer, timed from its press to the frame niri presented
+    // with it, and from going in, since a key typed just after Ctrl+W l
+    // waited on the rest of Emoji's run being laid, a few hundred ms, and
+    // nothing timed it. A key a program typed has no press, so it's timed
+    // from when it was heard, which a key queued behind that lay is only
+    // after it; the time from going in says it whole (Presented.keyInSaid).
+    function keyInComing() {
+        const pressed = KeyTimes.pressed();
+        return { from: pressed > 0 ? pressed : KeyTimes.now(), into: intoFrom };
+    }
+    function keyInTimed(one, act) {
+        if (!open || !drawerCard.keys)
+            return;
+        one.act = act;
+        one.key = drawerRow?.key || drawerRow?.name || "";
+        const frame = surface.FramePresentation.framesBegun + 1;
+        presentedAwait(one.from, (at, answered) => {
+            Object.assign(one, { at, swapped: root.swappedOf(frame),
+                screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
+            console.info(Presented.keyInSaid(one));
+        });
     }
     // The frame awaited is the next to begin, read once the lines are laid
     // and before any frame can sync them, as a key's is.
@@ -12613,7 +12642,8 @@ Scope {
     // The lines the frame the keys came in laid, counted as its swap is
     // heard and before the rest is laid after it, so a key typed with the
     // chord that laid the whole run before the frame is counted with it.
-    // A page shown anew while the keys stay has no going-in, so nothing.
+    // A page shown anew while the keys stay, as going back from the key
+    // list, is timed as a going-in too, since it lays its run as one does.
     function intoDrawn(one, laid) {
         if (!one)
             return;
@@ -13734,6 +13764,7 @@ Scope {
                         onStepped: (act, count) => {
                             root.searchNow();
                             if (QueryKeys.paged(mode)) {
+                                const keyIn = root.keyInComing();
                                 if (act === "seekNext" || act === "seekPrevious") {
                                     const went = drawerCard.seekOn(act, count);
                                     root.saySought(went, went.pattern);
@@ -13754,6 +13785,7 @@ Scope {
                                     root.commandSay((Words.field.hints ?? {}).E21 ?? "", true);
                                 else
                                     drawerCard.go(act, count);
+                                root.keyInTimed(keyIn, act);
                                 return;
                             }
                             switch (act) {

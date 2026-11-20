@@ -228,14 +228,31 @@ function drawerSaid(one) {
 function intoSaid(one) {
     const swap = one.swapped > 0
         ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
-    // The key quoted as JSON, so a quote or a line break in a row's name
-    // can't end the line early or forge another, with the line ends JSON
-    // leaves raw escaped too, since a reader may split on any of them.
-    const key = JSON.stringify(one.key).replace(/[\u2028\u2029\u0085]/g,
-        end => `\\u${end.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    const key = quoted(one.key);
     return `launcher: into the drawer for ${key} presented `
         + `${Math.round(one.at - one.from)} ms from the key${swap}, ${one.laid} `
         + `${one.laid === 1 ? "line" : "lines"} laid first${screensSaid([one])}`;
+}
+
+// A row's key quoted as JSON, so a quote or a line break in a row's name
+// can't end the line early or forge another, with the line ends JSON
+// leaves raw escaped too, since a reader may split on any of them.
+function quoted(key) {
+    return JSON.stringify(key).replace(/[\u2028\u2029\u0085]/g,
+        end => `\\u${end.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
+// A key in a drawer, `{ act, key, from, into, at, swapped, screen, refresh
+// }`, said as its frame is presented: from its press, or where it had none
+// from when it was heard, and from going in (`into`), so a key typed a set
+// time after Ctrl+W l says its whole wait, queued behind the drawer's lay
+// or not, as that less the time it was typed after.
+function keyInSaid(one) {
+    const swap = one.swapped > 0
+        ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
+    return `launcher: ${one.act} in the drawer for ${quoted(one.key)} presented `
+        + `${Math.round(one.at - one.from)} ms from the key${swap}, `
+        + `${Math.round(one.at - one.into)} from going in${screensSaid([one])}`;
 }
 
 // The drawers presented since the launcher opened, a line a place, as a

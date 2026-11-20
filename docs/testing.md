@@ -513,7 +513,22 @@ windows first, as for the drawer walk. With 80 open, going into Emoji's
 1,914 names, in 1,833 lines laid whole first, took a median 558 ms and a p90
 624, 536 of it the shell's to its swap. Laying only its 37 lines that show, the rest after
 the frame, took a median 81 and a p90 99, 11 of it the shell's (2026-11-19).
-A key typed while the rest is laid waits on it.
+
+A key typed just after going in is timed by
+`test_a_key_after_going_into_a_drawer_is_timed`, run alone with
+`PYTEST_ADDOPTS = "-k key_after"`: it types j in the chord's own `wtype`,
+`LAB_INTO_AFTER` ms after it (0 to 480 unless given, a round each), and
+prints j's time to its frame from going in, less that wait. With 80 windows
+and the rest of Emoji's run laid whole in one go, j took a median 827 ms and a
+p90 1,050. Laid a part a turn off the screen and shown in one frame, with only
+the parts near the view drawn, it took a median 68 to 132 over three runs, the
+shell's share to its swap 5 to 20 ms for a j typed 120 ms or more after going
+in (2026-11-19). The rest is niri drawing 80 windows in software, which swings
+with the builder's load. A j typed with the chord waits on the going-in frame
+itself, 87 to 137 ms there even with nothing laid past what shows. While the
+margin cat moves, its frames keep niri drawing too.
+Each frame the shell is asked for while the rest is laid costs a key behind it
+niri's next, so nothing the launcher's report reads moves with each part.
 
 A key is timed by `modules/quickshell/tests/launcher-keys-lab-on-niri.py`, the
 `keys-lab` beside it. It opens home round after round and types each of
