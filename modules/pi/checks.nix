@@ -2,7 +2,6 @@
 # its opening comment says what each kind of check proves.
 args@{
   account,
-  bareDarwin,
   bareNixos,
   holds,
   lib,
@@ -21,8 +20,10 @@ let
     folder = "pi-monorepo";
   };
 in
-# The hosts' own checks change with host.nix alone, so they sit beside it.
+# The hosts' own checks change with host.nix alone, and the harness's
+# settings check with harness-settings.nix alone, so they sit beside them.
 import ./host-checks.nix args
+// import ./harness-settings-checks.nix args
 // {
   # pi's folder, its session logs among what it holds, is the account's
   # alone, set as the account is switched to, on every machine with pi.
@@ -441,54 +442,6 @@ import ./host-checks.nix args
     holds "pi-leaves-out-the-built-in-codemode"
       "pi's settings don't turn off the built-in codemode, so pi warns of it at every start."
       (leaves (account workstation) && leaves (account macWorkstation));
-
-  # The harness's config gets the settings a machine declares for it at
-  # every switch, beside what the harness and a person wrote there; a
-  # machine declaring none has its file left alone.
-  pi-harness-takes-its-settings =
-    let
-      settings.sections.quest-workflow.budgetWhenCapped = "a-budget";
-      home = account (
-        workstation.extendModules {
-          modules = [ { home-manager.users.someone.jitsusama.pi.harness = { inherit settings; }; } ];
-        }
-      );
-      program = lib.getExe (import ./settings.nix { inherit pkgs settings; });
-      activated = lib.getExe (
-        import ./settings.nix {
-          inherit (workstation) pkgs;
-          inherit settings;
-        }
-      );
-      script = home.home.activation.piHarnessTakesItsSettings.data or "";
-      # A Mac builds its own program, so only the file it names is held.
-      mac = account (bareDarwin [
-        self.darwinModules.workstation
-        { home-manager.users.someone.jitsusama.pi.harness = { inherit settings; }; }
-      ]);
-      macScript = mac.home.activation.piHarnessTakesItsSettings.data or "";
-      file = "/.config/pi/agentic-harness.pi/config.json";
-    in
-    assert lib.assertMsg (
-      lib.hasInfix (builtins.unsafeDiscardStringContext activated) script && lib.hasInfix file script
-    ) "The harness's activation doesn't run the settings program over its config file.";
-    assert lib.assertMsg (
-      lib.hasInfix "pi-settings" macScript && lib.hasInfix "/Users/someone${file}" macScript
-    ) "A Mac's activation doesn't run the settings program over the harness's config file.";
-    assert lib.assertMsg (lib.hasInfix "|| :" script)
-      "A harness config left not JSON would stop the rest of the switch.";
-    assert lib.assertMsg (
-      !(account workstation).home.activation ? piHarnessTakesItsSettings
-    ) "A machine declaring no harness settings still has its config written.";
-    pkgs.runCommandLocal "pi-harness-takes-its-settings" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      file=$PWD/config.json
-      echo '{"version":1,"sections":{"review":{"a":1},"quest-workflow":{"kept":true}}}' > "$file"
-      ${program} "$file"
-      jq -e '.version == 1 and .sections.review == {"a": 1}
-        and .sections."quest-workflow" == {"kept": true, "budgetWhenCapped": "a-budget"}' "$file" \
-        || { echo "the harness's config lost a key or missed the declared one: $(cat "$file")"; exit 1; }
-      touch $out
-    '';
 
   # pi tells mycelium what its sessions start with in each realm: plain pi
   # at home, pi-claude in the plan's realm, plain pi alone on a machine on
