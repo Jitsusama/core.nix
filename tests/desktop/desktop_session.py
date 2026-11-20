@@ -698,11 +698,19 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Wait until what the launcher shows passes the test.
 
         The launcher reports its state each time it changes, so a wait reads it once and then
-        hears every change.
+        hears every change. One that never passes says what the launcher showed last, since
+        the shell's journal holds a showing line only for each change, and a launcher that
+        settled on the wrong state before the wait began says none.
         """
         since = self.mark()
-        if not test(self.showing()):
+        if test(self.showing()):
+            return
+        try:
             self.reported("showing ", lambda said: test(json.loads(said)), since, timeout)
+        except AssertionError as never:
+            last = json.dumps(self.showing(), ensure_ascii=False)
+            message = f"{never}; the launcher showed, last: {last}"
+            raise AssertionError(message) from never
 
     def launcher_ready(self) -> None:
         """Wait until the launcher is open and holds the keys.
