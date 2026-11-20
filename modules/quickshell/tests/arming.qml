@@ -157,8 +157,9 @@ QtObject {
         const ended = Arming.shareTurns(heldWord, heldWord);
         expect("a share's end leaves nothing armed",
             JSON.stringify(ended.armed), JSON.stringify(Arming.rest()));
-        expect("and of the foot's word for a held Return", ended.quiet, true);
-        expect("though not of another word said since",
+        expect("a share's end lets go of the foot's word for a held Return",
+            ended.quiet, true);
+        expect("but a share's end keeps another word said since",
             Arming.shareTurns([["q", "quit"]], heldWord).quiet, false);
 
         // Which places may be kept to draw at once at the next opening

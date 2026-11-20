@@ -719,7 +719,7 @@ ShellRoot {
         // You, and when it was asked orders For You.
         same("and whether it waits and when it was asked, which For You reads",
             [row()?.waiting, row()?.asked], [true, 1000]);
-        same("so For You still orders it by when it was asked",
+        same("so For You still has when it was asked to order it by",
             asks.forYou.map(one => one.thing.since), [1000]);
         // The row made showing says so, by the source that hides it now, so
         // no way back goes to a place holding it (Steady.hiddenGone); one
