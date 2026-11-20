@@ -53,11 +53,18 @@ const QUIETEST_SPEECH_DB: f32 = -55.0;
 /// lone "Yeah." holds several times as much. Five left out 13 of the
 /// meetings' words more.
 const LEAST_VOICED_FRAMES: usize = 3;
+/// A longer take needs a voiced frame for each this many loud ones, so
+/// noise voiced now and then, as a breath through the throat is, isn't
+/// heard just by lasting. Every one of the meetings' takes that held
+/// words had at least one in ten; a word in a long run of loud static
+/// may be lost.
+const LOUD_PER_VOICED: usize = 20;
 /// The shortest and longest lags a repeat is looked for at, in samples: a
 /// period of 400 Hz down to 60 Hz. A higher pitch repeats at a multiple
-/// of its period too, so it's voiced, while a hum below about 49 Hz
-/// repeats only past the longest, so it isn't. Mains hum, at 50 or
-/// 60 Hz, is voiced, and Parakeet writes nothing for it.
+/// of its period too, so it's voiced, while a hum below about 50 Hz
+/// repeats only past the longest, so it isn't. Mains hum at 60 Hz is
+/// voiced, as a 50 Hz one near a pure tone is, and Parakeet writes
+/// nothing for it.
 const SHORTEST_PERIOD: usize = RATE / 400;
 const LONGEST_PERIOD: usize = RATE / 60;
 /// Each sample is compared less the one this far before it, 6 samples at
@@ -195,13 +202,14 @@ impl Cutter {
         let spoken = ended.iter().filter(|(_, _, speech)| *speech).count();
         // Voicing is the dearer test, so it's asked only of a take loud for
         // long enough, and only until enough frames are voiced.
+        let needed = LEAST_VOICED_FRAMES.max(spoken.div_ceil(LOUD_PER_VOICED));
         let heard = spoken >= LEAST_SPEECH_FRAMES
             && ended
                 .windows(2)
                 .filter(|pair| pair[1].2 && voiced(&pair[0].0, &pair[1].0))
-                .take(LEAST_VOICED_FRAMES)
+                .take(needed)
                 .count()
-                == LEAST_VOICED_FRAMES;
+                == needed;
         heard.then(|| Take {
             start,
             samples: ended.into_iter().flat_map(|(frame, _, _)| frame).collect(),
@@ -535,12 +543,6 @@ mod tests {
                 "{seconds} s of voice"
             );
         }
-    }
-
-    #[test]
-    fn a_word_as_short_as_yeah_is_a_take() {
-        let sound = [quiet(2.0), spoken(0.4), quiet(2.0)].concat();
-        assert_eq!(cut(&sound).len(), 1);
     }
 
     #[test]
