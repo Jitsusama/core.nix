@@ -73,6 +73,7 @@ mod book;
 mod filed;
 mod follow;
 mod hear;
+mod meet;
 mod meeting;
 mod notices;
 mod private;
@@ -331,7 +332,7 @@ fn serve(
         let book = Arc::clone(&book);
         std::thread::spawn(move || receptor::keep(&receptor, &book));
     }
-    follow::follow(&book, calls, &jobs, &calling)
+    follow::follow(&book, calls, &jobs, &calling, &own_name())
 }
 
 fn summarize(

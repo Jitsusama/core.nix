@@ -14,10 +14,10 @@
 //! record and transcript, its takes timed from the first start.
 //!
 //! Who's on a call is kept as everyone ever on it: those on it as it
-//! starts or is rejoined, and, on a Tuple call, those Tuple says are on
-//! it as it goes, since people come and go. Their side is named only
-//! while that's one person, so someone joining late turns it back to
-//! Others, every line before included.
+//! starts or is rejoined, and, on a Tuple call or a followed Meet, those
+//! it says are on it as it goes, since people come and go. Their side is
+//! named only while that's one person, so someone joining late turns it
+//! back to Others, every line before included.
 //!
 //! As a call starts, a notice offers the line for its chat (notices.rs),
 //! and its Stop Transcribing stops both recorders at once, keeping what's
@@ -53,7 +53,8 @@ use crate::notices;
 /// How long a link asked for may take to show before it's asked again.
 const LINKING: Duration = Duration::from_secs(2);
 
-/// How often who's on a Tuple call being recorded is asked again.
+/// How often who's on a Tuple call or a Meet being recorded is asked
+/// again.
 const LOOK_AGAIN: Duration = Duration::from_secs(30);
 
 /// A gap in a recorder's sound longer than this is filled with silence,
@@ -127,6 +128,7 @@ pub fn follow(
     calls: &Path,
     jobs: &Sender<Job>,
     calling: &AtomicBool,
+    me: &str,
 ) -> Result<(), String> {
     let mut dump = Command::new("pw-dump")
         .args(["--monitor", "--no-colors"])
@@ -186,7 +188,7 @@ pub fn follow(
                 calling.store(true, Ordering::SeqCst);
                 count += 1;
                 let at = now();
-                let on = meeting::on(&runtime, at);
+                let on = meeting::on(&runtime, at, me);
                 let key = Record::key_for(on.event.as_deref(), on.person.as_deref(), at);
                 on_call = Some(key.clone());
                 if let Some(held) = Awake::hold() {
@@ -227,7 +229,7 @@ pub fn follow(
         if let (Some(recording), Some(app)) = (&mut recording, graph.call()) {
             link(&graph, recording, app);
         }
-        look_again(book, &runtime, recording.as_ref(), &mut looked);
+        look_again(book, &runtime, recording.as_ref(), &mut looked, me);
     }
     let _ = dump.wait();
     Err("pw-dump ended".to_owned())
@@ -275,8 +277,7 @@ fn start(
 ) -> Result<Recording, String> {
     let key = key.to_owned();
     let account = on.account;
-    let people = on.people.clone();
-    let known = on.known;
+    let seen = (on.people.clone(), on.known);
     let mut record = book.lock().record(&key).cloned().unwrap_or_else(|| Record {
         key: key.clone(),
         folder: calls.join(meeting::folder(at, &on.title)),
@@ -294,8 +295,8 @@ fn start(
         transcribing: true,
     });
     record.account = rejoined(record.account.take(), account);
-    record.people = meeting::joined(std::mem::take(&mut record.people), &people);
-    record.known = record.known.or(known);
+    (record.people, record.known) =
+        meeting::came((std::mem::take(&mut record.people), record.known), seen);
     let ended = record.ended.take();
     record.transcribing = true;
     // A summary of the call's first legs would read as the whole of it,
@@ -391,11 +392,19 @@ impl Recording {
     }
 }
 
-/// Adds to a Tuple call's record whoever Tuple says is on it now, since
-/// people join and leave as it goes. Only a Tuple call is asked again:
-/// who a meeting invited doesn't change with who comes. It's asked every
+/// Adds to a call's record whoever its Tuple call or Meet says is on it
+/// now, since people join and leave as it goes, Joel, `me`, left out of a
+/// Meet's. A meeting's invitation isn't asked again, since who it asked
+/// doesn't change with who comes, but its Meet is, since the google
+/// daemon may follow it only once its window opens. It's asked every
 /// `LOOK_AGAIN`, since it was last `looked`, while a call is recorded.
-fn look_again(book: &Shared, runtime: &Path, recording: Option<&Recording>, looked: &mut Instant) {
+fn look_again(
+    book: &Shared,
+    runtime: &Path,
+    recording: Option<&Recording>,
+    looked: &mut Instant,
+    me: &str,
+) {
     let Some(key) = recording
         .map(|recording| recording.key.as_str())
         .filter(|_| looked.elapsed() >= LOOK_AGAIN)
@@ -403,22 +412,35 @@ fn look_again(book: &Shared, runtime: &Path, recording: Option<&Recording>, look
         return;
     };
     *looked = Instant::now();
-    let tuple = book
+    let Some((known, event)) = book
         .lock()
         .record(key)
-        .is_some_and(|record| record.known == Some(meeting::Known::Tuple));
-    // Asked outside the book's lock, since tuple-call may be slow.
-    let Some(on) = tuple.then(|| meeting::on_tuple(runtime)).flatten() else {
+        .map(|record| (record.known, record.event.clone()))
+    else {
+        return;
+    };
+    // Asked outside the book's lock, since a daemon may be slow.
+    let seen = if known == Some(meeting::Known::Tuple) {
+        meeting::on_tuple(runtime).map(|on| (on.people, on.known))
+    } else {
+        crate::meet::on_meet(runtime, event.as_deref(), me)
+            .map(|people| (people, Some(meeting::Known::Meet)))
+    };
+    let Some(seen) = seen else {
         return;
     };
     let mut book = book.lock();
     let Some(record) = book.record(key).cloned() else {
         return;
     };
-    let people = meeting::joined(record.people.clone(), &on.people);
-    if people != record.people {
-        eprintln!("call-transcripts: someone joined, {key}");
-        book.put(Record { people, ..record });
+    let (people, known) = meeting::came((record.people.clone(), record.known), seen);
+    if (&people, known) != (&record.people, record.known) {
+        eprintln!("call-transcripts: who's on it changed, {key}");
+        book.put(Record {
+            people,
+            known,
+            ..record
+        });
     }
 }
 

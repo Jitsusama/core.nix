@@ -165,13 +165,15 @@ impl Record {
     }
 
     /// What the transcript says first of who the others were: where the
-    /// name their side is under came from, or who was invited or on the
-    /// Tuple call when their side stays Others; none when nobody's known.
+    /// name their side is under came from, or who was invited, in the
+    /// Meet or on the Tuple call when their side stays Others; none when
+    /// nobody's known.
     pub fn note(&self, me: &str) -> Option<String> {
         let known = self.known?;
         if let Some(them) = self.them(me).filter(|_| self.people.len() == 1) {
             let whose = match known {
                 Known::Tuple => "on the Tuple call",
+                Known::Meet => "in the Meet",
                 Known::Invitation => "invited",
             };
             return Some(format!(
@@ -181,6 +183,7 @@ impl Record {
         let listed = listing(&self.people)?;
         Some(match known {
             Known::Tuple => format!("On the Tuple call: {listed}."),
+            Known::Meet => format!("In the Meet: {listed}."),
             Known::Invitation => format!("Invited: {listed}."),
         })
     }
