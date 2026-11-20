@@ -326,6 +326,7 @@ QtObject {
         const sizings = [
             ["rows with no gap", [{}, {}, {}], 32],
             ["a gap among those shown", [{}, { gap: true }, {}], 40],
+            ["a gap on the first row", [{ gap: true }, {}, {}], 40],
             ["a gap just past those shown", [{}, {}, { gap: true }], 32],
             ["a gap past those shown", [{}, {}, {}, { gap: true }], 32],
             ["fewer rows than room", [{ gap: true }], 40]
@@ -355,8 +356,9 @@ QtObject {
         }
 
         // The rows a card shows stand as tall as the card is sized for them,
-        // a gap among them or not; one with fewer rows than room is sized
-        // for the room.
+        // with no heading and at most one gap among them, the two rules'
+        // common ground; one with fewer rows than room is sized for the
+        // room.
         for (const [what, shown] of sizings.filter(one => one[1].length >= 2)) {
             const card = Steady.tallFor(shown, 2, rowSizes.row, rowSizes.gap);
             const stood = shown.slice(0, 2).reduce((sum, row, at) =>

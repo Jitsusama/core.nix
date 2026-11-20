@@ -9682,8 +9682,8 @@ Scope {
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
     // as Network's does; home has none. The card's height (Steady.tallFor), the rows that
-    // fit (rows) and each row's height in the list (tallOf) all read it, so the plate's
-    // lines can't drift from the list's.
+    // fit (rows) and each row's height in the list (tallOf) all read it, so none can take
+    // another gap than the rest.
     readonly property real groupGap: Theme.space.beat
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {

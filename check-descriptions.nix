@@ -4168,7 +4168,8 @@
     answer given only while nothing else was goes once something comes; the height Steady's
     tallFor gives the card's list from its rows counts a gap only for a row it shows; and each
     row stands as Steady's tallOf says, its own gap above it and a heading's rung but for the
-    list's first, the rows a card shows as tall as the card is sized for them
+    list's first, the unheaded rows a card shows, with at most one gap among them, as tall as
+    the card is sized for them
   '';
   the-launcher-joins-only-what-changed = ''
     joining the launcher's rows again makes ready only the rows of sources whose things or
