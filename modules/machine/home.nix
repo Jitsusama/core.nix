@@ -58,6 +58,9 @@ in
       );
       Restart = "on-failure";
       RestartSec = 5;
+      # Who reads a camera through PipeWire is found in its graph, as
+      # pw-dump says it (src/camera.rs).
+      Environment = [ "MACHINE_PW_DUMP=${lib.getExe' pkgs.pipewire "pw-dump"}" ];
     };
     Install.WantedBy = [ "default.target" ];
   };

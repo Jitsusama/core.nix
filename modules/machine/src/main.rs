@@ -243,6 +243,8 @@ struct Reader {
     behind: using::Behind,
     /// What each battery's charging is set to, read once a minute.
     charging: supply::Settings,
+    /// Where who reads a camera through `PipeWire` is found.
+    pipewire: camera::PipeWire,
 }
 
 impl Reader {
@@ -277,7 +279,7 @@ impl Reader {
             }
         }
         if wants("camera") {
-            records.extend(camera::cameras(&self.root));
+            records.extend(camera::cameras(&self.root, &mut self.pipewire));
             spent.ended("camera", Instant::now());
         }
         if wants("link") {
@@ -687,7 +689,12 @@ fn serve(args: Args) -> Result<(), Failure> {
     {
         let shared = Arc::clone(&shared);
         let folders = vec![root.path(camera::FOLDER)];
-        std::thread::spawn(move || heard_loop(&shared, &["camera"], &folders, camera::names));
+        // Read again on a clock too while `PipeWire` holds a camera, since
+        // who reads it there changes with no file written.
+        let due = |shared: &Shared| lock(&shared.reader).pipewire.due();
+        std::thread::spawn(move || {
+            heard_until(&shared, &["camera"], &folders, camera::names, due);
+        });
     }
     {
         let shared = Arc::clone(&shared);
@@ -879,6 +886,7 @@ fn shared(root: &Root, words: Option<Words>, served: Arc<Served>) -> Shared {
             statuses: status::Kept::asking(units::standing),
             behind: using::Behind::default(),
             charging: supply::Settings::default(),
+            pipewire: camera::PipeWire::from_environment(),
         }),
         woken: Condvar::new(),
     }
