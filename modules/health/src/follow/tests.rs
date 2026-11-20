@@ -179,8 +179,8 @@ const OVERSLEPT: Duration = Duration::from_secs(1);
 /// clock runs with the awake one but for a `slept`: after so many looks,
 /// the machine sleeps so long, which only the wall clock sees, from the
 /// next look at the clock, as `run` looks at it before the lid in a tick.
-/// Once the clock has been looked at `stops` times, if any, the run is
-/// stopped, as by a signal.
+/// Once the clock has been looked at or waited on `stops` times, if any,
+/// the run is stopped, as by a signal.
 #[derive(Default)]
 struct Ran {
     before: i64,

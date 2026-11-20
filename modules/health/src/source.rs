@@ -444,21 +444,21 @@ impl History {
         })
     }
 
-    /// Say so when the history ended other than whole: its follower still
-    /// follows on from its last line, but the rest of its day comes at
-    /// that follower's pace rather than in the order it was written.
-    /// Says whether it was whole.
+    /// Say so when the history ended other than whole, unless by a stop to health's whole
+    /// group, waited for as a follower's end waits (`CAUGHT_WITHIN`): its follower still follows
+    /// on from its last line, but the rest of its day comes at that follower's pace rather than
+    /// in the order it was written. Says whether it was whole.
     fn ended(&mut self) -> bool {
         match self.child.wait() {
             Ok(status) if whole(status.success(), status.code(), self.read, self.greps) => true,
-            // A stop to health's whole group ends its histories too, which
-            // is no fault of theirs, and health ends of it.
-            Ok(_) if crate::signals::stopping() => false,
             Ok(status) => {
-                warn(&format!(
-                    "health: the day's history asking {} ended early, {status}",
-                    self.name
-                ));
+                thread::sleep(crate::signals::CAUGHT_WITHIN);
+                if !crate::signals::stopping() {
+                    warn(&format!(
+                        "health: the day's history asking {} ended early, {status}",
+                        self.name
+                    ));
+                }
                 false
             }
             Err(error) => {

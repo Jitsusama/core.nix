@@ -377,7 +377,7 @@ fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
         "a stop waited on a run that never returns ({ended})"
     );
     assert!(
-        took >= WRITES_WITHIN && stopped.failed().contains(UNWRITTEN),
+        took >= ENDS_LATE + WRITES_WITHIN && stopped.failed().contains(UNWRITTEN),
         "a stop to a run that never returns ended health {took:?} on, or didn't say the day \
          went unwritten: {}",
         stopped.failed()
