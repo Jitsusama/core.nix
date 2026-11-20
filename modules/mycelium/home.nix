@@ -306,6 +306,22 @@ let
     realm: joined:
     nodeIn realm joined.links joined.vias joined.providers (apartIn realm) ++ kitArgs realm joined.kit
   ) cfg.alsoJoins;
+  # A Linux node's ssh asks only the agent at SSH_AUTH_SOCK, its realm's
+  # key, whatever the account's SSH config names for the machine: that
+  # config's IdentityAgent wins over SSH_AUTH_SOCK, so on 2026-11-20 the
+  # node asked Joel's own agent, whose gate refuses agents' work, and the
+  # work realm lost its Mac. IdentitiesOnly=no lets it offer what that
+  # agent holds rather than only the config's IdentityFile.
+  ownAgent =
+    lib.concatMap
+      (option: [
+        "--ssh-option"
+        option
+      ])
+      [
+        "IdentityAgent=SSH_AUTH_SOCK"
+        "IdentitiesOnly=no"
+      ];
   linuxNode = description: words: key: realm: {
     Unit = {
       Description = description;
@@ -317,7 +333,7 @@ let
       X-Restart-Triggers = [ (builtins.hashString "sha256" (builtins.toJSON (servesIn realm))) ];
     };
     Service = {
-      ExecStart = lib.escapeShellArgs words;
+      ExecStart = lib.escapeShellArgs (words ++ lib.optionals (key != null) ownAgent);
       Environment = lib.optional (key != null) "SSH_AUTH_SOCK=%t/${key}.sock";
       # The node lets go of the sessions it carried when told to stop,
       # and redials a dropped link itself. It is started again however it

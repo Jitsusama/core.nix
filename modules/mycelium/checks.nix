@@ -39,6 +39,13 @@ let
   # home-manager keeps ExecStart as a list of its lines.
   linuxNode = toString (linux links).systemd.user.services.mycelium.Service.ExecStart;
   linuxAgent = (linux links).systemd.user.services.mycelium.Service.Environment;
+  # What sends a Linux node's ssh to its realm's key's agent alone.
+  ownAgent = lib.escapeShellArgs [
+    "--ssh-option"
+    "IdentityAgent=SSH_AUTH_SOCK"
+    "--ssh-option"
+    "IdentitiesOnly=no"
+  ];
   # The home realm's node of a machine naming sources in its table.
   stimulatingNode =
     toString
@@ -266,14 +273,16 @@ in
   # none runs it dialling nothing, since its node still holds its sessions
   # and starts what others ask of it, and one in no realm has neither a
   # realm nor a node. On Linux the node signs in with the agents' key,
-  # which asks nothing, unless its realm names a key of its own; on a Mac
+  # which asks nothing, unless its realm names a key of its own, and asks
+  # that key's agent alone, whatever agent the account's SSH config names
+  # for the machine it dials; one with no key is given no agent; on a Mac
   # what it starts signs commits with that key, since nobody at another
   # machine can touch this one's sensor. A Mac's node finds the system's
   # ssh first and the account's programs after it, among them the
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, the home realm's node doesn't write how it would ease the machine or a further realm's does, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, the home realm's node doesn't write how it would ease the machine or a further realm's does, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
@@ -312,6 +321,11 @@ in
         &&
           (linux (links // { signsInWith = "personal-link"; }))
           .systemd.user.services.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/personal-link.sock" ]
+        && lib.hasSuffix ownAgent linuxNode
+        && lib.hasSuffix ownAgent otherNode
+        && !(lib.hasInfix "--ssh-option" (
+          toString (linux (links // { signsInWith = null; })).systemd.user.services.mycelium.Service.ExecStart
+        ))
         &&
           lib.drop 1 (unkitted macNode) == [
             "--realm"
@@ -337,7 +351,9 @@ in
         && lib.hasInfix "--realm personal node" (
           toString answering.systemd.user.services.mycelium.Service.ExecStart
         )
-        && !(lib.hasInfix "--ssh" (toString answering.systemd.user.services.mycelium.Service.ExecStart))
+        && !(lib.elem "--ssh" (
+          lib.splitString " " (toString answering.systemd.user.services.mycelium.Service.ExecStart)
+        ))
         && (mac { realm = "personal"; }).launchd.agents.mycelium.enable
         && !(apart.systemd.user.services ? mycelium)
         && answering.home.sessionVariables.MYCELIUM_REALM == "personal"
@@ -396,8 +412,8 @@ in
   # A Mac's node signs its links in with the agents' key from the Secure
   # Enclave, through that key's own library and no agent, since the login
   # session's one may ask for an approval nobody is there to give; one
-  # without that key's module passes no such options, and Linux's node never
-  # does.
+  # without that key's module passes no such options, and Linux's node is
+  # given none of them.
   mycelium-signs-a-macs-links-with-the-enclave =
     holds "mycelium-signs-a-macs-links-with-the-enclave"
       "A Mac's node signs its links in through whatever agent the login holds, or not with the agents' key from the Secure Enclave, a Mac without that key's module is given options for it, or Linux's node is given a Mac's options."
@@ -419,7 +435,8 @@ in
         && lib.elem "IdentityAgent=none" words
         && lib.elem "IdentitiesOnly=yes" words
         && lib.elem "--ssh-option" words
-        && !(lib.elem "--ssh-option" (lib.splitString " " (toString linuxNode)))
+        && !(lib.hasInfix "IdentityFile=" linuxNode)
+        && !(lib.hasInfix "SecurityKeyProvider=" linuxNode)
       );
 
   # A machine joining a further realm runs a node of its own for it, apart
