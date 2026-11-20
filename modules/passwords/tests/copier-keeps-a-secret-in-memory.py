@@ -15,8 +15,11 @@ the cat then running the real one so a copier that leans on it still holds its c
 3. Nothing on PATH runs, neither cat nor xdg-mime.
 4. The copier can't be read through /proc by the account's other processes.
 5. The copier's memory holding the secret is locked, so it never reaches swap.
-6. A standard input it can't read is refused, making nothing under TMPDIR and running nothing.
-7. A standard input past the copier's cap is refused, rather than held in part.
+6. A standard input it can't read is refused for that reason, making nothing under TMPDIR and
+   running nothing.
+7. A standard input past the copier's cap is refused for being past it, rather than held in
+   part, so a refusal for any other reason, such as memory it couldn't lock, fails here.
+8. A secret long enough to outgrow the copier's first page pastes whole.
 
 Every case is checked and reported before it fails.
 
@@ -25,6 +28,7 @@ usage: copier-keeps-a-secret-in-memory.py <copier> <shell for the stand-ins>
 
 import contextlib
 import ctypes
+import errno
 import os
 import secrets
 import shutil
@@ -45,12 +49,18 @@ IN_MOVED_TO = 0x80
 IN_NONBLOCK = 0o4000
 # A standard input past the copier's cap, of a MiB, in bytes.
 TOO_LONG = 2 * 1024 * 1024
+# A secret's length past the copier's first page of 4 KiB, so its buffer grows several times.
+LONG = 64 * 1024
+# What the copier says as it refuses, and why, for an unreadable stdin and one past its cap.
+REFUSED = "wl-copy: refused a sensitive copy: "
+UNREADABLE = REFUSED + os.strerror(errno.EISDIR)
+PAST_THE_CAP = REFUSED + "it is past 1 MiB"
 
 LIBC = ctypes.CDLL(None, use_errno=True)
 
 
 class Cases:
-    """The seven cases, run against one copier, with what failed in each."""
+    """The eight cases, run against one copier, with what failed in each."""
 
     def __init__(self, copier: str, shell: str, folder: Path) -> None:
         """Run them against `copier`, its stand-ins run by `shell` and its TMPDIR in `folder`."""
@@ -87,11 +97,12 @@ class Cases:
             self.failures.append(f"{case}: {failed}")
 
     def copier_started(self, stdin: int) -> subprocess.Popen[bytes]:
-        """Start the copier as the daemon does, reading from `stdin`."""
+        """Start the copier as the daemon does, reading from `stdin`, keeping what it says."""
         return subprocess.Popen(
             [self.copier, "--sensitive", "--foreground", "--type", TEXT],
             stdin=stdin,
             stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             env=self.environment,
         )
 
@@ -136,12 +147,27 @@ class Cases:
             copier.kill()
             copier.wait()
 
+    def copied_long(self) -> None:
+        """Run case 8: a secret past the copier's first page, pasted whole."""
+        held = secrets.token_hex(LONG // 2)
+        reading, writing = os.pipe()
+        copier = self.copier_started(reading)
+        os.close(reading)
+        os.write(writing, held.encode())
+        os.close(writing)
+        try:
+            pasted = pasted_once_held(held)
+            self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
+        finally:
+            copier.kill()
+            copier.wait()
+
     def refused(self) -> None:
         """Run cases 6 and 7: a standard input it can't read, then one past its cap."""
         unreadable = os.open(self.made.parent, os.O_RDONLY | os.O_DIRECTORY)
         copier = self.copier_started(unreadable)
         os.close(unreadable)
-        failed = refusal(ended_within(copier))
+        failed = refusal(*ended_within(copier), UNREADABLE)
         self.check("an unreadable stdin is refused", failed or self.anything_made())
         self.check("an unreadable stdin runs nothing", self.anything_ran())
 
@@ -151,7 +177,7 @@ class Cases:
         with contextlib.suppress(BrokenPipeError):
             os.write(writing, b"x" * TOO_LONG)
         os.close(writing)
-        failed = refusal(ended_within(copier))
+        failed = refusal(*ended_within(copier), PAST_THE_CAP)
         self.check("a stdin past the cap is refused", failed or self.anything_made())
 
 
@@ -192,22 +218,25 @@ def unlocked(pid: int) -> str | None:
     return "its status names no VmLck"
 
 
-def ended_within(copier: subprocess.Popen[bytes]) -> int | None:
-    """Answer how the copier ended, or None, ended here, if it held on."""
+def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str]:
+    """Answer how the copier ended, or None, ended here, if it held on, and what it said."""
     try:
-        return copier.wait(timeout=PATIENCE)
+        _, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired:
         copier.kill()
-        copier.wait()
-        return None
+        _, said = copier.communicate()
+        return None, said.decode(errors="replace")
+    return copier.returncode, said.decode(errors="replace")
 
 
-def refusal(ended: int | None) -> str | None:
-    """Say how a copier that should have refused didn't, if it didn't."""
+def refusal(ended: int | None, said: str, why: str) -> str | None:
+    """Say how a copier that should have refused for `why` didn't, if it didn't."""
     if ended is None:
         return "it held the clipboard"
     if ended == 0:
         return "it ended as if it had copied"
+    if why not in said:
+        return f"it ended with {ended}, saying {said.strip()!r} rather than {why!r}"
     return None
 
 
@@ -216,6 +245,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as folder:
         cases = Cases(sys.argv[1], sys.argv[2], Path(folder))
         cases.copied()
+        cases.copied_long()
         cases.refused()
     if cases.failures:
         for failure in cases.failures:
