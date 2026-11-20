@@ -379,6 +379,36 @@ fn a_window_without_a_call_carries_nothing_new() {
 }
 
 #[test]
+fn an_app_s_drawing_waits_are_its_own_and_its_hidden_tabs_counted() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    ran(&mut then, "chrome-ui", "Compositor", 0, 0);
+    ran(&mut then, "chrome-ui", "chrome", 0, 0);
+    // 3 ms over ten runs, 300 us a run; 2 ms over one, the worst.
+    ran(&mut now, "chrome-ui", "Compositor", 3_000_000, 10);
+    ran(&mut now, "chrome-ui", "chrome", 2_000_000, 1);
+    now.lowered.insert("chrome-ui".into(), 4);
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    let chrome = &w.waits["chrome-ui"];
+    // 5 ms over eleven runs in all.
+    assert!((chrome.mean_us - 5_000.0 / 11.0).abs() < 1e-6, "{chrome:?}");
+    assert!((chrome.worst_us - 2_000.0).abs() < 1e-9, "{chrome:?}");
+    // Not a call's, which a window outside a call leaves out.
+    assert!(w.call.is_empty(), "{:?}", w.call);
+    assert_eq!(w.lowered, BTreeMap::from([("chrome-ui".to_string(), 4)]));
+    let line = serde_json::to_string(&w).unwrap();
+    let back: Window = serde_json::from_str(&line).unwrap();
+    assert_eq!(back.lowered, w.lowered);
+    // A window with no tab lowered writes no count, and one written before
+    // they were counted reads as none.
+    now.lowered.clear();
+    let line = serde_json::to_string(&between(&then, &now, quiet_niri(), 0, "gen")).unwrap();
+    assert!(!line.contains("lowered"), "{line}");
+    let back: Window = serde_json::from_str(&line).unwrap();
+    assert!(back.lowered.is_empty(), "{:?}", back.lowered);
+}
+
+#[test]
 fn answers_give_their_quantiles() {
     let a = Answers::of(&[3.0, 1.0, 2.0], 0);
     assert_eq!((a.p50_ms, a.max_ms, a.asked), (2.0, 3.0, 3));

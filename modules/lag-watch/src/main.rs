@@ -9,8 +9,8 @@
 //! main thread and PipeWire's data loops waited for a CPU each time they
 //! were ready, and in a call the worst of Tuple's and of Chrome's call
 //! threads, each apart; how long Chrome's and Slack's drawing threads
-//! waited, at all times, leaving out those of tabs the app lowered as
-//! hidden; and, every two seconds, how long niri takes to answer on
+//! waited, at all times, leaving out tabs the app lowered as hidden, for
+//! the hourly measure cadence judges to read; and, every two seconds, how long niri takes to answer on
 //! its socket, which it does from the same loop that reads input and
 //! draws. Each window is tagged with the system generation and how hard
 //! the work behind Joel was working, so like is compared with like.
@@ -34,6 +34,7 @@ mod now;
 mod report;
 mod window;
 
+use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -208,15 +209,22 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snaps
                 .insert(entry.file_name().to_string_lossy().to_string(), g);
         }
     }
+    // A process its app lowered, a hidden tab, is nobody's wait: counted,
+    // not read. The app lowers only the tab's main thread, so that one's
+    // nice, in the process's own stat, leaves out its compositor with it.
+    // It's read each window, since a tab shown again is raised again.
+    let mut lowered: BTreeMap<&Path, Option<&str>> = BTreeMap::new();
     for thread in threads {
-        // An app's thread its app lowered, a hidden tab's, is nobody's wait:
-        // counted, not read. Its nice is read each window, since a tab
-        // shown again is raised again.
-        if apps::is_app(thread) {
-            let stat = thread.schedstat.with_file_name("stat");
-            let nice = kernel::nice(&fs::read_to_string(stat).unwrap_or_default());
-            if nice.is_some_and(|n| n > 0) {
-                *s.lowered.entry(thread.label.to_string()).or_default() += 1;
+        if apps::is_app(thread)
+            && let Some(process) = apps::process(thread)
+        {
+            let hidden = lowered.entry(process).or_insert_with(|| {
+                let stat = fs::read_to_string(process.join("stat")).unwrap_or_default();
+                kernel::nice(&stat)
+                    .is_some_and(|n| n > 0)
+                    .then_some(thread.label)
+            });
+            if hidden.is_some() {
                 continue;
             }
         }
@@ -224,6 +232,9 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snaps
         if let Some(sched) = kernel::sched(&text) {
             s.threads.insert(thread.clone(), sched);
         }
+    }
+    for label in lowered.into_values().flatten() {
+        *s.lowered.entry(label.to_string()).or_default() += 1;
     }
     kernel::while_in_a_call(&mut s.threads);
     s
@@ -419,7 +430,8 @@ fn run() -> Result<(), Failure> {
     };
     let proc = PathBuf::from("/proc");
     started();
-    let mut apps = apps::Apps::default();
+    let within = account.strip_prefix(&cgroups).unwrap_or(&account);
+    let mut apps = apps::Apps::of_account(&format!("/{}", within.display()));
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
@@ -502,15 +514,18 @@ mod tests {
     }
 
     #[test]
-    fn an_app_s_thread_it_lowered_is_counted_and_not_read() {
+    fn a_tab_its_app_lowered_is_counted_and_none_of_its_threads_read() {
         let dir = std::env::temp_dir().join(format!("lag-watch-lowered-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let thread = |label: &'static str, tid: &str, nice: i64| {
-            let at = dir.join(format!("72/task/{tid}"));
+        let thread = |label: &'static str, pid: &str, tid: &str, nice: i64| {
+            let at = dir.join(format!("{pid}/task/{tid}"));
             fs::create_dir_all(&at).unwrap();
             fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
             let stat = format!("{tid} (chrome) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 {nice} 30 0\n");
-            fs::write(at.join("stat"), stat).unwrap();
+            fs::write(at.join("stat"), &stat).unwrap();
+            if pid == tid {
+                fs::write(dir.join(pid).join("stat"), &stat).unwrap();
+            }
             kernel::Thread {
                 label,
                 name: "chrome".into(),
@@ -518,15 +533,36 @@ mod tests {
                 call: false,
             }
         };
-        // A hidden tab's main thread, its compositor left at the app's
-        // own nice, and niri, whose nice is never asked.
-        let hidden = thread("chrome-ui", "72", 5);
-        let drawing = thread("chrome-ui", "73", -8);
-        let niri = thread("niri", "74", 5);
-        let s = snapshot(&dir, &dir, &[hidden, drawing.clone(), niri.clone()]);
+        // A hidden tab: its main thread lowered, its compositor raised to
+        // draw, as Chromium leaves them. A tab shown, its main thread at
+        // Chromium's own nice. A tab whose stat is gone, ending. And niri,
+        // whose nice is never asked.
+        let hidden = thread("chrome-ui", "72", "72", 5);
+        let hidden_drawing = thread("chrome-ui", "72", "73", -8);
+        let shown = thread("chrome-ui", "75", "75", 0);
+        let shown_drawing = thread("chrome-ui", "75", "76", -8);
+        let ending = thread("slack-ui", "78", "79", -8);
+        let niri = thread("niri", "74", "74", 5);
+        let s = snapshot(
+            &dir,
+            &dir,
+            // The compositor first, so its own nice is never what's asked.
+            &[
+                hidden_drawing,
+                hidden,
+                shown.clone(),
+                shown_drawing.clone(),
+                ending.clone(),
+                niri.clone(),
+            ],
+        );
         let read: Vec<&kernel::Thread> = s.threads.keys().collect();
-        assert_eq!(read, [&drawing, &niri]);
-        assert_eq!(s.lowered.get("chrome-ui"), Some(&1));
+        assert_eq!(read, [&shown, &shown_drawing, &niri, &ending]);
+        assert_eq!(
+            s.lowered,
+            BTreeMap::from([("chrome-ui".to_string(), 1)]),
+            "one hidden tab, counted once"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 
