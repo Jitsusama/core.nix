@@ -69,6 +69,17 @@ pub(crate) const WRITES_WITHIN: Duration = Duration::from_secs(3);
 /// it does or as a stop is caught.
 static RAN: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 
+/// The run's error, kept by `unsaid` for a stop caught after it, to say.
+static UNSAID: Mutex<Option<String>> = Mutex::new(None);
+
+/// Keep `words`, the error the run returns, for a stop caught before
+/// `main` says them, as health then ends by its signal and `main` never
+/// does: the stop says them once the run has returned, as `main` may
+/// have too should it come just after.
+pub fn unsaid(words: String) {
+    *UNSAID.lock().unwrap_or_else(PoisonError::into_inner) = Some(words);
+}
+
 /// `run`, with health's stops caught: a stop calls `end`, on a thread of
 /// its own, waits up to `WRITES_WITHIN` for `run` to return, then ends
 /// health by its signal, and once one is caught, health ends by it alone,
@@ -108,7 +119,12 @@ fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
             let (returned, _) = woken
                 .wait_timeout_while(returned, WRITES_WITHIN, |ran| !*ran)
                 .unwrap_or_else(PoisonError::into_inner);
-            if !*returned {
+            if *returned {
+                let unsaid = UNSAID.lock().unwrap_or_else(PoisonError::into_inner).take();
+                if let Some(words) = unsaid {
+                    crate::source::fail(&words);
+                }
+            } else {
                 crate::source::fail(&format!(
                     "health: a stop ended health before it wrote the day, as its run hadn't \
                      returned {} seconds on",

@@ -652,10 +652,8 @@ pub fn follow(into: &Path) -> io::Result<()> {
             &NOTICES,
         );
         // A stop ends health by its signal, so `main` never says this.
-        if let Err(error) = &ran
-            && signals::stopping()
-        {
-            FAILS(&format!("health: {error}"));
+        if let Err(error) = &ran {
+            signals::unsaid(format!("health: {error}"));
         }
         ran.and(Err(ended))
     })
