@@ -4245,6 +4245,7 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
 
     def parts(shown: Json) -> tuple[object, ...]:
         return (
+            shown["count"],
             shown["current"],
             shown["cut"],
             shown["restsOnARow"],

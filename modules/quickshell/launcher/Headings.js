@@ -211,7 +211,10 @@ function drawn(row, view) {
 // 2026-11-20 [95c35e88]). A find's rows rest as they always have: they
 // never have headings, and a gap they carry from their place shouldn't
 // change how the list rests as one is found and the next letter loses it.
-function restsWhole(rows, found) {
+// Spaces alone, `typed`, are no find: the search's words drop them, and it
+// lists the place whole.
+function restsWhole(rows, typed) {
+    const found = typed.trim() !== "";
     return rows.some(isHeading) || (!found && rows.some(row => Boolean(row?.gap)));
 }
 

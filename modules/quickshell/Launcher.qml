@@ -6669,10 +6669,9 @@ Scope {
     readonly property var headingsAt: Headings.placesOf(matches)
     // Whether the list's view rests whole, on a row's top and drawing only
     // the rows wholly in it: one with headings, or a place's own with a gap
-    // (Headings.restsWhole), a find's as it always has, as unheaded says.
-    // Spaces alone find nothing, as the search's words drop them, and list
-    // the place whole.
-    readonly property bool restsWhole: Headings.restsWhole(matches, typed.trim() !== "")
+    // (Headings.restsWhole); a find's rests as it always has, spaces alone
+    // being none. Unlike unheaded, which takes spaces for a find.
+    readonly property bool restsWhole: Headings.restsWhole(matches, typed)
     // Where the selection was, which it leaves a heading the way it went
     // from.
     property int currentWas: 0
