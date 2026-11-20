@@ -108,6 +108,30 @@ ShellRoot {
         }
     }
 
+    // The measures MarkSize.js mustn't keep, each named: a picture traced as
+    // a letter, its path empty beside a box not yet measured, as a row
+    // handed an emoji where a letter was kept on Joel's screen (2026-11-19);
+    // a picture's box with no height; and a letter traced with no box.
+    function wronglyKept() {
+        const face = Theme.level.figure.family;
+        const keyOf = text => [face, 1, text].join("\t");
+        const nothing = { x: 0, y: 0, width: 0, height: 0 };
+        const box = { x: 0, y: -10, width: 10, height: 10 };
+        const kept = [
+            ["a picture traced", String.fromCodePoint(0x1f600),
+                Object.assign({ outline: 1.4142135623730951 }, nothing)],
+            ["a picture traced with its box", String.fromCodePoint(0x1f44b),
+                Object.assign({ outline: 1.4142135623730951 }, box)],
+            ["a picture with no box", String.fromCodePoint(0x1f435),
+                Object.assign({ outline: 0, pictured: true }, nothing)],
+            ["a letter with no box", "H", Object.assign({ outline: 12 }, nothing)]
+        ];
+        return kept.filter(([, text, measure]) => {
+            MarkSize.measured(keyOf(text), measure, true);
+            return MarkSize.known(keyOf(text)) !== null;
+        }).map(([what]) => what);
+    }
+
     function say() {
         console.log(`MEANT ${JSON.stringify({
             offsets: root.offsets,
@@ -119,7 +143,8 @@ ShellRoot {
                 .map(point => point.toString(16)),
             themePictured: Object.keys(Theme.glyph)
                 .filter(name => MarkSize.pictured(Theme.glyph[name])),
-            emojiFace: Qt.fontFamilies().includes("Noto Color Emoji")
+            emojiFace: Qt.fontFamilies().includes("Noto Color Emoji"),
+            wronglyKept: root.wronglyKept()
         })}`);
         Qt.callLater(() => Qt.exit(0));
     }

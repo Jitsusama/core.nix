@@ -81,6 +81,8 @@ def main() -> None:
         faults.append(f"the theme's marks taken for pictures: {said['themePictured']}")
     if said["lettersPictured"]:
         faults.append(f"letters taken for pictures: {said['lettersPictured']}")
+    if said["wronglyKept"]:
+        faults.append(f"measures kept that draw a mark as if inkless: {said['wronglyKept']}")
     for by in said["offsets"]:
         for name in said["glyphs"]:
             faults += faults_in(folder / f"{name}-{by}.png")

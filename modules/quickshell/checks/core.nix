@@ -152,6 +152,22 @@ in
         };
       });
 
+  # Each of Super+E's groups has its emoji centred on its name as niri shows
+  # the launcher, at 1.5 and 2 (modules/quickshell/tests/emoji-marks-on-niri-test.py).
+  # It reads the launcher's own rows, which kept each emoji's measure with no
+  # ink, drawn through Qt's GPU path on Mesa's software GL as the laptop's
+  # draws on its GPU: an-emoji-stands-on-its-names-capitals draws each mark
+  # anew, alone, and stood each emoji on its name while Joel's screen drew
+  # them high.
+  an-emoji-stands-on-its-name-on-niri = launcherOnNiri {
+    name = "an-emoji-stands-on-its-name-on-niri";
+    tests = ../tests/emoji-marks-on-niri-test.py;
+    given = clipboard ++ [
+      "QT_QUICK_BACKEND=rhi"
+      "QSG_RHI_BACKEND=opengl"
+    ];
+  };
+
   # The launcher and a window share the keys by one rule: the newest Joel
   # opened takes them, a notice arriving never does, and a click on a
   # window gives it them (modules/quickshell/tests/focus-on-niri-test.py).
