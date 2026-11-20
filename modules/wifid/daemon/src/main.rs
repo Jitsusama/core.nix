@@ -861,7 +861,7 @@ impl Air<'_> {
             let bssid = self
                 .points
                 .get(point.as_str())
-                .and_then(|point| point.heard());
+                .and_then(air::AccessPoint::heard);
             let point = joined_to(point);
             if let Some(card) = self.named(bus, path).await {
                 change(&self.state, |state| state.at(&card, point));
