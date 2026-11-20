@@ -111,8 +111,7 @@ fn what_waits_on_the_login_leads_the_collection() {
         let why = |change: &str| {
             text.lines()
                 .find_map(|line| line.strip_prefix(change))
-                .map(str::trim_start)
-                .unwrap_or_else(|| panic!("{change} has no row: {text}"))
+                .map_or_else(|| panic!("{change} has no row: {text}"), str::trim_start)
         };
         assert!(why("core.nix#4795").starts_with("your review "), "{text}");
         assert!(why("core.nix#4792").starts_with("changes asked "), "{text}");
