@@ -173,9 +173,16 @@ fn chosen(
             Some(Next::Move(to))
         }
         Choice::Look => {
+            // A card held on its wider band looks while it hears narrower
+            // radios, which it may not take.
+            let hears = if others.iter().any(|other| other.point != on.point) {
+                "none of its network it may take off its wider band"
+            } else {
+                "no other of its network"
+            };
             println!(
                 "<6>{} looks for another access point, as {} carried {} at p95 with {:.1}% \
-                 lost, and it hears no other of its network",
+                 lost, and it hears {hears}",
                 on.card,
                 on.point,
                 measure::ms(measured.p95),
@@ -255,15 +262,17 @@ fn kept_off(on: &Joined, unreached: &str) -> String {
 }
 
 /// Why a card keeps to its wider band where it would once have tried a
-/// narrower one, heard as the hold heard it.
+/// narrower one, heard as the hold heard it, and its middle echo, which
+/// past `STEADY` at rest would have let it go.
 fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> String {
     format!(
         "{} keeps to {} on its wider band rather than try {narrower}, as it loses {:.1}% \
-         heard at {} dBm",
+         heard at {} dBm, its middle {}",
         on.card,
         on.point,
         measured.lost,
-        choose::heard(measured, signal)
+        choose::heard(measured, signal),
+        measure::ms(measured.p50)
     )
 }
 
@@ -301,7 +310,14 @@ fn tried(
             && choose::resting(measured)
             && !choose::badly(measured) =>
         {
-            ", on a narrower band, as the card moves little".to_owned()
+            // The slow air that let it leave: a middle past `STEADY` or a
+            // channel past `BUSIEST`.
+            let channel =
+                busy.map_or_else(String::new, |busy| format!(", its channel {busy}% busy"));
+            format!(
+                ", on a narrower band, as the card moves little, its middle {}{channel}",
+                measure::ms(measured.p50)
+            )
         }
         _ if choose::wider(frequency, to.frequency) && choose::loaded(measured) => {
             ", on a narrower band, during a download".to_owned()
@@ -682,6 +698,7 @@ mod tests {
         let on = joined(DESK);
         let narrow = other(HALL, Some(carried(9)));
         let resting = Measured {
+            p50: Some(ms(15)),
             moving: Some(24),
             ..carried(30)
         };
@@ -696,6 +713,7 @@ mod tests {
         };
 
         let why = tried(&on, (&resting, 5260, None), &narrow, None);
+        let busy = tried(&on, (&resting, 5260, Some(54)), &narrow, None);
         let failing = tried(&on, (&bad, 5260, None), &narrow, None);
         let loaded = tried(
             &on,
@@ -704,8 +722,12 @@ mod tests {
             Some(Whence::Loaded),
         );
 
-        let alone = "two minutes, on a narrower band, as the card moves little";
+        let alone = "two minutes, on a narrower band, as the card moves little, its middle 15.0 ms";
         assert!(why.ends_with(alone), "says why it left: {why}");
+        assert!(
+            busy.ends_with("its middle 15.0 ms, its channel 54% busy"),
+            "says how busy its channel was: {busy}"
+        );
         assert!(!failing.contains("band"), "it moves as bad: {failing}");
         let queued = "under load before, on a narrower band, during a download";
         assert!(
@@ -716,12 +738,16 @@ mod tests {
 
     #[test]
     fn a_card_keeping_to_its_wider_band_says_what_it_kept_off_and_why() {
-        let why = kept_wide(&joined(DESK), &carried(34), -38, HALL);
+        let quick_middle = Measured {
+            p50: Some(ms(5)),
+            ..carried(34)
+        };
+        let why = kept_wide(&joined(DESK), &quick_middle, -38, HALL);
 
         assert!(
             why.ends_with(&format!(
                 "keeps to {DESK} on its wider band rather than try {HALL}, as it loses 0.0% \
-                 heard at -38 dBm"
+                 heard at -38 dBm, its middle 5.0 ms"
             )),
             "a wider band kept to says what and why: {why}"
         );
@@ -731,7 +757,7 @@ mod tests {
         };
         let why = kept_wide(&joined(DESK), &fainter, -38, HALL);
         assert!(
-            why.ends_with("heard at -61 dBm"),
+            why.contains("heard at -61 dBm,"),
             "it says the station's own signal where fainter than the scan's: {why}"
         );
     }
