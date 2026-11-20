@@ -3409,8 +3409,9 @@ Scope {
     // held it may no longer, as a share ending lets an ask arm. Only while
     // the foot still says it (Arming.letsHeldGo): what else it says, or
     // waits to say as the launcher next opens, stays. Any arm goes too
-    // (Arming.shareTurns says why). Closing lets go of the arm on its own
-    // (Y2YBTS's reboot), so that holds whatever this does.
+    // (Arming.shareTurns says why). No check runs this body, as none
+    // shares the screen. Closing calls this, and rests the arm itself
+    // too (closing, below), so that holds whatever this does.
     property var heldSaying: []
     function unheld() {
         const left = Arming.shareTurns(saying, heldSaying);

@@ -4,7 +4,9 @@
 // does, and a second Return with no other key between does it. Any other
 // key lets it go, with no time limit, as a landing lasts until the next
 // key (Launcher.qml's landedOn); so does the launcher shutting, and a
-// share beginning (untold) or ending (shareTurns). Apart from the launcher, so
+// share beginning (untold) or ending (shareTurns), niri first saying it
+// shares nothing among them, since until then it counts as shared.
+// Apart from the launcher, so
 // tests/arming.qml holds it in Qt's own engine.
 //
 // Each press is read against the keys the line has taken (Prompt.qml's
@@ -105,9 +107,10 @@ function returnAct(how) {
 // Whether the place a source `source` lists may be kept, to draw at once
 // at the next opening (Launcher.qml's keepPlace): never one that says its
 // rows are never kept, as Asks does. A kept place's rows aren't drawn
-// under a share (Wanted.keptPlaceListed), but its steps are (intoKept),
-// and a share starting while the launcher is shut would leave a step
-// held in an ask naming it.
+// under a share (Wanted.keptPlaceListed), and Asks' only kept step today
+// is its own, which names nothing, so this is a second guard: a way kept
+// deeper into it, whose steps intoKept draws under a share, couldn't
+// name an ask from before one.
 function keepsPlace(source) {
     return source?.keptNever !== true;
 }

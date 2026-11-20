@@ -74,17 +74,17 @@ Provider {
     readonly property bool hiding: Shared.hidden(Niri.castsHeard, Niri.casts,
         Recorder.windowSession)
     // Asks is never kept to draw at once at the launcher's next opening
-    // (Arming.keepsPlace). A kept place's rows aren't drawn under a share
-    // (Wanted.keptPlaceListed), but its steps are (Launcher.qml's
-    // intoKept), and one held in an ask would name it in the crumb.
+    // (Arming.keepsPlace), a second guard beside Wanted.keptPlaceListed's
+    // refusing kept rows under a share: a step kept deeper into Asks,
+    // drawn under one (Launcher.qml's intoKept), would name an ask.
     readonly property bool keptNever: true
     onHidingChanged: {
         forget();
         ready.remade();
         // What was told before a share goes, since it names what's hidden
-        // now. After one only the foot's word for a held Return goes, as
-        // the ask would now arm, and any arm (Arming.shareTurns): what was
-        // told during it hid the ask, and stays for him to read.
+        // now. After one the foot's word for a held Return goes, as the
+        // ask would now arm, and so does any arm (Arming.shareTurns), but
+        // what was told during it hid the ask, and stays for him to read.
         if (hiding)
             launcher?.untold?.();
         else
