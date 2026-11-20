@@ -26,6 +26,9 @@ run by Node's own test runner when the local sites build the page.
   it said or drawn while the node sends none; and a branch drawn solid
   only for a start the node's book holds, dashed otherwise, and each tie
   the book doesn't hold said "as claimed" in the panel at either end.
+- `goes.test.ts` tries where the open cell's panel goes: to the map, and
+  to its Talk in the launcher by the link saying the machine it stands
+  on, offered only where its address is one the launcher can reach.
 
 Each of those tests builds the records it reads, so none needs a browser
 or a node.
