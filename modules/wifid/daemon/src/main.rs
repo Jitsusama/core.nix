@@ -419,14 +419,8 @@ async fn follow(
                 }
             }
             () = until(unreached), if unreached.is_some() => {
-                let unreached = wifid.arrivals.borrow_mut().unreached(Instant::now());
-                for late in unreached {
-                    let card = late.card.clone();
-                    let free = joining.as_ref().is_none_or(|joining| joining.card != card);
-                    if !wifid.go_back(late, free).await {
-                        wifid.let_go(&card, false).await;
-                    }
-                }
+                let joining = joining.as_ref().map(|joining| joining.card.as_str());
+                wifid.overdue(joining, Instant::now()).await;
             }
             _ = polling.tick(), if *watching.borrow() > 0 => {
                 poll(bus, wifid.supplicant, &mut kernel, state).await;
@@ -2220,23 +2214,13 @@ impl Wifid<'_> {
         if there && why == Short::Late {
             return true;
         }
-        // A way back handed back is one to the point it's already going to.
-        let again = !to.eq_ignore_ascii_case(&from);
-        let within = arrive::BACK_AFTER.as_millis();
-        match (why, again) {
-            (Short::Late, true) => {
-                println!("<4>{card} didn't reach {to} within {within} ms, so goes back to {from}");
-            }
-            (Short::Off, true) => {
+        match why {
+            Short::Late => println!(
+                "<4>{card} didn't reach {to} within {} ms, so goes back to {from}",
+                arrive::BACK_AFTER.as_millis()
+            ),
+            Short::Off => {
                 println!("<4>{card} came off its network short of {to}, so goes back to {from}");
-            }
-            (Short::Late, false) => {
-                println!("<4>{card} didn't get back to {from} within {within} ms, so tries again");
-            }
-            (Short::Off, false) => {
-                println!(
-                    "<4>{card} came off its network on its way back to {from}, so tries again"
-                );
             }
         }
         let held = self.held.borrow().get(&card).cloned();
@@ -2251,7 +2235,7 @@ impl Wifid<'_> {
             self.held.borrow_mut().insert(card.clone(), network.clone());
             self.arrivals
                 .borrow_mut()
-                .back(&card, &from, Instant::now(), again);
+                .back(&card, &from, Instant::now());
             match interface.roam(&from).await {
                 Ok(()) => Ok(()),
                 Err(refused) => {
@@ -2282,9 +2266,47 @@ impl Wifid<'_> {
         {
             return;
         }
+        // Selected alone, wpa_supplicant starts its join over, saying the
+        // card off its network meanwhile, so a way back is given its time.
+        if free && self.arrivals.borrow().going_back(card) {
+            return;
+        }
         self.sent_back.borrow_mut().remove(card);
         self.picked.borrow_mut().remove(card);
         if free {
+            self.turn_on_networks(card).await;
+        }
+        self.let_go(card, free).await;
+    }
+
+    /// Sends each card whose move is late back to the point it left, and
+    /// lets each whose way back is late join whatever it hears. A card in
+    /// the join the shell asked for, `joining`, is left to it.
+    async fn overdue(&self, joining: Option<&str>, now: Instant) {
+        let free = |card: &str| joining != Some(card);
+        let unreached = self.arrivals.borrow_mut().unreached(now);
+        for late in unreached {
+            let card = late.card.clone();
+            if !self.go_back(late, free(&card)).await {
+                self.let_go(&card, false).await;
+            }
+        }
+        let stranded = self.arrivals.borrow_mut().stranded(now);
+        for (card, to) in stranded {
+            self.stranded(&card, &to, free(&card)).await;
+        }
+    }
+
+    /// Lets a card that hasn't got back to the point it left within its
+    /// time join whatever it hears, its other networks on again, so one
+    /// whose point has gone too isn't held to it.
+    async fn stranded(&self, card: &str, to: &str, free: bool) {
+        println!(
+            "<4>{card} didn't get back to {to} within {} ms, so may join any network",
+            arrive::BACK_AFTER.as_millis()
+        );
+        self.sent_back.borrow_mut().remove(card);
+        if free && !self.picked.borrow().contains(card) {
             self.turn_on_networks(card).await;
         }
         self.let_go(card, free).await;
