@@ -1581,14 +1581,16 @@ Singleton {
     readonly property int decidesWithin: 3000
 
     // Whether the harness's config says sessions Joel starts run in pi's
-    // host: its quest-workflow.startHost, "attended" for it. Said nothing
-    // of, a start opens its window at once, never asking, since asking
-    // costs every start about 550 ms (5KBYD7: 544, 615 and 552 ms, and 856
-    // to orchestrate).
+    // host: its quest-workflow.startHost, "attended" for it, under sections,
+    // where the harness keeps each extension's settings
+    // (lib/internal/config/loader.ts; 85PKB2, 2026-11-19 [ff8188f0]). Said
+    // nothing of, a start opens its window at once, never asking, since
+    // asking costs every start about 550 ms (5KBYD7: 544, 615 and 552 ms,
+    // and 856 to orchestrate).
     readonly property bool startsHosted: {
         try {
             const said = JSON.parse(harnessConfig.text() || "{}");
-            return said?.["quest-workflow"]?.startHost === "attended";
+            return said?.sections?.["quest-workflow"]?.startHost === "attended";
         } catch (error) {
             return false;
         }

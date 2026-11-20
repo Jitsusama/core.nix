@@ -145,11 +145,14 @@ ShellRoot {
         if (![started("QEST-HOSTED", true), started("QEST-AWAY", false),
             started("QEST-PLAIN", false)].every(line => lines.includes(line)))
             return;
-        config.setText("{}");
+        // Said outside sections, where the harness never reads it, is said
+        // nothing of.
+        config.setText('{"quest-workflow": {"startHost": "attended"}}');
         stage = "unset";
     }
 
-    // Said nothing of, a start opens its window at once, never asking.
+    // Said nothing of where the harness reads it, a start opens its window
+    // at once, never asking.
     function unset() {
         if (Sessions.startsHosted)
             return;

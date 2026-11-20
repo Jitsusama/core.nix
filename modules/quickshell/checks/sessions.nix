@@ -411,7 +411,9 @@ in
       export SPAWN_DECIDE=${../tests/stand-ins/spawn-decide.sh} DECIDED=$PWD/decided
       touch $DECIDED
       mkdir -p $HOME/.config/pi/agentic-harness.pi
-      echo '{"quest-workflow": {"startHost": "attended"}}' \
+      # The harness keeps each extension's settings under sections
+      # (lib/internal/config/loader.ts), as Joel's own file does.
+      echo '{"version": 1, "sections": {"quest-workflow": {"startHost": "attended"}}}' \
         > $HOME/.config/pi/agentic-harness.pi/config.json
       export PATH=${lib.makeBinPath [ pkgs.bash ]}:$PATH
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
