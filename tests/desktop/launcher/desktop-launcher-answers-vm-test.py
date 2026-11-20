@@ -1448,13 +1448,15 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # step back is seen. The wait acts on the state it saw pass rather than asking again,
         # since the launcher may have moved on since. A line seen is the third Return's, which
         # Escape lets go; nothing else closes a line, so the Escape can't land on the step
-        # instead. Only that one Return can write one, so a second line fails the wait for the
-        # step back, and a Return taken only after the step back is seen, over 3 s late, isn't.
+        # instead. It's banged where the asking still showed, and plain where the step back
+        # came first, as on the builders' runs of 20 Nov. Only that one Return can write one,
+        # so a second line fails the wait for the step back, and a Return taken only after the
+        # step back is seen, over 3 s late, isn't.
         shown = desktop.launcher_until(
             lambda shown: shown["command"] is not None or stepped_back(shown)
         )
         if shown["command"] is not None:
-            assert shown["command"].get("line") == "install!", shown["command"]
+            assert shown["command"].get("line") in {"install", "install!"}, shown["command"]
             # Said so the net's logs count how often the late line comes.
             print("firmware: the third Return's line came first, let go with Escape")
             machine.send_key("esc")

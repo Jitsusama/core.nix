@@ -703,12 +703,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         (heard.py).
         """
         since = self.mark()
-        return until_heard(
+        passed: Json = until_heard(
             self.showing(),
             test,
             lambda passes: self.reported("showing ", passes, since, timeout),
             "the launcher showed",
         )
+        return passed
 
     def launcher_ready(self) -> None:
         """Wait until the launcher is open and holds the keys.
