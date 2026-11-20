@@ -10,12 +10,14 @@ pragma ComponentBehavior: Bound
 // Brightness holds; and the place's :set line is the one served on the
 // summary, each option saying how it stands and asking what its way
 // serves, a share typed as a Brightness level asks, a switch only the
-// way it doesn't stand.
+// way it doesn't stand; and its work as the launcher opens is felt by its
+// name, giving what it gives and throwing what it throws.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import KeyTimes
 import "launcher" as Launcher
 import "Expect.js" as Expect
 
@@ -41,6 +43,13 @@ ShellRoot {
         readonly property var matches: []
         readonly property var placed: []
         readonly property string typed: ""
+        // Whether it records spans, and those it has, as Launcher.qml's
+        // feltSpan does while an opening is felt.
+        property bool spansHeard: false
+        property var spans: []
+        function feltSpan(name, from) {
+            spans = spans.concat([{ name, from, to: KeyTimes.now() }]);
+        }
     }
 
     // A screen's row as the windows daemon serves it, wrapped as the
@@ -231,6 +240,7 @@ ShellRoot {
         id: displays
 
         launcher: theLauncher
+        settings: ({ name: "Screens" })
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
@@ -414,7 +424,50 @@ ShellRoot {
                 === '[["brightness",40],["brightness",45],["night-light",true]]',
             JSON.stringify(lit));
         Expect.expect("and no level was drawn asking", acted.length === 1, JSON.stringify(acted));
+        felt();
         waiting = "done";
         Qt.exit(0);
+    }
+
+    // A source's work as the launcher opens is felt by the source's name,
+    // so an opening's stall says which held it (Provider.qml's feltOpening).
+    function felt() {
+        displays.felt("unheard", () => 1);
+        Expect.expect("a launcher that records no spans is given none",
+            theLauncher.spans.length === 0, JSON.stringify(theLauncher.spans));
+        theLauncher.spansHeard = true;
+        theLauncher.open = true;
+        const opened = theLauncher.spans;
+        Expect.expect("opening felt Screens' own work as one span by its name",
+            JSON.stringify(opened.map(span => span.name)) === '["Screens opening"]',
+            JSON.stringify(opened));
+        // Stamped inside the work, so a span read after its work, or from 0, fails.
+        let inside = -1;
+        const before = KeyTimes.now();
+        displays.felt("timed", () => {
+            inside = KeyTimes.now();
+        });
+        const timed = theLauncher.spans[theLauncher.spans.length - 1];
+        Expect.expect("from before its work to after",
+            timed.name === "Screens timed" && before <= timed.from && timed.from <= inside
+                && inside <= timed.to,
+            `${before} ${inside} ${JSON.stringify(timed)}`);
+        theLauncher.open = false;
+        Expect.expect("work felt while it's shut is shutting, and gives what the work gives",
+            displays.feltOpening(() => 7) === 7
+                && theLauncher.spans[theLauncher.spans.length - 1].name === "Screens shutting",
+            JSON.stringify(theLauncher.spans));
+        let thrown = "";
+        try {
+            displays.felt("throwing", () => {
+                throw new Error("thrown");
+            });
+        } catch (error) {
+            thrown = error.message;
+        }
+        Expect.expect("work that throws still throws, felt all the same",
+            thrown === "thrown"
+                && theLauncher.spans[theLauncher.spans.length - 1].name === "Screens throwing",
+            `${thrown} ${JSON.stringify(theLauncher.spans)}`);
     }
 }

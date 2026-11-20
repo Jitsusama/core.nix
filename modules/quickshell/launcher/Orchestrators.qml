@@ -187,7 +187,7 @@ Provider {
 
         function onOpenChanged() {
             if (provider.launcher.open)
-                orchestrators.reload();
+                provider.feltOpening(() => orchestrators.reload());
         }
     }
 

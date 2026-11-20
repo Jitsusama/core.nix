@@ -42,6 +42,7 @@
 //
 // Long because it's the one shape every source is written to: split, a
 // source's author would read half of what it promises and miss the rest.
+import KeyTimes
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -60,6 +61,35 @@ Scope {
     property real weight: 1
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
+    // Its own work as the launcher opens or shuts, run and felt as
+    // "<its name> opening" or "shutting", its name the key it's served
+    // by ("displays opening"), so an opening's longest stall
+    // says which source held it (Launcher.qml's feltSpan). Joel's openings
+    // into Now spent 30 and 44 ms of their longest stalls in "opening",
+    // the turn of the launcher's open, against 14 the fill's own laps
+    // named (2026-11-20). What a binding on the launcher's open does in
+    // that turn stays the launcher's "opening", as does the work of a
+    // source whose own handler doesn't come through here (Warp's).
+    // Applications, Capture, Displays, Networks, Now (its whole opening,
+    // its writes included), Orchestrators, Quests and Traffic come
+    // through here; Agents feels its wraps a frame on, through felt,
+    // below.
+    function feltOpening(work) {
+        return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
+    }
+    // Work run and felt as "<its name> <what>", giving what it gives and
+    // throwing what it throws. A launcher that feels nothing, as a test's
+    // stand-in, just has it run.
+    function felt(what, work) {
+        const heard = provider.launcher?.spansHeard === true;
+        const from = heard ? KeyTimes.now() : 0;
+        try {
+            return work();
+        } finally {
+            if (heard)
+                provider.launcher.feltSpan(`${provider.settings.name} ${what}`, from);
+        }
+    }
     // Whether what it shows is still being read for the first time, as
     // Machine's daemon's first answer is, so a terminal's `launcher show`
     // asks again for its figures rather than saying the placeholder

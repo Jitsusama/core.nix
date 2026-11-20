@@ -526,7 +526,7 @@ Provider {
 
         function onOpenChanged() {
             if (provider.launcher.open)
-                Taken.read();
+                provider.feltOpening(() => Taken.read());
             // Shut, no drawer shows, so none is read ahead.
             else
                 provider.takenWanted = "";

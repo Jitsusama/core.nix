@@ -583,11 +583,12 @@ Provider {
             || typeof launcher.afterFrame !== "function")
             return;
         wrapAsked = true;
-        launcher.afterFrame(() => {
+        // Felt as it runs, a frame on, where an opening's stall can hold it.
+        launcher.afterFrame(() => provider.felt("wrapping", () => {
             provider.wrapAsked = false;
             if (provider.opened() && provider.wanted)
                 provider.laidOut();
-        });
+        }));
     }
 
     // As the launcher opens at home, what typing will find is wrapped the
@@ -603,13 +604,13 @@ Provider {
             && !launcher.entering;
         if (!home() || typeof launcher.afterFrame !== "function")
             return;
-        launcher.afterFrame(() => {
+        launcher.afterFrame(() => provider.felt("wrapping", () => {
             if (!home())
                 return;
             provider.laidOut();
             if (provider.topServed)
                 top.rows();
-        });
+        }));
     }
 
     // Every row at the tree's top, in the daemon's order, a fold holding

@@ -180,27 +180,31 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open) {
-                provider.openedAt = Date.now();
-                provider.looksHour = Math.floor(Date.now() / 3600000);
-                provider.reweather();
-                // Placing the time and the date makes Time's and Today's
-                // rows, so an opening into a place that shows none of Now's
-                // leaves them stale until Now is wanted (H6EDLC, 2026-11-11),
-                // and one onto Now's rows places them only once a minute
-                // has turned since they were placed: each opening into For
-                // You made all 17 again with nothing changed (2026-11-11).
-                // An opening elsewhere leaves them for when Now's rows are
-                // wanted (onWantedChanged), which asks the same: marking
-                // them stale as it opened made all 17 again within the
-                // minute, whenever it came before Now fell asleep, as a
-                // loaded machine's openings into For You did (2026-11-12).
-                if (provider.wanted)
-                    provider.retimeIfStale();
-            } else {
+            if (provider.launcher.open)
+                provider.feltOpening(() => provider.opens());
+            else
                 provider.openedAt = Number.POSITIVE_INFINITY;
-            }
         }
+    }
+
+    // Its work as the launcher opens, felt whole: the bindings on when it
+    // opened and the hour its looks are split by run as they're set.
+    function opens() {
+        provider.openedAt = Date.now();
+        provider.looksHour = Math.floor(Date.now() / 3600000);
+        provider.reweather();
+        // Placing the time and the date makes Time's and Today's rows, so
+        // an opening into a place that shows none of Now's leaves them
+        // stale until Now is wanted (H6EDLC, 2026-11-11), and one onto
+        // Now's rows places them only once a minute has turned since they
+        // were placed: each opening into For You made all 17 again with
+        // nothing changed (2026-11-11). An opening elsewhere leaves them
+        // for when Now's rows are wanted (onWantedChanged), which asks the
+        // same: marking them stale as it opened made all 17 again within
+        // the minute, whenever it came before Now fell asleep, as a loaded
+        // machine's openings into For You did (2026-11-12).
+        if (provider.wanted)
+            provider.retimeIfStale();
     }
 
     // When the launcher last opened, so a notice read since stays where

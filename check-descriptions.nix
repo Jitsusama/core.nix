@@ -4504,7 +4504,10 @@
     the launcher's Screens draws each screen's row as the windows daemon serves it, makes again
     only the row a change names, offers Windows the screens laid out by what their rows hold, asks
     the daemon to look again once it's changed a screen, and says the Brightness's share, or that
-    it isn't read yet, as the place's line serves it
+    it isn't read yet, as the place's line serves it; and as the launcher opens Screens feels a
+    span by its name, while work a source feels through its span runs from before it to after
+    it, is named shutting while the launcher is shut, and gives what the work gives and throws
+    what it throws
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows, as the windows daemon tells of them, list This Window, then the rest

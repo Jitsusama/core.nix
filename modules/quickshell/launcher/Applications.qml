@@ -1981,7 +1981,7 @@ Provider {
         ignoreUnknownSignals: true
 
         function onOpenChanged() {
-            provider.startsAgain();
+            provider.feltOpening(() => provider.startsAgain());
         }
 
         function onCataloguingChanged() {

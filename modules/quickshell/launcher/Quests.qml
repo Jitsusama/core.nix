@@ -494,7 +494,7 @@ Provider {
         // held only while a search shows them.
         function onOpenChanged() {
             if (provider.launcher.open) {
-                Sessions.lookAround();
+                provider.feltOpening(() => Sessions.lookAround());
                 return;
             }
             ready.ended();
