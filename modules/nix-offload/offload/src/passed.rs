@@ -626,7 +626,14 @@ mod tests {
         );
         passed.keep_ran(&top, &tests, &copies, Some(1));
         passed.keep_ran(&top, &tests, &copies, None);
-        let warm = words(&["sh", "-c", crate::cargo::WARM, "nix-offload-warm", "k", "cargo"]);
+        let warm = words(&[
+            "sh",
+            "-c",
+            crate::cargo::WARM,
+            "nix-offload-warm",
+            "k",
+            "cargo",
+        ]);
         passed.keep_ran(&top, &warm, &[], Some(0));
         assert_eq!(
             passed.ran(&top),
