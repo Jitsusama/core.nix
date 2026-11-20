@@ -303,6 +303,8 @@ in
         # given before the entry, as node reads only flags there; quoted for
         # its =, which systemd unquotes.
         && lib.hasInfix " '--max-old-space-size=8192' /" (first unit.Service.ExecStart)
+        # Where its compiled functions sit, so perf names a spin's JS frames.
+        && lib.hasInfix " --perf-basic-prof-only-functions " (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
         && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
