@@ -307,7 +307,8 @@ pub enum Outcome {
     Flaky,
     /// Failed twice at the same commit.
     Failed,
-    /// The builder never took it.
+    /// The builder never took it, or a run that would confirm a failure
+    /// or a stall waits out a rest first (`Confirming::AfterARest`).
     Unsent,
     /// Stopped twice at the same commit before it ended, so it says
     /// nothing of the merge.
@@ -335,15 +336,44 @@ pub enum Round {
 /// round or a search, are waited for and counted rather than run again
 /// beside them.
 pub fn attempt(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
+    attempt_confirming(world, state, commit, check, Confirming::AtOnce)
+}
+
+/// When a run that would confirm a failure or a stall goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Confirming {
+    /// In the same attempt, for whoever needs the answer now.
+    AtOnce,
+    /// In a later attempt, the first ending `Unsent`, for a merge that has
+    /// landed and can wait out a rest: run at once, it would fall in the
+    /// same outage as the first, which no list of the network's words
+    /// names whole.
+    AfterARest,
+}
+
+/// `attempt`, its confirming run going as `confirming` says.
+pub fn attempt_confirming(
+    world: &dyn World,
+    state: &State,
+    commit: &str,
+    check: &str,
+    confirming: Confirming,
+) -> Outcome {
     let turn = state.turn(commit, check);
     let _turn = turn
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    attempt_in_turn(world, state, commit, check)
+    attempt_in_turn(world, state, commit, check, confirming)
 }
 
-/// `attempt`, by one holding the turn of `check` at `commit`.
-fn attempt_in_turn(world: &dyn World, state: &State, commit: &str, check: &str) -> Outcome {
+/// `attempt_confirming`, by one holding the turn of `check` at `commit`.
+fn attempt_in_turn(
+    world: &dyn World,
+    state: &State,
+    commit: &str,
+    check: &str,
+    confirming: Confirming,
+) -> Outcome {
     let before = state.runs(commit, check);
     let mut failures = before.iter().filter(|ran| **ran == Ran::Failed).count();
     let mut stalls = before.iter().filter(|ran| **ran == Ran::Stalled).count();
@@ -389,13 +419,16 @@ fn attempt_in_turn(world: &dyn World, state: &State, commit: &str, check: &str) 
                  so it isn't counted as a failure",
                 short(commit)
             ));
-            continue;
+        } else {
+            failures += 1;
+            state.say(&format!(
+                "{check} failed at {} ({failures} of 2)",
+                short(commit)
+            ));
         }
-        failures += 1;
-        state.say(&format!(
-            "{check} failed at {} ({failures} of 2)",
-            short(commit)
-        ));
+        if confirming == Confirming::AfterARest && failures < FAILURES && stalls < STALLS {
+            return Outcome::Unsent;
+        }
     }
     Outcome::Failed
 }
@@ -646,7 +679,7 @@ fn attempt_together(world: &dyn World, state: &State, commit: &str, check: &str)
             short(commit)
         ));
     }
-    attempt_in_turn(world, state, commit, check)
+    attempt_in_turn(world, state, commit, check, Confirming::AtOnce)
 }
 
 /// Run each check at `commit`, `AT_ONCE` at a time and longest first, and
@@ -2915,6 +2948,33 @@ mod tests {
         }
     }
 
+    /// Record that a Mac failed `check` at `merge` once, rested since, so
+    /// the job's next run is the one that confirms it.
+    fn failed_once_on_a_mac(state: &State, merge: &str, check: &str) {
+        let log = state.log(merge, check, 1);
+        state
+            .record(merge, check, Ran::Failed, Some(1), &log, 60)
+            .unwrap();
+    }
+
+    /// Run rounds from `base` until no Mac comparison rests, ending each
+    /// rest at once, at most `rounds` of them; the rounds run.
+    fn rounds_past_rests(world: &Stand, state: &State, base: &str, rounds: usize) -> usize {
+        for ran in 1..=rounds {
+            round(world, state, base).unwrap();
+            let resting = state.settling();
+            if resting.is_empty() {
+                return ran;
+            }
+            for mut job in resting {
+                job["after"] = json!(0);
+                let check = job["test"].as_str().unwrap_or_default().to_owned();
+                state.keep_settling(&check, &job).unwrap();
+            }
+        }
+        rounds
+    }
+
     fn findings(state: &State) -> Vec<Value> {
         let mut found: Vec<Value> = fs::read_dir(state.root.join("findings"))
             .unwrap()
@@ -2963,6 +3023,17 @@ mod tests {
             "the Mac's comparison m1's gate skipped wasn't run at m1: {:?}",
             world.built()
         );
+        // The run that confirms it waits out a rest, outside whatever
+        // outage the first fell in.
+        assert!(
+            world.reverted.lock().unwrap().is_empty()
+                && state
+                    .settling()
+                    .iter()
+                    .any(|job| job["after"].as_u64().unwrap_or(0) >= now() + 9 * 60),
+            "a Mac's failure was confirmed without a rest first"
+        );
+        rounds_past_rests(&world, &state, "s", 3);
         assert_eq!(
             *world.reverted.lock().unwrap(),
             names("m1"),
@@ -3113,6 +3184,10 @@ mod tests {
         }
         .exits("m1", &check, &[1, UNCOMPARED]);
         round(&world, &state, "s").unwrap();
+        let mut rested = state.settling().remove(0);
+        rested["after"] = json!(0);
+        state.keep_settling(&check, &rested).unwrap();
+        round(&world, &state, "s").unwrap();
         let narrowed: Vec<(String, String)> = world
             .built()
             .into_iter()
@@ -3187,6 +3262,11 @@ mod tests {
         }
         .exits("m1", &check, &[STALL, STALL]);
         round(&world, &state, "s").unwrap();
+        assert!(
+            findings(&state).is_empty() && !state.settling().is_empty(),
+            "a Mac's first stall was told, or not rested before the next run"
+        );
+        rounds_past_rests(&world, &state, "s", 3);
         let told: Vec<Value> = findings(&state)
             .into_iter()
             .filter(|finding| finding["kind"] == "mac-unrun" && finding["stalled"] == true)
@@ -3277,14 +3357,17 @@ mod tests {
             ..Stand::default()
         }
         .exits("m1", &check, &[1, STALL, STALL]);
-        round(&world, &state, "s").unwrap();
+        rounds_past_rests(&world, &state, "s", 4);
         let log = state.log("m1", &check, 1).display().to_string();
+        let stalled = state.log("m1", &check, 2).display().to_string();
         let told = findings(&state);
         assert!(
             told.iter().any(|finding| finding["kind"] == "mac-unrun"
                 && finding["stalled"] == true
-                && finding["failed_log"] == log.as_str()),
-            "a failure a Mac saw before two stalls wasn't told with its log: {told:?}"
+                && finding["failed_log"] == log.as_str()
+                && finding["log"] == stalled.as_str()),
+            "a failure a Mac saw before two stalls wasn't told with its log and the \
+             stalls' last, {stalled}: {told:?}"
         );
     }
 
@@ -3407,28 +3490,31 @@ mod tests {
 
     #[test]
     fn a_mac_comparison_told_and_let_go_is_not_handed_again() {
-        // A round from the same base hands its merges again, and one told
-        // after a day would start another day of tries.
-        let state = state("mac-told-kept");
-        let check = crate::macs::check("s");
-        let world = Stand {
-            head: "h".into(),
-            merges: names("m1 h"),
-            changed: changed("vm-a"),
-            mac_skipped: names("m1"),
-            ..Stand::default()
-        };
-        state
-            .find(&json!({
-                "kind": "mac-unrun", "test": check, "commit": "m1", "since": 0, "at": now(),
-            }))
-            .unwrap();
-        let settler = Settler::new(&world, &state);
-        hand_skipped_macs(&world, &settler, "s", "h").unwrap();
-        assert!(
-            !settler.holds(&check) && state.settling().is_empty(),
-            "a comparison told and let go was handed again"
-        );
+        // A round from the same base hands its merges again: one told
+        // after a day would start another day of tries, and one reverted
+        // would be reverted again.
+        for kind in ["mac-unrun", "failed"] {
+            let state = state(&format!("mac-told-kept-{kind}"));
+            let check = crate::macs::check("s");
+            let world = Stand {
+                head: "h".into(),
+                merges: names("m1 h"),
+                changed: changed("vm-a"),
+                mac_skipped: names("m1"),
+                ..Stand::default()
+            };
+            state
+                .find(&json!({
+                    "kind": kind, "test": check, "commit": "m1", "since": 0, "at": now(),
+                }))
+                .unwrap();
+            let settler = Settler::new(&world, &state);
+            hand_skipped_macs(&world, &settler, "s", "h").unwrap();
+            assert!(
+                !settler.holds(&check) && state.settling().is_empty(),
+                "a comparison with a {kind} finding was handed again"
+            );
+        }
     }
 
     #[test]
@@ -5153,13 +5239,14 @@ mod tests {
         // on the next from 03:02 until it was restarted at 03:29.
         let state = state("leaves-mid-compare");
         let check = crate::macs::check("s");
+        failed_once_on_a_mac(&state, "m", &check);
         let world = Stand {
             head: "n".into(),
             merges: names("m n"),
             slow: names("n"),
             ..Stand::default()
         }
-        .exits("m", &check, &[1, 1])
+        .exits("m", &check, &[1])
         .exits("n", &check, &[1, 1]);
         let settler = Settler::new(&world, &state);
         settler.hand(Job::Mac {
@@ -5206,13 +5293,14 @@ mod tests {
         hold["bad"] = json!("m");
         hold["cuts"] = json!(1);
         state.set_hold(&hold).unwrap();
+        failed_once_on_a_mac(&state, "m", &check);
         let world = Stand {
             head: "n".into(),
             merges: names("m n"),
             slow: names("n"),
             ..Stand::default()
         }
-        .exits("m", &check, &[1, 1])
+        .exits("m", &check, &[1])
         .exits("n", &check, &[1, 1]);
         let settler = Settler::new(&world, &state);
         settler.hand(Job::Mac {

@@ -755,13 +755,15 @@ const NETWORK_WORDS: [&str; 12] = [
 ];
 
 /// Whether a failed download, `why` after nix's "unable to download ", was
-/// a cache's: a store path's narinfo or its nar. A fetch the change names
+/// a cache's: its nix-cache-info, a store path's narinfo or its nar. A fetch the change names
 /// at evaluation fails the same way when its host is wrong, and that's
 /// the change's.
 fn a_caches(why: &str) -> bool {
     why.strip_prefix('\'')
         .and_then(|quoted| quoted.split('\'').next())
-        .is_some_and(|url| url.ends_with(".narinfo") || url.contains("/nar/"))
+        .is_some_and(|url| {
+            url.ends_with("/nix-cache-info") || url.ends_with(".narinfo") || url.contains("/nar/")
+        })
 }
 
 /// The errors a build prints after a cache couldn't be reached, as nix
@@ -2322,14 +2324,17 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             Some(1),
             "a fetch the change names, from a host that doesn't resolve, was let off"
         );
-        // A cache's narinfo, as well as its nar, is the cache's.
-        let narinfo =
-            format!("error: unable to download 'https://cache.nixos.org/0000.narinfo': {resolved}");
-        assert_eq!(
-            mac_ending(Some(1), Some(narinfo.as_bytes())),
-            Some(UNCOMPARED),
-            "a cache's narinfo it couldn't reach counted"
-        );
+        // A cache's narinfo and its nix-cache-info, as well as its nar,
+        // are the cache's.
+        for file in ["0000.narinfo", "nix-cache-info"] {
+            let cache =
+                format!("error: unable to download 'https://cache.nixos.org/{file}': {resolved}");
+            assert_eq!(
+                mac_ending(Some(1), Some(cache.as_bytes())),
+                Some(UNCOMPARED),
+                "a cache's {file} it couldn't reach counted"
+            );
+        }
     }
 
     #[test]

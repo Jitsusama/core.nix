@@ -86,7 +86,8 @@ fn said_to(merge: &Unrun, named: bool) -> String {
     let how = match (merge.stalled, &merge.failed_log) {
         (true, _) => format!(
             "a Mac took its Mac checks at {short} twice and both runs stopped unfinished: they \
-             may hang, may take longer than the net's two hours, or something else stopped them"
+             may hang, may take longer than the net's two hours, may print nothing for half an \
+             hour, or something else stopped them"
         ),
         (false, Some(_)) => {
             format!("a Mac failed its Mac checks at {short} once, and no Mac compared them again")
@@ -236,8 +237,8 @@ mod tests {
         assert!(
             stalled.contains("both runs stopped unfinished")
                 && stalled.contains(
-                    "may hang, may take longer than the net's two hours, or something else \
-                     stopped them"
+                    "may hang, may take longer than the net's two hours, may print nothing for \
+                     half an hour, or something else stopped them"
                 )
                 && !stalled.contains("no Mac compared")
                 && stalled.contains("The last run's log is /net/logs/fb46-2.log.")

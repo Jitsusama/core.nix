@@ -28,9 +28,9 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::{
-    AT_ONCE, Bad, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
-    fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
-    same_drv, search, settle,
+    AT_ONCE, Bad, Confirming, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt,
+    attempt_confirming, clear_hold_of, fixed_forward, list_flaky_unless_mended, listed_on_main,
+    lock, pr_of, revert_and_tell, same_drv, search, settle,
 };
 use crate::state::{Ran, State, now, short};
 
@@ -371,9 +371,12 @@ impl<'a> Settler<'a> {
     }
 
     /// Whether a Mac's comparison `check` at `merge` was told to its owner
-    /// and let go, so handing it again would start another day of tries.
+    /// and let go, or reverted, so handing it again would start another
+    /// day of tries, or revert it again.
     pub fn told(&self, check: &str, merge: &str) -> bool {
-        self.state.found("mac-unrun", check, merge)
+        ["mac-unrun", "failed"]
+            .into_iter()
+            .any(|kind| self.state.found(kind, check, merge))
     }
 
     /// Run `write` while nothing else writes the hold.
@@ -614,7 +617,9 @@ impl<'a> Settler<'a> {
             let since = since.saturating_add(RESTS.0).min(now());
             return rest(state, merge, check, since, RESTS.0);
         }
-        let outcome = attempt(world, state, merge, check);
+        // The merge has landed, so a run confirming a failure or a stall
+        // can wait out a rest, outside whatever outage the first fell in.
+        let outcome = attempt_confirming(world, state, merge, check, Confirming::AfterARest);
         // A failure a Mac saw before the runs that compared nothing is the
         // owner's to read, so the finding names its log.
         let failed = state
@@ -636,8 +641,14 @@ impl<'a> Settler<'a> {
             }
             Outcome::Unsent => {
                 let after = now().saturating_sub(since).clamp(RESTS.0, RESTS.1);
+                let ran = state.runs(merge, check);
+                let why = match ran.last() {
+                    Some(Ran::Failed) => "a Mac failed it once, and the run that confirms it",
+                    Some(Ran::Stalled) => "it stalled once on a Mac, and the next run",
+                    _ => "no Mac compared it, and it",
+                };
                 state.say(&format!(
-                    "no Mac compared {check} at {}: it's tried again in {} min",
+                    "{check} at {}: {why} is tried in {} min",
                     short(merge),
                     after / 60
                 ));
