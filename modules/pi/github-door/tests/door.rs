@@ -904,6 +904,8 @@ fn far_end(answer: &[u8], lingers: Duration) -> (String, mpsc::Receiver<Vec<u8>>
         let read = http::read_body(&mut stream, &mut buffer, &head, 1024).expect("a body");
         let _ = seen.send(read);
         let _ = stream.write_all(&answer);
+        // Held open as long as the case says, so the relay must end an
+        // answer framed to close on its own rather than on the host.
         thread::sleep(lingers);
     });
     (address, body)
@@ -965,7 +967,7 @@ fn the_relay_frames_each_kind_of_answer_by_what_it_says() {
 }
 
 /// Each kind of answer a host gives, and how the relay must frame it.
-fn framing_cases() -> [FramingCase; 8] {
+fn framing_cases() -> [FramingCase; 9] {
     // A host's answer with a second smuggled behind it, where the first
     // has no body: a client that read on would take the second as its own.
     [
@@ -1008,6 +1010,16 @@ fn framing_cases() -> [FramingCase; 8] {
             "\r\n\r\n2\r\nok\r\n0\r\n\r\n",
             &["transfer-encoding: chunked"],
             &["content-length", "x-t", "x=y"],
+        ),
+        // A coding under the chunks is said, so the client undoes it.
+        (
+            "GET",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, Chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n",
+            HELD,
+            "200",
+            "\r\n\r\n2\r\nok\r\n0\r\n\r\n",
+            &["transfer-encoding: gzip, chunked"],
+            &[],
         ),
         (
             "GET",
@@ -1093,8 +1105,8 @@ fn the_relay_says_502_for_a_host_that_fails_before_its_answer_and_cuts_one_that_
             String::from_utf8_lossy(answer)
         );
     }
-    // A host that closes partway through its body: the client is cut off,
-    // reset or short, never handed what looks like a whole answer.
+    // A host that closes partway through its body: the client is reset,
+    // never handed what looks like a whole answer or an orderly end.
     let (address, _) = far_end(
         b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nok",
         Duration::ZERO,
@@ -1109,14 +1121,12 @@ fn the_relay_says_502_for_a_host_that_fails_before_its_answer_and_cuts_one_that_
     )
     .expect("asked");
     let mut heard = Vec::new();
-    if stream.read_to_end(&mut heard).is_ok() {
-        let said = String::from_utf8_lossy(&heard);
-        let body = said.split_once("\r\n\r\n").map_or("", |(_, body)| body);
-        assert!(
-            said.contains("Content-Length: 10") && body.len() < 10,
-            "a host cut off midway read as whole: {said:?}"
-        );
-    }
+    let ended = stream.read_to_end(&mut heard);
+    let said = String::from_utf8_lossy(&heard);
+    assert!(
+        matches!(&ended, Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset),
+        "a host cut off midway ended as {ended:?}, not a reset, after {said:?}"
+    );
     let _ = watched.kill();
     let _ = watched.wait();
 }
@@ -1196,11 +1206,10 @@ fn refusals_say_why(port: u16) {
             "400",
             "other than chunked",
         ),
+        // A host is reached only once the body is read, so this one is
+        // said gone after it.
         (
-            format!(
-                "PUT http://{gone}/ HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\n\
-                 Content-Length: 3\r\n\r\n"
-            ),
+            format!("PUT http://{gone}/ HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\n\r\n"),
             "502",
             gone.as_str(),
         ),

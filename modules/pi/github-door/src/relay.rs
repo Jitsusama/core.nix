@@ -29,6 +29,9 @@
 //! table and looks for it among the processes its own `/proc` shows,
 //! which in the fence's pid namespace are the fence's alone.
 //!
+//! Long because the tunnel and plain HTTP share the client's reading,
+//! its refusals and the reach out, and are proven together.
+//!
 //! `pi-github-door relay` binds the port, prints it, and leaves a child
 //! answering it until the process it was told to watch is gone, so a
 //! shell can say `HTTPS_PROXY=http://127.0.0.1:$(pi-github-door relay
@@ -225,14 +228,16 @@ impl Drop for Place {
 /// the host, whether or not the host honours the close.
 ///
 /// A client that asks to be told to go on is told once its head is
-/// accepted and the host is reached; a chunked body's size is known only
-/// as it's read, so one past [`MOST_PLAIN_BODY`] is refused after it's
-/// sent. A client that doesn't ask has its body read before the host is
-/// reached, so a slow upload never leaves the host waiting.
+/// accepted; a chunked body's size is known only as it's read, so one
+/// past [`MOST_PLAIN_BODY`] is refused after it's sent. The host is
+/// reached only once the whole body is read, so a slow upload never
+/// leaves it waiting, and one that can't be reached is said after the
+/// body. A place among [`MOST_PLAIN`] is held only while a body is,
+/// until it's sent, so slow answers don't turn other requests away.
 fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     let _ = client.set_read_timeout(Some(QUIET));
     let _ = client.set_write_timeout(Some(QUIET));
-    let Some(_place) = Place::taken() else {
+    let Some(place) = Place::taken() else {
         let said = format!("the relay is carrying {MOST_PLAIN} plain requests already");
         return refuse(client, 503, &said);
     };
@@ -263,26 +268,17 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     } else {
         format!("{host}:{port}")
     };
-    let reached = || reach(&format!("{host}:{port}"));
-    let unreached = format!("{authority} couldn't be reached");
-    let mut far = None;
-    if expects {
-        // Told here, once the host is reached, as the host would have
-        // told it, since the body is read before anything goes on.
-        far = reached();
-        if far.is_none() {
-            return refuse(client, 502, &unreached);
-        }
-        if client.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
-            return;
-        }
+    // Told here, as the host would have told it, since the relay reads the
+    // body before anything goes on.
+    if expects && client.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
+        return;
     }
     let body = match http::read_framed(&mut client, &mut read, framed, MOST_PLAIN_BODY) {
         Ok(body) => body,
         Err(unread) => return refuse_unread(client, &unread),
     };
-    let Some(mut far) = far.or_else(reached) else {
-        return refuse(client, 502, &unreached);
+    let Some(mut far) = reach(&format!("{host}:{port}")) else {
+        return refuse(client, 502, &format!("{authority} couldn't be reached"));
     };
     let _ = far.set_read_timeout(Some(QUIET));
     let _ = far.set_write_timeout(Some(QUIET));
@@ -290,6 +286,8 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     // A host may answer before it's read the whole request, and close; its
     // answer still comes back.
     let asked = http::write_request(&mut far, &head.method, &path, &headers, &body).is_ok();
+    drop(body);
+    drop(place);
     let mut back = Vec::new();
     let mut interim = 0;
     let answer = loop {
@@ -327,16 +325,24 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
 }
 
 /// How an answer's body is framed, as the relay passes it back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Back {
     /// No body, whatever the head says.
     Empty,
     /// This many bytes.
     Length(u64),
-    /// Chunks, to their last.
-    Chunked,
+    /// Chunks, to their last, of a body coded with these codings first,
+    /// such as gzip, which the client undoes, written as the relay read
+    /// them, ending in `chunked`.
+    Chunked(String),
     /// Whatever comes until the host closes.
     ToClose,
+}
+
+/// Whether `byte` may be in a coding's name, as HTTP's tokens allow, so
+/// a name passed back can't end the header it's written in.
+fn is_token(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
 }
 
 /// How the body of `answer` to a `method` request is framed, as HTTP/1.1
@@ -365,8 +371,9 @@ fn answer_body(answer: &http::Answer, method: &str) -> Result<Back, &'static str
         // Ended where the host closes, a body other codings frame would
         // be passed on with codings a client might read another way, so
         // only chunks last are carried.
+        let tokens = codings.iter().all(|coding| coding.bytes().all(is_token));
         return match codings.last() {
-            Some(last) if last == "chunked" => Ok(Back::Chunked),
+            Some(last) if last == "chunked" && tokens => Ok(Back::Chunked(codings.join(", "))),
             _ => Err("an answer whose transfer coding the relay doesn't carry"),
         };
     }
@@ -424,13 +431,13 @@ fn pass_back(
         Back::Empty if answer.status != 204 => {
             answer.header("content-length").and_then(http::decimal)
         }
-        Back::Empty | Back::Chunked | Back::ToClose => None,
+        Back::Empty | Back::Chunked(_) | Back::ToClose => None,
     };
     if let Some(length) = length {
         head.extend_from_slice(format!("Content-Length: {length}\r\n").as_bytes());
     }
-    if framed == Back::Chunked {
-        head.extend_from_slice(b"Transfer-Encoding: chunked\r\n");
+    if let Back::Chunked(codings) = &framed {
+        head.extend_from_slice(format!("Transfer-Encoding: {codings}\r\n").as_bytes());
     }
     head.extend_from_slice(b"Connection: close\r\n\r\n");
     if client.write_all(&head).is_err() {
@@ -446,7 +453,7 @@ fn pass_back(
             client.write_all(&back[..already]).is_ok()
                 && io::copy(&mut far.take(left), client).is_ok_and(|copied| copied == left)
         }
-        Back::Chunked => http::copy_chunks(far, &mut back, client).is_ok(),
+        Back::Chunked(_) => http::copy_chunks(far, &mut back, client).is_ok(),
         Back::ToClose => client.write_all(&back).is_ok() && io::copy(far, client).is_ok(),
     }
 }
