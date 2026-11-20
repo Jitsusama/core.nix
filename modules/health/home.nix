@@ -38,11 +38,11 @@ in
       # it ends, by a follower's end or a stop it has three seconds to
       # write in, so the days before it held to try again, and the short
       # spells of failed writes it kept unsaid, are lost only to a kill, a
-      # crash, a second stop or a day it can't write. A stop before its
-      # first half minute's tick writes only the days it holds, as the
-      # replay may be under way. A stop just past midnight also loses the
-      # old day's journal lines it hadn't read yet, as a start reads only
-      # today's.
+      # crash, a second stop other than a hangup or a day it can't write.
+      # A stop before its first half minute's tick writes only the days it
+      # holds, as the replay may be under way. A stop just past midnight
+      # also loses the old day's journal lines it hadn't read yet, as a
+      # start reads only today's.
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
