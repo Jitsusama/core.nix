@@ -104,7 +104,10 @@ fn a_copier_that_never_says_its_ready_is_given_nothing() {
     // It's ended, with nothing written to it.
     until("the copier is ended", || !copier_runs(&running.copied()));
     let given = std::fs::read_to_string(running.copied()).unwrap_or_default();
-    assert!(given.is_empty(), "a copier that never said it was ready was given {given:?}");
+    assert!(
+        given.is_empty(),
+        "a copier that never said it was ready was given {given:?}"
+    );
 }
 
 #[test]
@@ -123,7 +126,11 @@ fn nothing_is_written_to_the_copier_before_its_ready() {
         running.copied().with_extension("flags").exists()
     });
     let early = std::fs::read(running.copied().with_extension("early")).unwrap_or_default();
-    assert!(early.is_empty(), "the copier was given {} bytes before it was ready", early.len());
+    assert!(
+        early.is_empty(),
+        "the copier was given {} bytes before it was ready",
+        early.len()
+    );
     let held = std::fs::read_to_string(running.copied()).unwrap_or_default();
     assert_eq!(held, "hunter2", "the copy isn't held whole");
 }

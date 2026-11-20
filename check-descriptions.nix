@@ -2634,14 +2634,17 @@
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
     it, pastes it whole on Joel's display, makes nothing under TMPDIR, runs nothing from PATH,
-    can't be read through /proc and holds it in locked memory, and refuses a standard input it
-    can't read whole
+    can't be read through /proc and holds it in locked memory, says it's ready only once it can't
+    be read and held once it holds the copy, and refuses a standard input it can't read whole,
+    never saying it held it
   '';
   passwords-holds-no-secret = ''
     the passwords daemon holds every entry each password manager lists without a secret, even one
     given with its secrets on, answers over its standard input and output as the shell runs it, a
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
-    watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
+    watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
+    copier only once the copier says it's ready and answers it copied only once the copier says it
+    holds it, answering a refused copy with the copier's reason, refuses a copy
     before reading any secret while no copier is named, can't be read through /proc by the
     account's other processes nor write a core dump, says nothing of its own on the shell's pipe
     whether it ends well, fails or panics, ends once whatever ran it closes its end,
