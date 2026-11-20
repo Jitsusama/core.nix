@@ -371,10 +371,10 @@ impl<'a> Settler<'a> {
     }
 
     /// Whether a Mac's comparison `check` at `merge` was told to its owner
-    /// and let go, or reverted, so handing it again would start another
-    /// day of tries, or revert it again.
+    /// and let go, reverted, or let go as fixed forward, so handing it
+    /// again would start another day of tries, or decide its revert again.
     pub fn told(&self, check: &str, merge: &str) -> bool {
-        ["mac-unrun", "failed"]
+        ["mac-unrun", "failed", "fixed-forward"]
             .into_iter()
             .any(|kind| self.state.found(kind, check, merge))
     }
@@ -639,10 +639,14 @@ impl<'a> Settler<'a> {
                     "no Mac compared {check} at {} in a day: told, and let go",
                     short(merge)
                 ));
+                // A Mac that took it once and stopped unfinished did
+                // compare something, so cadence says so rather than that
+                // no Mac compared it; its log was written over since.
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge,
                     "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
                     "failed_log": failed,
+                    "stalled_once": state.runs(merge, check).contains(&Ran::Stalled),
                 });
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }

@@ -49,9 +49,18 @@ const SILENT: Duration = Duration::from_mins(30);
 /// the queue takes, so neither clock may start until it's said.
 const TAKEN: &str = "nix-offload: building on ";
 
+/// What nix-offload says, every five minutes, while a run a builder took
+/// waits there for one of its turns. It says that after `TAKEN`, so a
+/// busy Mac's two hours of waiting would read as two hours of building.
+const WAITS: &str = "waits there for its turn";
+
 /// When a run sent to a builder has been there too long, or too quiet.
 struct Clock {
     taken: Option<Instant>,
+    /// When the builder that took it gave it a turn and it began to
+    /// build, from which the longest it may run counts; none while it
+    /// waits for one.
+    building: Option<Instant>,
     /// Where this run's part of the log begins. A run the net's restart
     /// cut short records nothing, so the next one has its name and writes
     /// after it, and the builder that took the run cut short hasn't taken
@@ -67,6 +76,7 @@ impl Clock {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         Self {
             taken: None,
+            building: None,
             from: usize::try_from(written).unwrap_or(usize::MAX),
             written,
             heard: now,
@@ -88,24 +98,29 @@ impl Clock {
         Some(ours)
     }
 
-    /// Whether this run's part of `log` says a builder took it.
-    fn said_taken(&self, log: &Path) -> bool {
-        self.ours(log).is_some_and(|ours| taken_in(&ours))
-    }
-
-    /// Whether the run whose log is `log` should be stopped at `now`.
+    /// Whether the run whose log is `log` should be stopped at `now`: one
+    /// a builder took that went silent, or that built past the longest. A
+    /// wait for a turn there says so every five minutes, so it's never
+    /// silent, and the longest counts only once the wait is over.
     fn overdue(&mut self, log: &Path, now: Instant) -> bool {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         if written != self.written {
             self.written = written;
             self.heard = now;
-            if self.taken.is_none() && self.said_taken(log) {
-                self.taken = Some(now);
+            if let Some(ours) = self.ours(log).filter(|ours| taken_in(ours)) {
+                self.taken.get_or_insert(now);
+                if waiting_in(&ours) {
+                    self.building = None;
+                } else {
+                    self.building.get_or_insert(now);
+                }
             }
         }
-        self.taken.is_some_and(|taken| {
-            now.duration_since(taken) > LONGEST || now.duration_since(self.heard) > SILENT
-        })
+        self.taken.is_some()
+            && (now.duration_since(self.heard) > SILENT
+                || self
+                    .building
+                    .is_some_and(|building| now.duration_since(building) > LONGEST))
     }
 }
 
@@ -691,7 +706,7 @@ fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
     // run ended before a builder took it printed nothing that says so.
     if read == Some(UNCOMPARED) {
         let why = if code.is_none() {
-            "it was ended before any Mac took it"
+            "it was ended before any Mac took it, or while it waited there for a turn"
         } else {
             "it failed only on reaching a cache, which says nothing of the change"
         };
@@ -709,6 +724,17 @@ fn taken_in(ours: &[u8]) -> bool {
         .any(|seen| seen == TAKEN.as_bytes())
 }
 
+/// Whether a run's part of its log says it still waits for a turn on the
+/// builder that took it: its last line says it waits, and nothing it
+/// built came after.
+fn waiting_in(ours: &[u8]) -> bool {
+    String::from_utf8_lossy(ours)
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .is_some_and(|line| line.contains(WAITS))
+}
+
 /// What a Mac's comparison that ended with `code` says of its riders,
 /// read with `ours`, its run's part of the log: `UNCOMPARED` for one
 /// that compared nothing, so it waits for the next round. One whose
@@ -716,8 +742,10 @@ fn taken_in(ours: &[u8]) -> bool {
 /// on 17 November a hold on the Mac's load stopped 135 that way, each
 /// read as a stall, and 65 merges were let go unchecked. One that failed
 /// on the network alone says nothing of the change either: on 19 November
-/// two such failed #5650's comparison and told its owner so. A log that
-/// can't be read leaves the ending as it was.
+/// two such failed #5650's comparison and told its owner so. One ended
+/// while it still waited for a turn on the Mac that took it built
+/// nothing there either. A log that can't be read leaves the ending as it
+/// was.
 fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
     let Some(ours) = ours else {
         return match code {
@@ -726,7 +754,7 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
         };
     };
     match code {
-        None if !taken_in(ours) => Some(UNCOMPARED),
+        None if !taken_in(ours) || waiting_in(ours) => Some(UNCOMPARED),
         Some(UNSENT | UNREACHED) => Some(UNSENT),
         Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
         code => code,
@@ -2244,6 +2272,62 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         );
     }
 
+    /// What nix-offload says while a busy Mac's turns are all held.
+    const WAITING: &str = "nix-offload: building on a-mac, /tmp/compare\n\
+        nix-offload: a-mac already runs as many builds sent to it as it takes at once, so this \
+        waits there for its turn, held in /tmp/turns by shells 41, 42\n";
+
+    #[test]
+    fn a_mac_comparison_stopped_while_it_waited_for_a_turn_compared_nothing() {
+        assert_eq!(
+            mac_ending(None, Some(WAITING.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison stopped while it waited for a turn on the Mac was read as a stall"
+        );
+        let built = format!("{WAITING}building '/nix/store/a-check.drv'\n");
+        assert_eq!(
+            mac_ending(None, Some(built.as_bytes())),
+            None,
+            "a comparison stopped once its turn came and it built wasn't read as a stall"
+        );
+    }
+
+    #[test]
+    fn the_longest_counts_from_a_macs_turn_not_its_wait() {
+        let log = std::env::temp_dir().join(format!("merge-net-turn-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = String::from(WAITING);
+        let mut now = start;
+        while now <= start + LONGEST * 2 {
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "a run waiting for a turn on the Mac was stopped as overdue"
+            );
+            text.push_str("nix-offload: ... so this waits there for its turn, held\n");
+            now += Duration::from_mins(5);
+        }
+        let turn = now;
+        while now <= turn + LONGEST {
+            text.push_str("a-check> still going\n");
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "stopped before the longest from its turn"
+            );
+            now += Duration::from_mins(10);
+        }
+        text.push_str("a-check> still going\n");
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "past the longest from its turn, though never silent"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
     #[test]
     fn a_mac_comparison_failing_on_host_lookups_alone_compared_nothing() {
         assert_eq!(
@@ -2418,9 +2502,10 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a run ended before a builder took it was read as taken from the run before"
         );
         assert!(
-            fs::read_to_string(&log)
-                .unwrap()
-                .ends_with("this compared nothing: it was ended before any Mac took it\n"),
+            fs::read_to_string(&log).unwrap().ends_with(
+                "this compared nothing: it was ended before any Mac took it, or while it \
+                     waited there for a turn\n"
+            ),
             "the log net.log points at didn't say why the run compared nothing"
         );
         fs::remove_file(&log).unwrap();
