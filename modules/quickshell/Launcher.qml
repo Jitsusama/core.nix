@@ -1561,6 +1561,31 @@ Scope {
         return { done: true, said: `${talk.act.name} \u203a ${talk.act.chip}` };
     }
 
+    // Opens Start New Work's From a Link, its field holding the words a mycelium: link offers, as
+    // `qs ipc call launcher newWork` asks (mycelium-link's sprout), the way the realm's map offers
+    // work from a cell. The foot says a page offered it, and from which session by its quest's
+    // name where one here has that address; any other is let go (Agents' newWorkFor). It starts
+    // nothing: the line holds Joel's first keys back and waits on one typed before Return (inUse,
+    // Prompt.qml's linked), and the act starts only on his own Return (Sprouting.fromJoel), so no
+    // walk or second link can start it. Like talkTo, it does nothing over a launcher in use. Says
+    // what it did as JSON, as talkTo does.
+    function newWork(words, from) {
+        const agents = collections.find(one => one.settings.name === "agents") ?? null;
+        const offer = agents ? agents.newWorkFor(words, from) : null;
+        console.info(`launcher: asked from outside to start new work, ${offer === null
+            ? "offering no plain words" : `from ${offer.from?.address ?? "no session here"}`}`);
+        if (offer === null)
+            return { error: "the link offered no plain words to start new work with" };
+        if (inUse())
+            return inUseSaid;
+        toldWhence(offer.said);
+        into("agents");
+        ask(offer.act, offer.words);
+        prompt.linked();
+        return { done: true, said: `${offer.act.name} \u203a ${offer.words}`,
+            from: offer.from?.address ?? null };
+    }
+
     // Goes to the session `said` names, as `qs ipc call launcher goTo` asks, the way a notice's
     // Go To does for the session that sent it (mycelium-link's `go` step): its window raised,
     // or one opened on it where it has none, held, hosted or on another machine, woken first
@@ -5569,13 +5594,15 @@ Scope {
         onTriggered: root.asking.heard()
     }
 
-    // Asks for words in the field, with nothing to choose from below it.
-    function ask(row) {
+    // Asks for words in the field, with nothing to choose from below it,
+    // the field holding `offered` where a link offered words (newWork).
+    function ask(row, offered) {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
         // One that keeps its words, as a talk does, opens on what Joel was
         // typing to it, or sent and not yet delivered, a shell started
         // again included (Drafts.qml).
-        const kept = row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
+        const kept = typeof offered === "string" ? { text: offered, caret: offered.length }
+            : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
         restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.
         prompt.typing();
@@ -6055,6 +6082,11 @@ Scope {
     function toldThat(what, why) {
         tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
             { what: Theme.alert, why: Theme.muted }), true);
+    }
+    // Says where words in the field came from, which nothing failed.
+    function toldWhence(what) {
+        tellOnOpen(Becoming.told({ mark: Theme.glyph.link, what, why: "" },
+            { what: Theme.text, why: Theme.muted }), true);
     }
 
     function letGo(keys) {
@@ -8596,6 +8628,13 @@ Scope {
         // as Switch on its row does (root's goTo).
         function goTo(address: string): string {
             return JSON.stringify(root.goToCell(address));
+        }
+
+        // Opens Start New Work's From a Link with a link's words in its
+        // field, "words:" before them, and "from:" before the session it
+        // came from, as a sprout link asks (root's newWork).
+        function newWork(words: string, from: string): string {
+            return JSON.stringify(root.newWork(words, from));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,

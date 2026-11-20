@@ -3734,7 +3734,9 @@
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,
     with -o json and never --join, in a whole folder from the open quests' repositories, home in
     any spelling and repeats left out; it says why when it asks nothing, hears both streams before
-    saying it started on the node's machine, else the node's or sprout's why
+    saying it started on the node's machine, else the node's or sprout's why; and the words a
+    mycelium: link offers are read again as one plain line of at most 1000 characters, its session
+    kept only where one here has that address, named by its quest, the foot saying a page offered it
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
@@ -3755,8 +3757,10 @@
     xdg-open and gio send mycelium: links to mycelium-link's entry, registered for them in the
     profile's applications so the portal opens them without asking, which asks the launcher to talk
     to the cell or show the network a link names, by its name alone, a notice's whole cell link
-    by its address wherever it says the cell runs, and asks nothing for a link naming neither, an
-    address not in capitals, a name qs could take for a flag, or a second link within a few seconds
+    by its address wherever it says the cell runs, and new work a sprout link offers with its words
+    decoded and its cell only as an address, each after a fixed word, and asks nothing for a link
+    naming none of them, an address not in capitals, a name qs could take for a flag, a sprout's
+    words missing or said twice, or a second link within a few seconds
   '';
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its

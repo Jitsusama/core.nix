@@ -256,7 +256,9 @@
         "empty": "say what the work is: a link or a few words",
         "unplaced": "that folder isn't a whole path",
         "busy": "still starting the last one; say it again once that's done",
-        "outside": "new work starts only from your own Return in the launcher"
+        "outside": "new work starts only from your own Return in the launcher",
+        "offered": "a page offered this work; check it, then Return starts it",
+        "offeredFrom": "a page offered this work from {cell}; check it, then Return starts it"
       }
     },
     {

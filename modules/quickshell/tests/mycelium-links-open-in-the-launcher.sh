@@ -89,6 +89,13 @@ opening 'mycelium:cell/DAHTNJ@kestrel/go#notice:12' 'ipc call launcher goTo DAHT
 opening 'mycelium:network/repo.core-nix' 'ipc call launcher network repo.core-nix'
 # The system page's Open in the Launcher, on a machine's row.
 opening 'mycelium:machine/osprey?from=system' 'ipc call launcher machine osprey'
+# The map's Start New Work from a cell: the words decoded once, the cell
+# kept only as an address, each after a fixed word so neither is a flag.
+opening 'mycelium:sprout?words=tidy%20the%20rows%20%26%20more&from=TERN02' \
+  'ipc call launcher newWork words:tidy the rows & more from:TERN02'
+opening 'mycelium:sprout?words=-rf+now&from=tern02' 'ipc call launcher newWork words:-rf now from:'
+opening 'mycelium:sprout?from=TERN02' ''
+opening 'mycelium:sprout?words=tidy&words=reboot' ''
 opening 'mycelium:cell/dahtnj' ''
 opening 'mycelium:cell/DAHTNJ@kes;trel' ''
 opening 'mycelium:cell/-h' ''

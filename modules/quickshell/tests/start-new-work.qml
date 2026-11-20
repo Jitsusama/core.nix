@@ -17,7 +17,9 @@ QtObject {
         unanswered: "its node didn't answer",
         unread: "its node's answer couldn't be read",
         empty: "say what the work is",
-        unplaced: "that folder isn't a whole path"
+        unplaced: "that folder isn't a whole path",
+        offered: "a page offered this work; check it, then Return starts it",
+        offeredFrom: "a page offered this work from {cell}; check it, then Return starts it"
     })
 
     function cases() {
@@ -44,6 +46,35 @@ QtObject {
         Expect.same("nothing said starts nothing", Sprouting.ask("   ", "/home/j/src/core"), null);
         Expect.same("a folder that isn't a whole path is never named",
             Sprouting.ask("tidy it", "src/core"), null);
+
+        // New work a mycelium: link offers, as mycelium-link hands it.
+        const sessionNamed = address => address === "TERN02" ? "Tidy the Rows" : null;
+        Expect.same("a link's words and its session here are offered",
+            Sprouting.offered("words:tidy the rows & more", "from:TERN02", sessionNamed),
+            { words: "tidy the rows & more", from: { address: "TERN02", name: "Tidy the Rows" } });
+        Expect.same("a link from no session offers its words alone",
+            Sprouting.offered("words:tidy the rows", "from:", sessionNamed),
+            { words: "tidy the rows", from: null });
+        for (const from of ["from:GONE42", "from:tern02", "TERN02", "from:TERN02;rm"])
+            Expect.same(`a session not here, or misshaped, is let go: ${from}`,
+                Sprouting.offered("words:tidy", from, sessionNamed),
+                { words: "tidy", from: null });
+        Expect.same("words are read again as one plain line",
+            Sprouting.offered("words:  tidy\tthe\nrows\u0007\u001b[2J ", "from:", sessionNamed),
+            { words: "tidy the rows[2J", from: null });
+        Expect.same("the longest words are offered whole",
+            Sprouting.offered(`words:${"\u{1F331}".repeat(1000)}`, "from:", sessionNamed)?.words,
+            "\u{1F331}".repeat(1000));
+        for (const words of ["tidy", "words:", "words: \t\n", `words:${"a".repeat(1001)}`])
+            Expect.same(`no plain words offer nothing: ${words.slice(0, 12)}`,
+                Sprouting.offered(words, "from:TERN02", sessionNamed), null);
+        Expect.same("the foot says a page offered it, from the session by its quest",
+            Sprouting.offeredSaid({ words: "tidy", from: { address: "TERN02",
+                name: "Tidy the Rows" } }, said),
+            "a page offered this work from Tidy the Rows; check it, then Return starts it");
+        Expect.same("and only that a page offered it, from no session here",
+            Sprouting.offeredSaid({ words: "tidy", from: null }, said),
+            "a page offered this work; check it, then Return starts it");
 
         // Why it asks nothing, said where Joel pressed.
         Expect.same("nothing said asks for the work",

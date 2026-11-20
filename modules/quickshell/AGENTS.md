@@ -106,8 +106,10 @@ into kinds at a quiet moment its owner chooses, not alongside other work.
   asks `talkTo` and its `/go` asks `goTo`, a notice's whole
   `<ADDRESS>@<machine>#<anchor>` by its address alone, and
   `mycelium:network/<name>` asks `network` and `mycelium:machine/<name>`
-  asks `machine`, each carrying the name alone, and nothing for a second
-  link within a few seconds.
+  asks `machine`, each carrying the name alone;
+  `mycelium:sprout?words=<words>&from=<ADDRESS>` asks `newWork`, which
+  fills Start New Work's field and starts nothing until Joel's own Return;
+  and nothing for a second link within a few seconds.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the
   shell's `show`, so every integration has a command line at once; zsh

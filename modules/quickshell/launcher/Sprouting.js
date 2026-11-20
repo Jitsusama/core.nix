@@ -39,6 +39,55 @@ function ask(text, folder) {
         where !== "" ? { folder: where } : {});
 }
 
+// The most characters new work a link offers runs to, as mycelium-link's
+// MOST_WORDS: a few sentences, so a page can't fill the field with a book.
+const OFFERED_MOST = 1000;
+
+// Any control character, which a line of words never needs.
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
+
+// The shape of a mesh address, as mycelium-link's `addressed` reads one.
+const ADDRESS = /^[A-Z0-9]{1,12}$/;
+
+// New work a mycelium: link offers (mycelium-link's sprout), as `qs ipc
+// call launcher newWork` hands it: its words after "words:" and the cell
+// it came from after "from:". Any program of Joel's can make that call,
+// so it's read again here: { words, from }, the words one plain line of
+// at most OFFERED_MOST characters, and from { address, name } only where
+// `nameOf` names a session here by that address, else null; or null
+// where no plain words are offered. It only fills the field: starting
+// still waits on his own Return (fromJoel).
+function offered(words, from, nameOf) {
+    const said = String(words ?? "");
+    if (!said.startsWith("words:")) {
+        return null;
+    }
+    const plain = said.slice("words:".length).split(/\s+/)
+        .map(word => word.replace(CONTROLS, ""))
+        .filter(word => word !== "")
+        .join(" ");
+    if (plain === "" || Array.from(plain).length > OFFERED_MOST) {
+        return null;
+    }
+    const cell = String(from ?? "");
+    const address = cell.startsWith("from:") ? cell.slice("from:".length) : "";
+    const name = ADDRESS.test(address) && typeof nameOf === "function"
+        ? nameOf(address) : null;
+    return {
+        words: plain,
+        from: typeof name === "string" && name !== "" ? { address: address, name: name } : null
+    };
+}
+
+// What the foot says over new work a link offered, from the words
+// `said` (agents.json's Start New Work's): that a page offered it, and
+// from which session where it named one here, by its quest's name.
+function offeredSaid(offer, said) {
+    const words = said ?? {};
+    return offer.from === null ? String(words.offered ?? "")
+        : String(words.offeredFrom ?? "").replace("{cell}", offer.from.name);
+}
+
 // A token's digits, letters and digits alike, so it stays short.
 const TOKEN_BASE = 36;
 
