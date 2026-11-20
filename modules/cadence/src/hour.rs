@@ -249,7 +249,13 @@ fn gather(
         ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
-    all.extend(rounds_per_merge(state_home, &core_log, &harness_log, now));
+    all.extend(rounds_per_merge(
+        state_home,
+        &core,
+        &core_log,
+        &harness_log,
+        now,
+    ));
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
@@ -289,8 +295,35 @@ fn gather(
 /// be filed. Each note's sender is taken to the quest its presence works
 /// on, as the spend measure does, since a session can end before its
 /// drag is due while its quest's cell answers.
-fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> Vec<Measure> {
+fn rounds_per_merge(
+    state_home: &Path,
+    core_git: &Path,
+    core: &str,
+    harness: &str,
+    now: i64,
+) -> Vec<Measure> {
     use measures::rounds::{BEFORE, Main, rounds};
+    // The head a merge commit merged is its second parent, read from the
+    // clone its log came from; one git can't read is none.
+    fn second_parent(clone: &Path, merge: &str) -> Option<String> {
+        let head = command(
+            "git",
+            &[
+                "-C",
+                &clone.to_string_lossy(),
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("{merge}^2"),
+            ],
+        )
+        .ok()?;
+        let head = head.trim();
+        (!head.is_empty()).then(|| head.to_owned())
+    }
+    let harness_git = axes::landings::harness_mirror();
+    let core_head = |merge: &str| second_parent(core_git, merge);
+    let harness_head = |merge: &str| second_parent(&harness_git, merge);
     let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
@@ -330,10 +363,12 @@ fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> V
         Main {
             repo: "github:Jitsusama/core.nix",
             log: core,
+            head: &core_head,
         },
         Main {
             repo: "github:Jitsusama/agentic-harness.pi",
             log: harness,
+            head: &harness_head,
         },
     ];
     rounds(
