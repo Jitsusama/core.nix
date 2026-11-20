@@ -88,7 +88,12 @@
     finished, in neither, each turn keeps every tick it counted, idle with the busy, so its busy
     ones weigh against the guest's own clock, a thread whose flags carry PF_NO_SETAFFINITY, read
     past a name holding parentheses, reads as one the kernel won't let be held, and what a
-    subtest says names each turn's ticks and the share, or no share when a turn had no busy ticks
+    subtest says names each turn's ticks and the share, or no share when a turn had no busy ticks;
+    and a builder whose frozen loops ran slower than the slowest normal one's stretches the keys
+    bar's share of the frozen time, not its fixed ms, by their middle, the lower of two, over that
+    normal builder's, never under one nor past one and a half, where loops under load and a
+    subtest with no frozen loop stretch none, so b508ac2e's keys fail the bar unstretched and pass
+    it stretched, and keys six times as slow as its frozen key fail however slow the builder
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
@@ -5597,6 +5602,10 @@
     frame within 50 ms of the ask, its own work, the settling after it and the wait for the
     frame, drawn from what the closed launcher kept and filled in without moving a row or the
     cursor, and its drawing takes within twice its time with the load frozen and 50 ms more;
+    the keys bar's share of the frozen time stretched by as many times slower than the slowest
+    normal builder's as the keys subtest's frozen loops ran, at most one and a half, and none on
+    a normal builder, while the storm subtest fails if its storm's windows fell before its
+    openings were timed;
     each printing, passed or failed, what the guest counted its builder stole in each turn,
     which no bar reads; and
     with every thread of the VM held to two of the builder's processors under load, the guest
