@@ -326,6 +326,7 @@ QtObject {
         const sizings = [
             ["rows with no gap", [{}, {}, {}], 32],
             ["a gap among those shown", [{}, { gap: true }, {}], 40],
+            ["a gap just past those shown", [{}, {}, { gap: true }], 32],
             ["a gap past those shown", [{}, {}, {}, { gap: true }], 32],
             ["fewer rows than room", [{ gap: true }], 40]
         ];

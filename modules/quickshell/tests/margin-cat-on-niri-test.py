@@ -148,14 +148,41 @@ def awake(shell: Shell) -> Iterator[None]:
 
     Nobody types here, so the cat dozes off without a key. A case that fails
     with the launcher up would leave the cat held for the next, so each
-    closes it, to fail alone.
+    closes it, to fail alone. The cat is held from the card's first frame,
+    while it's still opening, when the launcher doesn't yet say it's open,
+    so the opening is waited out first. One that never ends is unopened by
+    a toggle, and then closed if it had already opened, as the launcher's
+    own shut does; the wait's failure is still said.
+    """
+    wake(shell)
+    yield
+    try:
+        shell.launcher_until(lambda shown: not shown["opening"])
+    finally:
+        try:
+            if shell.showing()["opening"]:
+                print("the launcher was left opening, so it's unopened for the next test")
+                shell.as_account(shell.ipc("toggle"))
+                shell.launcher_until(lambda shown: not shown["opening"], timedelta(seconds=10))
+        finally:
+            shell.launcher_left_closed()
+
+
+def wake(shell: Shell) -> None:
+    """Wake the cat with a key nobody hears, and wait until it says it's awake.
+
+    Asleep, it keeps its place as a workspace goes, so a case that runs past
+    its 45 s doze on a loaded builder wakes it again before each move it
+    watches (2026-11-20, cat-niri10). Two go without: a case's first move,
+    made only to reach a workspace a window then opens on, seconds after
+    the case's own wake; and one made straight after another, since a wake
+    between them would let the first finish. The doze is niri's idle
+    timer, so the moves themselves don't keep the cat awake.
     """
     since = shell.mark()
     shell.send_key("F24")
     if dozing(shell):
         heard(shell, lambda said: not asleep(said), since)
-    yield
-    shell.launcher_left_closed()
 
 
 def dozing(shell: Shell) -> bool:
@@ -1084,17 +1111,13 @@ def test_the_cat_walks_between_workspaces_as_if_on_one_screen(shell: Shell) -> N
     since = shell.mark()
     lower = shell.opened("a workspace to go down to")
     sits_over(shell, lower, since)
+    wake(shell)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-up")
     heard(shell, moving, since)
     sits_over(shell, upper, since)
     up = crossed(shell, since, -1)
-    # On a loaded builder the case runs past the cat's 45 s doze, and asleep it keeps its place
-    # as the workspace goes (2026-11-20, cat-niri10), so a key wakes it, as before each case.
-    woken = shell.mark()
-    shell.send_key("F24")
-    if dozing(shell):
-        heard(shell, lambda said: not asleep(said), woken)
+    wake(shell)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, since)
@@ -1124,6 +1147,7 @@ def test_an_empty_workspace_has_it_fall_to_the_floor_and_climb_back(shell: Shell
     holding = {window["workspace_id"] for window in shell.windows()}
     spaces = json.loads(shell.as_account("niri msg --json workspaces"))
     empty = next(space for space in spaces if space["id"] not in holding)
+    wake(shell)
     since = shell.mark()
     shell.as_account(f"niri msg action focus-workspace {empty['idx']}")
     heard(shell, on_the_floor, since)
@@ -1154,9 +1178,11 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     since = shell.mark()
     lower = shell.opened("a workspace moved back from")
     sits_over(shell, lower, since)
+    wake(shell)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)
+    wake(shell)
     first = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, first)
