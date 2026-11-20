@@ -122,7 +122,9 @@ impl Spell {
                     self.said = true;
                     self.causes.push(error.kind());
                     say(&unwritten(&error.to_string(), into, lasted));
-                } else if self.said && !self.causes.contains(&error.kind()) {
+                } else if self.said && !self.causes.contains(&error.kind()) && !self.gave_up(at) {
+                    // Not on the last try, which promises no more tries:
+                    // health ends on it, naming this cause (`given_up`).
                     self.causes.push(error.kind());
                     say(&unwritten(&format!("now {error}"), into, lasted));
                 }
@@ -157,6 +159,7 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
     };
     let left = match GIVES_UP.saturating_sub(lasted).as_secs() / 60 {
         0 => "less than a minute".to_owned(),
+        1 => "up to a minute".to_owned(),
         minutes => format!("up to {minutes} minutes"),
     };
     format!(

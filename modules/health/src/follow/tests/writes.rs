@@ -509,14 +509,19 @@ fn a_spells_causes_are_its_own_said_late_or_after_another() {
 }
 
 #[test]
-fn a_new_cause_in_a_spells_last_minute_says_less_than_a_minute_is_left() {
+fn a_new_cause_near_a_spells_end_says_the_time_left_and_none_on_its_last_try() {
     let heard = RefCell::new(Vec::new());
     let say = |words: &str| heard.borrow_mut().push(words.to_owned());
     let first = Instant::now();
     let mut spell = Spell::default();
+    let unreadable = io::Error::new(io::ErrorKind::PermissionDenied, "Permission denied");
+    let lost = io::Error::new(io::ErrorKind::NotFound, "No such file or directory");
     for (after, error) in [
         (0, full_on("2026-11-13")),
+        (GIVES_UP.as_secs() - 90, unreadable),
         (GIVES_UP.as_secs() - 30, read_only_on("2026-11-13")),
+        // The last try, which health ends on, naming its cause.
+        (GIVES_UP.as_secs(), lost),
     ] {
         spell.tried(
             Some(&error),
@@ -528,11 +533,13 @@ fn a_new_cause_in_a_spells_last_minute_says_less_than_a_minute_is_left() {
     }
     let heard = heard.take();
     assert!(
-        heard.len() == 2
-            && heard[1].contains(": now 2026-11-13's file: Read-only")
-            && heard[1].ends_with("every half minute for less than a minute"),
-        "a new cause in a spell's last minute said other than less than a minute left: \
-         {heard:?}"
+        heard.len() == 3
+            && heard[1].contains(": now Permission denied")
+            && heard[1].ends_with("every half minute for up to a minute")
+            && heard[2].contains(": now 2026-11-13's file: Read-only")
+            && heard[2].ends_with("every half minute for less than a minute"),
+        "a new cause near a spell's end said the wrong time left, or one on its last try \
+         promised more tries: {heard:?}"
     );
 }
 
