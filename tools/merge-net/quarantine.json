@@ -32,8 +32,8 @@
   {
     "at": 1794838970,
     "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
-    "due": "2026-11-21",
-    "due_why": "Its owner, the launcher's, by 2026-11-21 23:59 UTC makes its timing cases hold on a loaded builder, or takes it off once ten runs in a row hold: all 11 failures from 18 Nov to 19 Nov 01:00 UTC were its load cases, 6 of them the launcher's keys under load at four to six times their time with the load frozen",
+    "due": "2026-11-24",
+    "due_why": "Its owner, the launcher's, by 2026-11-24 23:59 UTC makes its timing cases hold on a loaded builder, or takes it off once ten runs in a row hold. The tenth clean run failed on a slow builder at b508ac2e, its keys at 102 ms against a bar of 98 with the builder loop at 145 ms against a normal 100, so each bar is stretched by the builder loop, and the ten count again from it: all 11 failures from 18 Nov to 19 Nov 01:00 UTC were its load cases, 6 of them the launcher's keys under load at four to six times their time with the load frozen",
     "owner_pr": 4953,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 467f7109b3c3",

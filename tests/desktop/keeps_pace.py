@@ -27,10 +27,15 @@ stolen, so the guest counts that time as its own and steal can't show it. On the
 20 November the frozen key took 15 to 31 ms, and each ms more frozen gave about 7 more under
 load, where the bar allows 2: 9ca37a94 failed keys at 122 ms against 30 on 20 November and
 passed its retry at 31 against 16, its launcher the same. So each subtest also times a fixed
-loop in the guest each time the load turns and as it finishes, said beside the ticks and judged
-by nothing yet, to say how fast the builder ran the guest in each. On a builder on 20 November
-it took 96 to 114 ms under load against 96 to 99 frozen in most turns, so the load barely
-slows it and it reads the builder's own speed.
+loop in the guest each time the load turns and as it finishes, said beside the ticks, to say
+how fast the builder ran the guest in each. On a builder on 20 November it took 96 to 114 ms
+under load against 96 to 99 frozen in most turns, so the load barely slows it and it reads the
+builder's own speed. At b508ac2e the keys subtest's frozen loop took a middle 145 ms and its
+keys 102 against a bar of 98, where its frozen key took 24, as at 9c79f541, whose keys took 42
+under load on a builder whose loop took 103. So the frozen key can't see a slow builder and
+the loop can, and each subtest
+stretches its bars by how many times slower than a normal builder its frozen loops ran
+(Gauge.slowed), and on a normal builder every bar is as it was.
 """
 
 from __future__ import annotations
@@ -44,6 +49,13 @@ UNHOLDABLE = 0x04000000
 # The rounds of the bash loop timed as each turn ends: about 200 ms of a busy laptop's on 20
 # November, short beside a turn of keys.
 LOOPED = 50_000
+# A normal builder's frozen loop, in ms: its middle read 95 to 103 in the keys subtest of each of
+# the net's 8 runs from e31a9832 to 4c4b837e on 20 November, whose keys held at 31 to 42 ms
+# under load, and 145 at b508ac2e, whose keys took 102 against a bar of 98.
+BUILDER_LOOP = 100
+# The most a slow builder may stretch a bar. Past it the guest ran too slowly for its keys to
+# say anything of the launcher's, and the bar stays at that rather than growing without end.
+SLOWEST_BUILDER = 2.0
 
 
 def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float | None:
@@ -104,6 +116,12 @@ def holdable(stat: str) -> bool:
     return not flags & UNHOLDABLE
 
 
+def lower_middle(times: list[float]) -> float | None:
+    """Give the middle of these times, the lower of two, or none for no time."""
+    ranked = sorted(times)
+    return ranked[(len(ranked) - 1) // 2] if ranked else None
+
+
 class Gauge:
     """The fixed loop's times in ms, under load (True) and frozen (False), in the order run."""
 
@@ -115,6 +133,19 @@ class Gauge:
         """Keep a loop's time with the kind of turn it ended."""
         self.times[turn].append(took)
 
+    def slowed(self) -> float:
+        """Give how many times slower than a normal builder the frozen loops ran, 1 at least.
+
+        It's their middle, the lower of two, over BUILDER_LOOP, held to SLOWEST_BUILDER. Only
+        the frozen loops weigh, since under load the guest's own load may slow them, and none
+        weighs nothing, as when a subtest fails before its first freeze. A faster builder than
+        a normal one tightens no bar, so on one every bar is as it was before the loop.
+        """
+        frozen = lower_middle(self.times[False])
+        if frozen is None:
+            return 1.0
+        return min(max(frozen / BUILDER_LOOP, 1.0), SLOWEST_BUILDER)
+
     def said(self) -> str:
         """Say the middle loop of each kind of turn, the lower of two, and each loop's time.
 
@@ -122,8 +153,8 @@ class Gauge:
         """
 
         def middle(times: list[float]) -> str:
-            ranked = sorted(times)
-            return f"{ranked[(len(ranked) - 1) // 2]:.0f} ms" if ranked else "none"
+            took = lower_middle(times)
+            return "none" if took is None else f"{took:.0f} ms"
 
         def each(times: list[float]) -> list[int]:
             return [round(took) for took in times]
