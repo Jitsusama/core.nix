@@ -3797,7 +3797,7 @@ Scope {
     // How long the drawers that joined the key took to make, in ms, summed
     // since a showing began, each made as the selection moved inside the
     // showing's putting in or selecting (Trials.showingSplit); one made
-    // outside a showing counts until the next begins.
+    // outside a showing is summed, then dropped as the next begins.
     property real drawerJoining: 0
 
     onMatchesChanged: {
