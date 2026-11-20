@@ -2450,10 +2450,11 @@ fn list_broken(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::Scratch;
     use std::collections::HashMap;
     use std::fs;
     use std::sync::Condvar;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
     /// The exit the stand-in gives for a run stopped before it ended.
@@ -2873,17 +2874,8 @@ mod tests {
     /// A state of the test's own. The tests run side by side, so a number
     /// counted for each keeps two that chose the same name from emptying
     /// each other's folder.
-    fn state(name: &str) -> State {
-        static MADE: AtomicUsize = AtomicUsize::new(0);
-        let made = MADE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "merge-net-watch-{name}-{}-{made}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let state = State::at(root);
-        state.make().unwrap();
-        state
+    fn state(name: &str) -> Scratch {
+        Scratch::named(&format!("watch-{name}"))
     }
 
     fn names(text: &str) -> Vec<String> {
@@ -3843,7 +3835,7 @@ mod tests {
     #[test]
     fn a_flaky_test_main_has_moved_is_listed_only_if_it_flakes_at_main_too() {
         // A round at h, behind main's newest head n, finds vm-a flaky.
-        fn flaky_at_h(name: &str, at_n: &[i32]) -> (Stand, State) {
+        fn flaky_at_h(name: &str, at_n: &[i32]) -> (Stand, Scratch) {
             let state = state(name);
             state.set_heads("s", "s").unwrap();
             state.begin("h").unwrap();
