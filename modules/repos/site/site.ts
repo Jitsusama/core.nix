@@ -20,6 +20,7 @@ import {
   type Repository,
   type Season,
   stepped,
+  USING,
 } from "./model.ts";
 import { UNHEARD, watchMycelium } from "./mycelium.ts";
 import {
@@ -52,6 +53,7 @@ const held: { -readonly [kind in keyof Feed]: Held } = {
   checkout: new Held(),
   tree: new Held(),
   change: new Held(),
+  using: new Held(),
 };
 const standings = new Map<string, Standing>();
 const heard = new Map<string, string>();
@@ -59,7 +61,7 @@ const heard = new Map<string, string>();
 // and the room kept from the last visit held, until they all have.
 const arrived = new Set<string>();
 let cellsHeard = false;
-const repos = (): boolean => arrived.size === KINDS.length;
+const repos = (): boolean => KINDS.every((kind) => arrived.has(kind));
 // A reload draws again only what the address says, so what it won't keeps no room.
 const roomDrawn = keepRoom(() =>
   forgotten(location.hash, grove, { query, place, cursor, unfolded }),
@@ -166,7 +168,8 @@ function drawList(): void {
 // Draws on the frame after a record, then at most twice a second while records keep coming.
 const soon = paced(draw, 500, repos);
 
-for (const kind of KINDS) {
+const followed: readonly (keyof Feed)[] = [...KINDS, USING];
+for (const kind of followed) {
   held[kind] = follow(
     { feed: "repos", kind },
     {

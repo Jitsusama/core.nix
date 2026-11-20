@@ -14,6 +14,7 @@ import {
   texts,
 } from "../../local-sites/kit/records.ts";
 import { joined } from "./joins.ts";
+import { type Use, usingOf } from "./using.ts";
 import { type Weight, weightOf } from "./weight.ts";
 
 /** When a tree was last written, as the grove draws it: in leaf, budding, bare or a stump. */
@@ -53,6 +54,8 @@ interface Tree {
   readonly season: Season;
   readonly change: Change | undefined;
   readonly cells: readonly Cell[];
+  /** What works in it, where anything does. */
+  readonly using: Use | undefined;
 }
 
 /** A repository's whole copy on the machine, which trees are cut from. */
@@ -64,6 +67,8 @@ interface Checkout {
   readonly ahead: number | undefined;
   readonly weight: Weight | undefined;
   readonly cells: readonly Cell[];
+  /** What works in it, where anything does, its trees' apart. */
+  readonly using: Use | undefined;
 }
 
 /** One history of code, listed once, however many copies the machine holds. */
@@ -85,6 +90,8 @@ interface Repository {
   readonly cells: readonly Cell[];
   /** The repositories one of its cells works across too, by key. */
   readonly joined: readonly string[];
+  /** What works in its checkouts and trees together, once the daemon has read it. */
+  readonly using: Use | undefined;
   /** Where it's home, as the sites' convention addresses it. */
   readonly address: string;
 }
@@ -242,16 +249,24 @@ const SEASONS: readonly Season[] = ["today", "week", "resting", "gone"];
 
 const REPOSITORY_KEY = /^repository:/u;
 
-/** The kinds the daemon tells, each followed by a watch of its own. */
+/** The kinds the daemon reads from the disk, which the page waits for before it settles. */
 const KINDS = ["reading", "repository", "checkout", "tree", "change"] as const;
 
+/** The kind saying what works in each repository: followed too, but never waited for, since a
+ * daemon that doesn't read processes (an older one, a stand-in) leaves the grove whole. */
+const USING = "using";
+
 /** What each kind's watch holds. */
-type Feed = { readonly [kind in (typeof KINDS)[number]]: Held };
+type Feed = { readonly [kind in (typeof KINDS)[number] | typeof USING]: Held };
 
 /** Where cells work, by folder, and the changes by their keys, as a grove's parts read them. */
 interface Parts {
   readonly at: ReadonlyMap<string, readonly Cell[]>;
   readonly changes: ReadonlyMap<string, Change>;
+  /** What works in each folder, by path. */
+  readonly used: ReadonlyMap<string, Use>;
+  /** What works in each repository, by its key. */
+  readonly wholes: ReadonlyMap<string, Use>;
   readonly now: number;
 }
 
@@ -268,6 +283,7 @@ function checkoutOf(record: Fields, parts: Parts): Checkout {
     ahead: count === undefined ? undefined : number(count, "ahead"),
     weight: weightOf(record),
     cells: parts.at.get(path) ?? [],
+    using: parts.used.get(path),
   };
 }
 
@@ -286,6 +302,7 @@ function treeOf(record: Fields, parts: Parts): Tree {
     season: seasonOf(record["present"] === true, writtenAt, parts.now),
     change: change === undefined ? undefined : parts.changes.get(change),
     cells: parts.at.get(path) ?? [],
+    using: parts.used.get(path),
   };
 }
 
@@ -337,6 +354,7 @@ function repositoryOf(
     seasons,
     cells: [...checkouts.flatMap((each) => each.cells), ...trees.flatMap((each) => each.cells)],
     joined: [],
+    using: parts.wholes.get(key),
     address: addressOf(name, owner),
   };
 }
@@ -358,7 +376,10 @@ function groveOf(feed: Feed, cells: readonly Cell[], now: number): Grove | undef
       .flatMap((each) => (each["present"] === true ? (text(each, "path") ?? []) : [])),
   ]);
   const changes = new Map(feed.change.all().map((each) => [each.key, changeOf(each)]));
-  const parts = { at, changes, now };
+  const using = feed.using.all().map(usingOf);
+  const used = new Map<string, Use>(using.flatMap((each) => [...each.folders]));
+  const wholes = new Map<string, Use>(using.map((each) => [each.repository, each.whole]));
+  const parts = { at, changes, used, wholes, now };
   const repositories = feed.repository.all().map((record) => repositoryOf(record, feed, parts));
   const joinedUp = joined(repositories);
   const grove = joinedUp.sort((one, other) => one.name.localeCompare(other.name, "en-CA"));
@@ -471,5 +492,6 @@ export {
   seasonOf,
   stepped,
   treeAddress,
+  USING,
   when,
 };

@@ -488,6 +488,8 @@ in
       # The repos daemon's reading, repositories, checkouts, trees and
       # changes (modules/repos/src/feed.rs), each told whole: Code draws all
       # of each, and none holds more than git's heads and GitHub's checks.
+      # Its using records say how many processes work in each folder and
+      # what they take, never which.
       repos = {
         socket = "daemons/repos.sock";
         kinds = {
@@ -496,6 +498,7 @@ in
           checkout = { };
           tree = { };
           change = { };
+          using = { };
         };
       };
     };
