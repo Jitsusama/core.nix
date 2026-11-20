@@ -4165,8 +4165,8 @@
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes, but an
-    answer given only while nothing else was goes once something comes; and the card's list is
-    sized from its rows, a gap counted once and only for a row it shows
+    answer given only while nothing else was goes once something comes; and the height Steady's
+    tallFor gives the card's list from its rows counts a gap once, and only for a row it shows
   '';
   the-launcher-joins-only-what-changed = ''
     joining the launcher's rows again makes ready only the rows of sources whose things or

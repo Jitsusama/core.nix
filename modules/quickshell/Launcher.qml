@@ -5636,11 +5636,11 @@ Scope {
         updatedFrom(source);
         // Heard while a refresh is held for home's find, it waits on the
         // find, which makes it in the slice after, not on the pace. Only
-        // till home's found: one after waits on the pace again, and one
-        // asked again (reanswer) waits on nothing.
-        if (fillFinding && refreshHeld)
-            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, [source.settings.name],
-                KeyTimes.now());
+        // till home's found: one after is made at once or in that slice,
+        // a frame or so on, and one asked again (reanswer) waits on nothing.
+        updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+            places: [source.settings.name], at: KeyTimes.now(),
+            holding: fillFinding && refreshHeld });
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
         // same.
@@ -5880,8 +5880,9 @@ Scope {
         // nothing's held, so a shut stopped short leaves no source waiting.
         if (fillFinding && open) {
             refreshHeld = true;
-            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard,
-                refreshing.map(source => source.settings.name), KeyTimes.now());
+            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+                places: refreshing.map(source => source.settings.name), at: KeyTimes.now(),
+                holding: true });
             return;
         }
         // Any refresh made takes those held with it, so the slice after the
@@ -12637,8 +12638,10 @@ Scope {
     // Whose line each place's waiting change came from, by place, so Now,
     // made from many daemons, says whose its changes were.
     readonly property var updatesBy: ({})
-    // When each place's waiting change was first held for home's find
-    // (refreshDue), by place, so its line says the hold apart from the pace.
+    // When each place's waiting change was first held for home's find, by
+    // place: as a refresh came due then (refreshDue), or as it was heard
+    // while one was held (refreshed), so its line says the hold apart from
+    // the pace.
     property var updatesHeld: ({})
     property var updatesPresented: []
     // Each drawer a key brought since the launcher opened, from that key to

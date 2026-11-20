@@ -680,14 +680,29 @@ QtObject {
             + "start");
         // Held from when a refresh was first due while home was still to be
         // found, a change heard then held from when it was heard, and a place
-        // heard of nothing held for nothing (Launcher.qml's refreshDue).
-        const firstHeld = Presented.heldFrom({}, { machine: 5, windows: 8 },
-            ["machine", "quests"], 10);
-        const heldAgain = Presented.heldFrom(firstHeld, { machine: 5, windows: 8 },
-            ["machine", "windows"], 30);
+        // heard of nothing held for nothing, and none while nothing holds, as
+        // once home's found (Launcher.qml's refreshDue and refreshed).
+        const heardOf = { machine: 5, windows: 8 };
+        const firstHeld = Presented.heldFrom({}, heardOf,
+            { places: ["machine", "quests"], at: 10, holding: true });
+        const heldAgain = Presented.heldFrom(firstHeld, heardOf,
+            { places: ["machine", "windows"], at: 30, holding: true });
+        const heldNone = Presented.heldFrom(firstHeld, heardOf,
+            { places: ["windows"], at: 40, holding: false });
         check(failures, "a hold holds those heard from when it was first due",
-            `${JSON.stringify(firstHeld)} ${JSON.stringify(heldAgain)}`,
-            '{"machine":10} {"machine":10,"windows":30}');
+            [firstHeld, heldAgain, heldNone].map(one => JSON.stringify(one)).join(" "),
+            '{"machine":10} {"machine":10,"windows":30} {"machine":10}');
+        // An earlier line come late takes its place's change after the hold
+        // began, so it's held from when it was heard, never a wait below none.
+        const heardLate = Presented.changesSaid([
+            { place: "machine", from: 0, heard: 20, held: 10, refreshed: 40, begun: 48, at: 70 }
+        ]);
+        check(failures, "a change heard after its hold began waits on no pace",
+            heardLate.join("\n"),
+            "launcher: 1 change in machine presented a median 70 ms from the line, "
+            + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 20 ms before the "
+            + "shell heard it, 0 waiting on the pace, 20 held while home was found, 8 in the "
+            + "shell and 22 from its frame's start");
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many

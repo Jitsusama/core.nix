@@ -296,9 +296,9 @@ const changeParts = [["from", "heard", "before the shell heard it"],
     ["heard", "refreshed", "waiting on the pace"], ["refreshed", "begun", "in the shell"],
     ["begun", "at", "from its frame's start"]];
 // A refresh due while home was still to be found is held until it's found
-// (Launcher.qml's refreshDue), which isn't the pace: where one of a place's
-// changes was held, `held` being when, its line says the hold apart, and
-// one not held held for none.
+// (Launcher.qml's refreshDue and refreshed, through heldFrom), which isn't
+// the pace: where one of a place's changes was held, `held` being when, its
+// line says the hold apart (heldOf).
 const heldParts = [["from", "heard", "before the shell heard it"],
     ["heard", "held", "waiting on the pace"],
     ["held", "refreshed", "held while home was found"], ["refreshed", "begun", "in the shell"],
@@ -309,17 +309,31 @@ function changesParted(its) {
     if (!its.some(one => one.held !== undefined)) {
         return partsSwapped(its, changeParts);
     }
-    const filled = its.map(one => one.held === undefined
-        ? Object.assign({}, one, { held: one.refreshed }) : one);
+    const filled = its.map(one => Object.assign({}, one, { held: heldOf(one) }));
     return partsSwapped(filled, heldParts);
 }
 
+// When a change was held from: one not held is held for none, and one
+// heard again after its hold began, an earlier line come late taking the
+// place's change (heard, above), from when it was heard, so its wait on
+// the pace is never less than none.
+function heldOf(one) {
+    if (one.held === undefined) {
+        return one.refreshed;
+    }
+    return Math.max(one.heard, one.held);
+}
+
 // When each place's waiting change was first held for home's find, `held`
-// by place, once `places` are held at `at`: one of them whose change was
-// heard (`heardOf`, when by place) is held from then, and one held already
-// keeps its time, as it's held from when it was first due; one heard of
-// none has nothing held.
-function heldFrom(held, heardOf, places, at) {
+// by place, as a refresh comes due or a change is heard: while `holding`,
+// each of `places` whose change was heard (`heardOf`, when by place) is
+// held from `at`, and one held already keeps its time, as it's held from
+// when it was first due; one heard of none, or any while nothing holds,
+// has nothing held.
+function heldFrom(held, heardOf, { places, at, holding }) {
+    if (!holding) {
+        return held;
+    }
     const next = Object.assign({}, held);
     for (const place of places) {
         if (heardOf[place] !== undefined && next[place] === undefined) {
