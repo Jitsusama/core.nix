@@ -719,6 +719,8 @@ ShellRoot {
         // You, and when it was asked orders For You.
         same("and whether it waits and when it was asked, which For You reads",
             [row()?.waiting, row()?.asked], [true, 1000]);
+        same("so For You still orders it by when it was asked",
+            asks.forYou.map(one => one.thing.since), [1000]);
         // The row made showing says so, by the source that hides it now, so
         // no way back goes to a place holding it (Steady.hiddenGone); one
         // made hidden says nothing, so such a place stays.
@@ -788,8 +790,7 @@ ShellRoot {
         // screen is shared over an ask that would arm (Arming.letsHeldGo
         // decides whether it still says it), and what another place told
         // during the share stays, since nothing hidden is in it.
-        same("and the launcher is asked to let go of why Return held it and any arm, not what"
-            + " was told",
+        same("and the launcher is asked to unhold, not to forget what was told",
             [stage.untolds - untolds, stage.unhelds - unhelds], [0, 1]);
         same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
     }
