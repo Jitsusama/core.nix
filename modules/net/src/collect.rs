@@ -1,14 +1,15 @@
 //! One record of the home network from what each source said: the modem,
 //! the switch, then eero's devices and links, in that order, so a reader
 //! always finds the same device in the same place, each receiver's,
-//! printer's and Apple TV's own figures on eero's device for it; then
+//! printer's, Apple TV's and television's own figures on eero's device
+//! for it; then
 //! where it runs out of room (src/room.rs).
 
 use serde_json::Value;
 
 use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
 use crate::room;
-use crate::sources::{airplay, eero, hp, modem, sony, switch};
+use crate::sources::{airplay, eero, hp, modem, samsung, sony, switch};
 
 /// What each source said in one round of reads.
 pub struct Said {
@@ -21,6 +22,9 @@ pub struct Said {
     pub printers: Vec<(String, Result<hp::Answers, String>)>,
     /// What each Apple TV eero lists answered, by its hardware address.
     pub apple_tvs: Vec<(String, Result<airplay::Answer, String>)>,
+    /// What each Samsung box eero lists that could be a TV answered, by
+    /// its hardware address.
+    pub televisions: Vec<(String, Result<samsung::Answer, String>)>,
 }
 
 pub fn network(said: Said, now: u64) -> Network {
@@ -39,6 +43,10 @@ pub fn network(said: Said, now: u64) -> Network {
     for found in apple_tvs {
         hear_the_apple_tv(&mut eero.devices, found);
     }
+    let (television_source, televisions) = samsung::read(said.televisions, now);
+    for found in televisions {
+        hear_the_television(&mut eero.devices, found);
+    }
     if let Some(switch) = &switch {
         // eero lists the switch as a wired client by the same hardware
         // address; the switch's own source says more, so it stands for
@@ -54,6 +62,7 @@ pub fn network(said: Said, now: u64) -> Network {
             .chain(receiver_source)
             .chain(printer_source)
             .chain(apple_tv_source)
+            .chain(television_source)
             .collect(),
         devices: modem
             .into_iter()
@@ -112,6 +121,30 @@ fn hear_the_apple_tv(devices: &mut [Device], found: airplay::Found) {
     device.detail.insert(airplay::NAME.into(), found.detail);
 }
 
+/// Puts what a TV said on eero's device for it: it's a television rather
+/// than a client, its model and whether it's on are its own, and its
+/// answer sits beside eero's. The name it was given on its own screen
+/// stands for eero's, which is only what it calls itself taking an
+/// address, unless Joel nicknamed it in eero.
+fn hear_the_television(devices: &mut [Device], found: samsung::Found) {
+    let id = format!("mac:{}", found.mac);
+    let Some(device) = devices.iter_mut().find(|device| device.id == id) else {
+        return;
+    };
+    let nicknamed = device
+        .detail
+        .get(eero::NAME)
+        .and_then(|said| said.get("nickname"))
+        .is_some_and(Value::is_string);
+    if let (false, Some(name)) = (nicknamed, found.name) {
+        device.name = name;
+    }
+    device.roles = vec![crate::model::Role::Television];
+    device.model = found.model.or(device.model.take());
+    device.television = Some(found.television);
+    device.detail.insert(samsung::NAME.into(), found.detail);
+}
+
 /// Gives eero's cable to the switch the switch's end: when one port alone
 /// is linked, the cable must come in on it, since the switch reaches
 /// nothing else; with more, the pages don't say which, so it's left unsaid.
@@ -156,6 +189,7 @@ mod tests {
             devices.push(sony::tests::listing());
             devices.push(hp::tests::listing());
             devices.push(airplay::tests::listing());
+            devices.push(samsung::tests::listing());
         }
         let pages = modem::PAGES
             .iter()
@@ -192,6 +226,7 @@ mod tests {
             receivers: vec![(sony::tests::MAC.into(), Ok(sony::tests::answers()))],
             printers: vec![(hp::tests::MAC.into(), Ok(hp::tests::answers()))],
             apple_tvs: vec![(airplay::tests::MAC.into(), Ok(airplay::tests::answer()))],
+            televisions: vec![(samsung::tests::MAC.into(), Ok(samsung::tests::answer()))],
         }
     }
 
@@ -467,6 +502,71 @@ mod tests {
                 |source| source.name == airplay::NAME && source.state == SourceState::Answering
             ),
             "the Apple TVs aren't said as a source"
+        );
+    }
+
+    /// The contract's TV, collected from `said`.
+    fn the_tv(said: Said) -> (Device, Network) {
+        let network = network(said, NOW);
+        let id = format!("mac:{}", samsung::tests::MAC);
+        let named: Vec<_> = network
+            .devices
+            .iter()
+            .filter(|device| device.id == id)
+            .collect();
+        let [tv] = named.as_slice() else {
+            panic!("the TV should be one device: {named:?}");
+        };
+        ((*tv).clone(), network)
+    }
+
+    #[test]
+    fn the_tv_is_eeros_device_for_it_heard_as_a_television_by_its_own_name() {
+        let (tv, network) = the_tv(contract());
+        assert_eq!(tv.roles, [Role::Television], "it isn't a television");
+        assert_eq!(
+            tv.name, "Living Room",
+            "its own name didn't stand for eero's"
+        );
+        assert_eq!(
+            tv.model.as_deref(),
+            Some("QN55Q70CAFXZC"),
+            "its model wasn't heard"
+        );
+        assert_eq!(
+            tv.television.and_then(|said| said.power).as_deref(),
+            Some("on"),
+            "its power wasn't heard"
+        );
+        assert!(
+            tv.detail.contains_key("eero") && tv.detail.contains_key("samsung"),
+            "a source's words were lost: {:?}",
+            tv.detail.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            network.sources.iter().any(
+                |source| source.name == samsung::NAME && source.state == SourceState::Answering
+            ),
+            "the Samsung TVs aren't said as a source"
+        );
+    }
+
+    #[test]
+    fn a_tv_joel_nicknamed_in_eero_keeps_his_name() {
+        let mut said = contract();
+        if let Ok(Value::Object(eero)) = &mut said.eero
+            && let Some(Value::Array(devices)) = eero.get_mut("devices")
+        {
+            for device in devices.iter_mut() {
+                if device["mac"] == samsung::tests::MAC {
+                    device["nickname"] = Value::from("Big Screen");
+                }
+            }
+        }
+        let (tv, _) = the_tv(said);
+        assert_eq!(
+            tv.name, "Big Screen",
+            "Joel's nickname gave way to the TV's name"
         );
     }
 

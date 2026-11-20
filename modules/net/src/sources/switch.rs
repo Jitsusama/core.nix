@@ -448,6 +448,7 @@ fn device(status: &Status, read_at: u64) -> Device {
         modem: None,
         receiver: None,
         printer: None,
+        television: None,
         speed: None,
         path: None,
         detail,
