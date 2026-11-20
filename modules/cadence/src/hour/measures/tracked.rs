@@ -84,6 +84,49 @@ fn an_ask_written_again_is_read_from_its_latest_line() {
     );
 }
 
+/// An ask whose dates, each `(due, given)` in seconds before `NOW`, were
+/// moved in place, as the list does, the last its `expected`.
+fn moved(words: &str, dates: &[(i64, i64)]) -> String {
+    let mut ask: serde_json::Value =
+        serde_json::from_str(&ask(words, None, 30 * 3600)).expect("an ask the tests made");
+    let promised: Vec<serde_json::Value> = dates
+        .iter()
+        .map(
+            |(due, given)| serde_json::json!({"expected": at(NOW - due), "given": at(NOW - given)}),
+        )
+        .collect();
+    ask["expected"] = promised.last().expect("a date")["expected"].clone();
+    ask["promised"] = promised.into();
+    ask.to_string()
+}
+
+#[test]
+fn a_date_moved_in_place_after_it_passed_still_slipped() {
+    let text = [
+        // Due 3 h ago, moved at 1 h ago to tomorrow: a slip.
+        moved("moved late", &[(3 * 3600, 20 * 3600), (-DAY, 3600)]),
+        // Due 2 h ago, but moved 5 h ago, before it passed: none.
+        moved("moved early", &[(2 * 3600, 20 * 3600), (-DAY, 5 * 3600)]),
+        // Due 2 days ago and moved since: past the day read.
+        moved("long ago", &[(2 * DAY, 3 * DAY), (-DAY, 3600)]),
+        // Moved twice, each after it passed: two slips.
+        moved(
+            "twice",
+            &[
+                (10 * 3600, 20 * 3600),
+                (6 * 3600, 9 * 3600),
+                (-DAY, 5 * 3600),
+            ],
+        ),
+    ]
+    .join("\n");
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        ["twice · Y2YBTS", "twice · Y2YBTS", "moved late · Y2YBTS"],
+        "a date moved after it passed is a slip, oldest first; one moved before isn't"
+    );
+}
+
 #[test]
 fn the_lists_own_asks_and_mends_have_lines_of_their_own() {
     let text = list();
