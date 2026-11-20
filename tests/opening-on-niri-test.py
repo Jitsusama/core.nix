@@ -231,7 +231,8 @@ def forget_the_copies() -> None:
         history.settimeout(10)
         history.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"))
         history.sendall(json.dumps({"id": 1, "ask": "clear"}).encode() + b"\n")
-        history.makefile().readline()
+        answer = history.makefile().readline()
+    assert json.loads(answer or "{}").get("cleared") is True, f"the copies stayed: {answer}"
 
 
 def told(line: str) -> None:
@@ -1061,12 +1062,12 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
     is forgotten after, so the cases after this one find the history as empty as before.
     """
     copied = "a copy kept before the share"
-    # wl-copy stays behind to serve the copy, so it's given nothing to hold open.
-    with shell.told(f"heard copy {copied}"):
-        shell.as_account(f"printf %s {shlex.quote(copied)} | wl-copy > /dev/null 2>&1")
     hidden = "Text, Hidden While You Share"
     with contextlib.ExitStack() as after:
         after.callback(forget_the_copies)
+        # wl-copy stays behind to serve the copy, so it's given nothing to hold open.
+        with shell.told(f"heard copy {copied}"):
+            shell.as_account(f"printf %s {shlex.quote(copied)} | wl-copy > /dev/null 2>&1")
         shared_after_a_kept_copy(shell, copied, hidden)
 
 
@@ -1090,10 +1091,13 @@ def shared_after_a_kept_copy(shell: Shell, copied: str, hidden: str) -> None:
                 # Told as the chord's call returns, as the wait for niri gives up half a second
                 # from the kept frame, held or not.
                 shell.as_account(shell.ipc(*asked))
+                read = time.monotonic()
                 if name == "clipboard":
                     # One read, as a wait could outlast the half second the share must beat.
                     kept = shell.as_account(shell.ipc("drawnTexts"))
                     assert copied in kept, f"the kept clipboard didn't draw the copy: {kept}"
+                # A read slow enough to lose that race fails as the test's, not the fill's.
+                reading = round((time.monotonic() - read) * 1000)
                 stood.say(said=False)
                 read_shared(shell, shared=True)
                 shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
@@ -1102,7 +1106,9 @@ def shared_after_a_kept_copy(shell: Shell, copied: str, hidden: str) -> None:
             opening = filled_after(shell, timed)
             said = shell.log.read_bytes()[since:].decode(errors="replace")
             # Asserted before it's put back, so a failure putting it back hides nothing.
-            assert opening.get("filledBy") == "share", f"{name} waited out the share: {opening}"
+            assert opening.get("filledBy") == "share", (
+                f"{name} waited out the share, told {reading} ms after the chord: {opening}"
+            )
             filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
             assert filled in said, f"{name}'s fill wasn't said:\n{said}"
             if name == "clipboard":
