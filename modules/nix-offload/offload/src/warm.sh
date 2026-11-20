@@ -45,9 +45,13 @@ else
 				[ "$lock" = "$root/$slot.lock" ] && continue
 				if { command exec 9>>"$lock"; } 2>/dev/null && flock -n 9; then
 					idle=${lock%.lock}
-					rm -rf "$idle"
-					echo "nix-offload: the builder is short of room, so it clears warm target" \
-						"${idle#"$cache"/}" >&2
+					# A target cleared before keeps its lock, so only one still
+					# there is said to be cleared.
+					if [ -d "$idle" ]; then
+						rm -rf "$idle"
+						echo "nix-offload: the builder is short of room, so it clears warm target" \
+							"${idle#"$cache"/}" >&2
+					fi
 				fi
 				exec 9>&-
 			done
