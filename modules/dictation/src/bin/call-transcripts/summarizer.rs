@@ -123,7 +123,7 @@ fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, St
     match std::fs::read_to_string(file).map(|text| filed::transcript(&text).to_owned()) {
         Ok(text) if said::too_little(&text) => {
             eprintln!("call-transcripts: too little was said on {key} to sum up");
-            keep(book, &record, said::TOO_LITTLE, again);
+            keep(book, &record, said::TOO_LITTLE, &text, again);
             None
         }
         Ok(text) => Some((record, text)),
@@ -167,7 +167,7 @@ fn sum_up(
         let them = record.them(&summarizer.me);
         match summarizer.try_once(program, &record.title, them.as_deref(), text) {
             Tried::Summed(written) => {
-                keep(book, record, &written, again);
+                keep(book, record, &written, text, again);
                 return;
             }
             Tried::Stopped(stop) => {
@@ -433,16 +433,22 @@ fn not_summed_up(record: &Record, why: &str, can_pass: bool, again: &Sender<Job>
 /// Writes `written` as the call's summary, over its transcript in its
 /// one file, says it's ready, and puts it in the call's record. The
 /// transcript is read and the file written under the book's lock, as
-/// the transcript writes it, so neither loses what the other wrote. A
-/// call rejoined meanwhile keeps no summary, since one of part of a
-/// call reads as the whole; it's summed up again once it ends. A
-/// summary.md from before goes, the file holding the summary now. A
+/// the transcript writes it, so neither loses what the other wrote.
+///
+/// A summary is kept only while the transcript is still `summed`, the
+/// one it was made from, since one of part of a call reads as the whole.
+/// A call rejoined meanwhile is summed up again once it ends, or at once
+/// when it ended before this summary was done, as one stopped by the
+/// rejoin and tried again with what it read before has.
+/// A summary.md from before goes, the file holding the summary now. A
 /// disk with no room can pass, as room is made, so failing to write
 /// offers Try Again.
-fn keep(book: &Shared, record: &Record, written: &str, again: &Sender<Job>) {
+fn keep(book: &Shared, record: &Record, written: &str, summed: &str, again: &Sender<Job>) {
     let file = record.folder.join(TRANSCRIPT);
     let mut book = book.lock();
     let now = book.record(&record.key).cloned();
+    // Rejoined and on, it's summed up once it ends, even before it's
+    // said anything more.
     if now.as_ref().is_some_and(|now| now.transcribing) {
         eprintln!(
             "call-transcripts: {} was rejoined while summed up",
@@ -451,10 +457,17 @@ fn keep(book: &Shared, record: &Record, written: &str, again: &Sender<Job>) {
         return;
     }
     let title = now.as_ref().map_or(&record.title, |now| &now.title);
-    let kept = std::fs::read_to_string(&file).and_then(|text| {
-        let whole = filed::whole(title, Some(written), filed::transcript(&text));
-        write_whole(&file, &whole).map(|()| whole)
-    });
+    let read = std::fs::read_to_string(&file);
+    let kept = match read.map(|text| filed::summed(&text, title, written, summed)) {
+        Ok(Some(whole)) => write_whole(&file, &whole).map(|()| whole),
+        Ok(None) => {
+            eprintln!("call-transcripts: {} went on while summed up", record.key);
+            let key = record.key.clone();
+            let _ = again.send(Job::SumUp { key });
+            return;
+        }
+        Err(why) => Err(why),
+    };
     let whole = match kept {
         Ok(whole) => whole,
         Err(why) => {

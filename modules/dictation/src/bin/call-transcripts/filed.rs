@@ -6,8 +6,9 @@
 //! made (summarizer.rs). A folder from before keeps its summary.md
 //! beside it, and is read as it was written (book.rs).
 
-/// What the Summary heading holds before a summary is written.
-pub const PENDING: &str = "The summary is written once the call ends.";
+/// What the Summary heading holds before a summary is written, or where
+/// none ever is, on a laptop with no summarizer or once summing up failed.
+pub const PENDING: &str = "No summary has been written yet.";
 
 const SUMMARY: &str = "## Summary";
 const TRANSCRIPT: &str = "## Transcript";
@@ -37,9 +38,24 @@ pub fn whole(title: &str, summary: Option<&str>, transcript: &str) -> String {
     file
 }
 
+/// The call's file, `file`, with `summary` written into it, as long as
+/// its transcript is still `summed`, the one the summary was made from;
+/// none once the call went on, rejoined, since a summary of part of a
+/// call reads as the whole.
+pub fn summed(file: &str, title: &str, summary: &str, summed: &str) -> Option<String> {
+    let said = transcript(file);
+    (said == summed).then(|| whole(title, Some(summary), said))
+}
+
+/// Whether `file` is a call's one file, rather than a transcript from
+/// before, which has its summary.md beside it.
+pub fn is_one(file: &str) -> bool {
+    headings(file).is_some()
+}
+
 /// A summary without the title summary.rs writes it under, since the
 /// file's own heading says it.
-fn untitled(summary: &str) -> &str {
+pub fn untitled(summary: &str) -> &str {
     let summary = summary.trim_start();
     match summary.split_once('\n') {
         Some((first, rest)) if first.starts_with("# ") => rest,
@@ -120,7 +136,37 @@ mod tests {
     }
 
     #[test]
-    fn a_call_not_yet_summed_up_says_its_summary_is_to_come() {
+    fn a_summary_is_kept_only_over_the_transcript_it_was_made_from() {
+        let first = whole("Planning", None, SAID);
+        let read = transcript(&first).to_owned();
+        let kept = summed(&first, "Planning", SUMMED, &read);
+        assert_eq!(kept, Some(whole("Planning", Some(SUMMED), SAID)));
+        let newer = "- Joel, to Others: \"Can we move it?\" [0:00]";
+        let replaced = summed(kept.as_deref().unwrap(), "Planning", newer, &read).unwrap();
+        assert_eq!(
+            summary(&replaced).as_deref(),
+            Some(newer),
+            "a summary there before gives way to the new one"
+        );
+        let rejoined = whole(
+            "Planning",
+            None,
+            &format!("{SAID}\n**Joel**, 9:00: Back.\n"),
+        );
+        assert_eq!(
+            summed(&rejoined, "Planning", SUMMED, &read),
+            None,
+            "the call went on, so a summary of its first part is no summary of it"
+        );
+        assert!(is_one(&first), "{first}");
+        assert!(
+            !is_one(SAID),
+            "a transcript from before has no Summary heading"
+        );
+    }
+
+    #[test]
+    fn a_call_not_yet_summed_up_says_it_has_no_summary_yet() {
         let file = whole("", None, SAID);
         assert!(
             file.starts_with(&format!("{SUMMARY}\n\n{PENDING}\n\n{TRANSCRIPT}\n\n")),

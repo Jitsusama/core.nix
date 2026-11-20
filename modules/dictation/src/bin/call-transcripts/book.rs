@@ -237,10 +237,16 @@ impl Record {
         let opening = text
             .as_deref()
             .and_then(|text| opening(filed::transcript(text)));
-        let summary = text
-            .as_deref()
-            .and_then(filed::summary)
-            .or_else(|| std::fs::read_to_string(folder.join(SUMMARY)).ok());
+        // A summary.md beside a call's one file is left from before, when
+        // a call rejoined isn't summed up again yet, so only the one file
+        // says it's summed up. Either is kept without its title, which
+        // the launcher's drawer says itself.
+        let summary = match text.as_deref() {
+            Some(text) if filed::is_one(text) => filed::summary(text),
+            _ => std::fs::read_to_string(folder.join(SUMMARY))
+                .ok()
+                .map(|summary| filed::untitled(&summary).trim().to_owned()),
+        };
         Ok(Some(Self {
             key: key.to_owned(),
             title: meta["title"].as_str().unwrap_or_default().to_owned(),
@@ -527,7 +533,8 @@ mod tests {
         let one = call(folder.path(), "call:e1", 10);
         let before = call(folder.path(), "call:e2", 20);
         let pending = call(folder.path(), "call:e3", 30);
-        for record in [&one, &before, &pending] {
+        let rejoined = call(folder.path(), "call:e4", 40);
+        for record in [&one, &before, &pending, &rejoined] {
             book.put(record.clone());
         }
         let file = filed::whole("Planning", Some("# Planning\n\n- Joel: \"move it\""), said);
@@ -535,7 +542,9 @@ mod tests {
         std::fs::write(before.folder.join(TRANSCRIPT), said).unwrap();
         std::fs::write(before.folder.join(SUMMARY), "# Planning\n\n- kept\n").unwrap();
         let file = filed::whole("Planning", None, said);
-        std::fs::write(pending.folder.join(TRANSCRIPT), file).unwrap();
+        std::fs::write(pending.folder.join(TRANSCRIPT), &file).unwrap();
+        std::fs::write(rejoined.folder.join(TRANSCRIPT), &file).unwrap();
+        std::fs::write(rejoined.folder.join(SUMMARY), "# Planning\n\n- first leg\n").unwrap();
         let read = Book::read(folder.path());
         let summary = |key| read.record(key).unwrap().summary.clone();
         let opening = |key| read.record(key).unwrap().opening.clone();
@@ -547,17 +556,22 @@ mod tests {
         assert_eq!(
             opening("call:e1").as_deref(),
             Some("**Joel**, 0:00: Can we move it?"),
-            "its opening is what was said, never its summary"
+            "its opening is the first line said"
         );
         assert_eq!(
             summary("call:e2").as_deref(),
-            Some("# Planning\n\n- kept\n"),
-            "before"
+            Some("- kept"),
+            "before, kept without its title as the one file's is"
         );
         assert_eq!(
             summary("call:e3"),
             None,
             "a summary still to come is none yet"
+        );
+        assert_eq!(
+            summary("call:e4"),
+            None,
+            "rejoined since it was summed up, its summary.md is of its first leg alone"
         );
     }
 
