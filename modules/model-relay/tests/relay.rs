@@ -83,6 +83,11 @@ const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 const GOODBYE_HEARD_WITHIN: Duration = Duration::from_millis(200);
 /// What `/sized` answers, its length named.
 const SIZED: &[u8] = b"whole";
+/// What a relay standing down says in its 421, pinned whole, as pi goes
+/// direct on these words alone.
+const STANDS_DOWN_WORDS: &[u8] =
+    b"this relay forwards to its own origin alone, and stands down from it for now, so go \
+      directly\n";
 /// How long the tests let the relay take to reach an origin, in seconds.
 const CONNECT_WITHIN: &str = "1";
 /// How often a test looks again for something it waits on.
@@ -1519,10 +1524,9 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         answered_after_the_body,
         "the stand-down's 421 came before the body was read whole"
     );
-    let words = String::from_utf8_lossy(&got.body).into_owned();
-    assert!(
-        words.contains("stands down from it"),
-        "past its idle time, the 421 isn't the stand-down's: {words}"
+    assert_eq!(
+        got.body, STANDS_DOWN_WORDS,
+        "past its idle time, the 421 isn't the stand-down's"
     );
     let later = retry_after(&got);
     assert!(
@@ -1688,7 +1692,54 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
         "it tried its path after it took requests again"
     );
 
-    says_each_trial(&relay.said());
+    stands_down_doubled_and_waits_twice_as_long(&relay, &origin, &host).await;
+    let said = relay.said();
+    assert!(
+        said.contains("so it stands down for 1200 s"),
+        "the second stand-down soon after didn't double: {said}"
+    );
+    says_each_trial(&said);
+}
+
+/// Failing again soon after it took requests again, a relay trying its
+/// path each second stands down doubled, for twenty minutes, and waits
+/// twice as long for its first trial: four periods, so none by three
+/// seconds in, and one by seven. The requests it answered since it mended
+/// count toward its share, so it's reset until it says it stands down,
+/// rather than a set number of times.
+async fn stands_down_doubled_and_waits_twice_as_long(relay: &Relay, origin: &Origin, host: &str) {
+    let trials = || trials_of(origin);
+    let mut resets = 0;
+    loop {
+        let got = ask(&relay.socket, request(host, "/reset", b"")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::MISDIRECTED_REQUEST,
+            "a request the origin reset twice"
+        );
+        if String::from_utf8_lossy(&got.body).contains("stands down from it") {
+            break;
+        }
+        resets += 1;
+        assert!(
+            resets <= 20,
+            "20 resets in a row didn't stand it down again"
+        );
+    }
+    origin.failing.store(RESETS, Ordering::SeqCst);
+    let doubled = Instant::now();
+    let before = trials();
+    tokio::time::sleep_until((doubled + Duration::from_secs(3)).into()).await;
+    assert_eq!(
+        trials(),
+        before,
+        "a doubled stand-down tried its path as soon as a first one would"
+    );
+    tokio::time::sleep_until((doubled + Duration::from_secs(7)).into()).await;
+    assert!(
+        trials() > before,
+        "a doubled stand-down never tried its path"
+    );
 }
 
 /// How many trials of its path the origin was asked, each a `HEAD`.
