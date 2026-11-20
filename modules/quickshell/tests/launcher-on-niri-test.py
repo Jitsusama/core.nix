@@ -78,6 +78,17 @@ ROUNDED = 2
 # How a key's line says the frames begun since it was heard (Trials.js's framesBeforeSaid), read
 # back from its own frame's number, which a wrong number or clock leaves unsaid.
 FRAMES_BEFORE = re.compile(r", after (?:at least )?\d+ other frames? since it was heard")
+# How the close says each key's press, swap and screen in monotonic ms (Presented.keysClockSaid),
+# the press in whole ms as niri stamps it and the rest to a tenth, "-" for one not timed, so it
+# lines up with niri's own log of its frames.
+KEYS_CLOCK = re.compile(
+    r"launcher: \d+ keys shown, each pressed, swapped and shown in monotonic ms: (.+)\n"
+)
+CLOCK_KEY = re.compile(
+    r"(-|\d+) (-|[\d.]+) ([\d.]+)(?:, (\d+) frames? of the shell's after its own)?"
+)
+# A tenth's rounding, with room for the float either side of it.
+TENTH = 0.051
 # The most facts a home network thing's drawer holds, the rest its step in's (modules/eero's
 # drawers.rs GLANCE).
 GLANCE = 6
@@ -2713,6 +2724,24 @@ def said_once(shell: Shell, since: int, line: re.Pattern[str]) -> str:
     return said
 
 
+def says_its_clock(said: str, key: Json) -> bool:
+    """Whether one key's part of the close's clock line says its record's press, swap and screen."""
+    one = CLOCK_KEY.fullmatch(said)
+    if not one:
+        return False
+    pressed, swapped, shown, later = one.groups()
+
+    def near(tenth: str, ms: float) -> bool:
+        return tenth != "-" and abs(float(tenth) - float(ms)) <= TENTH
+
+    return (
+        (pressed == "-" if key["stamped"] is False else int(pressed) == math.floor(key["from"]))
+        and near(swapped, key["swapped"])
+        and near(shown, key["at"])
+        and int(later or 0) == key["later"]
+    )
+
+
 def stepped_into_programs(shell: Shell) -> int:
     """Step into Programs from home and give how many facts its first program's drawer holds."""
     shell.type_in("programs", selecting="Programs")
@@ -4769,6 +4798,17 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
         f" and {heard} before the shell heard it"
     )
     shell.close_launcher()
+    # The close says the key's press, swap and screen on its clock as its record holds them: a
+    # wiring check, since the record's own times are proven above and the wording in pacing.qml.
+    # wtype's key carries no time (keytimes.cpp), so its record says so whatever the line reads;
+    # how many frames later niri answered has no such fact here, and is read from the record.
+    assert key["stamped"] is False, f"wtype's key carries no press time, yet its record is {key}"
+    closed = said_once(shell, since, KEYS_CLOCK)
+    clock = KEYS_CLOCK.search(closed)
+    assert clock, "the close never said its keys' clock"
+    assert any(says_its_clock(one, key) for one in clock.group(1).split("; ")), (
+        f"its clock said {clock.group(0)}; its key was {key}"
+    )
 
 
 # How long niri is held just after a daemon's line, well past Joel's 50 ms bar.

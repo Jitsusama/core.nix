@@ -7019,8 +7019,8 @@ Scope {
             step: stepped === true ? typed : "",
             searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
             parts: searchParts, begun: null,
-            rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
-            done: KeyTimes.now() }]);
+            rendered: null, pressed: pressed > 0 ? pressed : heard, stamped: pressed > 0,
+            heard, done: KeyTimes.now() }]);
         keysPressed.push(pressed > 0 ? pressed : null);
         keysHeard.push(heard);
         // Its handler is done once it's searched or moved, all a key's own
@@ -12512,11 +12512,14 @@ Scope {
         // dropped for it.
         // A step in or out says which, by its arrow and place, so a check
         // finds it however fast it was; typed words are never said here.
-        const one = { from, at, heard: key.heard, begun: key.begun, onRow: key.onRow,
+        // Its clock's line says whether niri timed its press and how many
+        // frames after its own niri answered (Presented.keyClockOf).
+        const one = Object.assign({ from, at, heard: key.heard, begun: key.begun,
+            onRow: key.onRow }, Presented.keyClockOf(key, answered), {
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),
-            step: key.step ?? "" };
+            step: key.step ?? "" });
         keysPresented = keysPresented.concat([one]).slice(-keysKept);
     }
 
@@ -12611,6 +12614,7 @@ Scope {
 
     function keysPresentedSaid() {
         const first = Presented.keysSaid("presented", keysPresented, true);
+        const clock = Presented.keysClockSaid(keysPresented);
         const updates = Presented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
         // Each key's own time goes with the opening's trial, where health
@@ -12628,7 +12632,7 @@ Scope {
             delete updatesBy[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
-        for (const said of [first].filter(line => line !== "").concat(updates))
+        for (const said of [first, clock].filter(line => line !== "").concat(updates))
             console.info(said);
     }
 
