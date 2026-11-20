@@ -42,8 +42,9 @@ rec {
   # account's doors, like HOME: a process of the account can as well write
   # the host's own code where pi-packages keeps it, or a module in node's
   # home folders (~/.node_modules), which no variable names. A Mac's own
-  # loader variables, DYLD_*, never reach node while System Integrity
-  # Protection is on, since macOS drops them as its start's sh and env run.
+  # loader variables, DYLD_*, are dropped by macOS as its start's sh and
+  # env run, while System Integrity Protection is on, but env then hands
+  # node a realm's own, so a Mac refuses a realm giving one (darwin.nix).
   loadsCode = [
     "NODE_OPTIONS"
     "NODE_PATH"

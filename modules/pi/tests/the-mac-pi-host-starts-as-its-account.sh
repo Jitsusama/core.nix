@@ -220,8 +220,12 @@ for shell in "$@"; do
   expect HOME /Users/someone
   expect USER someone
   expect LANG C.UTF-8
-  expect LC_ALL en_US.UTF-8
+  # The account's shell's LC_ALL would outrank the realm's LANG.
+  if grep -qz "^LC_ALL=" "${work}/environment"; then
+    fail "under ${name} passed on an LC_ALL, which outranks the realm's LANG"
+  fi
   expect MYCELIUM_REALM one
+  expect PI_HOME_REALM mine
   expect PROXY_ORIGIN https://proxy.example.com
   expect PI_HOST_STOP_USEC 150000000
   expect PI_CODEMODE_MAX_WORKERS 16
@@ -229,8 +233,9 @@ for shell in "$@"; do
   expect_like PATH '^/first/bin:.*:/etc/profiles/per-user/someone/bin:.*:/Users/someone/\.local/bin$'
   expect_like PI_PACKAGE_DIR '^/nix/store/'
   expect_like PI_HOST_PROOF '^/nix/store/'
-  # The call probe the host's own restart waits out, as the harness reads it.
-  expect_like PI_HOST_RESTART_WAITS_ON '^\[\{"run":\["/nix/store/[^"]*/bin/a-call-is-on"\],"while":"a call is on"\}'
+  # The call probe the host's own restart waits out, then the machine's, as
+  # the harness reads them: its % single, as only systemd would double it.
+  expect_like PI_HOST_RESTART_WAITS_ON '^\[\{"run":\["/nix/store/[^"]*/bin/a-call-is-on"\],"while":"a call is on"\},\{"run":\["/bin/a-meeting-is-near","/Users/someone/100% kept"\],"while":"a meeting is near"\}\]$'
   for loads_code in NODE_OPTIONS NODE_PATH NODE_COMPILE_CACHE LD_PRELOAD LD_AUDIT \
     LD_LIBRARY_PATH OPENSSL_CONF OPENSSL_MODULES; do
     if grep -qz "^${loads_code}=" "${work}/environment"; then
@@ -259,10 +264,21 @@ for shell in "$@"; do
   [[ ${slept} == 600 ]] || fail "under ${name} slept '${slept}', not ten minutes, after three quick starts"
   grep -q "started three times in ten minutes" "${log}" ||
     fail "under ${name} didn't say why it waited"
+  grep -qF "removing ${log}.starts lets the next start go at once" "${log}" ||
+    fail "under ${name} didn't say how to start at once"
   [[ -e "${work}/words" ]] || fail "under ${name} never started after waiting"
   starts=$(wc -l <"${log}.starts")
   [[ ${starts} == 3 ]] || fail "under ${name} kept ${starts} starts, not 3"
   printf '%s\n' $((now - 3700)) $((now - 3650)) $((now - 3600)) >"${log}.starts"
   run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after three old starts"
   [[ ! -e "${work}/slept" ]] || fail "under ${name} waited after starts an hour old"
+  # Only the oldest of the three counts: one recent start after two old
+  # ones isn't three in ten minutes.
+  printf '%s\n' $((now - 3600)) $((now - 3500)) $((now - 100)) >"${log}.starts"
+  run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after one recent start"
+  [[ ! -e "${work}/slept" ]] || fail "under ${name} waited after one recent start of three"
+  # Two quick starts aren't three.
+  printf '%s\n' $((now - 200)) $((now - 100)) >"${log}.starts"
+  run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after two quick starts"
+  [[ ! -e "${work}/slept" ]] || fail "under ${name} waited after two quick starts"
 done

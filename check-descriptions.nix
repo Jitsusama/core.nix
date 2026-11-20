@@ -112,7 +112,8 @@
   a-mac-refuses-another-accounts-pi-hosts = ''
     a Mac refuses an account other than its primary one that names a pi host's realm, by that
     account's name, and gives it none; a Mac naming no primary account refuses every realm with a
-    message saying so, and gives none
+    message saying so, and gives none; and a realm giving a DYLD_ variable is refused, naming the
+    realm and only that variable
   '';
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
@@ -2920,8 +2921,8 @@
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb,
+    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers and
+    sixteen libuv threads for its conversations to share, the account's home realm, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
     frame, and pi's SSH agent proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
@@ -4603,17 +4604,19 @@
     a realm a Mac's primary account names gets two pi hosts as launchd daemons run as that
     account, started at boot once the store is mounted and again after a failure, given 150 s
     to park and 8192 open files, naming no store path a switch would restart it for, with no
-    log launchd opens as root, and becoming node under a name mycelium tells as an agent's, on a
-    Mac that evaluates whole; a Mac naming none gets none
+    log launchd opens as root, and becoming node under a name mycelium tells as an agent's, as
+    its own kind with a log of its own, on a Mac that evaluates whole; a Mac naming none gets none
   '';
   the-mac-pi-host-starts-as-its-account = ''
     a Mac's pi host start, run under dash and bash with the Mac's programs stood in for, passes
-    shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes,
-    says why and fails on a missing harness or a temporary folder that isn't there, is a link,
+    shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes
+    and not after two or one recent start of three, saying how to start at once, says why and
+    fails on a missing harness or a temporary folder that isn't there, is a link,
     is another's or others may read, and otherwise becomes the realm's node in its own place
-    with its words, its output in its log, every environment value whole, the account's LANG,
-    TMPDIR and XDG_RUNTIME_DIR the account's temporary folder, the call probe its own restart
-    waits on, and none of the eight variables that would run code as node starts
+    with its words, its output in its log, every environment value whole, the realm's LANG and
+    no LC_ALL to outrank it, the account's home realm, TMPDIR and XDG_RUNTIME_DIR the account's
+    temporary folder, the probes its own restart waits on with their % single, and none of the
+    eight variables that would run code as node starts
   '';
   the-macs-faces-are-the-themes = ''
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
