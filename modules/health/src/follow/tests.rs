@@ -165,7 +165,11 @@ const OVERSLEPT: Duration = Duration::from_secs(1);
 /// `unwritable_for` times, or ever at `usize::MAX`; then a held sender
 /// sends `tomorrow_after_room` more of the next day's lines. A `busy`
 /// held sender sends a line of the day at every look, as a busy journal
-/// does, and one sends a line of the day at look `late`, if any.
+/// does, and one sends a line of the day at look `late`, if any. At each
+/// look in `flaps`, the day turns writable if it wasn't, or unwritable if
+/// it was, as a disk at the edge of full flaps between the two. The wall
+/// clock runs with the awake one but for a `slept`: after so many looks,
+/// the machine sleeps so long, which only the wall clock sees.
 #[derive(Default)]
 struct Ran {
     before: i64,
@@ -178,6 +182,8 @@ struct Ran {
     tomorrow_after_room: i64,
     busy: bool,
     late: usize,
+    flaps: &'static [usize],
+    slept: Option<(usize, Duration)>,
 }
 
 /// What a `Ran` came to: what `run` returned, what it left unread, how
@@ -267,7 +273,16 @@ impl Ran {
             first.set(first.get().or(Some(clock.get())));
             clock.get()
         };
-        let now = || moved(self.step);
+        let now = || {
+            let at = moved(self.step);
+            let asleep = self
+                .slept
+                .filter(|&(after, _)| looks.get() >= after)
+                .map_or(Duration::ZERO, |(_, slept)| slept);
+            let on_the_wall = at.saturating_duration_since(start) + asleep;
+            let micros = i64::try_from(on_the_wall.as_micros()).expect("a test's length");
+            (at, NOON + micros)
+        };
         let idle_waits = Cell::new(0);
         let wait = |time: Duration| {
             idle_waits.set(idle_waits.get() + usize::from(time.is_zero()));
@@ -285,6 +300,16 @@ impl Ran {
                 fs::remove_file(&days).expect("room made for the day");
                 for second in 0..self.tomorrow_after_room {
                     send_held(line(DAY + self.tomorrow + second));
+                }
+            }
+            if self.flaps.contains(&looks.get()) {
+                if days.is_file() {
+                    fs::remove_file(&days).expect("room made for the day");
+                } else {
+                    if days.exists() {
+                        fs::remove_dir_all(&days).expect("the day's folder taken away");
+                    }
+                    fs::write(&days, "").expect("a file in the folder's place");
                 }
             }
             if self.late > 0 && looks.get() == self.late {
@@ -479,7 +504,7 @@ fn a_busy_journal_still_ticks_every_half_minute() {
     let mut asked = 0;
     let now = || {
         asked += 1;
-        start + Duration::from_secs(10 * asked)
+        (start + Duration::from_secs(10 * asked), wall(10 * asked))
     };
     // Only the looks taken as the lines are read count, not those taken
     // as health waits out its start once its follower has ended.

@@ -1,5 +1,6 @@
-//! A spell of failed writes on its own, as a flapping disk's: what of it
-//! health says, and when, on the awake clock and the wall's.
+//! A spell of failed writes, as a flapping disk's, on its own and as a run
+//! keeps it: what of it health says, and when, on the awake clock and the
+//! wall's.
 
 use super::*;
 
@@ -79,11 +80,11 @@ fn a_flapping_disk_is_said_at_most_once_in_ten_minutes() {
                 ": permission denied, having tried for 8 minutes, and a short spell before it \
                  went unsaid, so"
             )
-            && words(2).contains("for up to 51 minutes")
+            && words(2).contains("for about 52 minutes")
             && words(3).ends_with("after trying for 9 minutes")
             && words(4)
                 .contains("no space left on device, and a short spell before it went unsaid, so")
-            && words(4).contains("for up to 60 minutes"),
+            && words(4).contains("for about an hour"),
         "a spell's cause, how long it lasted, the time it has left or the short spells before \
          it went unsaid: {heard:?}"
     );
@@ -208,6 +209,61 @@ fn short_spells_gone_unsaid_are_told_as_health_ends_if_it_writes() {
             && failed.len() == 1,
         "the short spells kept quiet as health ended were lost, or told though it couldn't \
          write: {wrote:?}, {failed:?}"
+    );
+}
+
+/// A run over a disk that flaps from the third tick, the first to write a
+/// change, to the sixth, failing, writing, failing and writing again, so
+/// its second spell comes within the quiet its first one's told end keeps,
+/// with the machine asleep `slept` after the first spell's end; its
+/// follower has ended, so it ends once it has run `SETTLED`.
+fn flapping(slept: Option<Duration>) -> Outcome {
+    Ran {
+        ends: 1,
+        held_for: SETTLED * 2,
+        step: EVERY,
+        busy: true,
+        flaps: &[3, 4, 5, 6],
+        slept: slept.map(|slept| (4, slept)),
+        ..Ran::default()
+    }
+    .outcome()
+}
+
+#[test]
+fn a_run_ends_a_flapping_disks_quiet_on_the_wall_clock() {
+    // Twenty minutes asleep, which only the wall clock sees, so the second
+    // spell is said at once rather than kept quiet.
+    let Outcome {
+        result,
+        said,
+        noticed,
+        ..
+    } = flapping(Some(Duration::from_mins(20)));
+    assert!(
+        result.is_ok() && said.len() == 2 && noticed.len() == 2,
+        "a run didn't hand its spell the wall clock, so a sleep kept a flapping disk quiet: \
+         {result:?}, {said:?}, {noticed:?}"
+    );
+}
+
+#[test]
+fn a_run_that_ends_in_the_quiet_tells_the_short_spells_it_kept() {
+    // The run ends within ten minutes of the first spell's told end, so
+    // only its final write can tell the second.
+    let Outcome {
+        result,
+        said,
+        noticed,
+        ..
+    } = flapping(None);
+    assert!(
+        result.is_ok()
+            && said.len() == 1
+            && noticed.len() == 2
+            && noticed[1].ends_with("again, after a short spell failing that went unsaid"),
+        "a run ending in the quiet didn't hand its final write to the spell, losing the short \
+         spell it kept: {result:?}, {said:?}, {noticed:?}"
     );
 }
 

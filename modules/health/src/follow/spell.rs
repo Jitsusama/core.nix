@@ -227,8 +227,10 @@ impl Spell {
 
 /// What health says of a day it can't write into `into` for `cause`, its
 /// writes having failed for `lasted`, if said late, and `unsaid` short
-/// spells before it gone unsaid, with the time left, which in a spell's
-/// last minute is less than a minute.
+/// spells before it gone unsaid, with the time left. That's about so
+/// long, to the nearest minute, rather than up to it: the last try comes at
+/// the first tick past `GIVES_UP`, which may be most of a tick later, so a
+/// limit would be one health goes past.
 fn unwritten(cause: &str, into: &Path, lasted: Duration, unsaid: u32) -> String {
     let already = if lasted.is_zero() {
         String::new()
@@ -239,10 +241,11 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration, unsaid: u32) -> String 
         0 => String::new(),
         spells => format!(" and {} before it went unsaid,", short_spells(spells)),
     };
-    let left = match GIVES_UP.saturating_sub(lasted).as_secs() / 60 {
+    let left = match GIVES_UP.saturating_sub(lasted).as_secs().saturating_add(30) / 60 {
         0 => "less than a minute".to_owned(),
-        1 => "up to a minute".to_owned(),
-        minutes => format!("up to {minutes} minutes"),
+        1 => "about a minute".to_owned(),
+        60 => "about an hour".to_owned(),
+        minutes => format!("about {minutes} minutes"),
     };
     format!(
         "health: can't write the day into {}: {cause},{already}{before} so it keeps the day and \

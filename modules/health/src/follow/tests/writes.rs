@@ -213,7 +213,7 @@ fn a_day_that_can_never_be_written_ends_health_after_an_hour_of_trying_without_s
     );
     assert_eq!(idle_waits, 0, "health waited nothing, so it would spin");
     assert!(
-        said.len() == 1 && said[0].contains("/days") && said[0].contains("60 minutes"),
+        said.len() == 1 && said[0].contains("/days") && said[0].contains("about an hour"),
         "an hour of failed writes wasn't said once, naming the folder and how long: {said:?}"
     );
 }
@@ -454,12 +454,12 @@ fn a_spell_of_failed_writes_is_said_as_it_starts_and_at_a_new_cause_and_told_as_
                 "said: health: can't write the day into days: 2026-11-13's file: No space left \
                  on device (os error 28), so it"
             )
-            && heard[0].contains("for up to 60 minutes")
+            && heard[0].contains("for about an hour")
             && heard[1].starts_with(
                 "said: health: can't write the day into days: now 2026-11-14's file: Read-only \
                  file system (os error 30), having tried for less than a minute, so it"
             )
-            && heard[1].contains("for up to 59 minutes")
+            && heard[1].contains("for about an hour")
             && heard[2]
                 == "told: health: writes the day into days again, after trying for a minute",
         "a spell's start, its new cause and its end weren't each said once: {heard:?}"
@@ -547,7 +547,8 @@ fn a_new_cause_near_a_spells_end_says_the_time_left_and_none_on_its_last_try() {
     for (after, error) in [
         (0, full_on("2026-11-13")),
         (GIVES_UP.as_secs() - 90, unreadable),
-        (GIVES_UP.as_secs() - 30, read_only_on("2026-11-13")),
+        // Under half a minute left, the last try comes within a minute.
+        (GIVES_UP.as_secs() - 20, read_only_on("2026-11-13")),
         // The last try, which health ends on, naming its cause.
         (GIVES_UP.as_secs(), lost),
     ] {
@@ -564,7 +565,7 @@ fn a_new_cause_near_a_spells_end_says_the_time_left_and_none_on_its_last_try() {
     assert!(
         heard.len() == 3
             && heard[1].contains(": now Permission denied")
-            && heard[1].ends_with("every half minute for up to a minute")
+            && heard[1].ends_with("every half minute for about 2 minutes")
             && heard[2].contains(": now 2026-11-13's file: Read-only")
             && heard[2].ends_with("every half minute for less than a minute"),
         "a new cause near a spell's end said the wrong time left, or one on its last try \
@@ -674,7 +675,7 @@ fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
 }
 
 #[test]
-fn health_says_its_faults_as_failures_and_a_mended_write_as_a_notice() {
+fn follows_sayers_mark_a_fault_a_failure_and_a_mended_write_a_notice() {
     // Health's warnings follower counts a failure as one of health's own
     // and a notice not, so the two swapped would count every mended write
     // as a fault, and none of health's. This pins what each sayer `follow`
