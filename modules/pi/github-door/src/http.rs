@@ -166,14 +166,34 @@ pub fn framing(head: &Head, most: usize) -> Result<Framing, Unread> {
     if lengths == 0 {
         return Ok(Framing::Empty);
     }
-    let length: usize = head
+    let length = head
         .header("content-length")
-        .and_then(|value| value.parse().ok())
+        .and_then(decimal)
         .ok_or_else(|| Unread::Malformed("a length that isn't one number".to_owned()))?;
-    if length > most {
-        return Err(Unread::TooLarge);
+    match usize::try_from(length) {
+        Ok(length) if length <= most => Ok(Framing::Length(length)),
+        _ => Err(Unread::TooLarge),
     }
-    Ok(Framing::Length(length))
+}
+
+/// A length as HTTP writes one: decimal digits alone, with no sign or
+/// space, which some readers take and others don't, so the relay reads
+/// it only the one way every reader does.
+pub fn decimal(text: &str) -> Option<u64> {
+    let digits = !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    digits.then(|| text.parse().ok()).flatten()
+}
+
+/// A chunk's size from its line: hex digits alone, then any extensions,
+/// which are dropped, for the same reason as [`decimal`].
+fn chunk_size(line: &str) -> Option<u64> {
+    let size = line
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches([' ', '\t']);
+    let digits = !size.is_empty() && size.bytes().all(|byte| byte.is_ascii_hexdigit());
+    digits.then(|| u64::from_str_radix(size, 16).ok()).flatten()
 }
 
 /// The body `head` says follows, read whole from `buffer` and `stream`,
@@ -203,29 +223,26 @@ pub fn read_framed(
     }
 }
 
-/// Copy one chunked body from `buffer` and `stream` to `out` as it was
-/// sent, sizes, chunks and trailers, and stop at its end, so whatever the
-/// sender says after it is never copied.
+/// Copy one chunked body from `buffer` and `stream` to `out`, its chunks
+/// as sent but framed anew: each size in plain hex with no extensions,
+/// and the last with no trailers. It stops at the body's end, so nothing
+/// the sender says after it, and no line of its own a client might read
+/// another way, is ever copied.
 pub fn copy_chunks(
     stream: &mut impl Read,
     buffer: &mut Vec<u8>,
     out: &mut impl Write,
 ) -> Result<(), Unread> {
     loop {
-        let sized = line(stream, buffer)?;
-        write!(out, "{sized}\r\n")?;
-        let size = sized.split(';').next().unwrap_or_default().trim();
-        let size = u64::from_str_radix(size, 16)
-            .map_err(|_| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        let size = chunk_size(&line(stream, buffer)?)
+            .ok_or_else(|| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
         if size == 0 {
-            loop {
-                let trailer = line(stream, buffer)?;
-                write!(out, "{trailer}\r\n")?;
-                if trailer.is_empty() {
-                    return out.flush().map_err(Unread::Io);
-                }
-            }
+            // Trailers are read past and dropped, as a request's are.
+            while !line(stream, buffer)?.is_empty() {}
+            out.write_all(b"0\r\n\r\n")?;
+            return out.flush().map_err(Unread::Io);
         }
+        write!(out, "{size:x}\r\n")?;
         let held = usize::try_from(size)
             .unwrap_or(usize::MAX)
             .min(buffer.len());
@@ -248,10 +265,9 @@ pub fn copy_chunks(
 fn chunks(stream: &mut impl Read, buffer: &mut Vec<u8>, most: usize) -> Result<Vec<u8>, Unread> {
     let mut body = Vec::new();
     loop {
-        let sized = line(stream, buffer)?;
-        let size = sized.split(';').next().unwrap_or_default().trim();
-        let size = usize::from_str_radix(size, 16)
-            .map_err(|_| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        let size = chunk_size(&line(stream, buffer)?)
+            .ok_or_else(|| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        let size = usize::try_from(size).unwrap_or(usize::MAX);
         if size == 0 {
             // Trailers, which the door drops, end at an empty line.
             while !line(stream, buffer)?.is_empty() {}
@@ -414,7 +430,6 @@ pub fn write_answer(out: &mut impl Write, status: u16, message: &str) -> io::Res
     let reason = match status {
         400 => "Bad Request",
         403 => "Forbidden",
-        405 => "Method Not Allowed",
         413 => "Payload Too Large",
         417 => "Expectation Failed",
         429 => "Too Many Requests",
@@ -511,12 +526,28 @@ mod tests {
     }
 
     #[test]
-    fn a_chunked_body_is_copied_as_sent_and_nothing_after_it() {
+    fn a_chunked_body_is_framed_anew_and_nothing_after_it_copied() {
         let mut stream = &b"de\r\n0\r\nX-T: 1\r\n\r\nHTTP/1.1 200 OK\r\n"[..];
-        let mut buffer = b"3\r\nabc\r\n2;x=y\r\n".to_vec();
+        let mut buffer = b"03\r\nabc\r\n2 ;x=y\r\n".to_vec();
         let mut out = Vec::new();
         copy_chunks(&mut stream, &mut buffer, &mut out).expect("copied");
-        assert_eq!(out, b"3\r\nabc\r\n2;x=y\r\nde\r\n0\r\nX-T: 1\r\n\r\n");
+        assert_eq!(out, b"3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n");
+        for odd in [
+            &b"+3\r\nabc\r\n"[..],
+            b" 3\r\nabc\r\n",
+            b"0x3\r\nabc\r\n",
+            b"\r\n",
+        ] {
+            let mut buffer = odd.to_vec();
+            assert!(
+                matches!(
+                    copy_chunks(&mut &b""[..], &mut buffer, &mut Vec::new()),
+                    Err(Unread::Malformed(_))
+                ),
+                "{:?} was read as a size",
+                String::from_utf8_lossy(odd)
+            );
+        }
         let mut cut = &b""[..];
         let mut short = b"5\r\nab".to_vec();
         assert!(
@@ -526,6 +557,14 @@ mod tests {
             ),
             "a chunk cut short isn't said"
         );
+    }
+
+    #[test]
+    fn a_length_is_read_only_as_plain_digits() {
+        assert_eq!(decimal("05"), Some(5), "leading zeros");
+        for odd in ["+5", "-5", " 5", "5 ", "", "5,5", "99999999999999999999"] {
+            assert_eq!(decimal(odd), None, "{odd:?} was read as a length");
+        }
     }
 
     #[test]

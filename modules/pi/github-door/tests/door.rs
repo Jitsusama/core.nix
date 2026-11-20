@@ -887,9 +887,9 @@ const HELD: Duration = Duration::from_secs(10);
 const ANSWERED_WITHIN: Duration = Duration::from_secs(5);
 
 /// A host on localhost that reads one request, answers `answer`, and
-/// holds the connection `held` before closing it; the address it listens
-/// on, and the request's body once read.
-fn far_end(answer: &[u8], held: Duration) -> (String, mpsc::Receiver<Vec<u8>>) {
+/// holds the connection `lingers` before closing it; the address it
+/// listens on, and the request's body once read.
+fn far_end(answer: &[u8], lingers: Duration) -> (String, mpsc::Receiver<Vec<u8>>) {
     let far = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
     let address = far.local_addr().expect("bound").to_string();
     let answer = answer.to_vec();
@@ -904,7 +904,7 @@ fn far_end(answer: &[u8], held: Duration) -> (String, mpsc::Receiver<Vec<u8>>) {
         let read = http::read_body(&mut stream, &mut buffer, &head, 1024).expect("a body");
         let _ = seen.send(read);
         let _ = stream.write_all(&answer);
-        thread::sleep(held);
+        thread::sleep(lingers);
     });
     (address, body)
 }
@@ -938,43 +938,96 @@ fn the_relay_frames_each_kind_of_answer_by_what_it_says() {
     let running = door("good");
     let (socket, _) = running.open("s1");
     let (mut watched, port) = relay_for(&socket);
-    let cases: [FramingCase; 7] = [
+    for (method, answer, held, status, ending, holds, lacks) in framing_cases() {
+        let (address, _) = far_end(answer, held);
+        let (said, took) = timed_ask(port, method, &address);
+        let case = String::from_utf8_lossy(answer);
+        assert!(
+            took < ANSWERED_WITHIN,
+            "the client waited on a host that never closed: {case:?}"
+        );
+        assert!(
+            said.starts_with(&format!("HTTP/1.1 {status} ")),
+            "{case:?}: {said:?}"
+        );
+        assert!(said.ends_with(ending), "{case:?}: {said:?}");
+        let lower = said.to_ascii_lowercase();
+        assert!(lower.contains("\r\nconnection: close\r\n"), "{said:?}");
+        for held in holds {
+            assert!(lower.contains(held), "{case:?} lost {held}: {said:?}");
+        }
+        for lacked in lacks {
+            assert!(!lower.contains(lacked), "{case:?} kept {lacked}: {said:?}");
+        }
+    }
+    let _ = watched.kill();
+    let _ = watched.wait();
+}
+
+/// Each kind of answer a host gives, and how the relay must frame it.
+fn framing_cases() -> [FramingCase; 8] {
+    // A host's answer with a second smuggled behind it, where the first
+    // has no body: a client that read on would take the second as its own.
+    [
         (
             "HEAD",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHTTP/1.1 200 OK\r\n\r\nsmuggled",
             HELD,
             "200",
             "\r\n\r\n",
             &["content-length: 5"],
-            &[],
+            &["smuggled"],
         ),
         (
             "GET",
-            b"HTTP/1.1 204 No Content\r\n\r\n",
+            b"HTTP/1.1 204 No Content\r\n\r\nHTTP/1.1 200 OK\r\n\r\nsmuggled",
             HELD,
             "204",
             "\r\n\r\n",
             &[],
-            &[],
+            &["smuggled", "content-length"],
         ),
         (
             "GET",
-            b"HTTP/1.1 304 Not Modified\r\nContent-Length: 9\r\n\r\n",
+            b"HTTP/1.1 304 Not Modified\r\nContent-Length: 9\r\n\r\n\
+              HTTP/1.1 200 OK\r\n\r\nsmuggled",
             HELD,
             "304",
             "\r\n\r\n",
             &[],
-            &[],
+            &["smuggled"],
         ),
+        // Framed anew: the host's size extension, trailer and length go,
+        // and nothing after the last chunk is copied.
         (
             "GET",
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 99\r\n\r\n\
-              2\r\nok\r\n0\r\nX-T: 1\r\n\r\nHTTP/1.1 200 OK\r\n\r\n",
+              2;x=y\r\nok\r\n0\r\nX-T: 1\r\n\r\nHTTP/1.1 200 OK\r\n\r\n",
             HELD,
             "200",
-            "\r\n\r\n2\r\nok\r\n0\r\nX-T: 1\r\n\r\n",
+            "\r\n\r\n2\r\nok\r\n0\r\n\r\n",
             &["transfer-encoding: chunked"],
-            &["content-length"],
+            &["content-length", "x-t", "x=y"],
+        ),
+        (
+            "GET",
+            concat!(
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 100 Continue\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+            )
+            .as_bytes(),
+            HELD,
+            "200",
+            "\r\n\r\nok",
+            &[],
+            &["100 continue"],
         ),
         (
             "GET",
@@ -1005,40 +1058,20 @@ fn the_relay_frames_each_kind_of_answer_by_what_it_says() {
             &[],
             &[],
         ),
-    ];
-    for (method, answer, held, status, ending, holds, lacks) in cases {
-        let (address, _) = far_end(answer, held);
-        let (said, took) = timed_ask(port, method, &address);
-        let case = String::from_utf8_lossy(answer);
-        assert!(
-            took < ANSWERED_WITHIN,
-            "the client waited on a host that never closed: {case:?}"
-        );
-        assert!(
-            said.starts_with(&format!("HTTP/1.1 {status} ")),
-            "{case:?}: {said:?}"
-        );
-        assert!(said.ends_with(ending), "{case:?}: {said:?}");
-        let lower = said.to_ascii_lowercase();
-        assert!(lower.contains("\r\nconnection: close\r\n"), "{said:?}");
-        for held in holds {
-            assert!(lower.contains(held), "{case:?} lost {held}: {said:?}");
-        }
-        for lacked in lacks {
-            assert!(!lower.contains(lacked), "{case:?} kept {lacked}: {said:?}");
-        }
-    }
-    let _ = watched.kill();
-    let _ = watched.wait();
+    ]
 }
 
 #[test]
-fn the_relay_says_502_for_a_host_that_fails_midway_naming_what_it_did() {
+fn the_relay_says_502_for_a_host_that_fails_before_its_answer_and_cuts_one_that_fails_midway() {
     let running = door("good");
     let (socket, _) = running.open("s1");
     let (mut watched, port) = relay_for(&socket);
     let interim = b"HTTP/1.1 100 Continue\r\n\r\n".repeat(9);
-    let cases: [(&[u8], &str); 5] = [
+    let cases: [(&[u8], &str); 6] = [
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nxx",
+            "transfer coding the relay doesn't carry",
+        ),
         (b"", "closed without answering"),
         (b"nonsense\r\n\r\n", "gave an answer that won't parse"),
         (
@@ -1058,6 +1091,30 @@ fn the_relay_says_502_for_a_host_that_fails_midway_naming_what_it_did() {
             said.starts_with("HTTP/1.1 502") && said.contains(why) && said.contains(&address),
             "{:?} wasn't said as {why}: {said}",
             String::from_utf8_lossy(answer)
+        );
+    }
+    // A host that closes partway through its body: the client is cut off,
+    // reset or short, never handed what looks like a whole answer.
+    let (address, _) = far_end(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nok",
+        Duration::ZERO,
+    );
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the relay");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .expect("a timeout");
+    write!(
+        stream,
+        "GET http://{address}/ HTTP/1.1\r\nHost: {address}\r\n\r\n"
+    )
+    .expect("asked");
+    let mut heard = Vec::new();
+    if stream.read_to_end(&mut heard).is_ok() {
+        let said = String::from_utf8_lossy(&heard);
+        let body = said.split_once("\r\n\r\n").map_or("", |(_, body)| body);
+        assert!(
+            said.contains("Content-Length: 10") && body.len() < 10,
+            "a host cut off midway read as whole: {said:?}"
         );
     }
     let _ = watched.kill();
@@ -1113,8 +1170,14 @@ fn the_relay_passes_back_one_answer_framed_to_close_and_says_why_it_refuses() {
         "the host's keep-alive came back: {said}"
     );
     assert_eq!(seen.recv().expect("the far end"), b"up");
-    // Each refusal says why, the client hearing it whole even with its
-    // body still arriving.
+    refusals_say_why(port);
+    let _ = watched.kill();
+    let _ = watched.wait();
+}
+
+/// Each refusal the relay at `port` gives says why, the client hearing it
+/// whole even with its body still arriving.
+fn refusals_say_why(port: u16) {
     let closed = TcpListener::bind(("127.0.0.1", 0)).expect("a port");
     let gone = closed.local_addr().expect("bound").to_string();
     drop(closed);
@@ -1177,8 +1240,6 @@ fn the_relay_passes_back_one_answer_framed_to_close_and_says_why_it_refuses() {
             "{asked:?} was told to send a body it was then refused: {said}"
         );
     }
-    let _ = watched.kill();
-    let _ = watched.wait();
 }
 
 #[test]

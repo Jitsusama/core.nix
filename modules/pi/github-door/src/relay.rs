@@ -14,8 +14,9 @@
 //! only `http_proxy`, so a fence pointing it here must carry it. Each
 //! request is read whole and goes straight out on a connection of its
 //! own, in the form a server is asked, without the hop's own headers,
-//! and only its answer comes back, told the connection closes and cut
-//! at the length it names, so a client gets one request a connection.
+//! and only its answer comes back, told the connection closes and framed
+//! anew by the relay from what it read, so a client gets one request a
+//! connection and reads the answer only as the relay did.
 //! GitHub's hosts are refused over plain HTTP by name, since the door
 //! answers them only through a tunnel; one reached by its address goes
 //! out as any host does, which carries no token, since the door alone
@@ -40,6 +41,7 @@ use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -186,6 +188,34 @@ const LINGER: Duration = Duration::from_secs(2);
 /// The most interim answers, such as 103, a host may give before its
 /// answer, so a host can't hold the relay with them for ever.
 const MOST_INTERIM: usize = 8;
+/// The most plain requests carried at once, each holding a body of up to
+/// [`MOST_PLAIN_BODY`], so a fenced command can't make the relay hold
+/// more than half a GiB.
+const MOST_PLAIN: usize = 8;
+/// How many plain requests are being carried.
+static CARRYING: AtomicUsize = AtomicUsize::new(0);
+
+/// One plain request's place among [`MOST_PLAIN`], given back when it's
+/// dropped.
+struct Place;
+
+impl Place {
+    /// A place, when fewer than [`MOST_PLAIN`] are taken.
+    fn taken() -> Option<Self> {
+        CARRYING
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |carrying| {
+                (carrying < MOST_PLAIN).then_some(carrying + 1)
+            })
+            .ok()
+            .map(|_| Self)
+    }
+}
+
+impl Drop for Place {
+    fn drop(&mut self) {
+        CARRYING.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 /// Carry one plain HTTP request, `head` with `read` read past it,
 /// straight out, and its answer back. The request is read whole, body
@@ -193,9 +223,19 @@ const MOST_INTERIM: usize = 8;
 /// `Connection: close`, and without the hop's own headers; only the
 /// answer is copied back, so nothing more the client sends ever reaches
 /// the host, whether or not the host honours the close.
+///
+/// A client that asks to be told to go on is told once its head is
+/// accepted and the host is reached; a chunked body's size is known only
+/// as it's read, so one past [`MOST_PLAIN_BODY`] is refused after it's
+/// sent. A client that doesn't ask has its body read before the host is
+/// reached, so a slow upload never leaves the host waiting.
 fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     let _ = client.set_read_timeout(Some(QUIET));
     let _ = client.set_write_timeout(Some(QUIET));
+    let Some(_place) = Place::taken() else {
+        let said = format!("the relay is carrying {MOST_PLAIN} plain requests already");
+        return refuse(client, 503, &said);
+    };
     let (host, port, path) = match absolute(&head.target) {
         Ok(found) => found,
         Err(why) => return refuse(client, 400, &format!("{why}; {CARRIES}")),
@@ -223,19 +263,26 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
     } else {
         format!("{host}:{port}")
     };
-    let Some(mut far) = reach(&format!("{host}:{port}")) else {
-        let said = format!("{authority} couldn't be reached");
-        return refuse(client, 502, &said);
-    };
-    // The body is read before anything goes on, so a client waiting to be
-    // told to go on is told here, once the host is reached, as the host
-    // would have told it.
-    if expects && client.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
-        return;
+    let reached = || reach(&format!("{host}:{port}"));
+    let unreached = format!("{authority} couldn't be reached");
+    let mut far = None;
+    if expects {
+        // Told here, once the host is reached, as the host would have
+        // told it, since the body is read before anything goes on.
+        far = reached();
+        if far.is_none() {
+            return refuse(client, 502, &unreached);
+        }
+        if client.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
+            return;
+        }
     }
     let body = match http::read_framed(&mut client, &mut read, framed, MOST_PLAIN_BODY) {
         Ok(body) => body,
         Err(unread) => return refuse_unread(client, &unread),
+    };
+    let Some(mut far) = far.or_else(reached) else {
+        return refuse(client, 502, &unreached);
     };
     let _ = far.set_read_timeout(Some(QUIET));
     let _ = far.set_write_timeout(Some(QUIET));
@@ -270,9 +317,13 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
         Ok(framed) => framed,
         Err(why) => return refuse(client, 502, &format!("{authority} gave {why}")),
     };
-    pass_back(&mut client, &mut far, &answer, back, framed);
+    let whole = pass_back(&mut client, &mut far, &answer, back, framed);
     drop(far);
-    close(client);
+    if whole {
+        close(client);
+    } else {
+        reset(&client);
+    }
 }
 
 /// How an answer's body is framed, as the relay passes it back.
@@ -306,13 +357,18 @@ fn answer_body(answer: &http::Answer, method: &str) -> Result<Back, &'static str
                 .collect::<Vec<_>>()
         })
         .collect();
-    if let Some(last) = codings.last() {
-        // Chunks last frame the body; any other ends it where the host closes.
-        return Ok(if last == "chunked" {
-            Back::Chunked
-        } else {
-            Back::ToClose
-        });
+    if answer
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"))
+    {
+        // Ended where the host closes, a body other codings frame would
+        // be passed on with codings a client might read another way, so
+        // only chunks last are carried.
+        return match codings.last() {
+            Some(last) if last == "chunked" => Ok(Back::Chunked),
+            _ => Err("an answer whose transfer coding the relay doesn't carry"),
+        };
     }
     let lengths = answer
         .headers
@@ -324,7 +380,7 @@ fn answer_body(answer: &http::Answer, method: &str) -> Result<Back, &'static str
     }
     answer
         .header("content-length")
-        .and_then(|value| value.parse::<u64>().ok())
+        .and_then(http::decimal)
         .map(Back::Length)
         .ok_or("an answer whose length isn't one number")
 }
@@ -333,31 +389,27 @@ fn answer_body(answer: &http::Answer, method: &str) -> Result<Back, &'static str
 /// body, framed as `framed`: `back`, read past its head, and the rest of
 /// `far`, cut where its framing ends, so nothing past the one answer
 /// comes back and the client needn't wait on a host that holds the
-/// connection open.
+/// connection open. The framing headers are the relay's own, written
+/// from what it read, never the host's. Whether the answer went back
+/// whole, as far as the relay can tell: a host that just closes partway
+/// through a body framed by its close can't be told from one that's done.
 fn pass_back(
     client: &mut TcpStream,
     far: &mut TcpStream,
     answer: &http::Answer,
     mut back: Vec<u8>,
     framed: Back,
-) {
+) -> bool {
     let named = connection_names(&answer.headers);
-    let encoded = answer
-        .headers
-        .iter()
-        .any(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"));
     let mut head = format!("HTTP/1.1 {} {}\r\n", answer.status, answer.reason).into_bytes();
     for (name, value) in &answer.headers {
         let lower = name.to_ascii_lowercase();
-        // Its framing stays as the host sent it, since the body is too.
         let framing = matches!(lower.as_str(), "content-length" | "transfer-encoding");
         let hop = matches!(
             lower.as_str(),
             "connection" | "proxy-connection" | "keep-alive"
         ) || named.contains(&lower);
-        // Encoded, the body's length isn't the one a length header says.
-        let overruled = encoded && lower == "content-length";
-        if (hop && !framing) || overruled {
+        if framing || hop {
             continue;
         }
         head.extend_from_slice(name.as_bytes());
@@ -365,30 +417,60 @@ fn pass_back(
         head.extend_from_slice(value);
         head.extend_from_slice(b"\r\n");
     }
+    let length = match framed {
+        Back::Length(length) => Some(length),
+        // A HEAD's or 304's length says the body it stands for, which
+        // a client may want; a 204 has none.
+        Back::Empty if answer.status != 204 => {
+            answer.header("content-length").and_then(http::decimal)
+        }
+        Back::Empty | Back::Chunked | Back::ToClose => None,
+    };
+    if let Some(length) = length {
+        head.extend_from_slice(format!("Content-Length: {length}\r\n").as_bytes());
+    }
+    if framed == Back::Chunked {
+        head.extend_from_slice(b"Transfer-Encoding: chunked\r\n");
+    }
     head.extend_from_slice(b"Connection: close\r\n\r\n");
     if client.write_all(&head).is_err() {
-        return;
+        return false;
     }
     match framed {
-        Back::Empty => {}
+        Back::Empty => true,
         Back::Length(length) => {
-            let held = usize::try_from(length)
+            let already = usize::try_from(length)
                 .unwrap_or(usize::MAX)
                 .min(back.len());
-            if client.write_all(&back[..held]).is_ok() {
-                let _ = io::copy(&mut far.take(length - held as u64), client);
-            }
+            let left = length - already as u64;
+            client.write_all(&back[..already]).is_ok()
+                && io::copy(&mut far.take(left), client).is_ok_and(|copied| copied == left)
         }
-        // Copied a chunk at a time to the last, which a client cut short
-        // by a host failing midway sees as a body cut short.
-        Back::Chunked => {
-            let _ = http::copy_chunks(far, &mut back, client);
-        }
-        Back::ToClose => {
-            if client.write_all(&back).is_ok() {
-                let _ = io::copy(far, client);
-            }
-        }
+        Back::Chunked => http::copy_chunks(far, &mut back, client).is_ok(),
+        Back::ToClose => client.write_all(&back).is_ok() && io::copy(far, client).is_ok(),
+    }
+}
+
+/// End `client` with a reset rather than a close, so a client given an
+/// answer the host broke off partway hears it was broken, rather than
+/// reading a short body framed by the close as whole.
+fn reset(client: &TcpStream) {
+    let abort = libc::linger {
+        l_onoff: 1,
+        l_linger: 0,
+    };
+    let size = libc::socklen_t::try_from(std::mem::size_of::<libc::linger>())
+        .unwrap_or(libc::socklen_t::MAX);
+    // SAFETY: a linger, alive for the call, of the length given, on a
+    // descriptor the client holds open.
+    unsafe {
+        libc::setsockopt(
+            client.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_LINGER,
+            (&raw const abort).cast(),
+            size,
+        );
     }
 }
 
