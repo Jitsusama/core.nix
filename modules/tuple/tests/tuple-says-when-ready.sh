@@ -15,15 +15,66 @@
 # leaves at once when systemd takes it for the unit's main process, as it
 # does when the start forked no daemon.
 #
-# Given the ExecStartPost's program, the systemctl and log it names, and what
-# modules/health takes for a ready line (launches.rs's READY_FOLLOWED).
+# Given the ExecStartPost's program, the systemctl and log it names, what
+# modules/health takes for a ready line (launches.rs's READY_FOLLOWED), and
+# the unit's SyslogIdentifier, SyslogLevel, LogLevelMax and StandardOutput,
+# each empty when unset.
 set -euo pipefail
 
 post=$1
 systemctl=$2
 log=$3
 ready=$4
+named=$5
+level=$6
+ceiling=$7
+output=$8
 here=$PWD
+
+# Sets `n` to the syslog priority a level names, by name or by number as
+# systemd takes it, or -1 for none.
+priority() {
+  case $1 in
+  emerg) n=0 ;;
+  alert) n=1 ;;
+  crit) n=2 ;;
+  err) n=3 ;;
+  warning) n=4 ;;
+  notice) n=5 ;;
+  info) n=6 ;;
+  debug) n=7 ;;
+  [0-7]) n=$1 ;;
+  *) n=-1 ;;
+  esac
+}
+
+# Health files a ready time under the name its line goes out with, which must
+# be Tuple's, not the script's, which changes with each build; and it reads
+# ready lines only from notice to information priority (health/src/journal.rs),
+# so the unit's lines must go out there, under any ceiling it sets, to the
+# journal. Unset, a level is info, no ceiling holds, and output is journalled.
+if [[ ${named} != tuple ]]; then
+  echo "tuple.service names its lines '${named}', not tuple"
+  exit 1
+fi
+priority "${level:-info}"
+said_at=${n}
+if ((said_at < 5 || said_at > 6)); then
+  echo "tuple.service logs at ${level}, where health doesn't read"
+  exit 1
+fi
+priority "${ceiling:-debug}"
+if ((said_at > n)); then
+  echo "tuple.service keeps nothing past ${ceiling}, so not its ready line"
+  exit 1
+fi
+case ${output} in
+"" | journal | journal+console) ;;
+*)
+  echo "tuple.service sends its output to ${output}, not the journal"
+  exit 1
+  ;;
+esac
 
 # journalctl matches health's pattern as PCRE2, as grep -P does, and whatever
 # its case only while it holds no capital letter.
