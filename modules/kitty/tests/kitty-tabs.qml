@@ -316,6 +316,28 @@ QtObject {
         check("known_hosts alone", Opens.machines("", "[::1]:22 ssh-ed25519 AAAA")
             .map(one => [one.name, one.port]), [["::1", ""]]);
 
+        // Kept, the machines are worked out once while neither file
+        // changes, the same answer handed back, and again when one does;
+        // frozen, since every caller shares them.
+        const kept = Opens.machinesKept(null, config, hosts);
+        check("kept, the same machines", kept.all.map(one => [one.name, one.port, one.from]),
+            machines.map(one => [one.name, one.port, one.from]));
+        check("kept while neither file changes",
+            Opens.machinesKept(kept, config, hosts) === kept, true);
+        const changed = Opens.machinesKept(kept, "Host other", hosts);
+        check("the config changing works them out again", changed.all.map(one => one.name),
+            ["other", "10.0.0.5", "10.0.0.5", "quoted", "nas", "nas", "lower"]);
+        check("and keeps the new ones in turn",
+            Opens.machinesKept(changed, "Host other", hosts) === changed, true);
+        check("known_hosts changing works them out again",
+            Opens.machinesKept(kept, config, "").all.map(one => one.name),
+            ["devbox", "build", "quoted", "lower"]);
+        check("handed out frozen", Object.isFrozen(kept.all) && kept.all.every(Object.isFrozen),
+            true);
+        check("their settings, other names and keys frozen too",
+            kept.all.every(one => [one.options, one.also, one.keys].every(Object.isFrozen)
+                && one.options.every(Object.isFrozen)), true);
+
         // ssh is told the port known_hosts gave, and a config's machine by
         // its name alone, its block saying the rest.
         check("ssh to a machine", Opens.sshing("kitten", machines[0]),
@@ -400,6 +422,13 @@ QtObject {
                 { label: "<keys>", value: "ssh-ed25519" }] });
         check("its other names", Opens.machineDrawer(machines[4], state, named).facts
             .filter(fact => fact.label === "<also>"), [{ label: "<also>", value: "192.168.1.9" }]);
+        // Every caller says the same of the kept machines, frozen, as of
+        // machines worked out afresh, so none leans on changing them.
+        const callersSay = all => all.map(one => [Opens.sshing("kitten", one),
+            Opens.machineSide(one, state, now), Opens.machineDrawer(one, state, named)])
+            .concat([Opens.machinesInOrder(all, reached).map(one => `${one.name}${one.port}`)]);
+        check("each caller says the same of the kept machines", callersSay(kept.all),
+            callersSay(Opens.machines(config, hosts)));
 
         // The repositories under ~/src: those zoxide knows first, a visit
         // inside one counting, then the rest by path.
