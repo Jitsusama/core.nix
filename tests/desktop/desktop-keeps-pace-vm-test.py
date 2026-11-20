@@ -6,12 +6,13 @@ is timed from the moment a stand-in keyboard pressed it to the first frame the l
 it, both on the machine's one clock. Keys come in turns with the load running and frozen, and
 those under load are held against the others, so the builder's own load slows both alike, and
 each test says how much of its time the guest counted stolen in each turn, which a last test
-proves it can count, so a run that fails shows whether the builder took the time. That
-text a program types at once is searched once, and a Return among it acts on what it found, is
-proven on a nested niri, in modules/quickshell/tests/launcher-on-niri-test.py. Long because its
-keys, steps and openings are each timed against the same loaded desktop, and a split would boot it
-again. tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. Every test asks for the desktop, started once a run
+proves it can count, and how long a fixed loop took as each turn ended, so a run that fails
+shows whether the builder took the time or ran slow. That text a program types at once is
+searched once, and a Return among it acts on what it found, is proven on a nested niri, in
+modules/quickshell/tests/launcher-on-niri-test.py. Long because its keys, steps and openings
+are each timed against the same loaded desktop, and a split would boot it again.
+tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
+opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
 """
 
@@ -39,7 +40,7 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
-from keeps_pace import PROCESSORS, Ledger, holdable
+from keeps_pace import LOOPED, PROCESSORS, Gauge, Ledger, holdable, looped
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -294,6 +295,8 @@ class Timing:
         self.open: tuple[int, float] | None = None
         # The guest's ticks the builder stole, and its busy ones with them, by turn.
         self.ledger = Ledger(desktop.machine.succeed("head -1 /proc/stat"))
+        # How long a fixed loop took each time the load turned, by turn (keeps_pace.py's Gauge).
+        self.gauge = Gauge()
         show = "show --property=ControlGroup --value"
         self.groups = [
             desktop.machine.succeed(f"systemctl {show} {COMPOSITOR}").strip(),
@@ -316,6 +319,9 @@ class Timing:
         """
         self.count(kept=True)
         self.ledger.turning()
+        # Timed once the turn's ticks are counted, so the loop's own are passed over with the
+        # turning's, and after a turn of keys is caught up, so no key waits behind it.
+        self.time_loop()
         self.thaw_or_freeze(on=on)
         # The ticks while the load turned are neither turn's, so they're passed over, and only
         # then is the turn done: one that fails here leaves the ledger between turns.
@@ -336,13 +342,29 @@ class Timing:
         self.desktop.machine.succeed(f"{wait} systemctl {verb} stress-build")
         self.loading = on
 
+    def time_loop(self) -> None:
+        """Time a fixed loop in the guest, kept with the load as it stands.
+
+        It runs where the test's own commands do, so under load the guest's weights give it a
+        share among the load, and it takes the builder's speed and that share together; frozen,
+        the builder's speed and whatever the subtest itself runs, such as its storm of windows.
+        The guest's own clock times it, so the command's round trip doesn't, and in the C locale,
+        whose EPOCHREALTIME has the point float() reads.
+        """
+        loop = (
+            f"began=$EPOCHREALTIME; for ((i = 0; i < {LOOPED}; i++)); do :; done; "
+            'echo "$began $EPOCHREALTIME"'
+        )
+        said = self.desktop.machine.succeed(f"LC_ALL=C bash -c {shlex.quote(loop)}")
+        self.gauge.add(turn=self.loading, took=looped(said))
+
     def count(self, *, kept: bool) -> None:
         """Count the ticks since the last count, kept with the load as it stands."""
         stat = self.desktop.machine.succeed("head -1 /proc/stat")
         self.ledger.count(stat, turn=self.loading if kept else None)
 
     def finish(self) -> None:
-        """Say what the guest counted stolen, then let the load run again if it's frozen.
+        """Say what the guest counted stolen and the loops took, then let the load run again.
 
         Said before any of a test's bars is judged, so a run that fails says it too, and before
         the thaw, which a stalled builder can fail. A last count that fails still says the turns
@@ -350,12 +372,28 @@ class Timing:
         """
         try:
             self.count(kept=True)
+            self.last_loop()
         finally:
             print(self.ledger.said())
+            print(self.gauge.said())
             # Let run as main always tried, the last count failed or not: nothing reads the
             # ledger now, so the thaw counts nothing first, which could fail as the last did.
             if not self.loading or self.ledger.between:
                 self.thaw_or_freeze(on=True)
+
+    def last_loop(self) -> None:
+        """Time the last turn's loop, after its ticks are counted, as every other turn's is.
+
+        A load left between turns has no turn to keep it with, so it gets none. The loop is
+        judged by nothing, so one that fails is said rather than raised, and can't take the
+        place of a failure the subtest met first.
+        """
+        if self.ledger.between:
+            return
+        try:
+            self.time_loop()
+        except Exception as failed:  # noqa: BLE001 # Any failure of the loop's is only said.
+            print(f"the last fixed loop couldn't be timed: {failed!r}")
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""

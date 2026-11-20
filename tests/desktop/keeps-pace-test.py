@@ -9,7 +9,17 @@ from __future__ import annotations
 
 import math
 
-from keeps_pace import PROCESSORS, Ledger, builders_share, every_tick, holdable, ticks
+from keeps_pace import (
+    LOOPED,
+    PROCESSORS,
+    Gauge,
+    Ledger,
+    builders_share,
+    every_tick,
+    holdable,
+    looped,
+    ticks,
+)
 
 # A turn's busy ticks, and a builder that ran the guest half of them under load.
 BUSY = 1000
@@ -35,6 +45,9 @@ ALLOWED = "812 (qemu (io) 1) S 1 812 812 0 -1 35684416 0 0"
 # iowait with the busy.
 TICKED_UNDER = 60 + 30 + 10 + 20 + 30
 TICKED_FROZEN = 5 + 40
+# The guest's clock as the loop began and ended, in seconds, and the time between in ms.
+LOOP_STAMPS = "1795163661.100000 1795163661.325500"
+LOOP_TOOK = 225.5
 
 
 def stat(stolen: int, busy: int) -> str:
@@ -154,6 +167,40 @@ def test_the_ledger_says_each_turns_ticks_and_the_share() -> None:
         "the guest counted 500 of 1000 busy ticks stolen under load, against 0 of 1000 frozen,"
         " a share of 2.00"
     ), f"the ledger said {said!r}"
+
+
+def test_a_loops_time_is_read_from_the_guests_two_stamps() -> None:
+    """The loop's time is its end less its start, in ms, by the guest's one clock."""
+    took = looped(LOOP_STAMPS)
+    assert math.isclose(took, LOOP_TOOK, abs_tol=0.001), f"{LOOP_STAMPS!r} read as {took} ms"
+
+
+def test_the_gauge_says_each_turns_loops_and_their_middles() -> None:
+    """What a subtest says keeps each kind's loops in the order they ran, and the middle one.
+
+    In order, so a slow loop can be matched to the turn of keys it ended.
+    """
+    gauge = Gauge()
+    for took in (300.4, 250.0, 279.6):
+        gauge.add(turn=True, took=took)
+    for took in (90.2, 80.0):
+        gauge.add(turn=False, took=took)
+    said = gauge.said()
+    assert said == (
+        f"a fixed loop of {LOOPED} rounds took a middle 280 ms under load against 80 ms frozen,"
+        " each in the order run under load [300, 250, 280] and frozen [90, 80]"
+    ), f"the gauge said {said!r}"
+
+
+def test_the_gauge_says_none_for_a_turn_it_never_timed() -> None:
+    """A kind of turn a failure never reached has no loop, which no time is said for."""
+    gauge = Gauge()
+    gauge.add(turn=True, took=300.0)
+    said = gauge.said()
+    assert said == (
+        f"a fixed loop of {LOOPED} rounds took a middle 300 ms under load against none frozen,"
+        " each in the order run under load [300] and frozen []"
+    ), f"the gauge said {said!r}"
 
 
 def test_the_ledger_says_no_share_for_a_turn_it_never_counted() -> None:
