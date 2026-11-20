@@ -712,11 +712,17 @@ mod tests {
             ("council-f-0", "a follow-up", None),
         ])];
         let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
+        // Each ask of git may fetch, so #25's sixth, queuing two, asks once.
+        let asked = std::cell::Cell::new(0);
+        let counted = |merge: &str, witness: &str| {
+            asked.set(asked.get() + usize::from(witness == "e-read"));
+            moved(merge, witness)
+        };
         let all = rounds(
             &[Main {
                 repo: CORE,
                 log: &log,
-                moved: &moved,
+                moved: &counted,
             }],
             &records,
             &fixed,
@@ -753,6 +759,11 @@ mod tests {
         assert!(
             all[1..].iter().all(|m| m.past().is_some()),
             "each is past its target of five, so it's filed"
+        );
+        assert_eq!(
+            asked.get(),
+            1,
+            "git was asked for each queued fix, not once a round"
         );
     }
 
