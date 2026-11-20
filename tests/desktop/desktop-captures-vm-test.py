@@ -23,6 +23,7 @@ from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from desktop_session import Desktop, Json
+    from test_driver.machine import BaseMachine
 
 # The camera's window, which the viewfinder is.
 CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
@@ -122,6 +123,15 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     # only once the encoder has a buffer's worth, which over a still screen took up to a
     # minute (2026-11-09), so it isn't waited for.
     marked = the_mark_drawn(desktop, seen)
+    # While it records, a call still has the microphone, and sound still plays where it did.
+    call = "/run/user/1000/call.wav"
+    desktop.as_account(
+        f"timeout -s INT 2 pw-record --target stand-in-microphone {call} || [ -s {call} ]"
+    )
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    assert loudest(machine, ffmpeg, call) > SILENT, "a call lost the microphone to the recording"
+    playing = desktop.as_account("wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -F node.name")
+    assert "stand-in-speakers" in playing, f"the recording moved the sound: {playing}"
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Its notice comes once the file is finished, which its process outlives, waiting on
     # the notice's Play It. The screen is still as it stops, so this is the stop heard at
@@ -134,7 +144,6 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     recorded = desktop.as_account(f"find ~/Videos/Recordings {videos}").splitlines()
     assert len(recorded) == 1, recorded
     video = shlex.quote(recorded[0])
-    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
     for name, where in (("recorded-first.png", ""), ("recorded-last.png", "-sseof -1")):
         frame = f"/run/user/1000/{name}"
         machine.succeed(f"{ffmpeg} {where} -i {video} -frames:v 1 -update 1 -y {frame}")
@@ -143,15 +152,20 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
         the_mark_in(taken, marked.crop(box), seen.crop(box))
     # It carries the sound, the microphone's tone mixed with what the speakers play, which
     # no recording did (Joel, 2026-11-20: "why does a screen recording not record audio?").
-    heard = machine.succeed(
-        f"{ffmpeg} -v info -i {video} -map 0:a:0 -af volumedetect -f null - 2>&1"
-        " | grep -o 'max_volume: [-0-9.]*'"
-    )
-    loudest = float(heard.split()[-1])
-    assert loudest > SILENT, f"the recording's sound peaks at {loudest} dB, silence"
+    peak = loudest(machine, ffmpeg, video)
+    assert peak > SILENT, f"the recording's sound peaks at {peak} dB, silence"
     # The mix it was made from goes with it, its sink and both loops.
     mixes = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
     assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
+
+
+def loudest(machine: BaseMachine, ffmpeg: str, recorded: str) -> float:
+    """Give the peak of a recording's first sound, in dB; it fails where it has none."""
+    heard = machine.succeed(
+        f"{ffmpeg} -v info -i {recorded} -map 0:a:0 -af volumedetect -f null - 2>&1"
+        " | grep -o 'max_volume: [-0-9.]*'"
+    )
+    return float(heard.split()[-1])
 
 
 def the_mark_drawn(desktop: Desktop, unmarked: Image.Image) -> Image.Image:

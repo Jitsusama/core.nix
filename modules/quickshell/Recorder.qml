@@ -13,6 +13,10 @@ pragma Singleton
 // names them, by when it was taken, and copied as theirs are, and says so in
 // the notice niri gives its own, so every screenshot ends the same way.
 //
+// Each carries Joel's microphone and what the desktop plays, mixed as
+// recording-sound (recording-sound.sh) mixes them, and never takes the
+// microphone from a call.
+//
 // wf-recorder records the screen and regions through niri, which tells the
 // shell when it starts and stops, so nothing here keeps any state of its
 // own. niri says where a tiled window sits only to a screencast, so a
@@ -258,7 +262,11 @@ Singleton {
             '    */i915 | */xe | */amdgpu)',
             '        set -- "$@" --codec h264_vaapi --device /dev/dri/renderD128 ;;',
             'esac',
-            'wf-recorder -y --file "$file" "$@" > /dev/null 2>&1 || exit'
+            // With the microphone and the desktop's sound, through the mix
+            // recording-sound makes for it; without, where it can't.
+            "recording-sound sh -c 'exec wf-recorder -y"
+                + " ${RECORDING_SOUND:+\"--audio=$RECORDING_SOUND\"} \"$@\"'"
+                + " wf-recorder --file \"$file\" \"$@\" > /dev/null 2>&1 || exit"
         ].concat(saved).join("\n");
         announced = true;
         held = ["sh", "-c", script, "recorder", folder].concat(given);
@@ -297,7 +305,8 @@ Singleton {
         'folder=$1 window=$2 width=$3 height=$4',
         'mkdir -p "$folder" || exit',
         'file=$folder/$(date "+%Y-%m-%d %H-%M-%S").mp4',
-        'why=$(record-window "$window" "$width" "$height" "$file" 2>&1 > /dev/null)',
+        'why=$(recording-sound record-window "$window" "$width" "$height" "$file" \\',
+        '    2>&1 > /dev/null)',
         'case $? in',
         '    0) ;;',
         '    130) exit ;;',
