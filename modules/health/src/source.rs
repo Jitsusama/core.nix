@@ -664,9 +664,7 @@ fn spawn_saying(
         let waited = child.wait();
         // One the stop that ends health ended too says nothing either,
         // given the moment health may take to catch it.
-        if waited.as_ref().is_ok_and(crate::signals::by_a_stop) {
-            thread::sleep(crate::signals::CAUGHT_WITHIN);
-        }
+        thread::sleep(crate::signals::CAUGHT_WITHIN);
         if crate::signals::stopping() {
             return;
         }

@@ -21,11 +21,11 @@ const WAITS: Duration = Duration::from_secs(10);
 /// How long the stopped copy's ender waits, so its follower's own end by
 /// a stop to the whole group comes first, as it may in health, and a
 /// second stop comes while the first's ender runs.
-const ENDS_LATE: Duration = Duration::from_millis(200);
+const ENDS_LATE: Duration = Duration::from_secs(1);
 
 /// How long a hangup the copy was started ignoring is given to end it,
 /// well past the `ENDS_LATE` in which a caught one would.
-const HANGS_UP: Duration = Duration::from_secs(1);
+const HANGS_UP: Duration = Duration::from_secs(2);
 
 /// How the copy leaves once its follower ends, unless the stop holds it,
 /// as health's own way out after its run.
@@ -268,8 +268,9 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
         "a stop didn't end health by its signal ({ended}), or left its follower running"
     );
     // Were the stops blocked rather than caught, every follower would block
-    // them too, as a run that blocked them showed, and a service manager's
-    // stop would wait out its timeout to kill each. One health was started
+    // them too, as a run that blocked them showed (`SigBlk` 0x4003, though
+    // std's Command started it), and a service manager's stop would wait
+    // out its timeout to kill each. One health was started
     // ignoring, its follower ignores too.
     assert!(
         stopped.masks.is_some() || !cfg!(target_os = "linux"),

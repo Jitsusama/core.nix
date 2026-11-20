@@ -23,8 +23,6 @@
 use std::io::{self, PipeReader, Read as _};
 use std::mem;
 use std::os::fd::{AsRawFd as _, IntoRawFd as _, OwnedFd};
-use std::os::unix::process::ExitStatusExt as _;
-use std::process::ExitStatus;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::thread;
@@ -44,9 +42,11 @@ static CAUGHT: AtomicI32 = AtomicI32::new(-1);
 /// Whether a stop has been caught.
 static STOPPED: AtomicBool = AtomicBool::new(false);
 
-/// How long a follower a stop ended waits for health to catch it: a stop
-/// to health's whole group reaches health and its followers at once, and
-/// a follower may end of it before health's catch has run.
+/// How long a follower that ends waits for health to catch a stop before
+/// it says so: a stop to health's whole group, as a service manager's,
+/// reaches health and its followers at once, and a follower may end of it
+/// before health's catch has run, by the signal or, as journalctl does,
+/// cleanly.
 pub const CAUGHT_WITHIN: Duration = Duration::from_millis(100);
 
 /// `run`, with health's stops caught: a stop calls `end`, on a thread of
@@ -85,13 +85,6 @@ fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
 /// Whether a stop has been caught, so health is ending by it.
 pub fn stopping() -> bool {
     STOPPED.load(Ordering::SeqCst)
-}
-
-/// Whether `status` is an end by one of the signals that stop health.
-pub fn by_a_stop(status: &ExitStatus) -> bool {
-    status
-        .signal()
-        .is_some_and(|signal| STOPPING.contains(&signal))
 }
 
 /// Wait for good once a stop has been caught, for the thread it's
