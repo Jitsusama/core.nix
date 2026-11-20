@@ -274,11 +274,13 @@ import ./host-checks.nix args
 
   # A hosted pi keeps a copy of each patch it applied, every one of the
   # folder's and only those, since a running host's copies are what cadence
-  # reads before it tells a patch's miss fixed.
+  # reads before it tells a patch's miss fixed. They sit at the root above
+  # the package directory a host is started with, where cadence looks.
   pi-hosted-keeps-the-patches-it-applied =
     pkgs.runCommandLocal "pi-hosted-keeps-the-patches-it-applied" { }
       ''
         kept=${hostedPi}/share/pi-host/patches
+        test -d ${hostedPi}/lib/node_modules/pi-monorepo
         for patch in ${./host-patches}/*.patch; do
           cmp "$patch" "$kept/$(basename "$patch")"
         done

@@ -50,6 +50,10 @@ const HOST_UNIT: &str = "modules/pi/host.nix";
 /// The patches a runtime applied, by name, each as its copy reads.
 type Applied = BTreeMap<String, String>;
 
+/// The states of each patch of a change, by name, that carry it: its
+/// text, or `None` for one the change removed.
+type Wanted = BTreeMap<String, Vec<Option<String>>>;
+
 /// A running pi host as cadence reads it: the patches its runtime applied,
 /// and when it started, each `None` where that couldn't be read.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -100,7 +104,7 @@ pub fn unrun(
                     .flatten();
                 let merged = versions(&path, sha, &reaches.patches);
                 hosts_lack(read.as_deref(), &reaches, switched_at, |applied| {
-                    loads(applied, merged.as_ref()?)
+                    merged.as_ref().map(|wanted| loads(applied, wanted))
                 })
             },
         );
@@ -173,7 +177,12 @@ fn judge(
     let reaches = Reaches {
         patches: files
             .lines()
-            .filter(|file| file.starts_with(PATCHES) && file.ends_with(".patch"))
+            .filter(|file| {
+                file.starts_with(PATCHES)
+                    && std::path::Path::new(file)
+                        .extension()
+                        .is_some_and(|it| it == "patch")
+            })
             .map(str::to_owned)
             .collect(),
         unit: files.lines().any(|file| file == HOST_UNIT),
@@ -411,14 +420,14 @@ fn applied(root: &Path) -> Option<Applied> {
     Some(applied)
 }
 
-/// Each of `patches` as merged in `sha` and as main has changed it since,
-/// by name, any of which a runtime may apply and carry the change; `None`
-/// when a version can't be read.
-fn versions(path: &str, sha: &str, patches: &[String]) -> Option<BTreeMap<String, Vec<String>>> {
-    let show = |commit: &str, patch: &str| {
-        command("git", &["-C", path, "show", &format!("{commit}:{patch}")]).ok()
-    };
-    let mut versions = BTreeMap::new();
+/// Each of `patches` by name, with every state of it a runtime may hold and
+/// carry the change: as the merge `sha` left it, `None` where it removed
+/// it, and as each merge on main's own line has left it since. A state the
+/// patch had before `sha` is never one of them, as a revert brings it back
+/// without the change, and a side branch's commits aren't read, as one cut
+/// before the merge holds the patch without it. `None` when git can't say.
+fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
+    let mut versions = Wanted::new();
     for patch in patches {
         let since = command(
             "git",
@@ -426,6 +435,7 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<BTreeMap<String
                 "-C",
                 path,
                 "log",
+                "--first-parent",
                 "--format=%H",
                 &format!("{sha}..{}", main_of(path)),
                 "--",
@@ -433,29 +443,35 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<BTreeMap<String
             ],
         )
         .ok()?;
-        // A merge that removed the patch leaves nothing for a host to load.
-        let Some(merged) = show(sha, patch) else {
-            continue;
-        };
-        let later = since
-            .lines()
-            .filter_map(|commit| show(commit.trim(), patch));
+        // The log above fails for a merge cadence doesn't have, so a patch
+        // missing from it is one the merge removed, not one unfetched.
+        let before = state(path, &format!("{sha}^1"), patch);
+        let mut states = vec![state(path, sha, patch)];
+        states.extend(
+            since
+                .lines()
+                .map(|commit| state(path, commit.trim(), patch)),
+        );
+        states.retain(|it| *it != before);
+        states.dedup();
         let name = Path::new(patch).file_name()?.to_str()?.to_owned();
-        versions.insert(name, std::iter::once(merged).chain(later).collect());
+        versions.insert(name, states);
     }
     Some(versions)
 }
 
-/// Whether a runtime that `applied` these loads every patch of a change, as
-/// `merged` or a later version, or `None` when there is nothing to compare.
-fn loads(applied: &Applied, merged: &BTreeMap<String, Vec<String>>) -> Option<bool> {
-    (!merged.is_empty()).then(|| {
-        merged.iter().all(|(name, versions)| {
-            applied
-                .get(name)
-                .is_some_and(|kept| versions.contains(kept))
-        })
-    })
+/// The patch at `file` as `commit` holds it, or `None` where it holds none.
+fn state(path: &str, commit: &str, file: &str) -> Option<String> {
+    command("git", &["-C", path, "show", &format!("{commit}:{file}")]).ok()
+}
+
+/// Whether a runtime that `applied` these loads a change, holding each of
+/// its patches in one of the states `wanted` names for it, a patch it
+/// removed by applying none.
+fn loads(applied: &Applied, wanted: &Wanted) -> bool {
+    wanted
+        .iter()
+        .all(|(name, states)| states.contains(&applied.get(name).cloned()))
 }
 
 /// The revision a `flake.lock` pins its root's `input` at.

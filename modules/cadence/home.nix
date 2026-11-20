@@ -131,13 +131,19 @@ let
 in
 {
   # A machine still setting the orchestrator by its old name, a word the
-  # glossary replaces, keeps working, told to rename it.
+  # glossary replaces, keeps working, told to rename it. One still naming
+  # the hosts' runtime is told why nothing reads it now.
   imports = [
     quickshell
     (lib.mkRenamedOptionModule
       [ "jitsusama" "cadence" "steward" ]
       [ "jitsusama" "cadence" "orchestrator" ]
     )
+    (lib.mkRemovedOptionModule [
+      "jitsusama"
+      "cadence"
+      "hostRuntime"
+    ] "cadence reads what each pi host loads from its runtime's own copies of its patches.")
   ];
 
   options.jitsusama.cadence = {

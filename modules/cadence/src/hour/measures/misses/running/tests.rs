@@ -219,13 +219,15 @@ fn host(kept: Option<&str>, started: Option<i64>) -> Host {
 
 #[test]
 fn every_host_must_load_a_runtime_that_applied_the_patch() {
-    let merged = BTreeMap::from([("x.patch".to_owned(), vec!["new".to_owned()])]);
+    let merged = Wanted::from([("x.patch".to_owned(), vec![Some("new".to_owned())])]);
     let runtime = Reaches {
         patches: vec!["modules/pi/host-patches/x.patch".to_owned()],
         unit: false,
     };
     let lack = |hosts: Option<&[Host]>| {
-        hosts_lack(hosts, &runtime, None, |applied| loads(applied, &merged))
+        hosts_lack(hosts, &runtime, None, |applied| {
+            Some(loads(applied, &merged))
+        })
     };
     assert_eq!(lack(Some(&[host(Some("new"), None)])), None);
     assert_eq!(
@@ -261,43 +263,128 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
 /// runtime, built from its own fixed list, never applied.
 #[test]
 fn a_patch_runs_once_a_runtime_applied_it_as_merged_or_since() {
-    let merged = BTreeMap::from([
-        ("a.patch".to_owned(), vec!["a1".to_owned(), "a2".to_owned()]),
-        ("b.patch".to_owned(), vec!["b1".to_owned()]),
+    // A change that rewrote a.patch, later rewritten again, and removed
+    // gone.patch.
+    let wanted = Wanted::from([
+        (
+            "a.patch".to_owned(),
+            vec![Some("a1".to_owned()), Some("a2".to_owned())],
+        ),
+        ("gone.patch".to_owned(), vec![None]),
     ]);
-    let applied = |a: &str, b: Option<&str>| {
-        let mut applied = Applied::from([("a.patch".to_owned(), a.to_owned())]);
-        if let Some(b) = b {
-            applied.insert("b.patch".to_owned(), b.to_owned());
-        }
-        applied
+    let applied = |patches: &[(&str, &str)]| -> Applied {
+        patches
+            .iter()
+            .map(|(name, text)| ((*name).to_owned(), (*text).to_owned()))
+            .collect()
     };
-    assert_eq!(loads(&applied("a1", Some("b1")), &merged), Some(true));
-    assert_eq!(
-        loads(&applied("a2", Some("b1")), &merged),
-        Some(true),
+    assert!(loads(&applied(&[("a.patch", "a1")]), &wanted));
+    assert!(
+        loads(&applied(&[("a.patch", "a2")]), &wanted),
         "a later version of the patch didn't count as carrying the change"
     );
+    assert!(
+        !loads(&applied(&[("a.patch", "a0")]), &wanted),
+        "a version the change doesn't name counted as carrying it"
+    );
+    assert!(
+        !loads(&applied(&[]), &wanted),
+        "a runtime that never applied the rewritten patch counted as loading it"
+    );
+    assert!(
+        !loads(&applied(&[("a.patch", "a1"), ("gone.patch", "g")]), &wanted),
+        "a runtime still applying the removed patch counted as loading its removal"
+    );
+}
+
+/// Runs git in `repo` for a history of the test's own, apart from the
+/// account's config, so it neither signs nor asks who commits.
+fn git(repo: &Path, args: &[&str]) {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "here")
+        .env("GIT_AUTHOR_EMAIL", "here@example.org")
+        .env("GIT_COMMITTER_NAME", "here")
+        .env("GIT_COMMITTER_EMAIL", "here@example.org")
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A scratch folder of its own, emptied of what a failed run left.
+fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("cadence-{name}-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    dir
+}
+
+#[test]
+fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
+    let repo = scratch("versions");
+    std::fs::create_dir_all(&repo).expect("a scratch history");
+    let commit = |x: Option<&str>, message: &str| {
+        match x {
+            Some(text) => std::fs::write(repo.join("x.patch"), text).expect("x written"),
+            None => std::fs::remove_file(repo.join("gone.patch")).expect("gone removed"),
+        }
+        git(&repo, &["commit", "-qam", message]);
+    };
+    git(&repo, &["init", "-q", "-b", "main"]);
+    std::fs::write(repo.join("x.patch"), "old").expect("x written");
+    std::fs::write(repo.join("gone.patch"), "g").expect("gone written");
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "before"]);
+    // A side branch cut before the fix, holding the patch without it.
+    git(&repo, &["checkout", "-qb", "side"]);
+    commit(Some("side"), "side");
+    git(&repo, &["checkout", "-qb", "fix", "main"]);
+    commit(Some("new"), "fix");
+    commit(None, "remove");
+    git(&repo, &["checkout", "-q", "main"]);
+    git(&repo, &["merge", "-q", "--no-ff", "-m", "the fix", "fix"]);
+    let out = std::process::Command::new("git")
+        .args(["-C", &repo.to_string_lossy(), "rev-parse", "HEAD"])
+        .output()
+        .expect("git runs");
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    commit(Some("newer"), "a later fix");
+    git(
+        &repo,
+        &["merge", "-q", "--no-ff", "-s", "ours", "-m", "side", "side"],
+    );
+    commit(Some("old"), "a revert");
+    let path = repo.to_string_lossy();
+    let patches = ["x.patch".to_owned(), "gone.patch".to_owned()];
     assert_eq!(
-        loads(&applied("a0", Some("b1")), &merged),
-        Some(false),
-        "an older version of the patch counted as carrying the change"
+        versions(&path, &sha, &patches),
+        Some(Wanted::from([
+            (
+                "x.patch".to_owned(),
+                vec![Some("new".to_owned()), Some("newer".to_owned())]
+            ),
+            ("gone.patch".to_owned(), vec![None]),
+        ])),
+        "a revert to the patch before the fix, or a side branch's, counted as carrying it"
     );
     assert_eq!(
-        loads(&applied("a1", None), &merged),
-        Some(false),
-        "a runtime that never applied the new patch counted as loading it"
-    );
-    assert_eq!(
-        loads(&applied("a1", None), &BTreeMap::new()),
+        versions(&path, "0000000000000000000000000000000000000000", &patches),
         None,
-        "a change whose patches were all removed counted as loaded"
+        "a merge cadence doesn't have read as one carrying nothing"
     );
+    std::fs::remove_dir_all(&repo).expect("the scratch history removed");
 }
 
 #[test]
 fn a_runtime_is_read_by_the_copies_it_keeps() {
-    let root = std::env::temp_dir().join(format!("cadence-applied-{}", std::process::id()));
+    let root = scratch("applied");
     assert_eq!(
         applied(&root),
         None,
