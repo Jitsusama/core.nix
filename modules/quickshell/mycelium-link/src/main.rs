@@ -240,12 +240,10 @@ fn decoded(value: &str) -> Result<String, String> {
     while let Some(byte) = said.next() {
         bytes.push(match byte {
             b'+' => b' ',
-            b'%' => {
-                match (said.next().and_then(hex), said.next().and_then(hex)) {
-                    (Some(high), Some(low)) => high * 16 + low,
-                    _ => return Err("its words hold a misshaped escape".to_owned()),
-                }
-            }
+            b'%' => match (said.next().and_then(hex), said.next().and_then(hex)) {
+                (Some(high), Some(low)) => high * 16 + low,
+                _ => return Err("its words hold a misshaped escape".to_owned()),
+            },
             other => other,
         });
     }
