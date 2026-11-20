@@ -23,8 +23,10 @@
 //! A move that hasn't reached its point within `BACK_AFTER`, or whose card
 //! comes off its network on the way, is handed back, once, with the point
 //! its card left, so the card is sent back there rather than left on no
-//! network: the 16 Nov failure scanned for 18 s. The way back is followed
-//! as a move of its own, given `BACK_FOR`, whatever its steps say.
+//! network: the 16 Nov failure scanned for 18 s. One still under way, its
+//! card joining and not given up, has `BACK_FOR`, and one whose card never
+//! left is handed back as unstarted. The way back is followed as a move of
+//! its own, given `BACK_FOR`, whatever its steps say.
 //!
 //! Long because its cases, over half of it, stay beside the private
 //! steps they prove, as every module in wifid keeps them.
@@ -122,10 +124,14 @@ pub struct Unreached {
 /// Why a move is sent back.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Short {
-    /// It hadn't reached its point within `BACK_AFTER`.
-    Late,
+    /// It hadn't reached its point so long after the ask: `BACK_AFTER`,
+    /// or `BACK_FOR` for one under way.
+    Late { after: Duration },
     /// Its card came off its network on the way.
     Off,
+    /// Its card hadn't left the point it was on `BACK_AFTER` after the ask,
+    /// so is still there, and has nowhere to go back to.
+    Unstarted,
 }
 
 impl Arrivals {
@@ -193,7 +199,7 @@ impl Arrivals {
                 if moving.back {
                     Some(moving.asked + BACK_FOR)
                 } else {
-                    moving.from.as_ref().map(|_| moving.asked + BACK_AFTER)
+                    moving.from.as_ref().map(|_| moving.asked + moving.given())
                 }
             })
             .min()
@@ -206,6 +212,11 @@ impl Arrivals {
     /// back is given until it's stranded, rather than judged by its steps.
     pub fn going_back(&self, card: &str) -> bool {
         self.moves.get(card).is_some_and(|moving| moving.back)
+    }
+
+    /// Whether a move of the card's, or its way back, is still followed.
+    pub fn moving(&self, card: &str) -> bool {
+        self.moves.contains_key(card)
     }
 
     /// Hands back each card whose way back hasn't reached its point
@@ -229,19 +240,27 @@ impl Arrivals {
         stranded
     }
 
-    /// Hands back each move not at its point `BACK_AFTER` after the ask,
+    /// Hands back each move not at its point in its time after the ask,
     /// once, with the point its card left. It's still followed, so where
-    /// the card joins until it's sent back is said too.
+    /// the card joins until it's sent back is said too. One whose card
+    /// hasn't left its point yet is handed back as unstarted, so it's
+    /// kept there rather than sent back to where it is.
     pub fn unreached(&mut self, now: Instant) -> Vec<Unreached> {
         let mut unreached: Vec<_> = self
             .moves
             .iter_mut()
-            .filter(|(_, moving)| now >= moving.asked + BACK_AFTER)
+            .filter(|(_, moving)| now >= moving.asked + moving.given())
             .filter_map(|(card, moving)| {
                 let from = moving.from.take()?;
                 let card = card.clone();
                 let to = moving.to.clone();
-                let why = Short::Late;
+                let why = if moving.left.is_none() {
+                    Short::Unstarted
+                } else {
+                    Short::Late {
+                        after: now - moving.asked,
+                    }
+                };
                 Some(Unreached {
                     card,
                     from,
@@ -339,6 +358,19 @@ impl Arrivals {
 }
 
 impl Move {
+    /// How long after the ask the move has to reach its point. One that
+    /// has left its point and not given up is under way, and can be bidden
+    /// wait 1024 ms by a point that protects its frames and still holds the
+    /// card, as a move back to a point it left lately would be. So it's
+    /// given what a way back is, rather than undone as it nears its point.
+    fn given(&self) -> Duration {
+        if self.left.is_some() && !self.lost {
+            BACK_FOR
+        } else {
+            BACK_AFTER
+        }
+    }
+
     /// A move followed too long, said unseen where it wasn't said lost
     /// already.
     fn unseen(self) -> Option<Arrival> {
@@ -638,12 +670,121 @@ mod tests {
                 card: "wlan0".into(),
                 from: DESK.into(),
                 to: FAR.into(),
-                why: Short::Late
+                why: Short::Late { after: BACK_AFTER }
             }],
             "handed back with the point it left"
         );
         assert_eq!(again, [], "handed back once");
         assert_eq!(arrivals.due(), None, "nothing more due");
+    }
+
+    #[test]
+    fn a_move_under_way_is_given_as_long_as_a_way_back_before_it_is_handed_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.step("wlan0", "authenticating", now + ms(20));
+        // Bidden wait 1024 ms by a point that still holds the card.
+        arrivals.step("wlan0", "associating", now + ms(30));
+
+        let due = arrivals.due();
+        let at_a_second = arrivals.unreached(now + BACK_AFTER);
+        let unreached = arrivals.unreached(now + BACK_FOR);
+
+        assert_eq!(due, Some(now + BACK_FOR), "due as a way back would be");
+        assert_eq!(at_a_second, [], "not undone as it nears its point");
+        assert_eq!(
+            unreached,
+            [Unreached {
+                card: "wlan0".into(),
+                from: DESK.into(),
+                to: FAR.into(),
+                why: Short::Late { after: BACK_FOR }
+            }],
+            "handed back once its time is up"
+        );
+    }
+
+    #[test]
+    fn a_move_that_lands_past_its_second_still_arrives_with_nothing_more_due() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.step("wlan0", "associating", now + ms(20));
+        let early = arrivals.unreached(now + BACK_AFTER);
+
+        let reached = arrivals.joined("wlan0", Some(FAR), now + ms(1250));
+
+        assert_eq!(early, [], "still under way at its second");
+        assert_eq!(
+            reached,
+            Some(Arrival::Reached {
+                to: FAR.into(),
+                asked: ms(1250),
+                off: Some(ms(1230))
+            }),
+            "said reached, late as it was"
+        );
+        assert_eq!(arrivals.due(), None, "nothing due once it's there");
+        assert_eq!(arrivals.unreached(now + BACK_FOR), [], "never handed back");
+    }
+
+    #[test]
+    fn a_move_handed_back_late_that_then_lands_is_said_reached() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.unreached(now + BACK_AFTER);
+
+        let reached = arrivals.joined("wlan0", Some(FAR), now + ms(1100));
+
+        assert!(
+            matches!(reached, Some(Arrival::Reached { .. })),
+            "followed on after it was handed back, but ended {reached:?}"
+        );
+        assert_eq!(arrivals.due(), None, "nothing more due");
+    }
+
+    #[test]
+    fn a_move_whose_card_never_left_is_handed_back_unstarted() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+
+        let due = arrivals.due();
+        let unreached = arrivals.unreached(now + BACK_AFTER);
+
+        assert_eq!(due, Some(now + BACK_AFTER), "due a second after the ask");
+        assert_eq!(
+            unreached,
+            [Unreached {
+                card: "wlan0".into(),
+                from: DESK.into(),
+                to: FAR.into(),
+                why: Short::Unstarted
+            }],
+            "still on the point it would go back to"
+        );
+    }
+
+    #[test]
+    fn a_move_asked_with_no_point_left_is_never_handed_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", None, FAR, now);
+
+        let due = arrivals.due();
+        let unreached = arrivals.unreached(now + BACK_FOR);
+        let off = arrivals.fell_off("wlan0");
+        let reached = arrivals.joined("wlan0", Some(FAR), now + ms(2500));
+
+        assert_eq!(due, None, "nowhere to go back to");
+        assert_eq!(unreached, [], "so nothing handed back late");
+        assert_eq!(off, None, "nor as it falls off");
+        assert!(
+            matches!(reached, Some(Arrival::Reached { .. })),
+            "still followed to its point, but ended {reached:?}"
+        );
     }
 
     #[test]
@@ -708,8 +849,9 @@ mod tests {
         arrivals.back("wlan0", DESK, now + BACK_AFTER);
 
         let off = arrivals.fell_off("wlan0");
-        let late = arrivals.unreached(now + ms(1999));
-        let back = arrivals.joined("wlan0", Some(DESK), now + ms(1150));
+        // A second after it was sent, as late as a move would be.
+        let late = arrivals.unreached(now + BACK_AFTER + BACK_AFTER);
+        let back = arrivals.joined("wlan0", Some(DESK), now + ms(2150));
 
         assert_eq!(off, None, "a way back has none of its own as it falls off");
         assert_eq!(late, [], "nor as it's late");
@@ -717,13 +859,13 @@ mod tests {
             back,
             Some(Arrival::Reached {
                 to: DESK.into(),
-                asked: ms(150),
+                asked: ms(1150),
                 off: None
             }),
             "timed from its own ask"
         );
         assert_eq!(
-            arrivals.joined("wlan0", Some(DESK), now + ms(2000)),
+            arrivals.joined("wlan0", Some(DESK), now + ms(2200)),
             None,
             "ended"
         );
