@@ -211,7 +211,10 @@ fn sprouted(query: &str) -> Result<Link, String> {
                 return Err("it offers its words more than once".to_owned());
             }
             "words" => words = Some(decoded(value)?),
-            "from" if from.is_none() => from = Some(decoded(value).unwrap_or_default()),
+            "from" if from.is_some() => {
+                return Err("it names its cell more than once".to_owned());
+            }
+            "from" => from = Some(decoded(value).unwrap_or_default()),
             _ => {}
         }
     }
@@ -252,19 +255,53 @@ fn decoded(value: &str) -> Result<String, String> {
 }
 
 /// `words` as one plain line: each run of spaces, tabs and line ends one
-/// space, any other control character gone, so nothing in them can move
-/// the launcher's line or speak to a terminal, and trimmed.
+/// space, any other control or format character gone, so nothing in them
+/// can move the launcher's line, turn its text around, hide in it or speak
+/// to a terminal, and trimmed.
 fn plain(words: &str) -> String {
     words
         .split(char::is_whitespace)
         .map(|word| {
             word.chars()
-                .filter(|letter| !letter.is_control())
+                .filter(|&letter| !letter.is_control() && !formatting(letter))
                 .collect::<String>()
         })
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Unicode's format characters (general category Cf), which draw nothing
+/// yet can turn text around (U+202E), hide in it (U+200B) or join it.
+const FORMATTING: [(char, char); 21] = [
+    ('\u{00AD}', '\u{00AD}'),
+    ('\u{0600}', '\u{0605}'),
+    ('\u{061C}', '\u{061C}'),
+    ('\u{06DD}', '\u{06DD}'),
+    ('\u{070F}', '\u{070F}'),
+    ('\u{0890}', '\u{0891}'),
+    ('\u{08E2}', '\u{08E2}'),
+    ('\u{180E}', '\u{180E}'),
+    ('\u{200B}', '\u{200F}'),
+    ('\u{202A}', '\u{202E}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206F}'),
+    ('\u{FEFF}', '\u{FEFF}'),
+    ('\u{FFF9}', '\u{FFFB}'),
+    ('\u{110BD}', '\u{110BD}'),
+    ('\u{110CD}', '\u{110CD}'),
+    ('\u{13430}', '\u{1343F}'),
+    ('\u{1BCA0}', '\u{1BCA3}'),
+    ('\u{1D173}', '\u{1D17A}'),
+    ('\u{E0001}', '\u{E0001}'),
+    ('\u{E0020}', '\u{E007F}'),
+];
+
+/// Whether `letter` is one of Unicode's format characters.
+fn formatting(letter: char) -> bool {
+    FORMATTING
+        .iter()
+        .any(|&(first, last)| (first..=last).contains(&letter))
 }
 
 /// Whether a link followed `now` goes ahead, as `stamp` keeps when the last
@@ -625,6 +662,24 @@ mod tests {
     }
 
     #[test]
+    fn a_sprout_links_words_lose_what_turns_or_hides_text() {
+        // U+202E turns the text after it around, U+200B hides in it, DEL
+        // and U+009B (a terminal's escape) speak to a terminal.
+        assert_eq!(
+            named_by("mycelium:sprout?words=tidy%E2%80%AE%E2%80%8Bthe%7F%C2%9Brows"),
+            Ok(sprout("tidytherows", None))
+        );
+        assert_eq!(
+            named_by("mycelium:sprout?words=%EF%BB%BFtidy%F3%A0%80%81"),
+            Ok(sprout("tidy", None))
+        );
+        assert!(
+            read("mycelium:sprout?words=%E2%80%AE%E2%80%8B").is_err(),
+            "words holding only format characters were followed"
+        );
+    }
+
+    #[test]
     fn a_sprout_link_without_plain_words_is_refused() {
         for link in [
             "mycelium:sprout".to_owned(),
@@ -635,6 +690,7 @@ mod tests {
             "mycelium:sprout?words=tidy%4".to_owned(),
             "mycelium:sprout?words=tidy%FF".to_owned(),
             "mycelium:sprout?words=tidy&words=reboot".to_owned(),
+            "mycelium:sprout?words=tidy&from=TERN02&from=OWL01".to_owned(),
             "mycelium:Sprout?words=tidy".to_owned(),
             format!("mycelium:sprout?words={}", "a".repeat(MOST_WORDS + 1)),
         ] {
