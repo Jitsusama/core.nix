@@ -15,12 +15,15 @@
 # leaves at once when systemd takes it for the unit's main process, as it
 # does when the start forked no daemon.
 #
-# Given the ExecStartPost's program, and the systemctl and log it names.
+# Given the ExecStartPost's program, the systemctl and log it names, and what
+# modules/health takes for a ready line (launches.rs's READY_FOLLOWED), which
+# journalctl matches whatever its case, as it's written in lower case.
 set -euo pipefail
 
 post=$1
 systemctl=$2
 log=$3
+ready=$4
 here=$PWD
 
 mkdir -p bin
@@ -64,12 +67,17 @@ gave_up="tuple: its signaller hadn't connected 5 s after it started"
 never_active="tuple: systemd hadn't said it was active 5 s after it started"
 untimed="ms after its log began, past the 5 s it times"
 no_daemon="tuple: its start left no daemon of its own, so none to time"
-# Nearly all of the post's five seconds, in microseconds, which a waiter that
+# Nearly all of the post's five seconds, in hundredths, which a waiter that
 # gives up must have waited.
-WAITED_OUT=4500000
-# What modules/health takes for a ready line (launches.rs's READY_FOLLOWED),
-# which journalctl matches whatever its case, as it's written in lower case.
-ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
+WAITED_OUT=450
+
+# Sets `now` to the hundredths of a second since boot, as the post counts its
+# wait, so a clock stepped while a case runs can't move it.
+since_boot() {
+  local up _
+  read -r up _ </proc/uptime
+  now=$((10#${up/./}))
+}
 
 # Fails the case `what` when the post has said anything yet.
 quiet() {
@@ -266,10 +274,12 @@ fi
 says "a start that forked no daemon" "${no_daemon}"
 unready "a start that forked no daemon"
 
-began=${EPOCHREALTIME/./}
+since_boot
+began=${now}
 starts
 ended "a unit never active" 1
-if ((${EPOCHREALTIME/./} - began < WAITED_OUT)); then
+since_boot
+if ((now - began < WAITED_OUT)); then
   echo "a unit never active: the post gave up before its five seconds"
   failed=1
 fi

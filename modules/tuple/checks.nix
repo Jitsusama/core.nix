@@ -111,13 +111,20 @@ onLinux {
   # ExecStartPost, run against a stand-in systemctl and a log of its own
   # (tests/tuple-says-when-ready.sh). Health files a ready time under the
   # name its line goes out with, so the unit must give it Tuple's, not the
-  # script's, which changes with each build.
+  # script's, which changes with each build. What health takes for a ready
+  # line is read from health's own source, so the two can't drift apart.
   tuple-says-when-ready =
     let
       home = account graphical;
       service = home.systemd.user.services.tuple.Service;
       post = service.ExecStartPost;
       named = service.SyslogIdentifier or "";
+      declared = ''^pub const READY_FOLLOWED: &str = r"(.*)";$'';
+      lines = lib.splitString "\n" (builtins.readFile ../health/src/launches.rs);
+      found = lib.findFirst (
+        line: builtins.match declared line != null
+      ) (throw "modules/health/src/launches.rs no longer declares READY_FOLLOWED as a raw string") lines;
+      ready = lib.head (builtins.match declared found);
     in
     pkgs.runCommandLocal "tuple-says-when-ready" { } ''
       if [ ${lib.escapeShellArg named} != tuple ]; then
@@ -129,6 +136,7 @@ onLinux {
           (lib.removeSuffix " %n" (lib.removePrefix "-" post))
           (lib.getExe' pkgs.systemd "systemctl")
           "${home.xdg.dataHome}/tuple/0/log.txt"
+          ready
         ]
       }
       touch $out
