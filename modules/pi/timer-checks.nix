@@ -100,12 +100,14 @@ onLinux {
       profile = "${home.home.profileDirectory}/bin";
       # A machine giving provider modules, a git of its own and a realm whose
       # host shows what a host's unit clears and whose folders the sweep's
-      # PATH takes, written as systemd needs whatever they hold.
+      # PATH takes, written as systemd needs whatever they hold. Its builder
+      # key runs the agents' SSH proxy, which the bare machine lacks.
       given = account (bareNixos [
         self.nixosModules.workstation
         {
           home-manager.users.someone.programs.git.package = pkgs.gitMinimal;
           home-manager.users.someone.jitsusama.pi = {
+            agentProxy.builderKey = "/keys/store_ed25519";
             sweep.providerModules = [
               "/one/providers.ts"
               "/two/providers.ts"
@@ -174,6 +176,8 @@ onLinux {
             ''"PI_SWEEP_PROVIDERS=/one/providers.ts:/two/providers.ts"''
           ]
           ++ lib.optional hostProxied proxy
+        && hostProxied
+        && !(proxied home)
         &&
           cleared givenSweep
           == lib.sort lib.lessThan (cleared givenHost ++ lib.optional (!hostProxied) "SSH_AUTH_SOCK")
