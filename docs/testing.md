@@ -581,7 +581,11 @@ the step took 18 to 42 ms where Joel's took 59 to 171, and its 9 rows 7 to
 afresh, since a step reuses rows home held (2026-11-20).
 `LAB_STEP_BY = "arrow"` reaches the place by arrows from home with
 nothing typed, as Joel reaches Agents, whose rows home makes only once a
-letter or a step wants them; typed, they're made before the step.
+letter or a step wants them; typed, they're made before the step. With
+`LAB_AGENTS`, one session moves before each step, as his do between his
+looks. By arrow, each step into Agents then made its rows again before
+its frame, "act moved in agents: its own rows", and waited 5 to 9 ms for
+it where typed it waited 1; his waited 16 to 25 (2026-11-20).
 `LAB_COSTLIEST` says how many of the
 costliest bindings, handlers and functions each part lists.
 Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces
