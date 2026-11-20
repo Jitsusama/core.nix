@@ -757,6 +757,7 @@ impl Ink {
 
 #[cfg(test)]
 mod tests {
+    use super::super::figures::unknown;
     use super::*;
 
     fn figure(value: &str, unit: &str) -> Line {
@@ -878,13 +879,13 @@ mod tests {
             table.row(vec![
                 vec![plain("laptop")],
                 vec![plain("laptop")],
-                vec![muted("–")],
+                unknown(),
                 figure("11.5", "Mb/s"),
             ]);
             table.row(vec![
                 vec![plain("printer")],
                 vec![plain("printer")],
-                vec![muted("–")],
+                unknown(),
                 figure("98", "b/s"),
             ]);
             table
@@ -905,9 +906,44 @@ mod tests {
             "a down that no row has a figure for goes before the kind named first"
         );
         assert_eq!(
-            headings(Room::Unbounded),
+            headings(Room::Cells(33)),
             ["device", "kind", "down", "speed"],
-            "where the table fits, a column saying nothing still keeps its place"
+            "where the table just fits, a column saying nothing still keeps its place"
+        );
+    }
+
+    #[test]
+    fn a_shared_column_one_table_has_figures_in_keeps_its_place_in_both() {
+        let mut on = Table::new(&[Align::Left, Align::Left, Align::Point]);
+        on.header(&["device", "band", "speed"]);
+        on.gives_way_by(&["band"]);
+        on.row(vec![
+            vec![plain("laptop")],
+            vec![plain("5 GHz")],
+            figure("11.5", "Mb/s"),
+        ]);
+        let mut off = Table::new(&[Align::Left, Align::Left, Align::Left, Align::Left]);
+        off.header(&["device", "band", "kind", "last on"]);
+        off.gives_way_by(&["kind", "band"]);
+        off.row(vec![
+            vec![plain("printer")],
+            unknown(),
+            vec![plain("printer")],
+            vec![plain("2 d ago")],
+        ]);
+        let mut page = Page::default();
+        page.shared_table(0, on);
+        page.shared_table(0, off);
+        let headers: Vec<Vec<String>> = set(page, Room::Cells(25))
+            .lines()
+            .filter(|line| line.starts_with("device"))
+            .map(|line| line.split_whitespace().map(str::to_owned).collect())
+            .collect();
+        assert_eq!(
+            headers,
+            [vec!["device", "band", "speed"], vec!["device", "band", "last", "on"]],
+            "a band only the devices off lack gives way in its named place, so the devices on \
+             keep theirs"
         );
     }
 
