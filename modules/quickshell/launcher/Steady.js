@@ -220,3 +220,12 @@ function landing(waiting, came) {
     const at = came.rows.findIndex(row => waiting(row));
     return { at, waiting: at < 0 ? waiting : null };
 }
+
+// How tall the list stands while the launcher is open, sized from `shown`,
+// the rows it's sized for: `rows` rows `rowTall` high, and `gap` more where
+// one of those it shows first stands apart from the row above, as a group
+// of Network's does. One rule for every place the card is sized, home as
+// found among them, so none can size it from another list's gaps.
+function tallFor(shown, rows, rowTall, gap) {
+    return rows * rowTall + (shown.slice(0, rows).some(row => row.gap) ? gap : 0);
+}

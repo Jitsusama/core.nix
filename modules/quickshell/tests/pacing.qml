@@ -656,6 +656,54 @@ QtObject {
             + "start\n"
             + "launcher: 1 change in quests presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms");
+        // A refresh due while home was still to be found waits for the find,
+        // not the pace, so a place's line counts its changes held and says the
+        // longest hold apart, one of them not held waiting on the pace to its
+        // refresh (H6EDLC, Super+N, 2026-11-19). Each place is said its own
+        // way, so a place with none held beside it says no hold.
+        // The longest hold comes after a shorter one, so the first isn't it.
+        const heldApart = Presented.changesSaid([
+            { place: "machine", from: 100, heard: 102, held: 110, refreshed: 122, begun: 130,
+                at: 190 },
+            { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
+            { place: "machine", from: 0, heard: 5, held: 10, refreshed: 40, begun: 48, at: 70 },
+            { place: "machine", from: 200, heard: 204, refreshed: 214, begun: 220, at: 250 }
+        ]);
+        check(failures, "a change held for home's find says the hold apart from the pace",
+            heldApart.join("\n"),
+            "launcher: 3 changes in machine presented a median 70 ms from the line, "
+            + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms: a median 4 ms before the "
+            + "shell heard it, 8 waiting on the pace, 8 in the shell and 30 from its frame's "
+            + "start; 2 held while home was found, the longest 30 ms\n"
+            + "launcher: 1 change in windows presented a median 70 ms from the line, "
+            + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 5 ms before the "
+            + "shell heard it, 35 waiting on the pace, 8 in the shell and 22 from its frame's "
+            + "start");
+        // Held from when a refresh was first due while home was still to be
+        // found, a change heard then held from when it was heard, and a place
+        // heard of nothing held for nothing, and none while nothing holds, as
+        // once home's found (Launcher.qml's refreshDue and refreshed).
+        const heardOf = { machine: 5, windows: 8 };
+        const firstHeld = Presented.heldFrom({}, heardOf,
+            { places: ["machine", "quests"], at: 10, holding: true });
+        const heldAgain = Presented.heldFrom(firstHeld, heardOf,
+            { places: ["machine", "windows"], at: 30, holding: true });
+        const heldNone = Presented.heldFrom(firstHeld, heardOf,
+            { places: ["windows"], at: 40, holding: false });
+        check(failures, "a hold holds those heard from when it was first due",
+            [firstHeld, heldAgain, heldNone].map(one => JSON.stringify(one)).join(" "),
+            '{"machine":10} {"machine":10,"windows":30} {"machine":10}');
+        // An earlier line come late takes its place's change after the hold
+        // began, so it's held from when it was heard, never a wait below none.
+        const heardLate = Presented.changesSaid([
+            { place: "machine", from: 0, heard: 20, held: 10, refreshed: 40, begun: 48, at: 70 }
+        ]);
+        check(failures, "a change heard after its hold began waits on no pace",
+            heardLate.join("\n"),
+            "launcher: 1 change in machine presented a median 70 ms from the line, "
+            + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 20 ms before the "
+            + "shell heard it, 0 waiting on the pace, 8 in the shell and 22 from its frame's "
+            + "start; 1 held while home was found, the longest 20 ms");
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many

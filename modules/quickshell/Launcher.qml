@@ -136,7 +136,7 @@ Scope {
     // never run off the screen). A page's gap is allowed for whether it
     // shows or not, so what's found never changes how many.
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
-        (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
+        (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - groupGap)
             / rowTall)))
     // How tall the card is but for its rows: its frame, the line and its
     // hairline, the ties either side of the rows, and the foot and its
@@ -5634,6 +5634,13 @@ Scope {
     // what for.
     function refreshed(source, refreshedFor) {
         updatedFrom(source);
+        // Heard while a refresh is held for home's find, it waits on the
+        // find, which makes it in the slice after, not on the pace. Only
+        // till home's found: one after is made at once or in that slice,
+        // a frame or so on, and one asked again (reanswer) waits on nothing.
+        updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+            places: [source.settings.name], at: KeyTimes.now(),
+            holding: fillFinding && refreshHeld });
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
         // same.
@@ -5873,6 +5880,9 @@ Scope {
         // nothing's held, so a shut stopped short leaves no source waiting.
         if (fillFinding && open) {
             refreshHeld = true;
+            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+                places: refreshing.map(source => source.settings.name), at: KeyTimes.now(),
+                holding: true });
             return;
         }
         // Any refresh made takes those held with it, so the slice after the
@@ -9669,9 +9679,11 @@ Scope {
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
-    // as Network's does; home has none; the card's height, the list and the rows' lines all read
-    // it, so the plate's lines can't drift from the list's.
-    readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
+    // as Network's does; home has none. The card's height (Steady.tallFor) and the rows that
+    // fit (rows) read groupGap; the list's rows, and so the plate's lines, read it through
+    // apart (tallOf), which is groupGap whenever a row of the list has a gap.
+    readonly property real groupGap: Theme.space.beat
+    readonly property real apart: matches.some(row => row.gap) ? groupGap : 0
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
@@ -10449,7 +10461,7 @@ Scope {
             prompt.text = "";
             matches = listed;
             current = 0;
-            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
+            tall = Steady.tallFor(matches, rows, rowTall, groupGap);
         } finally {
             keeping = false;
         }
@@ -10949,9 +10961,7 @@ Scope {
             // Always the same height, eight rows, kept until it closes, so
             // the card is the same shape however much home holds and its
             // rows fill it to the foot, none held under the last.
-            const sized = homeFound ? matches : homeKept;
-            tall = rows * rowTall + (sized.slice(0, rows).some(row => row.gap)
-                ? apart : 0);
+            tall = Steady.tallFor(homeFound ? matches : homeKept, rows, rowTall, groupGap);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
             lap("keys");
@@ -11991,8 +12001,7 @@ Scope {
                 fillFoundHome = true;
                 // The card's height is home's as found, as the open
                 // handler sized it from before home was found after it.
-                tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
-                    ? apart : 0);
+                tall = Steady.tallFor(matches, rows, rowTall, groupGap);
             }
             heldAgreed(sources);
         } catch (error) {
@@ -12157,7 +12166,7 @@ Scope {
             prompt.text = "";
             matches = home;
             current = 0;
-            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
+            tall = Steady.tallFor(matches, rows, rowTall, groupGap);
         } finally {
             keeping = false;
         }
@@ -12630,6 +12639,11 @@ Scope {
     // Whose line each place's waiting change came from, by place, so Now,
     // made from many daemons, says whose its changes were.
     readonly property var updatesBy: ({})
+    // When each place's waiting change was first held for home's find, by
+    // place: as a refresh came due then (refreshDue), or as it was heard
+    // while one was held (refreshed), so its line says the hold apart from
+    // the pace.
+    property var updatesHeld: ({})
     property var updatesPresented: []
     // Each drawer a key brought since the launcher opened, from that key to
     // when niri presented it, said by place as it closes (drawerMade).
@@ -12721,11 +12735,12 @@ Scope {
         const from = updatesWaiting[place];
         if (from === undefined)
             return;
-        const one = { place, from, heard: updatesHeard[place], refreshed,
-            by: updatesBy[place] };
+        const one = { place, from, heard: updatesHeard[place], held: updatesHeld[place],
+            refreshed, by: updatesBy[place] };
         updatesWaiting = Presented.drawn(updatesWaiting, place);
         delete updatesHeard[place];
         delete updatesBy[place];
+        delete updatesHeld[place];
         if (!(shown && open))
             return;
         afterFrame((begun, frame) => {
@@ -12756,6 +12771,8 @@ Scope {
             delete updatesHeard[place];
         for (const place of Object.keys(updatesBy))
             delete updatesBy[place];
+        for (const place of Object.keys(updatesHeld))
+            delete updatesHeld[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
         for (const said of [first, clock].filter(line => line !== "").concat(updates))
