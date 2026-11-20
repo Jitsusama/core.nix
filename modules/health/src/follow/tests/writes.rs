@@ -390,19 +390,25 @@ fn a_new_days_lines_while_the_day_cant_be_written_are_kept_in_the_next() {
 }
 
 #[test]
-fn a_spell_of_failed_writes_is_said_as_it_starts_and_told_as_it_ends_once_each() {
+fn a_spell_of_failed_writes_is_said_as_it_starts_and_at_a_new_cause_and_told_as_it_ends() {
     let heard = RefCell::new(Vec::new());
     let say = |words: &str| heard.borrow_mut().push(format!("said: {words}"));
     let notice = |words: &str| heard.borrow_mut().push(format!("told: {words}"));
-    let full = io::Error::other("no space left on device");
-    // Another write's failure within the spell: nothing more is said
-    // until the spell ends.
-    let unreadable = io::Error::other("permission denied");
+    // Each in write_day's words, which name the day's file.
+    let full = full_on("2026-11-13");
+    // The same cause in other words, as the next day's file after
+    // midnight: nothing more is said.
+    let still_full = full_on("2026-11-14");
+    // A cause of another kind within the spell is said once, as the disk
+    // turning read-only after filling; its return to the first is not.
+    let read_only = read_only_on("2026-11-14");
     let first = Instant::now();
     let mut spell = Spell::default();
     for (after, error) in [
         (0, Some(&full)),
-        (30, Some(&unreadable)),
+        (20, Some(&still_full)),
+        (30, Some(&read_only)),
+        (35, Some(&read_only)),
         (40, Some(&full)),
         (90, None),
     ] {
@@ -416,14 +422,141 @@ fn a_spell_of_failed_writes_is_said_as_it_starts_and_told_as_it_ends_once_each()
     }
     let heard = heard.take();
     assert!(
-        heard.len() == 2
+        heard.len() == 3
             && heard[0].starts_with(
-                "said: health: can't write the day into days: no space left on device, so it"
+                "said: health: can't write the day into days: 2026-11-13's file: No space left \
+                 on device (os error 28), so it"
             )
             && heard[0].contains("for up to 60 minutes")
-            && heard[1]
+            && heard[1].starts_with(
+                "said: health: can't write the day into days: now 2026-11-14's file: Read-only \
+                 file system (os error 30), having tried for less than a minute, so it"
+            )
+            && heard[1].contains("for up to 59 minutes")
+            && heard[2]
                 == "told: health: writes the day into days again, after trying for a minute",
-        "a spell's start and end weren't each said once, with its cause and how long: {heard:?}"
+        "a spell's start, its new cause and its end weren't each said once: {heard:?}"
+    );
+}
+
+/// A full disk's error on `date`'s file, in `write_day`'s words.
+fn full_on(date: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::StorageFull,
+        format!("{date}'s file: No space left on device (os error 28)"),
+    )
+}
+
+/// A read-only file system's error on `date`'s file, in `write_day`'s words.
+fn read_only_on(date: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::ReadOnlyFilesystem,
+        format!("{date}'s file: Read-only file system (os error 30)"),
+    )
+}
+
+#[test]
+fn a_spells_causes_are_its_own_said_late_or_after_another() {
+    let heard = RefCell::new(Vec::new());
+    let say = |words: &str| heard.borrow_mut().push(format!("said: {words}"));
+    let notice = |words: &str| heard.borrow_mut().push(format!("told: {words}"));
+    let full = full_on("2026-11-13");
+    let read_only = read_only_on("2026-11-13");
+    let first = Instant::now();
+    let mut spell = Spell::default();
+    for (after, error) in [
+        // A spell said and told, its second cause said too.
+        (0, Some(&full)),
+        (30, Some(&read_only)),
+        (60, None),
+        // One within ten minutes of that end, starting unsaid, which
+        // counts its cause as unsaid, and said late with its cause then,
+        // which counts as said: the same cause after says nothing, and
+        // the unsaid start's is said.
+        (120, Some(&read_only)),
+        (660, Some(&full)),
+        (690, Some(&full)),
+        (700, Some(&read_only)),
+        (720, None),
+        // A spell ten minutes on, with both causes again: each is said,
+        // since the causes said in a spell are its own.
+        (1320, Some(&full)),
+        (1350, Some(&read_only)),
+    ] {
+        spell.tried(
+            error,
+            first + Duration::from_secs(after),
+            Path::new("days"),
+            &say,
+            &notice,
+        );
+    }
+    let heard = heard.take();
+    let kinds: Vec<&str> = heard
+        .iter()
+        .map(|words| match words {
+            told if told.starts_with("told: ") => "told",
+            now if now.contains(": now 2026") => "now",
+            _ => "said",
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        ["said", "now", "told", "said", "now", "told", "said", "now"],
+        "a late-said spell's cause was said again, an unsaid one went unsaid, or a spell's \
+         causes silenced the next's: {heard:?}"
+    );
+}
+
+#[test]
+fn a_new_cause_near_a_spells_end_says_the_time_left_and_none_on_its_last_try() {
+    let heard = RefCell::new(Vec::new());
+    let say = |words: &str| heard.borrow_mut().push(words.to_owned());
+    let first = Instant::now();
+    let mut spell = Spell::default();
+    let unreadable = io::Error::new(io::ErrorKind::PermissionDenied, "Permission denied");
+    let lost = io::Error::new(io::ErrorKind::NotFound, "No such file or directory");
+    for (after, error) in [
+        (0, full_on("2026-11-13")),
+        (GIVES_UP.as_secs() - 90, unreadable),
+        (GIVES_UP.as_secs() - 30, read_only_on("2026-11-13")),
+        // The last try, which health ends on, naming its cause.
+        (GIVES_UP.as_secs(), lost),
+    ] {
+        spell.tried(
+            Some(&error),
+            first + Duration::from_secs(after),
+            Path::new("days"),
+            &say,
+            &|_: &str| {},
+        );
+    }
+    let heard = heard.take();
+    assert!(
+        heard.len() == 3
+            && heard[1].contains(": now Permission denied")
+            && heard[1].ends_with("every half minute for up to a minute")
+            && heard[2].contains(": now 2026-11-13's file: Read-only")
+            && heard[2].ends_with("every half minute for less than a minute"),
+        "a new cause near a spell's end said the wrong time left, or one on its last try \
+         promised more tries: {heard:?}"
+    );
+}
+
+#[test]
+fn a_day_that_cant_be_written_keeps_the_systems_kind_of_error_and_names_itself() {
+    // A spell knows a cause by its kind, so a day's write keeps the
+    // system's: a folder under a file fails as not a folder.
+    let folder = tempfile::tempdir().expect("a folder");
+    let file = folder.path().join("a file");
+    fs::write(&file, "").expect("a file");
+    let error = write_day(&Day::new("2026-11-13"), &file.join("days"))
+        .expect_err("a folder under a file was written");
+    assert!(
+        error.kind() == io::ErrorKind::NotADirectory
+            && error.to_string().starts_with("2026-11-13's file: "),
+        "a day's write lost the system's kind of error or its day: {:?}, {error}",
+        error.kind()
     );
 }
 
@@ -441,8 +574,8 @@ fn a_flapping_disk_is_said_at_most_once_in_ten_minutes() {
             .borrow_mut()
             .push((step.get(), "told", words.to_owned()));
     };
-    let full = io::Error::other("no space left on device");
-    let unreadable = io::Error::other("permission denied");
+    let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
+    let unreadable = io::Error::new(io::ErrorKind::PermissionDenied, "permission denied");
     let first = Instant::now();
     let mut spell = Spell::default();
     for (after, error) in [
@@ -451,7 +584,8 @@ fn a_flapping_disk_is_said_at_most_once_in_ten_minutes() {
         (30, None),
         // A flap soon after goes unsaid, and so does the next, until ten
         // minutes have passed since the end told, when it's said with how
-        // long it has lasted and its first error, the disk's.
+        // long it has lasted and its error then, not its first: the
+        // folder's, no longer the disk's.
         (60, Some(&full)),
         (90, None),
         (120, Some(&full)),
@@ -489,7 +623,7 @@ fn a_flapping_disk_is_said_at_most_once_in_ten_minutes() {
     let words = |at: usize| heard[at].2.as_str();
     assert!(
         words(1).ends_with("after trying for less than a minute")
-            && words(2).contains("no space left on device, having tried for 8 minutes, so")
+            && words(2).contains(": permission denied, having tried for 8 minutes, so")
             && words(2).contains("for up to 51 minutes")
             && words(3).ends_with("after trying for 9 minutes")
             && words(4).contains("no space left on device, so")

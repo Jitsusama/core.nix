@@ -1,6 +1,7 @@
 //! A spell of the day's writes failing, as on a full disk, and what
-//! health says of it: once as it starts and once as it ends, and of a
-//! disk flapping at its edge, no more than once every ten minutes. A
+//! health says of it: once as it starts, once at each new kind of cause
+//! and once as it ends, and of a disk flapping at its edge, no more than
+//! once every ten minutes. A
 //! spell lasts only as long as health's run, so a start after one says
 //! the next spell at once, and a spell that outlasts a run, as one given
 //! up on does when its last try fails, is never told ended.
@@ -22,16 +23,19 @@ use crate::day::Day;
 /// minute.
 const QUIET_FOR: Duration = SETTLED;
 
-/// A spell of the day's writes failing: since when and for what, first
-/// and latest, while they do, whether it was said, and when a spell's end
-/// was last told. The two causes differ once the day failing does, as
-/// when a day held from before is written and today goes on failing.
+/// A spell of the day's writes failing: since when, its latest error,
+/// whether it was said and the kinds of cause it was said for, and when a
+/// spell's end was last told. A cause is known by its kind, as a disk full
+/// or read-only, since its words name the day failing, which changes at
+/// midnight or once a day held from before is written. The errors std
+/// leaves unnamed share one kind, so a change between two of them, both
+/// rare in writing a file, goes unsaid.
 #[derive(Debug, Default)]
 pub(super) struct Spell {
     since: Option<Instant>,
-    cause: String,
     latest: String,
     said: bool,
+    causes: Vec<io::ErrorKind>,
     told: Option<Instant>,
 }
 
@@ -79,12 +83,13 @@ impl Spell {
     }
 
     /// Take a write's `error` at `at`, if any. A spell's start is said
-    /// through `say`, naming the folder `into` and the spell's first
-    /// error, and its end through `notice`, once each, since the next
-    /// half minute's would most likely say the same. A spell starting
-    /// within `QUIET_FOR` of the last
-    /// end told is said only once `QUIET_FOR` has passed since, with how
-    /// long it has lasted, so a flapping disk is said at most once in each
+    /// through `say`, naming the folder `into` and the error, and its end
+    /// through `notice`, once each, since the next half minute's would
+    /// most likely say the same; a cause of a kind not yet said within the
+    /// spell is said once too, as a full disk turning read-only. A spell
+    /// starting within `QUIET_FOR` of the last end told is said only once
+    /// `QUIET_FOR` has passed since, with how long it has lasted and its
+    /// error then, so a flapping disk is said at most once in each
     /// `QUIET_FOR`, however short its spells, and a lasting one soon.
     pub(super) fn tried(
         &mut self,
@@ -100,25 +105,28 @@ impl Spell {
         match (error, self.since) {
             (Some(error), None) => {
                 self.since = Some(at);
-                self.cause = error.to_string();
                 self.said = self
                     .told
                     .is_none_or(|told| at.saturating_duration_since(told) >= QUIET_FOR);
                 if self.said {
-                    say(&unwritten(&self.cause, into, Duration::ZERO));
+                    self.causes.push(error.kind());
+                    say(&unwritten(&error.to_string(), into, Duration::ZERO));
                 }
             }
-            (Some(_), Some(since)) => {
+            (Some(error), Some(since)) => {
                 let quiet = self
                     .told
                     .is_some_and(|told| at.saturating_duration_since(told) < QUIET_FOR);
+                let lasted = at.saturating_duration_since(since);
                 if !self.said && !quiet {
                     self.said = true;
-                    say(&unwritten(
-                        &self.cause,
-                        into,
-                        at.saturating_duration_since(since),
-                    ));
+                    self.causes.push(error.kind());
+                    say(&unwritten(&error.to_string(), into, lasted));
+                } else if self.said && !self.causes.contains(&error.kind()) && !self.gave_up(at) {
+                    // Not on the last try, which promises no more tries:
+                    // health ends on it, naming this cause (`given_up`).
+                    self.causes.push(error.kind());
+                    say(&unwritten(&format!("now {error}"), into, lasted));
                 }
             }
             (None, Some(since)) => {
@@ -131,9 +139,9 @@ impl Spell {
                     self.told = Some(at);
                 }
                 self.since = None;
-                self.cause.clear();
                 self.latest.clear();
                 self.said = false;
+                self.causes.clear();
             }
             (None, None) => {}
         }
@@ -141,18 +149,23 @@ impl Spell {
 }
 
 /// What health says of a day it can't write into `into` for `cause`, its
-/// writes having failed for `lasted`, if said late, with the time left.
+/// writes having failed for `lasted`, if said late, with the time left,
+/// which in a spell's last minute is less than a minute.
 fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
     let already = if lasted.is_zero() {
         String::new()
     } else {
         format!(" having tried for {},", lasting(lasted))
     };
+    let left = match GIVES_UP.saturating_sub(lasted).as_secs() / 60 {
+        0 => "less than a minute".to_owned(),
+        1 => "up to a minute".to_owned(),
+        minutes => format!("up to {minutes} minutes"),
+    };
     format!(
         "health: can't write the day into {}: {cause},{already} so it keeps the day and tries \
-         again every half minute for up to {} minutes",
-        into.display(),
-        GIVES_UP.saturating_sub(lasted).as_secs() / 60
+         again every half minute for {left}",
+        into.display()
     )
 }
 
