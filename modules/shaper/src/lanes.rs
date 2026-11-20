@@ -811,6 +811,23 @@ mod tests {
     }
 
     #[test]
+    fn a_second_the_line_read_nothing_forgets_what_joel_held() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), Agents::default());
+        lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
+        let gone = Seen {
+            rate: 0.0,
+            ..seen((4_000.0, 0.0), agents)
+        };
+        lanes.split(&gone, 1.0);
+        let after = lanes.split(&seen((0.0, 0.0), agents), 1.0).joel;
+        assert!(
+            near(after, need(0.0)),
+            "a line gone for a second still held {after} of Joel's lane"
+        );
+    }
+
+    #[test]
     fn a_lane_joel_left_doesn_t_squeeze_the_one_he_moved_to() {
         let mut lanes = Lanes::default();
         let agents = (waiting(32), Agents::default());
