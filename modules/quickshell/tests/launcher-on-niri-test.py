@@ -584,6 +584,8 @@ def searched_mid_laying(shell: Shell, drawn: str, whole_least: int) -> None:
     # whether the run's rest was still being laid as the search was first shown: the search
     # lays it as it's typed, so it's done by then, and a part a turn after the frame would
     # still be laying it, some 46 turns for Emoji's, which then finds the name without it.
+    # Its reports are read from the mark before the name went in, since wtype has typed it
+    # all by the time it returns, and a wait marked then would miss the first.
     typed: list[object] = []
     laying: list[bool] = []
 
@@ -596,7 +598,7 @@ def searched_mid_laying(shell: Shell, drawn: str, whole_least: int) -> None:
         typed.append(search["found"])
         return True
 
-    shell.launcher_until(whole_name_typed)
+    shell.reported("showing ", lambda said: whole_name_typed(json.loads(said)), going_in)
     assert laying[0] is False, f"/{name} typed mid-laying left the run's rest to be laid"
     assert typed[0] is not None, f"/{name} typed mid-laying found nothing before Return"
     laid_going_in(shell, going_in, "Emoji")
