@@ -1,6 +1,38 @@
 {
   "domain": "node",
   "kinds": {
+    "builder": [
+      {
+        "key": "builder:heron",
+        "name": "heron",
+        "state": "answering",
+        "systems": ["x86_64-linux"],
+        "jobs": 4,
+        "lines": ["standing"],
+        "lent": false,
+        "said": null
+      },
+      {
+        "key": "builder:tern",
+        "name": "tern",
+        "state": "running",
+        "systems": ["x86_64-linux", "aarch64-linux"],
+        "jobs": 16,
+        "lines": ["standing", "lent"],
+        "lent": true,
+        "said": "passing"
+      },
+      {
+        "key": "builder:gull",
+        "name": "gull",
+        "state": "unknown",
+        "systems": ["aarch64-linux"],
+        "jobs": 2,
+        "lines": ["standing"],
+        "lent": false,
+        "said": "it is reached through another, which isn't dialled"
+      }
+    ],
     "machine": [
       {
         "key": "machine:kestrel",

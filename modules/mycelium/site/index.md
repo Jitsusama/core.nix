@@ -12,6 +12,13 @@ Nothing on it acts on the network.
   hairline box, its cords leaving the box's edge, with how busy it is
   under it; the box is dashed while the machine is off. A dashed link
   joins machines on the same network.
+- **The builders stand under the machines.** Each builder this machine
+  sends Nix builds to is its name in a box with rounded corners, with
+  how it stands, whether it is lent and how many builds it takes at
+  once under it; the box is dashed while it takes no builds. No cord
+  runs to one, since nothing runs on it but builds. They show and hide
+  with the machines (`m`), and a builder's drawer says how it stands,
+  why, and what it builds for.
 - **Three kinds of line, each with its own look.** What hangs from what
   is solid and neutral: cords and hyphae. What is shared is a run of
   dots in the colour of what is shared. Talk is the one solid colour,

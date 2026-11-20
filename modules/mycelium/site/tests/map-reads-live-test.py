@@ -476,6 +476,62 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
+# The builders node.json's machine sends its builds to, by name as the map
+# draws them under the map, and the one of them that takes none.
+BUILDERS = ("b:gull", "b:heron", "b:tern")
+IDLE_BUILDER = "gull"
+IDLE_SAYS = "Nobody has heard how it stands: it is reached through another, which isn't dialled."
+# Each mark among the machines, by its key, with its class and its box's corners.
+MARKS_DRAWN = """[...document.querySelectorAll('.labels .t-mark')].map((g) => [
+  g.dataset.mark, g.getAttribute('class'), getComputedStyle(g.querySelector('.t-box')).rx])"""
+# Where each builder's mark stands against the view and against the
+# lowest of everything else drawn: the machines' marks and the networks.
+FOOT_SEEN = """(() => {
+  const view = document.querySelector('#map-view').getBoundingClientRect();
+  const box = (el) => el.getBoundingClientRect();
+  const lowest = Math.max(
+    ...[...document.querySelectorAll('.labels .t-mark:not(.t-builder)')].map((g) => box(g).bottom),
+    ...[...document.querySelectorAll('#world g.hub')].map((g) => box(g).bottom));
+  return [...document.querySelectorAll('.labels .t-builder')].map((g) => [
+    g.dataset.mark, box(g).top >= lowest, box(g).top >= view.top && box(g).bottom <= view.bottom]);
+})()"""
+
+
+def test_the_builders_stand_under_the_machines_in_a_shape_of_their_own(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    builders = page.locator(".labels .t-builder")
+    expect(builders, "builders were drawn with the machines hidden").to_have_count(0)
+    page.locator("#map-view").focus()
+    page.keyboard.press("m")
+    expect(builders, "m didn't draw the builders").to_have_count(len(BUILDERS))
+    marks = page.evaluate(MARKS_DRAWN)
+    keys = [key for key, _, _ in marks]
+    assert keys[-len(BUILDERS) :] == list(BUILDERS), f"builders not after the machines: {keys}"
+    # Under everything the ring draws, and still in view with the whole map.
+    page.keyboard.press("0")
+    settled(page, "the whole map never stood still")
+    for key, under, seen in page.evaluate(FOOT_SEEN):
+        assert under, f"{key} stood among the machines or the networks"
+        assert seen, f"{key} fell out of the whole map's view"
+    for key, look, corner in marks:
+        if key in BUILDERS:
+            assert corner == "7px", f"{key} isn't a box with rounded corners: {corner}"
+            idle = key == f"b:{IDLE_BUILDER}"
+            assert ("off" in look.split()) == idle, f"{key} drawn {look}, idle {idle}"
+        else:
+            assert corner != "7px", f"the machine {key} took a builder's corners"
+    page.evaluate(f"location.hash = '#builder={IDLE_BUILDER}'")
+    expect(page.locator("#panel-title"), "#builder= didn't open its drawer").to_have_text(
+        IDLE_BUILDER
+    )
+    expect(
+        page.locator("#panel-body [data-builder-says]"), "the drawer misread the builder"
+    ).to_have_text(IDLE_SAYS)
+
+
 def test_the_keys_dialog_and_find_answer_their_keys(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     title, find_line = page.locator("#panel-title"), page.locator("#find-line")
