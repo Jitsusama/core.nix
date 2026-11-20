@@ -1077,6 +1077,13 @@ QtObject {
             Search.found("x", "\u0130x"), [[1, 2]]);
         holds("and two places never share one such letter",
             Search.found("\u0307xi", "\u0130x\u0130x\u0130"), [[0, 3]]);
+        holds("nor does one dropped for sharing hide one after it",
+            Search.found("\u0307i\u0307i", "\u0130\u0130\u0130\u0130\u0130\u0130"),
+            [[0, 3], [3, 6]]);
+        // A letter of two units, as an emoji is, is found whole, even by
+        // half of it, after a joiner as before one.
+        holds("half a letter of two units after a joiner finds it whole",
+            Search.found("\ude00", "a-\u2060\ud83d\ude00"), [[3, 5]]);
         // A pattern of what's passed over alone is nothing to find, and
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
@@ -2022,6 +2029,26 @@ QtObject {
             Page.runReach({ line: 10, top: 601 }, 40, edge), "more");
         holds("and one clear of it lays nothing",
             Page.runReach({ line: 34, top: 600 }, 40, edge), "");
+        // What go() does with it: G lands on the laid end each time, so
+        // once a part hasn't cleared it the rest is laid whole, read once;
+        // a page move that needs a second part lays only that.
+        holds("a move needing more lays a part first",
+            Page.runStep("more", { parts: 0, quiet: false, onEnd: true }), "part");
+        holds("and one on the laid end again after it lays the rest whole",
+            Page.runStep("more", { parts: 1, quiet: false, onEnd: true }), "whole");
+        holds("but one short of that end lays another part",
+            Page.runStep("more", { parts: 1, quiet: false, onEnd: false }), "part");
+        holds("parts laid quietly are shown before any more is laid",
+            Page.runStep("more", { parts: 0, quiet: true, onEnd: true }), "show");
+        holds("a move past the laid end lays the rest whole at once",
+            Page.runStep("whole", { parts: 0, quiet: true, onEnd: false }), "whole");
+        holds("and one clear of it stops",
+            Page.runStep("", { parts: 2, quiet: false, onEnd: false }), "");
+        // The parts read before the going-in frame keep their pieces, moved
+        // by what moved above them, rather than read every line again.
+        holds("a part's pieces move right and down by what moved above them",
+            Page.shifted([{ line: 3, x: 1, top: 10, base: 18, height: 9 }], 2, 5),
+            [{ line: 3, x: 3, top: 15, base: 23, height: 9 }]);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",

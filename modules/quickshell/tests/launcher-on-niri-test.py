@@ -580,17 +580,24 @@ def searched_mid_laying(shell: Shell, drawn: str, whole_least: int) -> None:
     shell.launcher_until(lambda shown: not shown["drawer"]["keys"])
     going_in = shell.mark()
     shell.as_account(f"wtype -M ctrl -k w -m ctrl -k l {shlex.quote('/' + name)}")
-    # The first the launcher shows of the whole name typed, which has its count already.
+    # The first the launcher shows of the whole name typed, which has its count already, and
+    # whether the run's rest was still being laid as the search was first shown: the search
+    # lays it as it's typed, so it's done by then, and a part a turn after the frame would
+    # still be laying it, some 46 turns for Emoji's, which then finds the name without it.
     typed: list[object] = []
+    laying: list[bool] = []
 
     def whole_name_typed(shown: Json) -> bool:
         search = shown["drawer"]["search"]
+        if search["typing"] and not laying:
+            laying.append(shown["drawer"]["laying"])
         if search["typing"] != name:
             return False
         typed.append(search["found"])
         return True
 
     shell.launcher_until(whole_name_typed)
+    assert laying[0] is False, f"/{name} typed mid-laying left the run's rest to be laid"
     assert typed[0] is not None, f"/{name} typed mid-laying found nothing before Return"
     laid_going_in(shell, going_in, "Emoji")
     shell.as_account("wtype -k Return")

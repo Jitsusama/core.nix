@@ -20,6 +20,11 @@ const unbroken = /\u00a0/g;
 // and a zero-width space may stand where a line breaks: neither is typed,
 // so they're passed over, or /t-shirt would be found nowhere.
 const unseen = /[\u2060\u200b]/;
+const unseenAll = /[\u2060\u200b]/g;
+const joiner = 0x2060;
+const zeroWidth = 0x200b;
+const highFirst = 0xd800;
+const highLast = 0xdbff;
 
 // A text as it's searched: what's passed over taken out, in lower case
 // unless `byCase`, with where each of its letters starts and ends in the
@@ -30,12 +35,45 @@ const unseen = /[\u2060\u200b]/;
 // searched as they are, with nothing to map, since a search reads every
 // line of a drawer on each key typed.
 function seen(text, byCase) {
+    const lowered = byCase ? text : text.toLowerCase();
+    if (lowered.length !== text.length) {
+        return seenByLetter(text, byCase);
+    }
     if (!unseen.test(text)) {
-        const lowered = byCase ? text : text.toLowerCase();
-        if (lowered.length === text.length) {
-            return { letters: lowered, starts: null, ends: null };
+        return { letters: lowered, starts: null, ends: null };
+    }
+    return Object.assign({ letters: lowered.replace(unseenAll, "") }, keptUnits(text));
+}
+
+// Where each unit of a text that lowers unit for unit stands, but for
+// what's passed over, read by its code: an Emoji drawer's every part
+// holds a hyphenated name, and making, testing and lowering each letter of
+// it alone took a median 56 ms a key over its parts, in Qt's engine, where
+// read by code they take 10 (2026-11-20). A pair of units is one letter, so
+// each of the two stands where the pair does.
+function keptUnits(text) {
+    const starts = [];
+    const ends = [];
+    for (let unit = 0; unit < text.length; unit++) {
+        const code = text.charCodeAt(unit);
+        if (code !== joiner && code !== zeroWidth) {
+            const paired = code >= highFirst && code <= highLast && unit + 1 < text.length;
+            const end = paired ? unit + 2 : unit + 1;
+            starts.push(unit);
+            ends.push(end);
+            if (paired) {
+                starts.push(unit);
+                ends.push(end);
+                unit += 1;
+            }
         }
     }
+    return { starts, ends };
+}
+
+// A text as it's searched, a letter at a time, for one that lowers longer
+// than it stands.
+function seenByLetter(text, byCase) {
     let letters = "";
     const starts = [];
     const ends = [];
@@ -84,10 +122,14 @@ function found(pattern, text) {
         const last = from + sought.length - 1;
         const span = plain.starts === null ? [from, last + 1]
             : [plain.starts[from], plain.ends[last]];
-        if (spans.length === 0 || span[0] >= spans[spans.length - 1][1]) {
+        // The next is looked for past a place kept, but just past one
+        // dropped, as one that begins inside it can begin in a letter of
+        // its own (\u0307i\u0307i in six İ).
+        const kept = spans.length === 0 || span[0] >= spans[spans.length - 1][1];
+        if (kept) {
             spans.push(span);
         }
-        from = looked.indexOf(sought, from + sought.length);
+        from = looked.indexOf(sought, from + (kept ? sought.length : 1));
     }
     return spans;
 }

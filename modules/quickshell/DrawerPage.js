@@ -134,6 +134,36 @@ function runReach(landed, last, edge) {
     return "";
 }
 
+// What a move does next while its run's rest is still to come, from what
+// runReach says it needs: "whole" lays the rest at once, read once; "show"
+// shows the parts laid quietly; "part" lays one part more, each read as
+// it's laid; "" stops. `so` says how many parts it has laid already
+// (`parts`), whether the parts laid are still unshown (`quiet`), and
+// whether it landed on the line the laid run ends on (`onEnd`). One that
+// lands there again after a part, as G does each time, lays the rest
+// whole, read once rather than some 45 times on Emoji's; a page move that
+// needs a second part lays only that, since the rest laid whole in its
+// key's turn would cost some 850 ms there.
+function runStep(reach, so) {
+    if (reach === "whole") {
+        return "whole";
+    }
+    if (reach !== "more") {
+        return "";
+    }
+    if (so.quiet) {
+        return "show";
+    }
+    return so.parts > 0 && so.onEnd ? "whole" : "part";
+}
+
+// A part's pieces as last read, moved by what moved above the part since:
+// each one's left, top and baseline, so its lines, wash and view follow it.
+function shifted(pieces, dx, dy) {
+    return pieces.map(piece => Object.assign({}, piece,
+        { x: piece.x + dx, top: piece.top + dy, base: piece.base + dy }));
+}
+
 // Whether a view's top cuts a line partway, which Vim's never does, its
 // topline always a whole line. An eyebrow or a title isn't a pitch tall,
 // so a pitch can fall inside one (VKCF3Z, 2026-11-05: "Deploy log" as
