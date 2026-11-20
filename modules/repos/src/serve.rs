@@ -15,6 +15,13 @@
 //! watched: a checkout cloned under a root, and when a tree was last
 //! written, which moves with its index.
 //!
+//! Each pace reads what works in each checkout and tree too (using.rs),
+//! from `/proc`, and says it as each repository's `using:` record, so the
+//! Code page shows the processor and memory beside the space. It's read
+//! only at the pace, as a share of time wants two readings a while apart,
+//! and a reading of every process at each commit would cost the disk's
+//! busiest minutes most.
+//!
 //! Each reading writes Code's homes too, where `REPOS_HOMES` names a file
 //! for them, whenever they changed (homes.rs): so they move with the disk,
 //! and nothing reads every repository again to write them.
@@ -29,6 +36,7 @@ use std::time::{Duration, Instant};
 use daemon_serve::serve::{self, Shared};
 use repos::model::Record;
 use repos::read::{self, Found, Reading};
+use repos::using::{self, Sample, Use};
 use repos::{github, upstreams};
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure};
@@ -108,7 +116,9 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut homes = homes_named();
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-    shared.change(feed::records(&record), feed::sources(&record));
+    let mut working = Working::default();
+    working.read(&record);
+    shared.change(working.said(&record), feed::sources(&record));
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
         Failure::new(Exit::Failed, format!("it couldn't listen on {socket}"))
@@ -141,12 +151,51 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             Ok(_) | Err(RecvTimeoutError::Timeout) => {
                 began = Instant::now();
                 whole = began;
-                timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept))
+                let record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
+                working.read(&record);
+                record
             }
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
         };
-        shared.change(feed::records(&record), feed::sources(&record));
+        shared.change(working.said(&record), feed::sources(&record));
         keep(homes.as_mut(), &record);
+    }
+}
+
+/// What worked in each checkout and tree at the last pace, and the
+/// reading it was measured from.
+#[derive(Default)]
+struct Working {
+    last: Option<Sample>,
+    used: BTreeMap<PathBuf, Use>,
+    measured: bool,
+}
+
+impl Working {
+    /// Reads what works in each checkout and tree `record` holds, its
+    /// processor time measured only once time has passed since the last.
+    fn read(&mut self, record: &Record) {
+        let folders: Vec<PathBuf> = record
+            .repositories
+            .iter()
+            .flat_map(|repository| &repository.checkouts)
+            .flat_map(|checkout| {
+                std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
+            })
+            .map(PathBuf::from)
+            .collect();
+        let now = using::sample(Path::new("/proc"), &folders);
+        self.measured = self.last.as_ref().is_some_and(|last| now.at > last.at);
+        self.used = using::using(self.last.as_ref(), &now);
+        self.last = Some(now);
+    }
+
+    /// Every record the feed says: the disk's, and what works in each
+    /// repository as last read.
+    fn said(&self, record: &Record) -> Vec<Value> {
+        let mut said = feed::records(record);
+        said.extend(feed::using(record, &self.used, self.measured));
+        said
     }
 }
 
