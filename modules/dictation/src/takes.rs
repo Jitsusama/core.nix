@@ -48,6 +48,10 @@ const FLOOR_FRAMES: usize = 10 * 50;
 const ABOVE_FLOOR_DB: f32 = 12.0;
 /// Quieter than this is never speech, however quiet the floor.
 const QUIETEST_SPEECH_DB: f32 = -55.0;
+/// Quieter than this is a line sending nothing, as a call does while
+/// its far end is muted, so it doesn't set the floor: the line's hiss,
+/// back with the next word, isn't read as loud.
+const NOTHING_DB: f32 = -90.0;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
 /// lone "Yeah." holds several times as much. Five left out 13 of the
@@ -144,9 +148,11 @@ impl Cutter {
     fn frame(&mut self, frame: Vec<f32>) -> Option<Take> {
         let level = loudness(&frame);
         let speech = level > self.threshold();
-        self.recent.push_back(level);
-        if self.recent.len() > FLOOR_FRAMES {
-            self.recent.pop_front();
+        if level > NOTHING_DB {
+            self.recent.push_back(level);
+            if self.recent.len() > FLOOR_FRAMES {
+                self.recent.pop_front();
+            }
         }
         let index = self.frames;
         self.frames += 1;
