@@ -1030,7 +1030,10 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
             " echo $i > ~/typing-count.new; mv ~/typing-count.new ~/typing-count; done;"
             " wtype -k Return"
         )
-        desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
+        desktop.as_account(
+            "rm -f ~/typing-done ~/typing-count ~/typing-count.new;"
+            f" setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &"
+        )
         # Typing has begun before the session is handed over, so the count is
         # there to read: a loaded builder's first ten words can take longer
         # than the session takes to show, and the count was read before it was
@@ -1064,8 +1067,11 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
             desktop.in_session("pgrep -f 'typing-don[e]'"), timeout=dt.timedelta(seconds=60)
         )
         changed = frames_changed(desktop, box)
+        # Its last word is kept before what was typed is read, since a word
+        # typed is kept a moment after its wtype ends.
+        last = int(desktop.as_account("cat ~/typing-count").strip())
         machine.wait_until_succeeds(
-            desktop.in_session("[ -s ~/typed ]"), timeout=dt.timedelta(seconds=60)
+            desktop.in_session(f"grep -q 'w{last}' ~/typed"), timeout=dt.timedelta(seconds=60)
         )
         typed = desktop.as_account("cat ~/typed").split()
         assert typed == [f"w{n}" for n in range(1, len(typed) + 1)], typed
@@ -1079,10 +1085,11 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         # ended only if it outstays a minute. The wait is a call of its own,
         # naming the typer only by pattern: a command line holding the file's
         # whole name would match it, and end itself.
-        desktop.as_account("touch ~/typing-done")
+        # The load goes first, so the typer's last words aren't waited out under it.
+        desktop.as_account("touch ~/typing-done; pkill -x stress-ng; true")
         desktop.as_account(
             "for _ in $(seq 60); do pgrep -f 'typing-don[e]' > /dev/null || break; sleep 1;"
-            " done; pkill -f 'typing-don[e]'; true"
+            " done; pkill -f 'typing-don[e]'; pkill -x wtype; true"
         )
         desktop.as_account(
             "pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
