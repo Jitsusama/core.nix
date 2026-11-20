@@ -120,9 +120,10 @@ pub fn unrun(
             |sha| changed(&path, sha),
             |sha, reaches| {
                 let read = hosts.get_or_insert_with(|| read_hosts(pin, repos));
-                let switched_at = reaches.unit.then(|| {
-                    first_switched(switches, |rev| carries(&path, sha, rev) == Some(true))
-                });
+                let switched_at = reaches
+                    .unit
+                    .then(|| first_switched(switches, |rev| carries(&path, sha, rev) == Some(true)))
+                    .flatten();
                 hosts_lack(read.as_deref(), pin, reaches, switched_at, |rev| {
                     carries(&path, sha, rev) == Some(true)
                 })
@@ -191,9 +192,8 @@ fn judge(
     if repo != "core" {
         return None;
     }
-    let files = match changed(sha) {
-        None => return Some("cadence can't read what it changed"),
-        Some(files) => files,
+    let Some(files) = changed(sha) else {
+        return Some("cadence can't read what it changed");
     };
     let reaches = Reaches {
         runtime: files
@@ -209,13 +209,14 @@ fn judge(
 /// Why the pi hosts lack a change that `reaches` them, if they do: each
 /// host's runtime must be pinned with a core that `carries` it, and each
 /// must have started after `switched_at`, when a switch first carried a
-/// change to their unit. `hosts` is `None` when they couldn't be listed.
+/// change to their unit, `None` when no switch read did. `hosts` is `None`
+/// when they couldn't be listed.
 /// Something lacking outranks what can't be read, so the owner is asked.
 fn hosts_lack(
     hosts: Option<&[Host]>,
     pin: Option<Pin<'_>>,
     reaches: Reaches,
-    switched_at: Option<Option<i64>>,
+    switched_at: Option<i64>,
     carries: impl Fn(&str) -> bool,
 ) -> Option<&'static str> {
     if reaches.runtime && pin.is_none() {
@@ -232,7 +233,8 @@ fn hosts_lack(
     {
         return Some("the pi hosts don't load it yet");
     }
-    if let Some(Some(at)) = switched_at
+    if reaches.unit
+        && let Some(at) = switched_at
         && hosts
             .iter()
             .any(|host| host.started.is_some_and(|started| started < at))
@@ -242,9 +244,7 @@ fn hosts_lack(
     if reaches.runtime && hosts.iter().any(|host| host.core.is_none()) {
         return Some("cadence can't tell what a pi host loads");
     }
-    if reaches.unit
-        && (switched_at.flatten().is_none() || hosts.iter().any(|host| host.started.is_none()))
-    {
+    if reaches.unit && (switched_at.is_none() || hosts.iter().any(|host| host.started.is_none())) {
         return Some("cadence can't tell when a pi host started");
     }
     None

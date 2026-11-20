@@ -272,7 +272,7 @@ fn every_host_must_have_started_since_its_unit_switched_in() {
         runtime: false,
         unit: true,
     };
-    let lack = |hosts: &[Host], at| hosts_lack(Some(hosts), None, unit, Some(at), |_| true);
+    let lack = |hosts: &[Host], at| hosts_lack(Some(hosts), None, unit, at, |_| true);
     assert_eq!(lack(&[host(None, Some(200))], Some(100)), None);
     assert_eq!(
         lack(&[host(None, Some(200)), host(None, Some(50))], Some(100)),
