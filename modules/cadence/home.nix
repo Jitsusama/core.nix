@@ -445,12 +445,17 @@ in
         ];
         Slice = "background.slice";
         # The hour's ten days of journals and World's history pass through
-        # this unit as file pages: at 23:10 on 19 November they charged
-        # 7.1 GiB in seven seconds, against 284 MiB of its own memory with
-        # the map check's headless browser at its height. Past this mark the
-        # kernel takes those pages back from the hour rather than from what
-        # Joel is using. No hard limit: a kill would lose the hour's card.
+        # this unit as file pages: at 23:10 on 19 November it peaked at
+        # 7.6 GiB, 7.1 GiB of it file pages charged in seven seconds,
+        # against 284 MiB of its own memory with the map check's headless
+        # browser at its height. Past this mark the kernel takes those pages
+        # back from the hour rather than from what Joel is using: under it,
+        # an hour on 19 November peaked at 513 MiB and took 8.9 s, against
+        # 8 to 14 s without. No hard limit: a kill would lose the card.
         MemoryHigh = "512M";
+        # The hour takes seconds; one throttled past half an hour is ended,
+        # so the next hour's run starts rather than being skipped behind it.
+        TimeoutStartSec = "30min";
       };
     };
     systemd.user.timers.cadence-hour = {
