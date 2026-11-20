@@ -151,6 +151,9 @@ class Rig:
         While `shaped`, the share is read once the shaper gives Joel's lane, which the upload
         rides, more than SHAPED_SHARE of its rate: on 19 November one read soon after the
         upload began gave 0.47, where reads once the lane had grown gave 0.71 and over.
+        The lane outlasts the upload before, so the upload starts only once it has fallen back
+        under SHAPED_SHARE: a put-first read begun 0.3 s after another's stop passed the wait
+        on that one's lane, and read 0.39 as the lane fell back to what it carried.
         The upload is stopped however this ends, so a failure leaves the next test the line,
         and a stop that fails after a good read fails here rather than in the next test.
         """
@@ -165,6 +168,18 @@ class Rig:
                 )
             return share > SHAPED_SHARE
 
+        def fallen(last_try: bool) -> bool:
+            link = self.link()
+            share = self.joel_share(link)
+            if last_try and share > SHAPED_SHARE:
+                print(
+                    f"Joel's lane never fell back under {SHAPED_SHARE} of the rate, at {share:.2f}"
+                    f" with the lanes {link.get('lanes')}:\n{self.trace()}"
+                )
+            return share <= SHAPED_SHARE
+
+        if shaped:
+            retry(fallen, timeout=SENDING)
         stop = "systemctl -M alice@ --user stop app-upload.service"
         self.uploads("app-upload", slice_name, 1, APP_PORT)
         try:
@@ -225,27 +240,31 @@ def loaded(rig: Rig) -> Rig:
     8099 kbit/s, with the queue its own, failed that bar.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
-    # Since when the router has shed nothing more while the shaper held the queue, and what
-    # it had shed by then.
-    since, shed_then = time.monotonic(), -1
+    # Since when the router has shed nothing more while the shaper held the queue, what it
+    # had shed by then, and why the count last started over.
+    since, shed_then, why = time.monotonic(), -1, ""
 
     def taken_back(last_try: bool) -> bool:
-        nonlocal since, shed_then
+        nonlocal since, shed_then, why
         shed = rig.router_shed()
         link = rig.link()
         up = int(link.get("up") or 0)
-        ours = bool(((link.get("heard") or {}).get("ours") or {}).get("queued"))
-        if shed != shed_then or not ours:
+        heard = link.get("heard")
+        ours = bool(((heard or {}).get("ours") or {}).get("queued"))
+        shed_more = shed != shed_then
+        if shed_more or not ours:
             since, shed_then = time.monotonic(), shed
-        held = shed > 0 and time.monotonic() - since >= HELD.total_seconds()
-        if last_try and not held:
             if shed == 0:
                 why = "the router shed nothing, so the jobs never filled it"
-            elif not ours:
-                why = f"the shaper held no queue of its own, at {up} kbit/s, the router at {shed}"
-            else:
+            elif shed_more:
                 why = f"the router kept shedding, at {shed}, with the shaper at {up} kbit/s"
-            print(f"{why}:\n{rig.trace()}")
+            elif heard is None:
+                why = f"the shaper said nothing of what it heard, at {up} kbit/s"
+            else:
+                why = f"the shaper held no queue of its own, at {up} kbit/s"
+        held = shed > 0 and time.monotonic() - since >= HELD.total_seconds()
+        if last_try and not held:
+            print(f"{why}, the last time the count started over:\n{rig.trace()}")
         if held:
             print(f"the router let its queue go, at {shed} shed, with the shaper at {up} kbit/s")
         return held
