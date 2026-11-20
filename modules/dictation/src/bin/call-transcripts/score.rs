@@ -35,7 +35,10 @@ const LONGEST: f64 = 14.0;
     clippy::cast_precision_loss,
     reason = "the window is a few hundred thousand samples"
 )]
-const _: () = assert!(LONGEST + 2.0 * AROUND < WINDOW as f64 / RATE as f64);
+const _: () = assert!(
+    LONGEST + 2.0 * AROUND < WINDOW as f64 / RATE as f64,
+    "a reference line heard alone overruns Parakeet's window"
+);
 
 /// One line of a reference: when it was said, by whom, and its words.
 struct Said {
