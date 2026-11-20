@@ -299,8 +299,9 @@ fn start(
     record.ended = None;
     record.transcribing = true;
     // A summary of the call's first legs would read as the whole of it,
-    // so a rejoined call says its summary is to come until it ends.
-    record.summary = None;
+    // so a rejoined call says its summary is to come until it ends. One
+    // that can't be heard keeps it, as its file still does.
+    let summed = record.summary.take();
     let since = usize::try_from((at - record.started) / 1000).unwrap_or(0) * RATE;
     book.lock().put(record.clone());
     let recorders = Recorder::start(
@@ -331,6 +332,7 @@ fn start(
         Err(why) => {
             book.lock().put(Record {
                 transcribing: false,
+                summary: summed,
                 ..record
             });
             return Err(why);

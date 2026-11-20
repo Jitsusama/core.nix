@@ -84,7 +84,10 @@ fn a_calls_summary_is_read_from_its_one_file_or_from_the_summary_md_it_had_befor
     for record in [&one, &before, &pending, &rejoined] {
         book.put(record.clone());
     }
-    let file = filed::whole("Planning", Some("# Planning\n\n- Joel: \"move it\""), said);
+    // A summary paragraph led as a line said is, so only the Transcript
+    // section gives the opening.
+    let summed = "# Planning\n\n**Ada**, 0:09: picked\n\n- Joel: \"move it\"";
+    let file = filed::whole("Planning", Some(summed), said);
     std::fs::write(one.folder.join(TRANSCRIPT), file).unwrap();
     std::fs::write(before.folder.join(TRANSCRIPT), said).unwrap();
     std::fs::write(before.folder.join(SUMMARY), "# Planning\n\n- kept\n").unwrap();
@@ -97,7 +100,7 @@ fn a_calls_summary_is_read_from_its_one_file_or_from_the_summary_md_it_had_befor
     let opening = |key| read.record(key).unwrap().opening.clone();
     assert_eq!(
         summary("call:e1").as_deref(),
-        Some("- Joel: \"move it\""),
+        Some("**Ada**, 0:09: picked\n\n- Joel: \"move it\""),
         "one file"
     );
     assert_eq!(

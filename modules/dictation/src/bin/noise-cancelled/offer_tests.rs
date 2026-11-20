@@ -12,11 +12,13 @@ use crate::denoise::Cleaner;
 const MV7: &str = "alsa_input.usb-Shure_Inc_Shure_MV7-00.analog-mono";
 const SHURE: &str = "Shure MV7";
 
-/// A folder of picks of its own, emptied. Each test names its own, since
-/// tests run at once in one process, and two sharing one empty and write
-/// each other's.
+/// A folder of picks of its own, emptied, numbered apart from every other
+/// whatever it's named, since tests run at once in one process, and two
+/// sharing one empty and write each other's.
 fn picks(name: &str) -> Chosen {
-    let folder = std::env::temp_dir().join(format!("offer-{name}-{}", std::process::id()));
+    static MADE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let folder = std::env::temp_dir().join(format!("offer-{name}-{}-{made}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNet)
 }
