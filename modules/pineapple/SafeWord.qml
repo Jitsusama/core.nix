@@ -110,6 +110,48 @@ Provider {
         });
     }
 
+    // Pause All Agents, found by its name from the launcher's top as Reboot
+    // is (WCJQSG, 2026-11-19 [1c8863e1]: for Joel's demo): Joel's own stop on
+    // every agent, here and on each machine that stops with this one, asked
+    // of the daemon on this socket, which takes it only from this shell's
+    // own process (src/serve.rs's paused). Costly, it arms on its first
+    // Return, saying what a second does, as Reboot's does, and the : line
+    // and a terminal's `launcher do` ask once, as they ask Reboot. It stays while
+    // the daemon stops them, a few seconds, then says in the foot what
+    // stopped, or why nothing did, in the vocabulary's words for its code;
+    // the stop's own row in For You, with Resume, follows as any stop's.
+    readonly property var pauseAll: thing({
+        key: "agents:pause-all",
+        name: Words.name("agents:pause-all"),
+        verb: Words.verb("agents:pause-all"),
+        glyph: Words.glyph("agents:pause-all"),
+        hue: "action",
+        costly: true,
+        keywords: (Words.of("agents:pause-all").words ?? []).join(" "),
+        arms: Words.of("agents:pause-all").said?.arms ?? "",
+        confirm: true,
+        asked: () => Words.of("agents:pause-all").asked ?? "",
+        stays: true,
+        now: true,
+        run: () => daemon.ask({ ask: "pause", scope: "all" }, answer => provider.paused(answer))
+    })
+
+    things: [pauseAll]
+
+    // Says in the foot what the daemon answered Pause All Agents: what it
+    // stopped, in its own line, or why it stopped nothing, a daemon that
+    // isn't there to ask (null) among them.
+    function paused(answer) {
+        const said = typeof answer?.said === "string" ? answer.said : "";
+        if (answer?.error || said === "") {
+            provider.refused({ key: "agents:pause-all" },
+                answer?.error ?? { code: answer === null ? "unreached" : "failed" });
+            return;
+        }
+        provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
+            said, Theme.success]]);
+    }
+
     // What For You is given (ForYou.js's given): each row a thing to do now,
     // weighed by how long it has waited and, for a stop, by the sessions it
     // parked, which wait on Joel as a session's want does.

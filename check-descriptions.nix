@@ -2665,6 +2665,11 @@
     shell's own child with 1Password's manager through the system's op, with no unit and no
     socket, names no copier, stays off until agents are fenced, and knows 1Password's program
   '';
+  pause-all-agents-asks-once-on-a-second-return = ''
+    in a nested niri, Pause All Agents is found by typing, arms on a first Return asking nothing,
+    asks the safe word's daemon once on a second for a pause of every agent, and says in the foot
+    what stopped, or a refusal in the vocabulary's words rather than the daemon's
+  '';
   pause-for-calls-follows-the-calls = ''
     pause-for-calls pauses Spotify two seconds into a call, as calls counts one, and plays it five
     seconds after, a moment's recording pausing nothing and a reconnect keeping the call, and finds

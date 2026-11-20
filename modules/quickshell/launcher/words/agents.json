@@ -408,6 +408,19 @@
       }
     },
     {
+      "id": "agents:pause-all",
+      "in": "agents",
+      "name": "Pause All Agents",
+      "term": "Agents/pause all agents",
+      "verb": "pause",
+      "glyph": "pause",
+      "words": ["stop every agent", "freeze the agents"],
+      "asked": "Pause Every Agent",
+      "said": {
+        "arms": "pauses every agent"
+      }
+    },
+    {
       "id": "agents:starts-stopped",
       "in": "agents",
       "name": "Starts Stopped",

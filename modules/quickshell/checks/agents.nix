@@ -35,6 +35,21 @@
     ];
   };
 
+  # Pause All Agents, found by typing, arms on a first Return and asks the
+  # safe word's daemon once on a second, saying in the foot what stopped, or
+  # why nothing did, in the vocabulary's words (modules/quickshell/tests/
+  # pause-all-on-niri-test.py). A stand-in answers on the daemon's socket, as
+  # pineapple serve does; pineapple's own checks hold what serve stops.
+  pause-all-agents-asks-once-on-a-second-return = launcherOnNiri {
+    name = "pause-all-agents-asks-once-on-a-second-return";
+    tests = ../tests/pause-all-on-niri-test.py;
+    # As the account's shell holds it (../../pineapple/home.nix).
+    shell.launcher.providers.pineapple = {
+      order = 46;
+      source = ../../pineapple/SafeWord.qml;
+    };
+  };
+
   # pi, as an agent source, sorts the node's sessions into those running,
   # parked and closed this boot, and says each as the agent source
   # contract's record, leaving out what pi didn't say, as

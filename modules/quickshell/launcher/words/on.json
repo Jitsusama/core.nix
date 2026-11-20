@@ -653,6 +653,7 @@
         "refused:not-joel": "only your own launcher may act on a stop",
         "refused:no-peer": "it couldn't tell this was your launcher",
         "refused:failed": "its record couldn't be written",
+        "refused:unreached": "nothing answered on this machine",
         "you": "you",
         "someone": "someone",
         "stopped": "{who} stopped your agents on {reach}",

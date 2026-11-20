@@ -114,6 +114,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | talk line | one line at the top of the screen, on Super+S, to say something to the focused window's session, else The Void, without opening the launcher | | `agents:line`, TalkLine.qml |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
+| Pause All Agents | Joel's own stop on every agent, from the launcher, here and on each machine that stops with this one, until he resumes them from its row in For You | | `agents:pause-all`, `pineapple serve`'s `pause` |
 | park | a session ending itself while idle to give back its memory, until a message or a key wakes it in its window | | presence `parked`, park-workflow |
 | reopen | opening a closed session again where it left off, in its own window and folder | restore | `restore.json` |
 | Sessions to Reopen | the sessions the last boot's end took away or had parked, and those another machine carried here or pi's host gave back, each reopened only when Joel asks | Reopen Last Boot's Sessions | `toReopen` |
