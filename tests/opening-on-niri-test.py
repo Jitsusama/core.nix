@@ -115,10 +115,9 @@ FRESHENING = timedelta(seconds=75)
 # where this is read.
 FILLERS = frozenset({"frame", "presented", "unpresented", "key"})
 
-# How long a kept opening waits for niri to present it before filling in anyway (Launcher.qml's
-# fillUnpresented), and how many shares a case tries before a builder too busy to have the shell
-# hear each within it fails it: heard later, the opening rightly fills as the wait gives up.
-FILL_WAIT_MS = 500
+# How many shares a case tries before a builder too busy to have the shell hear each before its
+# opening's wait for niri gives up (Launcher.qml's fillUnpresented) fails it: heard later, the
+# opening rightly fills as the wait gives up.
 SHARES_TRIED = 3
 
 # How many windows a case opens, so Windows has rows whose keys are weighed as it opens.
@@ -1066,7 +1065,7 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
     is kept showing a copy, drawn as it opens; once the fill has run, and before niri has
     presented anything of it, the copy's row says it's hidden and its text is gone. The copy
     is forgotten after, so the cases after this one find the history as empty as before. A
-    share the shell hears no sooner than the half second is tried again, as it shows nothing.
+    share the shell may have heard only once the wait gave up shows nothing, so it's tried again.
     """
     copied = "a copy kept before the share"
     hidden = "Text, Hidden While You Share"
@@ -1083,26 +1082,32 @@ def shared_after_a_kept_copy(shell: Shell, copied: str, hidden: str) -> None:
     with casts_stood_in(shell, said=True) as stood:
         # Each place is opened and closed first, so it's kept whatever ran before this case.
         for place in ("on", "clipboard"):
-            shell.launcher_until(lambda shown: shown.get("kept"))
-            shell.as_account(shell.ipc("collection", place))
-            shell.launcher_ready()
-            if place == "clipboard":
-                drawn_until(shell, lambda texts: copied in texts, "drew the copy unshared")
-            shell.close_launcher()
+            kept_unshared(shell, place, copied)
         places = [(("toggle",), "home"), (("collection", "on"), "on")]
         for asked, name in [*places, (("collection", "clipboard"), "clipboard")]:
-            tried = 1
+            late: list[str] = []
             opening, said, drawn, heard = shared_as_kept(shell, stood, asked, copied)
-            while opening.get("filledBy") != "share" and heard >= FILL_WAIT_MS:
-                if tried == SHARES_TRIED:
+            while heard_too_late(opening, heard):
+                fill = opening["fillFrom"]
+                late.append(
+                    f"heard at most {heard} ms from the chord, filled {fill} ms from the ask"
+                )
+                print(f"{name}'s share was {late[-1]}, on try {len(late)} of {SHARES_TRIED}")
+                if len(late) == SHARES_TRIED:
                     break
                 unshared_and_closed(shell, stood)
-                tried += 1
+                # The fill that gave up kept the place as it stood, perhaps hidden, so it's kept
+                # again unshared.
+                if name != "home":
+                    kept_unshared(shell, name, copied)
                 opening, said, drawn, heard = shared_as_kept(shell, stood, asked, copied)
             # Asserted before it's put back, so a failure putting it back hides nothing.
+            assert len(late) < SHARES_TRIED, (
+                f"{name}'s share was heard after its fill gave up on every try, as a builder too "
+                f"busy for the case gives: {late}"
+            )
             assert opening.get("filledBy") == "share", (
-                f"{name} waited out the share, heard at most {heard} ms after the chord, "
-                f"on try {tried} of {SHARES_TRIED}: {opening}"
+                f"{name} waited out a share heard at most {heard} ms after the chord: {opening}"
             )
             filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
             assert filled in said, f"{name}'s fill wasn't said:\n{said}"
@@ -1134,8 +1139,8 @@ def shared_as_kept(
             assert copied in kept, f"the kept clipboard didn't draw the copy: {kept}"
         stood.say(said=False)
         read_shared(shell, shared=True)
-        # Timed to the shell reading it shared, everything that could fall past the wait, so a
-        # builder slow enough to lose that race is told apart from a fill that missed it.
+        # Timed to the shell reading it shared, so a builder slow enough to lose the race to the
+        # fill is told apart from a fill that missed a share heard in time.
         heard = round((time.monotonic() - chord) * 1000)
         shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
         # Read as the fill leaves it, before niri has presented anything of it.
@@ -1143,6 +1148,30 @@ def shared_as_kept(
     opening = filled_after(shell, timed)
     said = shell.log.read_bytes()[since:].decode(errors="replace")
     return opening, said, drawn, heard
+
+
+def heard_too_late(opening: Json, heard: int) -> bool:
+    """Whether an opening filled as its wait for niri gave up, perhaps before the share was heard.
+
+    Its fill is timed from the ask the shell heard, after the chord, so a share the shell read at
+    most `heard` ms after the chord came before the fill when that's the sooner; only otherwise
+    could the fill have rightly missed it. No other filler comes of a share heard late.
+    """
+    fill = opening.get("fillFrom", -1)
+    return opening.get("filledBy") == "unpresented" and 0 <= fill <= heard
+
+
+def kept_unshared(shell: Shell, place: str, copied: str) -> None:
+    """Open the collection `place` and close it unshared, so it's kept as it stands.
+
+    It waits for home to be kept first, and for a clipboard to draw the copy before it's closed.
+    """
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    shell.as_account(shell.ipc("collection", place))
+    shell.launcher_ready()
+    if place == "clipboard":
+        drawn_until(shell, lambda texts: copied in texts, "drew the copy unshared")
+    shell.close_launcher()
 
 
 def unshared_and_closed(shell: Shell, stood: CastsStandIn) -> None:
