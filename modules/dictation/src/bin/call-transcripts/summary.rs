@@ -129,6 +129,16 @@ pub fn lines(transcript: &str) -> Vec<Said> {
         .collect()
 }
 
+/// What a transcript says first of who the others were, as transcript.rs
+/// writes it: the paragraph after its heading, when it's no line said.
+fn note(transcript: &str) -> Option<&str> {
+    transcript
+        .split("\n\n")
+        .map(str::trim)
+        .find(|paragraph| !paragraph.is_empty() && !paragraph.starts_with('#'))
+        .filter(|paragraph| !paragraph.starts_with("**"))
+}
+
 /// The summary of the call `transcript` writes down, titled `title`,
 /// asking `ask` each question with the most tokens its answer may take.
 /// The others on it are called `them` where the call knows who they are,
@@ -196,6 +206,11 @@ pub fn summarize(
         let _ = write!(summary, "# {title}\n\n");
     }
     let _ = write!(summary, "{HOW_MADE}\n\n");
+    // Their name is only as sure as where it came from, so the summary
+    // says so as the transcript does.
+    if let Some(note) = note(transcript) {
+        let _ = write!(summary, "{note}\n\n");
+    }
     if kept.is_empty() {
         summary.push_str(NONE_KEPT);
     } else {

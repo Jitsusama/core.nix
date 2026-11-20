@@ -23,7 +23,7 @@ use std::time::UNIX_EPOCH;
 pub use dictation::daemon::now;
 use dictation::daemon::{self, Answers, VERSION, Watches, error};
 
-use crate::meeting::Known;
+use crate::meeting::{self, Known};
 use crate::private::make_folder;
 pub use crate::private::write_whole;
 use serde_json::{Value, json};
@@ -146,13 +146,13 @@ impl Record {
     /// people were falls back on a Tuple call with one person, titled by
     /// their name. With several, or none known, they're Others.
     pub fn them(&self, me: &str) -> Option<String> {
-        let one = match self.people.as_slice() {
-            [one] => Some(one.clone()),
-            [] => self
+        let one = match (self.people.as_slice(), self.known) {
+            ([one], Some(_)) => Some(one.clone()),
+            ([], None) => self
                 .person
                 .as_ref()
                 .filter(|_| !self.title.ends_with(" more"))
-                .map(|_| self.title.clone()),
+                .and_then(|_| meeting::speaker(&self.title)),
             _ => None,
         };
         one.filter(|name| !name.is_empty() && name != me)
@@ -569,6 +569,32 @@ mod tests {
         assert_eq!(namesake.note("Joel").as_deref(), Some("Invited: Joel."));
         let nobody = call(folder.path(), "call:e2", 20);
         assert_eq!((nobody.them("Joel"), nobody.note("Joel")), (None, None));
+    }
+
+    #[test]
+    fn a_tuple_call_kept_before_its_people_were_is_named_by_its_title_when_that_is_one() {
+        let folder = tempfile::tempdir().unwrap();
+        let before = Record {
+            title: "Ada *Love*\nlace".to_owned(),
+            person: Some("ada@example.com".to_owned()),
+            ..call(folder.path(), "call:person:ada@example.com:10", 10)
+        };
+        assert_eq!(
+            before.them("Joel").as_deref(),
+            Some("Ada Love lace"),
+            "named by its title, cleaned as a speaker"
+        );
+        assert_eq!(before.note("Joel"), None, "how they're known wasn't kept");
+        let several = Record {
+            title: "Ada and 1 more".to_owned(),
+            ..before.clone()
+        };
+        assert_eq!(several.them("Joel"), None, "several, so Others");
+        let known = Record {
+            known: Some(Known::Tuple),
+            ..before.clone()
+        };
+        assert_eq!(known.them("Joel"), None, "kept since, its people say who");
     }
 
     #[test]

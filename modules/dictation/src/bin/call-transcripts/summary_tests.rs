@@ -112,7 +112,15 @@ fn a_transcript_naming_them_is_summed_up_by_their_name_whoever_spoke_first() {
         summary.contains("- Ada, to Joel: \"we should move the review to Thursday\" [0:02]"),
         "{summary}"
     );
-    assert!(model.asked[0].contains("a call between Joel and Ada"));
+    assert!(
+        summary.contains("\n\nTheir side is Ada, the one other person invited.\n\n"),
+        "the summary says how Ada is known, as the transcript does: {summary}"
+    );
+    assert!(
+        model.asked[0].contains("a call between Joel and Ada"),
+        "{}",
+        model.asked[0]
+    );
 }
 
 #[test]
