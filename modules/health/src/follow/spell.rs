@@ -2,7 +2,8 @@
 //! health says of it: once as it starts, once at each new kind of cause
 //! and once as it ends, and of a disk flapping at its edge, no more than
 //! once every ten minutes, with how many short spells went unsaid before
-//! it. A spell lasts only as long as health's run, so a start after one
+//! it, or once the ten minutes pass with none on, as their own notice. A
+//! spell lasts only as long as health's run, so a start after one
 //! says the next spell at once, and a spell that outlasts a run, as one
 //! given up on does when its last try fails, is never told ended.
 
@@ -21,8 +22,9 @@ use crate::day::Day;
 /// told end can let a run that has had its follower end end at once,
 /// though, and the start that follows says the next spell within a
 /// minute. It's kept on both clocks, as the awake one stands still while
-/// the machine sleeps and the wall one may be set back: a wake on a disk
-/// still full is said at once, as is a spell after the clock is set back.
+/// the machine sleeps and the wall one may be set: a wake on a disk still
+/// full is said at once, as is a spell after the clock is set back, or on
+/// by ten minutes or more.
 const QUIET_FOR: Duration = SETTLED;
 
 /// A spell of the day's writes failing: since when, its latest error,
@@ -104,7 +106,8 @@ impl Spell {
     /// is said only once `QUIET_FOR` has passed since, with how long it has
     /// lasted and its error then, so a flapping disk is said at most once
     /// in each `QUIET_FOR`, however short its spells, and a lasting one
-    /// soon. Short spells it kept unsaid are counted in the next said.
+    /// soon. Short spells it kept unsaid are counted in the next said, or,
+    /// once the quiet ends with none on, told through `notice` on their own.
     pub(super) fn tried(
         &mut self,
         error: Option<&io::Error>,
@@ -153,19 +156,31 @@ impl Spell {
                 self.said = false;
                 self.causes.clear();
             }
-            (None, None) => {}
+            (None, None) => {
+                if self.unsaid > 0 && !self.quiet(at, wall) {
+                    notice(&format!(
+                        "health: writes the day into {} again, after {} failing that went \
+                         unsaid",
+                        into.display(),
+                        short_spells(self.unsaid)
+                    ));
+                    self.unsaid = 0;
+                }
+            }
         }
     }
 
     /// Whether a spell at `at`, `wall` on the wall clock, comes within
     /// `QUIET_FOR` of the last end told on both clocks, and so goes unsaid
-    /// for now: a sleep the wall clock saw, or a wall clock set back, ends
-    /// the quiet.
+    /// for now: a sleep the wall clock saw, or a wall clock set, ends the
+    /// quiet.
     fn quiet(&self, at: Instant, wall: i64) -> bool {
         self.told.is_some_and(|(told, told_wall)| {
             at.saturating_duration_since(told) < QUIET_FOR
-                && u64::try_from(wall - told_wall)
-                    .is_ok_and(|since| Duration::from_micros(since) < QUIET_FOR)
+                && wall
+                    .checked_sub(told_wall)
+                    .and_then(|since| u64::try_from(since).ok())
+                    .is_some_and(|since| Duration::from_micros(since) < QUIET_FOR)
         })
     }
 
@@ -198,8 +213,7 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration, unsaid: u32) -> String 
     };
     let before = match unsaid {
         0 => String::new(),
-        1 => " after a short spell it didn't say,".to_owned(),
-        spells => format!(" after {spells} short spells it didn't say,"),
+        spells => format!(" and {} before it went unsaid,", short_spells(spells)),
     };
     let left = match GIVES_UP.saturating_sub(lasted).as_secs() / 60 {
         0 => "less than a minute".to_owned(),
@@ -208,10 +222,17 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration, unsaid: u32) -> String 
     };
     format!(
         "health: can't write the day into {}: {cause},{already}{before} so it keeps the day and \
-         tries \
-         again every half minute for {left}",
+         tries again every half minute for {left}",
         into.display()
     )
+}
+
+/// So many short spells, in words.
+fn short_spells(spells: u32) -> String {
+    match spells {
+        1 => "a short spell".to_owned(),
+        spells => format!("{spells} short spells"),
+    }
 }
 
 /// What health says it loses of the days `held` from before as it ends

@@ -76,12 +76,13 @@ fn a_flapping_disk_is_said_at_most_once_in_ten_minutes() {
     assert!(
         words(1).ends_with("after trying for less than a minute")
             && words(2).contains(
-                ": permission denied, having tried for 8 minutes, after a short spell it didn't \
-                 say, so"
+                ": permission denied, having tried for 8 minutes, and a short spell before it \
+                 went unsaid, so"
             )
             && words(2).contains("for up to 51 minutes")
             && words(3).ends_with("after trying for 9 minutes")
-            && words(4).contains("no space left on device, after a short spell it didn't say, so")
+            && words(4)
+                .contains("no space left on device, and a short spell before it went unsaid, so")
             && words(4).contains("for up to 60 minutes"),
         "a spell's cause, how long it lasted, the time it has left or the short spells before \
          it went unsaid: {heard:?}"
@@ -105,30 +106,71 @@ fn short_spells_gone_unsaid_are_counted_in_the_next_said() {
         heard.len() == 3
             && heard[2]
                 .2
-                .contains("device, after 3 short spells it didn't say, so"),
+                .contains("device, and 3 short spells before it went unsaid, so"),
         "the short spells kept unsaid weren't counted in the next said: {heard:?}"
     );
 }
 
 #[test]
-fn a_sleep_or_a_clock_set_back_ends_a_flapping_disks_quiet() {
+fn either_clock_ends_a_flapping_disks_quiet() {
     // The awake clock stands still while the machine sleeps, so a wake on
     // a disk still full is a minute on there and twenty on the wall; the
-    // wall clock may be set back, too, an hour here.
+    // wall clock may be set back, too, an hour here. Eleven minutes awake
+    // end it as well, though the wall was set back to five minutes on.
     let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
-    for (woke, on_the_wall) in [(60, 1200), (60, 0)] {
-        let set_back = on_the_wall == 0;
-        let told = if set_back { 3600 } else { 0 };
+    for (awake, on_the_wall, started_on_the_wall) in [(60, 1200, 0), (60, 0, 3600), (660, 300, 0)] {
         let heard = heard(&[
-            (0, told, Some(&full)),
-            (30, told + 30, None),
-            (woke, on_the_wall, Some(&full)),
+            (0, started_on_the_wall, Some(&full)),
+            (30, started_on_the_wall + 30, None),
+            (awake, on_the_wall, Some(&full)),
         ]);
         assert!(
             heard.len() == 3 && heard[2].1 == "said",
-            "a spell after a sleep, or the clock set back ({set_back}), went unsaid: {heard:?}"
+            "a spell {awake} s on awake and at {on_the_wall} s on the wall went unsaid: \
+             {heard:?}"
         );
     }
+}
+
+#[test]
+fn a_sleep_in_a_spell_kept_quiet_has_it_said() {
+    // The spell starts in the quiet, and the machine sleeps twenty minutes
+    // before its next try, which still fails.
+    let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
+    let heard = heard(&[
+        (0, 0, Some(&full)),
+        (30, 30, None),
+        (60, 60, Some(&full)),
+        (90, 1290, Some(&full)),
+    ]);
+    assert!(
+        heard.len() == 3 && heard[2].0 == 90 && heard[2].1 == "said",
+        "a spell kept quiet went unsaid after a sleep: {heard:?}"
+    );
+}
+
+#[test]
+fn short_spells_gone_unsaid_are_told_once_the_quiet_ends_with_none_on() {
+    // No spell follows the short one kept quiet, so the tick that finds
+    // the quiet over tells it, and the ticks after say nothing more.
+    let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
+    let heard = heard(&[
+        (0, 0, Some(&full)),
+        (30, 30, None),
+        (60, 60, Some(&full)),
+        (90, 90, None),
+        (600, 600, None),
+        (630, 630, None),
+        (660, 660, None),
+    ]);
+    let when: Vec<(u64, &str)> = heard.iter().map(|(at, kind, _)| (*at, *kind)).collect();
+    assert!(
+        when == [(0, "said"), (30, "told"), (630, "told")]
+            && heard[2]
+                .2
+                .ends_with("again, after a short spell failing that went unsaid"),
+        "short spells kept quiet weren't told once the quiet ended: {heard:?}"
+    );
 }
 
 #[test]

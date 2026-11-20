@@ -307,11 +307,11 @@ fn a_new_days_line_whose_roll_cant_write_starts_the_spell_itself() {
 
 #[test]
 fn a_spell_a_roll_starts_is_dated_once_its_line_is_taken() {
-    // Each look at the clock is 13 seconds on, so both days' lines are
-    // taken before the first tick, at 30 seconds, and the roll's write
-    // is the spell's first failure. Room comes at the second tick, under
-    // a minute after the roll's line was taken, but a minute after the
-    // look before the wait for it, which is 13 seconds sooner. Steps of
+    // Each look at the clock is 13 seconds on, so the roll's line is
+    // taken at 39 seconds, before any tick has written, and the roll's
+    // write is the spell's first failure. Room comes at the second tick,
+    // at 105 seconds: 53 after the look once the line is taken, at the
+    // first tick, but 66 after the look before the wait for it. Steps of
     // 12 and 14 seconds tell the two apart too, so this isn't an edge.
     let Outcome {
         result, noticed, ..
