@@ -619,7 +619,13 @@ impl<'a> Settler<'a> {
         }
         // The merge has landed, so a run confirming a failure or a stall
         // can wait out a rest, outside whatever outage the first fell in.
+        let before = state.runs(merge, check).len();
         let outcome = attempt_confirming(world, state, merge, check, Confirming::AfterARest);
+        // A first failure or stall this attempt saw rests for the run that
+        // confirms it even past the day, which a run of two hours begun
+        // late in it can end in: told then, the merge would go unreverted
+        // and a stall be told as no Mac comparing it.
+        let confirms = state.runs(merge, check).len() > before;
         // A failure a Mac saw before the runs that compared nothing is the
         // owner's to read, so the finding names its log.
         let failed = state
@@ -627,7 +633,7 @@ impl<'a> Settler<'a> {
             .contains(&Ran::Failed)
             .then(|| state.log(merge, check, 1).display().to_string());
         match outcome {
-            Outcome::Unsent if now().saturating_sub(since) >= UNRUN => {
+            Outcome::Unsent if !confirms && now().saturating_sub(since) >= UNRUN => {
                 state.say(&format!(
                     "no Mac compared {check} at {} in a day: told, and let go",
                     short(merge)

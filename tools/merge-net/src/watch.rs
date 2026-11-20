@@ -3150,7 +3150,7 @@ mod tests {
             ..Stand::default()
         }
         .exits("m1", &check, &[1, UNCOMPARED]);
-        round(&world, &state, "s").unwrap();
+        rounds_past_rests(&world, &state, "s", 3);
         let log = state.log("m1", &check, 1).display().to_string();
         let told = findings(&state);
         assert!(
@@ -3165,6 +3165,58 @@ mod tests {
             world.reverted.lock().unwrap().is_empty(),
             "a merge was reverted on one failure and a run that compared nothing"
         );
+    }
+
+    #[test]
+    fn a_first_failure_or_stall_past_the_day_is_still_confirmed() {
+        // A run begun late in the day can end past it: its failure is
+        // confirmed and reverted, and its stall told as one, rather than
+        // either told as no Mac comparing it.
+        for (kind, exits) in [("failed", [1, 1]), ("stalled", [STALL, STALL])] {
+            let state = state(&format!("mac-late-{kind}"));
+            let check = crate::macs::check("s");
+            state.set_heads("h", "h").unwrap();
+            state
+                .keep_settling(
+                    &check,
+                    &json!({"kind": "mac", "merge": "m1", "test": check, "since": 0, "after": 0}),
+                )
+                .unwrap();
+            let world = Stand {
+                head: "h".into(),
+                merges: names("h"),
+                changed: changed("vm-a"),
+                ..Stand::default()
+            }
+            .exits("m1", &check, &exits)
+            // Main's head still fails, so it wasn't fixed forward.
+            .exits("h", &check, &[1, 1]);
+            round(&world, &state, "s").unwrap();
+            assert!(
+                findings(&state).is_empty() && !state.settling().is_empty(),
+                "a first {kind} run past the day was told rather than rested"
+            );
+            rounds_past_rests(&world, &state, "s", 3);
+            let told = findings(&state);
+            let reverted = world.reverted.lock().unwrap().clone();
+            if kind == "failed" {
+                assert!(
+                    !reverted.is_empty()
+                        && told.iter().all(|finding| finding["kind"] != "mac-unrun"),
+                    "a failure confirmed past the day wasn't reverted, or was told as unrun: \
+                     {told:?}"
+                );
+            } else {
+                assert!(
+                    reverted.is_empty()
+                        && told
+                            .iter()
+                            .any(|finding| finding["kind"] == "mac-unrun"
+                                && finding["stalled"] == true),
+                    "two stalls past the day weren't told as a stall: {told:?}"
+                );
+            }
+        }
     }
 
     #[test]
