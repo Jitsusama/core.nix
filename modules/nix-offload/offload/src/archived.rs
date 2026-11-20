@@ -352,13 +352,18 @@ pub fn unpacked(archived: Archived) -> (String, PathBuf) {
 }
 
 /// [`unpacked`], its folder made under `root`.
+///
+/// Its files are given the time they're unpacked (`-m`), not the commit's
+/// that `git archive` stamps them with: cargo's warm target there judges
+/// a file by its time, and a file an older commit changed would read as
+/// older than what the run before built from it.
 fn unpacked_under(archived: Archived, root: &str) -> (String, PathBuf) {
     let into = format!("{root}/nix-offload-changed-$$");
     let command = format!(
         "leaves={into}; set -e; rm -rf {into}; mkdir -p {into}/tree; \
          trap 'rm -rf {into}' EXIT; command -v tar >/dev/null || \
          tar() {{ nix shell nixpkgs#gnutar nixpkgs#gzip -c tar \"$@\"; }}; \
-         tar -xzf - -C {into}/tree; cd {into}/tree/{}; ",
+         tar -xmzf - -C {into}/tree; cd {into}/tree/{}; ",
         there::quoted(archived.dir.as_deref().unwrap_or(".")),
     );
     (command, archived.archive)

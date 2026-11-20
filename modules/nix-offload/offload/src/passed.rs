@@ -1,8 +1,8 @@
 //! What passed at a commit, kept so it's never built again: each check
 //! `there` built there, each `there --changed` run, with what it named,
 //! each VM test's subtests run-subtests sent, with where their
-//! pictures went, and each `there --run` that ended 0, with its words.
-//! A gate reads that last one (`nix-offload passed ran COMMIT`) rather
+//! pictures went, and each `there --run` that ended 0, with its words,
+//! but for a suite in a warm target (`cargo::runs_warm`). A gate reads that last one (`nix-offload passed ran COMMIT`) rather
 //! than a file of the asker's, since a fenced session can ask for a run
 //! but can't reach the keeper to write one.
 //!
@@ -252,9 +252,10 @@ impl Passed {
     /// keeper alone can write it, knows that command ran there in full:
     /// what the words name is the gate's to judge (a fenced session can
     /// run `true` as well as a test suite). The same run kept already at
-    /// the commit isn't kept again.
+    /// the commit isn't kept again, and a suite in a warm target never,
+    /// since a run before it could have written what it read.
     pub fn keep_ran(&self, at: &At, words: &[String], copies: &[String], status: Option<i32>) {
-        if status != Some(0) {
+        if status != Some(0) || crate::cargo::runs_warm(words) {
             return;
         }
         let (words, copies) = (serde_json::json!(words), serde_json::json!(copies));
@@ -625,10 +626,19 @@ mod tests {
         );
         passed.keep_ran(&top, &tests, &copies, Some(1));
         passed.keep_ran(&top, &tests, &copies, None);
+        let warm = words(&[
+            "sh",
+            "-c",
+            crate::cargo::WARM,
+            "nix-offload-warm",
+            "k",
+            "cargo",
+        ]);
+        passed.keep_ran(&top, &warm, &[], Some(0));
         assert_eq!(
             passed.ran(&top),
             [] as [serde_json::Value; 0],
-            "a run that failed, or never ran, was kept as passed"
+            "a run that failed, never ran, or ran in a warm target was kept as passed"
         );
         passed.keep_ran(&top, &tests, &copies, Some(0));
         passed.keep_ran(&top, &tests, &copies, Some(0));
