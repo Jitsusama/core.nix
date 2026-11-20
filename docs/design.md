@@ -1625,8 +1625,10 @@ works the same way everywhere.
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
   one row that thing is anywhere it shows, never a version Now draws of
-  it. Below them, only while true, come what else wants Joel (a low
-  battery; mail and notices are For You's), what reaches other people,
+  it. Then, each only while it holds something, come Lately's rows,
+  what came for Joel that asks nothing of him: Mail, Slack and Now's
+  Desktop, the notices'. Below them, only while true, come what else
+  wants Joel (a low battery), what reaches other people,
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
@@ -1729,12 +1731,22 @@ works the same way everywhere.
   wears an in-tray, full while it holds something and empty when it
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
-  the tray (VKCF3Z, 2026-11-08). Lately
-  follows, what came: a place per source ("Mail", "Slack"), nothing
-  after its name, its side "12 to read", its drawer its senders newest
-  first (VKCF3Z, 2026-11-09), ordered by its heaviest, and a notice its
-  source calls critical lifts into the
-  first band. A message inside is one row wherever it shows, Search
+  the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
+  in For You, after To Read and before Later, only while one of its own
+  notices is critical, unread and off the screen, so Mail's, which holds
+  no notices, never does; while Slack's daemon answers, a critical
+  notice of Slack's lifts Slack's row only if it lists one of the
+  daemon's messages, and then not that notice, and with none no row
+  lifts, though the tray counts it. Once
+  there it stays until the launcher next opens, unless it comes to hold
+  nothing, and one that turns critical while Joel is under Now's own
+  rows waits until he steps into For You or out of Now. Otherwise it's
+  among Now's own rows (Joel, 2026-11-19: "I almost never know what I
+  am supposed to do with it"). Each is a place per source, reading
+  "Mail", "Slack" and "Desktop" (Now's Desktop), nothing after its
+  name, its side "12 to read", its drawer
+  its senders newest first (VKCF3Z, 2026-11-09), ordered by its
+  heaviest. A message inside is one row wherever it shows, Search
   Slack's hits included: named by its sender, its note its first line,
   or from the first word a find matched, its side its time, its eyebrow
   where it came ("in #deploys · message", "direct message").
@@ -2010,7 +2022,7 @@ works the same way everywhere.
   The windows, the copies and the notices are whole at home, and most have
   a chord that opens them: Super+V the
   copies, Super+E the emoji, Super+N the notices (those on screen, on the
-  one in front, while any are up; Desktop when none are),
+  one in front, while any are up; Now's Desktop when none are),
   Super+Shift+/ the shortcuts.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
@@ -2452,7 +2464,7 @@ lists those alone, On Screen, in the order the arrival line takes them,
 the cursor on the one it shows, so j and k go through them and Return
 acts on one there; a notice read or come while it's open keeps its
 place, the new at the end. With none on screen, or while notices are
-held, it opens Desktop. A notice is a launcher row like any
+held, it opens Now's Desktop. A notice is a launcher row like any
 other: Return goes to who
 sent it, as the quickfix list's Return goes to where a line came from,
 its acts and drawer are beside it, and d and y take it as they take any
@@ -2821,7 +2833,7 @@ line's notice is the same card, on the same columns and inset.
   It draws nothing over the gutter in any mode. The place's mark stands in
   the rows' mark cell and its Title over their names, home's too ("⌂ Home",
   "Notices", "Time › Servers"). The mark is its path's first place's,
-  however deep it goes, so "Now › For You › Slack" wears Now's mark.
+  however deep it goes, so "Now › Slack" wears Now's mark.
   The mode's mark takes the place's mark's cell while the mode lasts, centred by
   its ink: the accent's `/` on the find,
   `:` on the command line (Joel, 2026-11-06: "we have an extra space in
@@ -2943,7 +2955,7 @@ fits whole on the laptop's plate.
   with :sort! the other way, are kept across asks; :e, :cd, :set hidden
   and :mkdir go with them, ]b [b to the folders beside, gx to a file's own
   program. :q cancels the dialog, and Escape never does.
-- **The notices** are launcher rows, under Desktop while unread
+- **The notices** are launcher rows, under Now's Desktop while unread
   and in its History once read, and Super+N opens them on the one the
   arrival line shows. Return goes to whoever sent it, as the quickfix
   list's Return goes to where a line came from, bringing its window

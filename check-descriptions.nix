@@ -4542,11 +4542,12 @@
     vocabulary breaking each of its rules
   '';
   the-launcher-shows-the-moment-in-now = ''
-    Now's last rows are the time and the date as the launcher places each anywhere, never a
-    version Now draws, the location, saying its town and when the place keeps another zone than
-    the clock, the weather, placed the same way, read as the launcher opens and kept while it's
-    asked again, then the calendar's own row for the next meeting, and Now counts nothing while
-    only they are there; the location and the clock's zone are whereabouts' own, over its socket;
+    Now's rows after For You and before Lately's are the time and the date as the launcher
+    places each anywhere, never a version Now draws, the location, saying its town and when the
+    place keeps another zone than the clock, the weather, placed the same way, read as the
+    launcher opens and kept while it's asked again, then the calendar's own row for the next
+    meeting, and Now counts nothing while only they are there; the location and the clock's zone
+    are whereabouts' own, over its socket;
     and For You, asked again, makes none of its rows again, its looks, its to-dos, the sessions
     wanting Joel and To Look At's own, only one whose file or what it says changed, a session
     wanting Joel making only the look it left again and to-dos said anew as they were none; and a
