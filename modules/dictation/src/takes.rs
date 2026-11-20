@@ -238,7 +238,9 @@ impl Cutter {
     }
 
     fn threshold(&self) -> f32 {
-        let settling = self.since_nothing.is_some_and(|frames| frames < SETTLE_FRAMES);
+        let settling = self
+            .since_nothing
+            .is_some_and(|frames| frames < SETTLE_FRAMES);
         if self.recent.is_empty() || settling {
             return QUIETEST_SPEECH_DB;
         }
