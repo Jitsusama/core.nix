@@ -183,7 +183,10 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
         working.read(folders.clone());
     }
     assert_eq!(working.used.len(), 1, "a reading freed again wasn't taken");
-    assert!(working.measured, "two readings a minute apart measure a share");
+    assert!(
+        working.measured,
+        "two readings a minute apart measure a share"
+    );
 }
 
 #[test]

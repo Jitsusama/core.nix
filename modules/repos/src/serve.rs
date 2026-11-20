@@ -116,7 +116,8 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut homes = homes_named();
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-    let mut working = Working::start(|folders: &[PathBuf]| using::sample(Path::new("/proc"), folders));
+    let mut working =
+        Working::start(|folders: &[PathBuf]| using::sample(Path::new("/proc"), folders));
     working.read(folders_of(&record));
     shared.change(working.said(&record), feed::sources(&record));
     let listener = serve::listen(&socket).map_err(|why| {
@@ -182,32 +183,80 @@ fn folders_of(record: &Record) -> Vec<PathBuf> {
         .collect()
 }
 
-/// What worked in each checkout and tree at the last pace, and the
-/// reading it was measured from.
+/// What one reading found in each folder, and whether it measured a share.
+type Measured = (BTreeMap<PathBuf, Use>, bool);
+
+/// What worked in each checkout and tree at the last pace. It's read on a
+/// thread of its own, since a read of a process's memory waits while the
+/// process holds its memory map, which may be never, and the loop answers
+/// every view.
 struct Working {
-    sample: Box<dyn FnMut(&[PathBuf]) -> Sample + Send>,
-    last: Option<Sample>,
+    ask: mpsc::Sender<Vec<PathBuf>>,
+    told: Receiver<Measured>,
+    /// Whether a reading was asked for and hasn't answered.
+    asked: bool,
+    /// Paces in a row with no reading taken.
+    missed: u32,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
 }
 
 impl Working {
-    fn start(sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static) -> Self {
+    fn start(mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static) -> Self {
+        let (ask, asked) = mpsc::channel::<Vec<PathBuf>>();
+        let (tell, told) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut last: Option<Sample> = None;
+            for folders in asked {
+                let now = sample(&folders);
+                let found = (
+                    using::using(last.as_ref(), &now),
+                    using::measured(last.as_ref(), &now),
+                );
+                last = Some(now);
+                if tell.send(found).is_err() {
+                    return;
+                }
+            }
+        });
         Self {
-            sample: Box::new(sample),
-            last: None,
+            ask,
+            told,
+            asked: false,
+            missed: 0,
             used: BTreeMap::new(),
             measured: false,
         }
     }
 
-    /// Reads what works in each of `folders`, its processor time measured
-    /// only once time has passed since the last.
+    /// Reads what works in each of `folders`, waiting `SAMPLED` at most,
+    /// and only while no earlier reading is still out: one stuck holds up
+    /// the loop once. Its processor time is measured once time has passed
+    /// since the last, and what was read goes unsaid once `STALE` paces
+    /// pass without a reading.
     fn read(&mut self, folders: Vec<PathBuf>) {
-        let now = (self.sample)(&folders);
-        self.measured = using::measured(self.last.as_ref(), &now);
-        self.used = using::using(self.last.as_ref(), &now);
-        self.last = Some(now);
+        let mut found = self.told.try_iter().last();
+        if found.is_some() {
+            self.asked = false;
+        }
+        if !self.asked && self.ask.send(folders).is_ok() {
+            self.asked = true;
+            if let Ok(now) = self.told.recv_timeout(SAMPLED) {
+                found = Some(now);
+                self.asked = false;
+            }
+        }
+        if let Some((used, measured)) = found {
+            self.used = used;
+            self.measured = measured;
+            self.missed = 0;
+        } else {
+            self.missed += 1;
+            if self.missed >= STALE {
+                self.used.clear();
+                self.measured = false;
+            }
+        }
     }
 
     /// Every record the feed says: the disk's, and what works in each
