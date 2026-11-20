@@ -153,7 +153,8 @@ fn a_sleep_in_a_spell_kept_quiet_has_it_said() {
 fn short_spells_gone_unsaid_are_told_once_the_quiet_ends_with_none_on() {
     // No spell follows the short one kept quiet, so the tick that finds
     // the quiet over tells it, and the tick after says nothing more. That
-    // keeps a new quiet, so the next flap goes unsaid too, till it ends.
+    // keeps no new quiet, so the next flap is said as failing, as a disk
+    // flapping on would otherwise only ever be told writing again.
     let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
     let heard = heard(&[
         (0, 0, Some(&full)),
@@ -165,14 +166,18 @@ fn short_spells_gone_unsaid_are_told_once_the_quiet_ends_with_none_on() {
         (660, 660, None),
         (690, 690, Some(&full)),
         (720, 720, None),
-        (1230, 1230, None),
     ]);
     let when: Vec<(u64, &str)> = heard.iter().map(|(at, kind, _)| (*at, *kind)).collect();
     assert!(
-        when == [(0, "said"), (30, "told"), (630, "told"), (1230, "told")]
-            && heard[2]
-                .2
-                .ends_with("again, after a short spell failing that went unsaid"),
+        when == [
+            (0, "said"),
+            (30, "told"),
+            (630, "told"),
+            (690, "said"),
+            (720, "told")
+        ] && heard[2]
+            .2
+            .ends_with("again, after a short spell failing that went unsaid"),
         "short spells kept quiet weren't told once the quiet ended: {heard:?}"
     );
 }

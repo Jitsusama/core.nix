@@ -107,8 +107,9 @@ impl Spell {
     /// lasted and its error then, so a flapping disk is said at most once
     /// in each `QUIET_FOR`, however short its spells, and a lasting one
     /// soon. Short spells it kept unsaid are counted in the next said, or,
-    /// once the quiet ends with none on, told through `notice` on their own,
-    /// which keeps a new quiet as a told end does.
+    /// once the quiet ends with none on, told through `notice` on their own.
+    /// That keeps no new quiet, so a disk still flapping is said again as
+    /// failing rather than only ever told writing again.
     pub(super) fn tried(
         &mut self,
         error: Option<&io::Error>,
@@ -160,7 +161,6 @@ impl Spell {
             (None, None) => {
                 if self.unsaid > 0 && !self.quiet(at, wall) {
                     self.tell_unsaid(into, notice);
-                    self.told = Some((at, wall));
                 }
             }
         }
