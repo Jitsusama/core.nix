@@ -9658,14 +9658,16 @@ Scope {
     // A heading's line, the row's face at the note's size (Choice.qml's
     // heading).
     readonly property real headingTall: Math.ceil(headingFace.height)
-    // How tall a row stands in the list: its band, with a gap above one
-    // that has one; a heading its line alone, with the groups' rung above
-    // it but for the list's first, which stands where the list starts
-    // (VKCF3Z, 2026-11-15 [90904822]).
+    // How tall a row stands in the list, by Steady.tallOf's rule, which
+    // tests/steady.qml holds beside the card's own (tallFor).
+    readonly property var rowSizes: ({
+            row: rowTall,
+            heading: headingTall,
+            gap: groupGap,
+            rung: Theme.space.rung.groups
+        })
     function tallOf(row, at) {
-        if (Headings.isHeading(row))
-            return (at === 0 ? 0 : Theme.space.rung.groups) + headingTall;
-        return rowTall + (row?.gap ? groupGap : 0);
+        return Steady.tallOf(Headings.isHeading(row), row?.gap, at, rowSizes);
     }
     // The rows as a search shows them: its ranking mixes the groups, so
     // none is headed (Headings.js).

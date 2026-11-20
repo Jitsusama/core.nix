@@ -336,6 +336,35 @@ QtObject {
                 failures.push(`${what}: sized ${sized}, not ${want}`);
         }
 
+        // A row in the list stands its band high, with the gap above one
+        // that stands apart whatever list it comes from, and a heading its
+        // line, with the groups' rung above it but for the list's first.
+        const rowSizes = { row: 16, heading: 10, gap: 8, rung: 4 };
+        const rowHeights = [
+            ["a row", false, undefined, 1, 16],
+            ["a row standing apart", false, true, 1, 24],
+            ["the first row standing apart", false, true, 0, 24],
+            ["a heading among the rows", true, undefined, 2, 14],
+            ["the list's first heading", true, undefined, 0, 10],
+            ["a heading with a gap", true, true, 2, 14]
+        ];
+        for (const [what, heading, gap, at, want] of rowHeights) {
+            const tall = Steady.tallOf(heading, gap, at, rowSizes);
+            if (tall !== want)
+                failures.push(`${what}: stands ${tall}, not ${want}`);
+        }
+
+        // The rows a card shows stand as tall as the card is sized for them,
+        // a gap among them or not; one with fewer rows than room is sized
+        // for the room.
+        for (const [what, shown] of sizings.filter(one => one[1].length >= 2)) {
+            const card = Steady.tallFor(shown, 2, rowSizes.row, rowSizes.gap);
+            const stood = shown.slice(0, 2).reduce((sum, row, at) =>
+                sum + Steady.tallOf(false, row.gap, at, rowSizes), 0);
+            if (stood !== card)
+                failures.push(`${what}: its rows stand ${stood}, the card ${card}`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

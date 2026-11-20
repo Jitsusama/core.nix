@@ -229,3 +229,18 @@ function landing(waiting, came) {
 function tallFor(shown, rows, rowTall, gap) {
     return rows * rowTall + (shown.slice(0, rows).some(row => row.gap) ? gap : 0);
 }
+
+// How tall one row stands in the list, at `at` among them: its band,
+// `sizes.row`, with `sizes.gap` above one that stands apart; a heading
+// its line, `sizes.heading`, with the groups' rung, `sizes.rung`, above it
+// but for the list's first, which stands where the list starts (VKCF3Z,
+// 2026-11-15 [90904822]). Whether it's a heading the caller says, as
+// Headings.js decides it. A row's gap is its own, whatever list it comes
+// from, and the same gap tallFor counts, so the card's height and its
+// rows' can't drift apart.
+function tallOf(heading, gap, at, sizes) {
+    if (heading) {
+        return (at === 0 ? 0 : sizes.rung) + sizes.heading;
+    }
+    return sizes.row + (gap ? sizes.gap : 0);
+}
