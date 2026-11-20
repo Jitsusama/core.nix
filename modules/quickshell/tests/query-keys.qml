@@ -1043,6 +1043,8 @@ QtObject {
         holds("a capital finds only itself", Search.found("Build", "build Build"), [[6, 11]]);
         holds("a space typed finds a run's no-break space",
             Search.found("pirate flag", "Pinata \u00b7 Pirate\u00a0flag"), [[9, 20]]);
+        holds("a no-break space pasted finds a space",
+            Search.found("pirate\u00a0flag", "Pinata \u00b7 Pirate flag"), [[9, 20]]);
     }
 
     function drawerSearch(holds) {
@@ -1584,7 +1586,7 @@ QtObject {
         Figure.runLines("aa \u00b7 bb \u00b7 cc \u00b7 dd \u00b7 ee \u00b7 ff", 70, measuring, 1);
         holds("a drawer's run, to its most: nothing past it is measured", measured, 2);
         // Laid a part at a time, each from where the last stopped, it's the run laid whole,
-        // since the keys lay Emoji's names a part a frame rather than all at once.
+        // since the keys lay Emoji's names a part a turn rather than all at once.
         const items = Figure.runItems("aa \u00b7 bb \u00b7 cccccc \u00b7 dd \u00b7 ee \u00b7 ff \u00b7 gg");
         const parts = [];
         for (let from = 0; from >= 0;) {

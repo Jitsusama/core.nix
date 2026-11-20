@@ -522,9 +522,10 @@ prints j's time to its frame from going in, less that wait, and the shell's
 own share, from hearing j to its swap. With 80 windows and the rest of Emoji's
 run laid whole in one go, j took a median 827 ms and a p90 1,050. Laid a part
 a turn off the screen and shown in one frame, with only the parts near the
-view drawn, it took a median 89 and 128 ms in two runs of 16, the shell's
-share a median 18 and a p90 95 (2026-11-19). The rest is niri drawing 80
-windows in software, which swings with the builder's load. A j typed with the
+view drawn, it took a median 89 and 128 ms in two runs of 16 (`LAB_ROUNDS`),
+the shell's share a median 18 and a p90 95 (2026-11-19). The rest is the wait
+before the shell hears j and niri drawing 80 windows in software after its
+swap, both swinging with the builder's load. A j typed with the
 chord waits on the going-in frame itself, 87 to 137 ms there even with nothing
 laid past what shows. While the margin cat moves, its frames keep niri drawing
 too. Each frame the shell is asked for while the rest is laid costs a key

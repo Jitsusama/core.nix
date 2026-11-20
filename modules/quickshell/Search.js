@@ -13,7 +13,8 @@ const closing = />/g;
 const newline = /\n/g;
 // A drawer lays each line of a run that fits with no-break spaces, so Qt
 // wraps it only between items; a space typed finds one, or "Pirate flag"
-// in Emoji's drawer would be found nowhere.
+// in Emoji's drawer would be found nowhere. A pattern pasted from one is
+// read the same way.
 const unbroken = /\u00a0/g;
 
 // Whether a pattern is matched by its case: only once it has a capital.
@@ -31,7 +32,7 @@ function found(pattern, text) {
     const byCase = cased(pattern);
     const plain = text.replace(unbroken, " ");
     const looked = byCase ? plain : plain.toLowerCase();
-    const sought = byCase ? pattern : pattern.toLowerCase();
+    const sought = (byCase ? pattern : pattern.toLowerCase()).replace(unbroken, " ");
     const spans = [];
     let from = looked.indexOf(sought);
     while (from >= 0) {

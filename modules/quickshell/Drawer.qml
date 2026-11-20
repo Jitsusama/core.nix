@@ -502,6 +502,9 @@ Floating {
     // cursor, which keeps its line where that's still there.
     function fold() {
         folded = !folded;
+        // What shows moves though the view's height may not, as a drawer
+        // that fits keeps it, so the lines are read again all the same.
+        laidAt.height = -1;
         relay();
     }
     // The bits' names' column, as wide as the widest, never past a third
@@ -797,12 +800,21 @@ Floating {
             drawer.relay();
         }
     }
+    // The run's own width, which may follow the drawer's only after its
+    // handler ran, so a resize lays the run again at the width it's laid in.
+    Connections {
+        target: wordsBox
+        function onWidthChanged() {
+            drawer.runRenew();
+        }
+    }
 
-    // Every PageText it has, shown or not.
+    // Every PageText it has, shown or not, but a run's parts while they're
+    // laid quietly: off the page, they're read aside and shown whole.
     function texts() {
         return [eyebrowText, timeText, secondsText, titleText]
             .concat(groupsShown.texts(), previewRows.texts(), factRows.texts(), [bodyText],
-                runTexts(), actsShown.texts(), foldShown.texts())
+                runQuiet ? [] : runTexts(), actsShown.texts(), foldShown.texts())
             .filter(text => text);
     }
     // A run's parts laid under its words, top to bottom.
@@ -983,9 +995,10 @@ Floating {
     }
     // Its parts taken down, its words laid short again.
     function runCut() {
+        // Taken down before they're let back on the page.
+        runParts.clear();
         runQuiet = false;
         runQuietRead.of = new Map();
-        runParts.clear();
         runPartsLines = 0;
         runPartsSaid = "";
         runHead = 0;
@@ -1059,12 +1072,14 @@ Floating {
         return new Map(Array.from(laidPieces.of).filter(([text]) => !moved.has(text)));
     }
     // The parts laid quietly shown, and what follows the run moved under
-    // them, in one frame: only what follows is read again, the parts'
-    // lines being those read aside.
+    // them, in one frame: all but the parts is read again, as few lines
+    // as the view shows and what follows, since what stands above may have
+    // been read before Qt laid the page out. The parts' lines are those
+    // read aside.
     function runShow() {
         if (!runQuiet)
             return;
-        const kept = keptAbove();
+        const kept = new Map();
         const read = runQuietRead.of;
         runQuiet = false;
         runQuietRead.of = new Map();
@@ -1090,9 +1105,15 @@ Floating {
     function layWhole() {
         if (!keys)
             return;
-        if (runNext >= 0)
-            layPart(0, true);
+        // A part at a time all the same, so only those near the view draw.
+        while (runNext >= 0)
+            layPart(runPart, true);
         runShow();
+    }
+    // The lines laid, those of parts laid quietly with them, which a
+    // going-in counts: a run laid whole before its frame counts whole.
+    function linesLaid() {
+        return laid.length + (runQuiet ? runPartsLines : 0);
     }
     // The line the run's last part ends on, where what follows the run
     // begins under it, or -1 with no run: its head's, while the rest is

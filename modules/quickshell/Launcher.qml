@@ -12620,7 +12620,10 @@ Scope {
         presentedAwait(one.from, (at, answered) => {
             Object.assign(one, { at, swapped: root.swappedOf(frame),
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
-            console.info(Presented.keyInSaid(one));
+            // Only one slow enough to feel, as a key in home is, but every
+            // one while reports are on, as the drawer lab times them.
+            if (Options.reports || at - one.from >= 50)
+                console.info(Presented.keyInSaid(one));
         });
     }
     // The frame awaited is the next to begin, read once the lines are laid
@@ -15710,7 +15713,7 @@ Scope {
             afterFrame: then => {
                 const going = root.intoGoing;
                 root.afterFrame(() => {
-                    root.intoDrawn(going, drawerCard.laid.length);
+                    root.intoDrawn(going, drawerCard.linesLaid());
                     Qt.callLater(then);
                 });
             }

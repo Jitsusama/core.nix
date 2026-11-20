@@ -499,7 +499,7 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     shell.launcher_until(
         lambda shown: (
             (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
-            and not shown["drawer"].get("laying", False)
+            and shown["drawer"]["laying"] is False
         )
     )
     # The cursor counts its lines from one, so it's told by where it began.
@@ -579,8 +579,12 @@ def back_from_the_key_list(shell: Shell, whole_least: int, whole: int) -> None:
     The drawer shown anew lays its run as going into it does, a part a turn after its first,
     rather than all 1,833 lines before it.
     """
+    to_keys = shell.mark()
     shell.as_account("wtype -k F1")
     shell.launcher_until(lambda shown: shown["drawer"]["title"] == "The Drawer's Keys")
+    # The key list's own going-in is said once niri presents it, after its title shows, so
+    # it's waited for before the mark going back, which would read it as Emoji's otherwise.
+    laid_going_in(shell, to_keys)
     going_back = shell.mark()
     shell.as_account("wtype -k F1")
     laid = laid_going_in(shell, going_back)
@@ -588,7 +592,7 @@ def back_from_the_key_list(shell: Shell, whole_least: int, whole: int) -> None:
     shell.launcher_until(
         lambda shown: (
             shown["drawer"]["title"] == "Emoji"
-            and not shown["drawer"].get("laying", False)
+            and shown["drawer"]["laying"] is False
             and shown["drawer"]["bodyLines"] == whole
         )
     )
