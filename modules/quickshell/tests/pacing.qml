@@ -895,6 +895,11 @@ QtObject {
         check(failures, "a window's key is said without its title unless reports are on",
             Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
             "window:org.gnome.Evolution");
+        check(failures, "one with nothing after its app is said as a window alone",
+            Presented.keyShown("window:Quarterly report", false), "window");
+        check(failures, "as is one whose app holds a page's address, as a browser's may",
+            Presented.keyShown("window:chrome-docs.google.com__document_d_1x_edit-Default:Plan",
+                false), "window");
         check(failures, "and whole while they are",
             Presented.keyShown("window:kitty:~/src", true), "window:kitty:~/src");
         check(failures, "and the launcher's own ids are said whole",
@@ -913,6 +918,12 @@ QtObject {
             Presented.keyShown("github.com", false), "");
         check(failures, "as is a name with a colon in it, which no kind is",
             Presented.keyShown("Call: Dr Smith", false), "");
+        check(failures, "or one in lower case with a space",
+            Presented.keyShown("dr smith: call", false), "");
+        check(failures, "or a device's name, as a sound's trail has",
+            Presented.keyShown("alsa_output.pci-0000_00_1f.3:by-ear", false), "");
+        check(failures, "and a key that came as a number is read as text",
+            Presented.keyShown(42, false), "");
         check(failures, "a row with neither key nor name is said as a row",
             Presented.rowShown({}, false), "row");
         check(failures, "as is one missing, whether reports are on or off",
