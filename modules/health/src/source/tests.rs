@@ -20,9 +20,10 @@ static HEARD: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
 
 /// Keep what `say_marked` says, at its `mark`.
 pub(super) fn hear(words: &str, mark: u8) {
-    // Only the push runs under the lock, so no test's panic can poison it;
-    // were one to all the same, taking it back would keep that one test's
-    // failure from failing every saying after it.
+    // Only this push and the filter in `marks_of` run under the lock, and
+    // neither panics, so no test's failure can poison it; were one to all
+    // the same, taking it back would keep it from failing every saying
+    // after it.
     HEARD
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -550,7 +551,7 @@ fn a_replay_that_cant_start_sends_every_followers_end() {
         let (send, heard) = mpsc::channel();
         let count = replayed_by(
             newest,
-            move |_| history.map_or_else(|| writing(&[]), |history| history()),
+            move |_| history.map_or_else(|| writing(&[]), |start| start()),
             |_, _| writing(&[]),
             &send,
             &Children::default(),

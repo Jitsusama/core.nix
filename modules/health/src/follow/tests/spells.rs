@@ -212,11 +212,11 @@ fn short_spells_gone_unsaid_are_told_as_health_ends_if_it_writes() {
     );
 }
 
-/// A run over a disk that flaps from the third tick, the first to write a
-/// change, to the sixth, failing, writing, failing and writing again, so
-/// its second spell comes within the quiet its first one's told end keeps,
-/// with the machine asleep `slept` after the first spell's end; its
-/// follower has ended, so it ends once it has run `SETTLED`.
+/// A run over a disk that flaps at four ticks running, from the third,
+/// failing, writing, failing and writing again, so its second spell comes
+/// within the quiet its first one's told end keeps, with the machine
+/// asleep `slept` between the first spell's end and the second's start;
+/// its follower has ended, so it ends once it has run `SETTLED`.
 fn flapping(slept: Option<Duration>) -> Outcome {
     Ran {
         ends: 1,
@@ -274,5 +274,31 @@ fn how_long_a_spell_lasted_reads_to_the_minute() {
         [read(59), read(60), read(119), read(120)],
         ["less than a minute", "a minute", "a minute", "2 minutes"],
         "how long a spell lasted read wrong"
+    );
+}
+
+#[test]
+fn a_spells_time_left_reads_to_the_nearest_minute() {
+    let left = |seconds| spell::left(GIVES_UP.saturating_sub(Duration::from_millis(seconds)));
+    assert_eq!(
+        [
+            left(29_999),
+            left(30_000),
+            left(89_999),
+            left(90_000),
+            left(3_569_999),
+            left(3_570_000),
+            left(3_600_000),
+        ],
+        [
+            "less than a minute",
+            "about a minute",
+            "about a minute",
+            "about 2 minutes",
+            "about 59 minutes",
+            "about an hour",
+            "about an hour",
+        ],
+        "a spell's time left read wrong"
     );
 }

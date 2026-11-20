@@ -675,7 +675,7 @@ fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
 }
 
 #[test]
-fn follows_sayers_mark_a_fault_a_failure_and_a_mended_write_a_notice() {
+fn fails_says_at_a_failure_and_notices_at_a_notice() {
     // Health's warnings follower counts a failure as one of health's own
     // and a notice not, so the two swapped would count every mended write
     // as a fault, and none of health's. This pins what each sayer `follow`
