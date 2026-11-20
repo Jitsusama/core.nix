@@ -160,22 +160,29 @@ pub fn git_in(tree: &std::path::Path, args: &[&str]) {
 /// what it's given goes to its file, it says it holds it, and it holds on
 /// until it's ended, as wl-copy holds the clipboard. A test sets how it
 /// strays: `COPIER_WAITS` has it wait a second before saying it's ready,
-/// noting in `.early` a byte it was given before then; `COPIER_SILENT` has
-/// it never say it's ready; and `COPIER_REFUSES` has it refuse the copy for
-/// that reason, as Passwords' wl-copy refuses one it can't hold whole.
+/// noting in `.early` a byte it was given before then, read with a blocking
+/// read cut short so the pipe stays as `cat` expects it; `COPIER_SILENT`
+/// has it never say it's ready, leaving a child of its own behind that
+/// holds its standard error; `COPIER_REFUSES` has it refuse the copy for
+/// that reason, as Passwords' wl-copy refuses one it can't hold whole; and
+/// `COPIER_UNHELD` has it read the copy and never say it holds it.
 const COPIER: &str = r#"
 if [ -n "$COPIER_WAITS" ]; then
   sleep 1
-  dd iflag=nonblock bs=1 count=1 of="$COPIED.early" 2>/dev/null
+  timeout 0.3 dd bs=1 count=1 of="$COPIED.early" 2>/dev/null
 fi
-[ -n "$COPIER_SILENT" ] || echo ready
+if [ -n "$COPIER_SILENT" ]; then
+  sleep 60 &
+else
+  echo ready
+fi
 cat > "$COPIED"
 printf '%s\n' "$*" > "$COPIED.flags"
 if [ -n "$COPIER_REFUSES" ]; then
   echo "wl-copy: refused a sensitive copy: $COPIER_REFUSES" >&2
   exit 1
 fi
-echo held
+[ -n "$COPIER_UNHELD" ] || echo held
 while :; do sleep 1; done
 "#;
 
@@ -361,6 +368,9 @@ impl Running {
             .arg(words)
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
+            // Long enough for a copier told to wait a second, short
+            // enough that one which never answers is soon given up on.
+            .env("PASSWORDS_COPIER_PATIENCE_MS", "3000")
             .env("COPIED", folder.join("copied"))
             .env("XDG_STATE_HOME", folder.join("state"))
             .envs(set.iter().copied())

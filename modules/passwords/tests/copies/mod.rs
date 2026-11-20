@@ -99,6 +99,8 @@ fn a_copier_that_never_says_its_ready_is_given_nothing() {
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
     let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    // Answered in the copier's time, though a child it left behind still
+    // holds its standard error.
     assert_eq!(refused["error"]["code"], "refused", "{refused}");
     holds_no_secret(&refused);
     // It's ended, with nothing written to it.
@@ -125,7 +127,8 @@ fn nothing_is_written_to_the_copier_before_its_ready() {
     until("the copier has read the copy", || {
         running.copied().with_extension("flags").exists()
     });
-    let early = std::fs::read(running.copied().with_extension("early")).unwrap_or_default();
+    let early = std::fs::read(running.copied().with_extension("early"))
+        .expect("the copier looked for what it was given early");
     assert!(
         early.is_empty(),
         "the copier was given {} bytes before it was ready",
@@ -133,6 +136,27 @@ fn nothing_is_written_to_the_copier_before_its_ready() {
     );
     let held = std::fs::read_to_string(running.copied()).unwrap_or_default();
     assert_eq!(held, "hunter2", "the copy isn't held whole");
+}
+
+#[test]
+fn a_copier_that_never_says_it_holds_the_copy_is_refused() {
+    let running = Running::with_env(
+        "copy-unheld",
+        &[("keeping", KEEPING)],
+        &[("COPIER_UNHELD", "1")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = client.ask(&json!({"id": 2, "ask": "copy", "key": "entry:keeping:gh"}));
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("never said it held the copy")),
+        "an unheld copy didn't say why it was refused: {refused}"
+    );
+    holds_no_secret(&refused);
+    until("the unheld copier is ended", || !copier_runs(&running.copied()));
 }
 
 #[test]
