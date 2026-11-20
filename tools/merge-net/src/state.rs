@@ -459,6 +459,9 @@ impl State {
         entries
             .filter_map(Result::ok)
             .filter_map(|entry| read_json(&entry.path()))
+            // Only a Mac's: the logs a VM test's finding names age out with
+            // the rest, as they did before a day-old finding could name one.
+            .filter(|finding| finding["kind"] == "mac-unrun")
             .flat_map(|finding| {
                 ["log", "failed_log"]
                     .into_iter()
