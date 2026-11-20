@@ -450,7 +450,10 @@ body {
   text-underline-offset: 0.25em;
 }
 
-@media (max-width: 30rem) {
+/* The lines take a row of their own under the map's words until beside
+   them they'd have room for new work's line in one row, as said short
+   (below): the words take about 22rem, the short line about 20rem. */
+@media (max-width: 48rem) {
   .headline {
     flex-wrap: wrap;
     row-gap: 0;
@@ -1237,10 +1240,11 @@ body {
    one act on the line reads as the one to press. Laid over the trail's
    room from its top. Where the room is narrow, as on a phone, the line
    says less so it still holds one row (below), since a second row can
-   go nowhere that neither covers the drawer nor moves it. Only a line
-   too narrow even for that hangs a row over what's under it, as a sheet
-   would, rather than pushing the map down; its rule lies on the line's
-   own while it holds one row, and under the sheet when it hangs. */
+   go nowhere that neither covers the drawer nor moves it. Only a screen
+   too narrow even for that, under about 22rem, hangs a row over what's
+   under it, as a sheet would, rather than pushing the map down; its
+   rule lies on the line's own while it holds one row, and under the
+   sheet when it hangs. */
 .sprout {
   position: absolute;
   z-index: 3;

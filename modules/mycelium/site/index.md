@@ -215,7 +215,8 @@ The keyboard comes first and the pointer works too.
   in your words, and Return hands them to the Launcher's Start New
   Work, from the cell open as the line opened unless its tick is
   cleared. The page starts nothing itself: the Launcher opens with the
-  words filled in, and only your Return there starts the work. Escape
+  words filled in, and only your Return there starts the work. Words
+  handed on come back with s, from the same cell, to send again. Escape
   closes the line, and the control beside Now opens it too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,

@@ -138,6 +138,8 @@ import {
   const sproutControl = document.getElementById("sprout-control");
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
+  // The cell words last handed on went from, kept with them to send again.
+  let sproutKeptFrom = null;
   let sproutOpener = null;
   let sproutHeld = false;
   const trail = document.getElementById("trail");
@@ -3439,7 +3441,8 @@ import {
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
       (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.host)) +
-      (receptor ? "" : `<p class="led"><button type="button" class="inline" data-sprout-from="${esc(s.address)}">Start New Work From It</button></p>`) +
+      // Only an address the link carries can be started from.
+      (receptor || !isAddress(s.address) ? "" : `<p class="led"><button type="button" class="inline" data-sprout-from="${esc(s.address)}">Start New Work From It</button></p>`) +
       // The forage page lists only cells with a forage, so only those link there.
       (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
       factList(facts) +
@@ -3686,11 +3689,17 @@ import {
   sproutInput.maxLength = LONGEST_WORDS;
   const sproutableFrom = (address) =>
     isAddress(address) && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
-  const offerFrom = (from) => {
-    sproutFrom = sproutableFrom(from) ? from : null;
+  // A cell kept with handed words was offered when they went, so it
+  // stands whatever is open now.
+  const offerFrom = (from, { kept = false } = {}) => {
+    sproutFrom = kept || sproutableFrom(from) ? from : null;
     sproutFromLine.hidden = sproutFrom === null;
     sproutFromBox.checked = true;
-    sproutFromWords.textContent = sproutFrom ? `From ${current?.byAddress.get(sproutFrom)?.short || sproutFrom}` : "";
+    const short = sproutFrom ? current?.byAddress.get(sproutFrom)?.short || sproutFrom : "";
+    sproutFromWords.textContent = sproutFrom ? `From ${short}` : "";
+    // A name an agent wrote, and cut short on a phone, so its address
+    // is there to see too.
+    sproutFromLine.title = sproutFrom ? `${short} (${sproutFrom})` : "";
   };
   // `named` is a drawer's button, which names its own cell.
   const openSprout = (from, { named = false } = {}) => {
@@ -3701,13 +3710,16 @@ import {
       if (named && from !== sproutFrom) {
         sproutOpener = document.activeElement;
         offerFrom(from);
-      }
+      } else if (named) sproutFromBox.checked = true;
       sproutInput.focus();
       return;
     }
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    offerFrom(from);
+    // Words kept to send again go from the cell they went from, unless a
+    // drawer's button names its own.
+    const again = sproutInput.value !== "" && !named;
+    offerFrom(again ? sproutKeptFrom : from, { kept: again });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3730,7 +3742,10 @@ import {
   function closeSprout({ said = true, keep = false } = {}) {
     if (sproutLine.hidden) return;
     const inLine = sproutLine.contains(document.activeElement);
-    if (!keep) sproutInput.value = "";
+    if (!keep) {
+      sproutInput.value = "";
+      sproutKeptFrom = null;
+    }
     sproutInput.setCustomValidity("");
     sproutLine.hidden = true;
     trail.inert = false;
@@ -3755,17 +3770,22 @@ import {
     }
     sproutGo.href = link;
     sproutGo.click();
+    sproutKeptFrom = from;
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
     where.textContent = handedWords(short);
   });
-  // The field cuts a long paste at the cap by itself, so that is said.
-  sproutInput.addEventListener("input", () => {
-    sproutInput.setCustomValidity("");
-    if (sproutInput.value.length >= LONGEST_WORDS) where.textContent = FULL_WORDS;
+  // The field leaves off what would take it past the cap by itself, so
+  // that is said, only when something was left off.
+  sproutInput.addEventListener("beforeinput", (e) => {
+    const adds = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+    const chosen = (sproutInput.selectionEnd ?? 0) - (sproutInput.selectionStart ?? 0);
+    if (sproutInput.value.length - chosen + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
-  // A held s opens the line once; its repeats don't type into the field.
-  sproutLine.addEventListener("keyup", () => {
+  sproutInput.addEventListener("input", () => sproutInput.setCustomValidity(""));
+  // A held s opens the line once; its repeats don't type into the field,
+  // until any key comes up wherever it lands.
+  document.addEventListener("keyup", () => {
     sproutHeld = false;
   });
   // Escape closes the line from anywhere in it, its tick and button too,

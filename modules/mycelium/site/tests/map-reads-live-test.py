@@ -799,6 +799,18 @@ PLACED = """(selector) => {
 }"""
 # Whether the drawer has slid all the way in, on a page it fills.
 SLID_IN = "() => document.getElementById('panel').getBoundingClientRect().left === 0"
+# How far apart the middles of new work's drawn parts sit, up and down,
+# which one row keeps near nothing, to within ONE_ROW_PX.
+ONE_ROW_PX = 2
+ROW_APART = """(() => {
+  const middles = [...document.querySelectorAll("#sprout-line > *")]
+    .map((e) => e.getBoundingClientRect())
+    .filter((r) => r.width > 1 && r.height > 1)
+    .map((r) => r.top + r.height / 2);
+  return Math.max(...middles) - Math.min(...middles);
+})()"""
+# What the page says once the line has left letters off.
+FULL_WORDS = "The line holds 1000 letters; any past that were left off."
 # Where the field's chosen words start and end.
 CHOSEN = """(() => {
   const f = document.getElementById("sprout");
@@ -949,9 +961,66 @@ def test_find_and_new_work_never_stand_together(mycelium_opened: Opened) -> None
     expect(trail, "the trail stood beside new work").to_be_hidden()
 
 
-def test_new_works_line_holds_one_row_on_a_phone(browser: Browser, mycelium_served: Served) -> None:
+def test_new_work_sends_again_from_its_cell_and_holds_its_keys(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    field, tick = page.locator("#sprout"), page.locator("#sprout-from")
+    drawer = page.locator("#panel-body").get_by_role("button", name="Start New Work From It")
+    # Words sent again go from the cell they went from, whatever is open.
+    page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
+    drawer.click()
+    page.keyboard.type("first")
+    page.keyboard.press("Enter")
+    page.evaluate(f"location.hash = '#cell={NEEDING[1]}'")
+    expect(page, "the second cell didn't open").to_have_url(re.compile(rf"#cell={NEEDING[1]}$"))
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(field, "the handed words didn't come back").to_have_value("first")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == f"mycelium:sprout?words=first&from={NEEDING[0]}", f"sent again as {handed}"
+    # A drawer's button on its own cell's open line ticks it back.
+    drawer.click()
+    page.keyboard.press("Escape")
+    drawer.click()
+    tick.uncheck()
+    drawer.click()
+    expect(tick, "the drawer's button left its own cell unticked").to_be_checked()
+    # A held s opens the line once, its repeats typing nothing, until it
+    # comes up.
+    page.keyboard.press("Escape")
+    page.locator("#map-view").focus()
+    for _ in range(3):
+        page.keyboard.down("s")
+    page.keyboard.up("s")
+    expect(field, "a held s typed into the line").to_have_value("")
+    page.keyboard.type("s")
+    expect(field, "s after a held one typed nothing").to_have_value("s")
+    # The cap is said only when something was left off.
+    field.fill("x" * 1000)
+    expect(page.locator("#where"), "the cap was said with nothing left off").not_to_have_text(
+        FULL_WORDS
+    )
+    page.keyboard.press("y")
+    expect(page.locator("#where"), "a letter left off wasn't said").to_have_text(FULL_WORDS)
+    # Opened from find, which the line hides, Escape gives the keys to
+    # the map.
+    page.keyboard.press("Escape")
+    page.locator("#map-view").focus()
+    page.keyboard.press("/")
+    page.evaluate("document.getElementById('sprout-control').click()")
+    expect(field, "New Work didn't take the keys from find").to_be_focused()
+    page.keyboard.press("Escape")
+    expect(page.locator("#map-view"), "the keys went to the hidden find").to_be_focused()
+
+
+@pytest.mark.parametrize("width", [SIZES[0][0], 560, 780, 900])
+def test_new_works_line_holds_one_row_over_a_full_drawer(
+    browser: Browser, mycelium_served: Served, width: int
+) -> None:
     root, _ = mycelium_served
-    opened = Opened(browser, f"{root}mycelium/", SIZES[0], "dark")
+    opened = Opened(browser, f"{root}mycelium/", (width, SIZES[0][1]), "dark")
     try:
         page = opened.page
         the_map_stands(page, "live")
@@ -966,19 +1035,22 @@ def test_new_works_line_holds_one_row_on_a_phone(browser: Browser, mycelium_serv
         was = [page.evaluate(PLACED, s) for s in ("#map", "#panel-body")]
         start.click()
         expect(page.locator("#sprout-from-words"), "the open cell wasn't offered").to_be_visible()
-        # Narrow, the line says less and holds one row, so it neither
-        # covers the drawer nor moves it or the map.
+        # Wherever the drawer takes the page's width, the line says less
+        # as it needs and holds one row, so it neither covers the drawer
+        # nor moves it or the map.
         go = page.locator(".sprout-go")
         expect(go, "the button lost its whole name").to_have_accessible_name(
             "Start It in the Launcher"
         )
-        expect(go, "the button kept its long words").to_have_text("Start", use_inner_text=True)
+        if width == SIZES[0][0]:
+            expect(go, "the button kept its long words").to_have_text("Start", use_inner_text=True)
         _, top, _, tall = page.evaluate(PLACED, "#sprout-line")
         # The drawer scrolls, so its edge, not its words, is where it shows.
         _, edge, _, _ = page.evaluate(PLACED, "#panel")
-        # One row is the trail's room and the rule under it.
-        _, _, _, room = page.evaluate(PLACED, ".lines")
-        assert tall <= room + 1.5, f"the line took more than a row, {tall} px in {room}"
+        apart = page.evaluate(ROW_APART)
+        assert apart <= ONE_ROW_PX, (
+            f"the line's parts sit {apart} px apart, so it took more than a row"
+        )
         assert top + tall - 1 <= edge, f"the line, to {top + tall}, covers the drawer from {edge}"
         now = [page.evaluate(PLACED, s) for s in ("#map", "#panel-body")]
         assert now == was, f"the line moved the map or the drawer: {was} to {now}"
