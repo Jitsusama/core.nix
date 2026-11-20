@@ -558,8 +558,8 @@ fn ending_finding(
             "The {} override ends {day}{}. At {}'s pace, a {} chance the spend \
              is over the {} that follows the moment it does.",
             whole(allowance),
-            paced(picture),
             if known { "" } else { ", by the feed's guess" },
+            paced(picture),
             percent(after),
             whole(fallback)
         ),
@@ -2495,7 +2495,10 @@ mod tests {
         assert!(!keys.contains(&"unending"), "{said:?}");
         let ending = &said.iter().find(|(key, _)| key == "ending").unwrap().1;
         assert!(
-            ending.starts_with("The $40,000 override ends Thu 15 Oct, by the feed's guess."),
+            ending.starts_with(
+                "The $40,000 override ends Thu 15 Oct, by the feed's guess. At Wed 14 Oct \
+                 14:00's pace, a "
+            ),
             "{ending}"
         );
     }
