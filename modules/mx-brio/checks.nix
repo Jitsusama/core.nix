@@ -54,7 +54,7 @@ onLinux {
         "the loopback's holders file isn't named as the Brio is" =
           lib.hasSuffix "'/run/camera-holders/${card}'" holders.serviceConfig.ExecStart;
         "the loopback's holders file stays once the Brio has gone" =
-          lib.hasInfix "/bin/rm -f '/run/camera-holders/${card}'" holders.serviceConfig.ExecStopPost;
+          lib.any (lib.hasInfix "/bin/rm -f '/run/camera-holders/${card}'") holders.serviceConfig.ExecStopPost;
         "the Brio's own watch doesn't write in the hidden folder" =
           lib.hasSuffix " /run/camera-holders/.relayed" watch.serviceConfig.ExecStart;
         "a relayed camera's watch could write beside its loopback's" =
