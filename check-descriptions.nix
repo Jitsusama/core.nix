@@ -2959,7 +2959,10 @@
     every saying in sayings.json is judged the safe word, a resume, an ask to stop or a near miss as
     the table says, and reaches what its words and its place name, or everything, said so; and
     Joel's own command resumes a stop only out of pi's reach, marking it rather than removing it;
-    and its daemon serves only live stops to the launcher, taking a press only from Joel's shell
+    and its daemon serves only live stops to the launcher, taking a press only from Joel's shell;
+    and his stop all, refused under pi, freezes agents' work and timers here but never his own,
+    and parks every session and refuses new ones on each machine running one, until a resume
+    undoes exactly that
   '';
   pineapple-passes-clippy = ''
     clippy finds nothing in pineapple, the judge of the safe word that stops Joel's agents
@@ -2971,7 +2974,8 @@
   '';
   pineapple-serves-the-launcher-from-its-socket = ''
     the daemon showing the safe word's stops in the launcher starts at login on its socket, where
-    the launcher looks, knocks with notify-send and reads its words from the launcher's vocabulary
+    the launcher looks, knocks with notify-send and reads its words from the launcher's vocabulary,
+    with a pause plan naming the agents' timers and keeping the compile cache
   '';
   pineapple-slack-starts-with-the-sign-in = ''
     the reader of Slack for the safe word starts at login, reads pi's Slack sign-in from the

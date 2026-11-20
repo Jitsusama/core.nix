@@ -23,7 +23,11 @@ onLinux {
   # resume where pi says it runs, and otherwise marks what a scope names
   # resumed, which clears its thread's reply; and pineapple serve serves
   # a live stop and alert as rows in the launcher's words, writes a shadow
-  # one down only, and refuses a press from anything but Joel's shell.
+  # one down only, and refuses a press from anything but Joel's shell;
+  # and pineapple stop all, refused under pi, stops everything, refusing
+  # agents' starts, stopping their timers and freezing their work but
+  # never Joel's, here and on each machine running a session, until a
+  # resume undoes exactly that.
   pineapple-judges-each-saying = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in pineapple, its tests included.
   pineapple-passes-clippy = passesClippy "pineapple-passes-clippy" (
@@ -155,16 +159,21 @@ onLinux {
   # pineapple, the daemon showing stops in the launcher, is started at
   # login for its socket, which systemd holds where the launcher looks,
   # knocks with notify-send, and reads its words from the launcher's
-  # vocabulary.
+  # vocabulary; and its Pause All Agents has a plan naming systemctl,
+  # mycelium and the agents' timers, keeping the compile cache.
   pineapple-serves-the-launcher-from-its-socket =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
       unit = home.systemd.user.services.pineapple;
       socket = home.systemd.user.sockets.pineapple;
       command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
+      # Read for its shape only, so the store paths it names needn't build.
+      pause = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext home.xdg.configFile."pineapple/pause.json".text
+      );
     in
     holds "pineapple-serves-the-launcher-from-its-socket"
-      "pineapple lacks its socket, login start, serve command, notice or words."
+      "pineapple lacks its socket, login start, serve command, notice, words or pause plan."
       (
         socket.Socket.ListenStream == "%t/daemons/pineapple.sock"
         && lib.elem "pineapple.socket" unit.Unit.Requires
@@ -172,5 +181,11 @@ onLinux {
         && lib.hasInfix "/bin/pineapple pineapple serve --socket" command
         && lib.hasInfix "/bin/notify-send" command
         && lib.hasInfix "words.json" command
+        && lib.hasSuffix "/bin/systemctl" pause.systemctl
+        && lib.hasSuffix "/bin/mycelium" pause.mycelium
+        && lib.elem "cadence*.timer" pause.timers
+        && lib.elem "sccache.service" pause.keep
+        && lib.elem "merge-net.service" pause.keep
+        && builtins.isList pause.realms
       );
 }

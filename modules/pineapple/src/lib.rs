@@ -36,6 +36,10 @@
 //!   can't hear Slack, since that alert goes through it.
 //! - [`judged`] keeps how far the Slack reader has read, so a restart
 //!   neither judges a message twice nor misses one.
+//! - [`pause`] is the stop on everything Joel says himself, as before a
+//!   demo: beside its record, it refuses agents' starts, stops their
+//!   timers and freezes their work, here and on each machine named, and
+//!   undoes exactly that once he resumes it.
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack.rs), then GitHub
@@ -50,6 +54,7 @@ pub mod gate;
 pub mod github;
 mod judge;
 pub mod judged;
+pub mod pause;
 pub mod peer;
 pub mod phone;
 pub mod progress;

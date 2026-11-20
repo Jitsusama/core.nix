@@ -12,11 +12,18 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
 let
   pineapple = pkgs.callPackage ./package.nix { };
+  # The realms this machine's mycelium nodes keep, as cadence reads them,
+  # since each realm's agents start and run apart from the others'.
+  realms = lib.optionals (options.jitsusama ? mycelium) (
+    lib.optional (config.jitsusama.mycelium.realm != null) config.jitsusama.mycelium.realm
+    ++ lib.attrNames config.jitsusama.mycelium.alsoJoins
+  );
   # Prints pi's Slack sign-in from the desktop's keyring, or says the
   # keyring is locked, as slack-unreads reads it (../slack/keyring.nix).
   keyring = pkgs.callPackage ../slack/keyring.nix { };
@@ -78,6 +85,45 @@ let
 in
 {
   imports = [ ../quickshell/providers.nix ];
+
+  # What Joel's own stop on everything pauses beside its record
+  # (src/pause.rs): agents' timers, and what's never frozen. Every machine
+  # mycelium lists a session on stops with this one, so none is named.
+  options.jitsusama.pineapple.pause = {
+    timers = lib.mkOption {
+      description = "The agents' timers it stops, as names or systemd's patterns.";
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "cadence*.timer"
+        "pain-hear.timer"
+        "pain-points.timer"
+        "night-shift-*.timer"
+        "pi-packages.timer"
+        "pi-measure.timer"
+      ];
+    };
+    keep = lib.mkOption {
+      description = ''
+        The units of agents' work it never freezes, as names or patterns
+        with `*`: the compile cache Joel's own builds read, the checks a
+        merge to main runs, which the stop holds no merge for and which a
+        freeze would time out into a revert, and anything started for a
+        demo itself.
+      '';
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "sccache.service"
+        "merge-net.service"
+        "changed-checks-keeps-main.service"
+        "*demo*"
+      ];
+    };
+    machines = lib.mkOption {
+      description = "Other machines that stop with this one, beside each running a session.";
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+    };
+  };
 
   options.jitsusama.pineapple.sites = lib.mkOption {
     description = ''
@@ -149,6 +195,15 @@ in
     {
 
       home.packages = [ pineapple ];
+
+      # Read by pineapple stop all and by serve's Pause All Agents.
+      xdg.configFile."pineapple/pause.json".text = builtins.toJSON {
+        systemctl = lib.getExe' pkgs.systemd "systemctl";
+        # mycelium as the machine installs it, which isn't this module's.
+        mycelium = "${config.home.profileDirectory}/bin/mycelium";
+        inherit (config.jitsusama.pineapple.pause) timers keep machines;
+        inherit realms;
+      };
 
       # Its rows in For You (SafeWord.qml), read from `pineapple serve` below;
       # on a machine without the shell nothing reads it. Beside Sound's, since

@@ -7,6 +7,11 @@
 //! closes it once the row stops standing, resumed or left, so Joel's
 //! alarm doesn't outlive what it was about.
 //!
+//! It takes Joel's Pause All Agents the same way, as the ask `pause`, and
+//! while that stop stands it freezes agents' work started since, each
+//! time it looks; once the stop is resumed, however, it undoes what the
+//! stop paused (src/pause.rs).
+//!
 //! While the safe word is in shadow, every stop and alert is too, and
 //! the daemon serves none of them and sends no notice: it writes each row
 //! it would have shown, once, to would-tell.jsonl, with the message it
@@ -25,6 +30,7 @@ use daemon_serve::serve::{Shared, accept, listen};
 use serde_json::{Value, json};
 
 use crate::acts::{self, Refused};
+use crate::pause;
 use crate::peer::{Peer, may_act};
 use crate::phone::{self, Alert};
 use crate::record;
@@ -66,7 +72,22 @@ pub struct Serving {
     pub busctl: Option<PathBuf>,
     /// How often it looks for a change.
     pub every: Duration,
+    /// What a stop on everything Joel asks for here pauses; none, and his
+    /// Pause All Agents is refused.
+    pub pause: Option<pause::Plan>,
+    /// This machine's name, as Joel is told of it.
+    pub host: String,
 }
+
+/// Every ask a press makes, Pause All Agents's beside the rows'.
+const ASKS: [&str; 6] = ["resume", "widen", "stop", "approve", "dismiss", PAUSE];
+
+/// The ask Pause All Agents makes.
+const PAUSE: &str = "pause";
+
+/// How long each step of a pause is given, so it answers the launcher in
+/// time however a machine named fails to.
+const STEP: Duration = Duration::from_secs(6);
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -89,17 +110,27 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
         notify,
         busctl,
         every,
+        pause,
+        host,
     } = serving;
     let words = Arc::new(words);
+    let pause = Arc::new(pause);
     let shared = Shared::new(DOMAIN, Box::new(|_| None));
     let (poke, poked) = mpsc::channel::<()>();
     {
         let state = state.clone();
         let words = Arc::clone(&words);
+        let pause = Arc::clone(&pause);
+        let host = host.clone();
+        shared.slow(&[PAUSE]);
         shared.peered(
-            &acts::VERBS,
+            &ASKS,
             Box::new(move |said, stream| {
-                let answer = pressed(&state, said, stream, &words);
+                let answer = if said["ask"] == PAUSE {
+                    paused(&state, said, stream, pause.as_ref().as_ref(), &host)
+                } else {
+                    pressed(&state, said, stream, &words)
+                };
                 // Looked at again at once, so the row a press changed is
                 // told without waiting for the next look.
                 let _ = poke.send(());
@@ -114,6 +145,9 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
     let mut looked: Option<Vec<(String, u64, u128)>> = None;
     let mut made = Instant::now();
     loop {
+        if let Some(plan) = pause.as_ref() {
+            hold_paused(plan, &state, &host);
+        }
         let mark = mark(&state);
         if looked.as_ref() != Some(&mark) || made.elapsed() >= REMADE {
             let rows = tell::rows(&tell::kept(&state), now_ms(), &words);
@@ -134,6 +168,93 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
     }
 }
 
+/// While a stop on everything stands, freezes agents' work started since;
+/// once it's resumed, undoes what it paused. Each is journalled.
+fn hold_paused(plan: &pause::Plan, state: &Path, host: &str) {
+    let mut runs = pause::System { limit: STEP };
+    match pause::tend(plan, state, host, now_ms(), &mut runs) {
+        Ok(tended) => {
+            if !tended.froze.is_empty() {
+                eprintln!(
+                    "paused agents' work started since: {}",
+                    tended.froze.join(", ")
+                );
+            }
+            if !tended.took.is_empty() {
+                eprintln!("{}", pause::said("resuming", &tended.took, None));
+            }
+        }
+        Err(error) => eprintln!("<4>couldn't tend what a stop paused: {error}"),
+    }
+}
+
+/// Joel's Pause All Agents, refused unless it comes from his own shell:
+/// `{"ask": "pause", "scope": "all"}`, answered `{"said": <line>}`.
+fn paused(
+    state: &Path,
+    said: &Value,
+    stream: &std::os::unix::net::UnixStream,
+    plan: Option<&pause::Plan>,
+    host: &str,
+) -> Value {
+    if let Err(refused) = from_joel(PAUSE, stream) {
+        return refused.answer();
+    }
+    let refuse = |code: &'static str, message: String| {
+        eprintln!("<4>refused pause: {message}");
+        Refused { code, message }.answer()
+    };
+    if said["scope"] != "all" {
+        return refuse("bad-scope", "Pause All Agents pauses all".to_owned());
+    }
+    let Some(plan) = plan else {
+        return refuse("no-plan", "this machine names nothing to pause".to_owned());
+    };
+    if let Some(id) = pause::stands(state) {
+        return refuse(
+            "paused-already",
+            format!("agents are already stopped, by {id}"),
+        );
+    }
+    let at = now_ms();
+    let mut runs = pause::System { limit: STEP };
+    match pause::stop(plan, state, &pause::id(at), host, at, &mut runs) {
+        Ok(took) => {
+            let sessions = pause::sessions(plan, &pause::recorded(&took), &mut runs);
+            let line = pause::said("stopping", &took, sessions);
+            eprintln!("Joel paused all agents: {line}");
+            json!({"said": line})
+        }
+        Err(error) => refuse("failed", format!("couldn't write the stop: {error}")),
+    }
+}
+
+/// Whether the process on `stream` is Joel's own shell, or the refusal
+/// saying why not.
+fn from_joel(verb: &str, stream: &std::os::unix::net::UnixStream) -> Result<(), Refused> {
+    let peer = match Peer::of(stream) {
+        Ok(peer) => peer,
+        Err(error) => {
+            eprintln!("<4>refused {verb} from a process it couldn't name: {error}");
+            return Err(Refused {
+                code: "no-peer",
+                message: format!("the process asking can't be named: {error}"),
+            });
+        }
+    };
+    if !may_act(&peer.cgroup, &peer.exe) {
+        eprintln!(
+            "<4>refused {verb} from pid {} ({}), which isn't Joel's shell",
+            peer.pid, peer.exe
+        );
+        return Err(Refused {
+            code: "not-joel",
+            message: "only Joel's own launcher may act on a stop".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 /// A press, refused unless it comes from Joel's own shell.
 fn pressed(
     state: &Path,
@@ -142,27 +263,8 @@ fn pressed(
     words: &Words,
 ) -> Value {
     let verb = said["ask"].as_str().unwrap_or_default();
-    let peer = match Peer::of(stream) {
-        Ok(peer) => peer,
-        Err(error) => {
-            eprintln!("<4>refused {verb} from a process it couldn't name: {error}");
-            return Refused {
-                code: "no-peer",
-                message: format!("the process asking can't be named: {error}"),
-            }
-            .answer();
-        }
-    };
-    if !may_act(&peer.cgroup, &peer.exe) {
-        eprintln!(
-            "<4>refused {verb} from pid {} ({}), which isn't Joel's shell",
-            peer.pid, peer.exe
-        );
-        return Refused {
-            code: "not-joel",
-            message: "only Joel's own launcher may act on a stop".to_owned(),
-        }
-        .answer();
+    if let Err(refused) = from_joel(verb, stream) {
+        return refused.answer();
     }
     match acts::press(state, said, now_ms(), words) {
         Ok(done) => {

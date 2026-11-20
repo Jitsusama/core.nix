@@ -13,6 +13,14 @@
 //! terminal of his own; the launcher's Resume asks `pineapple serve`,
 //! which takes it only from his shell (src/serve.rs).
 //!
+//! `pineapple stop all` is Joel's own stop on everything, for a time no
+//! agent may run, as through a demo, and is refused under pi too. Beside
+//! the stop's record it pauses what the machine's pause plan names
+//! (src/pause.rs), here and on the machines named, says so in one line,
+//! then names each session as it parks, for a minute, and any still
+//! mid-turn after it. Resuming it, by `pineapple resume all` or the
+//! launcher's Resume, undoes what it paused.
+//!
 //! `pineapple serve` is that daemon, as its service runs it: it serves
 //! the stops, alerts and resume requests as Needs You's rows on its
 //! socket, and knocks as each first appears. The harness
@@ -23,6 +31,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use pineapple::pause;
 use pineapple::resume::{self, Standing};
 use pineapple::serve::{self as serving, Serving};
 use pineapple::vocabulary::Words;
@@ -31,6 +40,16 @@ use terminal_kit::{Exit, Failure, Format, Help, flags};
 
 /// How many parents up a process looks for pi, far past any real tree.
 const DEEPEST: usize = 64;
+
+/// How long each step of a stop is given, so one machine that doesn't
+/// answer can't hold the rest up.
+const STEP: Duration = Duration::from_secs(6);
+
+/// How long a stop watches its sessions park.
+const PARKING: Duration = Duration::from_secs(60);
+
+/// How often it looks for one parked.
+const LOOKED: Duration = Duration::from_millis(500);
 
 /// The variables pi sets in every shell it starts.
 const PI_SAYS: [&str; 3] = ["PI_SESSION_ID", "PI_BASH_CALL", "PI_HOST_CONVERSATION"];
@@ -43,6 +62,10 @@ fn help() -> Help {
     )
     .example("pineapple", "the stops standing, the same as stops")
     .example("pineapple resume all", "resumes every stop")
+    .example(
+        "pineapple stop all",
+        "stops every agent here and on the machines named",
+    )
     .subcommand(
         Help::new("stops", "the stops standing, with what each reaches")
             .example("pineapple stops --json", "the same as pineapple.stops/1"),
@@ -59,6 +82,20 @@ fn help() -> Help {
         .example(
             "pineapple resume pr:example/shop#12",
             "resumes the stop on that pull request",
+        ),
+    )
+    .subcommand(
+        Help::new(
+            "stop",
+            "stops every agent, as before a demo, until you resume; refused under pi",
+        )
+        .argument(
+            "all",
+            "every agent, here and on the machines the pause plan names",
+        )
+        .example(
+            "pineapple stop all",
+            "stops them, naming each session as it parks",
         ),
     )
     .subcommand(
@@ -91,7 +128,11 @@ fn help() -> Help {
             "serves until stopped",
         ),
     )
-    .exit(Exit::Refused, "run under pi, where only Joel may resume")
+    .exit(
+        Exit::Refused,
+        "run under pi, where only Joel may stop all or resume",
+    )
+    .exit(Exit::Config, "stop all finds no pause plan on this machine")
     .exit(Exit::NotFound, "no stop standing is named by the scope")
     .exit(Exit::BadInput, "serve's vocabulary can't be read")
 }
@@ -109,6 +150,10 @@ fn main() -> ExitCode {
         match args.as_slice() {
             [] | ["stops"] => stops(context),
             ["resume", scope] => resume(context, scope),
+            ["stop", "all"] => stop_all(context),
+            ["stop", ..] => Err(Failure::new(Exit::Usage, "stop takes all")
+                .because("Joel's own stop is on everything")
+                .try_this("pineapple stop all")),
             ["serve", rest @ ..] => serve(rest),
             ["resume"] => Err(Failure::new(Exit::Usage, "resume takes a scope")
                 .because("it resumes only the stops the scope names")
@@ -134,6 +179,138 @@ fn state() -> PathBuf {
 
 fn folder() -> PathBuf {
     state().join("stops")
+}
+
+/// The machine's pause plan, which its config writes, or why there's none.
+fn plan() -> Result<pause::Plan, Failure> {
+    let path = std::env::var_os("PINEAPPLE_PAUSE").map_or_else(
+        || {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map_or_else(
+                    || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"),
+                    PathBuf::from,
+                )
+                .join("pineapple/pause.json")
+        },
+        PathBuf::from,
+    );
+    std::fs::read_to_string(&path)
+        .map_err(|error| error.to_string())
+        .and_then(|text| pause::Plan::from_json(&text))
+        .map(|mut plan| {
+            // A mycelium the config names but the machine lacks is none,
+            // so a stop says plainly that it reached no other machine.
+            plan.mycelium = plan.mycelium.filter(|path| path.exists());
+            plan
+        })
+        .map_err(|why| {
+            Failure::new(Exit::Config, "this machine has no pause plan")
+                .because(format!("{}: {why}", path.to_string_lossy()))
+        })
+}
+
+/// This machine's name, as its kernel says it.
+fn host() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|name| name.trim().to_owned())
+        .ok()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "this machine".to_owned())
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
+/// Joel's stop on everything: its record and what it pauses, said in one
+/// line, then each session named as it parks, for a minute at most.
+fn stop_all(context: &terminal_kit::Context) -> Result<(), Failure> {
+    if let Some(why) = under_pi() {
+        return Err(Failure::new(Exit::Refused, "only Joel stops every agent")
+            .because(why)
+            .try_this("run it at a terminal of your own"));
+    }
+    if let Some(id) = pause::stands(&state()) {
+        return context
+            .say(&format!(
+                "agents are already stopped, by {id}; pineapple resume all ends it\n"
+            ))
+            .map_err(|error| couldnt_write(&error));
+    }
+    let plan = plan()?;
+    let at = now();
+    let id = pause::id(at);
+    let mut runs = pause::System { limit: STEP };
+    let took = pause::stop(&plan, &state(), &id, &host(), at, &mut runs).map_err(|error| {
+        Failure::new(Exit::Failed, "couldn't write the stop").because(error.to_string())
+    })?;
+    let sessions = pause::sessions(&plan, &pause::recorded(&took), &mut runs);
+    context
+        .say(&format!("{}\n", pause::said("stopping", &took, sessions)))
+        .map_err(|error| couldnt_write(&error))?;
+    // Only this machine's parking is written here; another's parks there.
+    let host = host();
+    let here = pause::session_ids(&plan, &[host.as_str()], &mut runs);
+    let named = watch_parking(context, &id, here.as_deref());
+    let parked = named.len();
+    let left = here.map_or(0, |ids| {
+        ids.iter().filter(|one| !named.contains(one)).count()
+    });
+    let there = if took.iter().any(|one| one.recorded && one.machine != host) {
+        ", the other machines' sessions park there and start no more"
+    } else {
+        ""
+    };
+    let last = if left == 0 {
+        format!("{parked} parked here{there}; nothing starts until pineapple resume all\n")
+    } else {
+        format!(
+            "{parked} parked here, {left} still mid-turn after a minute, its writes refused\
+             {there}; nothing starts until pineapple resume all\n"
+        )
+    };
+    context.say(&last).map_err(|error| couldnt_write(&error))
+}
+
+/// Names each session as the harness writes it parked for the stop `id`,
+/// until every one of `sessions` has, or a minute has passed, and
+/// answers those that parked.
+fn watch_parking(
+    context: &terminal_kit::Context,
+    id: &str,
+    sessions: Option<&[String]>,
+) -> Vec<String> {
+    let began = std::time::Instant::now();
+    let mut named: Vec<String> = Vec::new();
+    loop {
+        let parked = std::fs::read_to_string(state().join("parked.jsonl")).unwrap_or_default();
+        for line in parked.lines() {
+            let Ok(line) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            let Some(session) = line["session"].as_str() else {
+                continue;
+            };
+            if line["stop"] == id && !named.iter().any(|one| one == session) {
+                named.push(session.to_owned());
+                // A session's name is whatever it was given, so what would
+                // move Joel's terminal is left out of it.
+                let shown: String = session.chars().filter(|c| !c.is_control()).collect();
+                // A line not written to a closed terminal is no reason to
+                // stop watching; the stop stands either way.
+                let _ = context.say(&format!("  parked {shown}\n"));
+            }
+        }
+        let all = sessions.is_some_and(|ids| ids.iter().all(|one| named.contains(one)));
+        if all || began.elapsed() >= PARKING {
+            return named;
+        }
+        std::thread::sleep(LOOKED);
+    }
 }
 
 /// The daemon, from its flags, which serves until it's stopped.
@@ -199,6 +376,9 @@ fn serve(rest: &[&str]) -> Result<(), Failure> {
         notify,
         busctl,
         every,
+        // A machine with no plan serves on, refusing only Pause All Agents.
+        pause: plan().ok(),
+        host: host(),
     })
     .map_err(|error| Failure::new(Exit::Failed, "couldn't serve").because(error.to_string()))
 }
@@ -248,15 +428,31 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
             .because(why)
             .try_this("run it at a terminal of your own"));
     }
-    let at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| {
-            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-        });
+    // The plan is read first: a stop on everything whose pause couldn't be
+    // undone is left standing whole, rather than resumed with its agents'
+    // work still frozen.
+    let plan = match plan() {
+        Ok(plan) => Some(plan),
+        Err(failure) if pause::stands(&state()).is_some() => return Err(failure),
+        Err(_) => None,
+    };
+    let at = now();
     let resumed = resume::resume(&folder(), scope, at, "joel").map_err(|error| {
         Failure::new(Exit::Failed, "couldn't mark a stop resumed").because(error.to_string())
     })?;
-    if resumed.is_empty() {
+    // Undone after the records, so what a stop paused is undone even when
+    // its record was resumed some other way and its pause left standing.
+    let undone = match plan {
+        Some(plan) => {
+            let mut runs = pause::System { limit: STEP };
+            pause::settle(&plan, &state(), &host(), at, &mut runs).map_err(|error| {
+                Failure::new(Exit::Failed, "couldn't undo what a stop paused")
+                    .because(error.to_string())
+            })?
+        }
+        None => Vec::new(),
+    };
+    if resumed.is_empty() && undone.is_empty() {
         return Err(Failure::new(
             Exit::NotFound,
             format!("no stop standing is named by {scope}"),
@@ -264,10 +460,28 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
         .try_this("pineapple stops"));
     }
     let written = match context.format() {
-        Format::Text => context.say(&format!(
-            "resumed {}; agents carry on within a minute\n",
-            resumed.join(", ")
+        Format::Text if resumed.is_empty() => context.say(&format!(
+            "{}; agents carry on within a minute\n",
+            pause::said("resuming", &undone, None),
         )),
+        Format::Text if !undone.is_empty() => context.say(&format!(
+            "resumed {}; {}; agents carry on within a minute\n",
+            resumed.join(", "),
+            pause::said("resuming", &undone, None),
+        )),
+        Format::Text => {
+            // serve's tend may have taken the undo, so what it left is read.
+            let left = pause::left(&state());
+            let still = if left.is_empty() {
+                String::new()
+            } else {
+                format!("; still {}, tried again each minute", left.join(", "))
+            };
+            context.say(&format!(
+                "resumed {}{still}; agents carry on within a minute\n",
+                resumed.join(", ")
+            ))
+        }
         _ => context.answer(&json!({ "schema": "pineapple.resumed/1", "resumed": resumed })),
     };
     written.map_err(|error| couldnt_write(&error))
@@ -278,11 +492,17 @@ fn couldnt_write(error: &std::io::Error) -> Failure {
 }
 
 /// Why this runs under pi, or none when it doesn't: what pi sets in the
-/// shells it starts, or pi itself among this process's parents, which a
-/// shell can't hide.
+/// shells it starts, the agents' own part of the user's manager, or pi
+/// itself among this process's parents, which a shell can't hide.
 fn under_pi() -> Option<String> {
     if let Some(var) = PI_SAYS.iter().find(|var| std::env::var_os(var).is_some()) {
         return Some(format!("{var} is set, as pi sets it in its shells"));
+    }
+    if let Some(why) = std::fs::read_to_string("/proc/self/cgroup")
+        .ok()
+        .and_then(|cgroup| pause::agents_cgroup(&cgroup))
+    {
+        return Some(why);
     }
     let mut pid = parent_of("self")?;
     for _ in 0..DEEPEST {
