@@ -591,10 +591,14 @@ mod tests {
                 unit(&format!("{name}.service"), &[&said, &said, &said])
             })
             .collect();
+        // The old cut took 28 s on one such line in a release build, so
+        // either bound catches it: five seconds as the package builds it,
+        // and thirty for a debug `cargo test`, which took 5.6 s here.
+        let bound = if cfg!(debug_assertions) { 30 } else { 5 };
         let started = std::time::Instant::now();
         let fitted = text(&failed, 4, &[], &console(), Room::Cells(80), Some(24));
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
+            started.elapsed() < std::time::Duration::from_secs(bound),
             "four units of 48K lines took {:?} to fit",
             started.elapsed()
         );
