@@ -100,18 +100,17 @@ impl Arrivals {
     /// is to be judged by it.
     pub fn heading(&mut self, card: &str, to: &str, now: Instant) {
         let to = to.to_owned();
-        match self.moves.get_mut(card) {
-            Some(moving) => moving.to = to,
-            None => {
-                let moved = Move {
-                    to,
-                    asked: now,
-                    left: Some(now),
-                    lost: false,
-                };
-                self.moves.insert(card.to_owned(), moved);
-            }
+        if let Some(moving) = self.moves.get_mut(card) {
+            moving.to = to;
+            return;
         }
+        let moved = Move {
+            to,
+            asked: now,
+            left: Some(now),
+            lost: false,
+        };
+        self.moves.insert(card.to_owned(), moved);
     }
 
     /// Forgets the card's move, as one wpa_supplicant refused never began
@@ -123,8 +122,8 @@ impl Arrivals {
     /// Takes in a step wpa_supplicant says the card is at, short of joined,
     /// and says if its move has just given up, or was followed too long.
     pub fn step(&mut self, card: &str, step: &str, now: Instant) -> Option<Arrival> {
-        if let Some(unseen) = self.unseen(card, now) {
-            return unseen;
+        if let Some(gone) = self.overdue(card, now) {
+            return gone.unseen();
         }
         let moving = self.moves.get_mut(card)?;
         let gave_up = GAVE_UP.contains(&step);
@@ -146,8 +145,8 @@ impl Arrivals {
     /// where it can be named, and says how its move ended, if it was
     /// moving.
     pub fn joined(&mut self, card: &str, on: Option<&str>, now: Instant) -> Option<Arrival> {
-        if let Some(unseen) = self.unseen(card, now) {
-            return unseen;
+        if let Some(gone) = self.overdue(card, now) {
+            return gone.unseen();
         }
         let done = self.moves.remove(card)?;
         let asked = now - done.asked;
@@ -163,15 +162,22 @@ impl Arrivals {
         Some(Arrival::Reached { to, asked, off })
     }
 
-    /// Ends the card's move if it's been followed too long, saying so where
-    /// it wasn't said lost already. None where it's still followed.
-    fn unseen(&mut self, card: &str, now: Instant) -> Option<Option<Arrival>> {
+    /// Ends the card's move if it's been followed too long, handing it back.
+    /// None where it's still followed.
+    fn overdue(&mut self, card: &str, now: Instant) -> Option<Move> {
         let moving = self.moves.get(card)?;
         if now - moving.asked <= FOLLOWED {
             return None;
         }
-        let gone = self.moves.remove(card)?;
-        Some((!gone.lost).then_some(Arrival::Unseen { to: gone.to }))
+        self.moves.remove(card)
+    }
+}
+
+impl Move {
+    /// A move followed too long, said unseen where it wasn't said lost
+    /// already.
+    fn unseen(self) -> Option<Arrival> {
+        (!self.lost).then_some(Arrival::Unseen { to: self.to })
     }
 }
 
