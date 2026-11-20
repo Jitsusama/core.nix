@@ -695,11 +695,11 @@ def makings_said(desktop: Desktop, since: str) -> list[str]:
     return [line.strip() for line in said.splitlines() if line.strip()]
 
 
-def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], slowed: float) -> list[str]:
+def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], stretched: float) -> list[str]:
     """Say each place's drawers by turns, and give those the load slowed past their bound.
 
     Each is judged by its making alone (Drawn.judged), its wait and drawing said beside it, its
-    bound stretched `slowed` times for the builder.
+    bound stretched `stretched` times for the builder.
     """
     slowed = []
     for place in sorted(drawn[True]):
@@ -711,7 +711,7 @@ def slowed_drawers(drawn: dict[bool, dict[str, list[Drawn]]], slowed: float) -> 
             " with the load frozen"
         )
         if frozen and loaded[(len(loaded) - 1) // 2] > bound(
-            frozen[(len(frozen) - 1) // 2], STEPPED_MORE, slowed
+            frozen[(len(frozen) - 1) // 2], STEPPED_MORE, stretched
         ):
             slowed.append(place)
     return slowed
