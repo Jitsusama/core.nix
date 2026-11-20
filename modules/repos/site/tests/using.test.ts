@@ -60,6 +60,12 @@ it("never lets an older daemon's refusal of what works call the page broken", ()
   assert.deepEqual(footed(standing), ["live", "stale"]);
 });
 
+it("says a reading that stopped answering as unread, never as nothing working", () => {
+  const unread = usingOf({ ...record, processes: null, memory: null, cpu: null, folders: [] });
+  assert.equal(usedBriefly(unread.whole), "processes unread");
+  assert.equal(usedFully(unread.whole), "processes unread");
+});
+
 it("says nothing where nothing works, so a quiet row stays quiet", () => {
   assert.equal(usedBriefly({ processes: 0, memory: 0, cpu: 0 }), "");
   assert.equal(usedFully(undefined), "");

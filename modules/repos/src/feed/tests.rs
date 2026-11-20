@@ -9,7 +9,7 @@ use repos::model::{
 };
 use repos::using::Use;
 
-use super::{records, sources, using};
+use super::{records, sources, unread, using};
 
 /// 14 November 2026, 12:00 UTC.
 const NOON: u64 = 1_794_657_600;
@@ -287,6 +287,22 @@ fn what_works_in_a_repository_is_summed_over_its_checkouts_and_trees() {
                 {"path": "/home/joel/trees/say-trees", "processes": 1, "memory": 1_000, "cpu": 1.5},
             ],
         })]
+    );
+}
+
+#[test]
+fn what_works_unread_is_said_unknown_rather_than_none() {
+    let unread = &unread(&record())[0];
+    assert_eq!(unread["key"], "using:github:Jitsusama/core.nix");
+    assert_eq!(
+        (
+            &unread["processes"],
+            &unread["memory"],
+            &unread["cpu"],
+            &unread["folders"]
+        ),
+        (&Value::Null, &Value::Null, &Value::Null, &json!([])),
+        "a reading stopped reads as nothing working"
     );
 }
 

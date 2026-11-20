@@ -17,7 +17,7 @@ import {
 } from "./model.ts";
 import type { Homes } from "./homes.ts";
 import { atWork, leads } from "./joins.ts";
-import { usedBriefly, usedFully } from "./using.ts";
+import { UNREAD, usedBriefly, usedFully } from "./using.ts";
 import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
 /** What every part of the drawer reads besides its own: the time it's drawn at, the home
@@ -443,6 +443,9 @@ function changeRow(change: Change): string {
  * nothing where nothing works. */
 function workingIn(repository: Repository): string {
   const said = usedBriefly(repository.using);
+  if (said === UNREAD) {
+    return " What its processes take hasn't been read for some minutes.";
+  }
   return said === ""
     ? ""
     : ` ${counted(`Its processes take ${said}, not counting builds the Nix daemon runs for it.`)}`;

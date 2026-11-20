@@ -134,6 +134,23 @@ fn a_checkout_gone_when_its_folder_is_heard_is_let_go() {
     assert!(disk.found.is_empty(), "a gone checkout still held");
 }
 
+/// The record of one checkout, `notes`, in a folder of its own named for
+/// `name`, which the caller removes.
+fn one_checkout(name: &str) -> (PathBuf, repos::model::Record) {
+    let at = std::env::temp_dir().join(format!("repos-serve-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&at);
+    let git = at.join("notes/.git");
+    fs::create_dir_all(git.join("refs/heads")).expect("a git folder");
+    fs::write(git.join("HEAD"), "ref: refs/heads/main\n").expect("HEAD");
+    let disk = Disk {
+        home: None,
+        roots: vec![at.clone()],
+        machine: "laptop".to_owned(),
+        found: BTreeMap::from([(git.clone(), read::checkout(&git, None))]),
+    };
+    (at, disk.record())
+}
+
 #[test]
 fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     // A process holding its memory map locked holds up a read of its
@@ -144,21 +161,22 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     let calls = std::sync::atomic::AtomicU64::new(0);
     let mut working = Working::start(move |folders: &[PathBuf]| {
         let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let began = Instant::now();
         if call > 0 {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
         }
-        // As `sample` does, a reading held up says so.
-        let whole = began.elapsed() < SAMPLED;
+        // As `sample` does, a reading held up says so, and each after the
+        // first is held, however late this thread wakes (using.rs's own
+        // tests time a real walk).
         Sample {
             at: 100 + call * 6_000,
-            awake: whole.then_some(100 + call * 6_000),
+            awake: (call == 0).then_some(100),
             processes: vec![Process {
                 pid: 1,
                 parent: 0,
-                folder: folders[0].clone(),
+                folder: Some(folders[0].clone()),
                 started: 1,
-                ticks: call * 600,
+                own: call * 600,
+                children: 0,
                 memory: Some(4_096),
             }],
         }
@@ -180,6 +198,19 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
         working.used.is_empty() && !working.measured,
         "what was read before a reading stuck is still said as now"
     );
+    let (at, record) = one_checkout("stuck");
+    let using: Vec<_> = working
+        .said(&record)
+        .into_iter()
+        .filter(|said| said["kind"] == "using")
+        .collect();
+    assert_eq!(using.len(), 1, "the checkout's use went unsaid");
+    assert!(
+        using[0]["processes"].is_null(),
+        "a reading stuck says nothing works: {}",
+        using[0]
+    );
+    let _ = fs::remove_dir_all(&at);
 
     drop(free);
     let until = Instant::now() + SAMPLED * 4 + LATE;
