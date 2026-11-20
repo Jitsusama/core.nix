@@ -70,18 +70,5 @@
       "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
-  },
-  {
-    "at": 1795133552,
-    "commit": "d0331e72f4bad377394dbfb986f7b500ef700ed1",
-    "due": "2026-11-21",
-    "due_why": "Its owner, the launcher's, fixes it within 2026-11-21 UTC: on 18 and 19 Nov at d030f483 and d0331e72, the launcher's home never reported showing its categories, each passing on the next run at the same commit",
-    "owner_pr": 5795,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at d0331e72f4ba",
-    "subtests": [
-      "test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds"
-    ],
-    "test": "vm-desktop-launcher-goes-places"
   }
 ]
