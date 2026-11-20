@@ -2211,7 +2211,7 @@ Provider {
         const rows = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0).concat(
             kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
-            latelyRows(now).filter(latelyInForYou),
+            latelyRows(now).filter(latelyComingIn),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
@@ -2232,7 +2232,7 @@ Provider {
             bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
             bandRows(bands.look, now),
             bandRows(bands.try, now), bandRows(bands.read, now),
-            latelyRows(now).filter(latelyInForYou));
+            latelyRows(now).filter(latelyComingIn));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
@@ -2247,13 +2247,26 @@ Provider {
     function latelyInForYou(row) {
         return latelyPlaced[row.forYou?.source] === true;
     }
+    // Whether For You's own list holds one of Lately's rows: where it's
+    // placed, or one that comes in once Joel is there. The launcher asks
+    // a step's rows before it holds the step, so as he steps into For You
+    // the row is listed in its place at once, not a refresh later at the
+    // end (round 5, F73). Only For You and its filter ask this.
+    function latelyComingIn(row) {
+        const source = row.forYou?.source;
+        return latelyInForYou(row) || latelyCritical?.[source] === true
+            && !latelySteps().inside.includes(source);
+    }
     // Which sources hold a critical notice unread, each asking its own
     // notices by the tray's rule (Holding.js's held), so a critical one of
     // Slack's lifts Slack's row, not Desktop. They're asked whether or not
-    // a source's daemon answers, as the tray counts them.
+    // a source's daemon answers, as the tray counts them, and from the
+    // history as it is, not as Now holds it still while open, so a notice
+    // Joel read here lifts nothing the tray no longer counts (round 5,
+    // F66).
     readonly property var latelyCritical: {
         const onScreen = Object.keys(Notices.live).filter(id => !(id in Notices.resting));
-        const of = Lately.held(latelyNotices, []);
+        const of = Lately.held(Notices.history, []);
         const up = {};
         for (const source of Lately.SOURCES)
             up[source] = Holding.held({ notices: of[source] ?? [], onScreen: onScreen })
@@ -2263,9 +2276,10 @@ Provider {
     // Where Lately's rows stand. While the launcher is open a row comes
     // into For You when one of its notices turns critical, so what For
     // You counts it lists, but not while Joel stands inside that row or
-    // in Now's own rows, which list it, so it never leaves the list he's
-    // reading or the one - climbs back to (round 4, F51, F61); it comes in
-    // once he steps elsewhere, For You's own list drawn afresh. None
+    // anywhere under Now's own rows but For You, since Now's rows list it,
+    // so it never leaves the list he's reading or one - climbs back to
+    // (round 4, F51, F61; round 5, F68); it comes in once he steps into
+    // For You or out of Now. None
     // leaves until the next opening, so a notice read, withdrawn, woken
     // onto the screen or put away never moves it out from under him. A
     // row left holding nothing still goes (Lately.js's bands).
@@ -2287,15 +2301,25 @@ Provider {
         if (critical === undefined)
             return;
         const shut = openedAt === Number.POSITIVE_INFINITY;
-        const steps = launcher?.held ?? [];
-        const inside = steps.map(step => step.row?.forYou?.source);
-        const inNow = steps.length > 0 && steps[steps.length - 1].row?.from === provider;
+        const { inside, underNow } = latelySteps();
         const placed = {};
         for (const source of Lately.SOURCES)
             placed[source] = shut ? critical[source] : latelyPlaced[source] === true
-                || (critical[source] === true && !inNow && !inside.includes(source));
+                || (critical[source] === true && !underNow && !inside.includes(source));
         if (Lately.SOURCES.some(source => latelyPlaced[source] !== placed[source]))
             latelyPlaced = placed;
+    }
+    // Where Joel stands, for Lately's rows: the sources of the rows he's
+    // inside, and whether he's under Now's own rows but not in For You,
+    // which is the step after Now's own (Provider.qml's heldKeys).
+    function latelySteps() {
+        const steps = launcher?.held ?? [];
+        const nowAt = steps.findIndex(step => step.row?.from === provider);
+        const next = nowAt < 0 ? undefined : steps[nowAt + 1]?.row?.key ?? "";
+        return {
+            inside: steps.map(step => step.row?.forYou?.source),
+            underNow: next !== undefined && !next.startsWith("on:waitingOnYou")
+        };
     }
 
     // What came for Joel, Lately, in Now's own rows after the moment's, or
