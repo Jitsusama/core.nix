@@ -253,6 +253,25 @@
     # NIRI_FIXED_TO_OUTPUT names once on its screen, where it is, outside
     # the overview; home.nix's unit names the cat's. It adds no setting.
     #
+    # The launcher stays mapped while it's shut, its blur region empty, so
+    # niri draws no blur for it then, and smithay's damage tracker lets go
+    # of the framebuffer and blur textures, keeping an effect's only while a
+    # frame draws it. Each opening made all five again inside the frame that
+    # showed it: 22 to 48 ms of niri's render on Joel's screen under load,
+    # and 36 to 56 ms on its GPU for a first set in a lab. The patch
+    # (blur-kept-for-its-size.patch) keeps the textures a blur let go, up
+    # to 64 MB on each renderer and for as long as nothing pushes them out,
+    # and the next blur of their size takes them back; the launcher's set is
+    # about 21 MB on a 4K screen at 1.5, held while it's shut, though two
+    # or more sets of sizes it hasn't seen, other surfaces' or its own at
+    # other heights, as a talk place or a viewer's command line makes, push
+    # it out. A
+    # set past half the pool, as a full-screen prompt's is, is never kept,
+    # so it can't push out the rest. It says at debug, which the session
+    # logs, each time a blur's textures change, how many it made and took
+    # and how long that took, and each time the pool lets some go. It adds
+    # no setting.
+    #
     # niri's own frames after idle reach the screen within 2 refreshes of
     # its redraw, yet the launcher's reached it 4 to 7 after the shell's
     # swap, so the time goes before niri is asked to redraw: behind the
@@ -304,6 +323,7 @@
         ./fixed-to-output.patch
         ./says-a-layers-wake.patch
         ./renders-by-the-deadline-up-to-a-rate.patch
+        ./blur-kept-for-its-size.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
