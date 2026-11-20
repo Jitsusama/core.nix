@@ -605,6 +605,13 @@ fn gather(
         net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
         net_held: records::net_held(&held),
         net_held_since: watch::held::read(&held),
+        // spend-watch's daemon keeps its standing in its runtime folder.
+        budgets: std::env::var_os("XDG_RUNTIME_DIR")
+            .and_then(|runtime| {
+                fs::read_to_string(Path::new(&runtime).join("spend-watch/budgets.json")).ok()
+            })
+            .map(|text| watch::budgets::read(&text, now))
+            .unwrap_or_default(),
         net_hung: crate::net::hung(&net.join("findings"), now - 3600),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
             Path::new(&format!("/proc/{pid}")).exists()

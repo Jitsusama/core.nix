@@ -2,7 +2,8 @@
 //! it remembers between ticks so each is asked once: the session keeping
 //! the cycle fast, or the one switching the machine for an alarm only a
 //! switch answers, and the orchestrator above them when the one asked
-//! doesn't answer or isn't there.
+//! doesn't answer or isn't there. A budget nearing its allowance is told
+//! to the orchestrator alone, as a finding nothing waits on.
 
 use std::collections::BTreeMap;
 
@@ -193,15 +194,19 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     let mut ask = |state: &mut State, key: String, text: String| {
         if !state.seen.contains_key(&key) {
             state.seen.insert(key.clone(), s.now);
+            let to = if holding(&key) {
+                To::Holder
+            } else if s.switcher.is_some() && switching(&key) {
+                To::Switcher
+            } else if budgeting(&key) {
+                To::Orchestrator
+            } else {
+                To::Watcher
+            };
             out.push(Question {
-                to: if holding(&key) {
-                    To::Holder
-                } else if s.switcher.is_some() && switching(&key) {
-                    To::Switcher
-                } else {
-                    To::Watcher
-                },
-                key: Some(key),
+                to,
+                // The orchestrator is told, and nothing waits on its answer.
+                key: (to != To::Orchestrator).then_some(key),
                 text,
             });
         }
@@ -252,6 +257,13 @@ fn switching(key: &str) -> bool {
     ["alarm:noton:", "alarm:failing:", "alarm:heldfor:"]
         .iter()
         .any(|alarm| key.starts_with(alarm))
+}
+
+/// Whether an alarm's key says a budget passed a share of an allowance,
+/// which only the orchestrator can act on, by moving work to another
+/// budget or asking Joel, as it asked to be told on 20 November.
+fn budgeting(key: &str) -> bool {
+    key.starts_with("alarm:budget:")
 }
 
 /// Whether an alarm's key says the net is held by a hold on the machine,
@@ -367,6 +379,43 @@ mod tests {
         s.switcher = Some("SWITCH".into());
         let asked = tick(&s, &mut State::default());
         assert_eq!(asked[0].to, To::Switcher, "the switcher named");
+    }
+
+    #[test]
+    fn a_budget_past_a_level_is_told_to_the_orchestrator_once_and_waits_on_no_answer() {
+        let mut s = calm(100_000);
+        s.budgets = vec![crate::watch::budgets::Allowance {
+            budget: "proxy".into(),
+            label: "Your AI proxy token".into(),
+            name: "weekly".into(),
+            window: "Week".into(),
+            share: 0.91,
+            standing: "$36,261 of $40,000".into(),
+            resets: None,
+        }];
+        let mut state = State::default();
+        let told = tick(&s, &mut state);
+        assert_eq!(
+            told,
+            [Question {
+                to: To::Orchestrator,
+                key: None,
+                text: "Cadence alarm: Your AI proxy token's Week allowance stands at \
+                       $36,261 of $40,000, 91% (told past 80% and 90%)."
+                    .into(),
+            }],
+            "a budget at 91% wasn't told to the orchestrator, or was waited on"
+        );
+        s.now += 5 * 60;
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "one standing was told twice"
+        );
+        s.now += ANSWER_WITHIN;
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "the watcher was named silent about a finding nobody answers"
+        );
     }
 
     #[test]
