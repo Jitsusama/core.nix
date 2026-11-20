@@ -121,3 +121,24 @@ export const holdingFirst = (cells: readonly Cell[]): readonly Cell[] =>
   cells
     .filter((s) => s.holds.length > 0)
     .sort((a, b) => (a.holds[0]?.at ?? "").localeCompare(b.holds[0]?.at ?? ""));
+
+/**
+ * The cells that need the reader: every one asking him something first,
+ * since only he can answer it, then every one stuck, each in the order
+ * given. Now lists them before anything else.
+ */
+export const needsFirst = (cells: readonly Cell[]): readonly Cell[] => [
+  ...cells.filter((s) => s.standing === "asks"),
+  ...cells.filter((s) => s.standing === "stuck"),
+];
+
+/**
+ * The address of the cell that needs the reader after the one at `from`,
+ * in the order Now lists them, round to the first after the last; the
+ * first when `from` is none or needs nothing; null when none needs him.
+ */
+export const nextNeeding = (cells: readonly Cell[], from: string | null): string | null => {
+  const needing = needsFirst(cells);
+  const at = needing.findIndex((s) => s.address === from);
+  return needing[(at + 1) % needing.length]?.address ?? null;
+};

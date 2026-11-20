@@ -59,7 +59,17 @@ import {
   waitingWords,
 } from "./words.js";
 import { agoWords as agoWordsAt, atWords as atWordsAt, clock } from "./when.js";
-import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as holdWordsAt, owedWords, sharedWords as sharedWordsOf } from "./waits.js";
+import {
+  ageOf as ageOfAt,
+  heldFirst,
+  heldWords,
+  holdingFirst,
+  holdWords as holdWordsAt,
+  needsFirst,
+  nextNeeding,
+  owedWords,
+  sharedWords as sharedWordsOf,
+} from "./waits.js";
 
 (() => {
   // The most time between two readings while the node moves: site.ts hands
@@ -575,7 +585,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     const repositories = new Set(cells.map((s) => s.repo).filter(Boolean)).size || shared.filter((n) => n.shape === "repository").length;
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    const foraged = new Set(now.foraged || []);
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, foraged, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -3142,23 +3153,26 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   const overview = () => {
     const m = current;
     const used = new Set(m.cells.map((s) => s.host));
-    const asks = m.cells.filter((s) => s.standing === "asks");
+    const needing = needsFirst(m.cells);
     const tops = [...m.hubs.values()].filter((h) => !h.within && !h.alone && !h.edge);
     const sensing = m.hubs.get(OUTSIDE)?.cells.length || 0;
     const levels = m.machines.filter((x) => cellsOn(x.name).length).map((x) => healthRow(x.name, cellsOn(x.name), `machine=${x.name}`));
+    // What needs him leads, then what holds the flow, so the drawer he
+    // opens to act starts with what only he can do.
     return (
       `<h2 id="panel-title">Now</h2>` +
+      (needing.length
+        ? `<p class="asks-line">${needing.length === 1 ? "One needs" : `${NUMBER.format(needing.length)} need`} you:</p><ul class="rows">${needing.map(cellRow).join("")}</ul>` +
+          `<p class="hint"><kbd>a</kbd> opens each in turn, and <kbd>t</kbd> talks to the one open in the Launcher.</p>`
+        : `<p class="asks-line quiet">Nobody needs you right now.</p>`) +
+      heldUp(m.cells) +
       `<p class="carries">${esc(`Your whole network: ${plural(m.cells.length - sensing, "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(everyMachine().length, "machine")}.`)}</p>` +
       glance(
         esc("Every cell you run, the networks they work in and the machines they run on."),
         esc(groupDoing(m.cells)),
         `<ul class="rows health">${levels.join("")}${levels.length > 1 ? healthRow("All together", m.cells) : ""}${balanceRow()}</ul>`,
       ) +
-      (asks.length
-        ? `<p class="asks-line">${asks.length === 1 ? "One needs" : `${asks.length} need`} you:</p><ul class="rows">${asks.map(cellRow).join("")}</ul>`
-        : `<p class="asks-line quiet">Nobody needs you right now.</p>`) +
       faultLine(m.cells) +
-      heldUp(m.cells) +
       lifeLines() +
       talkLine(m.messages) +
       spendBlock(m.cells, [
@@ -3354,6 +3368,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
       (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher")) +
+      // The forage page lists only cells with a forage, so only those link there.
+      (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
       factList(facts) +
       where +
       `<h3>Lately</h3>` +
@@ -4553,6 +4569,26 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       if (inTree) focusItem(tree.querySelector(`[data-key="${CSS.escape(up)}"]`));
     }
   };
+  // The next cell that needs him, after the one open, in Now's order.
+  const nextNeedingYou = () => {
+    const next = current && nextNeeding(current.cells, chosen?.kind === "cell" ? chosen.id : null);
+    if (!next) {
+      where.textContent = "Nobody needs you right now.";
+      return;
+    }
+    const c = { kind: "cell", id: next };
+    visit(c);
+    where.textContent = `Opened ${openedWords(c)}; a opens the next that needs you.`;
+  };
+  // Talk goes the way its drawer's link does, so the key and the link
+  // never disagree about which cells the Launcher can reach.
+  const talkToChosen = () => {
+    const link = chosen?.kind === "cell"
+      ? panelBody.querySelector('a[href^="mycelium:cell/"]')
+      : null;
+    if (link) link.click();
+    else where.textContent = "No cell is open to talk to; a opens the next that needs you.";
+  };
   // What each of the page's letters does, once keys.ts has said which.
   const PAGE_DOES = {
     keys: () => toggleKeys(),
@@ -4563,6 +4599,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     "let-go": () => letGo(),
     "close-now": () => closeNow(),
     now: () => toggleNow(),
+    "needs-you": () => nextNeedingYou(),
+    talk: () => talkToChosen(),
     machines: () => toggleMachines(),
     fit: () => fit(),
     "zoom-in": () => zoomBy(1.25),

@@ -42,6 +42,8 @@ export const EVERY_PAGE_ACT = [
   "let-go",
   "close-now",
   "now",
+  "needs-you",
+  "talk",
   "machines",
   "fit",
   "zoom-in",
@@ -103,6 +105,8 @@ const TREE_KEYS: Readonly<Record<string, TreeAct>> = {
 // depend on it have had their say.
 const LETTERS: Readonly<Record<string, PageAct>> = {
   ".": "now",
+  a: "needs-you",
+  t: "talk",
   m: "machines",
   "0": "fit",
   "+": "zoom-in",

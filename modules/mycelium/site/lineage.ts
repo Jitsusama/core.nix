@@ -52,6 +52,17 @@ function startedOf(held: Held | undefined): Started[] | null {
 }
 
 /**
+ * Every cell a forage is held for, which the forage page lists and so
+ * can open; none at all when the node serves no forages, as for starters.
+ */
+function foragedOf(held: Held | undefined): string[] | null {
+  if (held === undefined) {
+    return null;
+  }
+  return held.all().flatMap((record) => text(record, "cell") ?? []);
+}
+
+/**
  * Which networks grow out of which, from who started their cells, each
  * drawn network's cells known by `hubOf` (a cell's address to the key of
  * the network it is drawn in, none for a receptor or a cell working
@@ -121,4 +132,4 @@ function grownOf(
 }
 
 export type { Grown, Network, Started };
-export { grownOf, startedOf };
+export { foragedOf, grownOf, startedOf };

@@ -54,6 +54,19 @@ it("a cell's starter is kept as the two addresses, never the rest of its forage"
   assert.deepEqual(nowOf(told([one]), AT).started, [{ cell: "KESTRL", by: "OSPREY" }]);
 });
 
+it("every cell with a forage is known, so its drawer can open it there, and none without", () => {
+  const these = [
+    forage("KESTRL", { started_by: "OSPREY" }),
+    forage("ALONE1", {}),
+    { key: "forage:NOCELL", kind: "forage", heard: AT },
+  ];
+  assert.deepEqual(
+    [nowOf(told(these), AT).foraged, nowOf(told(undefined), AT).foraged],
+    [["KESTRL", "ALONE1"], null],
+    "each forage naming a cell should be known, and a node serving none should know none",
+  );
+});
+
 it("a cell nobody started, or one said to have started itself, names no starter", () => {
   const these = [
     forage("ALONE1", { started_by: null, split_from: null, parent: null }),

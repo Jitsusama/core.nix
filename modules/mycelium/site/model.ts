@@ -21,7 +21,7 @@
 
 import { type Fields, type Held, isObject, object, text } from "../../local-sites/kit/records.ts";
 import { BALANCE_FRESH_MS, type Balance, balanceOf, latestReading, sharesOf } from "./balance.ts";
-import { type Started, startedOf } from "./lineage.ts";
+import { foragedOf, type Started, startedOf } from "./lineage.ts";
 
 /** How many messages the map hears, the latest, as `mycelium messages` says. */
 const LATEST_MESSAGES = 20;
@@ -132,6 +132,8 @@ interface Now {
   readonly ties: readonly Tie[] | null;
   readonly fed: readonly Fed[] | null;
   readonly started: readonly Started[] | null;
+  /** Every cell the forage page lists, by its address. */
+  readonly foraged: readonly string[] | null;
 }
 
 /**
@@ -439,6 +441,7 @@ function nowOf(heard: Heard, at: number): Now {
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
     started: startedOf(heard.forage),
+    foraged: foragedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
   return plain(now) as Now;

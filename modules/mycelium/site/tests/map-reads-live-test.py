@@ -686,6 +686,49 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     )
 
 
+# Node.json's cells that need the reader, as Now lists them: the one asking
+# something, then the one stuck.
+NEEDING = ("TERN02", "HERON1")
+# Holds a click on a link to the Launcher, saying where it went, since a
+# test browser has nothing to open it with.
+TALK_HELD = """document.addEventListener("click", (event) => {
+  const link = event.target.closest?.('a[href^="mycelium:"]');
+  if (link) { event.preventDefault(); window.talkedTo = link.getAttribute("href"); }
+}, true)"""
+
+
+def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press(".")
+    body = page.locator("#panel-body")
+    expect(body, "Now never said who needs you").to_contain_text("need you:")
+    lines = [line for line in body.inner_text().splitlines() if line.strip()]
+    led = lines[lines.index("Now") + 1 :][:1]
+    assert led == [f"{len(NEEDING)} need you:"], f"Now didn't lead with who needs you: {led}"
+    rows = body.locator("ul.rows").first.locator("[data-go]")
+    expect(rows, "Now listed others than those who need you").to_have_count(len(NEEDING))
+    listed = [rows.nth(n).get_attribute("data-go") for n in range(len(NEEDING))]
+    assert listed == [f"cell={each}" for each in NEEDING], (
+        f"Now should list the cell asking, then the one stuck: {listed}"
+    )
+    # a steps through them in that order, then round to the first.
+    for each in (*NEEDING, NEEDING[0]):
+        page.keyboard.press("a")
+        expect(page, f"a didn't open {each}").to_have_url(re.compile(rf"#cell={each}$"))
+    page.evaluate(TALK_HELD)
+    page.keyboard.press("t")
+    talked = page.evaluate("window.talkedTo")
+    assert talked == f"mycelium:cell/{NEEDING[0]}", f"t talked to {talked}, not the open cell"
+    page.keyboard.press("Escape")
+    expect(page, "Escape didn't let the cell go").not_to_have_url(re.compile("#cell="))
+    page.keyboard.press("t")
+    expect(page.locator("#where"), "t with no cell open didn't say so").to_have_text(
+        "No cell is open to talk to; a opens the next that needs you."
+    )
+
+
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
     root, _ = mycelium_served
     said = reach(browser, root)
@@ -880,11 +923,16 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
         expect(body, "the cell's drawer never said who started it").to_contain_text(
             f"by {GROWN_BY_TITLE}", timeout=PACE_MS
         )
+        # A cell with a forage opens the forage page on it, and one without
+        # doesn't, since the forage page would have nothing to show.
+        foraged = body.locator(f'a[href="../forage/#cell={GROWN_CELL}"]')
+        expect(foraged, "the cell's drawer never opened its forage").to_have_count(1)
         # Once its forage goes, so does the branch it grew.
         forage_node.tell("forage", gone=[key])
         expect(hub, "the branch outlived the forage that grew it").not_to_have_attribute(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
+        expect(foraged, "the cell's drawer kept a forage that went").to_have_count(0)
     finally:
         opened.close()
 
