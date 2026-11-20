@@ -25,7 +25,7 @@ function wanting(sessions) {
 // given); `toReopen`, the sessions there are to reopen, held as one thing
 // to do, Reopen Them All, however many; and `notices`, the notices kept, of which one counts while it's
 // critical, unread and off the screen, its id not among `onScreen`'s.
-// For You's Desktop holds a notice until it's read, and of those only a
+// Desktop holds a notice until it's read, and of those only a
 // critical one waits on Joel, the rest being what came lately; on screen
 // its card says it, as a card or a mark, never both; and one saying a
 // to-do (`waits`) is that to-do, counted once among them. `joined`, a

@@ -1672,7 +1672,7 @@
     now and report as text for Joel or as JSON named by its schema
   '';
   lately-follows-each-source = ''
-    For You's Lately counts what's unread from the mail, Slack and the desktop's other notices,
+    Now's Lately counts what's unread from the mail, Slack and the desktop's other notices,
     each until its own source says it's done, never the shell's own notice for a Needs You
     item or a session's want, and History says how each went, newest first
   '';
@@ -4519,7 +4519,7 @@
     wanting Joel and To Look At's own, only one whose file or what it says changed, a session
     wanting Joel making only the look it left again and to-dos said anew as they were none; and a
     piece of what's on that moved is the only one whose row and acts are made again, a kept one
-    running its piece's act as it is now; and For You's Desktop holds the notices unread as the
+    running its piece's act as it is now; and Now's Desktop holds the notices unread as the
     notices' own rows, and its History those read, stepping in again after one is read making
     only that one's row again; and Now, stepped into For You since it last said what it shows,
     says it changed only where For You's rows differ from those the launcher shows

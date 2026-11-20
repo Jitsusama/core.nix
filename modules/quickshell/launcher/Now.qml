@@ -2713,7 +2713,7 @@ Provider {
     }
 
     // `over` holds what a row made elsewhere says in place of the piece's
-    // own, as For You's Lately rows do.
+    // own, as Lately's rows do.
     function made(fact, over) {
         const piece = fact.piece;
         const now = () => piecesNow[fact.entry.mark] ?? latelyNow[fact.entry.mark] ?? piece;

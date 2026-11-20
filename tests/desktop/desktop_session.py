@@ -251,7 +251,7 @@ def for_you_lit(desktop: Desktop, said: str) -> None:
 def for_you_read(desktop: Desktop, *rest: str) -> None:
     """Read every notice, which puts For You's tray out, and wait for the margin to hold the rest.
 
-    Read as Joel reads them, by Mark Them Read in For You's Desktop, where Super+N goes with
+    Read as Joel reads them, by Mark Them Read in Desktop, where Super+N goes with
     no cards up; its line runs at once, since reading them costs little.
     """
     desktop.machine.send_key("meta_l-n")

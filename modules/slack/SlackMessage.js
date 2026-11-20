@@ -1,5 +1,5 @@
 // A Slack message's one row, wherever it's listed (SlackMessage.qml):
-// For You's Slack row, its History, and what Search Slack finds (VKCF3Z,
+// Now's Slack row, its History, and what Search Slack finds (VKCF3Z,
 // 2026-11-08: "a Slack message is one thing, so it gets one row
 // everywhere"). Kept apart from the QML so Qt's own engine holds it
 // (tests/slack-message.qml). `one` is a message as Slack's daemon says

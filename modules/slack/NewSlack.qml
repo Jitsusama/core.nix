@@ -9,7 +9,7 @@
 // want of Joel's, so Slack's program row says it (SlackProgram.qml), and
 // a refused sign-in waits in For You (VKCF3Z, b8c8920e and 347abdb7);
 // with Slack's daemon not answering, there's no count to show at all. In
-// Now it's For You's Slack row, among what came for him (Now.qml's
+// Now it's the Slack row, among what came for him (Now.qml's
 // Lately), and the margin shows it as it is. While the daemon holds every
 // message wanting him, Return lists each message instead, by who said it
 // (SlackMessage.qml), then Threads, whose replies it doesn't hold, and

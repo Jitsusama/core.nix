@@ -808,7 +808,7 @@ Scope {
         }
         sourcesJoined = kept.now;
         // One that's no place of its own (`placed: false`), as Notices,
-        // whose notices For You holds, is never found by its name, though
+        // whose notices Desktop holds, is never found by its name, though
         // what it holds is (gathering).
         for (const source of collections.filter(one => one.collection.placed !== false))
             out.push(withSynonyms(named(source)));

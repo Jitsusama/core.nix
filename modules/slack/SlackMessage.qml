@@ -1,5 +1,5 @@
 pragma Singleton
-// A Slack message's one row, wherever it's listed: For You's Slack row
+// A Slack message's one row, wherever it's listed: Now's Slack row
 // (NewSlack.qml), its History, and what Search Slack finds
 // (SlackSearch.qml), since a message is one thing (VKCF3Z, 2026-11-08).
 // A message has no title, so it's named by who said it, its first line

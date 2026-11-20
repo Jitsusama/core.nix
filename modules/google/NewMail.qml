@@ -3,7 +3,7 @@
 // Gmail's own says each one as it comes. Return lists them in Now, each
 // Mail.row's, the row every surface shows, with its details beside it,
 // and after them Show the Mail, which goes to Programs › Mail. It goes
-// once none want him. In Now it's For You's Mail row, among what came for
+// once none want him. In Now it's the Mail row, among what came for
 // him (Now.qml's Lately), and the margin shows it as it is. Mail done
 // with, read or archived in Gmail or here, leaves it by itself, and For
 // You's History says how (Google.js's finished).

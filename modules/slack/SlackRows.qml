@@ -1,5 +1,5 @@
 pragma Singleton
-// For You's Slack rows as Slack's daemon serves them ready: each message
+// Now's Slack rows as Slack's daemon serves them ready: each message
 // wanting Joel, done ones too, newest first (src/message_rows.rs), and
 // each conversation unread, in Slack's order (src/rows.rs), held once
 // for every surface showing the piece, as SlackUnreads holds the rest.
@@ -62,7 +62,7 @@ Singleton {
             .map(key => ready.rowAt(key)).filter(row => row !== null);
     }
 
-    // For You's Slack rows, made with `thing`: while the daemon holds every
+    // Now's Slack rows, made with `thing`: while the daemon holds every
     // message, each still to read and then Threads, whose replies it never
     // holds; else each conversation wanting Joel, a channel merely unread
     // not among them (SlackUnreads.js's wants).

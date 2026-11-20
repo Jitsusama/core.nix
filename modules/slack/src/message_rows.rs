@@ -1,5 +1,5 @@
 //! Slack's messages' rows, ready for the launcher: each message wanting
-//! Joel, done ones too, as the row For You's Slack row and its History
+//! Joel, done ones too, as Now's Slack row and its History
 //! show it (SlackMessage.qml), worded, newest first and with its acts.
 //! A message has no title, so its row is named by who said it, its first
 //! words after the name and when it came beside it. Its drawer, the

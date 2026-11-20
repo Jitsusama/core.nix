@@ -147,7 +147,7 @@
     touch $out
   '';
 
-  # For You's Lately holds what's unread from each source until that source says
+  # Now's Lately holds what's unread from each source until that source says
   # it's done, and History says how, as modules/quickshell/tests/lately.qml
   # holds Lately.js.
   lately-follows-each-source =

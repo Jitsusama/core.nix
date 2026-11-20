@@ -232,7 +232,7 @@ ShellRoot {
         settings: ({ name: "on" })
     }
 
-    // The notices' own rows, which For You's Desktop and History hold.
+    // The notices' own rows, which Now's Desktop and History hold.
     Launcher.PastNotices {
         id: pastNotices
 
@@ -320,7 +320,7 @@ ShellRoot {
             noticesServed();
     }
 
-    // For You's Desktop holds the notices unread as the notices daemon
+    // Now's Desktop holds the notices unread as the notices daemon
     // serves their rows, and its History those done with, each made again
     // only once the daemon says its notice changed: every notice's was
     // made anew at any change, 488 on Joel's shell as he stepped into
@@ -396,7 +396,7 @@ ShellRoot {
         waiting = "";
         if (!tried(() => {
             const desktop = stepIn();
-            expect("For You's Desktop holds the notices unread, then Mark Them Read and History",
+            expect("Now's Desktop holds the notices unread, then Mark Them Read and History",
                 JSON.stringify(desktop.held.map(row => row.name)) === JSON.stringify([
                     "Notice 1", "Notice 2", "Notice 3", "Mark Them Read", "History"])
                     && desktop.history.length === 27,
