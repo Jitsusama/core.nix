@@ -227,6 +227,23 @@
         touch $out
       '';
 
+  # call-transcripts hears three AMI meetings, each laid out as a call
+  # (meetings.nix), at least as well as it last did: the share of their
+  # words it gets wrong, as it writes them down, stays under the ceiling.
+  # Parakeet hears them on the CPU, as a machine with no NPU runs it. A
+  # change that hears better lowers the ceiling to what it reaches.
+  call-transcripts-hears-meetings-as-well-as-it-did =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./parakeet.nix { };
+      meetings = pkgs.callPackage ./meetings.nix { };
+      ceiling = "19.8";
+    in
+    pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
+      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
+      touch $out
+    '';
+
   # screen-text reads a screenshot's words: a picture drawn as the check
   # builds, wider and taller than the detector's tile, holds a heading,
   # then a row of two lines apart, the first across where two tiles

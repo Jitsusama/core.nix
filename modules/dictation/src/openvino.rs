@@ -264,15 +264,14 @@ impl Core {
         Ok(Model(model))
     }
 
-    /// `model` compiled for `device`, such as NPU or CPU, saying its
-    /// `priority` on the NPU, the one device it's for.
+    /// `model` compiled for `device`, such as NPU or CPU, told what `properties_on` says.
     ///
     /// # Errors
     ///
     /// When the device is missing or can't run the model.
     pub fn compile(&self, model: &Model, device: &str, priority: Priority) -> Result<Compiled> {
         let name = c_string(device)?;
-        let properties = priority_on(device, priority);
+        let properties = properties_on(device, priority);
         let mut compiled = ptr::null_mut();
         // SAFETY: the model is alive, the properties' strings are static and
         // counted, and the out pointer is valid.
@@ -304,7 +303,7 @@ impl Core {
     pub fn compile_file(&self, xml: &Path, device: &str, priority: Priority) -> Result<Compiled> {
         let path = c_path(xml)?;
         let name = c_string(device)?;
-        let properties = priority_on(device, priority);
+        let properties = properties_on(device, priority);
         let mut compiled = ptr::null_mut();
         // SAFETY: the names outlive the call, the properties' strings are
         // static and counted, and the out pointer is valid.
@@ -324,7 +323,7 @@ impl Core {
         Ok(Compiled(compiled))
     }
 
-    /// `model` compiled for the CPU to run on one thread, for a model run
+    /// `model` compiled for the CPU as `compile` compiles one, but on one thread, for a model run
     /// often on little at a time, as a microphone's every frame is, where
     /// spreading each run across every core costs more than it saves.
     ///
@@ -332,10 +331,11 @@ impl Core {
     ///
     /// When the CPU can't run the model.
     pub fn compile_on_one_thread(&self, model: &Model) -> Result<Compiled> {
-        let properties = [Property {
+        let mut properties = properties_on("CPU", Priority::Background);
+        properties.push(Property {
             key: c"INFERENCE_NUM_THREADS".as_ptr(),
             value: c"1".as_ptr().cast(),
-        }];
+        });
         let mut compiled = ptr::null_mut();
         // SAFETY: the model is alive, the properties' strings are static and
         // counted, and the out pointer is valid.
@@ -356,17 +356,18 @@ impl Core {
     }
 }
 
-/// What a compile tells `device`: its `priority`, on the NPU alone, the
-/// one device that takes it.
-fn priority_on(device: &str, priority: Priority) -> Vec<Property> {
-    if device == "NPU" {
-        vec![Property {
-            key: c"MODEL_PRIORITY".as_ptr(),
-            value: priority.name().as_ptr().cast(),
-        }]
-    } else {
-        Vec::new()
-    }
+/// What a compile tells `device`: its `priority` on the NPU, the one device that takes it, and
+/// f32 on the CPU, which picks bf16 where it has AMX and so would hear differently per builder.
+fn properties_on(device: &str, priority: Priority) -> Vec<Property> {
+    let (key, value) = match device {
+        "NPU" => (c"MODEL_PRIORITY", priority.name()),
+        "CPU" => (c"INFERENCE_PRECISION_HINT", c"f32"),
+        _ => return Vec::new(),
+    };
+    vec![Property {
+        key: key.as_ptr(),
+        value: value.as_ptr().cast(),
+    }]
 }
 
 /// A model as read, before it's compiled.

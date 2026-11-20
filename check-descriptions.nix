@@ -524,6 +524,10 @@
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
+  call-transcripts-hears-meetings-as-well-as-it-did = ''
+    three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
+    down with no more of their words wrong than the ceiling the last measurement set
+  '';
   call-transcripts-writes-down-both-sides = ''
     a call's two recorded sides come out as one transcript, cut at each side's pauses, in the order
     they spoke, each turn with its speaker and its time in the call
