@@ -39,6 +39,12 @@ in
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
+      # The day's replay at each start passes the journals' pages through
+      # this unit: 2.9 GiB of them on 19 November, against 10 MiB health
+      # holds itself. Past this the kernel takes back its own pages first,
+      # rather than what Joel is using, which slowed that replay from 4.8 s
+      # to 8.7 s. No hard limit: one would end the replay, not slow it.
+      MemoryHigh = "256M";
     };
     Install.WantedBy = [ "default.target" ];
   };

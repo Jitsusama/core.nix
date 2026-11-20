@@ -1365,6 +1365,10 @@
     tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI
     programs byte for byte as sbsign does, and finds every program it runs
   '';
+  health-gives-back-the-pages-it-reads = ''
+    health's unit gives back the journals' pages its start's replay reads past 256 MiB, and no
+    hard limit ends it there
+  '';
   health-passes-clippy = ''
     clippy finds nothing in health or its tests
   '';
