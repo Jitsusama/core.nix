@@ -263,13 +263,19 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     )
     # The files, then each folder from /home down to the notes.
     held = 1 + notes.count("/")
-    # The shell's watchers, each an inotify of its own, counted before
-    # any ask: each folder held is read and watched only while it's asked.
-    watchers = (
-        "ls -l /proc/$(systemctl --user show quickshell -p MainPID --value)/fd"
-        " | grep -c inotify; true"
+    # What the shell watches, each path a line of an inotify's fdinfo,
+    # counted before any ask: each folder held is read and watched only
+    # while it's asked. Watches are counted, not the inotify handles that
+    # hold them, since a FileView keeps its handle for life once it has
+    # watched (quickshell's fileview-keeps-its-watcher.patch). A daemon's
+    # socket is watched only until its wire answers, and SystemParts' is
+    # first wanted as the launcher first makes home, at the first ask when
+    # this test runs alone, so one handle of no watches stays (2026-11-20).
+    watches = (
+        "cat /proc/$(systemctl --user show quickshell -p MainPID --value)/fdinfo/*"
+        " 2>/dev/null | grep -c '^inotify' || true"
     )
-    watching = int(desktop.as_account(watchers))
+    watching = int(desktop.as_account(watches))
 
     def choose(mode: str, name: str = "") -> None:
         """Ask the portal for a file in the notes, and wait until the launcher holds them."""
@@ -325,12 +331,12 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     # Three asks later, the shell watches no more than it did before them.
     try:
         machine.wait_until_succeeds(
-            desktop.in_session(f'[ "$({watchers})" -le {watching} ]'),
+            desktop.in_session(f'[ "$({watches})" -le {watching} ]'),
             timeout=timedelta(seconds=30),
         )
     except AssertionError:
-        after = desktop.as_account(watchers).strip()
-        kept = f"the shell holds {after} inotify handles after three asks, {watching} before"
+        after = desktop.as_account(watches).strip()
+        kept = f"the shell watches {after} paths after three asks, {watching} before"
         raise AssertionError(kept) from None
 
 
