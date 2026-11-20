@@ -383,6 +383,8 @@ off.
 | revive | sending a Mac that won't start Apple's firmware again from another machine over USB-C, keeping its files; a restore does the same and erases it | DFU restore | `idevicerestore`, without and with `--erase` |
 | processor | what runs every program | CPU | |
 | core | one of the processor's parts that each run a program's work at once, beside the others | | Linux's `cpu{n}` |
+| performance core | a core built to run one program's work as fast as it can | P-core | Linux's `cpu_core` |
+| efficient core | a core built to do more work for its power than a performance core, at a lower clock speed | E-core | Linux's `cpu_atom` |
 | clock speed | how many cycles a second the processor runs at now, which it raises and lowers with its work | | `scaling_cur_freq` |
 | cache | memory inside the processor holding what it used last, nearer to it than the machine's memory, in levels one to three | | `L{level}` caches |
 | model | a device's maker's name for what it is, such as a processor's, a disk's, a battery's or a keyboard's | | |

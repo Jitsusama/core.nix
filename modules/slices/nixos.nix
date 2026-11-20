@@ -145,6 +145,7 @@ let
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
+  efficientCores = pkgs.callPackage ./efficient-cores.nix { };
   diskOrder = pkgs.writeShellApplication {
     name = "disk-order";
     runtimeInputs = [
@@ -575,6 +576,61 @@ in
           ];
         };
       };
+      # The processor shares one power budget among its cores, so with
+      # agents' work keeping every core busy, each runs near the same
+      # clock: on the laptop, 25 W held every core near 2.3 GHz on 19
+      # November, and one thread of Joel's ran no faster on a performance
+      # core than on an efficient one. CPU weights give his threads the
+      # time but not the clock. Holding the efficient cores' ceiling while
+      # he works leaves the performance cores, which reach 4.7 GHz, the
+      # budget; whether that buys his threads their clock is what this unit
+      # is for measuring. Starting efficient-cores-held@1600 holds each
+      # efficient core at most 1600 MHz, and stopping it frees each to its
+      # highest clock. One hold stands at a time: a second at another speed
+      # is refused (efficient-cores.sh says how), and whoever stops a hold
+      # frees it for all who started it. A hold that fails partway is still
+      # freed, since the stop runs after a failed start too. One that's
+      # never stopped ends itself after an hour, as its sleep ends, so an
+      # agent that dies mid-measurement leaves no cores held and no unit
+      # failed. A refused or failed hold is let go rather than left failed,
+      # since the journal keeps what it said; a free the kernel refused
+      # leaves /run/efficient-cores/held behind to say the cores are still
+      # held, and starting and stopping that speed again frees them.
+      # Nothing starts it at boot.
+      # Administrators may start and stop it (efficient-cores.rules).
+      "efficient-cores-held@" = {
+        description = "Holds the efficient cores' clock at most %i MHz";
+        unitConfig.CollectMode = "inactive-or-failed";
+        serviceConfig = {
+          ExecStartPre = "${lib.getExe efficientCores} hold %i";
+          ExecStart = "${lib.getExe' pkgs.coreutils "sleep"} 1h";
+          ExecStopPost = "${lib.getExe efficientCores} free %i";
+          # Every instance shares the one folder of notes, so one ending
+          # mustn't take it from the hold another stands on.
+          RuntimeDirectory = "efficient-cores";
+          RuntimeDirectoryMode = "0700";
+          RuntimeDirectoryPreserve = true;
+          # Root writes the ceilings as their files' owner, so it needs no
+          # capability. ProtectKernelTunables is left out, unlike the units
+          # beside it, since it makes /sys read-only and the ceilings are
+          # there: the rest of /sys stays writable to it too.
+          CapabilityBoundingSet = "";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          PrivateNetwork = true;
+          RestrictAddressFamilies = "none";
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          SystemCallFilter = "@system-service";
+        };
+      };
     }
     // lib.mapAttrs (_: floor: { serviceConfig.MemoryLow = "${toString floor.mib}M"; }) systemFloors
     // lib.mapAttrs' (
@@ -892,6 +948,7 @@ in
       (lib.concatMapStringsSep "\n" builtins.readFile [
         ./work-slices.rules
         ./swap-in.rules
+        ./efficient-cores.rules
       ])
       (lib.mkAfter asks.last)
     ];

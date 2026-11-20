@@ -215,6 +215,7 @@
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
+        efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
         gnome-keyring-unlock = script "gnome-keyring-unlock" ../../modules/gnome-keyring/unlock.sh { };
