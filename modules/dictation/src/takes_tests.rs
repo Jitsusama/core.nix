@@ -194,14 +194,15 @@ fn a_pause_between_sentences_makes_two_takes_each_starting_just_before_its_speec
         "{:?}",
         takes.iter().map(|t| t.start).collect::<Vec<_>>()
     );
-    // Each starts 0.2 s before its speech, at 2.0 s and 6.2 s.
+    // The speech starts at 2.0 s and 6.2 s, and each take 0.2 s, ten
+    // frames, before it.
     assert!(
-        (seconds(takes[0].start) - 1.8).abs() < 0.05,
+        (seconds(takes[0].start) - 1.8).abs() < 0.01,
         "{}",
         seconds(takes[0].start)
     );
     assert!(
-        (seconds(takes[1].start) - 6.0).abs() < 0.05,
+        (seconds(takes[1].start) - 6.0).abs() < 0.01,
         "{}",
         seconds(takes[1].start)
     );
@@ -213,6 +214,15 @@ fn a_pause_shorter_than_a_second_stays_in_one_take() {
     // each better with the one after it.
     let sound = [quiet(2.0), spoken(2.0), quiet(0.8), spoken(2.0), quiet(2.0)].concat();
     assert_eq!(cut(&sound).len(), 1);
+}
+
+#[test]
+fn a_live_take_is_given_once_a_second_of_quiet_follows_it() {
+    // A live line shows only then, so this is how long it waits.
+    let mut cutter = Cutter::new();
+    let spoken_then_waiting = [quiet(2.0), spoken(2.0), quiet(0.9)].concat();
+    assert_eq!(cutter.feed(&spoken_then_waiting), Vec::new());
+    assert_eq!(cutter.feed(&quiet(0.2)).len(), 1);
 }
 
 #[test]
