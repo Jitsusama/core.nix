@@ -106,20 +106,21 @@ onLinux {
       touch $out
     '';
 
-  # Tuple says only that it started, so the service says when it's ready,
-  # after systemd's own line, where health takes it: its own ExecStartPost,
-  # run against a stand-in systemctl and systemd-cat
+  # Tuple says only that it started, so the service says when it can take
+  # a call, after systemd's own line, where health takes it: its own
+  # ExecStartPost, run against a stand-in systemctl and a log of its own
   # (tests/tuple-says-when-ready.sh).
   tuple-says-when-ready =
     let
-      post = (account graphical).systemd.user.services.tuple.Service.ExecStartPost;
+      home = account graphical;
+      post = home.systemd.user.services.tuple.Service.ExecStartPost;
     in
     pkgs.runCommandLocal "tuple-says-when-ready" { } ''
       ${lib.getExe pkgs.bash} ${./tests/tuple-says-when-ready.sh} ${
         lib.escapeShellArgs [
           (lib.removeSuffix " %n" (lib.removePrefix "-" post))
           (lib.getExe' pkgs.systemd "systemctl")
-          (lib.getExe' pkgs.systemd "systemd-cat")
+          "${home.xdg.dataHome}/tuple/0/log.txt"
         ]
       }
       touch $out

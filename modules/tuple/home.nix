@@ -118,17 +118,23 @@ let
     mv -f log.txt log.1.txt
   '';
 
-  # Says the daemon is ready once its unit is, under Tuple's own name,
-  # looking for ten seconds (says-ready.sh); tuple-says-when-ready swaps
-  # systemctl and systemd-cat for its stand-ins.
-  saysReady = pkgs.writeShellScript "tuple-says-ready" ''
-    PATH=${lib.makeBinPath [ pkgs.coreutils ]} exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${
-      lib.escapeShellArgs [
-        (lib.getExe' pkgs.systemd "systemctl")
-        (lib.getExe' pkgs.systemd "systemd-cat")
-      ]
-    } "$1" 200
-  '';
+  # Says the daemon is ready once its unit is active and its log says it
+  # can take a call, looking for 30 seconds, half the minute health waits
+  # for a ready line (says-ready.sh); tuple-says-when-ready swaps systemctl
+  # and the log for its own.
+  saysReady =
+    let
+      systemctl = lib.getExe' pkgs.systemd "systemctl";
+      log = lib.escapeShellArg "${data}/log.txt";
+    in
+    pkgs.writeShellScript "tuple-says-ready" ''
+      PATH=${
+        lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.gnugrep
+        ]
+      } exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${systemctl} "$1" ${log} 300
+    '';
 
   # Puts our entry back when it no longer reads as ours (puts-back.sh).
   putsBack = pkgs.writeShellScript "tuple-puts-its-entry-back" ''
@@ -209,10 +215,13 @@ in
       Type = "forking";
       ExecStartPre = "${keepsLogs}";
       ExecStart = "${tuple} start";
-      # Tuple says only that it started, with no time, so a switch's
-      # restart of it went untimed; this says when it's ready. Its - keeps
-      # it from ever failing the start: all it can lose is a line.
+      # Tuple says only that it started, so a switch's restart of it was
+      # timed only to its start; this says when it can take a call. Its -
+      # keeps it from ever failing the start: all it can lose is a line.
       ExecStartPost = "-${saysReady} %n";
+      # What the unit writes is Tuple's, the ready line among it, rather
+      # than filed under the name of the script that says it.
+      SyslogIdentifier = "tuple";
       ExecStop = "${tuple} stop";
       Restart = "on-failure";
       # A call is real time: its sound, camera and screen are encoded and

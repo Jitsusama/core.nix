@@ -5136,8 +5136,9 @@
     signed-out Tuple's in plain words
   '';
   tuple-says-when-ready = ''
-    Tuple's service returns from starting at once, then says once it's active how long it took, from
-    a start or the crash before a restart, in the words health reads, and nothing with no start
+    Tuple's service returns from starting at once, then, only once it's active and its log says the
+    daemon can take a call, says how long that took from the log's first line, in the words health
+    reads
   '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it
