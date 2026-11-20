@@ -179,7 +179,7 @@ const OVERSLEPT: Duration = Duration::from_secs(1);
 /// clock runs with the awake one but for a `slept`: after so many looks,
 /// the machine sleeps so long, which only the wall clock sees, from the
 /// next look at the clock, as `run` looks at it before the lid in a tick.
-/// Once the lid has been looked at `stops` times, if any, the run is
+/// Once the clock has been looked at `stops` times, if any, the run is
 /// stopped, as by a signal.
 #[derive(Default)]
 struct Ran {
@@ -311,7 +311,7 @@ impl Ran {
         let say = |words: &str| said.borrow_mut().push(words.to_owned());
         let noticed = RefCell::new(Vec::new());
         let notice = |words: &str| noticed.borrow_mut().push(words.to_owned());
-        let stopped = || self.stops > 0 && looks.get() >= self.stops;
+        let stopped = || self.stops > 0 && times.get() >= self.stops;
         let result = run(
             &mut follower,
             &read,

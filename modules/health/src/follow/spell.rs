@@ -169,8 +169,8 @@ impl Spell {
 
     /// The run's final write, `written`, handed back, with the short spells
     /// kept unsaid told through `notice` if it wrote into `into`, as a run
-    /// ending with its follower within the quiet would otherwise lose them.
-    /// A stop, restart or reboot ends health before this, losing them yet.
+    /// ending within the quiet, by its follower or a stop, would otherwise
+    /// lose them.
     pub(super) fn ending(
         &mut self,
         written: io::Result<()>,

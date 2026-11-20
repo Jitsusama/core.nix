@@ -224,8 +224,9 @@ impl Drop for Stopped {
 
 /// The health to stop, run only as the copy `Stopped` starts, which says
 /// where to say its follower: started as under `nohup`, it catches
-/// health's stops, starts a follower, and once its follower ends, writes
-/// a little later, as health writes the day, and leaves, or never returns
+/// health's stops, starts a follower, `rest`s until a stop wakes it, as
+/// health rests between its looks, and once its follower ends, writes a
+/// little later, as health writes the day, and leaves, or never returns
 /// if it hangs.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
@@ -266,6 +267,7 @@ fn a_health_to_stop() {
             let saying = told.with_extension("saying");
             std::fs::write(&saying, format!("{follower}{masks}")).expect("said");
             std::fs::rename(&saying, told).expect("said");
+            rest(WAITS);
             while let Ok(Some(_)) = sent.recv() {}
             if std::env::var_os(HANGS).is_some() {
                 loop {
@@ -291,14 +293,21 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
         "health ended on a hangup it was started ignoring"
     );
     // To health alone, as `kill` sends it, so only health's own end of its
-    // follower ends that.
+    // follower ends that. The run returns about `WRITES_LATE` after it, so
+    // a stop that waited out `WRITES_WITHIN` anyway would end health late.
+    let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
+    let took = since.elapsed();
     assert_eq!(
         (ended.signal(), gone(stopped.follower), stopped.wrote()),
         (Some(libc::SIGTERM), true, true),
         "a stop didn't end health by its signal ({ended}), left its follower running, or \
          didn't wait for health's run to write the day"
+    );
+    assert!(
+        took < ENDS_LATE + WRITES_WITHIN,
+        "a stop waited {took:?} though health's run had returned"
     );
     // Were the stops blocked rather than caught, every follower would block
     // them too, as a run that blocked them showed (`SigBlk` 0x4003, though
@@ -326,21 +335,28 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
     stopped.send(libc::SIGTERM, true);
     let ended = stopped.ending();
     assert_eq!(
-        (ended.signal(), gone(stopped.follower), stopped.said()),
-        (Some(libc::SIGTERM), true, None),
+        (
+            ended.signal(),
+            gone(stopped.follower),
+            stopped.said(),
+            stopped.wrote()
+        ),
+        (Some(libc::SIGTERM), true, None, true),
         "a stop to health's group didn't end health by its signal ({ended}), left its \
-         follower running, or had it say its end"
+         follower running, had it say its end, or didn't wait for the day's write"
     );
 }
 
 #[test]
 fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
+    // `ending` fails past `WAITS`, well past the `ENDS_LATE` and
+    // `WRITES_WITHIN` this stop takes, so a stop that waited for good fails.
     let mut stopped = Stopped::starting(true);
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
     assert_eq!(
-        (ended.signal(), stopped.wrote()),
-        (Some(libc::SIGTERM), false),
+        ended.signal(),
+        Some(libc::SIGTERM),
         "a stop waited on a run that never returns ({ended})"
     );
 }

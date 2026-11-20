@@ -23,7 +23,12 @@ use crate::lid::Looked;
 /// every half minute. What went unheard that day is heard from the day's
 /// replay once health starts again. Once `stopped`, as by a signal, it
 /// ends at its next look at the clock, however long it has run, writing
-/// the day and telling what a spell kept unsaid, as any end does.
+/// the day and telling what a spell kept unsaid, as any end does; but
+/// before its first tick it writes only the days it holds, since the day's
+/// replay may be under way, and its day so far would be written over the
+/// whole one the last run kept, which the next start replays anyway. A
+/// stop ends the followers, so their senders go and a wait for a line
+/// ends at once.
 ///
 /// A day that can't be written, as on a full disk, is said through `say`,
 /// and once written again through `notice`, as `Spell` decides. Health
@@ -108,6 +113,9 @@ pub(super) fn run(
             let failed = follower.write().err();
             spell.tried(failed.as_ref(), at, wall, &follower.into, say, notice);
         }
+    }
+    if stopped() && ticked == started && follower.held.is_empty() {
+        return Ok(());
     }
     let written = spell.ending(follower.write(), &follower.into, notice);
     let lost = spell::losing(&follower.held);
