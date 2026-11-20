@@ -173,6 +173,16 @@ QtObject {
         if (Steady.hiddenGone({ back: [], ahead: [], tags: [], last: null }).last !== null)
             failures.push("with no last place, none is made");
 
+        // A way back the share has just emptied says so, where it would
+        // otherwise say nothing or E73: one that never held a place, or
+        // still holds one, says what it says anyway.
+        const emptied = [[2, 0], [1, 0], [0, 0], [2, 1], [1, 1]]
+            .map(([had, left]) => Steady.shareEmptied(had, left));
+        const emptiedWant = JSON.stringify([true, true, false, false, false]);
+        if (JSON.stringify(emptied) !== emptiedWant)
+            failures.push(`a way back says the share let it go: said ${JSON.stringify(emptied)}, `
+                + `meant ${emptiedWant}`);
+
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
         // flat, as a session a step in under its orchestrator does once
