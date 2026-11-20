@@ -779,7 +779,7 @@ fn run(
             spell.tried(failed.as_ref(), at, wall, &follower.into, say, notice);
         }
     }
-    let written = follower.write();
+    let written = spell.ending(follower.write(), &follower.into, notice);
     let lost = spell::losing(&follower.held);
     written.map_err(|error| {
         io::Error::new(

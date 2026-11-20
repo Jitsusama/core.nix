@@ -2,8 +2,8 @@
 //! health says of it: once as it starts, once at each new kind of cause
 //! and once as it ends, and of a disk flapping at its edge, no more than
 //! once every ten minutes, with how many short spells went unsaid before
-//! it, or once the ten minutes pass with none on, as their own notice. A
-//! spell lasts only as long as health's run, so a start after one
+//! it, or, once the ten minutes pass with none on or as health ends, in a
+//! notice of their own. A spell lasts only as long as health's run, so a start after one
 //! says the next spell at once, and a spell that outlasts a run, as one
 //! given up on does when its last try fails, is never told ended.
 
@@ -107,7 +107,8 @@ impl Spell {
     /// lasted and its error then, so a flapping disk is said at most once
     /// in each `QUIET_FOR`, however short its spells, and a lasting one
     /// soon. Short spells it kept unsaid are counted in the next said, or,
-    /// once the quiet ends with none on, told through `notice` on their own.
+    /// once the quiet ends with none on, told through `notice` on their own,
+    /// which keeps a new quiet as a told end does.
     pub(super) fn tried(
         &mut self,
         error: Option<&io::Error>,
@@ -158,16 +159,37 @@ impl Spell {
             }
             (None, None) => {
                 if self.unsaid > 0 && !self.quiet(at, wall) {
-                    notice(&format!(
-                        "health: writes the day into {} again, after {} failing that went \
-                         unsaid",
-                        into.display(),
-                        short_spells(self.unsaid)
-                    ));
-                    self.unsaid = 0;
+                    self.tell_unsaid(into, notice);
+                    self.told = Some((at, wall));
                 }
             }
         }
+    }
+
+    /// The run's final write, `written`, handed back, with the short spells
+    /// kept unsaid told through `notice` if it wrote into `into`, as health
+    /// ending within the quiet would otherwise lose them.
+    pub(super) fn ending(
+        &mut self,
+        written: io::Result<()>,
+        into: &Path,
+        notice: &dyn Fn(&str),
+    ) -> io::Result<()> {
+        if written.is_ok() && self.unsaid > 0 {
+            self.tell_unsaid(into, notice);
+        }
+        written
+    }
+
+    /// Tell the short spells kept unsaid, writing into `into` again since,
+    /// and count them afresh.
+    fn tell_unsaid(&mut self, into: &Path, notice: &dyn Fn(&str)) {
+        notice(&format!(
+            "health: writes the day into {} again, after {} failing that went unsaid",
+            into.display(),
+            short_spells(self.unsaid)
+        ));
+        self.unsaid = 0;
     }
 
     /// Whether a spell at `at`, `wall` on the wall clock, comes within

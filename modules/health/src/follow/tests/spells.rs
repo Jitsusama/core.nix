@@ -152,7 +152,8 @@ fn a_sleep_in_a_spell_kept_quiet_has_it_said() {
 #[test]
 fn short_spells_gone_unsaid_are_told_once_the_quiet_ends_with_none_on() {
     // No spell follows the short one kept quiet, so the tick that finds
-    // the quiet over tells it, and the ticks after say nothing more.
+    // the quiet over tells it, and the tick after says nothing more. That
+    // keeps a new quiet, so the next flap goes unsaid too, till it ends.
     let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
     let heard = heard(&[
         (0, 0, Some(&full)),
@@ -162,14 +163,46 @@ fn short_spells_gone_unsaid_are_told_once_the_quiet_ends_with_none_on() {
         (600, 600, None),
         (630, 630, None),
         (660, 660, None),
+        (690, 690, Some(&full)),
+        (720, 720, None),
+        (1230, 1230, None),
     ]);
     let when: Vec<(u64, &str)> = heard.iter().map(|(at, kind, _)| (*at, *kind)).collect();
     assert!(
-        when == [(0, "said"), (30, "told"), (630, "told")]
+        when == [(0, "said"), (30, "told"), (630, "told"), (1230, "told")]
             && heard[2]
                 .2
                 .ends_with("again, after a short spell failing that went unsaid"),
         "short spells kept quiet weren't told once the quiet ended: {heard:?}"
+    );
+}
+
+#[test]
+fn short_spells_gone_unsaid_are_told_as_health_ends_if_it_writes() {
+    let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
+    let ended = |written: io::Result<()>| {
+        let told = RefCell::new(Vec::new());
+        let notice = |words: &str| told.borrow_mut().push(words.to_owned());
+        let first = Instant::now();
+        let mut spell = Spell::default();
+        for (after, error) in [(0, Some(&full)), (30, None), (60, Some(&full)), (90, None)] {
+            let at = first + Duration::from_secs(after);
+            spell.tried(error, at, wall(after), Path::new("days"), &|_| {}, &notice);
+        }
+        let failed = written.is_err();
+        let result = spell.ending(written, Path::new("days"), &notice);
+        (failed == result.is_err(), told.take())
+    };
+    let (handed_back, wrote) = ended(Ok(()));
+    let (failure_handed_back, failed) = ended(Err(io::Error::other("full")));
+    assert!(
+        handed_back
+            && failure_handed_back
+            && wrote.len() == 2
+            && wrote[1].ends_with("again, after a short spell failing that went unsaid")
+            && failed.len() == 1,
+        "the short spells kept quiet as health ended were lost, or told though it couldn't \
+         write: {wrote:?}, {failed:?}"
     );
 }
 
