@@ -589,6 +589,7 @@ gather {
     ./modules/google/checks.nix
     ./modules/gtk/checks.nix
     ./modules/guide/checks.nix
+    ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
     ./modules/inkscape/checks.nix

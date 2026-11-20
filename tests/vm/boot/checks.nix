@@ -32,4 +32,7 @@ onLinux {
   # Whether a reboot gets past what won't stop shows only by rebooting, with
   # a watchdog there to reset the machine.
   vm-reboot-cannot-hang = import ./shutdown.nix { inherit self pkgs; };
+  # Whether a hang leaves a record shows only with a watchdog systemd arms,
+  # a second machine hearing the kernel, and a kernel that panics.
+  vm-a-hang-leaves-a-record = import ./hang.nix { inherit self pkgs; };
 }

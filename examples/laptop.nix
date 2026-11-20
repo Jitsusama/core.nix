@@ -9,6 +9,8 @@ nixpkgs.lib.nixosSystem {
     core.nixosModules.laptop
     core.nixosModules.dell-xps-14-da14260
     core.nixosModules.disk-loss-panic
+    core.nixosModules.hang-panic
+    core.nixosModules.netconsole
     core.nixosModules.disko
     core.nixosModules.lanzaboote
     # The modules no role brings, which a machine names itself, so every
@@ -26,6 +28,16 @@ nixpkgs.lib.nixosSystem {
         jitsusama.diskLossPanic.disk = config.jitsusama.disk.device;
       }
     )
+    {
+      # While a hang is chased, the kernel's log goes through the dock's
+      # card to another machine on the network as it's written. A .local
+      # listener is found only on a network asked by multicast: a trusted
+      # Wi-Fi, or the card once it's in jitsusama.network.trustedCables.
+      jitsusama.netconsole = {
+        listener = "listener.local";
+        through = [ "enp0s20f0u2u2" ];
+      };
+    }
     {
       networking.hostName = "example-laptop";
       nixpkgs.hostPlatform = "x86_64-linux";
