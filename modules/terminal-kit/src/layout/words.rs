@@ -379,6 +379,10 @@ fn parted(line: &str, more: &str, between: &str) -> String {
 /// after a figure that isn't its unit can part from it.
 const UNIT: usize = 3;
 
+/// The most letters before a rate's `/s`, as `Mbit/s` and `kbit/s`
+/// have, so a word of more is a word, not a rate.
+const RATE: usize = 4;
+
 /// The short words English joins a sentence with, which follow a figure
 /// as often as a unit does (`Pro 6 on 5 GHz`) but never measure it, so a
 /// line may part a figure from them.
@@ -399,10 +403,10 @@ fn held(words: &str) -> Vec<String> {
     let unit = |word: &str| {
         let bare = word.trim_end_matches(|last: char| last.is_ascii_punctuation());
         // A rate is a unit a second, longer than a unit alone but as
-        // much the figure's.
-        let rate = bare.strip_suffix("/s").is_some_and(|per| {
-            !per.is_empty() && width(per) <= UNIT && per.chars().all(char::is_alphabetic)
-        });
+        // much the figure's. A bare `/s` is short enough to be a unit.
+        let rate = bare
+            .strip_suffix("/s")
+            .is_some_and(|per| width(per) <= RATE && per.chars().all(char::is_alphabetic));
         !figure(word) && (width(bare) <= UNIT || rate) && !JOINING.contains(&bare)
     };
     let mut pieces: Vec<String> = Vec::new();
@@ -585,10 +589,7 @@ mod tests {
             wrapped("took 5 flows/s now", 9),
             ["took 5", "flows/s", "now"]
         );
-        assert_eq!(
-            wrapped("took 5 a.b/s now", 7),
-            ["took 5", "a.b/s", "now"]
-        );
+        assert_eq!(wrapped("took 5 a.b/s now", 7), ["took 5", "a.b/s", "now"]);
     }
 
     #[test]
