@@ -277,6 +277,9 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
         Ok(body) => body,
         Err(unread) => return refuse_unread(client, &unread),
     };
+    // What was read of the client grew with its body, and keeps that
+    // room until freed, so it goes before the answer, not after.
+    drop(read);
     let Some(mut far) = reach(&format!("{host}:{port}")) else {
         return refuse(client, 502, &format!("{authority} couldn't be reached"));
     };
@@ -302,7 +305,7 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
             }
             Ok(answer) => break answer,
             Err(_) if !asked => {
-                let said = format!("{authority} closed before it was asked");
+                let said = format!("{authority} didn't take the request");
                 return refuse(client, 502, &said);
             }
             Err(unread) => {
