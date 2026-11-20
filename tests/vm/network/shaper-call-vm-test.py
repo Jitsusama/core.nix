@@ -66,6 +66,21 @@ DOWN_MOST = CALL_LEAST // 100
 # The most of a call the shaper's own CAKE may drop going up, the same hundredth: unlike the
 # router VM's, those drops are the shaper's queue alone.
 UP_DROPPED_MOST = DOWN_MOST
+# How many times the calls are made in all when a call's handshake goes unanswered. iperf3
+# sends a stream's connect datagram once and gives up after 30 s with no reply, where a call
+# asks again, so one datagram lost fails the whole call: on 19 November the page call did,
+# after 31 s, with nothing limited down. A connect the server never heard was lost going up,
+# where the router VM drops some of a call's datagrams and the shaper's upload queue may too.
+# Only test_a_call_goes_ahead_of_its_own_uploads judges the shaper's, in the video tin, and its
+# counts span every time the calls are made, so a connect the shaper dropped still counts
+# there. Any other may have been lost in the shaper's IFB, so it's excused only when the IFB
+# dropped nothing meanwhile.
+HANDSHAKES = 2
+# What iperf3 says when a stream's handshake timed out unanswered. A reply that came back as
+# something else ends with whatever errno an earlier call left, so it's taken for unanswered
+# only when that was this one; the counters read it as lost going up when it was 4 bytes, and
+# coming down otherwise.
+UNANSWERED = "unable to read from stream socket: Resource temporarily unavailable"
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
@@ -182,8 +197,68 @@ class Rig:
         return stuck
 
     def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
-        """Hold calls at once from an app, both unless named, and give what iperf3 made of each."""
+        """Hold calls at once from an app, both unless named, and give what iperf3 made of each.
+
+        When a call's handshake goes unanswered and its loss is excused (lost going up, or
+        anywhere while the IFB dropped nothing), and no call failed any other way, every call
+        is made again, so the calls that count ran together, up to HANDSHAKES times in all. A
+        call whose handshake is never answered still fails, saying how many times it was made
+        and what was heard.
+        """
         held = names or list(CALLS)
+        for made in range(1, HANDSHAKES + 1):
+            before = self.downs()
+            connects, replies = self.handshakes(self.server), self.handshakes(self.client)
+            results = self.hold(held, seconds)
+            dropped = sum(self.downs()) - sum(before)
+            heard = {name: n - connects[name] for name, n in self.handshakes(self.server).items()}
+            came = {name: n - replies[name] for name, n in self.handshakes(self.client).items()}
+            lost = [name for name in held if unanswered(results[name])]
+            failed = [name for name in held if "error" in results[name] and name not in lost]
+            # iperf3 connects a call's streams one after another and stops at the first left
+            # unanswered, so a reply came for every connect heard only when the failing one
+            # never reached the server: lost going up, judged only where a subtest counts the
+            # shaper's upload drops over every try.
+            down = [name for name in lost if heard[name] > came[name]]
+            # A call that ran in a try made again would go unjudged, so one past the bar keeps it.
+            over = over_the_bar(results, [name for name in held if name not in lost])
+            if not lost or failed or over or (down and dropped) or made == HANDSHAKES:
+                break
+            print(
+                f"the {', '.join(lost)} call's handshake went unanswered, its server hearing"
+                f" {[heard[name] for name in lost]} connects and the client getting"
+                f" {[came[name] for name in lost]} replies, with the IFB dropping {dropped},"
+                " so the calls are made again"
+            )
+        for name in lost:
+            results[name]["error"] += (
+                f" (made {made} of {HANDSHAKES} times, its server hearing {heard[name]} connects"
+                f" and the client getting {came[name]} replies, with the IFB dropping {dropped},"
+                f" {stopped(made, failed, over, down)})"
+            )
+        return results
+
+    def handshakes(self, machine: BaseMachine) -> dict[str, int]:
+        """Give how many call handshake datagrams a machine has received, by call."""
+        counted = {}
+        for name in CALLS:
+            listed: Json = json.loads(
+                machine.succeed(f"nft -j list counter inet handshakes {name}")
+            )
+            counted[name] = next(
+                int(item["counter"]["packets"]) for item in listed["nftables"] if "counter" in item
+            )
+        return counted
+
+    def downs(self) -> list[int]:
+        """Give the IFB's CAKE drops by tin, or none while it has no CAKE, as with no shaper."""
+        status, text = self.client.execute(f"tc -s -j qdisc show dev {self.ifb()}")
+        queues: list[Json] = json.loads(text) if status == 0 and text.strip() else []
+        cake = next((q for q in queues if q["kind"] == "cake" and q["handle"] == "2:"), None)
+        return [int(tin["drops"]) for tin in cake["tins"]] if cake else []
+
+    def hold(self, held: list[str], seconds: int) -> dict[str, Json]:
+        """Hold the named calls at once from an app, and give what iperf3 made of each."""
         each = " ".join(
             f"{BIN}/iperf3 --client {FAR} --port {CALLS[name]} --udp --bidir --bitrate {CALL_RATE}"
             f" --length {CALL_LENGTH} --time {seconds} --json > /tmp/call-{name}.json &"
@@ -442,6 +517,38 @@ def under_load(
     # Last, so a load that wouldn't stop never takes the place of what the calls met.
     assert not stuck, f"the loads in {stuck} wouldn't stop"
     return lost
+
+
+def unanswered(result: Json) -> bool:
+    """Give whether iperf3 gave up on a call's handshake, before it sent a second of it."""
+    return not result.get("intervals") and str(result.get("error", "")).startswith(UNANSWERED)
+
+
+def over_the_bar(results: dict[str, Json], ran: list[str]) -> dict[str, int]:
+    """Give what each call that ran lost coming down, of those that lost more than the bar."""
+    lost = {
+        name: int(received(results[name], "down").get("lost_packets", 0))
+        for name in ran
+        if "error" not in results[name]
+    }
+    return {name: n for name, n in lost.items() if n > DOWN_MOST}
+
+
+def stopped(made: int, failed: list[str], over: dict[str, int], down: list[str]) -> str:
+    """Give why a lost handshake's calls stopped, so a count short of the most reads right."""
+    if made == HANDSHAKES:
+        return "on the last"
+    if failed:
+        return f"not made again, as the {', '.join(failed)} call failed otherwise"
+    if over:
+        losses = ", ".join(f"the {name} call's {n}" for name, n in over.items())
+        return (
+            f"not made again, so that {losses} datagrams lost coming down, over {DOWN_MOST}, count"
+        )
+    return (
+        f"not made again, as the {', '.join(down)} call's reply was lost coming down"
+        " while the IFB dropped some of what came down"
+    )
 
 
 def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
