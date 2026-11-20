@@ -102,9 +102,10 @@ QtObject {
             RowsKept.saidByKind({ act: { rows: 1, ms: 0.5 } }), ', by kind "act" 1 row in 1');
         // The trials file keeps a keeping's kinds in whole milliseconds, as
         // it keeps every time, and the rest of the keeping as it was; the
-        // keeping itself, which the check reads finer, is left as it is.
-        const keptFine = { laying: 41, built: 0, laidBy: dearKinds };
-        Expect.same("the trials file keeps a keeping's kinds whole",
+        // keeping itself, which the check reads finer, is left as it is. Its
+        // fine laying is the showing's, and the file keeps only the whole.
+        const keptFine = { laying: 41, layingFine: 40.7, built: 0, laidBy: dearKinds };
+        Expect.same("the trials file keeps a keeping's kinds whole, and its laying once",
             [RowsKept.keptWhole(keptFine), keptFine.laidBy.on.ms],
             [{ laying: 41, built: 0, laidBy: { on: { rows: 5, ms: 20 },
                 program: { rows: 3, ms: 90 }, "AI spend": { rows: 2, ms: 20 },

@@ -65,8 +65,10 @@ function timed(trial, searched, drawn, parts) {
         return trial;
     }
     const was = trial.timed ?? begun(0, "").timed;
+    const kept = parts?.composing
+        ? Object.assign({}, parts, { composing: showingKept(parts.composing) }) : parts ?? null;
     const keptFelt = felt(drawn) && was.felt.length < FELT_KEPT
-        ? was.felt.concat([{ searched, drawn, parts: parts ?? null }]) : was.felt;
+        ? was.felt.concat([{ searched, drawn, parts: kept }]) : was.felt;
     return Object.assign({}, trial, { timed: {
         count: was.count + 1,
         searched: was.searched + searched,
@@ -117,11 +119,69 @@ function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = f
 }
 
 // How long a showing's rows spent reading what each program holds, as
-// their counts and notes are drawn, beside its weighing: Programs showed
-// 20 new rows in 132 ms under load, 54 of them weighing and 20 laying out,
-// with the rest untold (2026-11-14). Nothing under a millisecond.
+// their counts and notes are listed, drawn and weighed, so said of the whole
+// showing, within its parts and not beside them: Programs showed 20 new rows
+// in 132 ms, 54 weighing and 20 laying out, the rest untold (2026-11-14).
 function readingSaid(ms) {
-    return ms >= 0.5 ? `, ${Math.round(ms)} reading what they hold` : "";
+    return ms >= 0.5 ? `, ${Math.round(ms)} of the showing reading what they hold` : "";
+}
+
+// How long weighing the keys of a showing's rows took, said as the reading.
+function weighingSaid(ms) {
+    return (ms ?? 0) >= 0.5 ? `, ${Math.round(ms)} weighing their keys` : "";
+}
+
+// A showing's parts as the trials file keeps them, whole as the keeping is
+// (RowsKept.keptWhole), the reading now too, though showingSplit sums them
+// finer; the fine laying is the keeping's own.
+function showingKept(composing) {
+    const whole = {};
+    for (const [part, ms] of Object.entries(composing)) {
+        if (part === "drawer") {
+            whole.drawer = ms && showingKept(ms);
+        } else if (part !== "laying") {
+            whole[part] = typeof ms === "number" ? Math.round(ms) : ms;
+        }
+    }
+    return whole;
+}
+
+// Where a showing's time went, each part said once it rounds to a
+// millisecond, as the weighing and reading are: listing
+// its rows, putting them in the list besides the laying and weighing the
+// line says already, which run as they're put in, and selecting a row and
+// scrolling to it, each less a drawer that joined the key in it, which is
+// said as its own. Joel's step into a session showed for 49 ms of which
+// laying took 3, and "→ Programs" 47 of which 17, with nothing saying
+// where the rest went (2026-11-19).
+function showingSplit(parts) {
+    const drawer = parts.drawer ?? {};
+    // The laying as the rows' clock timed it, since the keeping's is whole.
+    const laying = parts.laying ?? parts.kept?.laying ?? 0;
+    const putting = parts.putting === undefined ? 0
+        : parts.putting - laying - (parts.weighing ?? 0) - (drawer.putting ?? 0);
+    const each = [[parts.listing ?? 0, "listing them"],
+        [putting, "putting them in besides laying and weighing"],
+        [(drawer.putting ?? 0) + (drawer.selecting ?? 0), "making its drawer"],
+        [(parts.selecting ?? 0) - (drawer.selecting ?? 0), "selecting and scrolling to it"]]
+        // What rounds to none isn't said; below nothing is, as timed outside its window.
+        .filter(([ms]) => Math.round(ms) !== 0);
+    return each.map(([ms, words]) => `${Math.round(ms)} ${words}`).join(", ");
+}
+
+// A showing's parts (showingSplit) and then its keeping, with what else it
+// took (`others`), as keptPart says it, so the parts never read as the
+// laying's own. Where it laid nothing keptPart says nothing, and the parts
+// and what else it took stand alone, so a weighing is said however small
+// the other parts.
+function showingSaid(parts, others = "") {
+    const split = showingSplit(parts);
+    const kept = keptPart(parts.kept, others);
+    if (kept !== "") {
+        return split === "" ? kept : ` (${split}; ${kept.slice(2)}`;
+    }
+    const alone = split === "" ? others.slice(2) : split + others;
+    return alone === "" ? "" : ` (${alone})`;
 }
 
 // How much of a key's wait for answers was past its bound, behind the

@@ -374,10 +374,100 @@ QtObject {
         expect("a keeping that took none and was no step back isn't",
             Trials.keptPart({ fresh: 0, laying: 0, split: unstepped }, ", 5 weighing") === ""
                 && Trials.keptPart(null) === "", "shown");
-        expect("a showing says how long rows spent reading what they hold",
-            Trials.readingSaid(12.6) === ", 13 reading what they hold"
+        expect("a showing says how long rows spent reading what they hold, within its parts",
+            Trials.readingSaid(12.6) === ", 13 of the showing reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
             Trials.readingSaid(12.6));
+        // A showing's own parts, as Launcher.qml's compose and search time
+        // them apart: the putting in holds the laying and the weighing.
+        const showingParts = { kept: { fresh: 3, laying: 3, built: 3, reused: 0,
+            split: unstepped }, weighing: 5, listing: 6.4, putting: 45.2, selecting: 2.6 };
+        expect("a showing says its listing, putting in past laying and weighing, and selecting",
+            Trials.showingSaid(showingParts, ", 5 weighing their keys")
+                === " (6 listing them, 37 putting them in besides laying and weighing,"
+                + " 3 selecting and scrolling to it; 3 rows new, 3 laying them out:"
+                + " 3 rows built, 0 taken back, 5 weighing their keys)",
+            Trials.showingSaid(showingParts, ", 5 weighing their keys"));
+        // The reading comes after the weighing, as composed joins them, and is said of
+        // the whole showing, so it never reads as a share of the weighing before it.
+        expect("a showing's reading is said of the whole showing, after its weighing or alone",
+            Trials.showingSaid(showingParts, Trials.weighingSaid(5) + Trials.readingSaid(13))
+                .endsWith(", 5 weighing their keys, 13 of the showing reading what they hold)")
+                && Trials.showingSaid({ kept: { fresh: 0, laying: 0, split: unstepped } },
+                    Trials.readingSaid(1))
+                    === " (1 of the showing reading what they hold)",
+            Trials.showingSaid(showingParts, Trials.weighingSaid(5) + Trials.readingSaid(13)));
+        const keptShowing = Object.assign({}, showingParts, { kept: splitting });
+        expect("a showing's keeping still ends on where a step back came to",
+            Trials.showingSaid(keptShowing).startsWith(" (6 listing them, 10 putting them in")
+                && Trials.showingSaid(keptShowing).endsWith(", 3 selecting and scrolling to it;"
+                    + " 20 rows new, 30 laying them out: 2 rows built, 8 taken back;"
+                    + " 6 of the laying splitting them at row 10, back to row 17)"),
+            Trials.showingSaid(keptShowing));
+        const bareShowing = { kept: { fresh: 0, laying: 0, split: unstepped }, weighing: 2,
+            listing: 0.4, putting: 14.2, selecting: 0.4 };
+        expect("a showing that laid nothing says its parts and what else it took",
+            Trials.showingSaid(bareShowing, ", 2 weighing")
+                === " (12 putting them in besides laying and weighing, 2 weighing)",
+            Trials.showingSaid(bareShowing, ", 2 weighing"));
+        expect("a showing with no part of a millisecond, or none timed, says what keptPart does",
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 2.4 })) === ""
+                && Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys")
+                    === Trials.keptPart(splitting, ", 5 weighing their keys"),
+            Trials.showingSaid({ kept: splitting }, ", 5 weighing their keys"));
+        expect("a showing that laid nothing and split nothing still says its weighing",
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 2.4 }), ", 2 weighing")
+                === " (2 weighing)",
+            Trials.showingSaid(Object.assign({}, bareShowing, { putting: 2.4 }), ", 2 weighing"));
+        // A drawer joined the key: 4 of it made as the rows went in, 3 as
+        // the selection moved, each taken from its part and said as one.
+        const joinedShowing = Object.assign({}, showingParts,
+            { drawer: { putting: 4, selecting: 3 }, selecting: 4.2 });
+        expect("a drawer that joined the key is said apart from putting in and selecting",
+            Trials.showingSaid(joinedShowing).startsWith(" (6 listing them, 33 putting them in"
+                + " besides laying and weighing, 7 making its drawer,"
+                + " 1 selecting and scrolling to it; 3 rows new"),
+            Trials.showingSaid(joinedShowing));
+        // Half of one below nothing rounds to none, so it isn't said either.
+        const halfShowing = { kept: bareShowing.kept, listing: 0.5, selecting: 0.4,
+            drawer: { putting: -0.5, selecting: 0 } };
+        expect("a part that rounds to a millisecond is said, from half of one, and less isn't",
+            Trials.showingSaid(halfShowing) === " (1 listing them)",
+            Trials.showingSaid(halfShowing));
+        // The keeping's laying is whole, 3 of a fine 3.45, so the putting in
+        // past it is 1.45, said 1, where the whole one would say 2 and both
+        // taken away would leave less than nothing.
+        const fineLaying = Object.assign({}, bareShowing, { kept: showingParts.kept,
+            laying: 3.45, weighing: 0, putting: 4.9 });
+        expect("a showing's putting in is told less its laying as finely timed",
+            Trials.showingSaid(fineLaying)
+                .startsWith(" (1 putting them in besides laying and weighing; 3 rows new"),
+            Trials.showingSaid(fineLaying));
+        // A drawer timed longer than the selecting it fell in leaves less than
+        // nothing, which is said, as a part timed outside its window.
+        const overDrawn = { kept: bareShowing.kept, selecting: 1,
+            drawer: { putting: 0, selecting: 3.2 } };
+        expect("a part left below nothing is said rather than dropped as small",
+            Trials.showingSaid(overDrawn)
+                === " (3 making its drawer, -2 selecting and scrolling to it)",
+            Trials.showingSaid(overDrawn));
+        expect("a showing's weighing is said once it rounds to a millisecond",
+            Trials.weighingSaid(12.6) === ", 13 weighing their keys"
+                && Trials.weighingSaid(0.4) === "" && Trials.weighingSaid(undefined) === "",
+            Trials.weighingSaid(12.6));
+        // The trials file keeps every time whole, with no fine laying beside
+        // the keeping's own, which it keeps as it was. The journal's line is
+        // said from the same parts after, so they're left fine.
+        const filing = { lists: 1, composing: { asking: 2, listing: 6.41, laying: 3.45,
+            weighing: 4.6, drawer: { putting: 1.26, selecting: 0 },
+            kept: { fresh: 3, laying: 3 } } };
+        const filed = Trials.timed(Trials.begun(0, "today"), 20, 30, filing)
+            .timed.felt[0].parts.composing;
+        expect("the trials file keeps a showing's parts in whole milliseconds, its own fine",
+            filing.composing.laying === 3.45 && filing.composing.listing === 6.41
+                && JSON.stringify(filed) === '{"asking":2,"listing":6,"weighing":5,'
+                + '"drawer":{"putting":1,"selecting":0},"kept":{"fresh":3,"laying":3}}',
+            JSON.stringify(filed));
         expect("a key held past its bound says what it was behind",
             Trials.behindSaid({ behind: 69, behindOn: "syncing 40, 29 unnamed" })
                 === " (69 of it behind the shell's other work: syncing 40, 29 unnamed)",
