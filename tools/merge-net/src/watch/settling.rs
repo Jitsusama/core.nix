@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use super::{
     AT_ONCE, Bad, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
     fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
-    same_drv, search, settle, stalled,
+    same_drv, search, settle,
 };
 use crate::state::{State, now, short};
 
@@ -136,6 +136,13 @@ impl Job {
 /// unrun: a day, since a Mac away overnight is usual, and its owner can
 /// still compare it by hand.
 const UNRUN: u64 = 24 * 60 * 60;
+
+/// How long a Mac's comparison that compared nothing rests before it's
+/// taken up again: as long as it has waited, from ten minutes to an hour.
+/// A round can come a minute after the last, and each comparison holds a
+/// lent builder for many minutes, so one rerun each round would spend
+/// the builders on a Mac whose network is out all day.
+const RESTS: (u64, u64) = (10 * 60, 60 * 60);
 
 /// How often a net leaving looks again whether the write it waits on only
 /// builds or has ended.
@@ -422,6 +429,9 @@ impl<'a> Settler<'a> {
             let Some(job) = Job::from_json(&kept) else {
                 continue;
             };
+            if kept["after"].as_u64().is_some_and(|after| after > now()) {
+                continue;
+            }
             let mut queue = lock(&self.queue);
             if queue.held.iter().any(|held| held == job.test()) {
                 continue;
@@ -564,10 +574,10 @@ impl<'a> Settler<'a> {
 
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
     /// if they fail twice there. One no Mac took, or that compared nothing
-    /// (`UNCOMPARED`), is kept, and the next round takes it up again, until
-    /// it was handed `UNRUN` ago: then it's told as a finding naming its
-    /// PR, and let go. One a builder took that stalled twice is told as a
-    /// stall naming its PR, and let go.
+    /// (`UNCOMPARED`), is kept, and a round after its rest takes it up
+    /// again, until it was handed `UNRUN` ago: then it's told as a finding
+    /// naming its PR, and let go. One a builder took that stalled twice is
+    /// told the same way at once, since it compared nothing either.
     fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
         match attempt(world, state, merge, check) {
@@ -583,11 +593,20 @@ impl<'a> Settler<'a> {
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }
             Outcome::Unsent => {
+                let rest = now().saturating_sub(since).clamp(RESTS.0, RESTS.1);
                 state.say(&format!(
-                    "no Mac compared {check} at {}: it's tried again next round",
-                    short(merge)
+                    "no Mac compared {check} at {}: it's tried again in {} min",
+                    short(merge),
+                    rest / 60
                 ));
-                Ok(())
+                let mut kept = Job::Mac {
+                    merge: merge.to_owned(),
+                    check: check.to_owned(),
+                    since,
+                }
+                .to_json();
+                kept["after"] = json!(now() + rest);
+                state.keep_settling(check, &kept)
             }
             Outcome::Failed => {
                 let subject = world.subject(merge);
@@ -601,11 +620,19 @@ impl<'a> Settler<'a> {
                 self.end(check, || revert_and_tell(world, state, &found, merge))
             }
             // One a builder took that stalled twice compared nothing, so
-            // it's told to its owner rather than let go as if it had
-            // passed, unchecked and unsaid.
+            // it's told to its owner as one no Mac compared, which cadence
+            // tells, rather than let go as if it had passed, unchecked and
+            // unsaid.
             Outcome::Stalled => {
-                let owner = pr_of(&world.subject(merge));
-                self.end(check, || stalled(state, merge, check, owner))
+                state.say(&format!(
+                    "{check} at {} stalled twice on a Mac: told, and let go",
+                    short(merge)
+                ));
+                let unrun = json!({
+                    "kind": "mac-unrun", "test": check, "commit": merge, "stalled": true,
+                    "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
+                });
+                self.end(check, || state.find(&unrun).map(|_| ()))
             }
             Outcome::Passed | Outcome::Flaky => self.end(check, || Ok(())),
         }
