@@ -9658,14 +9658,16 @@ Scope {
     // A heading's line, the row's face at the note's size (Choice.qml's
     // heading).
     readonly property real headingTall: Math.ceil(headingFace.height)
-    // How tall a row stands in the list: its band, with a gap above one
-    // that has one; a heading its line alone, with the groups' rung above
-    // it but for the list's first, which stands where the list starts
-    // (VKCF3Z, 2026-11-15 [90904822]).
+    // How tall a row stands in the list, by Steady.tallOf's rule, which
+    // tests/steady.qml holds beside the card's own (tallFor).
+    readonly property var rowSizes: ({
+            row: rowTall,
+            heading: headingTall,
+            gap: groupGap,
+            rung: Theme.space.rung.groups
+        })
     function tallOf(row, at) {
-        if (Headings.isHeading(row))
-            return (at === 0 ? 0 : Theme.space.rung.groups) + headingTall;
-        return rowTall + (row?.gap ? groupGap : 0);
+        return Steady.tallOf(Headings.isHeading(row), row?.gap, at, rowSizes);
     }
     // The rows as a search shows them: its ranking mixes the groups, so
     // none is headed (Headings.js).
@@ -9680,8 +9682,8 @@ Scope {
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
     // as Network's does; home has none. The card's height (Steady.tallFor), the rows that
-    // fit (rows) and each row's height in the list (tallOf) all read it, so the plate's
-    // lines can't drift from the list's.
+    // fit (rows) and each row's height in the list (tallOf) all read it, so none can take
+    // another gap than the rest.
     readonly property real groupGap: Theme.space.beat
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
