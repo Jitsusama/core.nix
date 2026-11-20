@@ -9,13 +9,14 @@
 # without it. No watchdog: the host pings only where systemd asks it to. No
 # cap on restarts and no notice of a host left down, so the start keeps its
 # own: a fourth start within ten minutes waits ten minutes first, as
-# Linux's allows three, and a start by hand counts, so removing the log's
-# .starts file beside it lets the next start go at once. No systemctl for
-# a host to restart itself through onto a new pi or harness, so it exits
-# with a failure, which launchd starts again. No call heard elsewhere: a
-# Mac's a-call-is-on hears only this Mac, so a host's own restart waits out
-# a call here, not one on another of the person's machines. No exit the host is never restarted from: one it
-# was refused with, 78, restarts as any failure does and says why in its
+# Linux's allows three. A start by hand counts, as does a host's own
+# restart onto a new pi, so removing the log's .starts file beside it ends
+# the wait within ten seconds. No systemctl for a host to restart itself
+# through onto a new pi or harness, so it exits with a failure, which
+# launchd starts again. No call heard elsewhere: a Mac's a-call-is-on hears
+# only this Mac, so a host's own restart waits out a call here, not one on
+# another of the person's machines. No exit the host is never restarted
+# from: one it was refused with, 78, restarts as any failure does and says why in its
 # log again each time, so a start past 10 MB of log moves it aside, keeping
 # one old one. No journal: a running host writes into the same log until
 # its next start, where Linux's background host logs about a megabyte a
@@ -143,8 +144,12 @@ let
     now=$(/bin/date +%s)
     if [ -n "$(/usr/bin/sed -n 3p "$starts" 2>/dev/null)" ] &&
       [ "$(/usr/bin/sed -n 1p "$starts")" -gt "$((now - 600))" ]; then
-      echo "pi-host: started three times in ten minutes; waiting ten minutes to start again; removing $starts lets the next start go at once"
-      /bin/sleep 600
+      echo "pi-host: started three times in ten minutes; waiting ten minutes to start again; removing $starts ends the wait"
+      waited=0
+      while [ "$waited" -lt 600 ] && [ -e "$starts" ]; do
+        /bin/sleep 10
+        waited=$((waited + 10))
+      done
       now=$(/bin/date +%s)
     fi
     { /usr/bin/tail -n 2 "$starts" 2>/dev/null; echo "$now"; } >"$starts.new"
