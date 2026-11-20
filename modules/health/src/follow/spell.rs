@@ -1,8 +1,10 @@
 //! A spell of the day's writes failing, as on a full disk, and what
 //! health says of it: once as it starts, once at each new kind of cause
 //! and once as it ends, and of a disk flapping at its edge, no more than
-//! once every ten minutes. A
-//! spell lasts only as long as health's run, so a start after one says
+//! once every ten minutes, with how many short spells went unsaid before
+//! it, or, once the ten minutes pass with none on or as a run ends with its
+//! follower, in a notice of their own; a stop ends a run with them untold.
+//! A spell lasts only as long as health's run, so a start after one says
 //! the next spell at once, and a spell that outlasts a run, as one given
 //! up on does when its last try fails, is never told ended.
 
@@ -20,12 +22,17 @@ use crate::day::Day;
 /// once, so health's starts alone say a flapping disk no more often. A
 /// told end can let a run that has had its follower end end at once,
 /// though, and the start that follows says the next spell within a
-/// minute.
+/// minute. It's kept on both clocks, as the awake one stands still while
+/// the machine sleeps and the wall one may be set: a wake on a disk still
+/// full is said at once, as is a spell after the clock is set back, or on
+/// by ten minutes or more.
 const QUIET_FOR: Duration = SETTLED;
 
 /// A spell of the day's writes failing: since when, its latest error,
-/// whether it was said and the kinds of cause it was said for, and when a
-/// spell's end was last told. A cause is known by its kind, as a disk full
+/// whether it was said and the kinds of cause it was said for, when a
+/// spell's end was last told, on the awake clock and the wall's, in
+/// microseconds, and how many short spells since went unsaid, as `QUIET_FOR`
+/// keeps them. A cause is known by its kind, as a disk full
 /// or read-only, since its words name the day failing, which changes at
 /// midnight or once a day held from before is written. The errors std
 /// leaves unnamed share one kind, so a change between two of them, both
@@ -36,7 +43,8 @@ pub(super) struct Spell {
     latest: String,
     said: bool,
     causes: Vec<io::ErrorKind>,
-    told: Option<Instant>,
+    told: Option<(Instant, i64)>,
+    unsaid: u32,
 }
 
 impl Spell {
@@ -65,36 +73,49 @@ impl Spell {
         ))
     }
 
-    /// Health's last try at `at`, once it `gave_up`: the `follower`'s days
-    /// written once more and `tried`. One that fails is what health ends
-    /// on (`given_up`); one that writes everything ends the spell, and
-    /// health carries on, as it lost nothing.
+    /// Health's last try at `at`, `wall` on the wall clock, once it
+    /// `gave_up`: the `follower`'s days written once more and `tried`. One
+    /// that fails is what health ends on (`given_up`); one that writes
+    /// everything ends the spell, and health carries on, as it lost nothing.
     pub(super) fn last_try(
         &mut self,
         follower: &mut Follower,
         at: Instant,
+        wall: i64,
         say: &dyn Fn(&str),
         notice: &dyn Fn(&str),
     ) -> io::Result<()> {
         let written = follower.write();
-        self.tried(written.as_ref().err(), at, &follower.into, say, notice);
+        self.tried(
+            written.as_ref().err(),
+            at,
+            wall,
+            &follower.into,
+            say,
+            notice,
+        );
         let lost = losing(&follower.held);
         written.map_err(|_| self.given_up(&follower.into, &lost))
     }
 
-    /// Take a write's `error` at `at`, if any. A spell's start is said
-    /// through `say`, naming the folder `into` and the error, and its end
-    /// through `notice`, once each, since the next half minute's would
-    /// most likely say the same; a cause of a kind not yet said within the
-    /// spell is said once too, as a full disk turning read-only. A spell
-    /// starting within `QUIET_FOR` of the last end told is said only once
-    /// `QUIET_FOR` has passed since, with how long it has lasted and its
-    /// error then, so a flapping disk is said at most once in each
-    /// `QUIET_FOR`, however short its spells, and a lasting one soon.
+    /// Take a write's `error` at `at`, `wall` on the wall clock, if any. A
+    /// spell's start is said through `say`, naming the folder `into` and
+    /// the error, and its end through `notice`, once each, since the next
+    /// half minute's would most likely say the same; a cause of a kind not
+    /// yet said within the spell is said once too, as a full disk turning
+    /// read-only. A spell starting within `QUIET_FOR` of the last end told
+    /// is said only once `QUIET_FOR` has passed since, with how long it has
+    /// lasted and its error then, so a flapping disk is said at most once
+    /// in each `QUIET_FOR`, however short its spells, and a lasting one
+    /// soon. Short spells it kept unsaid are counted in the next said, or,
+    /// once the quiet ends with none on, told through `notice` on their own.
+    /// That keeps no new quiet, so a disk still flapping is said again as
+    /// failing rather than only ever told writing again.
     pub(super) fn tried(
         &mut self,
         error: Option<&io::Error>,
         at: Instant,
+        wall: i64,
         into: &Path,
         say: &dyn Fn(&str),
         notice: &dyn Fn(&str),
@@ -105,28 +126,21 @@ impl Spell {
         match (error, self.since) {
             (Some(error), None) => {
                 self.since = Some(at);
-                self.said = self
-                    .told
-                    .is_none_or(|told| at.saturating_duration_since(told) >= QUIET_FOR);
+                self.said = !self.quiet(at, wall);
                 if self.said {
-                    self.causes.push(error.kind());
-                    say(&unwritten(&error.to_string(), into, Duration::ZERO));
+                    self.say(&error.to_string(), error.kind(), into, Duration::ZERO, say);
                 }
             }
             (Some(error), Some(since)) => {
-                let quiet = self
-                    .told
-                    .is_some_and(|told| at.saturating_duration_since(told) < QUIET_FOR);
                 let lasted = at.saturating_duration_since(since);
-                if !self.said && !quiet {
+                if !self.said && !self.quiet(at, wall) {
                     self.said = true;
-                    self.causes.push(error.kind());
-                    say(&unwritten(&error.to_string(), into, lasted));
+                    self.say(&error.to_string(), error.kind(), into, lasted, say);
                 } else if self.said && !self.causes.contains(&error.kind()) && !self.gave_up(at) {
                     // Not on the last try, which promises no more tries:
                     // health ends on it, naming this cause (`given_up`).
                     self.causes.push(error.kind());
-                    say(&unwritten(&format!("now {error}"), into, lasted));
+                    say(&unwritten(&format!("now {error}"), into, lasted, 0));
                 }
             }
             (None, Some(since)) => {
@@ -136,26 +150,94 @@ impl Spell {
                         into.display(),
                         lasting(at.saturating_duration_since(since))
                     ));
-                    self.told = Some(at);
+                    self.told = Some((at, wall));
+                } else {
+                    self.unsaid = self.unsaid.saturating_add(1);
                 }
                 self.since = None;
                 self.latest.clear();
                 self.said = false;
                 self.causes.clear();
             }
-            (None, None) => {}
+            (None, None) => {
+                if self.unsaid > 0 && !self.quiet(at, wall) {
+                    self.tell_unsaid(into, notice);
+                }
+            }
         }
+    }
+
+    /// The run's final write, `written`, handed back, with the short spells
+    /// kept unsaid told through `notice` if it wrote into `into`, as a run
+    /// ending with its follower within the quiet would otherwise lose them.
+    /// A stop, restart or reboot ends health before this, losing them yet.
+    pub(super) fn ending(
+        &mut self,
+        written: io::Result<()>,
+        into: &Path,
+        notice: &dyn Fn(&str),
+    ) -> io::Result<()> {
+        if written.is_ok() && self.unsaid > 0 {
+            self.tell_unsaid(into, notice);
+        }
+        written
+    }
+
+    /// Tell the short spells kept unsaid, writing into `into` again since,
+    /// and count them afresh.
+    fn tell_unsaid(&mut self, into: &Path, notice: &dyn Fn(&str)) {
+        notice(&format!(
+            "health: writes the day into {} again, after {} failing that went unsaid",
+            into.display(),
+            short_spells(self.unsaid)
+        ));
+        self.unsaid = 0;
+    }
+
+    /// Whether a spell at `at`, `wall` on the wall clock, comes within
+    /// `QUIET_FOR` of the last end told on both clocks, and so goes unsaid
+    /// for now: a sleep the wall clock saw, or a wall clock set, ends the
+    /// quiet.
+    fn quiet(&self, at: Instant, wall: i64) -> bool {
+        self.told.is_some_and(|(told, told_wall)| {
+            at.saturating_duration_since(told) < QUIET_FOR
+                && wall
+                    .checked_sub(told_wall)
+                    .and_then(|since| u64::try_from(since).ok())
+                    .is_some_and(|since| Duration::from_micros(since) < QUIET_FOR)
+        })
+    }
+
+    /// Say the spell for `cause`, of `kind`, its writes having failed for
+    /// `lasted`, with the short spells unsaid before it, which it then
+    /// counts afresh.
+    fn say(
+        &mut self,
+        cause: &str,
+        kind: io::ErrorKind,
+        into: &Path,
+        lasted: Duration,
+        say: &dyn Fn(&str),
+    ) {
+        self.causes.push(kind);
+        say(&unwritten(cause, into, lasted, self.unsaid));
+        self.unsaid = 0;
     }
 }
 
 /// What health says of a day it can't write into `into` for `cause`, its
-/// writes having failed for `lasted`, if said late, with the time left,
-/// which in a spell's last minute is less than a minute.
-fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
+/// writes having failed for `lasted`, if said late, and `unsaid` short
+/// spells before it gone unsaid, with the time left, which in a spell's
+/// last minute is less than a minute.
+fn unwritten(cause: &str, into: &Path, lasted: Duration, unsaid: u32) -> String {
     let already = if lasted.is_zero() {
         String::new()
     } else {
         format!(" having tried for {},", lasting(lasted))
+    };
+    let before = match unsaid {
+        0 => String::new(),
+        spells => format!(" and {} before it went unsaid,", short_spells(spells)),
     };
     let left = match GIVES_UP.saturating_sub(lasted).as_secs() / 60 {
         0 => "less than a minute".to_owned(),
@@ -163,10 +245,18 @@ fn unwritten(cause: &str, into: &Path, lasted: Duration) -> String {
         minutes => format!("up to {minutes} minutes"),
     };
     format!(
-        "health: can't write the day into {}: {cause},{already} so it keeps the day and tries \
-         again every half minute for {left}",
+        "health: can't write the day into {}: {cause},{already}{before} so it keeps the day and \
+         tries again every half minute for {left}",
         into.display()
     )
+}
+
+/// So many short spells, in words.
+fn short_spells(spells: u32) -> String {
+    match spells {
+        1 => "a short spell".to_owned(),
+        spells => format!("{spells} short spells"),
+    }
 }
 
 /// What health says it loses of the days `held` from before as it ends

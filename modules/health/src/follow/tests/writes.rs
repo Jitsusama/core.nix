@@ -306,6 +306,32 @@ fn a_new_days_line_whose_roll_cant_write_starts_the_spell_itself() {
 }
 
 #[test]
+fn a_spell_a_roll_starts_is_dated_once_its_line_is_taken() {
+    // Each look at the clock is 13 seconds on, so the roll's line is
+    // taken at 39 seconds, before any tick has written, and the roll's
+    // write is the spell's first failure. Room comes at the second tick,
+    // at 105 seconds: 53 after the look once the line is taken, at the
+    // first tick, but 66 after the look before the wait for it. Steps of
+    // 12 and 14 seconds tell the two apart too, so this isn't an edge.
+    let Outcome {
+        result, noticed, ..
+    } = Ran {
+        before: 1,
+        tomorrow: 1,
+        step: Duration::from_secs(13),
+        unwritable_for: 2,
+        ..Ran::default()
+    }
+    .outcome();
+    assert!(
+        result.is_ok()
+            && noticed.len() == 1
+            && noticed[0].ends_with("after trying for less than a minute"),
+        "a spell the roll started was dated before its line came: {noticed:?}, {result:?}"
+    );
+}
+
+#[test]
 fn a_day_written_again_once_it_can_be_is_no_fault() {
     // Room is made at the second look, and every follower ends after
     // three minutes, so health ends at ten minutes, well.
@@ -415,6 +441,7 @@ fn a_spell_of_failed_writes_is_said_as_it_starts_and_at_a_new_cause_and_told_as_
         spell.tried(
             error,
             first + Duration::from_secs(after),
+            wall(after),
             Path::new("days"),
             &say,
             &notice,
@@ -486,6 +513,7 @@ fn a_spells_causes_are_its_own_said_late_or_after_another() {
         spell.tried(
             error,
             first + Duration::from_secs(after),
+            wall(after),
             Path::new("days"),
             &say,
             &notice,
@@ -526,6 +554,7 @@ fn a_new_cause_near_a_spells_end_says_the_time_left_and_none_on_its_last_try() {
         spell.tried(
             Some(&error),
             first + Duration::from_secs(after),
+            wall(after),
             Path::new("days"),
             &say,
             &|_: &str| {},
@@ -561,88 +590,6 @@ fn a_day_that_cant_be_written_keeps_the_systems_kind_of_error_and_names_itself()
 }
 
 #[test]
-fn a_flapping_disk_is_said_at_most_once_in_ten_minutes() {
-    let step = Cell::new(0);
-    let heard = RefCell::new(Vec::new());
-    let say = |words: &str| {
-        heard
-            .borrow_mut()
-            .push((step.get(), "said", words.to_owned()));
-    };
-    let notice = |words: &str| {
-        heard
-            .borrow_mut()
-            .push((step.get(), "told", words.to_owned()));
-    };
-    let full = io::Error::new(io::ErrorKind::StorageFull, "no space left on device");
-    let unreadable = io::Error::new(io::ErrorKind::PermissionDenied, "permission denied");
-    let first = Instant::now();
-    let mut spell = Spell::default();
-    for (after, error) in [
-        // A short spell, said and told.
-        (0, Some(&full)),
-        (30, None),
-        // A flap soon after goes unsaid, and so does the next, until ten
-        // minutes have passed since the end told, when it's said with how
-        // long it has lasted and its error then, not its first: the
-        // folder's, no longer the disk's.
-        (60, Some(&full)),
-        (90, None),
-        (120, Some(&full)),
-        (600, Some(&unreadable)),
-        (630, Some(&unreadable)),
-        (690, None),
-        // An unsaid flap's end doesn't hold off the next spell: ten
-        // minutes from the end told, one is said at once.
-        (900, Some(&full)),
-        (930, None),
-        (1290, Some(&full)),
-    ] {
-        step.set(after);
-        spell.tried(
-            error,
-            first + Duration::from_secs(after),
-            Path::new("days"),
-            &say,
-            &notice,
-        );
-    }
-    let heard = heard.take();
-    let when: Vec<(u64, &str)> = heard.iter().map(|(at, kind, _)| (*at, *kind)).collect();
-    assert_eq!(
-        when,
-        [
-            (0, "said"),
-            (30, "told"),
-            (630, "said"),
-            (690, "told"),
-            (1290, "said")
-        ],
-        "a flapping disk was said more than once in ten minutes, or a spell at the wrong time"
-    );
-    let words = |at: usize| heard[at].2.as_str();
-    assert!(
-        words(1).ends_with("after trying for less than a minute")
-            && words(2).contains(": permission denied, having tried for 8 minutes, so")
-            && words(2).contains("for up to 51 minutes")
-            && words(3).ends_with("after trying for 9 minutes")
-            && words(4).contains("no space left on device, so")
-            && words(4).contains("for up to 60 minutes"),
-        "a spell's cause, how long it lasted or the time it has left went unsaid: {heard:?}"
-    );
-}
-
-#[test]
-fn how_long_a_spell_lasted_reads_to_the_minute() {
-    let read = |seconds| spell::lasting(Duration::from_secs(seconds));
-    assert_eq!(
-        [read(59), read(60), read(119), read(120)],
-        ["less than a minute", "a minute", "a minute", "2 minutes"],
-        "how long a spell lasted read wrong"
-    );
-}
-
-#[test]
 fn health_gives_up_only_on_a_last_try_that_fails() {
     // The run's harness makes room only as it looks at the lid, before a
     // tick's write, so a last try that writes is reached here instead.
@@ -656,10 +603,11 @@ fn health_gives_up_only_on_a_last_try_that_fails() {
     let mut spell = Spell::default();
     let started = Instant::now();
     let failed = follower.write().expect_err("a write into a file");
-    spell.tried(Some(&failed), started, &days, &|_| {}, &notice);
+    spell.tried(Some(&failed), started, wall(0), &days, &|_| {}, &notice);
     let gave_up = started + GIVES_UP;
+    let gave_up_wall = wall(GIVES_UP.as_secs());
     let ended = spell
-        .last_try(&mut follower, gave_up, &|_| {}, &notice)
+        .last_try(&mut follower, gave_up, gave_up_wall, &|_| {}, &notice)
         .expect_err("a last try into a file");
     assert!(
         ended
@@ -670,7 +618,7 @@ fn health_gives_up_only_on_a_last_try_that_fails() {
     );
     fs::remove_file(&days).expect("room made for the day");
     spell
-        .last_try(&mut follower, gave_up, &|_| {}, &notice)
+        .last_try(&mut follower, gave_up, gave_up_wall, &|_| {}, &notice)
         .expect("a last try that wrote everything carried on");
     assert!(
         !spell.is_on()
@@ -696,6 +644,7 @@ fn health_giving_up_names_the_days_held_it_loses_and_what_failed_last() {
         spell.tried(
             Some(&full),
             Instant::now(),
+            wall(0),
             Path::new("days"),
             &|_| {},
             &|_| {},

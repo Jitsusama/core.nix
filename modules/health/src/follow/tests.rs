@@ -7,8 +7,16 @@ use crate::journal;
 mod faults;
 // A restart across midnight, and the old day's lines heard after it.
 mod midnight;
+// A spell of failed writes, and what of it health says when.
+mod spells;
 // A day health can't write, as on a full disk.
 mod writes;
+
+/// The wall clock `seconds` into a test, in microseconds, as a spell is
+/// given it beside the awake clock.
+fn wall(seconds: u64) -> i64 {
+    i64::try_from(seconds).expect("seconds a test runs") * 1_000_000
+}
 
 /// A warning line at a moment in microseconds.
 fn warning(at: i64) -> String {
