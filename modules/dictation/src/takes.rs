@@ -65,7 +65,9 @@ const MUTE_FRAMES: usize = 25;
 /// For this long after a line sends nothing, any sound that could be
 /// speech is, while the floor is found again from what the line sends
 /// now: words with nothing between, from a far end that gates its line,
-/// would otherwise set it themselves.
+/// would otherwise set it themselves. A floor that holds a frame that
+/// wasn't speech is the line's own, and needs finding by nobody, so a
+/// packet lost on a hissy line doesn't make its hiss speech.
 const SETTLE_FRAMES: usize = 50;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
@@ -128,6 +130,8 @@ pub struct Cutter {
     since_nothing: Option<usize>,
     /// Frames of nothing in a row, up to the one just fed.
     nothing_run: usize,
+    /// Whether the floor holds a frame that wasn't speech.
+    grounded: bool,
 }
 
 impl Cutter {
@@ -171,11 +175,13 @@ impl Cutter {
             self.nothing_run += 1;
             if self.nothing_run >= MUTE_FRAMES {
                 self.recent.clear();
+                self.grounded = false;
             }
             self.since_nothing = Some(0);
         } else {
             self.nothing_run = 0;
             if !holds_nothing(&frame) {
+                self.grounded |= !speech;
                 self.recent.push_back(level);
                 if self.recent.len() > FLOOR_FRAMES {
                     self.recent.pop_front();
@@ -254,7 +260,8 @@ impl Cutter {
     fn threshold(&self) -> f32 {
         let settling = self
             .since_nothing
-            .is_some_and(|frames| frames < SETTLE_FRAMES);
+            .is_some_and(|frames| frames < SETTLE_FRAMES)
+            && !self.grounded;
         if self.recent.is_empty() || settling {
             return QUIETEST_SPEECH_DB;
         }
