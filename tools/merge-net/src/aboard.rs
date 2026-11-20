@@ -8,21 +8,20 @@ use crate::{answers, boarding, git, mark_skipped_macs, needs_heard, run_again, t
 
 /// What to do about `commit`, on main, once it `boarded` the merge train,
 /// which merges it with the others on one run (`train.rs`), or didn't:
-/// wait for the gate holding it or the kit reader going first, mark its
-/// draft ready, or else run it again alone.
-pub fn ride_or_run_again(commit: &str, boarded: Result<String, boarding::Off>) -> String {
-    match boarded {
-        Ok(said) | Err(boarding::Off::Draft(said) | boarding::Off::KitFirst(said)) => said,
-        Err(boarding::Off::Held) => {
-            "it waits for that gate, so merge again once it ends".to_owned()
-        }
-        Err(_) => {
-            let again = run_again(commit);
-            match train::fell_said(commit) {
-                Some(fell) => format!("{fell}; {again}"),
-                None => again,
-            }
-        }
+/// the step its own for what a run again doesn't end, as
+/// `boarding::own_step` says, or else run it again alone.
+pub fn ride_or_run_again(commit: &str, boarded: &Result<String, boarding::Off>) -> String {
+    let off = match boarded {
+        Ok(said) => return said.clone(),
+        Err(off) => off,
+    };
+    if let Some(step) = boarding::own_step(off) {
+        return step;
+    }
+    let again = run_again(commit);
+    match train::fell_said(commit) {
+        Some(fell) => format!("{fell}; {again}"),
+        None => again,
     }
 }
 
@@ -66,12 +65,19 @@ fn conflicts(commit: &str, main: &str) -> bool {
         .is_ok_and(|status| status.code() == Some(1))
 }
 
-/// Keep that `commit` runs changed-checks again over `shared`, on the
-/// train or alone, unless a hold, which keeps its own line, or a draft
-/// kept it off the train. A head behind main that can't board keeps none,
-/// since the head it rebases to keeps the one line its change counts.
+/// Keep that `commit` runs changed-checks again over `shared`, when it
+/// does: on the train, or alone once it couldn't board. A head kept off
+/// by what has a step of its own (`boarding::own_step`) keeps none, since
+/// it asks `ready` again after that step, and a hold keeps its own line.
+/// Its caller keeps none for a head behind main that can't board, since
+/// the head it rebases to keeps the one line its change counts.
 pub fn keep_regated(commit: &str, boarded: &Result<String, boarding::Off>, shared: &[String]) {
-    if !matches!(boarded, Err(boarding::Off::Held | boarding::Off::Draft(_))) {
+    if boarded
+        .as_ref()
+        .err()
+        .and_then(boarding::own_step)
+        .is_none()
+    {
         answers::keep(
             commit,
             answers::Verdict::Regate(answers::Rerun::Files),

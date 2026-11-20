@@ -76,6 +76,27 @@ pub fn boarding(asks: &Asks) -> Result<String, Off> {
     (asks.offer)(&branch).ok_or_else(|| Off::Train((asks.fell)()))
 }
 
+/// The next step for a head kept off by what neither a rebase nor a run
+/// again ends, said whether it sits on main or behind it: a hold, a draft,
+/// a kit reader going first, unheard needs or no branch. Nothing for the
+/// rest, which a rebase or a run again does end.
+pub fn own_step(off: &Off) -> Option<String> {
+    match off {
+        Off::Draft(said) | Off::KitFirst(said) => Some(said.clone()),
+        Off::Held => Some("it waits for that gate, so merge again once it ends".to_owned()),
+        Off::Unheard => Some(
+            "merge-net needs wasn't heard for it, so run merge-net needs there, run the VM \
+             tests it names, and merge again"
+                .to_owned(),
+        ),
+        Off::NoBranch => Some(
+            "ready was asked from no branch, so ask it again from the pull request's branch"
+                .to_owned(),
+        ),
+        Off::Conflicts | Off::Train(_) => None,
+    }
+}
+
 /// What `ready` says of `commit`, behind origin's main at `main`, which
 /// since moved `shared` of its files unseen by its run at `checked`, once
 /// it boarded or didn't. A run again at a head behind main would check it
@@ -96,28 +117,17 @@ pub fn behind_said(
         short(main),
         shared.join(", ")
     );
-    let why = match boarded {
-        Ok(said) | Err(Off::Draft(said) | Off::KitFirst(said)) => {
-            return format!("{moved}; {said}");
-        }
-        Err(Off::Held) => {
-            return format!("{moved}; it waits for that gate, so merge again once it ends");
-        }
-        Err(Off::Unheard) => {
-            return format!(
-                "{moved}; merge-net needs wasn't heard for it, so run merge-net needs and \
-                 merge again"
-            );
-        }
-        Err(Off::NoBranch) => {
-            return format!(
-                "{moved}; ready was asked from no branch, so ask it again from the pull \
-                 request's branch"
-            );
-        }
-        Err(Off::Conflicts) => "it conflicts with main".to_owned(),
-        Err(Off::Train(Some(fell))) => fell.clone(),
-        Err(Off::Train(None)) => "the train wouldn't start".to_owned(),
+    let off = match boarded {
+        Ok(said) => return format!("{moved}; {said}"),
+        Err(off) => off,
+    };
+    if let Some(step) = own_step(off) {
+        return format!("{moved}; {step}");
+    }
+    let why = match off {
+        Off::Train(Some(fell)) => fell.clone(),
+        Off::Train(None) => "the train wouldn't start".to_owned(),
+        _ => "it conflicts with main".to_owned(),
     };
     format!(
         "{moved}, which its run didn't see, and it can't board the merge train, as {why}; \
@@ -182,11 +192,11 @@ mod tests {
         );
     }
 
-    // may_merge asks of a head on main in this order, and a head behind it
-    // is asked the same, so a hold is found before a conflict, and nothing
-    // is offered before every other ask lets it on.
+    // A hold is found before a conflict, since the gate it waits for can
+    // move its files again and a rebase before it ends would be one of
+    // two, and nothing is offered before every other ask lets it on.
     #[test]
-    fn every_ask_is_asked_in_may_merges_order() {
+    fn every_ask_is_asked_in_order() {
         let asked = RefCell::new(Vec::new());
         let note = |ask: &'static str| asked.borrow_mut().push(ask);
         let offer = |_: &str| {
@@ -336,12 +346,34 @@ mod tests {
                 Off::KitFirst("merge again once it has merged".to_owned()),
                 "merge again once it has merged",
             ),
-            (Off::Unheard, "run merge-net needs and merge again"),
+            (Off::Unheard, "run the VM tests it names"),
             (Off::NoBranch, "from the pull request's branch"),
         ] {
             let words = said(&Err(off));
             assert!(words.contains(step), "{words}");
             assert!(!words.contains("rebase"), "{words}");
+        }
+    }
+
+    // A head on main off for one of these was sent to run again, which
+    // ended none of them; only a conflict or the train's refusal is.
+    #[test]
+    fn only_a_conflict_or_the_train_has_no_step_of_its_own() {
+        for off in [
+            Off::Held,
+            Off::Draft(String::new()),
+            Off::KitFirst(String::new()),
+            Off::Unheard,
+            Off::NoBranch,
+        ] {
+            assert!(own_step(&off).is_some(), "{off:?} would run again");
+        }
+        for off in [
+            Off::Conflicts,
+            Off::Train(None),
+            Off::Train(Some(String::new())),
+        ] {
+            assert!(own_step(&off).is_none(), "{off:?} wouldn't run again");
         }
     }
 

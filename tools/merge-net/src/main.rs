@@ -533,7 +533,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 "merge-net: the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
-                aboard::ride_or_run_again(commit, boarded)
+                aboard::ride_or_run_again(commit, &boarded)
             );
         }
         ready::Before::Unchecked => eprintln!(
