@@ -1,6 +1,8 @@
 # The checks of cadence, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  exampleLaptop,
+  holds,
   onLinux,
   passesClippy,
   pkgs,
@@ -47,6 +49,23 @@ onLinux {
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # The hour's unit holds a high mark of 512 MiB, so the journals and
+  # history it reads give their pages back there, no hard limit, whose kill
+  # would lose the card, and a timeout, so a throttled hour can't hold back
+  # the next; what the mark bought was measured on 19 November, as home.nix
+  # says.
+  cadence-hour-gives-back-the-pages-it-reads =
+    let
+      services = exampleLaptop.config.home-manager.users.joel.systemd.user.services;
+      service = services.cadence-hour.Service;
+    in
+    holds "cadence-hour-gives-back-the-pages-it-reads"
+      "cadence-hour has no high mark at 512 MiB, so its reads grow the page cache by gigabytes unchecked, or it has a hard limit, whose kill would lose the card, or no timeout, so a throttled hour can hold back the next."
+      (
+        (service.MemoryHigh or null) == "512M"
+        && !(service ? MemoryMax)
+        && (service.TimeoutStartSec or null) == "30min"
+      );
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, so one renamed there would read as no budget unbilled or
   # missed rather than as an error: reads-the-keys.sh finds each copy on

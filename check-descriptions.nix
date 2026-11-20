@@ -502,6 +502,11 @@
     and says how far the machines' loads spread over the hour, each machine's share busiest first
     and the minutes each of balance's flags was held, from the newer definition alone
   '';
+  cadence-hour-gives-back-the-pages-it-reads = ''
+    the hour's unit holds a high mark of 512 MiB, past which the kernel takes back the pages its
+    journal and history reads charge, no hard limit, whose kill would lose the card, and a
+    half-hour timeout, so a throttled hour can't hold back the next
+  '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
   '';
