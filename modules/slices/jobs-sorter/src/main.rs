@@ -251,8 +251,7 @@ struct Sorter {
     /// systemd-run's services already said of.
     told: strays::Told,
     /// Groups and processes whose move to jobs failed, each said once
-    /// while it runs. A scope that ends keeps its few, as refusals are
-    /// rare: a setuid program's, with cores held.
+    /// while it runs: a setuid program's, with cores held.
     refused: HashSet<(String, u32)>,
     /// What's been said of scopes moved back out of jobs.
     returns: Returns,
@@ -269,9 +268,24 @@ struct Returns {
     /// Sessions given a scope through systemd, which fills it after it
     /// answers, so one found in jobs again wasn't filled.
     asked: HashSet<String>,
+    /// Those asked for and found in jobs again, said once while they stay.
+    stuck: HashSet<String>,
 }
 
 impl Returns {
+    /// Forgets what was said of strays no longer found, so one that comes
+    /// back is new.
+    fn strays_found(&mut self, names: &HashSet<String>) {
+        self.strays.retain(|name| names.contains(name));
+    }
+
+    /// Forgets what was said of sessions no longer found in jobs.
+    fn sessions_found(&mut self, names: &HashSet<String>) {
+        for said in [&mut self.sessions, &mut self.asked, &mut self.stuck] {
+            said.retain(|name| names.contains(name));
+        }
+    }
+
     /// What to say of asking systemd for `name`'s scope: `given` the first
     /// time; `still` once, when it's still in jobs on a later look; and
     /// nothing after, while it stays.
@@ -284,7 +298,7 @@ impl Returns {
         if self.asked.insert(name.to_owned()) {
             return Some(given());
         }
-        self.sessions.insert(name.to_owned()).then(still)
+        self.stuck.insert(name.to_owned()).then(still)
     }
 }
 
@@ -405,17 +419,16 @@ impl Sorter {
     /// each time it has been busy long enough; and nothing when every one
     /// had ended.
     fn said(&mut self, found: &Move, sent: &Sent) -> Option<String> {
+        if sent.moved > 0 {
+            self.refused.remove(&found.key);
+        }
         let Some((pid, error)) = &sent.failed else {
             return (sent.moved > 0).then(|| found.says.clone());
         };
         if sent.moved > 0 {
-            self.refused.remove(&found.key);
             return Some(format!(
-                "{} {} of the {} it tried stayed where they were, as moving {pid} failed: \
-                 {error}.",
-                found.says,
-                sent.stayed,
-                sent.moved + sent.stayed
+                "{} {} stayed where they were, as moving {pid} failed: {error}.",
+                found.says, sent.stayed
             ));
         }
         self.refused.insert(found.key.clone()).then(|| {
@@ -437,15 +450,24 @@ impl Sorter {
         settings: &Settings,
     ) -> HashSet<u32> {
         let mut alive = HashSet::new();
+        let mut scopes = HashSet::new();
         for (slice, jobs) in under.iter().zip(sends) {
             for scope in looked_at(slice, &settings.homes, settings.hosts.as_deref()) {
                 let procs = samples(&scope);
                 alive.extend(procs.iter().map(|proc| proc.pid));
                 let name = scope.file_name().unwrap_or_default().to_string_lossy();
                 self.move_busy(&name, &procs, jobs, now, settings);
+                scopes.insert(name.into_owned());
             }
         }
+        self.forget_unlooked(&scopes);
         alive
+    }
+
+    /// Forgets the refusals of scopes no longer looked at, whose names
+    /// a later scope could take.
+    fn forget_unlooked(&mut self, scopes: &HashSet<String>) {
+        self.refused.retain(|key| scopes.contains(&key.0));
     }
 
     /// Moves what one scope's look finds busy into `jobs`, saying what
@@ -1698,7 +1720,7 @@ fn sent_by(pids: &[u32], mut write: impl FnMut(u32) -> io::Result<()>) -> Sent {
 
 /// Says the first failure in the sorter's life of a move other than a busy
 /// group's, which [`Sorter::said`] says, and how many processes went.
-fn sent_warned(into: &Path, pids: &[u32], warned: &mut bool) -> usize {
+fn sent_warned(into: &Path, pids: &[u32], warned: &mut bool) {
     let sent = send(into, pids);
     if let Some((pid, error)) = &sent.failed
         && !*warned
@@ -1706,7 +1728,6 @@ fn sent_warned(into: &Path, pids: &[u32], warned: &mut bool) -> usize {
         eprintln!("Couldn't move {pid} into {}: {error}", into.display());
         *warned = true;
     }
-    sent.moved
 }
 
 /// What to say of moving `name`'s processes back out of jobs, as `sent`
@@ -1720,12 +1741,14 @@ fn returned(
     moved: impl FnOnce(String) -> String,
     refused: impl FnOnce(String) -> String,
 ) -> Option<String> {
+    if sent.moved > 0 {
+        failed.remove(name);
+    }
     let Some((pid, error)) = &sent.failed else {
         return (sent.moved > 0).then(|| moved(format!("{} processes", sent.moved)));
     };
     let why = format!("moving {pid} failed: {error}");
     if sent.moved > 0 {
-        failed.remove(name);
         return Some(moved(format!(
             "{} of {} processes, as {why}",
             sent.moved,
@@ -1925,21 +1948,25 @@ fn return_strays(
     root: &Path,
     manager: &str,
     slice: &str,
-    failed: &mut HashSet<String>,
+    returns: &mut Returns,
 ) {
     let found: Vec<PathBuf> = under
         .iter()
         .flat_map(|under| strays(under, windows))
         .collect();
-    failed.retain(|name| {
-        found.iter().any(|scope| {
+    let names = found
+        .iter()
+        .map(|scope| {
             scope
                 .file_name()
-                .is_some_and(|file| file.to_string_lossy() == **name)
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
         })
-    });
+        .collect();
+    returns.strays_found(&names);
     for scope in &found {
-        return_stray(scope, root, manager, slice, failed);
+        return_stray(scope, root, manager, slice, &mut returns.strays);
     }
 }
 
@@ -1970,7 +1997,7 @@ fn return_stray(
         |why| {
             format!(
                 "Couldn't move {name} back to {back}, which started it, as {why}. It stays \
-                 in jobs, and isn't said again while it does."
+                 where it is, and isn't said again while it does."
             )
         },
     );
@@ -1997,8 +2024,7 @@ fn return_sessions(root: &Path, settings: &Settings, returns: &mut Returns) {
         .iter()
         .map(|(id, _)| format!("{prefix}{id}.scope"))
         .collect();
-    returns.sessions.retain(|name| names.contains(name));
-    returns.asked.retain(|name| names.contains(name));
+    returns.sessions_found(&names);
     for (id, pids) in found {
         let name = format!("{prefix}{id}.scope");
         let scope = root.join(slice).join(&name);
@@ -2028,8 +2054,8 @@ fn return_sessions(root: &Path, settings: &Settings, returns: &mut Returns) {
                 || {
                     format!(
                         "{name} is still in jobs after its scope was given back in {slice}, so \
-                         some of it didn't go. It's tried again each time, and isn't said again \
-                         while it stays."
+                         some of it didn't go; systemd's journal of the scope says why. It's \
+                         tried again each time, and isn't said again while it stays."
                     )
                 },
             )
@@ -2224,14 +2250,7 @@ fn run(settings: &Settings) -> Result<(), String> {
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
         let alive = sorter.sort(&under, &sends, now, settings);
         let returns = &mut sorter.returns;
-        return_strays(
-            &under,
-            &windows,
-            &root,
-            &manager,
-            &slice,
-            &mut returns.strays,
-        );
+        return_strays(&under, &windows, &root, &manager, &slice, returns);
         if pass.is_multiple_of(sessions::EVERY) {
             return_sessions(&root, settings, returns);
         }
@@ -2578,22 +2597,32 @@ mod tests {
         }
     }
 
+    /// A folder of a test's own, removed when it ends, however it ends.
+    struct OwnDir(PathBuf);
+
+    impl Drop for OwnDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// A folder of this test's own, refused rather than reused if its
     /// name is there already.
-    fn own_dir(name: &str) -> PathBuf {
+    fn own_dir(name: &str) -> OwnDir {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()));
         fs::create_dir(&dir).unwrap();
-        dir
+        OwnDir(dir)
     }
 
     #[test]
     fn sending_counts_what_went_and_names_the_first_that_failed() {
-        let into = own_dir("sent");
-        let went = send(&into, &[30, 31]);
+        let own = own_dir("sent");
+        let into = &own.0;
+        let went = send(into, &[30, 31]);
         assert_eq!((went.moved, went.stayed), (2, 0));
         assert!(
             went.failed.is_none(),
@@ -2603,7 +2632,6 @@ mod tests {
         let gone = send(&into.join("gone"), &[30, 31]);
         assert_eq!((gone.moved, gone.stayed), (0, 2));
         assert_eq!(gone.failed.as_ref().map(|(pid, _)| *pid), Some(30));
-        fs::remove_dir_all(&into).unwrap();
     }
 
     #[test]
@@ -2621,7 +2649,8 @@ mod tests {
     fn a_busy_move_is_said_once_it_went_and_its_failure_once() {
         let mut sorter = Sorter::default();
         let settings = settings();
-        let jobs = own_dir("jobs");
+        let own = own_dir("jobs");
+        let jobs = own.0.clone();
         let gone = jobs.join("gone");
         let busy = |sorter: &mut Sorter, frame: &[Sample], into: &Path| {
             let now = sorter.last + 100;
@@ -2645,7 +2674,35 @@ mod tests {
             moved.len() == 1 && moved[0].starts_with("Moved make"),
             "a move that went says it moved: {moved:?}"
         );
-        fs::remove_dir_all(&jobs).unwrap();
+    }
+
+    #[test]
+    fn a_refusal_is_forgotten_once_its_scope_is_no_longer_looked_at() {
+        let mut sorter = Sorter::default();
+        let moves = looks(&mut sorter, &[window(0, 0), window(90, 1), window(180, 2)]);
+        let found = &moves[2][0];
+        assert!(
+            sorter.said(found, &sent(0, 2)).is_some(),
+            "a first refusal is said"
+        );
+        let settings = settings();
+        let now = sorter.last + 100;
+        sorter.look(
+            "kitty-2-1.scope",
+            &[proc(40, 1, 40, "zsh", 1)],
+            now,
+            &settings,
+        );
+        assert_eq!(
+            sorter.said(found, &sent(0, 2)),
+            None,
+            "another scope's look forgot it"
+        );
+        sorter.forget_unlooked(&HashSet::from(["kitty-2-1.scope".to_owned()]));
+        assert!(
+            sorter.said(found, &sent(0, 2)).is_some(),
+            "a scope no longer looked at kept its refusal"
+        );
     }
 
     #[test]
@@ -2677,6 +2734,41 @@ mod tests {
             returned(&mut failed, "a", &sent(0, 2), says, refused).is_some(),
             "a failure after a move that went is said again"
         );
+        returned(&mut failed, "a", &sent(2, 0), says, refused);
+        assert!(
+            returned(&mut failed, "a", &sent(0, 2), says, refused).is_some(),
+            "a failure after a move that all went is said again"
+        );
+    }
+
+    #[test]
+    fn a_return_gone_from_jobs_is_forgotten() {
+        let mut returns = Returns::default();
+        let refused = |why: String| why;
+        let none = HashSet::new();
+        assert!(returned(&mut returns.strays, "s", &sent(0, 1), |w| w, refused).is_some());
+        returns.strays_found(&HashSet::from(["s".to_owned()]));
+        assert_eq!(
+            returned(&mut returns.strays, "s", &sent(0, 1), |w| w, refused),
+            None,
+            "a stray still found was said again"
+        );
+        returns.strays_found(&none);
+        assert!(
+            returned(&mut returns.strays, "s", &sent(0, 1), |w| w, refused).is_some(),
+            "a stray that went kept its failure"
+        );
+        let ask = |returns: &mut Returns| {
+            returns.asked("pi-1.scope", || "given".to_owned(), || "still".to_owned())
+        };
+        ask(&mut returns);
+        ask(&mut returns);
+        returns.sessions_found(&none);
+        assert_eq!(
+            ask(&mut returns).as_deref(),
+            Some("given"),
+            "a session that left jobs was remembered"
+        );
     }
 
     #[test]
@@ -2688,6 +2780,17 @@ mod tests {
         assert_eq!(ask(&mut returns).as_deref(), Some("given"));
         assert_eq!(ask(&mut returns).as_deref(), Some("still"));
         assert_eq!(ask(&mut returns), None, "said again while it stays");
+        assert!(
+            returned(
+                &mut returns.sessions,
+                "pi-1.scope",
+                &sent(0, 1),
+                |w| w,
+                |w| w
+            )
+            .is_some(),
+            "a move's failure went unsaid after the session was said to be still in jobs"
+        );
     }
 
     #[test]
@@ -2735,13 +2838,13 @@ mod tests {
         );
         let some = sorter.said(found, &sent(1, 1)).unwrap();
         assert!(
-            some.starts_with(&found.says) && some.contains("1 of the 2 it tried stayed"),
+            some.starts_with(&found.says) && some.contains("1 stayed where they were"),
             "a move that took only some says how many stayed: {some}"
         );
     }
 
     #[test]
-    fn a_move_that_takes_some_lets_a_later_refusal_be_said() {
+    fn a_move_that_goes_lets_a_later_refusal_be_said() {
         let mut sorter = Sorter::default();
         let moves = looks(&mut sorter, &[window(0, 0), window(90, 1), window(180, 2)]);
         let found = &moves[2][0];
@@ -2750,10 +2853,15 @@ mod tests {
             "a first refusal is said"
         );
         let some = sorter.said(found, &sent(1, 1)).unwrap();
-        assert!(some.contains("1 of the 2 it tried stayed"), "{some}");
+        assert!(some.contains("1 stayed where they were"), "{some}");
         assert!(
             sorter.said(found, &sent(0, 2)).is_some(),
             "a refusal after a move that went is said again"
+        );
+        sorter.said(found, &sent(2, 0));
+        assert!(
+            sorter.said(found, &sent(0, 2)).is_some(),
+            "a refusal after a move that all went is said again"
         );
     }
 

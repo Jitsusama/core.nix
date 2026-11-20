@@ -32,9 +32,9 @@ in
     # systemd's own unit hands each account's manager the cpu, memory and
     # pids controllers, and io reaches it besides. Its units take a list
     # of cores only with cpuset too, so all five are named. A lingering
-    # account's manager, as Joel's is, keeps running through a logout; the
-    # switch that brought this to the laptop on 19 November handed it
-    # cpuset without a restart. With cores held, a process holding
+    # account's manager, as Joel's is, keeps running through a logout, so
+    # it takes cpuset when a switch re-executes it, as the laptop's did on
+    # 19 November, or else at the next boot. With cores held, a process holding
     # capabilities its mover lacks, a setuid program's, can't be moved onto
     # other cores, so it stays where it was, and the sorter says so once
     # for each group while it runs.
