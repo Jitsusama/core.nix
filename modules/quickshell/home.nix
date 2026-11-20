@@ -1128,9 +1128,10 @@ in
       launcher's timing lines name each row whole, so window titles, which
       may be a mail's subject or a document's name, go to the journal too.
       While it's off, they name a row by its kind alone, such as power or
-      wifi, or the launcher's own id for a place or a category; a window by
-      its app; a place's own answer as answer; a row of no kind as row; and
-      no drawer's page. A slow key's line still says what was typed.
+      wifi, or the launcher's own id for a place, a category or a
+      collection; a window by its app, or as window where its app isn't a
+      program's id; a place's own answer as answer; a row of no kind as
+      row; and no drawer's page. A slow key's line still says what was typed.
     '';
   };
 

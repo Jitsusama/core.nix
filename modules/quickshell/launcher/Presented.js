@@ -279,24 +279,33 @@ const keysOwn = ["place:", "category:", "collection:"];
 // A kind's word, as the launcher and its daemons write one.
 const kindWord = /^[a-z][a-z0-9-]*$/;
 
+// A program's own id, as kitty or org.gnome.Evolution. A browser's app
+// window may build one from a page's address, with underscores for its
+// slashes, so one that isn't shaped like this is said as no app at all.
+const appWord = /^[A-Za-z][A-Za-z0-9.-]*$/;
+
 // A row's key as a line in the journal may say it: whole where `whole`,
 // as while reports are on; otherwise only its kind, since most keys carry
 // what someone else wrote, a network's name, a program's or a window's
 // title, which may be a mail's subject. The launcher's own ids are said
 // whole, and a window's app, `window:<app>:<title>` said as
-// `window:<app>`. A new kind says nothing more until it's named here,
+// `window:<app>`, or as `window` where its app isn't a program's id or
+// nothing follows it. A new kind says nothing more until it's named here,
 // and a first part that isn't a kind's word, lower case, as a record's
-// name with a colon in it, says nothing at all.
+// name with a colon in it, says nothing at all. A daemon's key may come
+// as a number, so it's read as text first.
 function keyShown(key, whole) {
-    if (whole || keysOwn.some(own => key.startsWith(own))) {
-        return key;
+    const text = String(key);
+    if (whole || keysOwn.some(own => text.startsWith(own))) {
+        return text;
     }
-    if (key.startsWith("window:")) {
-        const app = key.indexOf(":", "window:".length);
-        return app < 0 ? key : key.slice(0, app);
+    if (text.startsWith("window:")) {
+        const end = text.indexOf(":", "window:".length);
+        const app = end < 0 ? "" : text.slice("window:".length, end);
+        return appWord.test(app) ? `window:${app}` : "window";
     }
-    const kind = key.indexOf(":");
-    const said = kind < 0 ? "" : key.slice(0, kind);
+    const kind = text.indexOf(":");
+    const said = kind < 0 ? "" : text.slice(0, kind);
     return kindWord.test(said) ? said : "";
 }
 
