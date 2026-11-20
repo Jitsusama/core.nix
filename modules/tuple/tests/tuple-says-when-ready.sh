@@ -11,9 +11,9 @@
 # said to be; each in words health doesn't take for a ready line. Every case
 # waits for the waiter to end, so a second line can't follow unseen. It asks
 # systemd only until the unit is active, gives up on an ask systemd doesn't
-# answer, serves daemons systemd couldn't choose between, and leaves at once
-# when systemd takes it for the unit's main process, as it does when the
-# start forked no daemon.
+# answer, serves daemons systemd couldn't choose between, and says so and
+# leaves at once when systemd takes it for the unit's main process, as it
+# does when the start forked no daemon.
 #
 # Given the ExecStartPost's program, and the systemctl and log it names.
 set -euo pipefail
@@ -57,13 +57,16 @@ failed=0
 # Three of the post's looks, a tenth of a second apart, any of which would say
 # its line too early if it didn't wait for what the case holds back.
 THREE_LOOKS=0.3
-# The post waits five seconds, which it counts in whole seconds that can run
-# up to one ahead: five leave an ask systemd never answers, which takes two,
-# and the asks a case waits on before it lets the unit be active, time to
-# spare on a loaded machine.
+# The post waits five seconds: they leave an ask systemd never answers, which
+# takes two, and the asks a case waits on before it lets the unit be active,
+# time to spare on a loaded machine.
 gave_up="tuple: its signaller hadn't connected 5 s after it started"
 never_active="tuple: systemd hadn't said it was active 5 s after it started"
 untimed="ms after its log began, past the 5 s it times"
+no_daemon="tuple: its start left no daemon of its own, so none to time"
+# Nearly all of the post's five seconds, in microseconds, which a waiter that
+# gives up must have waited.
+WAITED_OUT=4500000
 # What modules/health takes for a ready line (launches.rs's READY_FOLLOWED),
 # which journalctl matches whatever its case, as it's written in lower case.
 ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
@@ -248,22 +251,28 @@ starts up many
 says_only "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
 
 # The log already says the signaller connected, so only leaving at once
-# keeps it quiet.
+# keeps it from saying it's ready.
 starts up alone
 waiter
 if ((${#waiters[@]} == 1)); then
   # Written whole before the stand-in can read it, so it never reads it empty.
   echo "${waiters[0]}" >main.new
   mv main.new main
-  gone "${waiters[0]}" "a start that forked no daemon" 40
+  gone "${waiters[0]}" "a start that forked no daemon" 200
 else
   echo "a start that forked no daemon: found ${#waiters[@]} waiters, not one"
   failed=1
 fi
-quiet "a start that forked no daemon" "as the unit's main process"
+says "a start that forked no daemon" "${no_daemon}"
+unready "a start that forked no daemon"
 
+began=${EPOCHREALTIME/./}
 starts
 ended "a unit never active" 1
+if ((${EPOCHREALTIME/./} - began < WAITED_OUT)); then
+  echo "a unit never active: the post gave up before its five seconds"
+  failed=1
+fi
 says "a unit never active" "${never_active}"
 unready "a unit never active"
 

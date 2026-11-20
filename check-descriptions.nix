@@ -5173,7 +5173,7 @@
     way gives, it says only that the signaller connected and when, and it says it gave up on a
     unit never active and on a caller's name posing as the line, each in words health doesn't
     take for ready; it outlasts an ask systemd never answers, serves daemons systemd can't choose
-    between, and leaves at once when systemd takes it for the unit's main process
+    between, and says so and leaves at once when systemd takes it for the unit's main process
   '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it

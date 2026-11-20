@@ -27,8 +27,8 @@
 # it says only that. When `tuple start` forked no daemon, as it doesn't when
 # one already runs outside the unit, systemd takes the waiter, alone in the
 # unit, for its main process, and the waiter would be all that kept it up:
-# so named, it leaves at once, and the unit stops as it did before there
-# was a waiter. As the main process, how it ends is how the unit ends, so it
+# so named, it says so and leaves at once, and the unit stops as it did
+# before there was a waiter. As the main process, how it ends is how the unit ends, so it
 # always ends well, or Restart= would start Tuple again.
 #
 # Given systemctl, the unit's name, the daemon's log and how many seconds to
@@ -81,7 +81,10 @@ waits() {
       if [[ ${state} == active ]]; then
         # A main process of 0 is a start that left daemons systemd couldn't
         # choose between, which serve all the same.
-        [[ ${main} != "${BASHPID}" ]] || return 0
+        if [[ ${main} == "${BASHPID}" ]]; then
+          echo "tuple: its start left no daemon of its own, so none to time"
+          return 0
+        fi
         active=yes
       fi
     fi
