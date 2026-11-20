@@ -45,6 +45,21 @@ pub const OTHERS: &str = "Others";
 /// What a voice told apart is called, before its number from 1.
 const VOICE: &str = "Voice ";
 
+/// The voice, from 0, a speaker `markdown` wrote is, when it's one: Voice
+/// and a number from 1.
+fn voice_of(who: &str) -> Option<usize> {
+    who.strip_prefix(VOICE)?
+        .parse::<usize>()
+        .ok()?
+        .checked_sub(1)
+}
+
+/// Whether a speaker `markdown` wrote is their side unnamed, Others or a
+/// voice told apart, so a reader never takes a voice for Joel.
+pub fn unnamed(who: &str) -> bool {
+    who == OTHERS || voice_of(who).is_some()
+}
+
 /// What the transcript says once it has voices, so a voice is never
 /// taken for a person someone has named.
 pub const VOICES_NOTE: &str = "Their side's voices are told apart by how they sound, and \
@@ -110,11 +125,7 @@ pub fn read(transcript: &str, me: &str) -> Vec<Line> {
                 .try_fold(0, |sum, part| part.parse::<usize>().map(|n| sum * 60 + n))
                 .ok()?;
             let side = if who == me { Side::Mine } else { Side::Theirs };
-            let voice = who
-                .strip_prefix(VOICE)
-                .and_then(|number| number.parse::<usize>().ok())
-                .and_then(|number| number.checked_sub(1))
-                .filter(|_| side == Side::Theirs);
+            let voice = voice_of(who).filter(|_| side == Side::Theirs);
             Some(Line {
                 side,
                 start: seconds * RATE,

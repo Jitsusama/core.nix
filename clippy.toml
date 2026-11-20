@@ -17,6 +17,7 @@ doc-valid-idents = [
   "SigLIP",
   "SplitMix64",
   "TitaNet",
+  "NeMo",
   "UDisks2",
   "UPower",
   "wpa_supplicant",

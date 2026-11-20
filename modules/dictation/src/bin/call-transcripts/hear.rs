@@ -56,13 +56,33 @@ pub enum Job {
 }
 
 /// A call being written, with each take of theirs that was embedded and
-/// which of the lines it is.
+/// which of the lines it is, if Parakeet heard words in it: one it heard
+/// none in still helps tell the others apart, as it does where the voices
+/// check measures them (apart.rs).
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
     done: HashSet<Side>,
     heard: Vec<Heard>,
-    heard_lines: Vec<usize>,
+    heard_lines: Vec<Option<usize>>,
+}
+
+impl Writing {
+    /// Keeps a take's embedding, its line not yet known, and says where.
+    fn heard(&mut self, embedding: Vec<f32>, samples: usize) -> usize {
+        self.heard.push(Heard { embedding, samples });
+        self.heard_lines.push(None);
+        self.heard.len() - 1
+    }
+}
+
+/// The speaker model, loaded with a call's first take of theirs, and
+/// whether it wouldn't load, so it isn't read again for every take
+/// until it's let go with Parakeet.
+#[derive(Default)]
+struct Speakers {
+    model: Option<Voices>,
+    refused: bool,
 }
 
 /// Hears every take given, until nothing more can be; each call written
@@ -75,7 +95,7 @@ pub fn hear(
     me: &str,
 ) {
     let mut speech: Option<Parakeet> = None;
-    let mut speakers: Option<Voices> = None;
+    let mut speakers = Speakers::default();
     let mut calls: HashMap<String, Writing> = HashMap::new();
     let mut unsummed: Vec<String> = Vec::new();
     // The calls already told they couldn't be heard, so it's said once.
@@ -83,7 +103,7 @@ pub fn hear(
     compile_ahead(settings);
     loop {
         if calls.is_empty() && !unsummed.is_empty() {
-            speakers = None;
+            speakers = Speakers::default();
             if speech.take().is_some() {
                 eprintln!("call-transcripts: Parakeet let go");
             }
@@ -96,7 +116,7 @@ pub fn hear(
                 Ok(job) => job,
                 Err(RecvTimeoutError::Timeout) => {
                     speech = None;
-                    speakers = None;
+                    speakers = Speakers::default();
                     eprintln!("call-transcripts: Parakeet let go");
                     continue;
                 }
@@ -121,6 +141,10 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
+                let heard_at = (side == Side::Theirs)
+                    .then(|| embed(settings, &mut speakers, &samples))
+                    .flatten()
+                    .map(|embedding| writing.heard(embedding, samples.len()));
                 let text = match parakeet.transcribe(&samples) {
                     Ok((text, took)) => {
                         eprintln!("call-transcripts: {}", took.describe(&parakeet.device));
@@ -134,14 +158,8 @@ pub fn hear(
                 let Some(text) = said::spoken(&text) else {
                     continue;
                 };
-                if side == Side::Theirs
-                    && let Some(embedding) = embed(settings, &mut speakers, &samples)
-                {
-                    writing.heard_lines.push(writing.lines.len());
-                    writing.heard.push(Heard {
-                        embedding,
-                        samples: samples.len(),
-                    });
+                if let Some(at) = heard_at {
+                    writing.heard_lines[at] = Some(writing.lines.len());
                 }
                 writing.lines.push(Line {
                     side,
@@ -214,20 +232,20 @@ fn loaded<'a>(
 }
 
 /// How a take of theirs sounds, from the speaker model, loaded first if
-/// it isn't; none when there's no model, or it fails, which is logged and
-/// leaves the take under Others.
-fn embed(settings: &Settings, speakers: &mut Option<Voices>, samples: &[f32]) -> Option<Vec<f32>> {
+/// it isn't; none when there's no model, it won't load, which is logged
+/// once, or it fails, which is logged, and the take is under Others.
+fn embed(settings: &Settings, speakers: &mut Speakers, samples: &[f32]) -> Option<Vec<f32>> {
     let model = settings.voices.as_deref()?;
-    if speakers.is_none() {
+    if speakers.model.is_none() && !speakers.refused {
         match Voices::load(model) {
-            Ok(loaded) => *speakers = Some(loaded),
+            Ok(loaded) => speakers.model = Some(loaded),
             Err(why) => {
                 eprintln!("call-transcripts: the speaker model didn't load: {why}");
-                return None;
+                speakers.refused = true;
             }
         }
     }
-    match speakers.as_mut()?.embed(samples) {
+    match speakers.model.as_mut()?.embed(samples) {
         Ok(embedding) => embedding,
         Err(why) => {
             eprintln!("call-transcripts: a take's voice wasn't heard: {why}");
@@ -238,27 +256,32 @@ fn embed(settings: &Settings, speakers: &mut Option<Voices>, samples: &[f32]) ->
 
 /// Gives each of their lines the voice its take was grouped into, unless
 /// the record names their side for certain, as when one other person was
-/// on the call; no more voices than the people known to be on it. A line
-/// taken up again from before a restart or a rejoin has no embedding, so
-/// once any take is embedded it's under Others: which of the new voices it
-/// was can't be said.
+/// on the call; no more voices than the people known to be on it.
 fn tell_apart(book: &Shared, key: &str, writing: &mut Writing, me: &str) {
-    if writing.heard.is_empty() {
-        return;
-    }
     let Some(record) = book.lock().record(key).cloned() else {
         return;
     };
-    if record.them(me).is_some() {
+    if record.them(me).is_none() {
+        give_voices(writing, record.known.map(|_| record.people.len()));
+    }
+}
+
+/// Gives each line of theirs heard in this sitting the voice its take was
+/// grouped into, at most `people` of them. Embeddings are kept only in
+/// memory, so a call taken up again after a restart or a rejoin has none
+/// for what it said before: when that part was told apart its voices
+/// stay, and this part's lines stay under Others, since which of those
+/// voices each is can't be said, and numbering them anew would call one
+/// person two.
+fn give_voices(writing: &mut Writing, people: Option<usize>) {
+    if writing.heard.is_empty() || writing.lines.iter().any(|line| line.voice.is_some()) {
         return;
     }
-    let people = record.known.map(|_| record.people.len());
-    for line in &mut writing.lines {
-        line.voice = None;
-    }
     let grouped = voices::group(&writing.heard, people);
-    for (&index, voice) in writing.heard_lines.iter().zip(grouped) {
-        writing.lines[index].voice = voice;
+    for (line, voice) in writing.heard_lines.iter().zip(grouped) {
+        if let Some(&index) = line.as_ref() {
+            writing.lines[index].voice = voice;
+        }
     }
 }
 
@@ -323,5 +346,82 @@ fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool)
             transcribing,
             ..record
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SECOND: usize = 16_000;
+
+    fn line(side: Side, at: usize, voice: Option<usize>) -> Line {
+        Line {
+            side,
+            start: at * SECOND,
+            end: (at + 5) * SECOND,
+            text: "Said.".to_owned(),
+            voice,
+        }
+    }
+
+    /// A call heard in one sitting: Ada, Bo, Joel, Ada again, a take of
+    /// Bo's Parakeet heard no words in, and Bo again.
+    fn sitting(earlier: Vec<Line>) -> Writing {
+        let mut writing = Writing {
+            lines: earlier,
+            ..Writing::default()
+        };
+        let (ada, bo) = (vec![1.0, 0.0], vec![0.0, 1.0]);
+        let takes = [
+            (&ada, true),
+            (&bo, true),
+            (&ada, true),
+            (&bo, false),
+            (&bo, true),
+        ];
+        for (take, (voice, said)) in takes.into_iter().enumerate() {
+            if take == 2 {
+                writing.lines.push(line(Side::Mine, 10, None));
+            }
+            let at = writing.heard(voice.clone(), 5 * SECOND);
+            if said {
+                writing.heard_lines[at] = Some(writing.lines.len());
+                writing.lines.push(line(Side::Theirs, 20 + at, None));
+            }
+        }
+        writing
+    }
+
+    #[test]
+    fn each_line_heard_is_given_its_takes_voice_and_a_take_with_no_line_only_helps() {
+        let mut writing = sitting(Vec::new());
+        give_voices(&mut writing, None);
+        let voices: Vec<Option<usize>> = writing.lines.iter().map(|line| line.voice).collect();
+        assert_eq!(
+            voices,
+            [Some(0), Some(1), None, Some(0), Some(1)],
+            "Ada's and Bo's lines weren't given their own voices, or Joel's was given one"
+        );
+    }
+
+    #[test]
+    fn a_call_taken_up_again_keeps_the_voices_it_had_and_its_new_lines_stay_others() {
+        let earlier = vec![
+            line(Side::Theirs, 0, Some(0)),
+            line(Side::Theirs, 5, Some(1)),
+        ];
+        let mut writing = sitting(earlier);
+        give_voices(&mut writing, None);
+        let voices: Vec<Option<usize>> = writing.lines.iter().map(|line| line.voice).collect();
+        assert_eq!(
+            &voices[..2],
+            [Some(0), Some(1)],
+            "the voices told apart before the rejoin were wiped"
+        );
+        assert!(
+            voices[2..].iter().all(Option::is_none),
+            "lines after a rejoin were numbered anew beside the old voices: {voices:?}"
+        );
     }
 }

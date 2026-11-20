@@ -7,14 +7,18 @@
 //! now and then one holds two voices, and a group may be a mix; grouping
 //! takes by average linkage up to `APART` and naming only groups that hold
 //! at least `LEAST_SHARE` of the far end's speech left those mixes unnamed.
-//! On three AMI meetings' far ends, so grouped, of the time a voice was
-//! named 93 to 96% was named right.
+//! The voices check (apart.rs) holds what that reaches on three AMI
+//! meetings' far ends, cut and coded as a call's are.
 //!
-//! The features are the ones sherpa-onnx feeds TitaNet: 80 log mel bands
-//! on Slaney's scale from 0 to 7600 Hz, over 25 ms Hann windows every
-//! 10 ms, each pre-emphasised and padded to 512 points, and each band then
-//! normalised across the take. Worked out so, TitaNet's embeddings are
-//! sherpa-onnx's to five places.
+//! The features are the ones sherpa-onnx feeds this export of TitaNet:
+//! 80 log mel bands on Slaney's scale from 0 to 7600 Hz, over 25 ms
+//! periodic Hann windows every 10 ms, each pre-emphasised and padded to
+//! 512 points, and each band then normalised across the take. Worked out
+//! so, TitaNet's embeddings were sherpa-onnx's to five places. NeMo's own
+//! front end, which it was trained with, differs a little: its bands reach
+//! 8000 Hz, a guard is added before the log rather than floored, and a
+//! band's spread divides by one fewer. The check measures what this one
+//! gives, so trying NeMo's is a change the check can judge.
 
 use std::f64::consts::PI;
 use std::path::Path;
@@ -39,7 +43,7 @@ const SHIFT: usize = 160;
 const POINTS: usize = 512;
 const BINS: usize = POINTS / 2 + 1;
 /// TitaNet's bands, and the highest frequency they reach: 400 Hz under
-/// half the rate, as the model was trained.
+/// half the rate, as sherpa-onnx has it for this export.
 pub const BANDS: usize = 80;
 const TOP_HZ: f64 = 7600.0;
 const PREEMPHASIS: f64 = 0.97;
@@ -94,7 +98,9 @@ impl Voices {
             "embs",
             None,
         )?;
-        Ok(Some(embedding))
+        // A number that isn't one would make every distance to the take
+        // none, so the take is left unembedded, under Others.
+        Ok(embedding.iter().all(|x| x.is_finite()).then_some(embedding))
     }
 }
 
@@ -257,14 +263,23 @@ pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
 pub fn groups(heard: &[Heard]) -> Vec<Vec<usize>> {
     let unit: Vec<Vec<f32>> = heard.iter().map(|h| unit(&h.embedding)).collect();
     let mut groups: Vec<Vec<usize>> = (0..heard.len()).map(|i| vec![i]).collect();
+    let mut live = vec![true; heard.len()];
     let mut apart: Vec<Vec<f32>> = unit
         .iter()
         .map(|a| unit.iter().map(|b| 1.0 - dot(a, b)).collect())
         .collect();
-    while let Some((a, b)) = nearest(&apart).filter(|&(a, b)| apart[a][b] <= APART) {
+    // Each group's nearest, kept so a merge looks again only at the rows
+    // it changed: grouping runs as the call ends, on the thread that hears
+    // the next call, and searching the whole table for each merge took a
+    // long call's thousands of takes to the cube.
+    let mut near: Vec<Option<(usize, f32)>> = (0..heard.len())
+        .map(|a| nearest_to(a, &apart, &live))
+        .collect();
+    while let Some((a, b)) = closest(&near, &live) {
         // Average linkage: the merged group is as far from each other as
         // its takes are on average, each part weighed by its size.
         let (na, nb) = (as_f32(groups[a].len()), as_f32(groups[b].len()));
+        live[b] = false;
         let merged: Vec<f32> = apart[a]
             .iter()
             .zip(&apart[b])
@@ -274,29 +289,42 @@ pub fn groups(heard: &[Heard]) -> Vec<Vec<usize>> {
             row[a] = distance;
         }
         apart[a] = merged;
-        apart.remove(b);
-        for row in &mut apart {
-            row.remove(b);
-        }
-        let moved = groups.remove(b);
+        let moved = std::mem::take(&mut groups[b]);
         groups[a].extend(moved);
+        for k in (0..near.len()).filter(|&k| live[k]) {
+            let stale = k == a || near[k].is_some_and(|(j, _)| j == a || j == b);
+            if stale {
+                near[k] = nearest_to(k, &apart, &live);
+            } else if near[k].is_none_or(|(_, d)| apart[k][a] < d) {
+                near[k] = Some((a, apart[k][a]));
+            }
+        }
     }
+    let mut groups: Vec<Vec<usize>> = groups.into_iter().filter(|g| !g.is_empty()).collect();
     groups.sort_by_key(|g| std::cmp::Reverse(g.iter().map(|&i| heard[i].samples).sum::<usize>()));
     groups
 }
 
-/// The two nearest groups, the first before the second, or None for fewer
-/// than two.
-fn nearest(apart: &[Vec<f32>]) -> Option<(usize, usize)> {
-    let mut best: Option<(usize, usize)> = None;
-    for a in 0..apart.len() {
-        for b in a + 1..apart.len() {
-            if best.is_none_or(|(x, y)| apart[a][b] < apart[x][y]) {
-                best = Some((a, b));
-            }
-        }
-    }
-    best
+/// The live group nearest group `a`, and how far, the first of any tied.
+fn nearest_to(a: usize, apart: &[Vec<f32>], live: &[bool]) -> Option<(usize, f32)> {
+    apart[a]
+        .iter()
+        .enumerate()
+        .filter(|&(b, _)| b != a && live[b])
+        .min_by(|x, y| x.1.total_cmp(y.1))
+        .map(|(b, &d)| (b, d))
+}
+
+/// The two live groups nearest each other, the first before the second,
+/// when they're no further than `APART`, the first pair of any tied.
+fn closest(near: &[Option<(usize, f32)>], live: &[bool]) -> Option<(usize, usize)> {
+    let (a, (b, distance)) = near
+        .iter()
+        .enumerate()
+        .filter(|&(a, _)| live[a])
+        .filter_map(|(a, n)| n.map(|n| (a, n)))
+        .min_by(|x, y| x.1.1.total_cmp(&y.1.1).then(x.0.cmp(&y.0)))?;
+    (distance <= APART).then_some((a.min(b), a.max(b)))
 }
 
 fn unit(v: &[f32]) -> Vec<f32> {
@@ -485,6 +513,53 @@ mod tests {
             group(&takes, None),
             [Some(0), None, None, None],
             "a voice with most of the speech wasn't told from the scattered rest"
+        );
+    }
+
+    /// A take whose embedding is `degrees` round from the first axis, so
+    /// two takes' cosine distance is one less the cosine between them.
+    fn at(degrees: f64) -> Heard {
+        let radians = degrees.to_radians();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a unit vector's parts fit a float"
+        )]
+        heard(&[radians.cos() as f32, radians.sin() as f32], 1)
+    }
+
+    #[test]
+    fn two_takes_are_one_voice_only_within_apart() {
+        // 1 - cos 63.26 degrees is 0.55, and 1 - cos 69.51 is 0.65.
+        assert_eq!(
+            groups(&[at(0.0), at(63.26)]),
+            [vec![0, 1]],
+            "two takes 0.55 apart weren't one group"
+        );
+        assert_eq!(
+            groups(&[at(0.0), at(69.51)]).len(),
+            2,
+            "two takes 0.65 apart were made one group"
+        );
+    }
+
+    #[test]
+    fn a_group_is_as_far_from_a_take_as_its_takes_are_on_average() {
+        // A chain 0.5 and 0.58 apart, its ends 1.57 apart: the nearest, as
+        // single linkage takes it, would join all three; on average the
+        // pair is 1.07 from the third.
+        let chain = groups(&[at(0.0), at(60.0), at(125.0)]);
+        assert_eq!(
+            chain,
+            [vec![0, 1], vec![2]],
+            "a chain of takes was joined end to end"
+        );
+        // A pair 0.7 and 0.4 from a third, so 0.55 on average: the
+        // furthest, as complete linkage takes it, would leave it out.
+        let pair = groups(&[at(0.0), at(19.41), at(72.54)]);
+        assert_eq!(
+            pair,
+            [vec![0, 1, 2]],
+            "a take near a group on average was left out of it"
         );
     }
 

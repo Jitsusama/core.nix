@@ -1,4 +1,5 @@
 use super::*;
+use dictation::transcript::VOICES_NOTE;
 
 const CALL: &str = "# Transcript\n\n**Joel**, 0:13: Hi there.\n\n\
      **Others**, 0:19: I think we should move the review to Thursday, you know, because \
@@ -126,6 +127,43 @@ fn a_transcript_naming_them_is_summed_up_by_their_name_whoever_spoke_first() {
     assert!(
         model.asked[0].contains("a call between Joel and Ada"),
         "{}",
+        model.asked[0]
+    );
+}
+
+#[test]
+fn a_call_opening_on_a_voice_is_summed_up_with_joel_as_joel_and_every_note() {
+    let call = format!(
+        "# Transcript\n\nAda and Bo were invited.\n\n{VOICES_NOTE}\n\n\
+         **Voice 1**, 0:00: Hi there.\n\n\
+         **Voice 2**, 0:02: I think we should move the review to Thursday, you know, because \
+         the release slipped.\n\n\
+         **Joel**, 0:10: Okay, I will tell the team that the review moves to Thursday \
+         morning.\n\n**Others**, 4:00: Thanks, bye.\n"
+    );
+    let mut model = Model {
+        picks: "L1, L2",
+        quotes: vec!["we should move the review to Thursday", "tell the team"],
+        verdict: "YES",
+        asked: Vec::new(),
+    };
+    let summary = summarize(&mut |p, _| Ok(model.ask(p)), "Review", None, &call).unwrap();
+    assert!(
+        summary.contains("- Voice 2, to Joel: \"we should move the review to Thursday\" [0:02]"),
+        "a voice's quote is said by it, to Joel: {summary}"
+    );
+    assert!(
+        summary.contains("- Joel, to the others: \"tell the team\" [0:10]"),
+        "Joel's quote is his, though a voice spoke first: {summary}"
+    );
+    assert!(
+        summary.contains("\n\nAda and Bo were invited.\n\n")
+            && summary.contains(&format!("\n\n{VOICES_NOTE}\n\n")),
+        "the summary keeps who was invited and what the voices are: {summary}"
+    );
+    assert!(
+        model.asked[0].contains("a call between Joel and the others on it, whose voices"),
+        "the model is told the voices are the others: {}",
         model.asked[0]
     );
 }

@@ -534,7 +534,9 @@
   '';
   call-transcripts-tells-voices-apart-as-well-as-it-did = ''
     the far ends of three AMI meetings laid out as calls are told apart into voices, with as much
-    of their speech named, and named right, as the floors the last measurement set
+    of what was named named right, and of their speech handled as it should be (given a voice,
+    or left under Others where one talker holds nearly all), as the floors the last measurement
+    set
   '';
   call-transcripts-writes-down-both-sides = ''
     a call's two recorded sides come out as one transcript, cut at each side's pauses, in the order

@@ -9,15 +9,19 @@
 //! one speaker, taken greedily from the largest share down. Two numbers
 //! are kept: of the far end's speech in takes given a voice, how much is
 //! its voice's speaker's, so a voice that mixes two people loses; and how
-//! much of the far end's speech is in takes given a voice at all, so
-//! naming less to be surer loses too.
+//! much of the far end's speech is handled as it should be, so naming
+//! less to be surer loses too. Where one speaker holds all but less than
+//! `LEAST_SHARE` of a far end's speech there's nobody to tell them from,
+//! so its takes should stay under Others, as voices.rs leaves them: there
+//! a take left so is handled right, and one given a voice is wrong in
+//! both numbers. Elsewhere a take is handled right when given a voice.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
 use dictation::transcript::Side;
-use dictation::voices::{self, Heard, Voices};
+use dictation::voices::{self, Heard, LEAST_SHARE, Voices};
 
 use crate::score::{self, Said, index, meetings, percent, samples, whose};
 use crate::takes;
@@ -33,20 +37,27 @@ struct Take {
 /// speech.
 #[derive(Default, Clone, Copy)]
 struct Told {
-    /// In a take given a voice, and its voice's speaker's.
+    /// In a take given a voice, and its voice's speaker's, where its far
+    /// end has more than one.
     right: usize,
     /// In a take given a voice.
     named: usize,
+    /// In a take handled as it should be: given a voice, or left under
+    /// Others where the far end is one speaker.
+    handled: usize,
     /// In any take.
     speech: usize,
     voices: usize,
     speakers: usize,
+    /// Whether the far end is one speaker, all but too little to name.
+    alone: bool,
 }
 
 impl Told {
     fn add(&mut self, other: Self) {
         self.right += other.right;
         self.named += other.named;
+        self.handled += other.handled;
         self.speech += other.speech;
         self.voices += other.voices;
         self.speakers += other.speakers;
@@ -57,9 +68,9 @@ impl Told {
         tenths(self.right, self.named)
     }
 
-    /// Of the speech, the tenths of a percent named.
-    fn named_tenths(&self) -> usize {
-        tenths(self.named, self.speech)
+    /// Of the speech, the tenths of a percent handled as it should be.
+    fn handled_tenths(&self) -> usize {
+        tenths(self.handled, self.speech)
     }
 }
 
@@ -70,7 +81,7 @@ fn tenths(part: usize, whole: usize) -> usize {
 /// Tells each meeting of `set` apart with the speaker model in `model`,
 /// says how well for each and for the set, and fails when the set names
 /// right less than `floors`' first, in tenths of a percent, of what it
-/// names, or names less than its second of the speech.
+/// names, or handles less than its second of the speech as it should.
 pub fn apart(model: &Path, set: &Path, floors: Option<(usize, usize)>) -> Result<(), String> {
     let sides = score::read(&set.join("sides"))?;
     let meetings = meetings(set, &sides)?;
@@ -108,26 +119,27 @@ pub fn apart(model: &Path, set: &Path, floors: Option<(usize, usize)>) -> Result
             set.display()
         ));
     }
-    let Some((right, named)) = floors else {
+    let Some((right, handled)) = floors else {
         return Ok(());
     };
-    let (got_right, got_named) = (all.right_tenths(), all.named_tenths());
+    let (got_right, got_handled) = (all.right_tenths(), all.handled_tenths());
     let said = format!(
-        "it named {} of what it named right, and named {} of the speech",
+        "of what it named, {} was named right, and {} of the speech was handled as it should \
+         be",
         percent(got_right),
-        percent(got_named)
+        percent(got_handled)
     );
-    if got_right < right || got_named < named {
+    if got_right < right || got_handled < handled {
         Err(format!(
             "{said}, short of the {} and {} it must",
             percent(right),
-            percent(named)
+            percent(handled)
         ))
     } else {
         println!(
             "{said}, within the {} and {} it must",
             percent(right),
-            percent(named)
+            percent(handled)
         );
         Ok(())
     }
@@ -183,17 +195,19 @@ fn spoken(start: usize, end: usize, reference: &[Said], mine: &str) -> HashMap<S
 }
 
 /// The takes' voices held to their speakers: each voice standing for one
-/// speaker, the pairs sharing most speech matched first.
+/// speaker, the pairs sharing most speech matched first, unless the far
+/// end is one speaker, when no voice is right.
 fn tell(takes: &[Take]) -> Told {
     let mut shared: HashMap<(usize, &str), usize> = HashMap::new();
     let mut told = Told::default();
-    let mut speakers: Vec<&str> = Vec::new();
+    let mut speakers: Vec<(&str, usize)> = Vec::new();
     for take in takes {
         let speech: usize = take.speakers.values().sum();
         told.speech += speech;
-        for name in take.speakers.keys() {
-            if !speakers.contains(&name.as_str()) {
-                speakers.push(name);
+        for (name, &samples) in &take.speakers {
+            match speakers.iter_mut().find(|(n, _)| n == name) {
+                Some((_, sum)) => *sum += samples,
+                None => speakers.push((name, samples)),
             }
         }
         let Some(voice) = take.voice else {
@@ -204,6 +218,19 @@ fn tell(takes: &[Take]) -> Told {
             *shared.entry((voice, name)).or_default() += samples;
         }
     }
+    told.speakers = speakers.len();
+    told.voices = takes
+        .iter()
+        .filter_map(|take| take.voice)
+        .max()
+        .map_or(0, |most| most + 1);
+    let most = speakers.iter().map(|&(_, s)| s).max().unwrap_or(0);
+    told.alone = told.speech > 0 && as_f64(told.speech - most) < LEAST_SHARE * as_f64(told.speech);
+    if told.alone {
+        told.handled = told.speech - told.named;
+        return told;
+    }
+    told.handled = told.named;
     let mut pairs: Vec<((usize, &str), usize)> = shared.into_iter().collect();
     // Ties go to the lower voice and the first speaker by name, so a
     // score never changes between runs.
@@ -216,26 +243,25 @@ fn tell(takes: &[Take]) -> Told {
             told.right += samples;
         }
     }
-    told.voices = takes
-        .iter()
-        .filter_map(|take| take.voice)
-        .max()
-        .map_or(0, |most| most + 1);
-    told.speakers = speakers.len();
     told
+}
+
+fn as_f64(n: usize) -> f64 {
+    f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 /// How well a meeting's voices were told apart, in a line.
 fn report(name: &str, told: &Told) -> String {
     let mut out = String::new();
+    let alone = if told.alone { ", one in effect" } else { "" };
     let _ = write!(
         out,
-        "{name}: {} voices for {} speakers, {} of what was named named right, {} of the \
-         speech named",
+        "{name}: {} voices for {} speakers{alone}, of what was named {} named right, {} of the \
+         speech handled as it should be",
         told.voices,
         told.speakers,
         percent(told.right_tenths()),
-        percent(told.named_tenths()),
+        percent(told.handled_tenths()),
     );
     out
 }
@@ -266,14 +292,18 @@ mod tests {
 
     #[test]
     fn two_voices_for_one_speaker_are_right_only_once() {
-        let told = tell(&[take(Some(0), &[("B", 60)]), take(Some(1), &[("B", 40)])]);
+        let told = tell(&[
+            take(Some(0), &[("B", 60)]),
+            take(Some(1), &[("B", 40)]),
+            take(None, &[("C", 50)]),
+        ]);
         assert_eq!(
             told.right, 60,
             "a speaker split into two voices was counted right for both"
         );
         assert_eq!(
             (told.voices, told.speakers),
-            (2, 1),
+            (2, 2),
             "voices or speakers miscounted"
         );
     }
@@ -282,25 +312,46 @@ mod tests {
     fn a_take_given_no_voice_is_speech_but_not_named() {
         let told = tell(&[take(Some(0), &[("B", 50)]), take(None, &[("C", 50)])]);
         assert_eq!(
-            (told.right_tenths(), told.named_tenths()),
+            (told.right_tenths(), told.handled_tenths()),
             (1000, 500),
-            "a take under Others counted as named, or as wrongly named"
+            "a take under Others counted as handled, or as wrongly named"
         );
     }
 
     #[test]
-    fn a_take_of_nobody_by_the_reference_is_no_speech() {
-        let reference = [Said {
-            start: 1.0,
-            end: 2.0,
-            speaker: "B".to_owned(),
+    fn a_far_end_of_one_speaker_is_handled_by_naming_nobody() {
+        let left = tell(&[take(None, &[("B", 95)]), take(None, &[("C", 5)])]);
+        assert_eq!(
+            (left.handled_tenths(), left.named),
+            (1000, 0),
+            "a one-speaker far end left under Others wasn't counted as handled"
+        );
+        let named = tell(&[take(Some(0), &[("B", 95)]), take(None, &[("C", 5)])]);
+        assert_eq!(
+            (named.right_tenths(), named.handled_tenths()),
+            (0, 50),
+            "naming a one-speaker far end's voice scored better than leaving it"
+        );
+    }
+
+    #[test]
+    fn a_take_holds_only_the_far_ends_speech_it_overlaps() {
+        let line = |start, end, speaker: &str| Said {
+            start,
+            end,
+            speaker: speaker.to_owned(),
             text: String::new(),
-        }];
+        };
+        let reference = [line(1.0, 2.0, "B"), line(0.0, 2.0, "A")];
         let speakers = spoken(0, samples(1.5), &reference, "A");
         assert_eq!(
             speakers.get("B"),
             Some(&samples(0.5)),
             "only the half second the take shares with B's line is B's"
+        );
+        assert!(
+            !speakers.contains_key("A"),
+            "Joel's speaker was counted in the far end's speech"
         );
         assert!(
             spoken(samples(3.0), samples(4.0), &reference, "A").is_empty(),

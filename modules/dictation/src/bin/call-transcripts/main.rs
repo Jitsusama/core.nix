@@ -36,11 +36,11 @@
 //!     write down each meeting in SET as a call and print the share of
 //!     its words each side got wrong, written down and heard alone
 //!     (score.rs); fail when the set's, written down, is above CEILING
-//! call-transcripts voices SPEAKER_MODEL SET [RIGHT NAMED]
+//! call-transcripts voices SPEAKER_MODEL SET [RIGHT HANDLED]
 //!     tell the voices of each meeting's far end in SET apart, and print
 //!     how much of what was named was named right, and how much of the
-//!     speech was named (apart.rs); fail when the set's are below RIGHT
-//!     and NAMED, percentages
+//!     speech was handled as it should be (apart.rs); fail when the set's
+//!     are below RIGHT and HANDLED, percentages
 //! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]
 //!     print the summary of the call titled TITLE that a transcript
 //!     writes down (summary.rs), the others on it called NAME if given,
@@ -154,7 +154,10 @@ fn help() -> Help {
                 .argument("<speaker-model>", "the speaker model's ONNX file")
                 .argument("<set>", "the meetings' folder, as meetings.nix lays it out")
                 .argument("[right]", "the least percent named right that passes")
-                .argument("[named]", "the least percent of speech named that passes")
+                .argument(
+                    "[handled]",
+                    "the least percent of speech handled that passes",
+                )
                 .example(
                     "call-transcripts voices ~/t.onnx ~/set 90 70",
                     "fails below either",
@@ -223,10 +226,10 @@ fn act(args: &[String]) -> Result<(), Failure> {
             }
         },
         ["voices", model, set] => apart::apart(Path::new(model), Path::new(set), None),
-        ["voices", model, set, right, named] => {
-            match (score::ceiling(right), score::ceiling(named)) {
-                (Some(right), Some(named)) => {
-                    apart::apart(Path::new(model), Path::new(set), Some((right, named)))
+        ["voices", model, set, right, handled] => {
+            match (score::ceiling(right), score::ceiling(handled)) {
+                (Some(right), Some(handled)) => {
+                    apart::apart(Path::new(model), Path::new(set), Some((right, handled)))
                 }
                 _ => {
                     return Err(Failure::new(
