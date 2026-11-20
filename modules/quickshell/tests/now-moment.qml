@@ -1144,6 +1144,20 @@ ShellRoot {
                 === "on:waitingOnYou:kind:look") > 0,
             JSON.stringify(pressing.map(row => [row.key, row.forYou?.source ?? ""])));
         now.lookTexts = beforeLook;
+        // Home's row names For You's first, so it names the notice before a
+        // thing to do too, its minutes not said beside the notice's name.
+        const toSign = { title: "Sign in to the bank", minutes: 2 };
+        WaitingOnYou.now = [toSign];
+        WaitingOnYou.foremost = toSign;
+        const signFirst = now.waitingRows().map(row => row.forYou?.source ?? row.key);
+        const homeFirst = now.homeSays();
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
+        expect("a critical notice leads For You and home's row before a thing to do",
+            signFirst[0] === "desktop" && homeFirst.startsWith("Battery at 5%")
+                && !homeFirst.includes("Sign in") && !homeFirst.includes("2 min")
+                && !homeFirst.includes("2 min"),
+            JSON.stringify([signFirst, homeFirst]));
         Notices.live = { "7": {} };
         expect("its card up, neither counts it",
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",

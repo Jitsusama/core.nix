@@ -2989,13 +2989,18 @@ Provider {
             return ForYou.bandsRun({ look: toLookAtCount, try: toTryCount },
                 Words.of("on:waiting").said ?? {});
         }
-        const lead = sessions.length === 0 ? WaitingOnYou.now[0] ?? null : null;
+        // A critical notice unread leads, as it leads For You (waitingRows),
+        // so home names what Return, Return reaches.
+        const critical = criticalNotices.length > 0
+            ? String(criticalNotices[0].summary ?? "") : "";
+        const asked = sessions.length > 0 && critical === "";
+        const lead = sessions.length === 0 && critical === ""
+            ? WaitingOnYou.now[0] ?? null : null;
         // A look or a landing lifted into what needs him now, where no
         // session or to-do leads, says its own row's name.
         const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
-        const title = sessions.length > 0 ? first : lead ? lead.title
-            : lifted?.make(Date.now())?.name
-            ?? (criticalNotices.length > 0 ? String(criticalNotices[0].summary ?? "") : "");
+        const title = critical !== "" ? critical : asked ? first : lead ? lead.title
+            : lifted?.make(Date.now())?.name ?? "";
         if (title === "") {
             return [];
         }
