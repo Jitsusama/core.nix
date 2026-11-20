@@ -296,9 +296,17 @@ pub mod tests {
     }
 
     #[test]
-    fn no_samsung_listed_is_no_source() {
+    fn a_home_with_no_samsung_asks_nothing_and_says_no_source() {
+        let mut lg = listing();
+        lg["make"] = json!("LG");
+        let asked = listed(&json!({"devices": [lg]}));
+        assert!(asked.is_empty(), "another maker's box is asked: {asked:?}");
+        let said = asked
+            .into_iter()
+            .map(|(mac, _)| (mac, Ok(answer())))
+            .collect();
         assert_eq!(
-            read(Vec::new(), NOW),
+            read(said, NOW),
             (None, Vec::new()),
             "a source is said for nothing"
         );
