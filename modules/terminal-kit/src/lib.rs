@@ -233,10 +233,11 @@ pub fn run_question(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
-    let mut context = match Context::saying(environment.clone(), args, &forms, help.says_words) {
-        Ok(context) => context,
-        Err(failure) => return unread(environment, &failure),
-    };
+    let mut context =
+        match Context::saying(environment.clone(), args, &forms, !help.keeps_any_unsaid()) {
+            Ok(context) => context,
+            Err(failure) => return unread(environment, &failure),
+        };
     let walked = if help.subs.is_empty() {
         None
     } else {
@@ -378,7 +379,7 @@ pub fn run_os(
     args: Vec<OsString>,
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> Ending {
-    match texts(args, help.says_words) {
+    match texts(args, !help.keeps_any_unsaid()) {
         Ok(args) => run(help, version, environment, args, body),
         Err(failure) => unread(environment, &failure),
     }
@@ -471,7 +472,10 @@ pub fn ask(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> ExitCode {
     let environment = Environment::here();
-    let ending = match texts(std::env::args_os().skip(1).collect(), help.says_words) {
+    let ending = match texts(
+        std::env::args_os().skip(1).collect(),
+        !help.keeps_any_unsaid(),
+    ) {
         Ok(args) => run_question(help, version, &environment, args, body),
         Err(failure) => unread(&environment, &failure),
     };
@@ -621,17 +625,35 @@ mod tests {
     fn a_command_whose_words_are_unsaid_never_says_a_shared_flag_or_a_byte_back() {
         use std::os::unix::ffi::OsStringExt;
         let unsaid = help().words_unsaid();
+        // Marking only a subcommand keeps the shared flags unsaid too,
+        // since they're taken before the line reaches it.
+        let below = Help::new("thing", "does a thing")
+            .subcommand(Help::new("go", "does it").words_unsaid());
         let environment = Environment::of([false; 3], &[]);
-        for line in ["go --format lighthouse", "go --color=lighthouse"] {
-            let args = line.split_whitespace().map(str::to_owned).collect();
-            let ending = run(&unsaid, "1.0", &environment, args, |_| Ok(()));
-            assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
-            assert!(
-                !ending.stderr.contains("lighthouse"),
-                "{line}'s refusal said its value: {}",
-                ending.stderr
-            );
+        for help in [&unsaid, &below] {
+            for line in ["go --format lighthouse", "go --color=lighthouse"] {
+                let args = line.split_whitespace().map(str::to_owned).collect();
+                let ending = run(help, "1.0", &environment, args, |_| Ok(()));
+                assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
+                assert!(
+                    !ending.stderr.contains("lighthouse"),
+                    "{line}'s refusal said its value: {}",
+                    ending.stderr
+                );
+            }
         }
+        let said = run(
+            &help(),
+            "1.0",
+            &environment,
+            vec!["go".into(), "--format".into(), "lighthouse".into()],
+            |_| Ok(()),
+        );
+        assert!(
+            said.stderr.contains("lighthouse"),
+            "an unmarked command stopped saying a bad form: {}",
+            said.stderr
+        );
         let args = vec![
             OsString::from("go"),
             OsString::from_vec(b"light\xffhouse".to_vec()),

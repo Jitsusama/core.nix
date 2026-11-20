@@ -145,13 +145,22 @@ impl Help {
         self
     }
 
-    /// The same, never saying back a word left over after it: a word of a
-    /// reason or a secret's name left unquoted is refused unsaid, where
-    /// an error would show it to a terminal, a journal or a model.
+    /// The same, never saying back a word given to it or any level under
+    /// it: a word of a reason or a secret's name left unquoted is refused
+    /// unsaid, where an error would show it to a terminal, a journal or a
+    /// model.
     #[must_use]
     pub fn words_unsaid(mut self) -> Self {
         self.says_words = false;
         self
+    }
+
+    /// Whether it or any level under it keeps its words unsaid. The shared
+    /// flags and a word that isn't text are refused before the line is
+    /// walked, when which level it reaches isn't yet known, so one marked
+    /// level anywhere keeps them unsaid for the whole command.
+    pub(crate) fn keeps_any_unsaid(&self) -> bool {
+        !self.says_words || self.subs.iter().any(Help::keeps_any_unsaid)
     }
 
     /// Its subcommands as its help lists them: those declared with
