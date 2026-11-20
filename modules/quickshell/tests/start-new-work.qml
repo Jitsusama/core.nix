@@ -62,6 +62,14 @@ QtObject {
         Expect.same("words are read again as one plain line",
             Sprouting.offered("words:  tidy\tthe\nrows\u0007\u001b[2J ", "from:", sessionNamed),
             { words: "tidy the rows[2J", from: null });
+        Expect.same("words lose what turns, hides or joins text, as mycelium-link's do",
+            Sprouting.offered("words:tidy\u202e\u200bthe\u007f\u009brows", "from:", sessionNamed),
+            { words: "tidytherows", from: null });
+        Expect.same("a byte-order mark joins its words, a next line parts them",
+            Sprouting.offered("words:\ufefftidy\ufeffthe\u0085rows\u{e0001}", "from:", sessionNamed),
+            { words: "tidythe rows", from: null });
+        Expect.same("words holding only format characters offer nothing",
+            Sprouting.offered("words:\u202e\u200b", "from:", sessionNamed), null);
         Expect.same("the longest words are offered whole",
             Sprouting.offered(`words:${"\u{1F331}".repeat(1000)}`, "from:", sessionNamed)?.words,
             "\u{1F331}".repeat(1000));

@@ -670,8 +670,8 @@ mod tests {
             Ok(sprout("tidytherows", None))
         );
         assert_eq!(
-            named_by("mycelium:sprout?words=%EF%BB%BFtidy%F3%A0%80%81"),
-            Ok(sprout("tidy", None))
+            named_by("mycelium:sprout?words=%EF%BB%BFtidy%EF%BB%BFthe%C2%85rows%F3%A0%80%81"),
+            Ok(sprout("tidythe rows", None))
         );
         assert!(
             read("mycelium:sprout?words=%E2%80%AE%E2%80%8B").is_err(),

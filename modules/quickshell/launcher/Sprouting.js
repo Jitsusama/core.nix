@@ -57,6 +57,41 @@ function uncontrolled(word) {
     }).join("");
 }
 
+// Unicode's format characters (general category Cf), as mycelium-link's
+// FORMATTING has them, first and last of each run: they draw nothing yet
+// can turn text around (U+202E), hide in it (U+200B) or join it.
+const FORMATTING = [
+    [0x00ad, 0x00ad], [0x0600, 0x0605], [0x061c, 0x061c], [0x06dd, 0x06dd],
+    [0x070f, 0x070f], [0x0890, 0x0891], [0x08e2, 0x08e2], [0x180e, 0x180e],
+    [0x200b, 0x200f], [0x202a, 0x202e], [0x2060, 0x2064], [0x2066, 0x206f],
+    [0xfeff, 0xfeff], [0xfff9, 0xfffb], [0x110bd, 0x110bd], [0x110cd, 0x110cd],
+    [0x13430, 0x1343f], [0x1bca0, 0x1bca3], [0x1d173, 0x1d17a],
+    [0xe0001, 0xe0001], [0xe0020, 0xe007f]
+];
+
+// The first code point past the 16 bits one UTF-16 half holds.
+const FIRST_PAIRED = 0x10000;
+
+// `text` with every format character left out, read by code point, so a
+// tag character (a pair of halves) goes whole: Qt's engine walks a string
+// by its halves, even in Array.from.
+function unformatted(text) {
+    let kept = "";
+    for (let at = 0; at < text.length;) {
+        const code = text.codePointAt(at);
+        const width = code >= FIRST_PAIRED ? 2 : 1;
+        if (!FORMATTING.some(([first, last]) => code >= first && code <= last)) {
+            kept += text.slice(at, at + width);
+        }
+        at += width;
+    }
+    return kept;
+}
+
+// The next line character, which Rust's is_whitespace counts a space and
+// JavaScript's \s doesn't, so both readers fold it the same.
+const NEXT_LINE = /\u0085/g;
+
 // The spaces between a line's words.
 const SPACES = /\s+/;
 
@@ -79,7 +114,10 @@ function offered(words, from, nameOf) {
     if (!said.startsWith("words:")) {
         return null;
     }
-    const plain = said.slice("words:".length).split(SPACES)
+    // Format characters go first: \s counts U+FEFF a space, where
+    // mycelium-link drops it from inside a word.
+    const plain = unformatted(said.slice("words:".length).replace(NEXT_LINE, " "))
+        .split(SPACES)
         .map(uncontrolled)
         .filter(word => word !== "")
         .join(" ");
