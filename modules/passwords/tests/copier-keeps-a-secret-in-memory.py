@@ -60,12 +60,12 @@ LIBC = ctypes.CDLL(None, use_errno=True)
 
 
 class Cases:
-    """The eight cases, run against one copier, with what failed in each."""
+    """The eight cases, run against one copier, with how each came out."""
 
     def __init__(self, copier: str, shell: str, folder: Path) -> None:
         """Run them against `copier`, its stand-ins run by `shell` and its TMPDIR in `folder`."""
         self.copier = copier
-        self.failures: list[str] = []
+        self.outcomes: list[tuple[str, str | None]] = []
         self.made = folder / "tmp"
         self.made.mkdir()
         self.ran = folder / "ran"
@@ -90,11 +90,8 @@ class Cases:
             raise OSError(ctypes.get_errno(), "couldn't watch the copier's TMPDIR")
 
     def check(self, case: str, failed: str | None) -> None:
-        """Keep a case's failure, or say it held."""
-        if failed is None:
-            print(f"{case}: held")
-        else:
-            self.failures.append(f"{case}: {failed}")
+        """Note how a case came out, its failure or None, to be told once every case has run."""
+        self.outcomes.append((case, failed))
 
     def copier_started(self, stdin: int) -> subprocess.Popen[bytes]:
         """Start the copier as the daemon does, reading from `stdin`, keeping what it says."""
@@ -247,9 +244,9 @@ def main() -> None:
         cases.copied()
         cases.copied_long()
         cases.refused()
-    if cases.failures:
-        for failure in cases.failures:
-            print(failure, file=sys.stderr)
+    for case, failed in cases.outcomes:
+        print(f"{case}: {failed or 'held'}", file=sys.stderr if failed else sys.stdout)
+    if any(failed for _, failed in cases.outcomes):
         sys.exit(1)
 
 
