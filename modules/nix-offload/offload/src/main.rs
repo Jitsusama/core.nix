@@ -1429,6 +1429,17 @@ fn standing(dir: &Path) -> Option<String> {
         .filter(|store| !store.trim().is_empty())
 }
 
+/// Says why a passing suite run in a warm target isn't kept as passed,
+/// which `keep_ran` sees to.
+fn say_a_warm_pass_isnt_kept(status: Option<i32>, words: &[String]) {
+    if status == Some(0) && cargo::runs_warm(words) {
+        eprintln!(
+            "nix-offload: a suite in a warm target keeps no pass, since an earlier run \
+             there could have written what it read"
+        );
+    }
+}
+
 /// `there --run`: a command run on a lent builder, in a checkout of the
 /// commit here, ending with its status (`command.rs` says why). With no
 /// builder standing it waits for one as `waiting` says, and with none it
@@ -1535,12 +1546,7 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     // (the harness's host tests) can take a pass from a fenced session,
     // which can ask for a run but can't reach the keeper.
     if let Some(at) = &at {
-        if status == Some(0) && cargo::runs_warm(&asked.words) {
-            eprintln!(
-                "nix-offload: a suite in a warm target keeps no pass, since an earlier run \
-                 there could have written what it read"
-            );
-        }
+        say_a_warm_pass_isnt_kept(status, &asked.words);
         passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
     match status {
