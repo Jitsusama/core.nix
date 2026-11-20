@@ -6101,8 +6101,9 @@
   '';
   vm-wifi-moves = ''
     the card moves between the access points of one network: on at once from one that doesn't
-    answer, to another when an account asks, keeping its neighbours, and back within a second,
-    its other networks off, from one gone since it was heard; another network forgets them
+    answer, to another when an account asks, keeping its neighbours, and back within a second
+    past any wait the point bids, its other networks off, from one gone since it was heard;
+    another network forgets them
   '';
   vms-reach-the-launcher = ''
     a workstation with a desktop gives its launcher the VMs, read through the daemon's own virsh,
