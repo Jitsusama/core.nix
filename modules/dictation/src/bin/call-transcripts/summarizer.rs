@@ -95,32 +95,32 @@ pub fn run(summarizer: &Summarizer, book: &Shared, keys: &Receiver<String>, agai
             }
         }
         let key = queued.remove(0);
-        if let Some((record, text)) = readable(book, &key, again) {
-            if let Some(program) = &summarizer.program {
-                sum_up(
-                    summarizer,
-                    program,
-                    book,
-                    &record,
-                    &text,
-                    keys,
-                    &mut queued,
-                    again,
-                );
-            } else {
-                written_down(&record);
-            }
+        if let Some(program) = &summarizer.program {
+            sum_up(summarizer, program, book, &key, keys, &mut queued, again);
+        } else if let Some((record, _)) = readable(book, &key, again) {
+            written_down(&record);
         }
     }
 }
 
 /// The call's record and transcript, when it's to be given to the model.
 /// A transcript that can't be read can't pass, so it offers no Try
-/// Again; a call with too little said is told so, with no model asked.
+/// Again; a call with too little said is told so, with no model asked;
+/// and one whose file holds a summary already is summed up, since a call
+/// can be asked about twice as it's rejoined, and a rejoin with more
+/// said writes it again with none.
 fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, String)> {
     let record = book.lock().record(key).cloned()?;
     let file = record.transcript.clone()?;
-    match std::fs::read_to_string(file).map(|text| filed::transcript(&text).to_owned()) {
+    let read = std::fs::read_to_string(file);
+    if read
+        .as_ref()
+        .is_ok_and(|file| filed::summary(file).is_some())
+    {
+        eprintln!("call-transcripts: {key} is summed up already");
+        return None;
+    }
+    match read.map(|text| filed::transcript(&text).to_owned()) {
         Ok(text) if said::too_little(&text) => {
             eprintln!("call-transcripts: too little was said on {key} to sum up");
             keep(book, &record, said::TOO_LITTLE, &text, again);
@@ -135,8 +135,11 @@ fn readable(book: &Shared, key: &str, again: &Sender<Job>) -> Option<(Record, St
     }
 }
 
-/// Sums one call up, waiting as the manners say and trying again after
-/// a stop or a failure, keys that come meanwhile being queued.
+/// Sums the call `key` up, waiting as the manners say and trying again
+/// after a stop or a failure, keys that come meanwhile being queued. It
+/// waits too while the call is written, rejoined, and reads the
+/// transcript again for each try, so a try is of the whole call as it
+/// stands.
 #[expect(
     clippy::too_many_arguments,
     reason = "each is a different thing the one summary needs"
@@ -145,8 +148,7 @@ fn sum_up(
     summarizer: &Summarizer,
     program: &Path,
     book: &Shared,
-    record: &Record,
-    text: &str,
+    call: &str,
     keys: &Receiver<String>,
     queued: &mut Vec<String>,
     again: &Sender<Job>,
@@ -156,18 +158,24 @@ fn sum_up(
     loop {
         // Waiting, on a call, the charger or a time, takes the keys that
         // come meanwhile, so none is lost.
-        while Instant::now() < not_before || summarizer.stop().is_some() {
+        while Instant::now() < not_before
+            || summarizer.stop().is_some()
+            || book.lock().record(call).is_some_and(|now| now.transcribing)
+        {
             match keys.recv_timeout(LOOK) {
-                Ok(key) if !queued.contains(&key) && key != record.key => queued.push(key),
+                Ok(key) if !queued.contains(&key) && key != call => queued.push(key),
                 Ok(_) | Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
-        eprintln!("call-transcripts: summing up {}", record.key);
+        let Some((record, text)) = readable(book, call, again) else {
+            return;
+        };
+        eprintln!("call-transcripts: summing up {call}");
         let them = record.them(&summarizer.me);
-        match summarizer.try_once(program, &record.title, them.as_deref(), text) {
+        match summarizer.try_once(program, &record.title, them.as_deref(), &text) {
             Tried::Summed(written) => {
-                keep(book, record, &written, text, again);
+                keep(book, &record, &written, &text, again);
                 return;
             }
             Tried::Stopped(stop) => {
@@ -181,7 +189,7 @@ fn sum_up(
                 failures += 1;
                 eprintln!("call-transcripts: summing up failed ({failures}): {why}");
                 if failures >= TRIES {
-                    not_summed_up(record, &why, true, again);
+                    not_summed_up(&record, &why, true, again);
                     return;
                 }
                 not_before = Instant::now() + AFTER_FAILING;
@@ -437,9 +445,9 @@ fn not_summed_up(record: &Record, why: &str, can_pass: bool, again: &Sender<Job>
 ///
 /// A summary is kept only while the transcript is still `summed`, the
 /// one it was made from, since one of part of a call reads as the whole.
-/// A call rejoined meanwhile is summed up again once it ends, or at once
-/// when it ended before this summary was done, as one stopped by the
-/// rejoin and tried again with what it read before has.
+/// A call rejoined meanwhile is summed up again once it ends, or once
+/// it's found it can't be recorded (follow.rs); one that went on, its
+/// rejoin over before this summary was done, is asked about again now.
 /// A summary.md from before goes, the file holding the summary now. A
 /// disk with no room can pass, as room is made, so failing to write
 /// offers Try Again.
@@ -454,7 +462,7 @@ fn keep(book: &Shared, record: &Record, written: &str, summed: &str, again: &Sen
             let key = record.key.clone();
             let _ = again.send(Job::SumUp { key });
         }
-        Filed::Failed(why) => not_summed_up(record, &why, true, again),
+        Filed::Failed { why, can_pass } => not_summed_up(record, &why, can_pass, again),
         Filed::Kept => {
             eprintln!("call-transcripts: {} summed up", record.key);
             tell(&record.title, written, &record.folder.join(TRANSCRIPT));
@@ -470,8 +478,10 @@ enum Filed {
     /// The call went on after the summary was made, and is summed up
     /// again.
     WentOn,
-    /// The call's file couldn't be read or written, for the reason given.
-    Failed(String),
+    /// The call's file couldn't be read or written, for the reason given;
+    /// a disk with no room can pass, as room is made, but a file that
+    /// can't be read can't, as [`readable`] says.
+    Failed { why: String, can_pass: bool },
     /// The summary is in the call's file and its record.
     Kept,
 }
@@ -491,13 +501,23 @@ fn filed_away(book: &Shared, record: &Record, written: &str, summed: &str) -> Fi
     let title = now.as_ref().map_or(&record.title, |now| &now.title);
     let text = match std::fs::read_to_string(&file) {
         Ok(text) => text,
-        Err(why) => return Filed::Failed(format!("{} couldn't be read: {why}", file.display())),
+        Err(why) => {
+            let why = format!("{} couldn't be read: {why}", file.display());
+            return Filed::Failed {
+                why,
+                can_pass: false,
+            };
+        }
     };
     let Some(whole) = filed::summed(&text, title, written, summed) else {
         return Filed::WentOn;
     };
     if let Err(why) = write_whole(&file, &whole) {
-        return Filed::Failed(format!("{} couldn't be written: {why}", file.display()));
+        let why = format!("{} couldn't be written: {why}", file.display());
+        return Filed::Failed {
+            why,
+            can_pass: true,
+        };
     }
     let before = record.folder.join(SUMMARY);
     if let Err(why) = std::fs::remove_file(&before)
@@ -624,6 +644,11 @@ mod tests {
             Some("- Joel: \"move it\" [0:00]"),
             "the record holds it"
         );
+        let (again, _asked) = mpsc::channel();
+        assert!(
+            readable(&book, &record.key, &again).is_none(),
+            "a call summed up already, asked about twice, was given to the model again"
+        );
     }
 
     #[test]
@@ -639,11 +664,22 @@ mod tests {
             "summed from words the call has since gone past"
         );
         assert_eq!(file(&record), before, "a call gone on keeps its file");
+        let (again, asked) = mpsc::channel();
+        keep(&book, &record, SUMMED, went_on, &again);
+        assert!(
+            matches!(asked.try_recv(), Ok(Job::SumUp { key }) if key == record.key),
+            "a call gone on wasn't asked to be summed up again"
+        );
         let rejoined = Record {
             transcribing: true,
             ..record.clone()
         };
         book.lock().put(rejoined);
+        keep(&book, &record, SUMMED, &summed, &again);
+        assert!(
+            asked.try_recv().is_err(),
+            "a rejoined call was asked about before its end"
+        );
         assert_eq!(filed_away(&book, &record, SUMMED, &summed), Filed::Rejoined);
         assert_eq!(file(&record), before, "a rejoined call keeps its file");
         assert!(
@@ -657,10 +693,11 @@ mod tests {
         let calls = tempfile::tempdir().unwrap();
         let (book, record) = ended(calls.path());
         std::fs::remove_file(record.folder.join(TRANSCRIPT)).unwrap();
-        let Filed::Failed(why) = filed_away(&book, &record, SUMMED, SAID) else {
+        let Filed::Failed { why, can_pass } = filed_away(&book, &record, SUMMED, SAID) else {
             panic!("a missing file can't take a summary");
         };
         assert!(why.contains("couldn't be read"), "said as unread: {why}");
+        assert!(!can_pass, "a file that can't be read offered Try Again");
     }
 
     #[test]

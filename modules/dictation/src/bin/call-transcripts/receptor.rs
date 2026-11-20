@@ -132,17 +132,22 @@ fn named<'a>(
 /// The file holding a call's summary, as the book reads it: the one file
 /// once transcript.md is one, whatever summary.md is left beside it,
 /// else summary.md in the folder of a call from before, while it's
-/// there. Only a summed-up call is asked about, and the summarizer writes
-/// the one file last as it sums a call up, so its time is the summary's.
+/// there. transcript.md is read only when summary.md is left beside it,
+/// and only when it's a plain file, so each round looks at most folders
+/// without reading them. Only a call the book holds a summary for is
+/// asked about, and a rejoin takes that summary away until its last leg
+/// is summed up; that, not this file's time, keeps a rejoined meeting
+/// unnamed meanwhile, since hear writes transcript.md again as a call
+/// ends, before it's summed up.
 fn summary_file(folder: &Path) -> std::path::PathBuf {
     let one = folder.join(book::TRANSCRIPT);
     let before = folder.join(book::SUMMARY);
-    let is_one = std::fs::read_to_string(&one).is_ok_and(|file| crate::filed::is_one(&file));
-    if !is_one && std::fs::symlink_metadata(&before).is_ok() {
-        before
-    } else {
-        one
+    if std::fs::symlink_metadata(&before).is_err() {
+        return one;
     }
+    let is_one = std::fs::symlink_metadata(&one).is_ok_and(|found| found.is_file())
+        && std::fs::read_to_string(&one).is_ok_and(|file| crate::filed::is_one(&file));
+    if is_one { one } else { before }
 }
 
 /// Whether `summary` is a plain file written at or after `ended`, in
@@ -943,7 +948,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let one = folder.path().join("one");
         std::fs::create_dir_all(&one).unwrap();
-        written(&one.join(book::TRANSCRIPT), "summed up", NOW);
+        let summed = crate::filed::whole("Planning", Some("- kept"), "**Joel**, 0:00: Hi.\n");
+        written(&one.join(book::TRANSCRIPT), &summed, NOW);
         // A folder from before, rejoined after its summary.md was
         // written, waits on that file rather than on its transcript.
         let before = folder.path().join("before");
@@ -954,19 +960,27 @@ mod tests {
         // before it left beside it, is read as the book reads it.
         let left = folder.path().join("left");
         std::fs::create_dir_all(&left).unwrap();
-        let summed = crate::filed::whole("Planning", Some("- kept"), "**Joel**, 0:00: Hi.\n");
         written(&left.join(book::TRANSCRIPT), &summed, NOW);
         written(&left.join(book::SUMMARY), "first leg", NOW - 10);
+        // A transcript.md that isn't a plain file isn't followed to read
+        // it, so the summary.md beside it is what's looked at.
+        let linked = folder.path().join("linked");
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(one.join(book::TRANSCRIPT), linked.join(book::TRANSCRIPT))
+            .unwrap();
+        written(&linked.join(book::SUMMARY), "first leg", NOW - 10);
         let held = [
             (EVENT, NOW - 5, one.as_path()),
             ("abcdef1", NOW - 5, before.as_path()),
             ("abcdef2", NOW - 6, left.as_path()),
+            ("abcdef3", NOW - 5, linked.as_path()),
         ];
         assert_eq!(
             named(held, NOW),
             [EVENT, "abcdef2"],
-            "a one file wasn't taken for the summary, or a summary.md from before the last end \
-             was passed over, or one left beside a one file was read"
+            "a one file wasn't taken for the summary, a summary.md from before the last end \
+             was passed over, one left beside a one file was read, or a linked transcript.md \
+             was followed"
         );
     }
 
