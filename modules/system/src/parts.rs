@@ -8,6 +8,7 @@
 use serde_json::Value;
 
 use crate::record::{Deeper, Health, Part};
+use crate::words::grouped;
 
 mod machines;
 mod ties;
@@ -77,7 +78,9 @@ pub fn mycelium(health: &Answer) -> Part {
     let (busy, idle) = (of("busy"), of("idle"));
     let across = machines.map_or(0, serde_json::Map::len);
     let mut held = vec![format!(
-        "{busy} busy and {idle} idle sessions on {}",
+        "{} busy and {} idle sessions on {}",
+        grouped(busy),
+        grouped(idle),
         count(across as u64, "machine", "machines")
     )];
     // A session whose process has gone is an agent's leftover, as a gone
@@ -214,7 +217,7 @@ pub fn code(repos: &Answer) -> Part {
     let gone = match gone {
         0 => String::new(),
         1 => ", 1 with its folder gone".to_owned(),
-        many => format!(", {many} with their folders gone"),
+        many => format!(", {} with their folders gone", grouped(many as u64)),
     };
     let holds = format!(
         "{} with {}{gone}",
@@ -303,20 +306,6 @@ fn count(n: u64, one: &str, many: &str) -> String {
     } else {
         format!("{} {many}", grouped(n))
     }
-}
-
-/// A count with its thousands set apart by commas, as Canada writes one,
-/// so a part's line and a machine's card say a count alike.
-pub fn grouped(count: u64) -> String {
-    let digits = count.to_string();
-    let mut out = String::new();
-    for (at, digit) in digits.chars().enumerate() {
-        if at > 0 && (digits.len() - at).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
 }
 
 /// Words joined as a sentence lists them: a, b and c.
@@ -595,6 +584,25 @@ mod tests {
         assert_eq!(
             many.says, "1 repository with 3,289 trees",
             "a count past a thousand is grouped, as a machine's card says it"
+        );
+        let gone: Vec<Value> = (0..1204).map(|_| tree(false)).collect();
+        let lost = code(&Ok(
+            json!({"repositories": [{"checkouts": [{"trees": gone}]}]}),
+        ));
+        assert_eq!(
+            lost.says, "1 repository with 1,204 trees, 1,204 with their folders gone",
+            "the gone trees are grouped as the trees are"
+        );
+    }
+
+    #[test]
+    fn sessions_past_a_thousand_are_grouped() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 1_200, "idle": 3_400, "ended": 0});
+        assert_eq!(
+            mycelium(&Ok(said)).says,
+            "1,202 busy and 3,401 idle sessions on 2 machines; 1 link up",
+            "a session count is grouped, as a machine's card says it"
         );
     }
 }

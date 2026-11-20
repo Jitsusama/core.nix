@@ -38,8 +38,8 @@ const records = [
     kind: "part",
     part: "machines",
     health: "watch",
-    says: "osprey has a filling disk",
-    side: ["osprey has a filling disk"],
+    says: "osprey says its code wants a look",
+    side: ["osprey says its code wants a look"],
     holds: "2 machines",
     things: ["machine:kestrel", "machine:osprey"],
     deeper,
@@ -60,7 +60,7 @@ const records = [
     kind: "machine",
     name: "osprey",
     health: "watch",
-    says: "has a filling disk",
+    says: "says its code wants a look",
     address: "system/#machine=osprey",
   },
 ];
@@ -125,7 +125,7 @@ it("a part's side and what it holds are read apart", () => {
   assert.deepEqual(
     system?.parts.map((each) => [each.side, each.holds]),
     [
-      [["osprey has a filling disk"], "2 machines"],
+      [["osprey says its code wants a look"], "2 machines"],
       [[], "18 repositories"],
     ],
   );
@@ -263,7 +263,10 @@ it("says the machines are awaited, not the part's own words, while none has come
     "the awaited machines drew no line of their own",
   );
   assert.ok(drawn.includes("Two machines named, none read yet."));
-  assert.ok(!drawn.includes("Osprey has a filling disk"), "the part's words were said as read");
+  assert.ok(
+    !drawn.includes("Osprey says its code wants a look"),
+    "the part's words were said as read",
+  );
   assert.ok(partsOf(system, when).includes('class="machine '));
 });
 

@@ -84,8 +84,8 @@ function part(name: string, health: Part["health"], side: string[]): Part {
 
 it("the headline counts the machines, then how they stand", () => {
   const two = [
-    machine("kestrel", "watch", ["filling disk"]),
-    machine("osprey", "watch", ["filling disk"]),
+    machine("kestrel", "watch", ["on battery at 12%"]),
+    machine("osprey", "watch", ["on battery at 9%"]),
   ];
   assert.deepEqual(machineHeadline(system(two)), {
     machines: "Two machines",
@@ -109,13 +109,13 @@ it("the headline counts the machines, then how they stand", () => {
 
 it("the lede says what each machine worth a look has, then the worst of the rest", () => {
   const two = [
-    machine("kestrel", "watch", ["filling disk, 135 GB free", "code wants a look"]),
-    machine("osprey", "watch", ["filling disk, 178 GB free"]),
+    machine("kestrel", "watch", ["on battery at 12%", "code wants a look"]),
+    machine("osprey", "watch", ["on battery at 9%"]),
     machine("heron", "good"),
   ];
   assert.equal(
     machineLede(system(two)),
-    "kestrel: filling disk, 135 GB free; code wants a look. osprey: filling disk, 178 GB free.",
+    "kestrel: on battery at 12%; code wants a look. osprey: on battery at 9%.",
   );
   const network = part("network", "watch", ["the attic's radio is busy 53% of the time"]);
   assert.equal(
@@ -127,9 +127,12 @@ it("the lede says what each machine worth a look has, then the worst of the rest
 
 it("the lede names three machines worth a look at most, however many there are", () => {
   const many = Array.from({ length: 1000 }, (_, at) =>
-    machine(`m${at}`, "watch", ["filling disk"]),
+    machine(`m${at}`, "watch", ["code wants a look"]),
   );
-  assert.equal(machineLede(system(many)), "m0: filling disk. m1: filling disk. m2: filling disk.");
+  assert.equal(
+    machineLede(system(many)),
+    "m0: code wants a look. m1: code wants a look. m2: code wants a look.",
+  );
 });
 
 it("the lede ends each sentence once, keeping an owner's own mark", () => {
@@ -202,21 +205,24 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
     networkSaid(both),
     {
       said: "Wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
-      aside: "Den, wired: 370 Mb/s of room. Hall, 5 GHz: a fair signal, with 120 Mb/s of room.",
+      aside:
+        "At the Den point, wired: 370 Mb/s of room. " +
+        "At the Hall point, 5 GHz: a fair signal, with 120 Mb/s of room.",
       device: "mac:d0",
     },
     "each place's figures stay with it, named, in the order the places are said",
   );
-  const alike = tiesOf({
+  const unnamed = tiesOf({
     network: [
       { device: "mac:66", by: "5 GHz", point: "Hall", bars: 4, room_mbps: 370 },
-      { device: "mac:d0", by: "wired", point: "Den", bars: null, room_mbps: 370 },
+      { device: "mac:d0", by: "wired", point: null, bars: null, room_mbps: 941 },
     ],
   });
   assert.equal(
-    networkSaid(alike).aside,
-    "Hall, 5 GHz: a strong signal, with 370 Mb/s of room. Den, wired: 370 Mb/s of room.",
-    "two places with the same room each say whose it is, so it never reads as said twice",
+    networkSaid(unnamed).aside,
+    "At the Hall point, 5 GHz: a strong signal, with 370 Mb/s of room. " +
+      "At an unnamed point, wired: 941 Mb/s of room.",
+    "a place with no point opens its own sentence, named as the said line names it",
   );
   const unmeasured = tiesOf({
     network: [
@@ -226,7 +232,7 @@ it("its network says where it meets it, by band or by wire, and how well", () =>
   });
   assert.equal(
     networkSaid(unmeasured).aside,
-    "Hall: not measured. Den, wired: 941 Mb/s of room.",
+    "At the Hall point: not measured. At the Den point, wired: 941 Mb/s of room.",
     "a place not measured keeps its turn, so the next one's figure stays its own",
   );
   assert.deepEqual(networkSaid(tiesOf({ network: [] })), {

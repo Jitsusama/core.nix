@@ -220,6 +220,15 @@ function count(record: Fields, field: string): number {
 }
 
 /** The most each of `machines` is pressed, field by field, or null where none measured. */
+/** The disk guard's bands that say a disk fills, the fullest last. */
+const FILLING_BANDS = ["filling", "nearly-full", "critically-full"];
+
+/** The fullest band of any machine's disk, or none while none fills. */
+function fullest(machines: readonly Fields[]): string | null {
+  const bands = machines.map((each) => FILLING_BANDS.indexOf(String(each["disk_band"])));
+  return FILLING_BANDS[Math.max(-1, ...bands)] ?? null;
+}
+
 function mostPressed(machines: readonly Fields[]): Fields | null {
   const measured = machines.map((machine) => machine["pressure"]).filter(isObject);
   if (measured.length === 0) {
@@ -233,7 +242,8 @@ function mostPressed(machines: readonly Fields[]): Fields | null {
  * A basin's machines as the one stand the map draws: named by the basin,
  * its machines listed in it by name, ready while any of them is, the sum of
  * their cores and memory, and the worst of how they are pressed, short and
- * filling, so a machine in trouble is never hidden by the basin it is in.
+ * how full their disks are, so a machine in trouble is never hidden by the
+ * basin it is in.
  */
 function basinStand(basin: string, machines: readonly Fields[]): Fields {
   const members = [...machines].sort((one, other) =>
@@ -250,7 +260,7 @@ function basinStand(basin: string, machines: readonly Fields[]): Fields {
     memory: sum("memory"),
     pressure: mostPressed(members),
     over: [...new Set(members.flatMap((member) => member["over"]).filter(Boolean))],
-    disk_band: members.some((member) => member["disk_band"] === "filling") ? "filling" : null,
+    disk_band: fullest(members),
     leaves_at: null,
     share: null,
   };

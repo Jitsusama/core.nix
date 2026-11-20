@@ -213,7 +213,7 @@ function cellsSaid(ties: Ties): Said {
  * when it `leads`; Wi-Fi is a name, so it keeps its own either way.
  */
 function meets(place: Place, leads: boolean): string {
-  const point = place.point === undefined ? "an unnamed point" : `the ${place.point} point`;
+  const point = pointSaid(place);
   if (place.by === "wired") {
     return `${leads ? "Wired" : "wired"} to ${point}`;
   }
@@ -243,6 +243,20 @@ function reach(place: Place): string | undefined {
     return undefined;
   }
   return said;
+}
+
+/** A place's point, by its name, or unnamed where its path names none. */
+function pointSaid(place: Place): string {
+  return place.point === undefined ? "an unnamed point" : `the ${place.point} point`;
+}
+
+/**
+ * Where one place meets the network, leading its figures as a sentence
+ * of their own: its point as the said line names it, then its band or wire.
+ */
+function placeLeads(place: Place): string {
+  const point = pointSaid(place);
+  return place.by === undefined ? `At ${point}` : `At ${point}, ${place.by}`;
 }
 
 /** Where one place meets the network, in a few words, as the bridge labels it. */
@@ -276,7 +290,7 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
   const reaches = places.map(reach);
   const byPlace = places.map((place, at) => {
     const reached = reaches[at] ?? "not measured";
-    return places.length === 1 ? reached : `${placeWords(place)}: ${reached}`;
+    return places.length === 1 ? reached : `${placeLeads(place)}: ${reached}`;
   });
   const aside = reaches.every((reached) => reached === undefined)
     ? "How much room it has isn't measured."

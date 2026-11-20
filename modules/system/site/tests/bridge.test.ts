@@ -19,7 +19,7 @@ function machine(name: string, busy: number, idle: number, health: Thing["health
     name,
     health,
     says: "",
-    side: health === "good" ? [] : ["filling disk, 135 GB free", "code wants a look"],
+    side: health === "good" ? [] : ["on battery at 12%", "code wants a look"],
     address: undefined,
     ties: tiesOf({
       cells: { busy, idle, ended: 0 },
@@ -62,7 +62,7 @@ it("counts the machines past its piers as below up to eight, and the rest on the
 it("names each machine over its pier, with its health in words", () => {
   const drawn = bridgeOf([machine("kestrel", 2, 1, "watch"), machine("osprey", 0, 0, "good")]);
   assert.ok(drawn.includes('translate="no">kestrel</span>'));
-  assert.ok(drawn.includes("Watch: filling disk, 135 GB free<"));
+  assert.ok(drawn.includes("Watch: on battery at 12%<"));
   assert.ok(drawn.includes("Good: ready<"));
   assert.ok(drawn.includes("Hall, 2.4 GHz"));
 });
@@ -78,20 +78,20 @@ it("keeps only each name and its health mark over a narrow pier", () => {
   const over = listed(narrow, "over");
   assert.ok(over.includes('translate="no">kestrel</span>'));
   assert.ok(over.includes('class="mark watch"'));
-  assert.ok(!over.includes("filling disk"));
+  assert.ok(!over.includes("on battery"));
 });
 
 it("says each machine's name, standing and places under the narrow bridge", () => {
   const { narrow } = variants(bridgeOf([machine("kestrel", 2, 1, "watch")]));
   const under = listed(narrow, "under");
   assert.ok(under.includes('translate="no">kestrel</span>'));
-  assert.ok(under.includes("Watch: filling disk, 135 GB free<"));
+  assert.ok(under.includes("Watch: on battery at 12%<"));
   assert.ok(under.includes("Hall, 2.4 GHz"));
 });
 
 it("keeps each name and standing over a wide pier, and only places under it", () => {
   const { wide } = variants(bridgeOf([machine("kestrel", 2, 1, "watch")]));
-  assert.ok(listed(wide, "over").includes("Watch: filling disk, 135 GB free<"));
+  assert.ok(listed(wide, "over").includes("Watch: on battery at 12%<"));
   assert.ok(!listed(wide, "under").includes("kestrel"));
 });
 

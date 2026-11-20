@@ -4,7 +4,7 @@
 //! each follows its label.
 
 use serde_json::Value;
-use system::parts::grouped;
+use system::words::grouped;
 use terminal_kit::time::span;
 
 /// A gigabyte and a terabyte, as a node counts bytes.
@@ -104,17 +104,22 @@ pub fn network(ties: &Value) -> Said {
     Said::new(said, aside)
 }
 
-/// Where one place meets the network, in a few words, as the site's bridge
-/// labels it.
+/// Where one place meets the network, leading its figures: its point as
+/// the said line names it, then its band or wire.
 fn place_words(place: &Value) -> String {
-    let point = place
-        .get("point")
-        .and_then(Value::as_str)
-        .unwrap_or("a point");
+    let point = point_said(place);
     match place.get("by").and_then(Value::as_str) {
-        Some(by) => format!("{point}, {by}"),
-        None => point.to_owned(),
+        Some(by) => format!("at {point}, {by}"),
+        None => format!("at {point}"),
     }
+}
+
+/// A place's point, by its name, or unnamed where its path names none.
+fn point_said(place: &Value) -> String {
+    place.get("point").and_then(Value::as_str).map_or_else(
+        || "an unnamed point".to_owned(),
+        |point| format!("the {point} point"),
+    )
 }
 
 /// How well one place reaches, as far as it's measured: a radio's signal,
@@ -137,10 +142,7 @@ fn reach(place: &Value) -> Option<String> {
 /// Where one place meets the network, as a clause. Wi-Fi is a name, so it
 /// keeps its capitals.
 fn meets(place: &Value) -> String {
-    let point = place.get("point").and_then(Value::as_str).map_or_else(
-        || "an unnamed point".to_owned(),
-        |point| format!("the {point} point"),
-    );
+    let point = point_said(place);
     match place.get("by").and_then(Value::as_str) {
         Some("wired") => format!("wired to {point}"),
         Some(band) => format!("Wi-Fi to {point}, on {band}"),
@@ -377,15 +379,17 @@ mod tests {
             at(json!([wired, wifi.clone()])),
             said(
                 "wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
-                "Den, wired: 941 Mb/s of room; Hall, 5 GHz: a strong signal, with 183 Mb/s of room"
+                "at the Den point, wired: 941 Mb/s of room; \
+                 at the Hall point, 5 GHz: a strong signal, with 183 Mb/s of room"
             ),
             "each place's figures stay with it, named, in the order the places are said"
         );
-        let alike = json!({"by": "wired", "point": "Den", "bars": null, "room_mbps": 183});
+        let unnamed = json!({"by": "wired", "point": null, "bars": null, "room_mbps": 941});
         assert_eq!(
-            at(json!([wifi.clone(), alike])).aside,
-            "Hall, 5 GHz: a strong signal, with 183 Mb/s of room; Den, wired: 183 Mb/s of room",
-            "two places with the same room each say whose it is, so it never reads as said twice"
+            at(json!([wifi.clone(), unnamed])).aside,
+            "at the Hall point, 5 GHz: a strong signal, with 183 Mb/s of room; \
+             at an unnamed point, wired: 941 Mb/s of room",
+            "a place with no point is named as the said line names it"
         );
         assert_eq!(
             at(json!([wifi])),
@@ -404,7 +408,7 @@ mod tests {
             at(json!([unknown.clone(), wired.clone()])),
             said(
                 "on the Hall point, and wired to the Den point",
-                "Hall: not measured; Den, wired: 941 Mb/s of room"
+                "at the Hall point: not measured; at the Den point, wired: 941 Mb/s of room"
             ),
             "a place not measured keeps its turn, so the next one's figure stays its own"
         );

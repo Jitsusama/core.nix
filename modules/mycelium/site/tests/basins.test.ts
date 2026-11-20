@@ -119,6 +119,21 @@ it("a basin runs while any of its machines does, and carries the worst of them",
   );
 });
 
+it("a basin's disk is the fullest of its machines', and none while none fills", () => {
+  const bands = (...said: (string | null)[]): unknown =>
+    nowOf(told(said.map((band, at) => lent(`pool-${at}`, "shoal", { disk_band: band }))), AT)
+      .machines[0]?.["disk_band"];
+  assert.deepEqual(
+    [
+      bands("healthy", "nearly-full", "filling"),
+      bands("critically-full", "filling"),
+      bands("healthy", null),
+    ],
+    ["nearly-full", "critically-full", null],
+    "a basin should carry its fullest disk's band, so a nearly full one isn't hidden",
+  );
+});
+
 it("a basin with every machine off is off, and one that measured nothing is pressed by none", () => {
   const [basin] = nowOf(
     told([lent("pool-a", "shoal", { state: "off" }), lent("pool-b", "shoal", { state: "off" })]),

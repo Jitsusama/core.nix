@@ -13,6 +13,7 @@ use serde_json::Value;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Part, Thing};
+use crate::words::grouped;
 
 /// A gigabyte, as a disk's free room is said.
 const GIGABYTE: f64 = 1e9;
@@ -393,7 +394,7 @@ fn sessions_said(sessions: &Value) -> String {
         (0, 0) => "no session".to_owned(),
         (busy, 0) => format!("{} busy", count(busy, "session", "sessions")),
         (0, idle) => format!("{} idle", count(idle, "session", "sessions")),
-        (busy, idle) => format!("{busy} busy and {idle} idle sessions"),
+        (busy, idle) => format!("{} busy and {} idle sessions", grouped(busy), grouped(idle)),
     }
 }
 
@@ -639,6 +640,17 @@ mod tests {
             "a machine's own side is worded for a row's side"
         );
         assert!(part.things[1].side.is_empty(), "a ready machine has none");
+    }
+
+    #[test]
+    fn a_machine_s_sessions_past_a_thousand_are_grouped() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 1_200, "idle": 3_400, "ended": 0});
+        let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is ready, runs 1,200 busy and 3,400 idle sessions",
+            "a machine's session count is grouped, as the part's line says it"
+        );
     }
 
     #[test]
