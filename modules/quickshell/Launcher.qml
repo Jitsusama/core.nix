@@ -12098,11 +12098,21 @@ Scope {
     // long may grow by before it collects. It's left again as an opening
     // is asked, since what the shell makes while the launcher is shut can
     // use the closing's room up: the lab's openings then began a collection
-    // of their own, 236 to 377 ms of it (cycle-r1, 2026-11-14).
+    // of their own, 236 to 377 ms of it (cycle-r1, 2026-11-14). The heap
+    // leaves room after every collection that ends later too, but no more
+    // than twice the room past what its chunks held at the first ask since
+    // one ended (heap.h's leaveRoom), so one the shell starts while the
+    // launcher is shut can still leave less. Each closing's collection says
+    // how far the opening's chunks, and what's held outside the heap,
+    // reached against where the collector would start, weighed before it
+    // collects, so whether 32 is still ample is read there.
     readonly property real openingRoom: 32
     function collectClosed() {
         if (open || opening || parting !== "")
             return;
+        // How far the opening went, against where the collector would have
+        // started, before this collection resets both.
+        const reached = Heap.weigh();
         const began = KeyTimes.now();
         gc();
         Heap.leaveRoom(openingRoom);
@@ -12115,10 +12125,16 @@ Scope {
         const held = Math.round(weight.held);
         const outside = Math.round(weight.outside);
         const free = Math.round(weight.free);
+        const chunks = Math.round(weight.chunks);
+        const reachedChunks = Math.round(reached.chunks);
+        const chunksAt = Math.round(reached.collectsAt);
+        const reachedOutside = Math.round(reached.outside);
+        const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
-            + ` held, ${free} MB of it in free pages, ${outside} MB outside, weighed in`
-            + ` ${weighing} ms`
+            + ` held, ${free} MB of it in free pages, ${outside} MB outside, chunks`
+            + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
+            + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms`
             + (allocator.used === undefined ? ""
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`
