@@ -2228,11 +2228,13 @@ Provider {
     }
 
     // For You's own rows, each as it's for (ForYou.js's bands), the
-    // heaviest first in each: what needs Joel now, under the cell behind
-    // each (cellRows), then To Look At, To Try and To Read, then Desktop
-    // while it holds a critical notice (latelyInForYou), Later and History
-    // (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read, which nothing
-    // counts).
+    // heaviest first in each: Desktop first while it holds a critical
+    // notice (latelyInForYou), since what's pressing leads, so Return,
+    // Return reaches a low battery before any question (42P0R4 and
+    // Y2YBTS, 2026-11-20); then what needs Joel now, under the cell behind
+    // each (cellRows), then To Look At, To Try and To Read, Later and
+    // History (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read, which
+    // nothing counts).
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
@@ -2246,10 +2248,10 @@ Provider {
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
         const asked = kindRow("agent", bandRows(bands.agent, now));
-        const rows = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0).concat(
+        const rows = latelyRows(now).filter(latelyComingIn).concat(
+            cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0),
             kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
-            latelyRows(now).filter(latelyComingIn),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
@@ -2266,11 +2268,11 @@ Provider {
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
-        return bandRows(bands.now.slice(0, bands.agentAt), now).concat(
+        return latelyRows(now).filter(latelyComingIn).concat(
+            bandRows(bands.now.slice(0, bands.agentAt), now),
             bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
             bandRows(bands.look, now),
-            bandRows(bands.try, now), bandRows(bands.read, now),
-            latelyRows(now).filter(latelyComingIn));
+            bandRows(bands.try, now), bandRows(bands.read, now));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
