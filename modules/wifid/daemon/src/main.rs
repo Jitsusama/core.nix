@@ -82,7 +82,7 @@ use zlink::Server;
 
 use address::AddressKey;
 use air::AccessPoint;
-use arrive::Arrivals;
+use arrive::{Arrivals, Unreached};
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use detail::Polled;
@@ -363,6 +363,7 @@ async fn follow(
     loop {
         let deadline = joining.as_ref().map(|joining| joining.deadline);
         let stalled = air.stalls.due();
+        let unreached = wifid.arrivals.borrow().due();
         tokio::select! {
             Some(change) = owners.recv() => {
                 wifid.owner_changed(&change, &mut air, &mut networks).await;
@@ -420,6 +421,12 @@ async fn follow(
                     if joining.is_none() {
                         wifid.nudge(&card, looked, &air).await;
                     }
+                }
+            }
+            () = until(unreached), if unreached.is_some() => {
+                let unreached = wifid.arrivals.borrow_mut().unreached(Instant::now());
+                for late in unreached {
+                    wifid.go_back(late).await;
                 }
             }
             _ = polling.tick(), if *watching.borrow() > 0 => {
@@ -2122,9 +2129,16 @@ impl Wifid<'_> {
                 }
                 Ok(())
             } else {
+                let from = self
+                    .state
+                    .borrow()
+                    .joined()
+                    .into_iter()
+                    .find(|joined| joined.card == card)
+                    .map(|joined| joined.point);
                 self.arrivals
                     .borrow_mut()
-                    .asked(&card, bssid, Instant::now());
+                    .asked(&card, from.as_deref(), bssid, Instant::now());
                 let roamed = interface.roam(bssid).await;
                 // Forgotten only here, since a failure before the ask is
                 // none of a move already on its way.
@@ -2143,6 +2157,58 @@ impl Wifid<'_> {
         println!("<6>{card} moved to {bssid}, as asked");
         println!("<7>{card} keeps to {bssid} until it comes off its network");
         Ok(())
+    }
+
+    /// Sends a card back to the access point it left, held there, where
+    /// its move hasn't reached the point it was asked to in time, so it's
+    /// on its network again rather than looking for the one it missed, as
+    /// it did for 18 s on 16 Nov 2026. It's moved there as any move is;
+    /// where wpa_supplicant refuses that, as for a card off its network,
+    /// it's joined afresh, the only point it may join being the one it
+    /// left. One that got there as its time ran out is left there.
+    ///
+    /// A way back that can't be asked lets the card's network go, so it
+    /// can join wherever it's heard.
+    async fn go_back(&self, Unreached { card, from, to }: Unreached) {
+        let there = self
+            .state
+            .borrow()
+            .joined()
+            .iter()
+            .any(|joined| joined.card == card && joined.point.eq_ignore_ascii_case(&to));
+        if there {
+            return;
+        }
+        println!(
+            "<4>{card} didn't reach {to} within {} ms, so goes back to {from}",
+            arrive::BACK_AFTER.as_millis()
+        );
+        let held = self.held.borrow().get(&card).cloned();
+        let gone_back = async {
+            let interface =
+                interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
+            let network = match held {
+                Some(network) => network,
+                None => interface.current_network().await?,
+            };
+            self.hold(&network, &from).await?;
+            self.held.borrow_mut().insert(card.clone(), network);
+            self.arrivals
+                .borrow_mut()
+                .asked(&card, None, &from, Instant::now());
+            match interface.roam(&from).await {
+                Ok(()) => Ok(()),
+                Err(refused) => {
+                    println!("<7>{card} joins {from} afresh, as it couldn't move: {refused}");
+                    interface.reassociate().await
+                }
+            }
+        };
+        if let Err(error) = gone_back.await {
+            self.arrivals.borrow_mut().forget(&card);
+            self.let_go(&card, false).await;
+            println!("<4>{card} couldn't go back to {from}: {error}");
+        }
     }
 
     /// Whether the card, at this step, is joining the access point it's
