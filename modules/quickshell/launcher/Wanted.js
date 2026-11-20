@@ -74,6 +74,18 @@ function readAt(stands, readers) {
         || readers.some(one => one !== null && wanted(stands, one));
 }
 
+// Whether a source's change is only what a step read of it a moment before:
+// told by the source itself (no `launchers` reason), while the step that
+// holds it anew, `newlyHeld`, is being held. Wanted only from then, it
+// compares its rows with what it said when last wanted, so it says they
+// changed, and made again, each of Joel's steps into Agents by an arrow and
+// Return waited 16 to 25 ms for its frame, where other steps as long waited
+// a median 2 (his journal, 2026-11-19 and 20). Any other source's change
+// then is its own, and refreshes as ever.
+function readByStep(source, newlyHeld, launchers) {
+    return newlyHeld !== null && source === newlyHeld && launchers === undefined;
+}
+
 // The order a kept opening's sources wake in, a few a frame, rather than
 // all at once as it opened, which held Joel's shell 195 to 220 ms past
 // its first frame (2026-11-10 20:39): those home's rows read, in home's
