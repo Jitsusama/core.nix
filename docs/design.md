@@ -1625,8 +1625,10 @@ works the same way everywhere.
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
   one row that thing is anywhere it shows, never a version Now draws of
-  it. Below them, only while true, come what else wants Joel (a low
-  battery; mail and notices are For You's), what reaches other people,
+  it. Then, each only while it holds something, come Lately's rows,
+  what came for Joel that asks nothing of him: Mail, Slack and Now's
+  Desktop, the notices'. Below them, only while true, come what else
+  wants Joel (a low battery), what reaches other people,
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
@@ -1729,12 +1731,14 @@ works the same way everywhere.
   wears an in-tray, full while it holds something and empty when it
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
-  the tray (VKCF3Z, 2026-11-08). Lately
-  follows, what came: a place per source ("Mail", "Slack"), nothing
-  after its name, its side "12 to read", its drawer its senders newest
-  first (VKCF3Z, 2026-11-09), ordered by its heaviest, and a notice its
-  source calls critical lifts into the
-  first band. A message inside is one row wherever it shows, Search
+  the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
+  in For You only while one of its own notices is critical and unread,
+  and none leaves while the launcher is open; otherwise it's among Now's
+  own rows (Joel, 2026-11-19: "I almost never know what I am supposed to
+  do with it"). Each is a place per source ("Mail", "Slack", Now's
+  Desktop), nothing after its name, its side "12 to read", its drawer
+  its senders newest first (VKCF3Z, 2026-11-09), ordered by its
+  heaviest. A message inside is one row wherever it shows, Search
   Slack's hits included: named by its sender, its note its first line,
   or from the first word a find matched, its side its time, its eyebrow
   where it came ("in #deploys · message", "direct message").
@@ -2821,7 +2825,7 @@ line's notice is the same card, on the same columns and inset.
   It draws nothing over the gutter in any mode. The place's mark stands in
   the rows' mark cell and its Title over their names, home's too ("⌂ Home",
   "Notices", "Time › Servers"). The mark is its path's first place's,
-  however deep it goes, so "Now › For You › Slack" wears Now's mark.
+  however deep it goes, so "Now › Slack" wears Now's mark.
   The mode's mark takes the place's mark's cell while the mode lasts, centred by
   its ink: the accent's `/` on the find,
   `:` on the command line (Joel, 2026-11-06: "we have an extra space in
