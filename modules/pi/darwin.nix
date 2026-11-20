@@ -232,13 +232,13 @@ in
         }
       ) hosts
       ++ lib.mapAttrsToList (name: user: {
-      assertion = name == account || (user.jitsusama.pi.hosts or { }) == { };
-      message =
-        if account == null then
-          "home-manager.users.${name}.jitsusama.pi.hosts names a realm, but a Mac's pi hosts run only as its primary user, and system.primaryUser names none."
-        else
-          "home-manager.users.${name}.jitsusama.pi.hosts names a realm, but a Mac's pi hosts run only as its primary user, ${account}, whose launchd daemons they are.";
-    }) (config.home-manager.users or { });
+        assertion = name == account || (user.jitsusama.pi.hosts or { }) == { };
+        message =
+          if account == null then
+            "home-manager.users.${name}.jitsusama.pi.hosts names a realm, but a Mac's pi hosts run only as its primary user, and system.primaryUser names none."
+          else
+            "home-manager.users.${name}.jitsusama.pi.hosts names a realm, but a Mac's pi hosts run only as its primary user, ${account}, whose launchd daemons they are.";
+      }) (config.home-manager.users or { });
 
     launchd.daemons = lib.listToAttrs (map (pair: hostOf pair.realm pair.kind) pairs);
 
