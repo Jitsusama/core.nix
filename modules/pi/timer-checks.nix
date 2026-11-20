@@ -3,11 +3,13 @@
 # change with timers.nix and nothing else.
 {
   account,
+  bareNixos,
   holds,
   lib,
   macWorkstation,
   onLinux,
   pkgs,
+  self,
   workstation,
   ...
 }:
@@ -82,9 +84,9 @@ onLinux {
         && !(mac.systemd.user.timers ? pi-windows-elsewhere)
       );
 
-  # Ended sessions' work trees are swept in a unit of their own, beneath
-  # everything Joel uses, at the top of each hour, rather than on a pi
-  # host's one thread; a Mac, with no systemd, gets none yet. That the
+  # Ended sessions' work trees are swept in a unit of their own, among
+  # agents' commands, at the top of each hour, rather than on a pi host's
+  # one thread; a Mac, with no systemd, gets none yet. That the
   # hosts stand down after it is the harness's to prove, in its tests.
   pi-sweeps-work-trees-in-a-unit-of-its-own =
     let
@@ -94,35 +96,77 @@ onLinux {
       timer = home.systemd.user.timers.pi-sweep;
       first = value: lib.head (lib.toList value);
       script = first service.Unit.ConditionPathExists;
-      environment = lib.toList service.Service.Environment;
+      git = lib.makeBinPath [ home.programs.git.package ];
+      profile = "${home.home.profileDirectory}/bin";
+      # A machine giving both settings, with a realm whose host shows what
+      # a host's unit clears.
+      given = account (bareNixos [
+        self.nixosModules.workstation
+        {
+          home-manager.users.someone.jitsusama.pi = {
+            sweep = {
+              providerModules = [
+                "/one/providers.ts"
+                "/two/providers.ts"
+              ];
+              path = [
+                "/tools/bin"
+                "/100% sure/bin"
+              ];
+            };
+            hosts.one = {
+              pi = "${pkgs.emptyDirectory}/pi";
+              node = "${pkgs.emptyDirectory}/node";
+              proof = builtins.toFile "pi-host-proof.json" (
+                builtins.toJSON {
+                  kind = "pi-host-runtime-proof";
+                  version = 1;
+                  harness = "0000000000000000000000000000000000000000";
+                  files = 14;
+                  cases = 71;
+                  provenAt = "2026-11-10T11:00:00.000Z";
+                  runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}";
+                }
+              );
+            };
+          };
+        }
+      ]);
+      givenSweep = given.systemd.user.services.pi-sweep.Service;
+      givenGit = lib.makeBinPath [ given.programs.git.package ];
+      givenProfile = "${given.home.profileDirectory}/bin";
+      cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run at the top of each hour by the wall clock and once on waking from a sleep that took one, runs outside jobs.slice or a node off the PATH, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, finds no git from the store first on its PATH, leaves node and the loader's variables that load code to the user manager, names provider modules no machine gave it, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, has a PATH other than the account's git, a machine's folders and the account's own, names provider modules other than a machine gave it, leaves a variable that loads code that a pi host's unit clears, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
-        && first timer.Timer.OnCalendar == "hourly"
-        && timer.Timer.Persistent == true
-        && !(timer.Timer ? OnUnitInactiveSec)
-        && service.Service.Slice == "jobs.slice"
+        &&
+          timer.Timer == {
+            OnCalendar = "hourly";
+            Persistent = true;
+          }
+        && service.Service.Type == "oneshot"
+        && service.Service.Slice == "jobs-work.slice"
         && service.Service.TimeoutStartSec == "2h"
-        && service.Unit.X-RestartIfChanged == false
+        && service.Unit.X-SwitchMethod == "keep-old"
         && lib.hasSuffix "/scripts/pi-sweep.ts" script
         &&
           first service.Service.ExecStart
           == "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${script}"
-        && lib.any (lib.hasPrefix "PATH=${lib.makeBinPath [ pkgs.git ]}:") environment
-        && !(lib.any (lib.hasPrefix "PI_SWEEP_PROVIDERS=") environment)
         &&
-          lib.sort lib.lessThan (lib.toList service.Service.UnsetEnvironment) == lib.sort lib.lessThan [
-            "NODE_OPTIONS"
-            "NODE_PATH"
-            "NODE_COMPILE_CACHE"
-            "LD_PRELOAD"
-            "LD_AUDIT"
-            "LD_LIBRARY_PATH"
-            "OPENSSL_CONF"
-            "OPENSSL_MODULES"
+          lib.toList service.Service.Environment == [
+            ''"PATH=${git}:${profile}:/run/current-system/sw/bin"''
           ]
+        &&
+          lib.toList givenSweep.Environment == [
+            ''"PATH=${givenGit}:/tools/bin:/100%% sure/bin:${givenProfile}:/run/current-system/sw/bin"''
+            ''"PI_SWEEP_PROVIDERS=/one/providers.ts:/two/providers.ts"''
+          ]
+        &&
+          cleared givenSweep == lib.remove "SSH_TPM_AUTH_SOCK" (
+            cleared given.systemd.user.services.pi-host-one-background.Service
+          )
         && !(mac.systemd.user.timers ? pi-sweep)
         && !(mac.systemd.user.services ? pi-sweep)
       );

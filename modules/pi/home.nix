@@ -15,9 +15,8 @@
 # (chime.nix).
 # On Linux the installed harness's own scripts run on a schedule or at
 # login, its morning measure and its sweep of ended work trees among them
-# (timers.nix). A realm a
-# machine names in jitsusama.pi.hosts runs its conversations in shared pi
-# hosts, started with the session (host.nix).
+# (timers.nix). A realm a machine names in jitsusama.pi.hosts runs its
+# conversations in shared pi hosts, started with the session (host.nix).
 {
   config,
   lib,
