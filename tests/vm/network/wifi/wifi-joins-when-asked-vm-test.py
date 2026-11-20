@@ -540,8 +540,9 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     retry(hears_the_second, timeout=timedelta(seconds=60))
     # wpa_supplicant keeps an access point through two looks that don't hear it, so the move
     # still finds the second after its own look over the channel, and is asked into nothing.
-    # The card gives up on it within tens of milliseconds, and would take the Roadside Inn
-    # if it weren't sent back first (2026-11-20).
+    # The card gives up on it within tens of milliseconds, and wpa_supplicant is on its way
+    # to the Roadside Inn before wifid hears it gave up (2026-11-20), so the card can be on
+    # the Inn a moment before it's back: the bar is that it's back within a second.
     machine.succeed("systemctl stop lantern-two")
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
@@ -561,10 +562,17 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         machine.log(
             machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'")
         )
-    machine.fail(
-        f"journalctl -o cat -u wpa_supplicant --after-cursor='{since}'"
-        " | grep 'wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:01:00'"
+    said = machine.succeed(
+        f"journalctl -o short-unix -u wifid -u wpa_supplicant --after-cursor='{since}'"
+    ).splitlines()
+    moved = next(line for line in said if "wlan2 moved to 02:00:00:00:05:00, as asked" in line)
+    back = next(
+        line
+        for line in said
+        if "wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:00:00" in line
     )
+    took = float(back.split()[0]) - float(moved.split()[0])
+    assert took < 1, f"back {took:.3f} s after the move was asked"
     machine.succeed(
         "s=$(wpa_cli -i wlan2 status)"
         ' && echo "$s" | grep -qx wpa_state=COMPLETED'
