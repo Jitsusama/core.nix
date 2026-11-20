@@ -44,7 +44,7 @@ fn line(m: &Measure) -> String {
 /// The spend measure's lines each end with a quest instead, in its own
 /// order, and are named though it is never judged, since they are what
 /// it is for. The merges past five rounds are named whatever the median
-/// reads, each with what its rounds past five fixed, as WCJQSG asked.
+/// reads, each with what its rounds past five caught, as WCJQSG asked.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
@@ -73,7 +73,7 @@ fn behind(m: &Measure) -> Vec<String> {
 /// A class's lines on the card. Clean zones read some sixty measures, so
 /// only those past their target are listed, and the rest are counted in a
 /// line of their own; every other class lists each of its measures, with
-/// what's behind one past its target. A merge whose rounds past five fixed
+/// what's behind one past its target. A merge whose rounds past five caught
 /// nothing is already named under the rounds median, so its own measure,
 /// kept only to be filed to its owner, isn't listed again.
 pub fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {

@@ -7,8 +7,11 @@
 //! median of at most 3, and asked that each merge past 5 be named with
 //! what its rounds after the fifth caught, and filed as drag to the merge's
 //! owner when they caught nothing. What a round caught is read from the
-//! harness's record of the fixes committed for its findings, a judge's
-//! finding counting for the council it consolidated.
+//! harness's record of the fixes for its findings, committed or queued, a
+//! judge's finding counting for the council it consolidated. A queued fix
+//! counts because many owners decide a finding is real and fix it without
+//! recording the commit, which left real catches on #1860's and #5614's
+//! rounds past five read as nothing.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -175,8 +178,10 @@ impl Reviewed {
 }
 
 /// What each council's findings led to, by the council's id: the subject
-/// of each finding whose fix was committed, from `fixes`, each the text of
-/// one file of the harness's review fixes. A finding a judge consolidated
+/// of each finding whose fix was committed or is still queued, from
+/// `fixes`, each the text of one file of the harness's review fixes. A fix
+/// answered or skipped instead, its owner finding nothing to change, caught
+/// nothing. A finding a judge consolidated
 /// names the judge's run, so it is taken back through `bases`, each run's
 /// basis, to the council it came from.
 fn caught(fixes: &[String], bases: &BTreeMap<&str, &str>) -> BTreeMap<String, Vec<String>> {
@@ -202,7 +207,8 @@ fn caught(fixes: &[String], bases: &BTreeMap<&str, &str>) -> BTreeMap<String, Ve
                     None => break,
                 }
             }
-            if fix["outcome"]["kind"].as_str() == Some("committed") {
+            let outcome = fix["outcome"]["kind"].as_str();
+            if outcome.is_none() || outcome == Some("committed") {
                 caught
                     .entry(run.to_owned())
                     .or_default()
@@ -294,11 +300,11 @@ pub fn rounds(
         behind: each
             .iter()
             .map(|(n, change, fixed)| match fixed.as_slice() {
-                _ if !fixes_read => format!("{change}: {n} rounds, what they fixed unread"),
-                [] => format!("{change}: {n} rounds, those past five fixed nothing"),
-                [one] => format!("{change}: {n} rounds, past five fixed {}", short(one)),
+                _ if !fixes_read => format!("{change}: {n} rounds, what they caught unread"),
+                [] => format!("{change}: {n} rounds, those past five caught nothing"),
+                [one] => format!("{change}: {n} rounds, past five caught {}", short(one)),
                 [first, rest @ ..] => format!(
-                    "{change}: {n} rounds, past five fixed {} and {} more",
+                    "{change}: {n} rounds, past five caught {} and {} more",
                     short(first),
                     rest.len()
                 ),
@@ -314,7 +320,7 @@ pub fn rounds(
     let fruitless = each.into_iter().map(|(n, change, _)| Measure {
         key: format!("{FRUITLESS}{change}"),
         class: Class::Ship,
-        says: format!("council rounds on {change}, whose rounds past five fixed nothing"),
+        says: format!("council rounds on {change}, whose rounds past five caught nothing"),
         now: count(n),
         target: Some(count(PAST)),
         owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
@@ -458,22 +464,23 @@ mod tests {
         assert_eq!(m.now, 3.0, "rounds of #11 to #13");
         // No fixes record was read, so what #12's rounds fixed is unknown
         // and nothing is filed on it.
-        assert_eq!(m.behind, ["core.nix#12: 6 rounds, what they fixed unread"]);
+        assert_eq!(m.behind, ["core.nix#12: 6 rounds, what they caught unread"]);
         assert_eq!(all.len(), 1, "#12 filed though its fixes went unread");
     }
 
-    /// The harness's record of the fixes committed for findings, each by
-    /// the council that raised it, and one answered rather than fixed.
-    fn fixes(committed: &[(&str, &str)]) -> String {
-        let fixes: Vec<serde_json::Value> = committed
+    /// The harness's record of the fixes for findings, each by the council
+    /// that raised it and how it ended, `None` while it is still queued.
+    fn fixes(decided: &[(&str, &str, Option<&str>)]) -> String {
+        let fixes: Vec<serde_json::Value> = decided
             .iter()
-            .map(|(run, subject)| {
-                serde_json::json!({"subject": {"finding": {"subject": subject,
-                    "origin": {"runId": run}}}, "outcome": {"kind": "committed"}})
+            .map(|(run, subject, outcome)| {
+                let mut fix = serde_json::json!({"subject": {"finding": {"subject": subject,
+                    "origin": {"runId": run}}}});
+                if let Some(kind) = outcome {
+                    fix["outcome"] = serde_json::json!({ "kind": kind });
+                }
+                fix
             })
-            .chain(std::iter::once(serde_json::json!({"subject": {"finding": {
-                "subject": "answered", "origin": {"runId": "council-b-1"}}},
-                "outcome": {"kind": "answered"}})))
             .collect();
         serde_json::json!({ "fixes": fixes }).to_string()
     }
@@ -513,11 +520,15 @@ mod tests {
             })
             .collect();
         // #21's fifth round fixed one, which isn't past five; #23's seventh
-        // fixed two, one through its judge; #22's sixth was only answered.
+        // caught two, one through its judge, and its sixth one still queued;
+        // #22's sixth was only answered and its seventh's fix skipped.
         let fixed = [fixes(&[
-            ("council-a-2", "in the fifth"),
-            ("judge-c", "a test that never failed"),
-            ("council-c-0", "a second"),
+            ("council-a-2", "in the fifth", Some("committed")),
+            ("judge-c", "a test that never failed", Some("committed")),
+            ("council-c-0", "a second", Some("committed")),
+            ("council-c-1", "queued", None),
+            ("council-b-1", "answered", Some("answered")),
+            ("council-b-0", "skipped", Some("skipped")),
         ])];
         let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
         let all = rounds(
@@ -534,9 +545,9 @@ mod tests {
         assert_eq!(
             all[0].behind,
             [
-                "core.nix#21: 7 rounds, those past five fixed nothing",
-                "core.nix#22: 7 rounds, those past five fixed nothing",
-                "core.nix#23: 7 rounds, past five fixed a test that never failed and 1 more",
+                "core.nix#21: 7 rounds, those past five caught nothing",
+                "core.nix#22: 7 rounds, those past five caught nothing",
+                "core.nix#23: 7 rounds, past five caught queued and 2 more",
             ]
         );
         let fruitless: Vec<(&str, &str, f64)> = all[1..]
