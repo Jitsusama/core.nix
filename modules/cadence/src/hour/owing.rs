@@ -178,7 +178,7 @@ fn routed(class: Class) -> bool {
 /// line goes only when it is fixed. A clean file's line can go as the day
 /// turns, so a clean one waits for its zone. A measure that couldn't be
 /// read says nothing, so it closes none. A merge whose rounds past five
-/// fixed nothing is back in once its line is gone, the merge a day old,
+/// caught nothing is back in once its line is gone, the merge a day old,
 /// unless the rounds measure couldn't read the review record.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
@@ -232,7 +232,7 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// of his apps' figures past its target goes to its own owner, as each
 /// miss does, and the drag the rest of the hour would have is filed too:
 /// his misses still reach their owners whatever his apps read. So does a
-/// merge whose rounds past five fixed nothing, which WCJQSG asked be filed
+/// merge whose rounds past five caught nothing, which WCJQSG asked be filed
 /// to whoever landed it, whatever else leads.
 pub fn file(
     ledger: &mut Vec<Entry>,
