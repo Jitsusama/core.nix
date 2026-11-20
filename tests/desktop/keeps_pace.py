@@ -32,10 +32,12 @@ how fast the builder ran the guest in each. On a builder on 20 November it took 
 under load against 96 to 99 frozen in most turns, so the load barely slows it and it reads the
 builder's own speed. At b508ac2e the keys subtest's frozen loop took a middle 145 ms and its
 keys 102 against a bar of 98, where its frozen key took 24, as at 9c79f541, whose keys took 42
-under load on a builder whose loop took 103. So the frozen key can't see a slow builder and
-the loop can, and each subtest
-stretches its bars by how many times slower than a normal builder its frozen loops ran
-(Gauge.slowed), and on a normal builder every bar is as it was.
+under load on a builder whose loop took 103. So the frozen key can't see a slow builder and the
+loop can, and the keys bar's share of the frozen time is stretched by how many times slower
+than a normal builder the keys subtest's frozen loops ran (Gauge.slowed, stretched_bar). Only
+its loops run with the shell caught up and idle: the storm's one frozen loop runs through its
+own storm, and the first opening's beside the shell's start, so theirs read the shell as well
+as the builder, and those bars aren't stretched. No other subtest has failed on a slow builder.
 """
 
 from __future__ import annotations
@@ -49,13 +51,16 @@ UNHOLDABLE = 0x04000000
 # The rounds of the bash loop timed as each turn ends: about 200 ms of a busy laptop's on 20
 # November, short beside a turn of keys.
 LOOPED = 50_000
-# A normal builder's frozen loop, in ms: its middle read 95 to 103 in the keys subtest of each of
-# the net's 8 runs from e31a9832 to 4c4b837e on 20 November, whose keys held at 31 to 42 ms
-# under load, and 145 at b508ac2e, whose keys took 102 against a bar of 98.
-BUILDER_LOOP = 100
-# The most a slow builder may stretch a bar. Past it the guest ran too slowly for its keys to
-# say anything of the launcher's, and the bar stays at that rather than growing without end.
-SLOWEST_BUILDER = 2.0
+# The slowest a normal builder runs the frozen loop, in ms: its middle read 95 to 103 in the
+# keys subtest of each of the net's 8 runs from e31a9832 to 4c4b837e on 20 November, whose keys
+# held at 31 to 42 ms under load, and 145 at b508ac2e, whose keys took 102 against a bar of 98.
+# It's a time of the guest's own bash, so a bash whose loop runs slower would stretch the keys
+# bar on every builder: each run says its stretch, which reads 1.00 on a normal builder.
+BUILDER_LOOP = 105
+# The most a slow builder may stretch the keys bar, a little past b508ac2e's 1.38. A builder
+# slower than that stretches it no further, so with b508ac2e's frozen key of 24 ms, keys six
+# times as slow under load still fail on any builder.
+SLOWEST_BUILDER = 1.5
 
 
 def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float | None:
@@ -116,6 +121,16 @@ def holdable(stat: str) -> bool:
     return not flags & UNHOLDABLE
 
 
+def stretched_bar(frozen: float, slower: float, more: float, slowed: float) -> float:
+    """Give the most a middle under load may take: `slower` times its frozen and `more`.
+
+    Only the share of the frozen time is stretched `slowed` times for a slow builder, since
+    that's all b508ac2e needed (a bar of 116 against its 102), and stretching `more` too would
+    let a slower launcher through on a slow builder.
+    """
+    return slowed * slower * frozen + more
+
+
 def lower_middle(times: list[float]) -> float | None:
     """Give the middle of these times, the lower of two, or none for no time."""
     ranked = sorted(times)
@@ -138,8 +153,8 @@ class Gauge:
 
         It's their middle, the lower of two, over BUILDER_LOOP, held to SLOWEST_BUILDER. Only
         the frozen loops weigh, since under load the guest's own load may slow them, and none
-        weighs nothing, as when a subtest fails before its first freeze. A faster builder than
-        a normal one tightens no bar, so on one every bar is as it was before the loop.
+        weighs nothing, as when a subtest fails before its first freeze. A builder no slower
+        than BUILDER_LOOP tightens nothing and stretches nothing.
         """
         frozen = lower_middle(self.times[False])
         if frozen is None:
