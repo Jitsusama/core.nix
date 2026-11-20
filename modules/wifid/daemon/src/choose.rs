@@ -117,10 +117,11 @@ const WIDE: u32 = 5000;
 /// tried.
 const FAINTEST: i16 = -67;
 
-/// How many echoes a span must have sent for its share lost to say a wider
-/// band holds well: half of `SPAN`'s one a second. A span with none, as
-/// when the gateway can't be reached to echo, reads none lost.
-const ECHOED: usize = 60;
+/// How many echoes a span must hold for its share lost to say a wider band
+/// holds well: nine tenths of `SPAN`'s one a second. An echo that couldn't
+/// be sent isn't counted, so a span with few, as when the gateway can't be
+/// reached to echo, reads few or none lost.
+const ECHOED: usize = 108;
 
 /// How much fainter than `FAINTER` a radio on a wider band may be heard
 /// and still be tried for it: the same access point's 5 GHz radio was 2 to
@@ -302,15 +303,11 @@ impl Chooser {
         // twice, idle at 10 to 24 Mbit/s, on a tail of 34.3 and 51.6 ms
         // with none lost, for 2.4 GHz's 11.8 ms at that hour. Once a
         // download came, 2.4 GHz carried 183 and 101 ms, and a call begun
-        // there would have kept it there. It goes by the fainter of the
-        // scan's signal and the station's own, as the scan's may be old.
-        let heard = measured
-            .signal
-            .map_or(i32::from(signal), |live| live.min(i32::from(signal)));
+        // there would have kept it there.
         let holds_wide = wide(frequency)
             && measured.echoes >= ECHOED
             && measured.lost <= LOSSY
-            && heard >= i32::from(FAINTEST);
+            && heard(measured, signal) >= i32::from(FAINTEST);
         let judging = (failing, queued_lately, holds_wide);
         if let Some(judged) = self.judge(now, (point, measured), judging) {
             return judged;
@@ -463,6 +460,8 @@ impl Chooser {
             let unknown = other.measured.is_none() && other.busy.is_none_or(|busy| busy <= BUSIEST);
             (known_quicker && (bad || quick)) || (unknown && bad)
         };
+        // The one it would have tried: the quickest known, else the
+        // loudest not yet measured.
         let narrower = others
             .iter()
             .filter(|other| {
@@ -471,7 +470,15 @@ impl Chooser {
                     && !self.spurned.contains_key(&other.point)
                     && within_reach(other, signal, frequency)
             })
-            .find(would);
+            .filter(would)
+            .min_by_key(|other| {
+                let known = other.measured.as_ref();
+                (
+                    known.is_none(),
+                    known.map(slowness),
+                    std::cmp::Reverse(other.signal),
+                )
+            });
         let kept = narrower.map(|other| (point.to_owned(), other.point.clone()));
         if kept.is_some() && kept != self.kept_lately {
             self.began_keeping = kept.as_ref().map(|(_, narrower)| narrower.clone());
@@ -772,6 +779,14 @@ fn slowness(measured: &Measured) -> Duration {
     measured.p95.unwrap_or(Duration::MAX)
 }
 
+/// How loud a card hears its own access point: the fainter of the scan's
+/// signal and the station's own, as the scan's may be minutes old.
+pub fn heard(measured: &Measured, signal: i16) -> i32 {
+    measured
+        .signal
+        .map_or(i32::from(signal), |live| live.min(i32::from(signal)))
+}
+
 /// Whether one access point carried far quicker than another, and lost no
 /// more.
 fn quicker(theirs: &Measured, ours: &Measured) -> bool {
@@ -1029,6 +1044,25 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_wider_band_kept_off_two_narrower_ones_names_the_quickest() {
+        let mut chooser = Chooser::default();
+        let on = ("6c:ae:f6:ba:85:86", &idle_on_ch52(34, 10), -38, CH52);
+        let quicker = Other {
+            point: "6c:ae:f6:c1:84:27".into(),
+            measured: Some(idle_on_ch52(8, 10)),
+            ..far_on_ch6()
+        };
+
+        chooser.choose(Instant::now(), on, &[far_on_ch6(), quicker], false);
+
+        assert_eq!(
+            chooser.began_keeping_wide(),
+            Some("6c:ae:f6:c1:84:27".to_owned()),
+            "8 ms is the one it would have tried, not 11 heard first"
+        );
+    }
+
+    #[test]
     fn a_wider_band_kept_to_where_nothing_narrower_would_have_been_tried_says_nothing() {
         let mut chooser = Chooser::default();
         let on = ("6c:ae:f6:ba:85:86", &idle_on_ch52(12, 10), -38, CH52);
@@ -1094,7 +1128,7 @@ pub(crate) mod tests {
     fn a_wider_band_unechoed_or_fading_on_its_own_station_doesnt_hold() {
         let point = "6c:ae:f6:ba:85:86";
         let unechoed = Measured {
-            echoes: 0,
+            echoes: 60,
             ..idle_on_ch52(52, 24)
         };
         let fading = Measured {
@@ -1110,7 +1144,7 @@ pub(crate) mod tests {
         assert_eq!(
             judged(&unechoed),
             far,
-            "a span with no echoes says nothing of loss"
+            "half a span's echoes, the rest unsent, says little of loss"
         );
         assert_eq!(
             judged(&fading),

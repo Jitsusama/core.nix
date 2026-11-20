@@ -255,12 +255,15 @@ fn kept_off(on: &Joined, unreached: &str) -> String {
 }
 
 /// Why a card keeps to its wider band where it would once have tried a
-/// narrower one.
+/// narrower one, heard as the hold heard it.
 fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> String {
     format!(
         "{} keeps to {} on its wider band rather than try {narrower}, as it loses {:.1}% \
-         heard at {signal} dBm",
-        on.card, on.point, measured.lost
+         heard at {} dBm",
+        on.card,
+        on.point,
+        measured.lost,
+        choose::heard(measured, signal)
     )
 }
 
@@ -721,6 +724,15 @@ mod tests {
                  heard at -38 dBm"
             )),
             "a wider band kept to says what and why: {why}"
+        );
+        let fainter = Measured {
+            signal: Some(-61),
+            ..carried(34)
+        };
+        let why = kept_wide(&joined(DESK), &fainter, -38, HALL);
+        assert!(
+            why.ends_with("heard at -61 dBm"),
+            "it says the station's own signal where fainter than the scan's: {why}"
         );
     }
 
