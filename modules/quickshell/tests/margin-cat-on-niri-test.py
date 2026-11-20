@@ -79,6 +79,9 @@ HELD = 2.0
 # it takes, but a loaded builder's nested niri has taken up to 160 ms between two (2026-11-19),
 # and a few such frames mustn't fail it.
 HELD_AHEAD = HELD * 1000 / 2
+# The shell's windows that draw nothing of their own while the launcher is up, by the names
+# Frames.qml counts them under: a frame each drew is the whole scene's, not the cat's.
+STILL_WINDOWS = {"notices", "talk-line", "wallpaper winit"}
 # How long, in seconds, the cat may take to tell of its walk once it sits: it waits up to 2 s
 # for niri's answers on the frames still on their way (MarginCatShown.js's ANSWERS).
 TOLD = 5.0
@@ -392,7 +395,7 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     held = shell.mark()
     shell.as_account(f"{counting(shell)} start")
     time.sleep(HELD)
-    drew, drawn = cat_frames(shell)
+    drew, drawn = cat_frames_of_its_own(shell)
     under, _ = shell.said_since(held)
     before = steps(shell, since)
     said, _ = shell.said_since(since)
@@ -416,7 +419,7 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     # The walk that brought it to the third column tells of itself before this one's first
     # step, so this one's telling is read from its walking on.
     told = walked_report(shell, toggled)
-    assert drew <= 1, f"the cat drew {drew} frames under the launcher: {drawn}"
+    assert drew <= 1, f"the cat drew {drew} frames of its own under the launcher: {drawn}"
     assert before, "the cat took no step before the launcher opened"
     last = before[-1]
     assert after, "the cat took no step once the launcher closed, its walk done before it opened"
@@ -456,7 +459,7 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
         f"run out before the card rose, the case's timing and not the cat's: {early[:3]}"
     )
     time.sleep(RESTS + HELD)
-    drew, drawn = cat_frames(shell)
+    drew, drawn = cat_frames_of_its_own(shell)
     under = steps(shell, since)
     # The walk before tells of itself as this one sets off, under the card, so this one's
     # telling is read from here.
@@ -469,7 +472,7 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     assert not under, f"the cat walked under the launcher: {under[:3]}"
     # Its walk set off under the card is started and held at once, and the start has asked
     # its window for the one frame niri draws it at its seat (2026-11-19, round 6's run).
-    assert drew <= 1, f"the cat drew {drew} frames under the launcher: {drawn}"
+    assert drew <= 1, f"the cat drew {drew} frames of its own under the launcher: {drawn}"
     assert after, "the cat took no step once the launcher closed"
     assert after[0]["walk"]["t"] <= HELD_AHEAD, (
         f"the cat's first step came {after[0]['walk']['t']} ms into its walk"
@@ -679,6 +682,19 @@ def cat_frames(shell: Shell) -> tuple[int, Json]:
     """Give the frames the cat's windows drew since the count started, and every window's."""
     drawn = json.loads(shell.as_account(f"{counting(shell)} said"))
     return sum(count for name, count in drawn.items() if name.startswith("cat ")), drawn
+
+
+def cat_frames_of_its_own(shell: Shell) -> tuple[int, Json]:
+    """Give the frames the cat drew beyond those its still neighbours drew, and every window's.
+
+    A loaded builder once had the whole shell draw again under the launcher, the notices, the
+    talk line, the wallpaper and the cat 6 frames each (2026-11-20, cat-niri8), with nothing
+    of the cat's own moving. Windows that never play are the floor: a frame they drew too is
+    the scene's, and only what the cat drew past them is its own.
+    """
+    drew, drawn = cat_frames(shell)
+    still = [count for name, count in drawn.items() if name in STILL_WINDOWS]
+    return max(0, drew - max(still, default=0)), drawn
 
 
 def test_the_cat_dozes_off_with_no_keys_drawing_nothing_more(shell: Shell) -> None:
