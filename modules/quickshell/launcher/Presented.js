@@ -276,6 +276,9 @@ function intoKept(keyAt, into, whole) {
 // collection's is the name its place has in the Nix config.
 const keysOwn = ["place:", "category:", "collection:"];
 
+// A kind's word, as the launcher and its daemons write one.
+const kindWord = /^[a-z][a-z0-9-]*$/;
+
 // A row's key as a line in the journal may say it: whole where `whole`,
 // as while reports are on; otherwise only its kind, since most keys carry
 // what someone else wrote, a network's name, a program's or a window's
@@ -294,7 +297,7 @@ function keyShown(key, whole) {
     }
     const kind = key.indexOf(":");
     const said = kind < 0 ? "" : key.slice(0, kind);
-    return /^[a-z][a-z0-9-]*$/.test(said) ? said : "";
+    return kindWord.test(said) ? said : "";
 }
 
 // The row a drawer is for as the journal may say it: by its key, or by
@@ -302,16 +305,19 @@ function keyShown(key, whole) {
 // while reports are on, since a name is what a source wrote. Otherwise
 // such a row is said as `answer`, and one whose key has no kind, as the
 // stopwatch's, as `row`, the launcher's own words, since a daemon's key
-// may be a record's name, as is a row with neither: so a row is never
-// said as `drawer for ""`, and the place it's tallied in tells whose.
+// may be a record's name. A row with neither, or no row at all, is `row`
+// whether reports are on or off: so a drawer is never said as
+// `drawer for ""`, and the place it's tallied in tells whose.
 function rowShown(row, whole) {
+    let said = "";
     if (whole) {
-        return row?.key || row?.name || "";
+        said = row?.key || row?.name;
+    } else if (row?.key) {
+        said = keyShown(row.key, false);
+    } else if (row?.name) {
+        said = "answer";
     }
-    if (row?.key) {
-        return keyShown(row.key, false) || "row";
-    }
-    return !row ? "" : row.name ? "answer" : "row";
+    return said || "row";
 }
 
 // The drawers presented since the launcher opened, a line a place, as a
