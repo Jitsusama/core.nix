@@ -3319,9 +3319,12 @@
     after a new boot or console login, sessions-come-back starts each pi session held before it
     again on the machine, in its own folder, as the pi it ran as with --session and its id, once;
     one that ended while the machine ran, or whose pi died, stays ended; a hold it can't read
-    plainly is passed over and said; a node silent past its limit is stopped; a record it can't
-    read is said; and one whose folder isn't there or that the node refuses is tried again for a
-    quarter of an hour
+    plainly is passed over and said once; the machine is the one most sessions name; a node
+    silent past its limit is stopped with all it started; a record it can't read is set aside
+    and said, one kept more than four days before brings nothing back, and one is kept before
+    any start; one whose folder isn't there or that the node refuses is tried again for a
+    quarter of an hour, and one it gave no answer for waits five minutes first; and a run beside
+    another leaves the realm to it
   '';
   sessions-come-back-passes-clippy = ''
     clippy finds nothing in sessions-come-back or its tests

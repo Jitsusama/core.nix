@@ -21,7 +21,9 @@
 //! A session whose folder isn't there, or that the node won't start yet,
 //! as while it's still linking after the boot, is tried again each run,
 //! for a quarter of an hour, since pi started elsewhere would ask to fork
-//! it.
+//! it. A record last kept more than four days before the boot brings
+//! nothing back, since what it held is from long ago; removing a realm's
+//! record keeps its sessions from coming back at all.
 //!
 //!   sessions-come-back MYCELIUM REALM...    keeps, or brings back, each realm's sessions
 //!
@@ -29,14 +31,19 @@
 //! help, and a failure that says what to try.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io::Read;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
-use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::process::{Command, ExitCode};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
+
+mod machine;
+use machine::{Unheard, era, runs, within};
+#[cfg(test)]
+use machine::{console_login, era_of};
 
 /// How many runs a session waits to be started again before it's left,
 /// a quarter of an hour at one a minute: past that, the node isn't coming,
@@ -46,6 +53,16 @@ const TRIES: u32 = 15;
 /// How many runs in a row a session goes unseen before it counts as ended
 /// while the machine ran, rather than by the shutdown a run caught midway.
 const GONE: u32 = 3;
+
+/// How long before a new boot or login the record may last have been kept
+/// and still bring its sessions back: a long weekend with the machine off.
+/// Past it, a record left from before a rollback or a long outage would
+/// start sessions from long ago.
+const STALE: u64 = 4 * 24 * 60 * 60;
+
+/// How long a start the node gave no answer to waits before it's asked
+/// again, since the node may have started it and not yet say it holds it.
+const QUIET: u64 = 5 * 60;
 
 /// How long the node has to say what it holds: a run is due again in a
 /// minute, and launchd starts none while one still runs.
@@ -72,11 +89,14 @@ fn plain_pi() -> String {
     "pi".into()
 }
 
-/// One waiting to be started again, with the runs it has waited.
+/// One waiting to be started again, with the runs it has waited, and
+/// when a start of it last went unanswered.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Waiting {
     session: Session,
     tries: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unanswered: Option<u64>,
 }
 
 /// One held lately but not at the last runs, with how many in a row.
@@ -91,6 +111,9 @@ struct Unseen {
 struct Kept {
     /// Which boot and which login the sessions were seen in.
     era: String,
+    /// When they were seen, in seconds since 1970.
+    #[serde(default)]
+    looked: u64,
     /// The machine's name in the realm, which a start names to land here.
     machine: Option<String>,
     /// The sessions held here at the last run.
@@ -102,6 +125,9 @@ struct Kept {
     /// The sessions a reboot or a new login ended, still to be started.
     #[serde(default)]
     waiting: Vec<Waiting>,
+    /// What the last run passed over, so each is said once, not each minute.
+    #[serde(default)]
+    passed: Vec<String>,
 }
 
 /// What the node holds here now: the machine's name and its pi sessions,
@@ -114,16 +140,16 @@ struct Held {
 }
 
 /// A line of `mycelium holds`: a program a holder keeps on this machine,
-/// and the pid it runs as, which a holder whose program died keeps.
+/// and the pid it runs as, 0 while it's parked or gone, as cadence reads
+/// the same lines.
 #[derive(Debug, Deserialize)]
 struct Hold {
     id: String,
-    #[serde(default)]
     command: Vec<String>,
     #[serde(default)]
     folder: String,
     #[serde(default)]
-    pid: Option<u32>,
+    pid: u32,
     #[serde(default)]
     parked: bool,
 }
@@ -136,11 +162,14 @@ struct Listed {
     held: Option<String>,
     #[serde(default)]
     machine: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
 }
 
+/// A listing's answer, which says `Sessions` whenever it's one.
 #[derive(Debug, Deserialize)]
 struct Listing {
-    #[serde(rename = "Sessions", default)]
+    #[serde(rename = "Sessions")]
     sessions: Vec<Listed>,
 }
 
@@ -158,28 +187,57 @@ fn pi_of(command: &[String]) -> Option<&'static str> {
     PIS.into_iter().find(|pi| name == *pi)
 }
 
-/// Whether an id can only be read as one, since it's passed to a command
+/// Whether a word can only be read as one, since it's passed to a command
 /// on another's behalf: letters, digits and `-`, `_` and `.`, not first.
-fn plain(id: &str) -> bool {
-    !id.is_empty()
-        && !id.starts_with(['-', '.'])
-        && id
+fn plain(word: &str) -> bool {
+    !word.is_empty()
+        && !word.starts_with(['-', '.'])
+        && word
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
+/// Whether a hold's pi still runs: one parked holds its session, and one
+/// whose pid is 0, or no longer runs, holds nothing.
+fn holds_its_pi(hold: &Hold, runs: impl Fn(u32) -> bool) -> bool {
+    hold.parked || (hold.pid > 0 && runs(hold.pid))
+}
+
+/// The machine most of the sessions held here name, since a hold's id is
+/// joined to a listing every machine of the realm writes to, and one
+/// entry, mistaken or not, mustn't say where every start goes. None when
+/// no machine is named by more than any other.
+fn most_named<'a>(named: impl Iterator<Item = &'a str>) -> Option<String> {
+    let mut counts = BTreeMap::<&str, usize>::new();
+    for machine in named {
+        *counts.entry(machine).or_default() += 1;
+    }
+    let most = *counts.values().max()?;
+    let mut leaders = counts.into_iter().filter(|&(_, count)| count == most);
+    match (leaders.next(), leaders.next()) {
+        (Some((machine, _)), None) => Some(machine.into()),
+        _ => None,
+    }
+}
+
 /// The pi sessions held here, joining the holds this machine keeps to the
-/// node's sessions by the hold's id, for the session's own id. A hold
+/// node's live sessions by the hold's id, for the session's own id. A hold
 /// whose pi has died and isn't parked holds nothing. A line that isn't a
-/// hold, a hold with no folder, one more than one session names, one
-/// naming another machine than the rest and an id that isn't plain are
-/// passed over and said, so the rest are kept.
+/// hold, a hold with no folder, one more than one live session names, an
+/// id or machine that isn't plain, and a session naming another machine
+/// than most do are passed over and said, so the rest are kept.
 fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held, String> {
     let listing = match serde_json::from_str::<Answer>(sessions).map_err(|e| e.to_string())? {
         Answer::Ok(listing) => listing,
         Answer::Err(why) => return Err(format!("the node said {why}")),
     };
+    let live: Vec<&Listed> = listing
+        .sessions
+        .iter()
+        .filter(|listed| listed.state.as_deref() != Some("ended"))
+        .collect();
     let mut found = Held::default();
+    let mut joined = Vec::new();
     for line in holds.lines().filter(|line| !line.trim().is_empty()) {
         let hold: Hold = match serde_json::from_str(line) {
             Ok(hold) => hold,
@@ -193,7 +251,7 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
         let Some(program) = pi_of(&hold.command) else {
             continue;
         };
-        if !hold.parked && hold.pid.is_some_and(|pid| !runs(pid)) {
+        if !holds_its_pi(&hold, &runs) {
             continue;
         }
         if hold.folder.is_empty() {
@@ -202,9 +260,9 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
                 .push(format!("hold {} names no folder", hold.id));
             continue;
         }
-        let named: Vec<&Listed> = listing
-            .sessions
+        let named: Vec<&Listed> = live
             .iter()
+            .copied()
             .filter(|listed| listed.held.as_deref() == Some(hold.id.as_str()))
             .collect();
         let listed = match named.as_slice() {
@@ -223,41 +281,60 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
                 .push(format!("hold {}'s session id isn't plain", hold.id));
             continue;
         }
-        match (&found.machine, &listed.machine) {
-            (None, machine) => found.machine.clone_from(machine),
-            (Some(here), Some(there)) if here != there => {
-                found.passed.push(format!(
-                    "{} names {there}, not {here}, as its machine",
-                    listed.id
-                ));
-                continue;
-            }
-            _ => {}
-        }
-        found.sessions.push(Session {
+        let Some(machine) = listed.machine.as_deref().filter(|m| plain(m)) else {
+            found
+                .passed
+                .push(format!("{} names no plain machine", listed.id));
+            continue;
+        };
+        let session = Session {
             id: listed.id.clone(),
             folder: hold.folder,
             program: program.into(),
-        });
+        };
+        joined.push((machine, session));
+    }
+    found.machine = most_named(joined.iter().map(|(machine, _)| *machine));
+    for (machine, session) in joined {
+        match &found.machine {
+            Some(here) if here == machine => found.sessions.push(session),
+            Some(here) => found.passed.push(format!(
+                "{} names {machine}, not {here}, as its machine",
+                session.id
+            )),
+            None => found.passed.push(format!(
+                "{} names {machine}, and no machine is named by most of them",
+                session.id
+            )),
+        }
     }
     Ok(found)
 }
 
-/// What to keep after this run's look, before any start: what's held now,
-/// and what's waiting, which a newer boot or login fills with what was
-/// held before it. A session held again no longer waits.
-fn next(kept: Option<Kept>, era: &str, now: &Held) -> Kept {
+/// Whether a record kept in another era was last kept too long before it
+/// to bring back what it held.
+fn stale(before: &Kept, era: &str, at: u64) -> bool {
+    before.era != era && at.saturating_sub(before.looked) > STALE
+}
+
+/// What to keep after this run's look, at `at`, before any start: what's
+/// held now, and what's waiting, which a newer boot or login fills with
+/// what was held before it, unless that was kept too long before. A
+/// session held again no longer waits.
+fn next(kept: Option<Kept>, era: &str, now: &Held, at: u64) -> Kept {
     let Some(before) = kept else {
         return Kept {
             era: era.into(),
+            looked: at,
             machine: now.machine.clone(),
             sessions: now.sessions.clone(),
-            unseen: Vec::new(),
-            waiting: Vec::new(),
+            passed: now.passed.clone(),
+            ..Kept::default()
         };
     };
     let held_now = |id: &str| now.sessions.iter().any(|s| s.id == id);
-    let mut waiting = before.waiting;
+    let is_stale = stale(&before, era, at);
+    let mut waiting = if is_stale { Vec::new() } else { before.waiting };
     let mut unseen = Vec::new();
     if before.era == era {
         let missed = before
@@ -273,34 +350,54 @@ fn next(kept: Option<Kept>, era: &str, now: &Held) -> Kept {
                 });
             }
         }
-    } else {
+    } else if !is_stale {
         let lately = before.unseen.into_iter().map(|u| u.session);
         for session in before.sessions.into_iter().chain(lately) {
             if !waiting.iter().any(|w| w.session.id == session.id) {
-                waiting.push(Waiting { session, tries: 0 });
+                waiting.push(Waiting {
+                    session,
+                    tries: 0,
+                    unanswered: None,
+                });
             }
         }
     }
     waiting.retain(|w| !held_now(&w.session.id));
     Kept {
         era: era.into(),
+        looked: at,
         machine: now.machine.clone().or(before.machine),
         sessions: now.sessions.clone(),
         unseen,
         waiting,
+        passed: now.passed.clone(),
     }
 }
 
-/// Starts each waiting session whose folder is there, and says what it
-/// did with each. One started waits no more; one whose folder isn't there
-/// or that the node wouldn't start waits for another run, up to TRIES.
+/// What a start's ask came to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Start {
+    Started,
+    /// The node said no, or the folder wasn't there: try again next run.
+    Refused(String),
+    /// The node said nothing in time, and may have started it.
+    Unanswered(String),
+}
+
+/// Starts each waiting session whose folder is there, at `at`, and says
+/// what it did with each. One started waits no more; one whose folder
+/// isn't there or that the node wouldn't start waits for another run, up
+/// to TRIES; one the node gave no answer for waits QUIET before it's asked
+/// again. What the record says is checked again before it's run, as what
+/// the node said was.
 fn bring_back(
     kept: &mut Kept,
+    at: u64,
     there: impl Fn(&str) -> bool,
-    mut start: impl FnMut(&str, &Session) -> Result<(), String>,
+    mut start: impl FnMut(&str, &Session) -> Start,
     mut say: impl FnMut(String),
 ) {
-    let Some(machine) = kept.machine.clone() else {
+    let Some(machine) = kept.machine.clone().filter(|m| plain(m)) else {
         if !kept.waiting.is_empty() {
             say("no session has said which machine this is, so none is started yet".into());
         }
@@ -308,19 +405,43 @@ fn bring_back(
     };
     kept.waiting.retain_mut(|waiting| {
         let session = &waiting.session;
-        let why = if there(&session.folder) {
-            match start(&machine, session) {
-                Ok(()) => {
-                    say(format!(
-                        "{} started again in {}",
-                        session.id, session.folder
-                    ));
-                    return false;
-                }
-                Err(why) => why,
-            }
+        if !plain(&session.id) || !PIS.contains(&session.program.as_str()) {
+            say(format!(
+                "passed over: the record's {:?}, as {:?}, isn't a pi session",
+                session.id, session.program
+            ));
+            return false;
+        }
+        if waiting
+            .unanswered
+            .is_some_and(|asked| at.saturating_sub(asked) < QUIET)
+        {
+            return true;
+        }
+        let outcome = if there(&session.folder) {
+            start(&machine, session)
         } else {
-            format!("its folder, {}, isn't there", session.folder)
+            Start::Refused(format!("its folder, {}, isn't there", session.folder))
+        };
+        let why = match outcome {
+            Start::Started => {
+                say(format!(
+                    "{} started again in {}",
+                    session.id, session.folder
+                ));
+                return false;
+            }
+            Start::Refused(why) => {
+                waiting.unanswered = None;
+                why
+            }
+            Start::Unanswered(why) => {
+                waiting.unanswered = Some(at);
+                format!(
+                    "{why}, so it may yet start; it's asked again in {} min",
+                    QUIET / 60
+                )
+            }
         };
         waiting.tries += 1;
         let left = waiting.tries < TRIES;
@@ -371,47 +492,14 @@ fn recall(text: Option<&str>) -> Result<Option<Kept>, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Which boot and login this is: a Mac's boot session uuid and its
-/// console login, from `who`, or Linux's boot id. A clock step changes
-/// neither, and a login starting over changes the second.
-fn era() -> Result<String, Failure> {
-    let unread = |why: String| {
-        Failure::new(Exit::Unavailable, "it couldn't read which boot this is").because(why)
-    };
-    if let Ok(id) = fs::read_to_string("/proc/sys/kernel/random/boot_id") {
-        return Ok(id.trim().into());
+/// A realm's record as text, none only when there is none: a record that
+/// can't be read, as one a crash left in bytes that aren't text, is said.
+fn read_record(file: &Path) -> Result<Option<String>, String> {
+    match fs::read_to_string(file) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
     }
-    let uuid = within(
-        Command::new("/usr/sbin/sysctl").args(["-n", "kern.bootsessionuuid"]),
-        LOOK_WITHIN,
-    )
-    .map_err(unread)?;
-    let who = within(&mut Command::new("/usr/bin/who"), LOOK_WITHIN).map_err(unread)?;
-    let user = env::var("USER").unwrap_or_default();
-    let login = console_login(&who, &user).unwrap_or_default();
-    Ok(format!("{} {login}", uuid.trim()))
-}
-
-/// When the account logged in at the console, from `who`'s line for it:
-/// `someone      console      Nov 19 12:42`.
-fn console_login(who: &str, user: &str) -> Option<String> {
-    who.lines().find_map(|line| {
-        let mut words = line.split_whitespace();
-        (words.next() == Some(user) && words.next() == Some("console"))
-            .then(|| words.collect::<Vec<_>>().join(" "))
-    })
-}
-
-/// Whether a process runs: Linux's /proc, or a Mac's `kill -0`.
-fn runs(pid: u32) -> bool {
-    if Path::new("/proc/self").exists() {
-        return Path::new(&format!("/proc/{pid}")).exists();
-    }
-    within(
-        Command::new("/bin/kill").args(["-0", &pid.to_string()]),
-        LOOK_WITHIN,
-    )
-    .is_ok()
 }
 
 /// Where each realm's record is kept.
@@ -426,62 +514,11 @@ fn state() -> Result<PathBuf, Failure> {
     Ok(base.join("sessions-come-back"))
 }
 
-/// What a command printed, or why it couldn't say: it failed, or gave no
-/// answer in time, and was stopped, so a node that hangs holds up no run.
-fn within(command: &mut Command, limit: Duration) -> Result<String, String> {
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    let drain = |pipe: Option<Box<dyn Read + Send>>| {
-        thread::spawn(move || {
-            let mut text = String::new();
-            if let Some(mut pipe) = pipe {
-                let _ = pipe.read_to_string(&mut text);
-            }
-            text
-        })
-    };
-    let out = drain(
-        child
-            .stdout
-            .take()
-            .map(|p| Box::new(p) as Box<dyn Read + Send>),
-    );
-    let err = drain(
-        child
-            .stderr
-            .take()
-            .map(|p| Box::new(p) as Box<dyn Read + Send>),
-    );
-    let deadline = Instant::now() + limit;
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("no answer within {} s", limit.as_secs()));
-        }
-        thread::sleep(Duration::from_millis(50));
-    };
-    let out = out.join().unwrap_or_default();
-    if status.success() {
-        Ok(out)
-    } else {
-        Err(err.join().unwrap_or_default().trim().to_string())
-    }
-}
-
-/// A mycelium command's answer in a realm.
-fn ask(mycelium: &str, realm: &str, words: &[String], limit: Duration) -> Result<String, String> {
-    within(
-        Command::new(mycelium).args(["--realm", realm]).args(words),
-        limit,
-    )
+/// Now, in seconds since 1970.
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }
 
 /// Now, as a log line's stamp: `2026-11-19T23:14:01Z`.
@@ -505,102 +542,161 @@ fn stamp(seconds: u64) -> String {
     )
 }
 
-/// Says a line in the agent's log, stamped and named by its realm.
-fn say(realm: &str, line: &str) {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
-    eprintln!("{} {realm}: {line}", stamp(now));
+/// A log line as one line, whatever the node or a peer put in it: a
+/// control character, a line break among them, is written as its escape,
+/// so nothing said can pass for a line of the log's own.
+fn one_line(line: &str) -> String {
+    line.chars()
+        .map(|c| {
+            if c.is_control() {
+                c.escape_default().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
 }
 
-/// Writes a realm's record whole, or not at all.
+/// Says a line in the agent's log, stamped and named by its realm.
+fn say(realm: &str, line: &str) {
+    eprintln!("{} {}: {}", stamp(now()), one_line(realm), one_line(line));
+}
+
+/// Writes a realm's record whole, or not at all, and on the disk before
+/// it takes the old one's place, since the restarts it's for include
+/// those with no clean shutdown. One unchanged isn't written again.
 fn keep(file: &Path, kept: &Kept) -> Result<(), Failure> {
     let unkept = |why: String| {
         Failure::new(Exit::Failed, "it couldn't keep the sessions")
             .because(why)
             .try_this(format!("check that {} can be written", file.display()))
     };
+    let text = serde_json::to_string_pretty(kept).map_err(|e| unkept(e.to_string()))?;
+    if fs::read_to_string(file).is_ok_and(|was| was == text) {
+        return Ok(());
+    }
     if let Some(folder) = file.parent() {
         fs::create_dir_all(folder).map_err(|e| unkept(e.to_string()))?;
     }
-    let text = serde_json::to_string_pretty(kept).map_err(|e| unkept(e.to_string()))?;
     let partial = file.with_extension("json.partial");
-    fs::write(&partial, text).map_err(|e| unkept(e.to_string()))?;
+    let mut written = fs::File::create(&partial).map_err(|e| unkept(e.to_string()))?;
+    written
+        .write_all(text.as_bytes())
+        .and_then(|()| written.sync_all())
+        .map_err(|e| unkept(e.to_string()))?;
     fs::rename(&partial, file).map_err(|e| unkept(e.to_string()))
 }
 
-/// One realm's run: look, keep, and start what a reboot or a new login
-/// ended. What's waiting is kept before any start, so a run that couldn't
-/// keep it starts nothing a later run would start again.
-fn run_realm(mycelium: &str, realm: &str, era: &str, folder: &Path) -> Result<(), Failure> {
-    let unanswered = |why: String| {
-        Failure::new(
+/// Asks a realm's node, within a limit, what the words ask.
+type Ask<'a> = dyn Fn(&[String], Duration) -> Result<String, Unheard> + 'a;
+
+/// What a realm's run reaches beyond itself, so a test can stand in for
+/// the node, the processes and the folders.
+struct World<'a> {
+    ask: &'a Ask<'a>,
+    runs: &'a dyn Fn(u32) -> bool,
+    there: &'a dyn Fn(&str) -> bool,
+    say: &'a dyn Fn(&str),
+}
+
+/// One realm's run, at `at`: look, keep, and start what a reboot or a new
+/// login ended. What's waiting is kept before any start, so a run that
+/// couldn't keep it starts nothing a later run would start again. A run
+/// beside it on the same realm, as one by hand, leaves it to that one.
+fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> Result<(), Failure> {
+    let failed = |exit: Exit, what: &str, why: String| {
+        Failure::new(exit, format!("{what} in the {realm} realm")).because(why)
+    };
+    fs::create_dir_all(folder)
+        .map_err(|e| failed(Exit::Failed, "it couldn't keep the sessions", e.to_string()))?;
+    let lock = fs::File::create(folder.join(format!("{realm}.lock")))
+        .map_err(|e| failed(Exit::Failed, "it couldn't keep the sessions", e.to_string()))?;
+    if lock.try_lock().is_err() {
+        (world.say)("another run is keeping it, so this one leaves it");
+        return Ok(());
+    }
+    let unanswered = |why: Unheard| {
+        failed(
             Exit::TryAgain,
-            format!("the {realm} realm's node didn't say what it holds"),
+            "the node didn't say what it holds",
+            why.to_string(),
         )
-        .because(why)
         .try_this(format!("mycelium --realm {realm} holds"))
     };
-    let holds = ask(mycelium, realm, &["holds".into()], LOOK_WITHIN).map_err(unanswered)?;
-    let sessions = ask(mycelium, realm, &["sessions".into()], LOOK_WITHIN).map_err(unanswered)?;
-    let now = held(&holds, &sessions, runs).map_err(|why| {
-        Failure::new(Exit::BadInput, "the node's sessions couldn't be read").because(why)
-    })?;
-    for line in &now.passed {
-        say(realm, &format!("passed over: {line}"));
-    }
+    let holds = (world.ask)(&["holds".into()], LOOK_WITHIN).map_err(unanswered)?;
+    let sessions = (world.ask)(&["sessions".into()], LOOK_WITHIN).map_err(unanswered)?;
+    let now = held(&holds, &sessions, world.runs)
+        .map_err(|why| failed(Exit::BadInput, "the node's sessions couldn't be read", why))?;
     let file = folder.join(format!("{realm}.json"));
-    let text = fs::read_to_string(&file).ok();
-    let before = recall(text.as_deref()).unwrap_or_else(|why| {
-        let aside = file.with_extension("json.unread");
-        say(
-            realm,
-            &format!(
+    let before = read_record(&file)
+        .and_then(|text| recall(text.as_deref()))
+        .unwrap_or_else(|why| {
+            let aside = file.with_extension("json.unread");
+            (world.say)(&format!(
                 "its record couldn't be read ({why}), so it's set aside as {} and kept afresh",
                 aside.display()
-            ),
-        );
-        let _ = fs::rename(&file, &aside);
-        None
-    });
-    let mut kept = next(before, era, &now);
-    keep(&file, &kept)?;
+            ));
+            let _ = fs::rename(&file, &aside);
+            None
+        });
+    let said_before = before
+        .as_ref()
+        .map(|b| b.passed.clone())
+        .unwrap_or_default();
+    for line in now.passed.iter().filter(|line| !said_before.contains(line)) {
+        (world.say)(&format!("passed over: {line}"));
+    }
+    if let Some(before) = before.as_ref().filter(|before| stale(before, era, at)) {
+        (world.say)(&format!(
+            "its record was last kept {} h before this boot or login, too long to bring back \
+             what it held",
+            at.saturating_sub(before.looked) / 3600
+        ));
+    }
+    let mut kept = next(before, era, &now, at);
+    keep(&file, &kept).map_err(|f| f.because(format!("in the {realm} realm")))?;
     if kept.waiting.is_empty() {
         return Ok(());
     }
     bring_back(
         &mut kept,
-        |folder| Path::new(folder).is_dir(),
-        |machine, session| {
-            let said = ask(
-                mycelium,
-                realm,
-                &start_words(machine, session),
-                START_WITHIN,
-            )?;
-            if started(&said) {
-                Ok(())
-            } else {
-                Err(said.trim().to_string())
-            }
+        at,
+        world.there,
+        |machine, session| match (world.ask)(&start_words(machine, session), START_WITHIN) {
+            Ok(said) if started(&said) => Start::Started,
+            Ok(said) => Start::Refused(said.trim().to_string()),
+            Err(late @ Unheard::Late(_)) => Start::Unanswered(late.to_string()),
+            Err(why) => Start::Refused(why.to_string()),
         },
-        |line| say(realm, &line),
+        |line| (world.say)(&line),
     );
-    keep(&file, &kept)
+    keep(&file, &kept).map_err(|f| f.because(format!("in the {realm} realm")))
 }
 
 /// Every realm's run, each on its own, so one realm's node being away
 /// keeps none of the others' sessions from coming back. Each failure is
-/// said; the first is what the run ends with.
+/// said, stamped and named by its realm; the first is what the run ends
+/// with.
 fn run(mycelium: &str, realms: &[String]) -> Result<(), Failure> {
     let era = era()?;
     let folder = state()?;
     let mut failed = None;
     for realm in realms {
-        if let Err(failure) = run_realm(mycelium, realm, &era, &folder) {
-            if failed.is_some() {
-                say(realm, &failure.to_string());
-            }
+        let ask = |words: &[String], limit: Duration| {
+            within(
+                Command::new(mycelium).args(["--realm", realm]).args(words),
+                limit,
+            )
+        };
+        let speak = |line: &str| say(realm, line);
+        let world = World {
+            ask: &ask,
+            runs: &runs,
+            there: &|folder| Path::new(folder).is_dir(),
+            say: &speak,
+        };
+        if let Err(failure) = run_realm(realm, &era, &folder, now(), &world) {
+            say(realm, &failure.to_string());
             failed.get_or_insert(failure);
         }
     }
@@ -616,6 +712,10 @@ fn help() -> Help {
     .example(
         "sessions-come-back mycelium work",
         "what its agent runs each minute, keeping or bringing back the work realm's sessions",
+    )
+    .example(
+        "rm ~/.local/state/sessions-come-back/work.json",
+        "keeps the work realm's sessions from coming back after the next reboot",
     )
     .exit(Exit::Failed, "it couldn't keep the sessions")
     .exit(Exit::BadInput, "the node's sessions couldn't be read")
