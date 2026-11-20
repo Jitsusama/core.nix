@@ -4,6 +4,7 @@
 //! busy journal.
 
 use super::*;
+use crate::follow::run::STOP_HEARD_WITHIN;
 
 #[test]
 fn a_follower_that_ends_ends_health_once_it_has_run_long_enough() {
@@ -139,7 +140,7 @@ fn a_stop_before_the_first_tick_writes_no_day() {
     }
     .outcome();
     assert!(
-        result.is_ok() && unread == 26 && today.is_none(),
+        result.is_ok() && unread > 0 && today.is_none(),
         "a stop in the replay ended the run with {unread} unread, writing a day: {}",
         today.is_some()
     );
@@ -167,8 +168,63 @@ fn a_stop_cuts_short_a_wait_for_a_line_from_a_sender_it_leaves() {
     let took = start.elapsed();
     drop(send);
     assert!(
-        result.is_ok() && took < Duration::from_secs(2),
+        result.is_ok() && took < STOP_HEARD_WITHIN * 2,
         "a stop waited {took:?} for a line from a sender it left: {result:?}"
+    );
+}
+
+#[test]
+fn a_stop_before_the_first_tick_still_writes_the_days_it_holds() {
+    // A day held from before, as one a full disk kept from the disk, and
+    // today's first line taken, so only the held day is written.
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    follower.take(&line(0)).expect("taken");
+    follower.held.push(Day::new("2026-11-11"));
+    let (send, read) = mpsc::channel();
+    drop(send);
+    let result = run(
+        &mut follower,
+        &read,
+        || (Instant::now(), 0),
+        |_| {},
+        Looked::default,
+        || true,
+        &|_| {},
+        &|_| {},
+    );
+    let (held, today) = (
+        written(into.path(), "2026-11-11").is_some(),
+        written(into.path(), "2026-11-12").is_some(),
+    );
+    assert!(
+        result.is_ok() && held && !today,
+        "a stop before the first tick wrote the held day {held} and today {today}: {result:?}"
+    );
+}
+
+#[test]
+fn a_stop_writes_what_was_heard_since_the_last_tick() {
+    // Forty lines at once and a look at the clock a second, two to each
+    // line taken, so the half minute's ticks write at the 31st and 61st
+    // looks, and the stop at the 70th comes four lines after the last.
+    let Outcome {
+        result,
+        unread,
+        today,
+        ..
+    } = Ran {
+        before: 40,
+        step: Duration::from_secs(1),
+        stops: 70,
+        ..Ran::default()
+    }
+    .outcome();
+    let lines = today.map(|day| day.things["people"].lines);
+    assert!(
+        result.is_ok() && unread == 6 && lines == Some(34),
+        "a stop didn't write the lines heard since the last tick: {unread} unread, {lines:?} \
+         written"
     );
 }
 

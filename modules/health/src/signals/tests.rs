@@ -355,6 +355,11 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
         "a stop to health's group didn't end health by its signal ({ended}), left its \
          follower running, had it say its end, or didn't wait for the day's write"
     );
+    assert!(
+        !stopped.failed().contains(UNWRITTEN),
+        "a stop to health's group said the day went unwritten though its run returned: {}",
+        stopped.failed()
+    );
 }
 
 #[test]

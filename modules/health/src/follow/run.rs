@@ -12,8 +12,15 @@ use crate::lid::Looked;
 /// How long a wait for a line goes before `run` looks for a stop again:
 /// the day's replay holds senders a stop doesn't end, as its histories
 /// aren't followers, and its merge may send nothing for a while, so a
-/// wait for its next line could outlast the stop's `WRITES_WITHIN`.
-const STOP_HEARD_WITHIN: Duration = Duration::from_millis(500);
+/// wait for its next line could outlast the stop's `WRITES_WITHIN`. A
+/// second, so an idle health wakes no more than once a second for it.
+pub(super) const STOP_HEARD_WITHIN: Duration = Duration::from_secs(1);
+
+// A stop heard no sooner than the stop's bound would end health unwritten.
+const _: () = assert!(
+    STOP_HEARD_WITHIN.as_millis() * 2 <= crate::signals::WRITES_WITHIN.as_millis(),
+    "a stop could be heard too late to write the day within the stop's bound"
+);
 
 /// Take the followers' lines until one has ended, which its `None` says,
 /// and health has run `SETTLED` by `now`, the awake clock and the wall's,
