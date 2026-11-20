@@ -5,9 +5,11 @@
 //! (`dictation::wer`).
 //!
 //! Each of the reference's lines is also heard alone, cut from its side
-//! where the reference says it was said, so what the model mishears is
-//! told apart from what the way a call is written down loses: the gap
-//! between the two is the cutting, the sifting and the echo filter's.
+//! where the reference says it was said, none longer than a take: a
+//! second reading, with no cutting, sifting or echo filter but no context
+//! either. It's no floor for the model alone, since a clip also hears
+//! whoever talks over its speaker; the gap between the two readings says
+//! what context and the cutting are worth, a side at a time.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -15,7 +17,7 @@ use std::path::Path;
 use dictation::parakeet::RATE;
 use dictation::transcript::{self, Line, Side, markdown};
 use dictation::wav;
-use dictation::wer::{Errors, words};
+use dictation::wer::{Errors, said, words};
 
 use crate::said;
 use crate::{Settings, takes};
@@ -73,22 +75,22 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<f64>) -> Result<(), Strin
                 let (from, to) = (samples(line.start - AROUND), samples(line.end + AROUND));
                 let clip = &sound[from.min(sound.len())..to.min(sound.len())];
                 let (text, _) = speech.transcribe(clip)?;
-                scored.alone[index(side)] += Errors::count(&words(&line.text), &words(&text));
+                scored.alone[index(side)] += Errors::count(&said(&line.text), &words(&text));
             }
         }
         let written = transcript::read(&markdown(&lines, "Me"));
         for side in [Side::Mine, Side::Theirs] {
-            let said: Vec<String> = reference
+            let spoken: Vec<String> = reference
                 .iter()
                 .filter(|line| whose(line, mine) == side)
-                .flat_map(|line| words(&line.text))
+                .flat_map(|line| said(&line.text))
                 .collect();
             let heard: Vec<String> = written
                 .iter()
                 .filter(|line| line.side == side)
                 .flat_map(|line| words(&line.text))
                 .collect();
-            scored.written[index(side)] = Errors::count(&said, &heard);
+            scored.written[index(side)] = Errors::count(&spoken, &heard);
         }
         println!("{}", report(name, &scored));
         for i in 0..2 {
@@ -99,12 +101,22 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<f64>) -> Result<(), Strin
     println!("{}", report("all", &all));
     let mut total = all.written[0];
     total += all.written[1];
+    if total.words == 0 {
+        return Err(format!("{} has no words to hear", set.display()));
+    }
     match ceiling {
         Some(most) if total.rate() > most => Err(format!(
             "it misheard {:.1}% of the words, above the {most:.1}% it may",
             total.rate()
         )),
-        _ => Ok(()),
+        Some(most) => {
+            println!(
+                "it misheard {:.1}% of the words, under the {most:.1}% it may",
+                total.rate()
+            );
+            Ok(())
+        }
+        None => Ok(()),
     }
 }
 

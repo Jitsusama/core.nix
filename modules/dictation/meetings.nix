@@ -5,12 +5,19 @@
 #
 # Each is laid out as a call: one speaker's headset is Joel's side, and the
 # other three, mixed, are the far end's, sent through Opus at 24 kbit/s as
-# Meet sends a voice. A headset hears the whole room, so each is turned
-# down 30 dB wherever its own speaker isn't talking, as the reference
-# times it: otherwise the far end would hear Joel's side, which a call's
-# never does, and every word of his would be counted twice. A folder holds each meeting's two sides and its
-# reference, and `sides` names whose voice is Joel's side in each; the
-# others' are the far end. `call-transcripts score` reads it.
+# Meet sends a voice, each at its own level. A headset hears the whole
+# room, so each is turned down 30 dB wherever its own speaker isn't
+# talking, as the reference times it: otherwise the far end would hear
+# Joel's side, which a call's never does, and every word of his would be
+# counted twice. That stands in for what a call does already, Meet's noise
+# suppression on the far end and the distance between rooms on Joel's, and
+# it leaves room tone and the others 30 dB down rather than silence, so the
+# cutter still finds its own pauses; it does find them more easily than in
+# a noisy room, which a reference call with real Meet sound measures.
+#
+# A folder holds each meeting's two sides and its reference, and `sides`
+# names whose voice is Joel's side in each; the others' are the far end.
+# `call-transcripts score` reads it.
 {
   fetchurl,
   ffmpeg-headless,
@@ -82,7 +89,16 @@ let
   headset =
     name: i: hash:
     fetchurl {
-      url = "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/${name}/audio/${name}.Headset-${toString i}.wav";
+      url = lib.concatStrings [
+        "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/"
+        "${name}/audio/${name}.Headset-${toString i}.wav"
+      ];
+      # The mirror answers 503 to many fetches at once, and the twelve are
+      # fetched at once, so each keeps trying, waiting longer each time.
+      curlOptsList = [
+        "--retry"
+        "10"
+      ];
       inherit hash;
     };
   laid =
@@ -100,7 +116,10 @@ let
     ''
       ${lib.concatMapStrings own speakers}
       mv ${mine}.wav $out/${name}.mine.wav
-      sox -m ${lib.concatMapStringsSep " " (speaker: "${speaker}.wav") others} far.wav
+      # Each voice at its own level, since sox would turn each of three
+      # down to a third, and repeatably, since its dither is otherwise
+      # seeded anew each run.
+      sox -R -m ${lib.concatMapStringsSep " " (speaker: "-v 1 ${speaker}.wav") others} far.wav
       rm ${lib.concatMapStringsSep " " (speaker: "${speaker}.wav") others}
       ffmpeg -loglevel error -i far.wav -c:a libopus -b:a 24k -application voip far.opus
       ffmpeg -loglevel error -i far.opus -ar 16000 -ac 1 -c:a pcm_s16le $out/${name}.theirs.wav

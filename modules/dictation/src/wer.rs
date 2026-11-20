@@ -5,11 +5,14 @@
 //! by hand.
 //!
 //! Both sides are compared as plain words: lowercase, without punctuation,
-//! a hyphenated word as its parts. Hesitations ("um", "uh", "mm-hmm") are
-//! left out of both, since a reference writes every one and a speech model
-//! writes few; so is a word said twice in a row, a stutter one keeps and
-//! the other drops. Words a transcript leaves out on purpose, such as a
-//! lone "yeah", aren't hesitations, so leaving them out counts.
+//! a hyphenated word as its parts, and a word spelled out letter by letter
+//! as AMI writes one (`T_V_`) as one word. Hesitations ("um", "uh",
+//! "mm-hmm") are left out of both, since a reference writes every one and a
+//! speech model writes few. A word said twice in a row is said once in the
+//! reference (`said`), since a reference keeps every stutter and a speech
+//! model drops them; a word heard twice still counts twice, so a model
+//! caught in a loop is seen. Words a transcript leaves out on purpose, such
+//! as a lone "yeah", aren't hesitations, so leaving them out counts.
 
 use std::ops::AddAssign;
 
@@ -18,21 +21,30 @@ const HESITATIONS: [&str; 12] = [
     "ah", "eh", "er", "erm", "hmm", "mhm", "mm", "mm-hmm", "uh", "uh-huh", "um", "um-hmm",
 ];
 
-/// `text`'s words as they're compared.
+/// `text`'s words as they're compared, heard.
 #[must_use]
 pub fn words(text: &str) -> Vec<String> {
-    let mut words: Vec<String> = Vec::new();
     let lower = text.to_lowercase();
-    let spoken = lower
-        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '\'' || c == '-'))
-        .map(|word| word.trim_matches(['\'', '-']))
-        .filter(|word| !word.is_empty() && !HESITATIONS.contains(word));
-    for word in spoken.flat_map(|word| word.split('-')) {
-        if !word.is_empty() && words.last().is_none_or(|last| last != word) {
-            words.push(word.to_owned());
-        }
-    }
-    words
+    lower
+        .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '\'' | '-' | '_')))
+        .map(|word| word.replace('_', ""))
+        .filter(|word| !HESITATIONS.contains(&word.trim_matches(['\'', '-'])))
+        .flat_map(|word| {
+            word.split('-')
+                .map(|part| part.trim_matches('\'').to_owned())
+                .collect::<Vec<_>>()
+        })
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
+/// A reference's words as they're compared: its words, a word said twice
+/// in a row said once.
+#[must_use]
+pub fn said(text: &str) -> Vec<String> {
+    let mut said = words(text);
+    said.dedup();
+    said
 }
 
 /// The errors of a transcript against its reference.
@@ -122,8 +134,8 @@ impl AddAssign for Errors {
 mod tests {
     use super::*;
 
-    fn errors(said: &str, heard: &str) -> Errors {
-        Errors::count(&words(said), &words(heard))
+    fn errors(reference: &str, heard: &str) -> Errors {
+        Errors::count(&said(reference), &words(heard))
     }
 
     #[test]
@@ -137,8 +149,21 @@ mod tests {
     #[test]
     fn hesitations_and_a_word_said_twice_are_left_out() {
         assert_eq!(
-            words("Um so so I I think, uh, mm-hmm, we're done"),
+            said("Um so so I I think, uh, mm-hmm, we're done"),
             ["so", "i", "think", "we're", "done"]
+        );
+    }
+
+    #[test]
+    fn a_word_heard_over_and_over_counts_each_time() {
+        assert_eq!(errors("the the plan", "the the the plan").inserted, 2);
+    }
+
+    #[test]
+    fn a_word_spelled_out_is_one_word() {
+        assert_eq!(
+            words("a T_V_ and a T_ Rex"),
+            ["a", "tv", "and", "a", "t", "rex"]
         );
     }
 
@@ -178,12 +203,15 @@ mod tests {
     }
 
     #[test]
-    fn a_dropped_word_is_a_deletion_rather_than_substitutions() {
+    fn of_as_few_errors_the_fewest_are_substitutions() {
+        // Two substitutions, or a word dropped and one added: as many
+        // errors either way, and the word was dropped where it was said.
         assert_eq!(
-            errors("we can move it", "we move it"),
+            errors("move it", "it move"),
             Errors {
-                words: 4,
+                words: 2,
                 deleted: 1,
+                inserted: 1,
                 ..Errors::default()
             }
         );

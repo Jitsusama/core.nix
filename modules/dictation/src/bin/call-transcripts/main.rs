@@ -192,9 +192,13 @@ fn act(args: &[String]) -> Result<(), Failure> {
         }
         ["hear", model, ref clips @ ..] if !clips.is_empty() => hear_clips(Path::new(model), clips),
         ["score", model, set] => score::score(Path::new(model), Path::new(set), None),
+        // A ceiling that isn't a finite percentage, such as "nan", would
+        // pass every score, so it's refused.
         ["score", model, set, ceiling] => match ceiling.parse::<f64>() {
-            Ok(most) => score::score(Path::new(model), Path::new(set), Some(most)),
-            Err(_) => {
+            Ok(most) if most.is_finite() && most >= 0.0 => {
+                score::score(Path::new(model), Path::new(set), Some(most))
+            }
+            _ => {
                 return Err(Failure::new(Exit::Usage, "the ceiling is a percentage")
                     .try_this(format!("call-transcripts score {model} {set} 19")));
             }

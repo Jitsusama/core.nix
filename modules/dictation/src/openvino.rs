@@ -272,7 +272,7 @@ impl Core {
     /// When the device is missing or can't run the model.
     pub fn compile(&self, model: &Model, device: &str, priority: Priority) -> Result<Compiled> {
         let name = c_string(device)?;
-        let properties = priority_on(device, priority);
+        let properties = properties_on(device, priority);
         let mut compiled = ptr::null_mut();
         // SAFETY: the model is alive, the properties' strings are static and
         // counted, and the out pointer is valid.
@@ -304,7 +304,7 @@ impl Core {
     pub fn compile_file(&self, xml: &Path, device: &str, priority: Priority) -> Result<Compiled> {
         let path = c_path(xml)?;
         let name = c_string(device)?;
-        let properties = priority_on(device, priority);
+        let properties = properties_on(device, priority);
         let mut compiled = ptr::null_mut();
         // SAFETY: the names outlive the call, the properties' strings are
         // static and counted, and the out pointer is valid.
@@ -357,15 +357,22 @@ impl Core {
 }
 
 /// What a compile tells `device`: its `priority`, on the NPU alone, the
-/// one device that takes it.
-fn priority_on(device: &str, priority: Priority) -> Vec<Property> {
-    if device == "NPU" {
-        vec![Property {
+/// one device that takes it; and on the CPU, to work in 32-bit floats,
+/// since it otherwise picks bf16 on a CPU with AMX and f32 on one
+/// without, so a model would hear differently on each builder a check
+/// lands on. None of Joel's machines has AMX, so they work in f32
+/// either way.
+fn properties_on(device: &str, priority: Priority) -> Vec<Property> {
+    match device {
+        "NPU" => vec![Property {
             key: c"MODEL_PRIORITY".as_ptr(),
             value: priority.name().as_ptr().cast(),
-        }]
-    } else {
-        Vec::new()
+        }],
+        "CPU" => vec![Property {
+            key: c"INFERENCE_PRECISION_HINT".as_ptr(),
+            value: c"f32".as_ptr().cast(),
+        }],
+        _ => Vec::new(),
     }
 }
 
