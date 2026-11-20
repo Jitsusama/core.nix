@@ -21,6 +21,7 @@ from wifi_session import Wifid, booted, sealed, wifi
 if TYPE_CHECKING:
     from test_driver.machine import BaseMachine
 
+
 @pytest.fixture(scope="module")
 def wifid(machine: BaseMachine) -> Wifid:
     """Give wifid once the card is on the Inn, which wants a sign-in."""
