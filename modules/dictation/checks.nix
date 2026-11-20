@@ -237,7 +237,9 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      ceiling = "19.8";
+      # 18.8% once a lone "Yeah." or "No." was kept, which 19.3% before
+      # it was above.
+      ceiling = "19.0";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
