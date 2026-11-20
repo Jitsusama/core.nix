@@ -54,6 +54,7 @@
 
 mod answers;
 mod apart;
+mod boarding;
 mod candidates;
 mod command;
 mod comments;
@@ -441,37 +442,75 @@ fn run_again(commit: &str) -> String {
         })
 }
 
-/// What to do about `commit`, whose pass at `checked` main moved beside:
-/// board the merge train, which merges it with the others on one run
-/// (`train.rs`), or, where it can't, run it again alone. A change whose
-/// needs no one heard, asked from no branch, or that fell off the train at
-/// this head runs again alone, as a reader of the kit owed its turn first
-/// still has it go first.
-fn ride_or_run_again(commit: &str, main: &str, checked: &str, files: &[String]) -> String {
-    if let Some(said) = boards(commit, main, checked, files) {
-        return said;
-    }
-    let again = run_again(commit);
-    match train::fell_said(commit) {
-        Some(fell) => format!("{fell}; {again}"),
-        None => again,
+/// What to do about `commit`, on main, once it `boarded` the merge train,
+/// which merges it with the others on one run (`train.rs`), or didn't:
+/// wait for the gate holding it, mark its draft ready, or else run it
+/// again alone, as a reader of the kit owed its turn first still has it go
+/// first.
+fn ride_or_run_again(commit: &str, boarded: Result<String, boarding::Off>) -> String {
+    match boarded {
+        Ok(said) | Err(boarding::Off::Draft(said)) => said,
+        Err(boarding::Off::Held) => {
+            "it waits for that gate, so merge again once it ends".to_owned()
+        }
+        Err(_) => {
+            let again = run_again(commit);
+            match train::fell_said(commit) {
+                Some(fell) => format!("{fell}; {again}"),
+                None => again,
+            }
+        }
     }
 }
 
-/// What `ready` says of `commit`, whose pass at `checked` main moved
-/// beside, once it boards the merge train, or that it can't as a draft;
-/// nothing when it can't board. One whose needs no one heard, asked from
-/// no branch, that fell off the train at this head, or that a reader of
-/// the kit owed its turn goes ahead of, doesn't board.
-fn boards(commit: &str, main: &str, checked: &str, files: &[String]) -> Option<String> {
-    if turn::waits_to_run(commit).is_some() || !needs_heard(commit, main, &[checked], files) {
-        return None;
+/// Whether `commit`, whose pass at `checked` main moved beside, boards the
+/// merge train, asked as `boarding.rs` says, with what the train said once
+/// it did.
+fn boards(
+    commit: &str,
+    main: &str,
+    checked: &str,
+    files: &[String],
+) -> Result<String, boarding::Off> {
+    let passes = [commit, checked];
+    boarding::boarding(&boarding::Asks {
+        kit_first: &|| {
+            turn::waits_to_run(commit).map(|said| said.trim_start_matches("merge-net: ").to_owned())
+        },
+        heard: &|| needs_heard(commit, main, &[checked], files),
+        // Marked as may_merge marks it, before the hold that would keep it.
+        held: &|| {
+            mark_skipped_macs(commit, &passes);
+            turn::waiting(commit, &passes, files)
+        },
+        conflicts: &|| conflicts(commit, main),
+        branch: &|| git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default(),
+        drafted: &train::drafted,
+        offer: &|branch| train::offer(commit, branch),
+        fell: &|| train::fell_said(commit),
+    })
+}
+
+/// Whether `commit` conflicts with origin's main at `main`, as merging the
+/// two would. Where git can't say, the train finds out at its own merge.
+fn conflicts(commit: &str, main: &str) -> bool {
+    Command::new("git")
+        .args(["merge-tree", "--write-tree", "--quiet", main, commit])
+        .status()
+        .is_ok_and(|status| status.code() == Some(1))
+}
+
+/// Keep that `commit` runs changed-checks again over `shared`, on the
+/// train or alone, unless a hold, which keeps its own line, or a draft
+/// kept it off the train.
+fn keep_regated(commit: &str, boarded: &Result<String, boarding::Off>, shared: &[String]) {
+    if !matches!(boarded, Err(boarding::Off::Held | boarding::Off::Draft(_))) {
+        answers::keep(
+            commit,
+            answers::Verdict::Regate(answers::Rerun::Files),
+            shared,
+        );
     }
-    // A draft boards no more here than through may_merge.
-    let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
-    (!branch.is_empty())
-        .then(|| train::drafted(&branch).or_else(|| train::offer(commit, &branch)))
-        .flatten()
 }
 
 /// The newest commit on `main` to change the rules for which VM tests run
@@ -486,26 +525,6 @@ fn newest_rules(main: &str) -> String {
         "tools/merge-net/must-run.txt",
     ])
     .unwrap_or_default()
-}
-
-/// Refuse `commit`, behind origin's main at `main`, which since moved
-/// `shared` of its files unseen by its run at `checked`, where it couldn't
-/// board the train. A run again at a head behind main would check it
-/// against the same old base, so only a rebase brings main's moves in.
-fn rebase_over(commit: &str, main: &str, checked: &str, shared: &[String]) -> ExitCode {
-    let fell = train::fell_said(commit)
-        .map(|fell| format!("{fell}; "))
-        .unwrap_or_default();
-    eprintln!(
-        "merge-net: {} doesn't sit on origin's main as it is now, {}, which has since moved \
-         {}, so its run at {} didn't see them; {fell}rebase onto origin/main, push, and merge \
-         again",
-        short(commit),
-        short(main),
-        shared.join(", "),
-        short(checked)
-    );
-    ExitCode::FAILURE
 }
 
 /// Where `commit` stands against origin's main at `main`, as `ready` says
@@ -565,35 +584,24 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
             }
-            // On 20 November four changes ready to merge were sent to
-            // rebase by hand and run again, three of them missing their
-            // times, while main moved about every five minutes. The train merges a head as it
-            // stands, as a merge commit, and builds what main moved in one
-            // run over all its riders, so a head behind main boards it too,
-            // and only one that can't is sent to rebase.
+            // A head behind main boards the train as one on it does
+            // (`boarding.rs`), and one that can't is told why.
             if behind {
-                return Ok(match boards(commit, main, &checked, &files) {
-                    Some(said) => {
-                        eprintln!(
-                            "merge-net: the same change passed at {}, but main has since \
-                             moved {}; {said}",
-                            short(&checked),
-                            shared.join(", ")
-                        );
-                        ExitCode::FAILURE
-                    }
-                    None => rebase_over(commit, main, &checked, &shared),
-                });
+                let boarded = boards(commit, main, &checked, &files);
+                keep_regated(commit, &boarded, &shared);
+                let said = boarding::behind_said(commit, main, &checked, &shared, &boarded);
+                eprintln!("merge-net: {said}");
+                return Ok(ExitCode::FAILURE);
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
-            let rerun = answers::Verdict::Regate(answers::Rerun::Files);
-            answers::keep(commit, rerun, &shared);
+            let boarded = boards(commit, main, &checked, &files);
+            keep_regated(commit, &boarded, &shared);
             eprintln!(
                 "merge-net: the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
-                ride_or_run_again(commit, main, &checked, &files)
+                ride_or_run_again(commit, boarded)
             );
         }
         ready::Before::Unchecked => eprintln!(

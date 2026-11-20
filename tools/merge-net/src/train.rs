@@ -278,7 +278,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
             board(&root, &rider).ok()?;
         }
     }
-    if !going() && !start(&root) {
+    if !goes_or_starts(&root) {
         alight(&root, head);
         return None;
     }
@@ -302,7 +302,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
 pub fn riding(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     rider_at(&root, head)?;
-    if !going() && !start(&root) {
+    if !goes_or_starts(&root) {
         alight(&root, head);
         return None;
     }
@@ -336,6 +336,14 @@ fn way(root: &Path, ended: &Ended) {
     if let Some(said) = right_of_way::follow(root, ended, crate::state::now()) {
         println!("merge-net: {said}");
     }
+}
+
+/// Whether the train under `root` goes, started if it didn't. Two readies
+/// at once may both find it stopped, and the one whose start loses the
+/// race to the other's finds it going after all, rather than being sent
+/// off the train.
+fn goes_or_starts(root: &Path) -> bool {
+    going() || start(root) || going()
 }
 
 /// Whether the train's unit goes.
