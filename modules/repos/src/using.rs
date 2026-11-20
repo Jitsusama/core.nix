@@ -76,7 +76,9 @@ pub fn placed<'a>(folders: &'a [PathBuf], folder: &Path) -> Option<&'a Path> {
 /// working folder lies in one of `folders`; nothing where there's no
 /// `/proc`, as on a Mac.
 pub fn sample(proc: &Path, folders: &[PathBuf]) -> Sample {
-    let Some(at) = fs::read_to_string(proc.join("uptime")).ok().and_then(|said| uptime(&said))
+    let Some(at) = fs::read_to_string(proc.join("uptime"))
+        .ok()
+        .and_then(|said| uptime(&said))
     else {
         return Sample::default();
     };
@@ -97,7 +99,13 @@ pub fn sample(proc: &Path, folders: &[PathBuf]) -> Sample {
             let memory = fs::read_to_string(own.join("smaps_rollup"))
                 .ok()
                 .and_then(|said| shared(&said));
-            Some(Process { pid, folder, started, ticks, memory })
+            Some(Process {
+                pid,
+                folder,
+                started,
+                ticks,
+                memory,
+            })
         })
         .collect();
     Sample { at, processes }
@@ -127,7 +135,10 @@ fn stat(said: &str) -> Option<(u64, u64)> {
 fn shared(said: &str) -> Option<u64> {
     said.lines().find_map(|line| {
         let kilobytes = line.strip_prefix("Pss:")?.trim().strip_suffix("kB")?.trim();
-        kilobytes.parse::<u64>().ok().map(|kilobytes| kilobytes * 1024)
+        kilobytes
+            .parse::<u64>()
+            .ok()
+            .map(|kilobytes| kilobytes * 1024)
     })
 }
 
@@ -136,7 +147,8 @@ fn shared(said: &str) -> Option<u64> {
 pub fn using(before: Option<&Sample>, now: &Sample) -> BTreeMap<PathBuf, Use> {
     let earlier: Option<HashMap<(u32, u64), u64>> = before.map(|before| {
         let each = before.processes.iter();
-        each.map(|process| ((process.pid, process.started), process.ticks)).collect()
+        each.map(|process| ((process.pid, process.started), process.ticks))
+            .collect()
     });
     let mut using: BTreeMap<PathBuf, (Use, u64)> = BTreeMap::new();
     for process in &now.processes {
@@ -151,7 +163,9 @@ pub fn using(before: Option<&Sample>, now: &Sample) -> BTreeMap<PathBuf, Use> {
             };
         }
     }
-    let between = before.map(|before| now.at.saturating_sub(before.at)).filter(|at| *at > 0);
+    let between = before
+        .map(|before| now.at.saturating_sub(before.at))
+        .filter(|at| *at > 0);
     using
         .into_iter()
         .map(|(path, (mut folder, worked))| {

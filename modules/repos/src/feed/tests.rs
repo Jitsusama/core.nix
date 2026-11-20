@@ -251,14 +251,24 @@ fn github_answers_once_a_refresh_has_asked_it_saying_what_it_couldnt_see() {
 }
 
 fn used(processes: usize, memory: u64, cpu: f64) -> Use {
-    Use { processes, memory, cpu: Some(cpu) }
+    Use {
+        processes,
+        memory,
+        cpu: Some(cpu),
+    }
 }
 
 #[test]
 fn what_works_in_a_repository_is_summed_over_its_checkouts_and_trees() {
     let used = BTreeMap::from([
-        (PathBuf::from("/home/joel/src/core.nix"), used(2, 3_000, 0.25)),
-        (PathBuf::from("/home/joel/trees/say-trees"), used(1, 1_000, 1.5)),
+        (
+            PathBuf::from("/home/joel/src/core.nix"),
+            used(2, 3_000, 0.25),
+        ),
+        (
+            PathBuf::from("/home/joel/trees/say-trees"),
+            used(1, 1_000, 1.5),
+        ),
         // A folder no repository holds counts for none.
         (PathBuf::from("/home/joel/elsewhere"), used(9, 9_000, 9.0)),
     ]);
@@ -284,9 +294,18 @@ fn what_works_in_a_repository_is_summed_over_its_checkouts_and_trees() {
 fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_reading() {
     let idle = &using(&record(), &BTreeMap::new(), true)[0];
     assert_eq!(
-        (&idle["processes"], &idle["memory"], &idle["cpu"], &idle["folders"]),
+        (
+            &idle["processes"],
+            &idle["memory"],
+            &idle["cpu"],
+            &idle["folders"]
+        ),
         (&json!(0), &json!(0), &json!(0.0), &json!([]))
     );
     let first = &using(&record(), &BTreeMap::new(), false)[0];
-    assert_eq!(first["cpu"], Value::Null, "one reading can't say a share of time");
+    assert_eq!(
+        first["cpu"],
+        Value::Null,
+        "one reading can't say a share of time"
+    );
 }
