@@ -416,6 +416,67 @@ pub fn change(dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
     classes("change", dev, rate, split)
 }
 
+/// What Joel's CAKE is told: a rate, or none at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cake {
+    Unlimited,
+    At(u64),
+}
+
+/// Tells Joel's CAKE the rate `joel_cake` gives it, or that it has none.
+///
+/// A CAKE with a rate paces what it sends, so HTB, which may burst past
+/// it, now and then finds it holding packets it won't yet give up. The
+/// kernel then logs once per queue `htb: cake qdisc 2: is
+/// non-work-conserving?`, which is expected: CAKE's own timer sends them.
+///
+/// While a limit holds the upload, it's the most HTB lets his class
+/// borrow, so CAKE keeps diffserv4's priorities while HTB still holds the
+/// class to what the agents and the VPN leave. CAKE with no rate of its
+/// own can't order its tins by when each is due, and takes turns by
+/// weight instead, best effort's twice
+/// video's and four times voice's: whenever Joel's class was full, his own
+/// uploads over TCP, a file or a push, took two thirds of it from his call.
+/// In the call test, with the upload held at 6 Mb/s and an app uploading a
+/// file beside the call, his CAKE dropped 1,548 of the video call's
+/// datagrams.
+///
+/// Video is due up to half the connection's rate and voice up to a
+/// quarter, so while the others hold over half of it, what goes as video
+/// can take all his class has, and what goes best effort gets only what it
+/// leaves: an app's UDP other than to 443, and while a call is on all of
+/// it, QUIC's too (shaper.nft). His call ahead of his pages is what this is
+/// for. A switch restarts the shaper with its queues, and a shaper from
+/// before this change, which never tells the CAKE a rate, would keep this
+/// one, since a replace changes only what it names. So a shaper stopping
+/// on SIGTERM tells each CAKE it has none first (`unshape_joel` in
+/// main.rs); only one killed outright leaves the rate, and stopping the
+/// shaper and starting it again then builds the queues anew.
+pub fn joel_rate(dev: &str, cake: Cake) -> Vec<String> {
+    let rate = match cake {
+        Cake::Unlimited => "unlimited".to_owned(),
+        Cake::At(rate) => format!("bandwidth {rate}kbit"),
+    };
+    cmd(&format!(
+        "tc qdisc change dev {dev} parent 1:3 handle 2: cake {rate}"
+    ))
+}
+
+/// The rate Joel's CAKE is given: the `classes`' while the upload is held
+/// `up` under its ceiling, `most`, and none while nothing limits it. Only
+/// a limit fills his class, which is when its tins need ordering; at a
+/// rate the connection never reaches, CAKE shapes nothing, yet on the
+/// download one at the ceiling dropped most of a call's packets (see
+/// `qdisc::unturn`), so a resting upload's CAKE stays unlimited, as it
+/// was before it had a rate at all.
+pub fn joel_cake(up: u64, most: u64, classes: u64) -> Cake {
+    if up < most {
+        Cake::At(classes)
+    } else {
+        Cake::Unlimited
+    }
+}
+
 /// Takes back a link's lanes and its IFB as a restart left them: every
 /// class, queue and filter `qdisc::install` puts on is replaced in place,
 /// so a new version's layout lands, but not the two root HTBs. HTB
@@ -1394,6 +1455,31 @@ mod tests {
         assert!(
             changed.len() == 4 && changed.iter().all(|c| c.starts_with("tc class change")),
             "a change moves only the four classes: {changed:#?}"
+        );
+        assert_eq!(
+            joel_rate("wlan0", Cake::At(12_000)).join(" "),
+            "tc qdisc change dev wlan0 parent 1:3 handle 2: cake bandwidth 12000kbit",
+            "Joel's CAKE doesn't follow the connection's rate, so it shares its tins by weight"
+        );
+        assert_eq!(
+            joel_rate("wlan0", Cake::Unlimited).join(" "),
+            "tc qdisc change dev wlan0 parent 1:3 handle 2: cake unlimited",
+            "Joel's CAKE keeps a rate once nothing limits the upload"
+        );
+        assert_eq!(
+            joel_cake(6_000, 2_000_000, 6_000),
+            Cake::At(6_000),
+            "held, it's shaped"
+        );
+        assert_eq!(
+            joel_cake(1_999_999, 2_000_000, 1_990_000),
+            Cake::At(1_990_000),
+            "held just under the ceiling, it takes the classes' rate, not the one asked"
+        );
+        assert_eq!(
+            joel_cake(2_000_000, 2_000_000, 2_000_000),
+            Cake::Unlimited,
+            "at rest, Joel's CAKE is shaped at a rate the connection never reaches"
         );
         let adopted = words(&adopt("wlan0", "shaper3", (10_000, &split), 80_000));
         let installed = words(&crate::qdisc::install(
