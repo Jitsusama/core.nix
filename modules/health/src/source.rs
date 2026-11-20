@@ -451,6 +451,9 @@ impl History {
     fn ended(&mut self) -> bool {
         match self.child.wait() {
             Ok(status) if whole(status.success(), status.code(), self.read, self.greps) => true,
+            // A stop to health's whole group ends its histories too, which
+            // is no fault of theirs, and health ends of it.
+            Ok(_) if crate::signals::stopping() => false,
             Ok(status) => {
                 warn(&format!(
                     "health: the day's history asking {} ended early, {status}",
