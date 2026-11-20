@@ -81,6 +81,20 @@ pub fn started_by_systemd_run(unit: &str, description: &str) -> bool {
     unit.ends_with(".service") && description.starts_with(SYSTEMD_RUN)
 }
 
+/// Whether `unit` is a red run by its name: a dash-separated part of it
+/// is `red`, or `red` and digits, as `y2ybts-first-red2-1234.service`. A
+/// red run is a test with its case's line mutated, which has to fail to
+/// show the case bites, so its failing is its starter's proof, not a
+/// fault; Y2YBTS's were told to it as failures on 19 November. Only a run
+/// systemd-run started is asked, so a service named so is still told.
+pub fn red(unit: &str) -> bool {
+    let stem = unit.rsplit_once('.').map_or(unit, |(stem, _)| stem);
+    stem.split('-').any(|part| {
+        part.strip_prefix("red")
+            .is_some_and(|rest| rest.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
 /// systemd's message that a unit started, `Started <description>.`,
 /// which is where a run's description is kept once the run is gone.
 pub const STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
@@ -171,6 +185,26 @@ pub(crate) mod tests {
             "run-p-i12.service",
         ] {
             assert!(!a_run(unit), "{unit}: not a run, so it's told");
+        }
+    }
+
+    #[test]
+    fn a_run_named_red_is_one_that_has_to_fail() {
+        for unit in [
+            "y2ybts-first-red2-123655.service",
+            "red-case.service",
+            "t04-red.service",
+        ] {
+            assert!(red(unit), "{unit} wasn't read as a red run");
+        }
+        for unit in [
+            "redshift.service",
+            "y2ybts-reds-1.service",
+            "shred-2.service",
+            "red2x-1.service",
+            "camera.service",
+        ] {
+            assert!(!red(unit), "{unit} was taken for a red run");
         }
     }
 

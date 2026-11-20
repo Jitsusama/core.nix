@@ -2,7 +2,7 @@
 //! systemd-run started, whose starter reads their end rather than cadence.
 
 use super::Failed;
-use crate::holders::started_by_systemd_run;
+use crate::holders::{red, started_by_systemd_run};
 
 /// What the unit watch asks systemd of a failed unit, before its name.
 pub const SHOW: [&str; 7] = [
@@ -38,9 +38,10 @@ pub fn shown_from(unit: &str, said: &str) -> (Option<i64>, bool) {
 
 /// Leaves out of `failed` each run systemd-run started that nobody
 /// `held`: whoever started it reads its end, and a session that named it
-/// for itself, or holds it by an owner line, is told as for any unit.
+/// for itself, or holds it by an owner line, is told as for any unit,
+/// but for a red run, which has to fail.
 pub fn leave_runs(failed: &mut Vec<Failed>, held: impl Fn(&str) -> bool) {
-    failed.retain(|f| !f.run || held(&f.unit));
+    failed.retain(|f| !f.run || (held(&f.unit) && !red(&f.unit)));
 }
 
 #[cfg(test)]
@@ -97,14 +98,21 @@ mod tests {
         let mut read = vec![
             failed("q16-rc47-build.service", true),
             failed("y2ybts-race-timers-2044.service", true),
+            failed("y2ybts-first-red2-1236.service", true),
             failed("camera.service", false),
+            failed("red-light.service", false),
         ];
         leave_runs(&mut read, |unit| unit.starts_with("y2ybts-"));
         let units: Vec<&str> = read.iter().map(|f| f.unit.as_str()).collect();
         assert_eq!(
             units,
-            ["y2ybts-race-timers-2044.service", "camera.service"],
-            "a run nobody holds stayed, or one its session holds was left out"
+            [
+                "y2ybts-race-timers-2044.service",
+                "camera.service",
+                "red-light.service"
+            ],
+            "a run nobody holds, or a red run, stayed, or one its session holds, or a \
+             service, was left out"
         );
     }
 }
