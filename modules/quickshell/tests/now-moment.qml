@@ -1269,17 +1269,23 @@ ShellRoot {
             JSON.stringify([lifted?.side, wanted.map(row => [row.name, row.side,
                 changed.includes(row)])]));
         Sessions.wanting = [];
-        // A look says who asks and what, Return answering with its first
-        // choice, its choices first in its step, and its drawer what happens
-        // if Joel does nothing, with no weight (Joel, 2026-11-19: "I almost
-        // never know what I am supposed to do with it").
+        // A look says who asks and what, its choices first in its step, and
+        // its drawer what happens if Joel does nothing, with no weight (Joel,
+        // 2026-11-19: "I almost never know what I am supposed to do with
+        // it"). Return on its row opens it: a choice is answered only from
+        // inside, as the key language's answer has it.
         const askingText = JSON.stringify({ v: 1, id: "q", kind: "pr", at: root.lookedAt,
             target: "https://example.com/pull/1", title: "History overlays stop rescanning",
             why: "Each read re-listed an empty folder.", state: "waiting", address: "leftq",
             asker: "The trunk disk incident", ask: "Merge it now, or hold it for review?",
             ifNothing: "It waits, unmerged, and the rescans go on.",
             choices: [{ value: "merge", label: "Queue It" }, { value: "hold", label: "Hold It" }] });
-        now.lookTexts = { "q.json": askingText, "a.json": lookAt("a", "Read A") };
+        const expiring = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+        const expiringText = JSON.stringify({ v: 1, id: "e", kind: "page", at: root.lookedAt,
+            target: "https://example.com", title: "Read E", why: "Because.", state: "waiting",
+            asks: false, expiresAt: expiring });
+        now.lookTexts = { "q.json": askingText, "a.json": lookAt("a", "Read A"),
+            "e.json": expiringText };
         const askingRow = () => looked().find(row => row.key === "on:look:q");
         const asked = askingRow();
         const stepKeys = (asked?.verbs() ?? []).map(act => act.key);
@@ -1293,21 +1299,33 @@ ShellRoot {
         const askedDrawer = asked?.drawer() ?? {};
         const factOf = label => (askedDrawer.facts ?? []).find(each => each.label === label)
             ?.value ?? null;
-        expect("its drawer says who asks, its choices, Return's marked, and if nothing, no weight",
+        expect("its drawer says who asks, its choices, and if nothing, no weight",
             askedDrawer.eyebrow === "The trunk disk incident"
-                && factOf("Choices") === "\u21b5 Queue It \u00b7 Hold It"
+                && factOf("Choices") === "Queue It \u00b7 Hold It"
                 && factOf("If You Do Nothing") === "It waits, unmerged, and the rescans go on."
                 && factOf("Weight") === null && factOf("Clears When") === null,
             JSON.stringify([askedDrawer.eyebrow, askedDrawer.facts]));
         const plainDrawer = looked().find(row => row.key === "on:look:a")?.drawer() ?? {};
-        expect("a look whose session says nothing of it waits three days, then goes quiet",
+        expect("a look whose session says nothing of it goes quiet 3 days after it came",
             (plainDrawer.facts ?? []).find(each => each.label === "If You Do Nothing")?.value
-                === "it waits here 3 days, then goes quiet into History",
+                === "it goes quiet into History 3 days after it came",
             JSON.stringify(plainDrawer.facts));
+        const expiringLook = now.looks.reading.find(one => one.id === "e");
+        const expiringDrawer = expiringLook === undefined ? {} : now.lookDrawer(expiringLook);
+        const expiresClock = now.forYouSaid(Date.now()).clock(Date.parse(expiring));
+        expect("a look with a time to expire says it expires then",
+            (expiringDrawer.facts ?? []).find(each => each.label === "If You Do Nothing")?.value
+                === `it expires into History at ${expiresClock}`,
+            JSON.stringify(expiringDrawer.facts));
+        const plainRow = looked().find(row => row.key === "on:look:a");
         const steeredBefore = Sessions.steered.length;
-        asked?.run();
+        expect("Return on a look's row opens it, as on one asking nothing, and answers nothing",
+            asked !== undefined && asked.verb === plainRow?.verb && asked.later === true
+                && asked.stays !== true,
+            JSON.stringify([asked?.verb, plainRow?.verb, asked?.later]));
+        (asked?.verbs() ?? [])[0]?.run();
         // The node took it, so it leaves what waits at once (Looks.js's taken).
-        expect("Return answers with its first choice",
+        expect("its step's first act answers with its first choice",
             Sessions.steered.length === steeredBefore + 1
                 && Sessions.steered[steeredBefore]?.fields?.value === "merge"
                 && askingRow() === undefined,

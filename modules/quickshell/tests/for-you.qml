@@ -411,6 +411,11 @@ QtObject {
             [Looks.askOf(told), Looks.ifNothingOf(told), Looks.askOf(read.waiting[1]),
                 Looks.ifNothingOf(read.waiting[1])],
             ["Merge it now, or hold it?", "It waits, unmerged, and the rescans go on.", "", ""]);
+        const toldBack = JSON.parse(Looks.rewritten(told, "opened", "opened", now));
+        expect("a look written back keeps who asks, what, and if nothing, as its session wrote them",
+            [toldBack.asker, toldBack.ask, toldBack.ifNothing],
+            ["The trunk disk incident", "Merge it now, or hold it?",
+                "It waits, unmerged, and the rescans go on."]);
         const posted = { value: "posted", label: "Posted" };
         expect("an answer, to the session while it runs",
             Looks.answer(choosing, posted, true, now),

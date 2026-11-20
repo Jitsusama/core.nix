@@ -230,6 +230,10 @@ QtObject {
                 "QEST-20261011-2HN63P": null });
         expect("nothing is known before the node answers",
             Waiting.owners(null, ["QEST-20261025-M4RL61"]), {});
+        expect("each open quest's title, by its id, and none before the node answers",
+            [Waiting.titles(Object.assign({ "look:x": { title: "Not a quest" } }, index)),
+                Waiting.titles(null)],
+            [{ "QEST-20261025-M4RL61": "Hardware" }, {}]);
 
         // Nothing goes by its age: a file not said again in days still
         // holds what it holds, until an event takes it.

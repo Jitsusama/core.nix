@@ -1186,14 +1186,13 @@ Provider {
         const say = forYouSaid(now);
         const waits = one.state === "waiting";
         const target = ["pr", "page", "diff"].includes(one.kind) ? one.target : "";
-        // Its choices, the one Return answers with marked, and what happens
-        // if Joel does nothing, in place of a weight and when it clears,
-        // which told him a score and nothing to do (Joel, 2026-11-19).
-        const choices = lookChoices(one, now).map((choice, at) => at === 0
-            ? waitingSaid("returns", { label: choice.label }) : choice.label);
+        // Its choices and what happens if Joel does nothing, in place of a
+        // weight and when it clears, which told him a score and nothing to
+        // do (Joel, 2026-11-19).
+        const choices = lookChoices(one, now).map(choice => choice.label);
         const facts = [
             fact("choices", choices.join(" \u00b7 ")),
-            fact("ifNothing", waits ? Looks.ifNothingOf(one) || say.ifNothing : ""),
+            fact("ifNothing", waits ? Looks.ifNothingOf(one) || lookLapses(one, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
             // What it points at, short; its whole address with its id in
@@ -1221,7 +1220,18 @@ Provider {
     // title, never an id: "from Trunkd Disk Saturation During Compaction
     // (INV-31016) \u00b7 to look at" told Joel nothing (2026-11-19).
     function lookAsker(one) {
-        return Looks.askerOf(one, lookQuest(one)) || lookSession(one)?.title || "";
+        const title = one.quest ? WaitingOnYou.titles?.[one.quest] : undefined;
+        return Looks.askerOf(one, title === undefined ? null : { title: title })
+            || lookSession(one)?.title || "";
+    }
+
+    // What becomes of a look its session says nothing of: it expires at its
+    // expiresAt, which the harness gives one asking nothing, else it goes
+    // quiet three days after it came, as Looks.js's quieted has it.
+    function lookLapses(one, say) {
+        const expires = ForYou.when(one.expiresAt);
+        return expires === null ? say.ifNothing
+            : waitingSaid("expires", { clock: say.clock(expires) });
     }
 
     function lookQuest(one) {
@@ -1236,15 +1246,16 @@ Provider {
 
     // A look's row: its title, who asks in its note, its kind's mark, and
     // at its side what it asks, else the strongest reason it's there, or,
-    // in History, how it went and when. Return answers with its first
-    // choice while it offers any, the asker putting the safe one first, and
-    // else opens it, or goes to a terminal's session. Its acts, stepped
-    // into with Tab as any row holding rows is (QueryKeys.js's into), hold
-    // its choices first, then Open, then Talk and Go To on the cell behind
-    // it (cellActs), then Clear It, an ending act d does and Return never
-    // does (attachments/what-needs-me-table.md's shape, Y2YBTS's ccbc1a56).
-    // A choice is an answer, which ends nothing, so one Return sends it
-    // (modules/keys/language.toml's answer).
+    // in History, how it went and when. Return opens it, or goes to a
+    // terminal's session, and never answers: an answer is one Return only
+    // once Joel has stepped into what asks (modules/keys/language.toml's
+    // answer), and nothing holds a look's writer to putting the safe choice
+    // first. Its acts, stepped into with Tab as any row holding rows is
+    // (QueryKeys.js's into), hold its choices first, then Open, then Talk
+    // and Go To on the cell behind it (cellActs), then Clear It, an ending
+    // act d does and Return never does (attachments/what-needs-me-table.md's
+    // shape, Y2YBTS's ccbc1a56). Its note says who asks while it waits, and
+    // why once in History, as the to-do daemon's History rows say it.
     function lookRow(one, now) {
         const say = forYouSaid(now);
         const waits = one.state === "waiting";
@@ -1255,7 +1266,7 @@ Provider {
             stays: true,
             run: () => provider.answerLook(one, choice)
         });
-        const returns = choices.length > 0 ? answering(choices[0]) : {
+        const returns = {
             verb: Words.verb(opens),
             later: true,
             run: () => provider.openLook(one)
@@ -1290,7 +1301,7 @@ Provider {
             glyph: Theme.glyph[ForYou.glyphOf(one.kind)],
             hue: waits ? "strong" : "muted",
             side: lookSide(one, now, say),
-            note: lookAsker(one) || one.why,
+            note: waits ? lookAsker(one) || one.why : one.why,
             drawer: () => provider.lookDrawer(one),
             verbs: inside,
             targets: inside
