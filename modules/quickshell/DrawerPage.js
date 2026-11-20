@@ -135,16 +135,17 @@ function runReach(landed, last, edge) {
 }
 
 // What a move does next while its run's rest is still to come, from what
-// runReach says it needs: "whole" lays the rest at once, read once; "show"
+// runReach says the move (`landed`) needs of the run laid to `last`, in
+// its view's `edge`: "whole" lays the rest at once, read once; "show"
 // shows the parts laid quietly; "part" lays one part more, each read as
 // it's laid; "" stops. `so` says how many parts it has laid already
-// (`parts`), whether the parts laid are still unshown (`quiet`), and
-// whether it landed on the line the laid run ends on (`onEnd`). One that
-// lands there again after a part, as G does each time, lays the rest
-// whole, read once rather than some 45 times on Emoji's; a page move that
-// needs a second part lays only that, since the rest laid whole in its
-// key's turn would cost some 850 ms there.
-function runStep(reach, so) {
+// (`parts`) and whether the parts laid are still unshown (`quiet`). One
+// that lands on the laid end again after a part, as G does each time,
+// lays the rest whole, read once rather than some 45 times on Emoji's; a
+// page move that needs a second part lays only that, since the rest laid
+// whole in its key's turn would cost some 850 ms there.
+function runStep(landed, last, edge, so) {
+    const reach = runReach(landed, last, edge);
     if (reach === "whole") {
         return "whole";
     }
@@ -154,7 +155,7 @@ function runStep(reach, so) {
     if (so.quiet) {
         return "show";
     }
-    return so.parts > 0 && so.onEnd ? "whole" : "part";
+    return so.parts > 0 && landed.line >= last ? "whole" : "part";
 }
 
 // A part's pieces as last read, moved by what moved above the part since:

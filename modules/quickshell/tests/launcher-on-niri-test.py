@@ -2616,7 +2616,7 @@ START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)
 EMOJI_MADE = re.compile(r"\bemoji (\d+)")
 
 DRAWER_SAID = re.compile(
-    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
+    r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
     r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
 )
 # Where a drawer's time from its frame's start went, where the render thread timed its swap.

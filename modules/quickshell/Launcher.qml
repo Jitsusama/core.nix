@@ -9475,9 +9475,10 @@ Scope {
         // a command row no source, so they're named by their name and the
         // place held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
-        // A window's title kept out of every line this says, as a key's
-        // is, unless reports are on; the report itself keeps the key whole.
-        const said = Presented.keyShown(key, Options.reports);
+        // What a source wrote, a window's title or a row's name, kept out
+        // of every line this says, as a key's is, unless reports are on;
+        // the report itself keeps the key whole.
+        const said = Presented.rowShown(drawerRow, Options.reports);
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested, drawerAfterLetter);
         drawerRested = 0;
@@ -12755,7 +12756,7 @@ Scope {
         // A window's row is keyed by its title, which may be a mail's
         // subject or a document's name: unless reports are on, only its
         // app is said, as a slow key may be said for each one typed.
-        one.key = Presented.keyShown(drawerRow?.key || drawerRow?.name || "", Options.reports);
+        one.key = Presented.rowShown(drawerRow, Options.reports);
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
             Object.assign(one, { at, swapped: root.swappedOf(frame),
@@ -12777,7 +12778,7 @@ Scope {
             return;
         // A window's title kept out, as a key's is (keyInTimed), since
         // going in is said each time.
-        one.key = Presented.keyShown(drawerRow?.key || drawerRow?.name || "", Options.reports);
+        one.key = Presented.rowShown(drawerRow, Options.reports);
         // The page shown, so going back from the key list reads apart from
         // going into the row's own page, under the same row: only while
         // reports are on, since a window's page is titled by the window.

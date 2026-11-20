@@ -1080,10 +1080,14 @@ QtObject {
         holds("nor does one dropped for sharing hide one after it",
             Search.found("\u0307i\u0307i", "\u0130\u0130\u0130\u0130\u0130\u0130"),
             [[0, 3], [3, 6]]);
-        // A letter of two units, as an emoji is, is found whole, even by
-        // half of it, after a joiner as before one.
-        holds("half a letter of two units after a joiner finds it whole",
+        // In a text holding a joiner, a letter of two units, as an emoji
+        // is, is found whole, even by half of it, as a letter that lowers
+        // longer is; and a half with no other half after it, as a title cut
+        // mid-pair leaves, is a letter alone, so what follows keeps its place.
+        holds("half a letter of two units, in a text with a joiner, finds it whole",
             Search.found("\ude00", "a-\u2060\ud83d\ude00"), [[3, 5]]);
+        holds("a half alone before a joiner leaves what follows in its place",
+            Search.found("x", "\ud83d\u2060x"), [[2, 3]]);
         // A pattern of what's passed over alone is nothing to find, and
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
@@ -2032,18 +2036,19 @@ QtObject {
         // What go() does with it: G lands on the laid end each time, so
         // once a part hasn't cleared it the rest is laid whole, read once;
         // a page move that needs a second part lays only that.
+        const shown = { parts: 1, quiet: false };
         holds("a move needing more lays a part first",
-            Page.runStep("more", { parts: 0, quiet: false, onEnd: true }), "part");
+            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: false }), "part");
         holds("and one on the laid end again after it lays the rest whole",
-            Page.runStep("more", { parts: 1, quiet: false, onEnd: true }), "whole");
-        holds("but one short of that end lays another part",
-            Page.runStep("more", { parts: 1, quiet: false, onEnd: false }), "part");
+            Page.runStep({ line: 40, top: 0 }, 40, edge, shown), "whole");
+        holds("but one a line short of that end lays another part",
+            Page.runStep({ line: 39, top: 0 }, 40, edge, shown), "part");
         holds("parts laid quietly are shown before any more is laid",
-            Page.runStep("more", { parts: 0, quiet: true, onEnd: true }), "show");
+            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: true }), "show");
         holds("a move past the laid end lays the rest whole at once",
-            Page.runStep("whole", { parts: 0, quiet: true, onEnd: false }), "whole");
+            Page.runStep({ line: 41, top: 0 }, 40, edge, { parts: 0, quiet: true }), "whole");
         holds("and one clear of it stops",
-            Page.runStep("", { parts: 2, quiet: false, onEnd: false }), "");
+            Page.runStep({ line: 34, top: 600 }, 40, edge, { parts: 2, quiet: false }), "");
         // The parts read before the going-in frame keep their pieces, moved
         // by what moved above them, rather than read every line again.
         holds("a part's pieces move right and down by what moved above them",
