@@ -133,7 +133,7 @@ let
           pkgs.coreutils
           pkgs.gnugrep
         ]
-      } exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${systemctl} "$1" ${log} 300
+      } exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${systemctl} "$1" ${log} 30
     '';
 
   # Puts our entry back when it no longer reads as ours (puts-back.sh).

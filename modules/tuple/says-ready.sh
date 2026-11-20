@@ -7,23 +7,30 @@
 # It's ready once its signaller, which calls come through, has connected,
 # which its log says; the time runs from the log's first line, the daemon
 # beginning, to that one, both on the log's own clock. The log is new each
-# start, the last kept as log.1.txt before it (home.nix's keepsLogs).
+# start, the last kept as log.1.txt before it (home.nix's keepsLogs). A
+# time that clock can't give, from a line with no time or a clock stepped
+# back, or past the wait, says nothing rather than a wrong figure.
 #
 # It runs as the unit's ExecStartPost, which systemd finishes before it
 # writes "Started", and health takes a ready line only after that line. So
 # it leaves a waiter in the unit and returns at once, and the waiter says it
 # once the unit is active too, on the unit's own output, which the journal
-# files under the unit and Tuple's name. Nothing it does can fail the unit:
-# signed out or unreachable, the daemon never connects, and it says nothing.
+# files under the unit and the name the unit gives it. Nothing it does can
+# fail the unit: signed out or unreachable, the daemon never connects, and
+# it says nothing.
 #
-# Given systemctl, the unit's name, the daemon's log and how many times to
-# look, a tenth of a second apart.
+# Given systemctl, the unit's name, the daemon's log and how many seconds to
+# wait.
 set -uo pipefail
 
 systemctl=$1
 unit=$2
 log=$3
-looks=$4
+wait=$4
+
+# A line of Tuple's log, its time of day leading, then its pid, thread and
+# level, the place in its source sometimes, and what it says.
+timed='^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}\|[0-9]+\|[0-9]+\|[a-z()_]+\|([^|]*\|)?'
 
 # A log line's time, HH:MM:SS.mmm, in milliseconds since midnight.
 millis() {
@@ -32,17 +39,24 @@ millis() {
 }
 
 waits() {
-  local state first connected began ended took
-  for ((look = 0; look < looks; look++)); do
-    state=$("${systemctl}" --user show --property=ActiveState --value "${unit}") || state=""
-    if [[ ${state} == active ]] &&
-      connected=$(grep -m1 -E '\|signaler state changed: [a-z]+ -> connected$' "${log}"); then
+  local state active="" first connected began ended took
+  while ((SECONDS < wait)); do
+    if [[ -z ${active} ]]; then
+      state=$(timeout 2 "${systemctl}" --user show --property=ActiveState --value "${unit}") ||
+        state=""
+      # The unit leaves active only by stopping, which ends this with it.
+      [[ ${state} == active ]] && active=yes
+    fi
+    if [[ -n ${active} ]] &&
+      connected=$(grep -m1 -E "${timed}signaler state changed: [a-z]+ -> connected$" "${log}"); then
       first=$(head -n1 "${log}") || return
+      [[ ${first} =~ ${timed} ]] || return
       began=$(millis "${first}")
       ended=$(millis "${connected}")
       took=$((ended - began))
       # A start that ran past midnight reads its end on the next day.
       ((took < 0)) && took=$((took + 86400000))
+      ((took <= wait * 1000)) || return
       echo "tuple: ready in ${took} ms"
       return
     fi

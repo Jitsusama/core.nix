@@ -4,7 +4,8 @@
 # nothing until the unit is active and the log says the signaller has
 # connected, a connection of another kind not counting, and then say how
 # long that took from the log's first line, in the words modules/health
-# reads, across midnight too.
+# reads, across midnight too. A first line with no time, or a clock that
+# stepped back between the two, says nothing rather than hours.
 #
 # Given the ExecStartPost's program, and the systemctl and log it names.
 set -euo pipefail
@@ -87,5 +88,29 @@ sleep "${THREE_LOOKS}"
 quiet "connected while starting" "before the unit was active"
 touch up
 says "connected while starting" "tuple: ready in 250 ms"
+
+printf '%s\n' \
+  'Tuple v2026_11_19.0' \
+  '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
+  >log.txt
+./started tuple.service >said
+sleep "${THREE_LOOKS}"
+quiet "a first line with no time" "at all"
+
+printf '%s\n' \
+  '10:00:05.000|1|1|info|closing fd 0' \
+  '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
+  >log.txt
+./started tuple.service >said
+sleep "${THREE_LOOKS}"
+quiet "a clock stepped back" "at all"
+
+printf '%s\n' \
+  '10:00:00.000|1|1|info|closing fd 0' \
+  '10:00:00.100|1|9|info|C:4|incoming call: x|signaler state changed: a -> connected' \
+  >log.txt
+./started tuple.service >said
+sleep "${THREE_LOOKS}"
+quiet "a caller named like the line" "at all"
 
 exit "${failed}"
