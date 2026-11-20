@@ -1915,7 +1915,8 @@
     or left unfinished, stands down past its share failed with the 421 that sends pi direct,
     staying through its idle time, trying its path as it stands down, kept down by a trial failing
     partway or answered with a 5xx, taking requests again once the path answers three in a row,
-    then trying it no more, or after, on connections opened afresh, over one
+    then trying it no more, and standing down doubled soon after, waiting twice as long for its
+    first trial, or after, on connections opened afresh, over one
     opened while it stood down, for answers broken off midway as their connection falls or requests
     sent again once it takes requests again, though never for requests no connection would take,
     resets saying to calm down, answers pi gives up on or answers sent before it took requests

@@ -412,7 +412,12 @@ struct Counts {
     /// the failed ones reset.
     again: AtomicU64,
     cancelled: AtomicU64,
+    /// Connections opened for requests; trials' are counted apart, so a
+    /// relay trying its path as it stands down isn't read as one opening
+    /// connections for requests it should be sending direct.
     opened: AtomicU64,
+    /// Connections opened to try its path as it stood down.
+    tried: AtomicU64,
     open: AtomicUsize,
     /// Requests refused as it stood down, so each went direct, counted
     /// with the refused too.
@@ -422,13 +427,21 @@ struct Counts {
     broken: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 9]>,
+    said_as: Held<[u64; 10]>,
 }
 
 impl Counts {
     /// Says the counts, when any has moved since they were last said: a
     /// request asked before then may have ended since.
     fn say(&self) {
+        if let Some(line) = self.line() {
+            eprintln!("{line}");
+        }
+    }
+
+    /// The counts as said, or none when none has moved since they last
+    /// were.
+    fn line(&self) -> Option<String> {
         let now = [
             &self.asked,
             &self.refused,
@@ -437,6 +450,7 @@ impl Counts {
             &self.again,
             &self.cancelled,
             &self.opened,
+            &self.tried,
             &self.stood_down,
             &self.broken,
         ]
@@ -444,7 +458,7 @@ impl Counts {
         {
             let mut said_as = self.said_as.lock().unwrap_or_else(PoisonError::into_inner);
             if *said_as == now {
-                return;
+                return None;
             }
             *said_as = now;
         }
@@ -456,16 +470,17 @@ impl Counts {
             again,
             cancelled,
             opened,
+            tried,
             stood_down,
             broken,
         ] = now;
-        eprintln!(
+        Some(format!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
              reset; {again} reset and sent again; pi cancelled {cancelled}; {opened} \
-             connections opened, {} taking requests; {stood_down} refused as it stood down; \
-             {broken} broken off midway",
+             connections opened, {} taking requests; {tried} trials of its path; \
+             {stood_down} refused as it stood down; {broken} broken off midway",
             self.open.load(Ordering::Relaxed),
-        );
+        ))
     }
 }
 
@@ -1329,17 +1344,27 @@ impl Relay {
     /// the stand-down ends, and takes requests again once it answers. Each
     /// stand-down is known by when it ends, so a trial begun in one never
     /// ends the next; one begun meanwhile is told, and waits its own first
-    /// trial in turn.
+    /// trial from then, not from when a wait for the last would end.
     async fn tries_its_path(self: Arc<Relay>) {
         let every = self.clocks.tries_its_path_every;
+        let mut told = false;
         loop {
-            self.stood_down.notified().await;
+            if !told {
+                self.stood_down.notified().await;
+            }
+            told = false;
             let Some((until, lasting)) = self.standing.down(Instant::now()) else {
                 continue;
             };
             let mut wait = first_trial_after(every, lasting, self.clocks.stands_down_for);
             loop {
-                tokio::time::sleep(wait).await;
+                tokio::select! {
+                    () = tokio::time::sleep(wait) => {}
+                    () = self.stood_down.notified() => {
+                        told = true;
+                        break;
+                    }
+                }
                 wait = every;
                 if self.standing.down(Instant::now()).map(|(ends, _)| ends) != Some(until) {
                     break;
@@ -1639,8 +1664,7 @@ impl Relay {
         // own, is the origin's verdict rather than the path's, so it's a
         // 502, for pi's retry to wait out: the path's failure is judged as
         // the stand-down judges it.
-        let path_failed_again = fails_the_path(why);
-        let (answer, then) = if reset_on.is_some() && path_failed_again {
+        let (answer, then) = if reset_on.is_some() && goes_direct_once_resent(why) {
             (goes_directly(), "pi goes directly")
         } else {
             (not_answered(), "pi is answered 502")
@@ -1935,8 +1959,8 @@ impl Relay {
                 return Err(Unreachable::Late);
             }
         };
-        self.counts.opened.fetch_add(1, Ordering::Relaxed);
         if let Named::Trial(_) = named {
+            self.counts.tried.fetch_add(1, Ordering::Relaxed);
             eprintln!("model-relay: {named} opened");
             tokio::spawn(async move {
                 // A trial's closes once its sender is dropped, its last
@@ -1948,6 +1972,7 @@ impl Relay {
             });
             return Ok(sender);
         }
+        self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
         eprintln!("model-relay: {named} opened, {open} taking requests");
         let counts = Arc::clone(&self.counts);
@@ -2016,6 +2041,30 @@ fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
         beneath = cause.source();
     }
     true
+}
+
+/// Whether a request reset, sent once more and failing with `why`, goes
+/// direct with the relay's own 421 rather than a 502: its path failed
+/// again, or the origin's goodbye left it out saying nothing was wrong,
+/// as a drain before a deploy does. A request a goodbye left out was
+/// never begun, so direct is the safest place for it; the goodbye isn't
+/// judged, since it says nothing of the path.
+fn goes_direct_once_resent(why: &(dyn std::error::Error + 'static)) -> bool {
+    fails_the_path(why) || left_by_a_goodbye(why)
+}
+
+/// Whether the origin's goodbye, saying nothing was wrong, left the
+/// request out of what it would answer, as h2 says through the error
+/// beneath hyper's.
+fn left_by_a_goodbye(why: &(dyn std::error::Error + 'static)) -> bool {
+    let mut beneath = Some(why);
+    while let Some(cause) = beneath {
+        if let Some(h2) = cause.downcast_ref::<h2::Error>() {
+            return h2.is_go_away() && h2.is_remote() && h2.reason() == Some(h2::Reason::NO_ERROR);
+        }
+        beneath = cause.source();
+    }
+    false
 }
 
 /// The reason the origin gave for resetting the request's stream, when it
@@ -2253,10 +2302,122 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST,
-        Sender, Slot, Unread, fails_the_path, first_trial_after, goes_again, reach, reach_any,
-        read_whole, slept, with_causes,
+        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, first_trial_after, goes_again,
+        goes_direct_once_resent, reach, reach_any, read_whole, slept, with_causes,
     };
+
+    /// What hyper raises for a request an origin's goodbye giving
+    /// `reason` left out, over a real HTTP/2 connection. The origin
+    /// writes its frames by hand, as h2's own server counts a request it
+    /// has read as begun and won't leave it out: it reads the request's
+    /// headers, then says goodbye having begun none.
+    async fn left_out_by_a_goodbye(reason: h2::Reason) -> hyper::Error {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        /// The bytes a client opens HTTP/2 with, before its first frame.
+        const PREFACE: usize = 24;
+        /// A frame's head: its length, type, flags and stream.
+        const HEAD: usize = 9;
+        /// The type of a frame opening a request with its headers.
+        const HEADERS: u8 = 1;
+
+        let (near, mut far) = tokio::io::duplex(HELD_AHEAD_AT_MOST);
+        let origin = tokio::spawn(async move {
+            // Its own settings, none changed, then the client's taken.
+            far.write_all(&[0, 0, 0, 4, 0, 0, 0, 0, 0])
+                .await
+                .expect("the origin's settings");
+            let mut read = Vec::new();
+            let mut at = PREFACE;
+            loop {
+                while read.len() >= at + HEAD {
+                    let length = (usize::from(read[at]) << 16)
+                        | (usize::from(read[at + 1]) << 8)
+                        | usize::from(read[at + 2]);
+                    if read[at + 3] == HEADERS {
+                        let mut goodbye = vec![0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                        goodbye.extend_from_slice(&u32::from(reason).to_be_bytes());
+                        far.write_all(&goodbye).await.expect("the origin's goodbye");
+                        // Held open, so the goodbye is read before the end.
+                        let mut rest = [0; 64];
+                        while far.read(&mut rest).await.is_ok_and(|got| got > 0) {}
+                        return;
+                    }
+                    at += HEAD + length;
+                }
+                let mut piece = [0; 1024];
+                let got = far.read(&mut piece).await.expect("the client's frames");
+                assert!(got > 0, "the client left before sending its request");
+                read.extend_from_slice(&piece[..got]);
+            }
+        });
+        let (mut sender, connection) = hyper::client::conn::http2::handshake::<_, _, Full<Bytes>>(
+            hyper_util::rt::TokioExecutor::new(),
+            hyper_util::rt::TokioIo::new(near),
+        )
+        .await
+        .expect("a connection");
+        tokio::spawn(connection);
+        let why = sender
+            .send_request(
+                hyper::Request::get("https://origin/")
+                    .body(Full::new(Bytes::new()))
+                    .expect("a request"),
+            )
+            .await
+            .expect_err("a request answered though the origin's goodbye left it out");
+        origin.abort();
+        why
+    }
+
+    /// A resend that a goodbye saying nothing was wrong left out goes
+    /// direct, though unjudged; one saying to calm down is the origin's
+    /// verdict, a 502; one saying a protocol error is the path's, direct
+    /// and judged.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_resend_a_goodbye_left_out_goes_direct_unless_it_said_to_calm_down() {
+        let drained = left_out_by_a_goodbye(h2::Reason::NO_ERROR).await;
+        assert!(
+            goes_direct_once_resent(&drained) && !fails_the_path(&drained),
+            "a resend a drain left out wasn't sent direct unjudged: {}",
+            with_causes(&drained)
+        );
+        let calm = left_out_by_a_goodbye(h2::Reason::ENHANCE_YOUR_CALM).await;
+        assert!(
+            !goes_direct_once_resent(&calm),
+            "a resend told to calm down was sent direct: {}",
+            with_causes(&calm)
+        );
+        let broken = left_out_by_a_goodbye(h2::Reason::PROTOCOL_ERROR).await;
+        assert!(
+            goes_direct_once_resent(&broken) && fails_the_path(&broken),
+            "a resend a protocol error's goodbye left out wasn't sent direct and judged: {}",
+            with_causes(&broken)
+        );
+    }
+
+    #[test]
+    fn the_counts_say_trials_apart_from_connections_for_requests() {
+        let counts = Counts::default();
+        counts.opened.store(2, Ordering::Relaxed);
+        counts.tried.store(3, Ordering::Relaxed);
+        let line = counts.line().expect("counts that moved went unsaid");
+        assert!(
+            line.contains("; 2 connections opened, 0 taking requests; 3 trials of its path; "),
+            "the counts didn't say trials apart: {line}"
+        );
+        assert_eq!(
+            counts.line(),
+            None,
+            "counts that hadn't moved were said again"
+        );
+        counts.tried.store(4, Ordering::Relaxed);
+        assert!(
+            counts.line().is_some(),
+            "a trial alone didn't move the counts"
+        );
+    }
 
     #[test]
     fn a_stand_down_doubled_waits_as_many_times_longer_for_its_first_trial() {
