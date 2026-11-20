@@ -24,14 +24,15 @@
 # network or forget one, though never one Nix declares; on the launcher's
 # rows socket it can move the card to another access point of its network,
 # and the card still knows its neighbours there, forgetting them only on a
-# network of another name. The tests are in
+# network of another name; a move to one gone takes it back to the one it
+# left within a second. The tests are in
 # wifi/, an area to a file, each run in order through pytest on a machine
 # of its own, so the areas run side by side; wifid as they reach it is
 # wifi/wifi_session.py.
 {
   self,
   pkgs,
-  # Which area's tests run: joins, holds-on or joins-when-asked.
+  # Which area's tests run: joins, holds-on, joins-when-asked or moves.
   area,
 }:
 let
