@@ -62,16 +62,18 @@ Scope {
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
     // Its own work as the launcher opens or shuts, run and felt as
-    // "<its name> opening" or "shutting", so an opening's longest stall
+    // "<its name> opening" or "shutting", its name the key it's served
+    // by ("displays opening"), so an opening's longest stall
     // says which source held it (Launcher.qml's feltSpan). Joel's openings
     // into Now spent 30 and 44 ms of their longest stalls in "opening",
     // the turn of the launcher's open, against 14 the fill's own laps
     // named (2026-11-20). What a binding on the launcher's open does in
     // that turn stays the launcher's "opening", as does the work of a
     // source whose own handler doesn't come through here (Warp's).
-    // Applications, Capture, Networks, Orchestrators, Quests, Screens
-    // and Traffic come through here; Agents and Now feel theirs through
-    // felt, below.
+    // Applications, Capture, Displays, Networks, Now (its whole opening,
+    // its writes included), Orchestrators, Quests and Traffic come
+    // through here; Agents feels its wraps a frame on, through felt,
+    // below.
     function feltOpening(work) {
         return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
     }
