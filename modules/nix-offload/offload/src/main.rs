@@ -1475,8 +1475,10 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         bundle,
     };
     let cuts = there::Cuts::default();
-    let on = |store: &str| {
-        command::on(
+    let started = std::time::Instant::now();
+    let mut took = None;
+    let mut on = |store: &str| {
+        let status = command::on(
             store,
             &sending,
             &asked,
@@ -1484,7 +1486,15 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
             &scratch,
             ["ssh", "nix"],
             &cuts,
-        )
+        );
+        if status.is_some() {
+            took = store
+                .lines()
+                .next()
+                .and_then(|line| there::builder(line.trim()))
+                .map(|lent| lent.host);
+        }
+        status
     };
     let mut status = changed::in_turn(lenders, std::process::id())
         .iter()
@@ -1509,6 +1519,17 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     if let Some(bundle) = &sending.bundle {
         archived::gone(bundle);
     }
+    command::note(
+        &state().join("nix-offload/runs.jsonl"),
+        &command::Noted {
+            at: now(),
+            seconds: started.elapsed().as_secs(),
+            folder: &folder,
+            asked: &asked,
+            on: took.as_deref(),
+            status,
+        },
+    );
     // What ran at the commit sent, kept by nix-offload alone, so a gate
     // (the harness's host tests) can take a pass from a fenced session,
     // which can ask for a run but can't reach the keeper.

@@ -8,7 +8,10 @@ spend them. Every rule here comes from a day the cycle went slow.
 ## The Targets
 
 They're measured from the raw records: `nix-offload/there.jsonl` under
-XDG's state folder for every run sent to a builder, the lent builder's
+XDG's state folder for every build sent to a builder, `nix-offload/runs.jsonl` for
+each `there --run` sent to a lent builder, as it ends, whether or not one answered (its
+program's name alone, never its arguments, which a passing run's kept pass still
+holds), the lent builder's
 `changed-checks/runs.jsonl` for each evaluation, and the merges on main.
 
 - Merge to on: a median under 18 minutes from a merge to the switch that

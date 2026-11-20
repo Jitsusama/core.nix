@@ -414,6 +414,70 @@ impl Link<'_> {
     }
 }
 
+/// A run sent with `--run`, as `runs.jsonl` keeps it.
+pub struct Noted<'a> {
+    /// When it ended, in seconds since the epoch.
+    pub at: u64,
+    /// How long it took, waits for a builder included.
+    pub seconds: u64,
+    /// The folder it was sent from.
+    pub folder: &'a Path,
+    /// The command it ran.
+    pub asked: &'a Asked,
+    /// The builder that took it, as ssh names it; none took one turned away.
+    pub on: Option<&'a str>,
+    /// Its status there; none where no builder took it.
+    pub status: Option<i32>,
+}
+
+/// Adds a line for a run to `journal`, so what went to the builders rather
+/// than running here can be counted, as `there.jsonl` counts builds. Until
+/// 19 November nothing kept them, so a day's load couldn't say what had
+/// moved. Only the program is kept, never its arguments, which may hold
+/// what isn't ours to keep; a first word that isn't a program's name, such
+/// as `TOKEN=x` or a whole command line in one word, is kept as `?`. The
+/// line goes in one write, so two runs ending at once don't interleave.
+pub fn note(journal: &Path, noted: &Noted) {
+    // The whole word is judged, not its last part, since an assignment's
+    // value may hold a '/' and its tail would otherwise read as a name.
+    let program = noted.asked.words.first().map(|word| {
+        if word.contains(|c: char| c == '=' || c.is_whitespace()) {
+            "?".to_owned()
+        } else {
+            Path::new(word)
+                .file_name()
+                .map_or_else(|| word.clone(), |name| name.to_string_lossy().into_owned())
+        }
+    });
+    // A folder whose path isn't UTF-8 would make serde refuse it, which
+    // json! answers with a panic that would change the run's exit.
+    let line = serde_json::json!({
+        "at": noted.at,
+        "seconds": noted.seconds,
+        "folder": noted.folder.to_string_lossy(),
+        "program": program,
+        "words": noted.asked.words.len(),
+        "on": noted.on,
+        "status": noted.status,
+    });
+    let written = journal
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(journal)
+        })
+        .and_then(|mut file| file.write_all(format!("{line}\n").as_bytes()));
+    if let Err(error) = written {
+        eprintln!(
+            "nix-offload: couldn't journal the run in {}: {error}",
+            journal.display()
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,6 +489,93 @@ mod tests {
 
     fn words(said: &str) -> Vec<String> {
         said.split_whitespace().map(str::to_owned).collect()
+    }
+
+    // Each run gets a line, a run no builder took among them, keeping its
+    // program's name alone and never the words after it.
+    #[test]
+    fn a_run_is_journalled_by_its_program_alone() {
+        let folder = tempfile::tempdir().unwrap();
+        let journal = folder.path().join("state/runs.jsonl");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: words("/nix/store/x-pnpm/bin/pnpm exec vitest --token=hush"),
+        };
+        let tree = Path::new("/home/one/tree");
+        let ran = Noted {
+            at: 100,
+            seconds: 42,
+            folder: tree,
+            asked: &asked,
+            on: Some("nix-offload@builder"),
+            status: Some(1),
+        };
+        note(&journal, &ran);
+        note(
+            &journal,
+            &Noted {
+                on: None,
+                status: None,
+                ..ran
+            },
+        );
+        let kept = std::fs::read_to_string(&journal).unwrap();
+        let lines: Vec<serde_json::Value> = kept
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                serde_json::json!({"at": 100, "seconds": 42, "folder": "/home/one/tree",
+                    "program": "pnpm", "words": 4, "on": "nix-offload@builder", "status": 1}),
+                serde_json::json!({"at": 100, "seconds": 42, "folder": "/home/one/tree",
+                    "program": "pnpm", "words": 4, "on": null, "status": null}),
+            ],
+            "each run is a line, keeping no word past the program"
+        );
+        assert!(!kept.contains("hush"), "an argument was kept: {kept}");
+    }
+
+    // A first word that is an assignment keeps nothing of it, and a folder
+    // whose path isn't UTF-8 is written rather than panicking.
+    #[test]
+    fn a_run_whose_first_word_is_no_program_keeps_none_of_it() {
+        use std::os::unix::ffi::OsStrExt;
+        let folder = tempfile::tempdir().unwrap();
+        let journal = folder.path().join("runs.jsonl");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: words("TOKEN=sec/hush pnpm test"),
+        };
+        let odd = Path::new(std::ffi::OsStr::from_bytes(b"/home/one/tr\xffee"));
+        note(
+            &journal,
+            &Noted {
+                at: 1,
+                seconds: 1,
+                folder: odd,
+                asked: &asked,
+                on: None,
+                status: None,
+            },
+        );
+        let kept = std::fs::read_to_string(&journal).unwrap();
+        let line: serde_json::Value = serde_json::from_str(kept.trim_end()).unwrap();
+        assert_eq!(
+            line["program"], "?",
+            "an assignment was kept as the program: {kept}"
+        );
+        assert!(
+            !kept.contains("hush"),
+            "an assignment's value was kept: {kept}"
+        );
+        assert_eq!(
+            line["folder"], "/home/one/tr\u{fffd}ee",
+            "the folder wasn't kept: {kept}"
+        );
     }
 
     #[test]

@@ -6192,6 +6192,27 @@ fn a_run_sends_only_whats_committed_and_refuses_a_tree_with_changes() {
     assert!(!marker.exists(), "no filter the tree picked ran");
 }
 
+// A run that went is kept in runs.jsonl, by its program and builder, so
+// a day's load can say what the builders took.
+#[test]
+fn a_run_sent_is_journalled_where_it_ran() {
+    let run = RunTree::new();
+    let ran = run.run(&[]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let kept = fs::read_to_string(run.folder.path().join("nix-offload/runs.jsonl")).unwrap();
+    let line: serde_json::Value = serde_json::from_str(kept.trim()).unwrap();
+    assert_eq!(
+        (&line["program"], &line["words"], &line["status"]),
+        (
+            &serde_json::json!("pnpm"),
+            &serde_json::json!(2),
+            &serde_json::json!(0)
+        ),
+        "one line for the run: {kept}"
+    );
+    assert!(line["on"].is_string(), "it names its builder: {kept}");
+}
+
 #[test]
 fn a_run_refuses_a_tree_that_borrows_objects_and_reads_only_its_own() {
     let run = RunTree::new();
