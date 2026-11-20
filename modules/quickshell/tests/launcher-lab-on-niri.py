@@ -16,7 +16,11 @@ times each step into a place from home, as Joel takes them, since a step is navi
 to the same 50 ms. A third holds a place open while its daemon's changes come, and prints the
 line the shell says of them as it closes, since an update is held to it too: 6 of Machine's 20
 on Joel's shell took longer (2026-11-11). A fourth times going into a long drawer by Ctrl+W l,
-whose frame lays only the lines that show and the rest after it.
+whose frame lays only the lines that show and the rest after it, and a fifth a j typed a set time
+after going in, which waited on the rest of a long run while it was laid in one go.
+
+Long because every timing shares the one shell, its walk of windows and its reading of what the
+shell said, so a run's figures on both sides come from the same place, rounds and builder.
 """
 
 from __future__ import annotations
@@ -649,6 +653,97 @@ def test_going_into_a_drawer_is_timed(
             f"p90 {p90(timed) if timed else '?'}; the shell's to its swap, "
             f"of the {len(swapped)} that kept one, a median "
             f"{round(statistics.median(swapped)) if swapped else '?'} ms, "
+            f"p90 {p90(swapped) if swapped else '?'}",
+            flush=True,
+        )
+
+
+# How long after Ctrl+W l each round types j, in ms, unless the run says otherwise (LAB_INTO_AFTER),
+# a round each in turn: from with the chord, ahead of the drawer's first frame, to well past it,
+# where the rest of a long run was laid in one go of a few hundred ms (2026-11-19).
+INTO_AFTER = (0, 40, 80, 120, 160, 240, 320, 480)
+
+# A key in a drawer as the shell says it once niri presented its frame (launcher/Presented.js's
+# keyInSaid), j being `next`.
+KEY_IN_PRESENTED = re.compile(
+    r'launcher: next in the drawer for "(?:[^"\\]|\\.)*" presented (\d+) ms from the key'
+    r"(?:, (\d+) to the shell's swap)?, (\d+) from going in"
+)
+
+
+def key_in_presented(shell: Shell, mark: int) -> re.Match[str] | None:
+    """Give the line the shell said of j in the drawer since the mark, once it's said."""
+    found = None
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # The line is written once niri presents the frame, so it's read again a poll apart.
+    while found is None and time.monotonic() < deadline:
+        found = next(
+            (
+                match
+                for line in said_after(shell, mark, " in the drawer for ")
+                if (match := KEY_IN_PRESENTED.search(line))
+            ),
+            None,
+        )
+        time.sleep(launcher_on_niri.POLL)
+    return found
+
+
+def test_a_key_after_going_into_a_drawer_is_timed(
+    shell: Shell, capsys: pytest.CaptureFixture[str], request: pytest.FixtureRequest
+) -> None:
+    """Go into a row's drawer by Ctrl+W l, type j a set time after, and print j's time.
+
+    The row and windows are the going-in case's. j is typed in the chord's own wtype, a sleep
+    after it (LAB_INTO_AFTER), since a typed key has no press time and one queued behind the
+    drawer's lay is heard only after it: its time to its frame is the shell's from going in,
+    less the sleep, which is how long the rest of a long run's lay kept it waiting.
+    """
+    place = os.environ.get("LAB_INTO_IN", INTO_IN)
+    into = os.environ.get("LAB_INTO", INTO)
+    afters = [int(ms) for ms in os.environ.get("LAB_INTO_AFTER", "").split(",") if ms] or list(
+        INTO_AFTER
+    )
+    rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
+    walked_in(shell, place, place, request)
+    shell.down_to(into)
+    shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("title") == into)
+    timed: list[int] = []
+    swapped: list[int] = []
+    for round_ in range(rounds):
+        after = afters[round_ % len(afters)]
+        mark = shell.mark()
+        # wtype refuses a sleep of none, so j then follows the chord bare.
+        sleep = f"-s {after} " if after > 0 else ""
+        shell.as_account(f"wtype -M ctrl -k w -m ctrl -k l {sleep}-k j")
+        found = key_in_presented(shell, mark)
+        if found is None:
+            failed = f"j {after} ms into {into}'s drawer was never said presented, round {round_}"
+            raise AssertionError(failed)
+        took = int(found.group(3)) - after
+        timed.append(took)
+        # The shell's own share, from when it heard j to its swap, apart from niri's.
+        swap = f", {found.group(2)} to the shell's swap" if found.group(2) else ""
+        if found.group(2):
+            swapped.append(int(found.group(2)))
+        with capsys.disabled():
+            print(
+                f"lab-key-in {into} round {round_}: j {after} ms after going in took {took} ms "
+                f"to its frame, {found.group(3)} from going in; from j heard, "
+                f"{found.group(1)} to its frame{swap}",
+                flush=True,
+            )
+        shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
+        shell.launcher_until(lambda shown: not (shown["drawer"] or {}).get("keys"))
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    with capsys.disabled():
+        print(
+            f"lab-key-in {into}: {len(timed)} keys took a median "
+            f"{round(statistics.median(timed)) if timed else '?'} ms to their frames, "
+            f"p90 {p90(timed) if timed else '?'}, the slowest {max(timed) if timed else '?'}; "
+            f"the shell's from j heard to its swap, of the {len(swapped)} that kept one, a "
+            f"median {round(statistics.median(swapped)) if swapped else '?'} ms, "
             f"p90 {p90(swapped) if swapped else '?'}",
             flush=True,
         )

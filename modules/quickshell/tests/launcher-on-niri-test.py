@@ -471,9 +471,10 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     """Emoji's drawer lays its run short at rest, whole once Ctrl+W l goes in, short as left.
 
     A place's members are laid at rest only as far as the drawer shows, since Emoji's 1,914
-    names laid whole cost about 200 ms a drawer (Drawer.qml's runWhole). The keys read every
-    line, so they lay it whole; leaving it scrolled deep keeps the view there, so the run is
-    laid that far again, with more below, rather than leaving the view past its end.
+    names laid whole cost about 200 ms a drawer (Drawer.qml's runMost). The keys read every
+    line, so they lay the rest a part a turn, and all at once for a key that reads past
+    what's laid; leaving it scrolled deep keeps the view there, so the run is laid that far
+    again, with more below, rather than leaving the view past its end.
     """
     # Far fewer lines than Emoji's names take whole, and far more than a drawer shows.
     whole_least = 100
@@ -494,8 +495,12 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     going_in = shell.mark()
     # Ctrl+W then l in one batch, as he types it, so the chord never waits on its second key.
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l")
+    # The rest is laid a part a turn with no key to ask it, until it's whole.
     shell.launcher_until(
-        lambda shown: (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
+        lambda shown: (
+            (shown["drawer"]["cursor"] or {}).get("lines", 0) > whole_least
+            and shown["drawer"]["laying"] is False
+        )
     )
     # The cursor counts its lines from one, so it's told by where it began.
     entered = shell.showing()["drawer"]
@@ -534,10 +539,63 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
             and shown["drawer"]["cursor"]["line"] >= whole_lines - 1
         )
     )
+    searched_mid_laying(shell, str(entered["bodyDrawn"]), whole_least)
+    back_from_the_key_list(shell, whole_least, whole)
     # close_launcher can't close from inside the drawer's keys, so they're left first.
     shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
     shell.launcher_until(lambda shown: not shown["drawer"]["keys"])
     shell.close_launcher()
+
+
+def searched_mid_laying(shell: Shell, drawn: str, whole_least: int) -> None:
+    """Search, typed with the chord from the run's top, for a name its first part doesn't hold.
+
+    The run's rest is laid a part a turn after going in, so a search typed before the last
+    part lays it all first rather than search only what's laid.
+    """
+    # The last name made only of letters and spaces, which the search reads as typed, and
+    # found nowhere else, so the search lands on it alone.
+    plain = drawn.replace("\u00a0", " ")
+    names = re.split(r" \u00b7 |\n", plain)
+    name = next(
+        name
+        for name in reversed(names)
+        if re.fullmatch(r"[A-Za-z ]+", name) and plain.count(name) == 1
+    )
+    # Left at the run's top, so it's laid short at rest and the keys lay it again.
+    shell.send_chars("gg")
+    shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
+    shell.launcher_until(lambda shown: not shown["drawer"]["keys"])
+    shell.as_account(f"wtype -M ctrl -k w -m ctrl -k l {shlex.quote('/' + name)} -k Return")
+    # It lands on the name, far past the first part, rather than say it's found nowhere.
+    shell.launcher_until(
+        lambda shown: (shown["drawer"]["cursor"] or {}).get("line", 0) > whole_least
+    )
+
+
+def back_from_the_key_list(shell: Shell, whole_least: int, whole: int) -> None:
+    """Go back to Emoji's drawer from its key list, and check its frame lays only what shows.
+
+    The drawer shown anew lays its run as going into it does, a part a turn after its first,
+    rather than all 1,833 lines before it.
+    """
+    to_keys = shell.mark()
+    shell.as_account("wtype -k F1")
+    shell.launcher_until(lambda shown: shown["drawer"]["title"] == "The Drawer's Keys")
+    # The key list's own going-in is said once niri presents it, after its title shows, so
+    # it's waited for before the mark going back, which would read it as Emoji's otherwise.
+    laid_going_in(shell, to_keys)
+    going_back = shell.mark()
+    shell.as_account("wtype -k F1")
+    laid = laid_going_in(shell, going_back)
+    assert laid < whole_least, f"going back laid {laid} lines before its frame, not its view's"
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["title"] == "Emoji"
+            and shown["drawer"]["laying"] is False
+            and shown["drawer"]["bodyLines"] == whole
+        )
+    )
 
 
 def test_a_drawer_stepped_off_a_long_run_measures_none_of_it(shell: Shell) -> None:

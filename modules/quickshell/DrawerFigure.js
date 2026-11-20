@@ -16,8 +16,26 @@ const DOTTED = " \u00b7 ";
 // measures nothing past them, so a place naming 1,914 emoji lays only what
 // its drawer can show.
 function runLines(words, wide, width, most = 0) {
+    return runFrom({ items: runItems(words), from: 0 }, wide, width, most).lines;
+}
+
+// A run's items, as runLines and runFrom take them.
+function runItems(words) {
+    return String(words).split(DOTTED);
+}
+
+// The lines of a run's `items` from the `from`th on, as runLines lays them,
+// with the item the next line begins on, or -1 once none is left. A line
+// stops where its next item doesn't fit, so the lines laid from where one
+// stopped are the lines the whole run lays there: the drawer lays a long
+// run a part a turn, each part from where the last stopped, rather than
+// all 1,914 of Emoji's names at once.
+function runFrom(run, wide, width, most = 0) {
+    const items = run.items;
     const lines = [];
-    for (const item of String(words).split(DOTTED)) {
+    let at = run.from;
+    for (; at < items.length; at++) {
+        const item = items[at];
         const last = lines.length - 1;
         if (last >= 0 && width(`${lines[last]}${DOTTED}${item}`) <= wide) {
             lines[last] = `${lines[last]}${DOTTED}${item}`;
@@ -27,7 +45,7 @@ function runLines(words, wide, width, most = 0) {
             lines.push(item);
         }
     }
-    return lines;
+    return { lines, next: at < items.length ? at : -1 };
 }
 
 // How many lines of a run a drawer lays at rest, `tall` high on lines
