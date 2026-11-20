@@ -3390,6 +3390,7 @@ Scope {
         say([]);
         forgetGone();
         const had = wayCounts();
+        const wasLetGo = letGoBy;
         const left = Steady.shareStarts({ rows: matches, at: current, back: jumpsBack,
             ahead: jumpsAhead, tags: tagsBack, last: lastPlace }, pairedId);
         if (left.rows.length !== matches.length) {
@@ -3400,7 +3401,7 @@ Scope {
         jumpsAhead = left.ahead;
         tagsBack = left.tags;
         lastPlace = left.last;
-        markLetGo(had);
+        markLetGo(wasLetGo, had);
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
@@ -3421,6 +3422,7 @@ Scope {
             say([]);
         heldSaying = [];
         armed = left.armed;
+        forgetLetGo();
     }
     function tellOnOpen(told, loose) {
         if (open) {
@@ -4211,6 +4213,7 @@ Scope {
     // (letGoBy), for its key to say so.
     function hiddenForgotten() {
         const had = wayCounts();
+        const wasLetGo = letGoBy;
         const left = Steady.hiddenGone({ back: jumpsBack, ahead: jumpsAhead, tags: tagsBack,
             last: lastPlace });
         const dropped = jumpsBack.length - left.back.length + jumpsAhead.length
@@ -4228,17 +4231,33 @@ Scope {
             tagsBack = left.tags;
         if (left.last !== lastPlace)
             lastPlace = left.last;
-        markLetGo(had);
+        markLetGo(wasLetGo, had);
     }
     // The ways back a share has let go whose keys haven't yet said so
-    // (Steady.waysLetGo), none as the launcher opens.
+    // (Steady.waysLetGo), none as the launcher opens or closes or the share
+    // ends. Any other write to a way is no longer the share's to explain
+    // (Steady.wayWritten); untold and hiddenForgotten mark again, after
+    // their own writes, from the marks and counts before them.
     property var letGoBy: Steady.noneLetGo()
+    onJumpsBackChanged: wayWritten("back")
+    onJumpsAheadChanged: wayWritten("ahead")
+    onTagsBackChanged: wayWritten("tags")
+    onLastPlaceChanged: wayWritten("last")
+    function wayWritten(way) {
+        const after = Steady.wayWritten(letGoBy, way);
+        if (after !== letGoBy)
+            letGoBy = after;
+    }
+    function forgetLetGo() {
+        if (Object.values(letGoBy).some(Boolean))
+            letGoBy = Steady.noneLetGo();
+    }
     function wayCounts() {
         return { back: jumpsBack.length, ahead: jumpsAhead.length, tags: tagsBack.length,
             last: lastPlace !== null ? 1 : 0 };
     }
-    function markLetGo(had) {
-        letGoBy = Steady.waysLetGo(letGoBy, had, wayCounts());
+    function markLetGo(was, had) {
+        letGoBy = Steady.waysLetGo(was, had, wayCounts());
     }
     // Says on the foot, as Tab's "not here" is said, that the share let go
     // of `way`, found empty by `act`'s key, at that way's first press since:
@@ -8351,8 +8370,7 @@ Scope {
             jumpsAhead = [];
         if (tagsBack.length > 0)
             forgetFollows();
-        if (Object.values(letGoBy).some(Boolean))
-            letGoBy = Steady.noneLetGo();
+        forgetLetGo();
         prompt.forget();
     }
     // Long enough for the closing frame to be drawn first, so letting the
@@ -10569,7 +10587,7 @@ Scope {
         jumpsBack = [];
         jumpsAhead = [];
         forgetFollows();
-        letGoBy = Steady.noneLetGo();
+        forgetLetGo();
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened

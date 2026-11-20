@@ -129,7 +129,8 @@ function noneLetGo() {
 // `had` places to `left` (counts by way, the last place 1 or 0), from the
 // `marks` before it: a way it emptied is let go, as untold empties every
 // way at a share's start and hiddenGone some at a press, and a way that
-// holds a place again is not, its key having somewhere to go. Each way
+// holds a place again is not, its key having somewhere to go; any other
+// write since is wayWritten's. Each way
 // keeps its own mark, so a press that empties all four leaves the other
 // three keys to say so at their own first press.
 function waysLetGo(marks, had, left) {
@@ -138,6 +139,20 @@ function waysLetGo(marks, had, left) {
         now[way] = left[way] === 0 && (marks[way] === true || had[way] > 0);
     }
     return now;
+}
+
+// The marks once `way` is written by anything but a share's letting go (a
+// step, a jump, Ctrl+], a step leaving by itself): no longer the share's
+// to explain, though no key looked while it held a place, as one refilled
+// and emptied again would otherwise blame the share. One not let go comes
+// back as it was, so nothing that reads the marks moves.
+function wayWritten(marks, way) {
+    if (marks[way] !== true) {
+        return marks;
+    }
+    const after = Object.assign({}, marks);
+    after[way] = false;
+    return after;
 }
 
 // What a press of `way`'s key, finding it empty, says: whether the share
