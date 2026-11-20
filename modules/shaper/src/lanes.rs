@@ -13,17 +13,39 @@
 //! Joel comes first: he gets what he carries on each lane, a fifth more
 //! and a megabit, so his next burst finds room before the next second
 //! moves the rates; a fifth alone would take ten seconds to grow from one
-//! megabit to six. HTB lends Joel's two classes what the others leave
-//! before it lends agents' any, and every class may borrow up to the whole
-//! rate: the VPN's own CAKE is what holds it near V, and when that runs
-//! ahead of a cut for a moment, its class borrows rather than dropping
-//! what's inside the tunnel alike. But
-//! while any agent has something waiting, a quarter of the rate is theirs
-//! whatever Joel wants: agents are always usable. Agents get what Joel
-//! leaves, split evenly between the lanes on which some wait, so a push
-//! straight to a builder gets half rather than the sixteenth CAKE's bulk
-//! tin gave it, which on 16 November was 346 kbit/s of 5.5 Mb/s. The
-//! split isn't by flows: on 16 November at 20:25 agents held 117 flows to
+//! megabit to six. What he needs straight on the connection rises at once
+//! and falls by a fifth a second, as the VPN's share, which carries his
+//! part inside it, already does: a second in which something past the
+//! shaper, a router's queue when the controller climbs past the line, gave
+//! his upload little would otherwise leave him little the next, and beside
+//! agents he'd take seconds to grow back. HTB lends Joel's two classes
+//! what the others leave before it lends agents' any, and every class may
+//! borrow up to the whole rate: the VPN's own CAKE is what holds it near
+//! V, and when that runs ahead of a cut for a moment, its class borrows
+//! rather than dropping what's inside the tunnel alike. But while any
+//! agent has something waiting, a quarter of the rate is theirs whatever
+//! Joel wants: agents are always usable.
+//!
+//! What Joel carries now on both lanes comes first, and the VPN's share
+//! is set from it, so a lane he left never squeezes the one he's on. What's
+//! held of his straight lane past that comes only from agents straight on
+//! the connection, past their part of the quarter, and HTB lends it back to
+//! them while he leaves it. It's never taken from the VPN, whose own CAKE
+//! holds it hard, so held there it would sit unused: with agents waiting
+//! only inside the VPN a dip still leaves Joel little more than what he
+//! carried, as before. While the VPN's share falls, it never takes the
+//! part of the quarter that agents waiting straight are owed.
+//!
+//! Agents get what Joel leaves, split evenly between the lanes on which
+//! some wait, with three exceptions. The VPN's agents may go short by up
+//! to a twentieth of the VPN's whole share, the band it stays still inside,
+//! which can be a good part of their half beside his. Agents straight go
+//! short, down to their part of the quarter, while the VPN's share stands
+//! or falls above what it's asked. And what's held of his straight lane for
+//! a few seconds after he stops is only lent to agents straight while it
+//! lasts. Even so a push straight to a builder gets half rather than the
+//! sixteenth CAKE's bulk tin gave it, which on 16 November was 346 kbit/s
+//! of 5.5 Mb/s. The split isn't by flows: on 16 November at 20:25 agents held 117 flows to
 //! the model inside the VPN and a few straight to the builders, so a
 //! split by flows gave the builders' copies 8 kbit/s and they failed.
 //!
@@ -32,11 +54,18 @@
 //! window of two packets holds too little to count, yet CAKE drops what
 //! waits past its target, so a drop says the lane wants more than it gets.
 //!
-//! The VPN's share rises at once, and falls by at most a fifth a second,
-//! so a copy's queue emptying between bursts doesn't swing it; a move
-//! under a twentieth isn't made at all. It's held as a share, so a rate the
-//! controller cuts cuts V with it at once. room.rs, which did this for the
-//! two bulk tins alone, flipped its two lines about 2,200 times in two days.
+//! The VPN's share rises at once and falls by at most a fifth a second, so
+//! a copy's queue emptying between bursts doesn't swing it. It gives up at
+//! once only what Joel carries straight now and what agents straight are
+//! owed, and a move under a twentieth isn't made at all. It's held as a
+//! share, so a rate the controller cuts cuts V with it at once. A rate moved
+//! and moved back between two seconds' splits leaves the share as it was,
+//! but one still moved at a split stores what that rate gave, capped lower
+//! or, as Joel's part is a larger share of less, raised, and it moves from
+//! there once the rate comes back; most of the controller's cuts outlast a
+//! split. room.rs, which did
+//! this for the two bulk tins alone, flipped its two lines about 2,200
+//! times in two days.
 //!
 //! Long because its tests, over half of it, walk each case of the split:
 //! Joel alone, agents on either lane or both, a starved copy, a cut, and
@@ -70,7 +99,13 @@ const WAITING_BYTES: u64 = 3_000;
 /// and be starved again; twenty seconds keeps the half through a copy's
 /// quiet stretches, and costs the VPN at most that long after it ends.
 const PRESSED_S: f64 = 20.0;
-/// The most the VPN's share falls in a second, as a share of itself.
+/// The most the VPN's share, or what Joel needs straight on the
+/// connection, falls in a second, as a share of itself; but the VPN gives
+/// what Joel carries straight now, and agents waiting straight their part
+/// of the quarter, at once. What Joel needs
+/// falls by it for each second of a gap, since he was quiet through them;
+/// the VPN's share falls by it once however long the gap, as it always
+/// has, since a loop that stalled read nothing of its agents meanwhile.
 const FALL: f64 = 0.2;
 /// A move of the VPN's share under this share of itself isn't made.
 const STILL: f64 = 0.05;
@@ -152,10 +187,14 @@ pub struct Said {
     pub waiting_direct: u32,
 }
 
-/// Follows the VPN's share from second to second.
+/// Follows the VPN's share, and what Joel needs straight on the
+/// connection, from second to second; a rate of zero forgets both.
 #[derive(Clone, Debug, Default)]
 pub struct Lanes {
     share: Option<f64>,
+    /// What Joel needs straight on the connection, in kbit/s, held as it
+    /// falls.
+    joel: f64,
     last: Seen,
     /// The seconds split over so far.
     clock: f64,
@@ -227,6 +266,7 @@ impl Lanes {
         let rate = seen.rate;
         if rate <= 0.0 {
             self.share = None;
+            self.joel = 0.0;
             return Split::default();
         }
         let (beside, within) = (
@@ -238,24 +278,47 @@ impl Lanes {
         } else {
             0.0
         };
-        // Joel's two parts shrink alike when together they'd pass what he
-        // may take, so neither of his lanes is starved for the other.
-        let need = |carried: f64| carried * HEADROOM + JOEL_LEAST;
-        let wants = (need(seen.joel_straight), need(seen.joel_vpn));
-        let scale = ((rate - floor) / (wants.0 + wants.1)).min(1.0);
-        let (joel, joel_vpn) = (wants.0 * scale, wants.1 * scale);
+        // What Joel carries now on his two lanes shrinks alike when
+        // together they'd pass what he may take, so neither is starved for
+        // the other.
+        let room = rate - floor;
+        let now = (need(seen.joel_straight), need(seen.joel_vpn));
+        let scale = (room / (now.0 + now.1)).min(1.0);
+        let (straight_now, joel_vpn) = (now.0 * scale, now.1 * scale);
         // What's left is the agents', evenly between the lanes they wait
         // on. With none waiting it goes to the VPN, whose own CAKE is
         // held to V: the classes beside it borrow what it leaves.
-        let left = rate - joel - joel_vpn;
-        let to_vpn = match (beside, within) {
-            (true, true) => left / 2.0,
-            (true, false) => 0.0,
-            (false, _) => left,
+        let left = rate - straight_now - joel_vpn;
+        let (to_vpn, straight_floor) = match (beside, within) {
+            (true, true) => (left / 2.0, floor / 2.0),
+            (true, false) => (0.0, floor),
+            (false, _) => (left, 0.0),
         };
         let vpn = self
             .hold(joel_vpn + to_vpn, joel_vpn, rate, dt)
-            .min(rate - joel);
+            .min(rate - straight_now - straight_floor);
+        // What the cap left is what the VPN has, so it falls from there: held
+        // above it, it would climb back the next second into the room held
+        // for Joel, where its own CAKE would leave it unused. Only a real
+        // second is stored: a new rate between seconds asks for more or caps
+        // at that rate alone, and kept, a moment's cut would end the VPN's
+        // slow fall, the only hold Joel's part in it gets, or come back with
+        // the rate into the room held for him straight.
+        if dt > 0.0 {
+            self.share = Some(vpn / rate);
+        }
+        // What's held of his straight lane past what he carries comes only
+        // from agents straight on the connection, past their part of the
+        // floor: they borrow it back while he leaves it, where the VPN's
+        // own CAKE would keep what it lost from anyone inside it.
+        // The first bound keeps agents their whole quarter when the VPN's
+        // share stands up to a twentieth under what it was asked, the second
+        // agents straight their part of it; neither is under nothing, as
+        // Joel's two lanes fit in the room and the VPN is held above.
+        let extra = self.joel_held(now.0, dt) - now.0;
+        let spare =
+            (room - straight_now - joel_vpn).min(rate - straight_now - vpn - straight_floor);
+        let joel = straight_now + extra.min(spare);
         Split {
             joel,
             vpn,
@@ -263,10 +326,21 @@ impl Lanes {
         }
     }
 
+    /// What Joel needs straight on the connection, given what he needed
+    /// over the last `dt` seconds, `needs`: at once when it rises, and by
+    /// a fifth for each second when it falls, so a gap of several seconds
+    /// takes as much as those seconds would have.
+    fn joel_held(&mut self, needs: f64, dt: f64) -> f64 {
+        let keep = (1.0 - FALL).powf(dt.max(0.0));
+        self.joel = needs.max(self.joel * keep);
+        self.joel
+    }
+
     /// The VPN's rate, moving towards `wanted` kbit/s: at once when it
     /// rises past a twentieth or Joel's own part, `joel`, passes what's
     /// held; by at most a fifth a second when it falls past a twentieth.
-    fn hold(&mut self, wanted: f64, joel: f64, rate: f64, dt: f64) -> f64 {
+    /// What it keeps is split's to store, after the cap.
+    fn hold(&self, wanted: f64, joel: f64, rate: f64, dt: f64) -> f64 {
         let wanted = wanted / rate;
         let share = match self.share {
             Some(held) if joel / rate <= held => {
@@ -280,9 +354,13 @@ impl Lanes {
             }
             _ => wanted,
         };
-        self.share = Some(share);
         share * rate
     }
+}
+
+/// What Joel needs on a lane past what he carried there, in kbit/s.
+fn need(carried: f64) -> f64 {
+    carried * HEADROOM + JOEL_LEAST
 }
 
 fn cmd(words: &str) -> Vec<String> {
@@ -387,10 +465,6 @@ mod tests {
     use super::*;
 
     const RATE: f64 = 10_000.0;
-
-    fn need(carried: f64) -> f64 {
-        carried * HEADROOM + JOEL_LEAST
-    }
 
     fn waiting(flows: u32) -> Agents {
         Agents {
@@ -725,6 +799,412 @@ mod tests {
             ),
             "the VPN held {}",
             split.vpn
+        );
+    }
+
+    // On 19 November the hidden-queue test's controller climbed to 8,557
+    // kbit/s past its router's 8,000, whose queue gave Joel's upload a
+    // 33rd of the line for a second. His lane, following that second, fell
+    // to 1,259 and took about four seconds to grow back beside 32 agents.
+    #[test]
+    fn joel_s_lane_falls_by_a_fifth_a_second_and_rises_at_once() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), Agents::default());
+        // Under the three quarters he may take beside waiting agents.
+        let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
+        assert!(near(busy, need(4_000.0)), "Joel busy held {busy}");
+        let dipped = lanes.split(&seen((200.0, 0.0), agents), 1.0).joel;
+        assert!(
+            near(dipped, busy * (1.0 - FALL)),
+            "a second's dip took Joel's lane from {busy} to {dipped}"
+        );
+        // Held as what he needs, not as what a smaller rate left him.
+        lanes.at(RATE / 2.0);
+        assert!(
+            near(lanes.at(RATE).joel, dipped),
+            "a smaller rate between seconds kept less of Joel's lane"
+        );
+        let back = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
+        assert!(
+            near(back, need(4_000.0)),
+            "didn't rise back at once: {back}"
+        );
+        let mut joel = back;
+        for _ in 0..20 {
+            let next = lanes.split(&seen((0.0, 0.0), agents), 1.0).joel;
+            let fell = (joel * (1.0 - FALL)).max(need(0.0));
+            assert!(near(next, fell), "fell from {joel} to {next}, not {fell}");
+            joel = next;
+        }
+        assert!(
+            near(joel, need(0.0)),
+            "settled at {joel}, not {}",
+            need(0.0)
+        );
+    }
+
+    #[test]
+    fn joel_s_lane_falls_a_fifth_for_each_second_of_a_gap() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), Agents::default());
+        let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
+        let after = lanes.split(&seen((0.0, 0.0), agents), 3.0).joel;
+        assert!(
+            near(after, busy * (1.0 - FALL).powi(3)),
+            "three seconds took Joel's lane from {busy} to {after}"
+        );
+    }
+
+    // The running shaper never takes its rate under its floor, so this is
+    // the type's own promise, as it always was for the VPN's share.
+    #[test]
+    fn a_rate_of_zero_forgets_what_joel_held() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), Agents::default());
+        lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
+        let gone = Seen {
+            rate: 0.0,
+            ..seen((4_000.0, 0.0), agents)
+        };
+        lanes.split(&gone, 1.0);
+        let after = lanes.split(&seen((0.0, 0.0), agents), 1.0).joel;
+        assert!(
+            near(after, need(0.0)),
+            "a rate of zero still held {after} of Joel's lane"
+        );
+    }
+
+    #[test]
+    fn a_lane_joel_left_doesn_t_squeeze_the_one_he_moved_to() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), Agents::default());
+        lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
+        let moved = lanes.split(&seen((0.0, 4_000.0), agents), 1.0);
+        assert!(
+            adds_up(moved, RATE),
+            "the classes don't add up to the rate: {moved:?}"
+        );
+        assert!(
+            near(moved.vpn, need(4_000.0)),
+            "the lane he moved to got {} of the {} he needs",
+            moved.vpn,
+            need(4_000.0)
+        );
+        // What's held of the lane he left past need(0) comes only from
+        // agents straight past their floor.
+        let spare = RATE * (1.0 - AGENTS_FLOOR) - need(0.0) - need(4_000.0);
+        assert!(
+            near(moved.joel, need(0.0) + spare),
+            "the lane he left held {}",
+            moved.joel
+        );
+    }
+
+    // The VPN's own CAKE holds it hard, so what Joel's straight lane held
+    // from it would sit unused while he was quiet.
+    #[test]
+    fn joel_s_hold_takes_nothing_from_the_vpn() {
+        let mut lanes = Lanes::default();
+        let agents = (Agents::default(), waiting(30));
+        lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
+        let quiet = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        assert!(
+            near(quiet.vpn, RATE - need(0.0)),
+            "the VPN got {} with Joel quiet and agents only inside it",
+            quiet.vpn
+        );
+        assert!(
+            near(quiet.joel, need(0.0)),
+            "Joel's lane held {} that only the VPN's agents could use",
+            quiet.joel
+        );
+    }
+
+    // The VPN's share falls slowly too, so what both hold could leave the
+    // agents waiting straight less than their quarter.
+    #[test]
+    fn both_holds_leave_agents_straight_their_floor() {
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 0.0), (Agents::default(), waiting(30))), 1.0);
+        let moved = lanes.split(&seen((0.0, 0.0), (waiting(32), Agents::default())), 1.0);
+        assert!(
+            adds_up(moved, RATE),
+            "the classes don't add up to the rate: {moved:?}"
+        );
+        assert!(
+            moved.agents >= RATE * AGENTS_FLOOR - 1.0,
+            "agents straight got {} of their {} with both holds on",
+            moved.agents,
+            RATE * AGENTS_FLOOR
+        );
+        assert!(
+            moved.joel > need(0.0) + 1.0,
+            "Joel's lane kept nothing of its hold: {}",
+            moved.joel
+        );
+    }
+
+    // Joel moving from the VPN to straight leaves the VPN's share falling
+    // from what he carried there: it mustn't take agents straight their
+    // quarter meanwhile, nor leave Joel under what he carries.
+    #[test]
+    fn the_vpn_s_fall_leaves_agents_straight_their_floor() {
+        let agents = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((0.0, 5_000.0), agents), 1.0);
+        let moved = lanes.split(&seen((5_000.0, 0.0), agents), 1.0);
+        assert!(
+            adds_up(moved, RATE),
+            "the classes don't add up to the rate: {moved:?}"
+        );
+        assert!(
+            moved.agents >= RATE * AGENTS_FLOOR - 1.0,
+            "Joel moving straight left agents straight {} of their {}",
+            moved.agents,
+            RATE * AGENTS_FLOOR
+        );
+        let room = RATE * (1.0 - AGENTS_FLOOR);
+        let carries = need(5_000.0) * room / (need(5_000.0) + need(0.0));
+        assert!(
+            near(moved.joel, carries),
+            "Joel moving straight got {} of the {carries} he carries",
+            moved.joel
+        );
+        // The VPN's share falls from what the cap left it, so a dip the
+        // second after doesn't hand it back the room held for Joel.
+        let dip = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        let held = need(5_000.0) * (1.0 - FALL);
+        assert!(
+            near(dip.joel, held),
+            "a dip after moving from the VPN took Joel's lane to {}, not {held}",
+            dip.joel
+        );
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((0.0, 0.0), (Agents::default(), waiting(30))), 1.0);
+        let quiet = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        assert!(
+            near(quiet.joel, need(0.0)),
+            "the VPN's agents giving way left quiet Joel {}, not {}",
+            quiet.joel,
+            need(0.0)
+        );
+        assert!(
+            quiet.agents >= RATE * AGENTS_FLOOR - 1.0,
+            "the VPN's agents giving way left agents straight {} of their {}",
+            quiet.agents,
+            RATE * AGENTS_FLOOR
+        );
+    }
+
+    // The VPN's share stays put inside a twentieth of what it's asked, so
+    // the room past Joel's two lanes can be all there is: his hold mustn't
+    // take the agents' quarter from it. The quarter is theirs between both
+    // lanes: the still share leaves the VPN's agents a little under half of
+    // it here, 1,050 of 1,250, and those straight the rest.
+    #[test]
+    fn a_still_vpn_share_leaves_agents_their_quarter() {
+        let agents = (waiting(32), waiting(10));
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 8_000.0), agents), 1.0);
+        let next = lanes.split(&seen((2_000.0, 5_000.0), agents), 1.0);
+        let room = RATE * (1.0 - AGENTS_FLOOR);
+        let joel_vpn = need(5_000.0) * room / (need(2_000.0) + need(5_000.0));
+        let theirs = next.agents + next.vpn - joel_vpn;
+        assert!(
+            theirs >= RATE * AGENTS_FLOOR - 1.0,
+            "agents on both lanes got {theirs} of their {}",
+            RATE * AGENTS_FLOOR
+        );
+        let half = RATE * AGENTS_FLOOR / 2.0;
+        assert!(
+            next.agents >= half - 1.0,
+            "agents straight got {} of their {half}",
+            next.agents
+        );
+        assert!(
+            next.vpn - joel_vpn >= half - next.vpn * STILL - 1.0,
+            "the VPN's agents got {} of their {half}, short by more than the still share's \
+             twentieth",
+            next.vpn - joel_vpn
+        );
+    }
+
+    // When the VPN's agents wait again after the cap trimmed its share, it
+    // rises at once to give them their half, and agents straight keep theirs
+    // beside it. That the trimmed share is the one stored is pinned by the
+    // dip in the_vpn_s_fall_leaves_agents_straight_their_floor.
+    #[test]
+    fn a_capped_vpn_share_rises_when_its_agents_wait() {
+        let straight = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((0.0, 5_000.0), straight), 1.0);
+        lanes.split(&seen((5_000.0, 0.0), straight), 1.0);
+        let both = lanes.split(&seen((5_000.0, 0.0), (waiting(32), waiting(10))), 1.0);
+        let room = RATE * (1.0 - AGENTS_FLOOR);
+        let joel_vpn = need(0.0) * room / (need(5_000.0) + need(0.0));
+        let half = RATE * AGENTS_FLOOR / 2.0;
+        assert!(
+            adds_up(both, RATE),
+            "the classes don't add up to the rate: {both:?}"
+        );
+        assert!(
+            both.vpn - joel_vpn >= half - 1.0,
+            "the VPN's agents got {} of their {half} from a capped share",
+            both.vpn - joel_vpn
+        );
+        assert!(
+            both.agents >= half - 1.0,
+            "agents straight got {} of their {half} beside a capped share",
+            both.agents
+        );
+    }
+
+    // The controller moves its rate between seconds, and the cap at that
+    // rate alone mustn't end the VPN's slow fall, the only hold Joel's part
+    // inside it gets.
+    #[test]
+    fn a_cut_between_seconds_leaves_the_vpn_s_held_share() {
+        let straight = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((0.0, 2_000.0), straight), 1.0);
+        let held = lanes.split(&seen((3_000.0, 0.0), straight), 1.0);
+        lanes.at(RATE * 0.8);
+        let back = lanes.at(RATE);
+        assert!(
+            near(back.vpn, held.vpn),
+            "a cut between seconds left the VPN {} of the {} it held",
+            back.vpn,
+            held.vpn
+        );
+    }
+
+    // A cut still in place at a second's split stores the share that rate
+    // gave, here raised, as Joel's part inside the VPN is a larger share of
+    // less, and it comes back with the rate. This pins what the module doc
+    // says until the VPN's hold is kept in kbit/s rather than as a share.
+    #[test]
+    fn a_cut_held_across_a_second_keeps_the_share_it_stored() {
+        let straight = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 0.0), straight), 1.0);
+        lanes.split(&seen((200.0, 0.0), straight), 1.0);
+        let cut_rate = RATE * 0.3;
+        lanes.at(cut_rate);
+        let cut = lanes.split(
+            &Seen {
+                rate: cut_rate,
+                ..seen((200.0, 0.0), straight)
+            },
+            1.0,
+        );
+        let back = lanes.at(RATE);
+        assert!(
+            near(back.vpn, cut.vpn / cut_rate * RATE),
+            "a cut held across a second came back with the VPN at {}, not the {} its share \
+             at the cut gives",
+            back.vpn,
+            cut.vpn / cut_rate * RATE
+        );
+    }
+
+    // Joel's part inside the VPN is a larger share of a smaller rate, so a
+    // cut between seconds asks the VPN for more; kept, it would come back
+    // with the rate and take the room held for him straight.
+    #[test]
+    fn a_cut_between_seconds_gives_back_what_it_raised() {
+        let straight = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 0.0), straight), 1.0);
+        let held = lanes.split(&seen((200.0, 0.0), straight), 1.0);
+        lanes.at(RATE * 0.3);
+        let back = lanes.at(RATE);
+        assert!(
+            near(back.vpn, held.vpn),
+            "a cut between seconds came back with the VPN at {}, not {}",
+            back.vpn,
+            held.vpn
+        );
+        assert!(
+            near(back.joel, held.joel),
+            "a cut between seconds came back with Joel at {}, not {}",
+            back.joel,
+            held.joel
+        );
+    }
+
+    // With agents on both lanes, those straight keep their half of the
+    // quarter, and Joel's hold gets what they'd have past it.
+    #[test]
+    fn with_agents_on_both_lanes_joel_s_hold_leaves_those_straight_their_half() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), waiting(10));
+        lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
+        let quiet = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        let mut fresh = Lanes::default();
+        fresh.split(&seen((0.0, 0.0), agents), 1.0);
+        let unheld = fresh.split(&seen((0.0, 0.0), agents), 1.0);
+        assert!(
+            adds_up(quiet, RATE),
+            "the classes don't add up to the rate: {quiet:?}"
+        );
+        assert!(
+            near(quiet.vpn, unheld.vpn),
+            "Joel's hold left the VPN {} of its {}",
+            quiet.vpn,
+            unheld.vpn
+        );
+        assert!(
+            near(quiet.agents, RATE * AGENTS_FLOOR / 2.0),
+            "agents straight got {} beside the VPN's agents, not half the quarter",
+            quiet.agents
+        );
+        assert!(
+            quiet.joel > need(0.0) + 1.0,
+            "Joel's lane kept nothing of its hold: {}",
+            quiet.joel
+        );
+    }
+
+    // Joel's lane falls a fifth for each second of a gap, but the VPN's
+    // share only once, as FALL says.
+    #[test]
+    fn the_vpn_s_share_falls_once_over_a_gap() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), waiting(10));
+        let busy = lanes.split(&seen((0.0, 5_000.0), agents), 1.0);
+        let after = lanes.split(&seen((0.0, 200.0), agents), 3.0);
+        assert!(
+            near(after.vpn, busy.vpn * (1.0 - FALL)),
+            "three seconds took the VPN from {} to {}",
+            busy.vpn,
+            after.vpn
+        );
+    }
+
+    #[test]
+    fn joel_s_part_inside_the_vpn_falls_with_the_vpn_s_share_alone() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), waiting(10));
+        let busy = lanes.split(&seen((0.0, 5_000.0), agents), 1.0);
+        let room = RATE * (1.0 - AGENTS_FLOOR);
+        let wants = need(0.0) + need(5_000.0);
+        assert!(
+            near(
+                busy.vpn,
+                room * need(5_000.0) / wants + RATE * AGENTS_FLOOR / 2.0
+            ),
+            "the VPN held {} with Joel busy inside it",
+            busy.vpn
+        );
+        // The VPN's share already falls by a fifth a second, so his part
+        // inside it isn't held a second time, which would keep it from
+        // agents straight on the connection.
+        let dipped = lanes.split(&seen((0.0, 200.0), agents), 1.0);
+        assert!(
+            near(dipped.vpn, busy.vpn * (1.0 - FALL)),
+            "a second's dip took the VPN from {} to {}",
+            busy.vpn,
+            dipped.vpn
         );
     }
 
