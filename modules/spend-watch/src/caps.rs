@@ -327,7 +327,16 @@ pub fn clock(
     zone: &Zone,
     now: f64,
 ) -> Clock {
-    let horizon = 24 * paths.first().map_or(1, Vec::len);
+    let days = paths.first().map_or(1, Vec::len);
+    let today = zone.day(now);
+    // The paths run to the end of their last day rather than a whole
+    // number of days from now, and an hour past them would read as
+    // spending nothing.
+    let horizon = (0..24 * days)
+        .take_while(|k| {
+            usize::try_from(zone.day(now + count(*k) * HOUR) - today).is_ok_and(|day| day < days)
+        })
+        .count();
     // An end past what the paths reach can't be judged by them.
     let end_hour = ends_at
         .map(|end| ((end - now) / HOUR).ceil().max(0.0) as usize)
@@ -375,7 +384,14 @@ pub fn clock(
     // later than any that do: none when fewer than half reach it.
     reached.sort_unstable();
     let middle = paths.len().div_ceil(2).max(1);
-    let reaches_at = reached.get(middle - 1).map(|k| now + count(*k) * HOUR);
+    // The paths are hourly, so the reach falls somewhere in the k-th hour
+    // from now, and is said as the clock hour starting within it rather
+    // than a time carrying now's minute, which no path knows and which
+    // would move on every pass. The hour's start, not its end, since a
+    // warning nearly an hour late is the worse error.
+    let reaches_at = reached
+        .get(middle - 1)
+        .map(|k| ((now + count(*k) * HOUR) / HOUR).floor() * HOUR);
     let n = count(paths.len().max(1));
     let frees_at = (spent >= allowance).then(|| window.frees(spent, allowance, now));
     Clock {
@@ -659,6 +675,34 @@ mod tests {
         let mut paths = vec![vec![2400.0; 7]; 5];
         paths.extend(vec![vec![0.0; 7]; 5]);
         assert_eq!(reaching(&paths, now).reaches_at, Some(now + 10.0 * HOUR));
+    }
+
+    // The paths run to the end of their last day, not a week from now: at
+    // 14:00 a week of paths covers 154 hours, so an end in the 154th is
+    // judged and one in the 155th can't be, since the hours past the
+    // paths would read as spending nothing.
+    #[test]
+    fn an_end_past_the_paths_last_day_is_not_judged() {
+        let now = 1_791_936_000.0 + 14.0 * HOUR;
+        let paths = vec![vec![2400.0; 7]; 10];
+        let past = reaching_until(&paths, Some(now + 155.0 * HOUR), now);
+        assert_eq!(past.cap_before_end, None, "{past:?}");
+        let within = reaching_until(&paths, Some(now + 154.0 * HOUR), now);
+        assert_eq!(within.cap_before_end, Some(1.0), "{within:?}");
+    }
+
+    // The paths are hourly, so the reach is a clock hour, not now's minute
+    // carried along: from 00:50, ten hours of $100 reach the $1,000 left
+    // in the hour to 10:50, said as 10:00, the clock hour starting within
+    // it, where the nearest hour or the hour's end would be 11:00.
+    #[test]
+    fn a_reach_is_said_by_the_hour() {
+        let now = 1_791_936_000.0 + 50.0 * 60.0;
+        let paths = vec![vec![2400.0; 7]; 10];
+        assert_eq!(
+            reaching(&paths, now).reaches_at,
+            Some(1_791_936_000.0 + 10.0 * HOUR)
+        );
     }
 
     // An end doesn't cut the reach: whether it's one is the reader's call.

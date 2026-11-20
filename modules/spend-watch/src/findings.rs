@@ -94,19 +94,26 @@ pub fn sort(findings: &mut [Finding]) {
     });
 }
 
+/// When the finding under `key` was first raised, while it stands
+/// uncleared, so a detector can tell how long it has been saying it.
+pub fn started(history: &History, key: &str) -> Result<Option<f64>, String> {
+    history
+        .db
+        .query_row(
+            "SELECT started FROM findings WHERE key = ?1 AND cleared IS NULL",
+            [key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(fail)
+}
+
 /// Keeps what this pass raised, clears what's settled, and says what holds
 /// now with when each started and whether it's marked.
 pub fn settle(history: &History, raised: &[Finding], now: f64) -> Result<Vec<Finding>, String> {
     let db = &history.db;
     for finding in raised {
-        let started: Option<f64> = db
-            .query_row(
-                "SELECT started FROM findings WHERE key = ?1 AND cleared IS NULL",
-                [&finding.key],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(fail)?;
+        let started = started(history, &finding.key)?;
         db.execute(
             "INSERT OR REPLACE INTO findings VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,NULL,?10,?11,?12)",
             params![
