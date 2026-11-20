@@ -624,7 +624,7 @@ import ./host-checks.nix args
   # Ended sessions' work trees are swept in a unit of their own, beneath
   # everything Joel uses, an hour after each sweep ends, rather than on a
   # pi host's one thread; a Mac, with no systemd, gets none yet.
-  pi-sweeps-trees-outside-its-hosts =
+  pi-sweeps-work-trees-in-a-unit-of-its-own =
     let
       home = account workstation;
       mac = account macWorkstation;
@@ -632,7 +632,7 @@ import ./host-checks.nix args
       timer = home.systemd.user.timers.pi-sweep;
       first = value: lib.head (lib.toList value);
     in
-    holds "pi-sweeps-trees-outside-its-hosts"
+    holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
       "pi's tree sweep doesn't run an hour after each sweep ends, runs outside jobs.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy

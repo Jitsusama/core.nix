@@ -2793,7 +2793,7 @@
     holds, so the next boot can offer them back, in background.slice with the store's node, skipped
     where the harness isn't installed, and never on a Mac
   '';
-  pi-sweeps-trees-outside-its-hosts = ''
+  pi-sweeps-work-trees-in-a-unit-of-its-own = ''
     ended pi sessions' work trees are swept by a unit of their own an hour after each sweep ends,
     in jobs.slice with the store's node and no module-type warning, rather than on a pi host's
     thread, skipped where the harness isn't installed, and never on a Mac

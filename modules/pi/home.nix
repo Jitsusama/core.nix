@@ -13,8 +13,9 @@
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
 # On Linux a run Joel typed rings when it's done, with a low bell
 # (chime.nix).
-# Each morning, on Linux, the installed harness writes its measure in the
-# background: what the day cost and which mistakes recurred. A realm a
+# On Linux the installed harness's own scripts run on a schedule or at
+# login, its morning measure and its sweep of ended work trees among them
+# (timers.nix). A realm a
 # machine names in jitsusama.pi.hosts runs its conversations in shared pi
 # hosts, started with the session (host.nix).
 {
@@ -125,12 +126,8 @@ let
 
   onClaude = config.jitsusama.pi.plan == "claude";
 
-  # Where pi-packages keeps the harness's current version, and the script in
-  # it a timer runs.
-  measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
-  restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
-  windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
-  sweepScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-sweep.ts";
+  # Where pi-packages keeps the harness's current version, and the scripts
+  # in it that programs here run.
   carryScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-carry.ts";
   verbsScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-verbs.ts";
 
@@ -193,6 +190,7 @@ in
     ./fence.nix
     ./harness-settings.nix
     ./host.nix
+    ./timers.nix
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
@@ -670,116 +668,6 @@ in
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
       { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
     );
-
-    # The harness's measure: its cost audit of the last day against the day
-    # before, and its learning sensor over the last seven days day by day,
-    # as one report in its state folder's measure/. A day rather than a
-    # week, so a harness change shows the day after it lands. pi-packages
-    # installs the harness, so a machine without it, or before its first
-    # install, skips the run rather than failing it. The run reads the day's session logs, so it waits behind
-    # whatever the account is doing.
-    systemd.user.services.pi-measure = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit = {
-        Description = "Writes the pi harness's daily measure";
-        ConditionPathExists = measure;
-      };
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${lib.getExe pkgs.nodejs} ${measure}";
-        Slice = "background.slice";
-      };
-    };
-    systemd.user.timers.pi-measure = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit.Description = "Writes the pi harness's measure every morning";
-      Timer = {
-        OnCalendar = "*-*-* 06:00:00";
-        RandomizedDelaySec = "10min";
-        # A morning slept through runs once the machine wakes.
-        Persistent = true;
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
-
-    # The launcher's list of the sessions the last boot's end took away,
-    # written as the account's session starts, before any pi has: each pi
-    # rewrites it as it starts, but until one does the file would still
-    # describe an older boot. It reads only the harness's session records,
-    # and a machine without the harness skips it.
-    systemd.user.services.pi-restore-file = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit = {
-        Description = "Writes which pi sessions the last boot's end took away";
-        ConditionPathExists = restoreFile;
-      };
-      Service = {
-        Type = "oneshot";
-        # The harness's package.json names no module type, on purpose: two
-        # of its modules load with require. Node warns about that on every
-        # run, which said nothing at each switch.
-        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${restoreFile}";
-        Slice = "background.slice";
-      };
-      Install.WantedBy = [ "default.target" ];
-    };
-
-    # A session another machine holds runs on through this machine's
-    # power-off, so what the boot takes away is only the window here
-    # joined to it, and only this machine knows it was here. Every five
-    # minutes the harness notes those windows, from kitty's and the
-    # mycelium node's answers, so the next boot's list can offer them back.
-    # Each minute it cost a node of 160 to 185 MB and 0.6 to 0.8 s of CPU,
-    # 60 runs an hour that nearly always found nothing new (80ECO2,
-    # 2026-11-12); a window joined in the five minutes before a power-off
-    # is the one it misses.
-    systemd.user.services.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit = {
-        Description = "Notes the windows joined to sessions other machines hold";
-        ConditionPathExists = windowsElsewhere;
-      };
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${windowsElsewhere}";
-        Slice = "background.slice";
-      };
-    };
-    systemd.user.timers.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit.Description = "Notes every five minutes the windows joined to sessions other machines hold";
-      Timer = {
-        OnCalendar = "*:0/5";
-        AccuracySec = "10s";
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
-
-    # The sweep of ended sessions' work trees, in a process of its own
-    # rather than on a pi host's one thread, where its git calls and folder
-    # listings held every conversation in the host for up to 262 s on 19
-    # November. While it runs, the hosts' own sweeps stand down, and they
-    # take over again two hours after it last started, so stopping this
-    # timer hands sweeping back to them. It runs in jobs.slice, beneath
-    # everything Joel uses, an hour after each sweep ends, however long
-    # that sweep took; a machine without the harness's script skips it.
-    systemd.user.services.pi-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit = {
-        Description = "Sweeps ended pi sessions' work trees";
-        ConditionPathExists = sweepScript;
-      };
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
-        Slice = "jobs.slice";
-        # A sweep has taken 22 minutes on a loaded machine; one past two
-        # hours is wedged, and its lock goes stale for the next.
-        TimeoutStartSec = "2h";
-      };
-    };
-    systemd.user.timers.pi-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit.Description = "Sweeps ended pi sessions' work trees every hour";
-      Timer = {
-        OnActiveSec = "5min";
-        OnUnitInactiveSec = "1h";
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
 
     # The launcher's AI actions: the harness's server lists them and builds
     # each one's prompt, refusing a selection that looks like a secret, so
