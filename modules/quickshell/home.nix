@@ -1125,13 +1125,15 @@ in
       such as a surface drawn or taking the keys, a notice held back, or the
       launcher's state. The desktop test turns it on and waits on these lines
       rather than guessing how long something takes. While it's on, the
-      launcher's timing lines name each row whole, so window titles, which
+      drawer's timing lines name each row whole, so window titles, which
       may be a mail's subject or a document's name, go to the journal too.
       While it's off, they name a row by its kind alone, such as power or
       wifi, or the launcher's own id for a place, a category or a
       collection; a window by its app, or as window where its app isn't a
-      program's id; a place's own answer as answer; a row of no kind as
-      row; and no drawer's page. A slow key's line still says what was typed.
+      program's id, it names none or no title follows it; a place's own
+      answer as answer; a row of no kind as row; and no drawer's page. A
+      slow key's line still says what was typed, and the launcher's other
+      lines aren't held to this.
     '';
   };
 

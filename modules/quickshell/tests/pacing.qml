@@ -895,10 +895,14 @@ QtObject {
         check(failures, "a window's key is said without its title unless reports are on",
             Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
             "window:org.gnome.Evolution");
-        check(failures, "one with nothing after its app is said as a window alone",
+        check(failures, "a window key of one part, which may be a title, is said as window",
             Presented.keyShown("window:Inbox", false), "window");
-        check(failures, "as is one that names no app",
+        check(failures, "as is one that names no app, as niri's records leave it",
+            Presented.keyShown("window::Inbox", false), "window");
+        check(failures, "or one whose app was read as null",
             Presented.keyShown("window:null:Inbox", false), "window");
+        check(failures, "or as undefined",
+            Presented.keyShown("window:undefined:Inbox", false), "window");
         check(failures, "but an app whose id starts with a digit is said",
             Presented.keyShown("window:1Password:Vault", false), "window:1Password");
         check(failures, "as is one whose app holds a page's address, as a browser's may",
