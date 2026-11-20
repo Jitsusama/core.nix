@@ -811,8 +811,10 @@ impl Air<'_> {
         path: &ObjectPath<'_>,
         changed: &HashMap<String, OwnedValue>,
     ) {
-        // Taken as the signal comes, so the time a move took isn't the
-        // time wifid took to ask the bus what it reached.
+        // Taken as wifid reads the signal, before it asks the bus anything,
+        // so the time a move took isn't the time wifid took to ask what it
+        // reached. Anything wifid was busy with as the signal came still
+        // counts in it.
         let now = Instant::now();
         // An attempt at a network begins as the card starts authenticating
         // with it, or associating where it skips that.
@@ -830,8 +832,7 @@ impl Air<'_> {
                 }
                 if step == "completed" && before != "completed" {
                     let on = self.joined(bus, path).await;
-                    let arrived =
-                        on.and_then(|on| self.arrivals.borrow_mut().joined(&card, &on, now));
+                    let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
                     if let Some(arrived) = arrived {
                         println!("{}", arrived.said(&card));
                     }
@@ -854,9 +855,26 @@ impl Air<'_> {
         }
         let point = changed.get("CurrentBSS").map(|point| &**point);
         if let Some(zvariant::Value::ObjectPath(point)) = point {
+            // wpa_supplicant says only where a card's steps have got to when
+            // it sends, so a move can come as a new point alone, the card
+            // joined throughout.
+            let bssid = self
+                .points
+                .get(point.as_str())
+                .and_then(|point| point.heard());
             let point = joined_to(point);
             if let Some(card) = self.named(bus, path).await {
                 change(&self.state, |state| state.at(&card, point));
+                let joined = self.cards.get(path.as_str());
+                let joined = joined.is_some_and(|(_, step)| step == "completed");
+                let arrived = bssid.filter(|_| joined).and_then(|heard| {
+                    self.arrivals
+                        .borrow_mut()
+                        .joined(&card, Some(&heard.bssid), now)
+                });
+                if let Some(arrived) = arrived {
+                    println!("{}", arrived.said(&card));
+                }
             }
         }
         let steps = [
@@ -949,6 +967,7 @@ impl Air<'_> {
         for (card, (name, _)) in &self.cards {
             if card.starts_with(path) {
                 self.stalls.gone(name);
+                self.arrivals.borrow_mut().forget(name);
             }
         }
         self.points.retain(|point, _| !point.starts_with(path));
@@ -2095,16 +2114,27 @@ impl Wifid<'_> {
             let step = interface.state().await?;
             if self.on_its_way(&card, bssid, &step) {
                 println!("<7>{card} is {step} on its own, held to {bssid}");
+                // Held, wherever it joins is judged by this point.
+                if step != "completed" {
+                    self.arrivals
+                        .borrow_mut()
+                        .heading(&card, bssid, Instant::now());
+                }
                 Ok(())
             } else {
                 self.arrivals
                     .borrow_mut()
                     .asked(&card, bssid, Instant::now());
-                interface.roam(bssid).await
+                let roamed = interface.roam(bssid).await;
+                // Forgotten only here, since a failure before the ask is
+                // none of a move already on its way.
+                if roamed.is_err() {
+                    self.arrivals.borrow_mut().forget(&card);
+                }
+                roamed
             }
         };
         if let Err(error) = roamed.await {
-            self.arrivals.borrow_mut().forget(&card);
             self.let_go(&card, false).await;
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
