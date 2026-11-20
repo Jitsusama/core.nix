@@ -109,26 +109,35 @@ onLinux {
   # Tuple says only that it started, so the service says when it can take
   # a call, after systemd's own line, where health takes it: its own
   # ExecStartPost, run against a stand-in systemctl and a log of its own
-  # (tests/tuple-says-when-ready.sh). Health files a ready time under the
-  # name its line goes out with, so the unit must give it Tuple's, not the
-  # script's, which changes with each build.
+  # (tests/tuple-says-when-ready.sh), given too the name, level, ceiling and
+  # output the unit's lines go out with, which health reads by. The pattern
+  # journalctl picks health's ready lines with is read from health's own
+  # source, so the two can't drift apart; the words health's parser times
+  # after it, `X: ready in N ms`, are pinned by health's own tests, as the
+  # test pins Tuple's.
   tuple-says-when-ready =
     let
       home = account graphical;
       service = home.systemd.user.services.tuple.Service;
       post = service.ExecStartPost;
-      named = service.SyslogIdentifier or "";
+      setting = name: toString (service.${name} or "");
+      declared = ''^pub const READY_FOLLOWED: &str = r"(.*)";$'';
+      lines = lib.splitString "\n" (builtins.readFile ../health/src/launches.rs);
+      lost = "tuple-says-when-ready reads READY_FOLLOWED off one line of launches.rs, a raw string";
+      found = lib.findFirst (line: builtins.match declared line != null) (throw lost) lines;
+      ready = lib.head (builtins.match declared found);
     in
     pkgs.runCommandLocal "tuple-says-when-ready" { } ''
-      if [ ${lib.escapeShellArg named} != tuple ]; then
-        echo "tuple.service names its lines "${lib.escapeShellArg named}", not tuple"
-        exit 1
-      fi
       ${lib.getExe pkgs.bash} ${./tests/tuple-says-when-ready.sh} ${
         lib.escapeShellArgs [
           (lib.removeSuffix " %n" (lib.removePrefix "-" post))
           (lib.getExe' pkgs.systemd "systemctl")
           "${home.xdg.dataHome}/tuple/0/log.txt"
+          ready
+          (setting "SyslogIdentifier")
+          (setting "SyslogLevel")
+          (setting "LogLevelMax")
+          (setting "StandardOutput")
         ]
       }
       touch $out

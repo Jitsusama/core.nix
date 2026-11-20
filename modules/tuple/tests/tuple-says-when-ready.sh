@@ -15,13 +15,71 @@
 # leaves at once when systemd takes it for the unit's main process, as it
 # does when the start forked no daemon.
 #
-# Given the ExecStartPost's program, and the systemctl and log it names.
+# Given the ExecStartPost's program, the systemctl and log it names, what
+# modules/health takes for a ready line (launches.rs's READY_FOLLOWED), and
+# the unit's SyslogIdentifier, SyslogLevel, LogLevelMax and StandardOutput,
+# each empty when unset.
 set -euo pipefail
 
 post=$1
 systemctl=$2
 log=$3
+ready=$4
+named=$5
+level=$6
+ceiling=$7
+output=$8
 here=$PWD
+
+# Sets `n` to the syslog priority a level names, by name or by number as
+# systemd takes it, or -1 for none.
+priority() {
+  case $1 in
+  emerg) n=0 ;;
+  alert) n=1 ;;
+  crit) n=2 ;;
+  err) n=3 ;;
+  warning) n=4 ;;
+  notice) n=5 ;;
+  info) n=6 ;;
+  debug) n=7 ;;
+  [0-7]) n=$1 ;;
+  *) n=-1 ;;
+  esac
+}
+
+# Health files a ready time under the name its line goes out with, which must
+# be Tuple's, not the script's, which changes with each build; and it reads
+# ready lines only from notice to information priority (health/src/journal.rs),
+# so the unit's lines must go out there, under any ceiling it sets, to the
+# journal. Unset, a level is info, no ceiling holds, and output is journalled.
+if [[ ${named} != tuple ]]; then
+  echo "tuple.service names its lines '${named}', not tuple"
+  exit 1
+fi
+priority "${level:-info}"
+said_at=${n}
+if ((said_at < 5 || said_at > 6)); then
+  echo "tuple.service logs at ${level}, where health doesn't read"
+  exit 1
+fi
+priority "${ceiling:-debug}"
+if ((said_at > n)); then
+  echo "tuple.service keeps nothing past ${ceiling}, so not its ready line"
+  exit 1
+fi
+case ${output} in
+"" | journal | journal+console) ;;
+*)
+  echo "tuple.service sends its output to ${output}, not the journal"
+  exit 1
+  ;;
+esac
+
+# journalctl matches health's pattern as PCRE2, as grep -P does, and whatever
+# its case only while it holds no capital letter.
+fold=--ignore-case
+if [[ ${ready} =~ [[:upper:]] ]]; then fold=--no-ignore-case; fi
 
 mkdir -p bin
 # Answers the one ask the post makes, the unit active only once the case
@@ -64,12 +122,17 @@ gave_up="tuple: its signaller hadn't connected 5 s after it started"
 never_active="tuple: systemd hadn't said it was active 5 s after it started"
 untimed="ms after its log began, past the 5 s it times"
 no_daemon="tuple: its start left no daemon of its own, so none to time"
-# Nearly all of the post's five seconds, in microseconds, which a waiter that
+# Nearly all of the post's five seconds, in hundredths, which a waiter that
 # gives up must have waited.
-WAITED_OUT=4500000
-# What modules/health takes for a ready line (launches.rs's READY_FOLLOWED),
-# which journalctl matches whatever its case, as it's written in lower case.
-ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
+WAITED_OUT=450
+
+# Sets `now` to the hundredths of a second since boot, as the post counts its
+# wait, so a clock stepped while a case runs can't move it.
+since_boot() {
+  local up _
+  read -r up _ </proc/uptime
+  now=$((10#${up/./}))
+}
 
 # Fails the case `what` when the post has said anything yet.
 quiet() {
@@ -81,9 +144,36 @@ quiet() {
   fi
 }
 
-# Fails the case `what` when health would read what the post said as ready.
+# Sets `taken` to whether journalctl, given health's ready pattern, would pick
+# what the post said; health's parser then times only `X: ready in N ms`,
+# which its own tests pin. A pattern grep can't read ends the run, rather
+# than reading as none.
+taken() {
+  local found=0
+  grep --quiet --perl-regexp "${fold}" -- "${ready}" said || found=$?
+  case ${found} in
+  0) taken=yes ;;
+  1) taken=no ;;
+  *)
+    echo "grep couldn't read what the post said with health's ready line, ${ready}"
+    exit 1
+    ;;
+  esac
+}
+
+# Fails the case `what` when health's pattern wouldn't pick what the post said.
+readable() {
+  taken
+  if [[ ${taken} == no ]]; then
+    echo "$1: health wouldn't read it as ready"
+    failed=1
+  fi
+}
+
+# Fails the case `what` when health's pattern would pick what the post said.
 unready() {
-  if grep -qiE "${ready}" said; then
+  taken
+  if [[ ${taken} == yes ]]; then
     echo "$1: health would read it as ready"
     failed=1
   fi
@@ -225,6 +315,7 @@ looked 4 "a start"
 quiet "a start" "before the unit was active"
 touch up
 says_only "a start" "tuple: ready in 1200 ms"
+readable "a start"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -238,6 +329,7 @@ asked 1 "an active unit"
 echo '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >>log.txt
 says_only "an active unit" "tuple: ready in 250 ms"
+readable "an active unit"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -246,9 +338,11 @@ printf '%s\n' \
   >log.txt
 starts up hangs
 says_only "an ask systemd doesn't answer" "tuple: ready in 250 ms"
+readable "an ask systemd doesn't answer"
 
 starts up many
 says_only "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
+readable "daemons systemd couldn't choose between"
 
 # The log already says the signaller connected, so only leaving at once
 # keeps it from saying it's ready.
@@ -266,10 +360,12 @@ fi
 says "a start that forked no daemon" "${no_daemon}"
 unready "a start that forked no daemon"
 
-began=${EPOCHREALTIME/./}
+since_boot
+began=${now}
 starts
 ended "a unit never active" 1
-if ((${EPOCHREALTIME/./} - began < WAITED_OUT)); then
+since_boot
+if ((now - began < WAITED_OUT)); then
   echo "a unit never active: the post gave up before its five seconds"
   failed=1
 fi
