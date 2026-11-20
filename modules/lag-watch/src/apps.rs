@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::kernel::{Thread, started, tasks, text};
+use crate::kernel::{Thread, parent, started, tasks, text};
 
 /// The apps whose drawing is watched, by the name the kernel keeps for
 /// their processes, each with its label. Slack is Electron, so its
@@ -126,7 +126,8 @@ impl Apps {
         // Its cgroup first, so a process that isn't Joel's has nothing else
         // read.
         let cgroup = text(&process.join("cgroup"));
-        if !self.launched_by_joel(&cgroup) {
+        let proc = process.parent().unwrap_or(process);
+        if !self.launched_by_joel(&cgroup) || started_by_an_agent(&cgroup, proc) {
             self.known.remove(pid);
             if self.in_his_terminal(&cgroup) {
                 self.outside.insert(pid.to_string(), label);
@@ -182,10 +183,11 @@ impl Apps {
         keep(found, true)
     }
 
-    /// Lets go of every process no longer running.
-    pub fn keep_only(&mut self, running: &BTreeSet<String>) {
-        self.known.retain(|pid, _| running.contains(pid));
-        self.outside.retain(|pid, _| running.contains(pid));
+    /// Lets go of every process not looked into in the pass just made,
+    /// which has ended, or whose pid now names another program.
+    pub fn keep_only(&mut self, looked: &BTreeSet<String>) {
+        self.known.retain(|pid, _| looked.contains(pid));
+        self.outside.retain(|pid, _| looked.contains(pid));
     }
 
     /// Whether `cgroup` is a scope of Joel's terminal, directly in his own
@@ -246,9 +248,45 @@ impl Apps {
     /// it's busy. A test's or an agent's Chrome, whose fake microphone would
     /// read as a call, is in neither. One jobs-sorter has moved into the
     /// jobs slice can't be told from an agent's there, and is left out.
-    pub fn may_call(&self, cgroup: &str) -> bool {
-        self.launched_by_joel(cgroup) || self.in_his_terminal(cgroup)
+    /// Processes are read from `proc`.
+    pub fn may_call(&self, cgroup: &str, proc: &Path) -> bool {
+        (self.launched_by_joel(cgroup) && !started_by_an_agent(cgroup, proc))
+            || self.in_his_terminal(cgroup)
     }
+}
+
+/// Whether `cgroup` is a scope named for a process, `app-<name>-<pid>.scope`,
+/// whose process an agent's work started, by its parent being in a jobs or
+/// an agents slice, read from `proc`. Chrome moves itself into such a
+/// scope of its own in Joel's `app.slice`, `app-com.google.Chrome-<pid>`
+/// for the browser's pid, wherever it was started; jobs-sorter moves an
+/// agent's back within about half a second, which a minute's look can land
+/// in (5FWIUS 6f812ab4). His own browser's parent is his user manager.
+/// One whose parent can't be read is left as his, since a launcher's
+/// wrapper may have ended.
+fn started_by_an_agent(cgroup: &str, proc: &Path) -> bool {
+    let Some(pid) = cgroup
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .and_then(|path| path.rsplit('/').next())
+        .and_then(|unit| unit.strip_prefix("app-")?.strip_suffix(".scope"))
+        .and_then(|name| name.rsplit_once('-'))
+        .map(|(_, pid)| pid)
+        .filter(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+    else {
+        return false;
+    };
+    let stat = text(&proc.join(pid).join("stat"));
+    let Some(parent) = parent(&stat) else {
+        return false;
+    };
+    text(&proc.join(parent).join("cgroup"))
+        .lines()
+        .filter_map(|line| line.strip_prefix("0::"))
+        .any(|path| {
+            path.split('/')
+                .any(|part| part == "jobs.slice" || part == "agents.slice")
+        })
 }
 
 /// Whether a thread is an app's, read with its nice: a tab the app lowered
@@ -345,6 +383,12 @@ mod tests {
             &proc.join("98/cgroup"),
             &format!("0::{ACCOUNT}/agents.slice/agent.scope\n"),
         );
+        // A scope systemd-run made directly in his app.slice is no terminal.
+        write(&proc.join("99/comm"), "chrome\n");
+        write(
+            &proc.join("99/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/run-u123.scope\n"),
+        );
         // Neither an app nor a call: nothing of it is read.
         write(&proc.join("90/comm"), "bash\n");
         let mut apps = Apps::of_account(ACCOUNT);
@@ -380,6 +424,62 @@ mod tests {
             apps.unwatched(),
             BTreeMap::from([("chrome-ui".to_string(), 1)])
         );
+        // Its pid taken by another program, it's let go at once.
+        write(&proc.join("94/comm"), "bash\n");
+        drawing_threads(&proc, &mut apps);
+        assert!(apps.unwatched().is_empty(), "{:?}", apps.unwatched());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_chrome_in_a_scope_of_its_own_is_joel_s_unless_an_agent_s_work_started_it() {
+        let root = std::env::temp_dir().join(format!("lag-watch-own-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let proc = root.join("proc");
+        let own = |pid: &str, browser: &str, parent: &str| {
+            write(&proc.join(pid).join("comm"), "chrome\n");
+            let scope = format!("{ACCOUNT}/app.slice/app-com.google.Chrome-{browser}.scope");
+            write(&proc.join(pid).join("cgroup"), &format!("0::{scope}\n"));
+            write(
+                &proc.join(pid).join("stat"),
+                &format!("{pid} (chrome) S {parent} 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0 9\n"),
+            );
+            write(
+                &proc.join(pid).join("task").join(pid).join("comm"),
+                "chrome\n",
+            );
+        };
+        // Joel's browser, which his user manager started.
+        own("20", "20", "2");
+        write(&proc.join("20/task/21/comm"), "Chrome_IOThread\n");
+        write(
+            &proc.join("2/cgroup"),
+            &format!("0::{ACCOUNT}/init.scope\n"),
+        );
+        // An agent's browser in the moment before jobs-sorter moves it back,
+        // and its renderer, whose own parent is the zygote in that scope.
+        own("30", "30", "3");
+        write(&proc.join("30/task/31/comm"), "Chrome_IOThread\n");
+        write(
+            &proc.join("3/cgroup"),
+            &format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n"),
+        );
+        own("32", "30", "30");
+        write(&proc.join("32/task/33/comm"), "Compositor\n");
+        // A browser whose parent has ended stays his.
+        own("40", "40", "4");
+        write(&proc.join("40/task/41/comm"), "Chrome_IOThread\n");
+        let mut apps = Apps::of_account(ACCOUNT);
+        assert_eq!(
+            drawing_threads(&proc, &mut apps),
+            [
+                "chrome-ui chrome 20/task/20/schedstat",
+                "chrome-ui chrome 40/task/40/schedstat",
+            ]
+        );
+        let calls = |pid: &str| apps.may_call(&text(&proc.join(pid).join("cgroup")), &proc);
+        assert!(calls("20"), "Joel's browser carries his call");
+        assert!(!calls("32"), "an agent's renderer carries no call of his");
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -423,7 +523,7 @@ mod tests {
     #[test]
     fn a_chrome_carries_joel_s_call_from_his_apps_and_his_own_terminals_alone() {
         let apps = Apps::of_account(ACCOUNT);
-        let calls = |path: &str| apps.may_call(&format!("0::{path}\n"));
+        let calls = |path: &str| apps.may_call(&format!("0::{path}\n"), Path::new("/nowhere"));
         let mine = format!("{ACCOUNT}/app.slice");
         for unit in ["app-niri-a-70.scope", "kitty-70-0.scope"] {
             assert!(

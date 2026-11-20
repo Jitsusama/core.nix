@@ -437,6 +437,8 @@ fn an_app_s_processes_that_go_unwatched_are_counted_in_the_window() {
     now.unwatched.clear();
     let line = serde_json::to_string(&between(&then, &now, quiet_niri(), 0, "gen")).unwrap();
     assert!(!line.contains("unwatched"), "{line}");
+    let back: Window = serde_json::from_str(&line).unwrap();
+    assert!(back.unwatched.is_empty(), "{:?}", back.unwatched);
 }
 
 #[test]
