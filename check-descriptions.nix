@@ -345,6 +345,12 @@
     other's; one whose words alone change is said again in place, by its id, and not once Joel has
     put it away; and one that goes takes back whichever of its notices is up
   '';
+  an-emoji-stands-on-its-names-capitals = ''
+    thirteen emoji, the first of each of Emoji's groups as they stood on 19 Nov and four below the
+    emoji blocks, drawn through the one mark, have their ink's middle within two device pixels of
+    the capitals beside them, at 2, 1.5 and 1, and none of the theme's marks, nor six letters
+    beside the pictures, is taken for a picture
+  '';
   an-ending-row-arms-before-it-ends = ''
     a first Return or click arms a row that ends the session and a second with no key between ends
     it, however long after; any other key lets it go, and a press doubled with the first does

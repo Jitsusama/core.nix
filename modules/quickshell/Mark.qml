@@ -32,11 +32,31 @@ Text {
     readonly property bool faceHeld: MarkSize.faceHeld(Theme.level.figure.family,
         () => Qt.fontFamilies())
     readonly property string measuring: known === null ? text : ""
+    // An emoji is a picture in the colour face, with no outline: traced, it
+    // gave a box a unit or so tall, which centred the emoji's top edge on
+    // the capitals, half its height low, and sized it by its cell rather
+    // than its ink (Joel, 2026-11-19: Emoji's groups). Its box is its
+    // picture's, so it's measured by that alone, and never traced, which
+    // also left the window drawing nothing offscreen.
+    readonly property bool pictured: MarkSize.pictured(text)
     TextMetrics {
         id: markInk
         text: mark.measuring
         font.family: Theme.level.figure.family
         font.pointSize: Theme.level.figure.pointSize * mark.fine
+        onTightBoundingRectChanged: {
+            // Asked of the text measured, not of `pictured`, whose binding
+            // may not yet have followed a row given another glyph.
+            if (text !== "" && text === mark.measuring && MarkSize.pictured(text))
+                MarkSize.measured(mark.measureKey, {
+                    x: tightBoundingRect.x,
+                    y: tightBoundingRect.y,
+                    width: tightBoundingRect.width,
+                    height: tightBoundingRect.height,
+                    outline: 0,
+                    pictured: true
+                }, mark.faceHeld);
+        }
     }
     // Qt's tight measure of a glyph runs down to the baseline, so a mark
     // standing above it, as the keyboard and people do, measures taller
@@ -65,7 +85,7 @@ Text {
         ShapePath {
             PathText {
                 id: outlined
-                text: mark.measuring
+                text: mark.pictured ? "" : mark.measuring
                 font.family: Theme.level.figure.family
                 font.pointSize: Theme.level.figure.pointSize * mark.fine
             }
@@ -78,7 +98,7 @@ Text {
         y: markInk.tightBoundingRect.y,
         width: markInk.tightBoundingRect.width,
         height: markInk.tightBoundingRect.height,
-        outline: markOutline.boundingRect.height
+        outline: mark.pictured ? 0 : markOutline.boundingRect.height
     }
     // The ink's height, its top and its middle, at the fine size.
     readonly property real inkTall: ink.outline > 0 ? Math.min(ink.outline, ink.height)

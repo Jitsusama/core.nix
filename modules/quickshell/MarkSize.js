@@ -56,9 +56,48 @@ function faceHeld(family, families) {
 
 // `measure`, kept as `key`'s when `whole`: when the face drawn is the one
 // asked for, not one standing in while it loads. Mark.qml gives it only
-// once the outline is traced from the glyph, which comes after the box.
+// once the outline is traced from the glyph, which comes after the box;
+// or, for a pictured glyph, which has no outline, once its box is measured.
 function measured(key, measure, whole) {
-    if (whole && measure.outline > 0) {
+    if (whole && (measure.outline > 0 || (measure.pictured === true && measure.height > 0))) {
         measures[key] = measure;
     }
+}
+
+// The characters drawn as pictures unasked, each run as its first and last
+// code point: Unicode's Emoji_Presentation, from its emoji-data.txt (16.0),
+// with the blocks past the Basic Multilingual Plane taken whole where most
+// of a block is pictures, since Emoji lists nothing else of them. Arrows,
+// ornaments and geometric shapes past it are letters, so they're left out.
+const PICTURES = [
+    [0x231a, 0x231b], [0x23e9, 0x23ec], [0x23f0, 0x23f0], [0x23f3, 0x23f3],
+    [0x25fd, 0x25fe], [0x2614, 0x2615], [0x2648, 0x2653], [0x267f, 0x267f],
+    [0x2693, 0x2693], [0x26a1, 0x26a1], [0x26aa, 0x26ab], [0x26bd, 0x26be],
+    [0x26c4, 0x26c5], [0x26ce, 0x26ce], [0x26d4, 0x26d4], [0x26ea, 0x26ea],
+    [0x26f2, 0x26f3], [0x26f5, 0x26f5], [0x26fa, 0x26fa], [0x26fd, 0x26fd],
+    [0x2705, 0x2705], [0x270a, 0x270b], [0x2728, 0x2728], [0x274c, 0x274c],
+    [0x274e, 0x274e], [0x2753, 0x2755], [0x2757, 0x2757], [0x2795, 0x2797],
+    [0x27b0, 0x27b0], [0x27bf, 0x27bf], [0x2b1b, 0x2b1c], [0x2b50, 0x2b50],
+    [0x2b55, 0x2b55], [0x1f004, 0x1f004], [0x1f0cf, 0x1f0cf], [0x1f18e, 0x1f18e],
+    [0x1f191, 0x1f19a], [0x1f1e6, 0x1f1ff], [0x1f201, 0x1f202], [0x1f21a, 0x1f21a],
+    [0x1f22f, 0x1f22f], [0x1f232, 0x1f23a], [0x1f250, 0x1f251], [0x1f300, 0x1f64f],
+    [0x1f680, 0x1f6ff], [0x1f7e0, 0x1f7f0], [0x1f900, 0x1f9ff], [0x1fa70, 0x1faff]
+];
+// The selector that asks for a character's picture rather than its letter.
+const AS_PICTURE = 0xfe0f;
+
+// Whether `text` is drawn as a picture, in the colour emoji face, rather
+// than as a letter with an outline: an emoji, or a character asking for
+// its picture. A picture has no outline to trace, so Mark.qml measures it
+// by its box. The theme's marks are the Nerd Fonts' letters, in the
+// private areas, and none is among these: emoji-marks.qml says so for
+// every mark the theme names (Joel, 2026-11-19: Emoji's groups).
+function pictured(text) {
+    for (const character of text) {
+        const point = character.codePointAt(0);
+        if (point === AS_PICTURE || PICTURES.some(([from, to]) => point >= from && point <= to)) {
+            return true;
+        }
+    }
+    return false;
 }
