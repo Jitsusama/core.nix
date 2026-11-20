@@ -1,7 +1,8 @@
 //! Telling a merge's owner that no Mac compared its Mac checks. The
 //! net compares a Mac's checks at each merge whose gate passed without a
-//! Mac, and when none answers for a day it keeps a `mac-unrun` finding
-//! naming the merge's PR and lets it go (#4925). Nothing read that
+//! Mac, and keeps a `mac-unrun` finding naming the merge's PR and lets it
+//! go when none compared them for a day, or at once when a Mac took them
+//! twice and neither run finished (#4925). Nothing read that
 //! finding, so a Mac check the change may have broken stayed unchecked and
 //! no one heard. Cadence tells the session that landed the merge, as it
 //! does of reverts, and asks the watcher only when no landing names one.
@@ -76,21 +77,25 @@ pub fn due(unrun: &[Unrun], landings: &str, told: &mut Told, now: i64) -> Vec<Te
 /// `named` the owner.
 fn said_to(merge: &Unrun, named: bool) -> String {
     let short = merge.commit.get(..12).unwrap_or(&merge.commit);
-    let how = if merge.stalled {
-        format!(
-            "a Mac took its Mac checks at {short} and they stalled twice, past two hours or \
-             silent for half an hour, so they may hang"
-        )
-    } else {
-        format!("no Mac compared its Mac checks at {short}")
+    // The net knows a stalled run was taken and didn't end by itself, not
+    // why: past its time, gone silent, or stopped by a signal from outside.
+    let how = match (merge.stalled, &merge.failed_log) {
+        (true, _) => format!(
+            "a Mac took its Mac checks at {short} twice and both runs stopped unfinished: they \
+             may hang, or something else stopped them"
+        ),
+        (false, Some(_)) => {
+            format!("a Mac failed its Mac checks at {short} once, and no Mac compared them again")
+        }
+        (false, None) => format!("no Mac compared its Mac checks at {short}"),
     };
-    let failed = merge
-        .failed_log
-        .as_ref()
-        .map(|log| format!(" A Mac failed them once before that; its log is {log}."))
-        .unwrap_or_default();
+    let failed = match (merge.stalled, &merge.failed_log) {
+        (true, Some(log)) => format!(" A Mac failed them once before that; its log is {log}."),
+        (false, Some(log)) => format!(" The failure's log is {log}."),
+        (_, None) => String::new(),
+    };
     let what = format!(
-        "{how}, so the net let them go unchecked.{failed} Build them on a Mac, in a tree at \
+        "{how}. The net let them go unchecked.{failed} Build them on a Mac, in a tree at \
          {}: nix-offload there --changed --build --no-vm --base {} --system aarch64-darwin, \
          and fix forward if any fail.",
         merge.commit, merge.base
@@ -181,6 +186,24 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_a_mac_saw_without_a_stall_is_told_as_a_failure() {
+        let failed = said_to(
+            &Unrun {
+                failed_log: Some("/net/logs/fb46-1.log".to_owned()),
+                ..merge(Some(4925))
+            },
+            true,
+        );
+        assert!(
+            failed.contains("a Mac failed its Mac checks at fb4676a1c0ff once")
+                && failed.contains("The failure's log is /net/logs/fb46-1.log.")
+                && !failed.contains("no Mac compared its")
+                && !failed.contains("may hang"),
+            "a failure a Mac saw was told as no Mac comparing, or as a hang: {failed}"
+        );
+    }
+
+    #[test]
     fn a_stall_and_a_failure_a_mac_saw_are_told_as_they_were() {
         let plain = said_to(&merge(Some(4925)), true);
         let stalled = said_to(
@@ -198,8 +221,9 @@ mod tests {
             "a merge no Mac took was told as more than that: {plain}"
         );
         assert!(
-            stalled.contains("stalled twice")
-                && stalled.contains("may hang")
+            stalled.contains("both runs stopped unfinished")
+                && stalled.contains("may hang, or something else stopped them")
+                && !stalled.contains("two hours")
                 && !stalled.contains("no Mac compared")
                 && stalled.contains("its log is /net/logs/fb46-1.log"),
             "a stall or a failure a Mac saw was told as no Mac comparing: {stalled}"
@@ -222,7 +246,7 @@ mod tests {
         );
         assert!(
             tells[0].text.contains("#4925")
-                && tells[0].text.contains("at fb4676a1c0ff,")
+                && tells[0].text.contains("at fb4676a1c0ff.")
                 && tells[0].text.contains(
                     "nix-offload there --changed --build --no-vm --base e279db1b --system \
                      aarch64-darwin"

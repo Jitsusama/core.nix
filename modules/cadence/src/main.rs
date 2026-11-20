@@ -347,8 +347,8 @@ fn switcher(args: &Args) -> Option<String> {
     findings::owner_of("switch.", &args.owners)
 }
 
-/// Tells each merge's owner that the net reverted it, or that no Mac took
-/// its Mac checks in a day, remembering in `reverted.json` which were told.
+/// Tells each merge's owner that the net reverted it, or that its Mac
+/// checks went uncompared (unrun.rs), remembering in `reverted.json` which were told.
 fn tell_reverted(
     mesh: &Mesh,
     net: &Path,

@@ -686,7 +686,21 @@ impl Real {
 /// How a Mac's comparison that ended with `code` is read, from its own
 /// part of `log`, which the runs before it on the same merge share.
 fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
-    mac_ending(code, clock.ours(log).as_deref())
+    let read = mac_ending(code, clock.ours(log).as_deref());
+    // net.log points at the run's log for why it compared nothing, and a
+    // run ended before a builder took it printed nothing that says so.
+    if read == Some(UNCOMPARED) {
+        let why = if code.is_none() {
+            "it was ended before any Mac took it"
+        } else {
+            "it failed only on reaching a cache, which says nothing of the change"
+        };
+        let _ = fs::OpenOptions::new()
+            .append(true)
+            .open(log)
+            .and_then(|mut kept| writeln!(kept, "merge-net: this compared nothing: {why}"));
+    }
+    read
 }
 
 /// Whether a run's part of its log says a builder took it.
@@ -722,18 +736,33 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
 /// What a download says when the network or the cache failed it, not
 /// what it fetched: on 19 November the Mac couldn't name its caches'
 /// hosts, and a resolver that times out, a link that won't connect or a
-/// cache that's down fails the same way. A 404 isn't among them, since a
-/// fetch the change names can be missing.
-const NETWORK_WORDS: [&str; 8] = [
+/// cache that's down, resets the connection or fails its TLS fails the
+/// same way. A 404 isn't among them, since a fetch the change names can
+/// be missing.
+const NETWORK_WORDS: [&str; 12] = [
     "Could not resolve host",
     "Resolving timed out",
     "Timeout was reached",
     "Failed to connect",
     "Couldn't connect to server",
+    "Recv failure",
+    "SSL connect error",
+    "SSL_ERROR_SYSCALL",
+    "HTTP error 500",
     "HTTP error 502",
     "HTTP error 503",
     "HTTP error 504",
 ];
+
+/// Whether a failed download, `why` after nix's "unable to download ", was
+/// a cache's: a store path's narinfo or its nar. A fetch the change names
+/// at evaluation fails the same way when its host is wrong, and that's
+/// the change's.
+fn a_caches(why: &str) -> bool {
+    why.strip_prefix('\'')
+        .and_then(|quoted| quoted.split('\'').next())
+        .is_some_and(|url| url.ends_with(".narinfo") || url.contains("/nar/"))
+}
 
 /// The errors a build prints after a cache couldn't be reached, as nix
 /// printed them on 19 November: each error line's start, and words it must
@@ -767,7 +796,9 @@ fn unresolved(words: &str) -> bool {
             let error = error.trim_start();
             let unreached = error
                 .strip_prefix("unable to download ")
-                .is_some_and(|why| NETWORK_WORDS.iter().any(|word| why.contains(word)));
+                .is_some_and(|why| {
+                    a_caches(why) && NETWORK_WORDS.iter().any(|word| why.contains(word))
+                });
             let known = unreached
                 || NETWORK_ERRORS
                     .iter()
@@ -2240,22 +2271,56 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
                 &LOOKUPS[error + resolved.len()..]
             )
         };
-        for why in [
-            "Timeout was reached (28) Resolving timed out after 5000 milliseconds",
-            "Couldn't connect to server (7) Failed to connect to cache.nixos.org port 443",
+        // One of curl's words each, so a word dropped from the list fails
+        // its own case.
+        let each = [
+            "Could not resolve host: cache.nixos.org",
+            "(28) Resolving timed out after 5000 milliseconds",
+            "Timeout was reached (28)",
+            "Failed to connect to cache.nixos.org port 443 after 3 ms",
+            "Couldn't connect to server (7)",
+            "Recv failure: Connection reset by peer (56)",
+            "SSL connect error (35)",
+            "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to cache.nixos.org:443",
+            "HTTP error 500 (curl error: Internal Server Error)",
+            "HTTP error 502 (curl error: Bad Gateway)",
             "HTTP error 503 (curl error: Service Unavailable)",
-        ] {
+            "HTTP error 504 (curl error: Gateway Timeout)",
+        ];
+        for word in NETWORK_WORDS {
+            assert_eq!(
+                each.iter().filter(|why| why.contains(word)).count(),
+                1,
+                "no case, or more than one, holds the network's word {word}"
+            );
+        }
+        for why in each {
             assert_eq!(
                 mac_ending(Some(1), Some(failed_with(why).as_bytes())),
                 Some(UNCOMPARED),
                 "a comparison that failed only on a cache it couldn't reach counted: {why}"
             );
         }
+        let one = LOOKUPS.replace("3 dependencies failed.", "1 dependency failed.");
+        assert_eq!(
+            mac_ending(Some(1), Some(one.as_bytes())),
+            Some(UNCOMPARED),
+            "a build whose one dependency failed on the network alone counted"
+        );
         let missing = failed_with("HTTP error 404 (curl error: Not Found)");
         assert_eq!(
             mac_ending(Some(1), Some(missing.as_bytes())),
             Some(1),
             "a download missing from where the change named was let off as the network"
+        );
+        // A fetch the change names at evaluation, from a host that doesn't
+        // resolve, fails with the same words as the caches did.
+        let fetched = "error: unable to download 'https://example.invalid/source.tar.gz': \
+                       Could not resolve hostname (6) Could not resolve host: example.invalid\n";
+        assert_eq!(
+            mac_ending(Some(1), Some(fetched.as_bytes())),
+            Some(1),
+            "a fetch the change names, from a host that doesn't resolve, was let off"
         );
     }
 
@@ -2338,6 +2403,12 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             mac_ended(None, &clock, &log),
             Some(UNCOMPARED),
             "a run ended before a builder took it was read as taken from the run before"
+        );
+        assert!(
+            fs::read_to_string(&log)
+                .unwrap()
+                .ends_with("this compared nothing: it was ended before any Mac took it\n"),
+            "the log net.log points at didn't say why the run compared nothing"
         );
         fs::remove_file(&log).unwrap();
     }

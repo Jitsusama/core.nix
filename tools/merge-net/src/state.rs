@@ -188,7 +188,10 @@ impl State {
     /// and the rest go too, since three days alone grew to 14 GiB; but
     /// never a log under `LOGS_READ` old, nor one of a head the net
     /// still holds, which it reads back to judge a test at a round's base
-    /// or to tell an owner what a search found.
+    /// or to tell an owner what a search found, nor one of a merge a kept
+    /// job still settles or a finding names, which its owner is told to
+    /// read: a Mac's failure a day before its finding is otherwise past
+    /// `LOGS_READ` by the time it's told, on the busy days it's told on.
     pub fn age_out_logs(&self, now: SystemTime, budget: u64) -> Aged {
         let mut aged = Aged::default();
         let Ok(entries) = fs::read_dir(self.root.join("logs")) else {
@@ -198,8 +201,14 @@ impl State {
         let held: Vec<String> = [passed, seen, self.under_way()]
             .into_iter()
             .flatten()
+            .chain(
+                self.settling()
+                    .iter()
+                    .filter_map(|job| job["merge"].as_str().map(str::to_owned)),
+            )
             .map(|head| format!("{}-", short(&head)))
             .collect();
+        let told = self.logs_found();
         let mut kept = Vec::new();
         for entry in entries.flatten() {
             if entry.file_name() == "net.log" {
@@ -227,7 +236,8 @@ impl State {
             let named = path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| held.iter().any(|head| name.starts_with(head)));
+                .is_some_and(|name| held.iter().any(|head| name.starts_with(head)))
+                || told.contains(&path);
             if size > budget && !young && !named {
                 aged.over += usize::from(fs::remove_file(path).is_ok());
             }
@@ -439,6 +449,23 @@ impl State {
                 .join(format!("{}-{}-{check}.json", now(), short(commit)));
         write_json(&path, finding)?;
         Ok(path)
+    }
+
+    /// The logs the findings name, for their owners to read.
+    fn logs_found(&self) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(self.root.join("findings")) else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| read_json(&entry.path()))
+            .flat_map(|finding| {
+                ["log", "failed_log"]
+                    .into_iter()
+                    .filter_map(|field| finding[field].as_str().map(PathBuf::from))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     /// Whether a finding of `kind` for `test` at `commit` is written.
