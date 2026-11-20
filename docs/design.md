@@ -1732,9 +1732,11 @@ works the same way everywhere.
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
   the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
-  in For You only while one of its own notices is critical and unread,
-  and none leaves while the launcher is open; otherwise it's among Now's
-  own rows (Joel, 2026-11-19: "I almost never know what I am supposed to
+  in For You only while one of its own notices is critical, unread and
+  off the screen. Once there it stays until the launcher next opens,
+  unless it comes to hold nothing, and one that turns critical while
+  Joel is under Now's own rows waits until he steps into For You or out
+  of Now. Otherwise it's among Now's own rows (Joel, 2026-11-19: "I almost never know what I am supposed to
   do with it"). Each is a place per source ("Mail", "Slack", Now's
   Desktop), nothing after its name, its side "12 to read", its drawer
   its senders newest first (VKCF3Z, 2026-11-09), ordered by its

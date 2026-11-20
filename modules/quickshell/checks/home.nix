@@ -81,7 +81,7 @@
       touch $out
     '';
 
-  # Now's own rows, before Lately's: the time, the date, the location, the
+  # Now's first rows, before Lately's: the time, the date, the location, the
   # weather read as the launcher opens and the next meeting, whose Return is
   # the meeting's own (modules/quickshell/tests/now-moment.qml), with the
   # margin's pieces, the
