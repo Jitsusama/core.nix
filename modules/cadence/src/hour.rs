@@ -307,10 +307,15 @@ fn rounds_per_merge(
     use measures::rounds::{BEFORE, Main, rounds};
     // The harness's mirror is its installer's and keeps only refs, so a
     // head a rebase left behind is gone from it. Cadence asks its own
-    // clone beside core's, made the first time a late round needs it.
+    // clone beside core's, made from the mirror the first time a late
+    // round needs it, and fetches into that.
     let harness_git = core_git.with_file_name("harness.git");
-    let core_moved = |merge: &str, witness: &str| moved(core_git, crate::CORE, merge, witness);
-    let harness_moved = |merge: &str, witness: &str| moved(&harness_git, HARNESS, merge, witness);
+    let mirror = axes::landings::harness_mirror();
+    let mirror = mirror.to_string_lossy();
+    let origin = crate::CORE;
+    let core_moved = |merge: &str, witness: &str| moved(core_git, origin, origin, merge, witness);
+    let harness_moved =
+        |merge: &str, witness: &str| moved(&harness_git, &mirror, HARNESS, merge, witness);
     let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
