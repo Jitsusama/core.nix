@@ -438,7 +438,7 @@ let
         glyph = actionGlyph b.run;
         chord = map face' (lib.splitString "+" b.chord);
         # Super+N opens the notices (launcher/Now.qml's leadsTo): those on
-        # screen while any are up, else For You's Desktop, which its row
+        # screen while any are up, else Now's Desktop, which its row
         # steps into here, since none are on screen while the launcher is.
         opens =
           if opensCollection b.run then

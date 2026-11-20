@@ -232,7 +232,7 @@ ShellRoot {
         settings: ({ name: "on" })
     }
 
-    // The notices' own rows, which For You's Desktop and History hold.
+    // The notices' own rows, which Now's Desktop and History hold.
     Launcher.PastNotices {
         id: pastNotices
 
@@ -320,7 +320,7 @@ ShellRoot {
             noticesServed();
     }
 
-    // For You's Desktop holds the notices unread as the notices daemon
+    // Now's Desktop holds the notices unread as the notices daemon
     // serves their rows, and its History those done with, each made again
     // only once the daemon says its notice changed: every notice's was
     // made anew at any change, 488 on Joel's shell as he stepped into
@@ -354,7 +354,7 @@ ShellRoot {
         return madeNow().map((count, at) => count - before[at]);
     }
     function stepIn() {
-        const held = now.leadsTo("notices")[1].verbs();
+        const held = now.leadsTo("notices").slice(-1)[0].verbs();
         return { held: held, history: held[held.length - 1].verbs() };
     }
     // Whether History holds notice `id`, as it holds only the read.
@@ -396,7 +396,7 @@ ShellRoot {
         waiting = "";
         if (!tried(() => {
             const desktop = stepIn();
-            expect("For You's Desktop holds the notices unread, then Mark Them Read and History",
+            expect("Now's Desktop holds the notices unread, then Mark Them Read and History",
                 JSON.stringify(desktop.held.map(row => row.name)) === JSON.stringify([
                     "Notice 1", "Notice 2", "Notice 3", "Mark Them Read", "History"])
                     && desktop.history.length === 27,
@@ -1975,16 +1975,173 @@ ShellRoot {
         const session = (busy, said, digest) => ({ address: "WANTD", title: "Session D",
             told: digest, presence: { session: "s-d", addresses: [], busy: busy,
                 wants: { kind: "question", said: said, since: "2026-11-10T12:00:00Z" } } });
+        // Lately's places are fixed while the launcher is open, and none
+        // leaves For You then, so these start shut, as Now hears it, and
+        // say when it opens (openedAt).
+        const wasOpenedAt = now.openedAt;
+        now.openedAt = Number.POSITIVE_INFINITY;
         Facts.all = [lately("mail", "Ann", () => ran = "mail"), lately("slack", "Bo", () => {})];
         Notices.history = told;
         WaitingOnYou.now = [toDo("Sign In")];
         WaitingOnYou.later = [toDo("Renew It")];
         Sessions.wanting = [session(false, "Which?", "d1")];
-        // Agents Asking's sessions read beside the rest.
-        const forYou = () => now.waiting.verbs().reduce((all, row) => all.concat([row],
+        // Agents Asking's sessions read beside the rest, and Now's own rows,
+        // where what asks nothing of Joel stands.
+        const inForYou = () => now.waiting.verbs().reduce((all, row) => all.concat([row],
             row.key === "on:waitingOnYou:kind:agent" ? row.verbs() : []), []);
+        const forYou = () => inForYou().concat(now.everything());
         const byKey = rows => rows.reduce((keyed, row) => Object.assign(keyed,
             { [row.key]: row }), {});
+        // Mail, Slack and Desktop ask nothing of Joel, so they stand in
+        // Now's own rows, not What Needs Me (Joel, 2026-11-19: "I almost
+        // never know what I am supposed to do with it").
+        const asksNothing = ["on:mail", "on:slack", "on:waiting:desktop"];
+        const keysOf = rows => rows.map(row => row.key);
+        expect("Mail, Slack and Desktop stand in Now's own rows, not For You",
+            asksNothing.every(key => keysOf(now.everything()).includes(key)
+                && !keysOf(inForYou()).includes(key)),
+            JSON.stringify([keysOf(inForYou()), keysOf(now.everything())]));
+        // They come right after the moment's, before every piece's group,
+        // so what Joel reads first under the time is what came for him.
+        const moment = now.momentAt(now.location).length;
+        expect("Mail, Slack and Desktop come right after the moment's rows",
+            JSON.stringify(keysOf(now.everything()).slice(1 + moment, 4 + moment).sort())
+                === JSON.stringify(asksNothing.slice().sort()),
+            JSON.stringify([moment, keysOf(now.everything())]));
+        // A critical notice unread is one to do, so Desktop, which holds
+        // it, stands in For You while it waits, and leaves Now's rows.
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }].concat(told);
+        expect("a critical notice unread keeps Desktop in For You, and out of Now's rows",
+            keysOf(inForYou()).includes("on:waiting:desktop")
+                && !keysOf(now.everything()).includes("on:waiting:desktop")
+                && now.leadsTo("notices")[0] === now.waiting
+                && now.leadsTo("notices")[1].key === "on:waiting:desktop"
+                && now.leadsTo("notices").length === 2,
+            JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // Read elsewhere while Joel looks, which Lately doesn't hold still,
+        // it no longer waits, but Desktop keeps the place he found it in.
+        now.openedAt = Date.now() - 1000;
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now(), readHow: "read on the phone" }]
+            .concat(told);
+        expect("a critical notice read while the launcher's open keeps Desktop in For You",
+            keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        // Withdrawn by its sender, or woken back onto the screen, it no
+        // longer waits, but Desktop keeps the place Joel found it in until
+        // the launcher closes, whatever moved the notice.
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, withdrawn: true, readAt: Date.now() }].concat(told);
+        expect("a critical notice withdrawn while the launcher's open keeps Desktop in For You",
+            keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }].concat(told);
+        Notices.live = { "1": {} };
+        expect("a critical notice woken onto the screen while it's open keeps Desktop in For You",
+            keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        now.openedAt = Number.POSITIVE_INFINITY;
+        // Opened with its card up, Desktop stands in Now's rows. Once the
+        // card's put away unread it waits, so Desktop comes into For You,
+        // which counts it, but not while Joel stands inside Desktop or in
+        // Now's own rows, where it would leave from under him.
+        expect("a critical notice with its card up leaves Desktop in Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        now.openedAt = Date.now();
+        const wasHeld = theLauncher.held;
+        const nowStep = { row: { from: now, key: "on" } };
+        theLauncher.held = [nowStep,
+            { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
+        Notices.live = {};
+        expect("a critical card put away while Joel's inside Desktop leaves it in Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        theLauncher.held = [nowStep];
+        expect("stepped back out onto Now's rows, Desktop still stands where he left it",
+            keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(now.everything())));
+        // The launcher asks a step's rows before it holds the step, so For
+        // You lists Desktop on the first asking, not a refresh later.
+        expect("and For You, asked as he steps into it, lists Desktop at once",
+            keysOf(inForYou()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        // One step down another of Now's rows, - climbs back to Now's rows,
+        // so Desktop stays there too.
+        theLauncher.held = [nowStep, { row: { key: "on:mail", forYou: { source: "mail" } } }];
+        expect("inside Mail, Desktop still stands in the Now rows - climbs back to",
+            keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(now.everything())));
+        const forYouStep = { row: { key: "on:waitingOnYou" } };
+        theLauncher.held = [nowStep, forYouStep];
+        expect("and once he steps into For You, Desktop is there, which counts it",
+            keysOf(inForYou()).includes("on:waiting:desktop")
+                && !keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        // Read inside Desktop before he steps into For You, the tray no
+        // longer counts it, so nothing comes into For You for it.
+        now.openedAt = Number.POSITIVE_INFINITY;
+        Notices.live = { "1": {} };
+        now.openedAt = Date.now() - 1000;
+        theLauncher.held = [nowStep,
+            { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
+        Notices.live = {};
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now(), readHow: "read" }].concat(told);
+        theLauncher.held = [nowStep, forYouStep];
+        expect("a critical notice read inside Desktop brings nothing into For You",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify([keysOf(inForYou()), keysOf(now.everything())]));
+        // Found by name from home, For You is the one step held, and it's
+        // Now's own row, so Desktop comes in there and stays once it has.
+        now.openedAt = Number.POSITIVE_INFINITY;
+        now.openedAt = Date.now() - 1000;
+        theLauncher.held = [{ row: { from: now, key: "on:waitingOnYou" } }];
+        Notices.live = { "1": {} };
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }].concat(told);
+        Notices.live = {};
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now(), readHow: "read on the phone" }]
+            .concat(told);
+        expect("in For You found by name, Desktop stays once its notice is read elsewhere",
+            keysOf(inForYou()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        theLauncher.held = wasHeld;
+        now.openedAt = Number.POSITIVE_INFINITY;
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now() }].concat(told);
+        expect("and once the launcher's shut, Desktop goes back to Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        // A critical one Slack's row holds is one to do in Slack's row, so
+        // Slack's row stands in For You with it, and Desktop stays put.
+        Notices.history = [{ id: 2, at: Date.now(), app: "Slack", summary: "Pager",
+            urgency: "critical", read: false }].concat(told);
+        expect("a critical notice Slack's row holds brings Slack's row, not Desktop, to For You",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(inForYou()).includes("on:slack")
+                && !keysOf(now.everything()).includes("on:slack")
+                && now.leadsTo("notices").length === 1,
+            JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // Slack's daemon answering, its notices stand for nothing in its
+        // row, but a critical one still counts, so its row comes too.
+        Facts.all = [lately("mail", "Ann", () => ran = "mail"), Object.assign(
+            lately("slack", "Bo", () => {}), { piece: Object.assign(lately("slack", "Bo",
+                () => {}).piece, { answers: true }) })];
+        expect("a critical Slack notice while Slack's daemon answers brings Slack's row too",
+            keysOf(inForYou()).includes("on:slack"), JSON.stringify(keysOf(inForYou())));
+        Facts.all = [lately("mail", "Ann", () => ran = "mail"), lately("slack", "Bo", () => {})];
+        Notices.history = told;
+        expect("once it's gone, Slack's row goes back to Now's, and Super+N to Desktop there",
+            !keysOf(inForYou()).includes("on:slack")
+                && !keysOf(inForYou()).includes("on:waiting:desktop")
+                && now.leadsTo("notices").length === 1
+                && now.leadsTo("notices")[0].key === "on:waiting:desktop",
+            JSON.stringify(now.leadsTo("notices").map(row => row.key)));
+        now.openedAt = wasOpenedAt;
         const first = byKey(forYou());
         const mail = first["on:mail"];
         let before = now.tally.rows;
@@ -2002,15 +2159,17 @@ ShellRoot {
         expect("Mail said anew as it was keeps its row, and its act is Mail's as it is now",
             said["on:mail"] === mail && ran === "mail now", `${ran}, ${said["on:mail"] === mail}`);
         const waitingRow = now.waiting;
-        Notices.history = [notice(1)].concat(told);
+        // Counted from before it comes, since Now's own rows, where Desktop
+        // stands, are made as it does.
         before = now.tally.rows;
+        Notices.history = [notice(1)].concat(told);
         const came = byKey(forYou());
         const remade = Object.keys(came).filter(key => came[key] !== first[key]);
         expect("one notice arriving makes only Desktop's row again",
             now.tally.rows - before === 1 && JSON.stringify(remade)
                 === JSON.stringify(["on:waiting:desktop"]) && now.waiting === waitingRow,
             JSON.stringify([now.tally.rows - before, remade]));
-        const desktop = () => now.waiting.verbs().find(row => row.key === "on:waiting:desktop")
+        const desktop = () => now.everything().find(row => row.key === "on:waiting:desktop")
             .verbs();
         desktop();
         before = now.tally.rows;
@@ -2055,7 +2214,10 @@ ShellRoot {
     // after the change rather than said outright: a session's notice updated
     // as its work turned just after Return into For You was drawn as
     // Return's act (the niri case, 2026-11-18). Deeper, where the notices
-    // themselves are shown, and with nothing held, they're said outright.
+    // themselves are shown, and with nothing held, they're said outright;
+    // so too with Desktop or what's on screen held right under Now, where
+    // Super+N leads with no critical notice waiting (round 7, F77), though
+    // not with another of Now's rows there, Mail's (round 8, F80).
     function noticesWeighed(into) {
         const outright = (name, held, said) => {
             theLauncher.held = held;
@@ -2070,6 +2232,12 @@ ShellRoot {
             into(now.waiting.verbs()), 0);
         outright("held below For You, they are", into(now.waiting.verbs()).concat([
             { row: { key: "on:waiting:screen" }, rows: [] }]), 1);
+        const underNow = key => [{ row: { from: now, key: "on" } },
+            { row: { key: key }, rows: [] }];
+        outright("held right under Now, what's on screen, they are",
+            underNow("on:waiting:screen"), 1);
+        outright("and Desktop right under Now, they are", underNow("on:waiting:desktop"), 1);
+        outright("but Mail right under Now, they aren't", underNow("piece:mail"), 0);
         outright("as they are with nothing held", [], 1);
     }
 

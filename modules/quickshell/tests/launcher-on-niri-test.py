@@ -2409,13 +2409,14 @@ def test_a_step_out_lays_out_only_the_rows_it_comes_back_to(shell: Shell) -> Non
     shell.notices_gone()
     drawn, tallied = [], []
     for _ in range(2):
-        # For You's Desktop, which holds the notices rested off the screen.
+        # Now's Desktop, which holds the notices rested off the screen, since none is critical;
+        # home's own row named Desktop is another place.
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
-        typed_at_once(shell, "'for you' -k Return")
-        shell.launcher_until(
-            lambda shown: shown["path"][-1:] == ["For You"] and "Desktop" in shown["rows"]
-        )
+        shell.normal()
+        shell.down_to("Now")
+        shell.step_in()
+        shell.launcher_until(lambda shown: shown["held"] == ["now"] and "Desktop" in shown["rows"])
         shell.normal()
         shell.down_to("Desktop")
         shell.step_in()
@@ -3138,7 +3139,7 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
     is the oldest, never the row first in Desktop, so the cursor landing on it shows the
     landing chose it. One rested off the screen is Desktop's alone, never among those on
     screen, which come in the order the line takes them. It searches only there, and - climbs
-    back onto For You. Again, Super+N closes.
+    back onto Now, where Desktop stands while no notice is critical. Again, Super+N closes.
     """
     with shell.told("rests Plover"):
         shell.as_account("notify-send --expire-time=1000 'Plover' 'rested off the screen'")
@@ -3170,8 +3171,8 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
             and shown["mode"] == "normal"
         )
     )
-    # It passes through For You on the way, as a walk does, searching only where it lands:
-    # searching home and For You first held all of Joel's Super+N openings past 50 ms.
+    # It passes through where Desktop stands on the way, as a walk does, searching only where it
+    # lands: searching home and For You first held all of Joel's Super+N openings past 50 ms.
     searched = launcher_on_niri.searched(shell) - searches
     assert searched == 1, f"Super+N searched {searched} times to open on the notices"
     # The steps it takes are the opening's, timed in its line, never again as steps of their own:
@@ -3180,9 +3181,9 @@ def test_super_n_lists_the_notices_on_screen_on_the_one_in_front_and_return_acts
     said = opening_said(shell, since)
     stepped = [line for line in said.splitlines() if '"\u2192 ' in line]
     assert stepped == [], f"Super+N's opening was timed again as a step: {stepped}"
-    # Passed through, For You is listed as - climbs back onto it.
+    # Passed through, Now is listed as - climbs back onto it, Desktop among its rows.
     shell.send_chars("-")
-    shell.launcher_until(lambda shown: shown["held"][-1:] == ["For You"] and bool(shown["rows"]))
+    shell.launcher_until(lambda shown: shown["held"] == ["now"] and "Desktop" in shown["rows"])
     shell.close_launcher()
     shell.take_notices()
     shell.launcher_ready()

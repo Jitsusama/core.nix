@@ -808,7 +808,7 @@ Scope {
         }
         sourcesJoined = kept.now;
         // One that's no place of its own (`placed: false`), as Notices,
-        // whose notices For You holds, is never found by its name, though
+        // whose notices Desktop holds, is never found by its name, though
         // what it holds is (gathering).
         for (const source of collections.filter(one => one.collection.placed !== false))
             out.push(withSynonyms(named(source)));
@@ -826,8 +826,8 @@ Scope {
 
     // Where a collection that's no place of its own leads, as one found row,
     // found by the collection's own words, its name, noun and the names it
-    // once had: "notices" and "notifications" find For You's Desktop, where
-    // Super+N goes, whether or not For You lists it now, and never by the
+    // once had: "notices" and "notifications" find Desktop, where
+    // Super+N goes, in For You or among Now's rows, and never by the
     // name it leads to, which that row answers, so there's never two
     // (VKCF3Z, 2026-11-09: a rename never loses a row). It's the leading
     // source's own row, its key and drawer, said where it is, and Return,
@@ -853,8 +853,8 @@ Scope {
         return found;
     }
 
-    // A row found for a place that lives deeper, as "notices" finds For
-    // You's Desktop, steps in through the rows above it, by Return, Tab or
+    // A row found for a place that lives deeper, as "notices" finds
+    // Desktop inside For You, steps in through the rows above it, by Return, Tab or
     // Ctrl+], so - climbs back out the way it went in. It's asked before
     // the row's own ways in, which it carries from the row it copies.
     function steppedAsLed(row) {
@@ -10499,7 +10499,7 @@ Scope {
     function intoWhole(name, passing) {
         openInto = "";
         // A name a source leads somewhere deeper, as Now leads "notices"
-        // to For You's Desktop (`leadsTo`), opens on its place and steps
+        // to Desktop (`leadsTo`), opens on its place and steps
         // through those rows as Joel would, so - climbs back out the same
         // way and Escape at rest closes there. Its place opens first and
         // the steps are passed through, as a walk's are (walkTo), so only

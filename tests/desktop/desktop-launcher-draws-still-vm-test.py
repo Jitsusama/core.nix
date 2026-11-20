@@ -284,7 +284,7 @@ def test_an_act_shows_on_the_frame_after_its_key_with_another_source_changing(
 
 
 def test_dd_on_a_notice_shows_on_the_frame_after_its_key(desktop: Desktop) -> None:
-    """Dd on an unread notice in For You's Desktop shows it read on the frame after the key.
+    """Dd on an unread notice in Now's Desktop shows it read on the frame after the key.
 
     Joel, 2026-11-07: "doing a dd on ntofications does not update the screen wright away".
     d marked it read in the shell at once, but the notices never said they'd changed, so the

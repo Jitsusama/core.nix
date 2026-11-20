@@ -70,7 +70,7 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
 
 
 def for_you_rows(desktop: Desktop) -> None:
-    """Open the launcher on Now and step into For You, whose Lately band holds Mail and Slack."""
+    """Open the launcher on Now and step into For You, whose History holds what was read."""
     now_rows(desktop)
     desktop.down_to("For You")
     desktop.step_in("ret")
@@ -89,7 +89,7 @@ OPENED = rf"opened {CAME}"
 def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_does(
     desktop: Desktop,
 ) -> None:
-    """The mail that wants Joel is counted in For You, and Return lists it as Mail does.
+    """The mail that wants Joel is counted in Now's Mail, and Return lists it as Mail does.
 
     Each piece is the same row as in Programs \u203a Mail, with its details beside it, and Show
     the Mail after them goes there.
@@ -120,7 +120,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
             and drawer.get("body") == lunch["body"]
         )
 
-    for_you_rows(desktop)
+    now_rows(desktop)
     desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
     desktop.down_to("Mail")
     desktop.launcher_until(
@@ -160,7 +160,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Show the Mail, after the mail, goes to Mail in Programs.
-    for_you_rows(desktop)
+    now_rows(desktop)
     desktop.down_to("Mail")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Show the Mail" in shown["rows"])
@@ -217,7 +217,7 @@ def slack_tells(desktop: Desktop, said: Json) -> None:
 
 
 def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> None:
-    """With every message held, For You's Slack row lists each; one read in Slack leaves.
+    """With every message held, Now's Slack row lists each; one read in Slack leaves.
 
     Each is named by who said it, its first words after its name and its side when alone,
     newest first, then Threads, whose replies aren't held (VKCF3Z, 2026-11-08). One read in
@@ -241,7 +241,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     ]
     said: Json = {"state": "ok", "conversations": conversations, "recent": []}
     slack_tells(desktop, said | {"messages": held})
-    for_you_rows(desktop)
+    now_rows(desktop)
     # Its side counts what it lists: Ada's two, Grace's and Threads' three
     # replies, never the conversations the messages are in.
     desktop.down_to("Slack")
@@ -258,7 +258,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
             and re.fullmatch(r"\d+\smin\sago", shown["selected"]["side"]) is not None
         )
     )
-    desktop.shoot("launcher-for-you-slack-messages")
+    desktop.shoot("launcher-now-slack-messages")
     # Its acts lie on its row, which holds nothing to step into, as a
     # conversation's do.
     acts = slack_row_does(desktop, "Ada Lovelace")
@@ -278,10 +278,10 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     # Each message row is made by its one component, as a conversation's is.
     actless = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
     assert actless["uncomposed"] == [], "\n".join(actless["uncomposed"])
-    # Read in Slack, Grace's message leaves For You by itself, for its History.
+    # Read in Slack, Grace's message leaves Now by itself, for For You's History.
     done = {"how": "readInSlack", "minutes": 0}
     slack_tells(desktop, said | {"messages": [*held[:2], grace | {"done": done}]})
-    for_you_rows(desktop)
+    now_rows(desktop)
     desktop.down_to("Slack")
     machine.send_key("ret")
     desktop.launcher_until(
@@ -308,8 +308,8 @@ def slack_goes(desktop: Desktop) -> None:
 
 
 def slack_is_not_in_now(desktop: Desktop) -> None:
-    """Open For You, wait until it holds no Slack row, and close the launcher."""
-    for_you_rows(desktop)
+    """Open Now, wait until it holds no Slack row, and close the launcher."""
+    now_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_until(lambda shown: not shown["open"])
@@ -339,12 +339,12 @@ def slack_program_says(
 def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     desktop: Desktop,
 ) -> None:
-    """What in Slack wants Joel is counted in For You, and never an old count.
+    """What in Slack wants Joel is counted in Now's Slack, and never an old count.
 
     Return lists each conversation as Slack's one conversation row, then Show Slack. When
-    Slack can't be reached or refused the sign-in, For You has no Slack row, since neither
+    Slack can't be reached or refused the sign-in, Now has no Slack row, since neither
     wants Joel, and Slack's program row says why, its first act signing in again when signed
-    out; with Slack's daemon gone, For You has no Slack row and never a count of nothing.
+    out; with Slack's daemon gone, Now has no Slack row and never a count of nothing.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
@@ -373,7 +373,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     ]
     slack_says(desktop, "ok", conversations)
     try:
-        for_you_rows(desktop)
+        now_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
         # Nothing follows its name, and its side is how many alone, as a
@@ -385,7 +385,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
                 and shown["selected"]["note"] == ""
             )
         )
-        desktop.shoot("launcher-for-you-slack")
+        desktop.shoot("launcher-now-slack")
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
@@ -411,7 +411,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
             + "\n".join(said["uncomposed"])
         )
         slack_holds_each_message(desktop, conversations)
-        # Slack out of reach wants nothing of Joel, so For You has no Slack row;
+        # Slack out of reach wants nothing of Joel, so Now has no Slack row;
         # Slack's program row says why.
         slack_says(desktop, "unreachable", [])
         slack_is_not_in_now(desktop)
@@ -431,23 +431,23 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # What wants Joel again, and then the daemon gone, as when
         # slack-unreads stops: what it held goes with it.
         slack_says(desktop, "ok", conversations)
-        for_you_rows(desktop)
+        now_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
         slack_goes(desktop)
-    for_you_rows(desktop)
+    now_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def slack_row_does(desktop: Desktop, name: str) -> list[str]:
-    """Name what the first row so named in For You's Slack does, as `launcher show` says it."""
+    """Name what the first row so named in Now's Slack does, as `launcher show` says it."""
     # Each step after the mark, since qs takes no empty argument, and after
     # `--`, since `show` is also qs ipc's own command otherwise.
-    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "for you", "slack", name)))
+    path = shlex.quote("".join(f"\u203a{step}" for step in ("now", "slack", name)))
     ask = f"qs ipc call -- launcher show {path}"
     # What a source still reads is said to the next ask, so the ask is made
     # again while the shell says it's reading.
@@ -472,10 +472,10 @@ def slack_program(desktop: Desktop) -> None:
 def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants_joel(
     desktop: Desktop,
 ) -> None:
-    """Slack's program holds Unread and then Recent, and For You only what wants Joel.
+    """Slack's program holds Unread and then Recent, and Now's Slack only what wants Joel.
 
     Unread says how many to read and who, and lists every conversation unread, direct
-    messages, mentions and Threads first, then the channels merely unread; For You's Slack row
+    messages, mentions and Threads first, then the channels merely unread; Now's Slack row
     is its first three groups, so it neither counts nor lists a channel merely unread.
     Recent lists the conversations Joel read last, newest first. Unread's and Recent's rows
     are the daemon's, served ready and worded, and made each conversation's one row.
@@ -504,8 +504,8 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
     ]
     slack_says(desktop, "ok", unread, recent=recent)
     try:
-        # For You counts and lists only what wants Joel.
-        for_you_rows(desktop)
+        # Now's Slack counts and lists only what wants Joel.
+        now_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
         desktop.launcher_until(
@@ -1231,7 +1231,7 @@ def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop:
         # The socket going costs each of the shell's clients of Slack's
         # daemon a try or two, as a dropped connection is tried again once
         # and the file going is heard, and how many clients are live
-        # changes as places move to the daemon: with a third, For You's
+        # changes as places move to the daemon: with a third, Now's
         # Slack rows, a count from the stop gave 6 against the 4 two
         # allowed (2026-11-12). So those settle first, and then a span
         # shows the shell isn't trying: one every 2 s would be 4 for each
@@ -1300,7 +1300,7 @@ def test_search_slack_ends_a_search_and_asks_slack_once_on_return_lighting_in_pl
     assert machine.succeed(f"cat {searched}") == "launcher\n"
     desktop.as_account(f"touch {slack}/slack-answers")
     # The first lights where the stand-in stood, selected, and the rest
-    # follow it, each a Slack message's one row, as For You's are: named by
+    # follow it, each a Slack message's one row, as Now's are: named by
     # who said it, by the same name, Joel's own as You, its first line after
     # its name, its side when, and where it is in its drawer's eyebrow.
     desktop.launcher_until(

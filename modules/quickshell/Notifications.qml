@@ -1,7 +1,7 @@
 // The notices, as the notices daemon serves them (Notices.qml): what each one does as it
 // comes, rests and is chosen, and the shell's asks for them. The one that still waits on Joel
 // shows on the arrival line (NoticeLine.qml), at the top centre where the launcher stands, a
-// critical one before the rest; and Super+N opens them in the launcher, For You's Desktop
+// critical one before the rest; and Super+N opens them in the launcher, Now's Desktop
 // those unread and History what's read, where the launcher's keys, acts and drawer do what
 // can be done with each (PLAN-20261113-821NSZ). They're one system: there's no other place a
 // notice shows (Joel, 2026-11-13: "just make it all one system"). While notices are held
@@ -98,7 +98,7 @@ Scope {
     // The notices in the launcher: those on screen while any wait on the arrival line, in
     // normal, so j and k go through them at once and Return acts on one, the cursor on the
     // one the line shows, as the daemon chose it (Joel, 2026-11-14: "super-n no longer lets
-    // me interact with the one in focus"); with none, or under Do Not Disturb, For You's
+    // me interact with the one in focus"); with none, or under Do Not Disturb,
     // Desktop, those unread and then History (launcher/Now.qml's leadsTo).
     function history() {
         const front = line.chosen;

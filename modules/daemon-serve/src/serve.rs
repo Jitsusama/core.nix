@@ -23,7 +23,7 @@
 //! as mycelium's node does (its PROTOCOL.md, The Daemon Interface).
 //!
 //! A daemon that serves something only while it's watched, as the notices
-//! daemon keeps a notice read while For You's Desktop is looked at, is
+//! daemon keeps a notice read while Now's Desktop is looked at, is
 //! told as each watch begins or ends, and asks which are watched.
 //!
 //! A daemon that reads on demand, as the programs daemon makes a

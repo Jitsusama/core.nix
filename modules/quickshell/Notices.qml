@@ -30,7 +30,7 @@ pragma Singleton
 // actions done, marked read, or withdrawn by its program. A click only puts
 // it away, so one clicked by accident still waits, unread, in the list.
 //
-// The notices on screen and For You's Desktop are one home: while the
+// The notices on screen and Now's Desktop are one home: while the
 // launcher holds it the screen's step aside (`gathered`), still there to
 // be answered from the launcher, and come back if it closes before they go.
 import Quickshell
@@ -365,7 +365,7 @@ Singleton {
         daemon.ask({ ask: "mark", notices: [id], read: read, how: how ?? null });
     }
 
-    // Marks read every notice of `ids` at once, as For You's Desktop row's
+    // Marks read every notice of `ids` at once, as Now's Desktop row's
     // Mark Them Read does (launcher/Now.qml), in one change. `how` says it
     // was read elsewhere, as "readInSlack" for Slack's own notices of what
     // its daemon says was read there (SlackUnreads.qml), so History says

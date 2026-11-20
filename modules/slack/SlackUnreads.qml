@@ -88,7 +88,7 @@ Singleton {
     readonly property var recent: stands === "ok" ? recentHeld : []
     // Each message wanting him, done ones too, the newest first, while the
     // daemon holds every one; else null, and the conversations stand for
-    // them (SlackUnreads.js's messages). For You's Slack row counts those
+    // them (SlackUnreads.js's messages). Now's Slack row counts those
     // still to read, and lists the rows the daemon serves (SlackRows.qml).
     readonly property var messages: Unreads.messages(told, stands)
     readonly property var toRead: messages === null ? null

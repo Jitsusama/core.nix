@@ -287,19 +287,17 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
 
 
 def finds_where_the_notices_went(desktop: Desktop) -> None:
-    """Find where the notices went, For You's Desktop, by their place's words.
+    """Find where the notices went, Now's Desktop, by their place's words.
 
     Said where it is, Tab and Return step in as Super+N does, unread or not, and - climbs back
-    out the way it stepped in, through For You (VKCF3Z, 2026-11-09: a rename never loses a row).
+    out the way it stepped in, through Now (VKCF3Z, 2026-11-09: a rename never loses a row).
     """
-    into = ["now", "For You", "Desktop"]
+    into = ["now", "Desktop"]
     for typed in ["notices", "notifications"]:
         desktop.answer(typed)
         desktop.launcher_until(lambda shown: "Desktop" in shown["rows"])
         desktop.down_to("Desktop")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("side") == "Now \u203a For You"
-        )
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "Now")
         if typed == "notices":
             # Normal's Tab steps in; the find's goes to the next row, as Vim's completion does.
             desktop.normal()
@@ -310,7 +308,7 @@ def finds_where_the_notices_went(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: shown["held"] == into)
     desktop.normal()
     desktop.machine.send_key("minus")
-    desktop.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
+    desktop.launcher_until(lambda shown: shown["held"] == ["now"])
     desktop.close_launcher()
 
 

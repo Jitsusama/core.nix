@@ -195,7 +195,7 @@ function standing(told) {
 }
 
 // How many to read: while the daemon holds every message, each still to
-// read and Threads' replies, as For You's Slack row lists them; else
+// read and Threads' replies, as Now's Slack row lists them; else
 // what the conversations count.
 function count(told) {
     if (told.whole) {

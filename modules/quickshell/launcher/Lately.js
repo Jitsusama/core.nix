@@ -1,4 +1,4 @@
-// Lately, For You's band below what needs Joel (Now.qml): what came for
+// Lately, Now's rows after the moment's (Now.qml): what came for
 // him and is still unread, one row for each source, the mail, Slack and
 // the desktop's other notices, each done once its source says so (Joel,
 // 2026-11-08: "i shouldn't be required to mark a notice as read if I
