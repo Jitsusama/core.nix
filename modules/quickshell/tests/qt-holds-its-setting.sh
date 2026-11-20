@@ -41,6 +41,23 @@ search() {
 
 search "$variable"
 if ((held != 0)); then
+  # A linker merging strings keeps the name only as the tail of a longer one
+  # ending the same way, and so does a rename to that longer one. The bytes
+  # can't say which it was, so the check still fails, but names the longer one
+  # rather than saying the name is gone. Each match starts where a run of
+  # printable bytes does, so the search stays linear in the library's size.
+  tail_held=0
+  longer=$(grep -a -o -m 1 -P "(?<![[:print:]])[[:print:]]+\\Q$variable\\E(?=\\x00)" "$found") ||
+    tail_held=$?
+  if ((tail_held > 1)); then
+    echo "grep couldn't search $found for $variable as a tail (status $tail_held)." >&2
+    exit 1
+  fi
+  if ((tail_held == 0)); then
+    echo "$found holds $variable only as the tail of ${longer%%$'\n'*}, which a linker" \
+      "merging strings and a rename to the longer name both leave: find which Qt reads." >&2
+    exit 1
+  fi
   echo "$found no longer holds $variable whole: find where Qt reads it now, or" \
     "the setting does nothing." >&2
   exit 1

@@ -20,7 +20,7 @@ set back, growing gives the set up for the next blur of its size, which going ba
 sharing only a width or an area with a kept set makes its own, the walk's second set is still
 kept after three newer sizes and once more after all of them, and the pool never says it keeps
 more than 64 MiB once it has let go, in lines whose sizes read whole, naming the walk's first
-size among those it let go past its cap.
+size among those it let go past its cap and never its second, which it keeps.
 
 usage: keeps-a-blur-ready.py <niri's log>
 """
