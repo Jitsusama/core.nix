@@ -515,8 +515,9 @@
     clippy finds nothing in cadence or its tests
   '';
   cadence-reads-the-keys-spend-watch-writes = ''
-    each finding key cadence's budget measures copy from spend-watch is still the one
-    spend-watch writes, and is a line of cadence's own rather than of a test's fixture
+    each finding key cadence's budget measures copy from spend-watch, and each field of
+    budgets.json its budget alarm reads, is still the one spend-watch writes, and is a
+    line of cadence's own rather than of a test's fixture
   '';
   cadence-spec-passes-clippy = ''
     clippy finds nothing in cadence-spec or its tests

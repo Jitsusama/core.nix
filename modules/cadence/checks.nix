@@ -67,16 +67,18 @@ onLinux {
         && (service.TimeoutStartSec or null) == "30min"
       );
   # cadence's budget measures match spend-watch's findings by keys copied
-  # from it, so one renamed there would read as no budget unbilled or
-  # missed rather than as an error: reads-the-keys.sh finds each copy on
-  # both sides. It reads the files alone, so neither package rebuilds for
-  # the other.
+  # from it, and its budget alarm reads budgets.json by spend-watch's field
+  # names, so one renamed there would read as no budget unbilled, missed or
+  # near its allowance rather than as an error: reads-the-keys.sh finds
+  # each copy on both sides. It reads the files alone, so neither package
+  # rebuilds for the other.
   cadence-reads-the-keys-spend-watch-writes =
     pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
       ''
         bash ${./reads-the-keys.sh} ${./src/hour/measures/unbilled.rs} \
-          ${./src/hour/measures/unresolved.rs} ${../spend-watch/src/collection.rs} \
-          ${../spend-watch/src/detect.rs}
+          ${./src/hour/measures/unresolved.rs} ${./src/watch/budgets.rs} \
+          ${../spend-watch/src/collection.rs} ${../spend-watch/src/detect.rs} \
+          ${../spend-watch/src/standing.rs} ${../spend-watch/src/status.rs}
         touch "$out"
       '';
   # cadence-spec's tests run as it builds: a watch of Spec is served the

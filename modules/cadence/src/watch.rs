@@ -67,6 +67,9 @@ pub struct Snapshot {
     pub net_held_since: Option<held::NetHeld>,
     /// Each budget's allowances as spend-watch last stood them.
     pub budgets: Vec<budgets::Allowance>,
+    /// Whether spend-watch's standing couldn't be read, or wasn't fresh, so
+    /// no budget is watched.
+    pub budgets_unwatched: bool,
     pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,

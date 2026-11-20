@@ -217,6 +217,12 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
             format!("alarm:{}", breach.key),
             format!("Cadence alarm: {}.", breach.text),
         );
+        // A budget's level is remembered while it stands, with those
+        // beneath it, so a week past 90% is told once however long it
+        // stays, and isn't told as new past 80% as it eases.
+        for key in crate::watch::budgets::stands_for(&breach.key) {
+            state.seen.insert(format!("alarm:{key}"), s.now);
+        }
     }
 
     let keep = |at: &i64| s.now - *at < REMEMBER;
@@ -401,7 +407,7 @@ mod tests {
                 to: To::Orchestrator,
                 key: None,
                 text: "Cadence alarm: Your AI proxy token's Week allowance stands at \
-                       $36,261 of $40,000, 91% (told past 80% and 90%)."
+                       $36,261 of $40,000, 91%: past 90%, the last level it's told."
                     .into(),
             }],
             "a budget at 91% wasn't told to the orchestrator, or was waited on"
@@ -411,10 +417,30 @@ mod tests {
             tick(&s, &mut state).is_empty(),
             "one standing was told twice"
         );
-        s.now += ANSWER_WITHIN;
+        // It stands past 90% all week, then eases past 80%.
+        for _ in 0..4 {
+            s.now += REMEMBER;
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a week standing past 90% was told again as it stood"
+            );
+        }
+        s.budgets[0].share = 0.85;
         assert!(
             tick(&s, &mut state).is_empty(),
-            "the watcher was named silent about a finding nobody answers"
+            "a budget easing from past 90% to past 80% was told as nearing its allowance"
+        );
+        s.budgets.clear();
+        s.now += REMEMBER;
+        tick(&s, &mut state);
+        s.budgets_unwatched = true;
+        assert_eq!(
+            tick(&s, &mut state)
+                .iter()
+                .map(|q| (q.to, q.key.is_some()))
+                .collect::<Vec<_>>(),
+            [(To::Orchestrator, false)],
+            "no budget watched wasn't told to the orchestrator, or was waited on"
         );
     }
 
