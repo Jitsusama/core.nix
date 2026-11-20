@@ -6,6 +6,8 @@ use crate::net::{Round, lag};
 use crate::records::{Follower, Look, Merge, NetHold, Run};
 use crate::stats::spread;
 
+pub mod held;
+
 /// A merge not on the machine this long after it merged, in minutes.
 pub const NOT_ON_MIN: i64 = 20;
 /// How recently the net must have found the machine held for the hold to
@@ -60,6 +62,8 @@ pub struct Snapshot {
     /// When the net last found a hold on the machine starting nothing,
     /// which stops switches too.
     pub net_held: Option<i64>,
+    /// That hold, once the net says since when it stood and who sent it.
+    pub net_held_since: Option<held::NetHeld>,
     pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
@@ -148,6 +152,7 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     if let Some(breach) = round.as_ref().and_then(|round| lag(round, s.now)) {
         out.push(breach);
     }
+    out.extend(held::stalled(s));
     out.extend(s.net_hung.as_ref().map(crate::net::hang));
     if let Some(hold) = s.net_hold.as_ref().filter(|h| {
         let patience = if h.landing {

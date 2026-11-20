@@ -58,6 +58,9 @@ pub enum To {
     /// Whoever switches the machine, for an alarm only a switch answers:
     /// on 18 November one went to the watcher, which could only pass it on.
     Switcher,
+    /// Whoever sent the hold the net is held by, for an alarm only ending
+    /// that hold answers.
+    Holder,
     Orchestrator,
 }
 
@@ -70,7 +73,7 @@ impl To {
     #[must_use]
     pub fn intent(self) -> &'static str {
         match self {
-            To::Watcher | To::Switcher => "question",
+            To::Watcher | To::Switcher | To::Holder => "question",
             To::Orchestrator => "finding",
         }
     }
@@ -143,6 +146,9 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         // not; the watcher's only while it is, as its being gone is said
         // on its own.
         let who = match &q.by {
+            Some(by) if holding(&key) => {
+                format!("{by}, which sent the hold the net is held by,")
+            }
             Some(by) => format!("{by}, the session that switches the machine,"),
             None if s.watcher_alive => "The session keeping the delivery cycle fast".to_owned(),
             _ => continue,
@@ -162,7 +168,9 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         if !state.seen.contains_key(&key) {
             state.seen.insert(key.clone(), s.now);
             out.push(Question {
-                to: if s.switcher.is_some() && switching(&key) {
+                to: if holding(&key) {
+                    To::Holder
+                } else if s.switcher.is_some() && switching(&key) {
                     To::Switcher
                 } else {
                     To::Watcher
@@ -194,6 +202,12 @@ fn switching(key: &str) -> bool {
     ["alarm:noton:", "alarm:failing:", "alarm:heldfor:"]
         .iter()
         .any(|alarm| key.starts_with(alarm))
+}
+
+/// Whether an alarm's key says the net is held by a hold on the machine,
+/// which only its sender ends.
+fn holding(key: &str) -> bool {
+    key.starts_with("alarm:netheld:")
 }
 
 /// Whether the card is overdue, so cadence sends the orchestrator its own: no
@@ -303,6 +317,35 @@ mod tests {
         s.switcher = Some("SWITCH".into());
         let asked = tick(&s, &mut State::default());
         assert_eq!(asked[0].to, To::Switcher, "the switcher named");
+    }
+
+    #[test]
+    fn a_held_net_is_asked_of_the_hold_and_its_silence_named_as_the_holds() {
+        assert!(holding("alarm:netheld:1795000000"), "the net held");
+        assert!(!holding("alarm:heldfor:1795000000"), "the follower held");
+        assert_eq!(To::Holder.intent(), "question", "waited on");
+        let asked = tick(
+            &crate::watch::held::tests::held_for(31, &[100_000 - 60]),
+            &mut State::default(),
+        );
+        assert!(
+            asked.iter().any(|q| q.to == To::Holder
+                && q.key
+                    .as_deref()
+                    .is_some_and(|k| k.starts_with("alarm:netheld:"))),
+            "the held net wasn't asked of the hold: {asked:?}"
+        );
+        let mut state = State::default();
+        let at = 100_000 - ANSWER_WITHIN - 300;
+        let key = "alarm:netheld:1";
+        state.asked_as(key, "1-CADENCE-1-aa", at, "held.", Some("P9R1KI"));
+        let told = tick(&calm(100_000), &mut state);
+        assert!(
+            told.iter().any(|q| q
+                .text
+                .starts_with("P9R1KI, which sent the hold the net is held by,")),
+            "the hold's sender wasn't named as such: {told:?}"
+        );
     }
 
     #[test]
