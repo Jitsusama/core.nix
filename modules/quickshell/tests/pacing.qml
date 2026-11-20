@@ -899,6 +899,10 @@ QtObject {
             Presented.keyShown("window:kitty:~/src", true), "window:kitty:~/src");
         check(failures, "and the launcher's own ids are said whole",
             Presented.keyShown("place:emoji", false), "place:emoji");
+        check(failures, "a category's too",
+            Presented.keyShown("category:power", false), "category:power");
+        check(failures, "and a collection's, as Emoji's row has",
+            Presented.keyShown("collection:emoji", false), "collection:emoji");
         check(failures, "but any other key only by its kind, as a network's name is",
             Presented.keyShown("wifi:Harbour House", false), "wifi");
         check(failures, "a row named but with no key is said only as an answer with reports off",
@@ -907,6 +911,10 @@ QtObject {
             Presented.rowShown({ name: "Address" }, true), "Address");
         check(failures, "a key of no kind is said as nothing",
             Presented.keyShown("github.com", false), "");
+        check(failures, "as is a name with a colon in it, which no kind is",
+            Presented.keyShown("Call: Dr Smith", false), "");
+        check(failures, "a row with neither key nor name is said as a row",
+            Presented.rowShown({}, false), "row");
         check(failures, "so its row is said only as a row with reports off",
             Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, false), "row");
         check(failures, "and whole while they're on",
