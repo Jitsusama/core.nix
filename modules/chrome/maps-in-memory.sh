@@ -3,11 +3,11 @@
 # runtime folder, each left as a link where the folder was, so a store into
 # one of their maps never waits on btrfs writing the page back (home.nix
 # says why that matters). It runs as the account's manager starts, before
-# Chrome, and again after a switch changes it, when Chrome is most likely
-# running: then it leaves the profile as it is, since a folder swapped under
-# a Chrome that maps its files would go on being written on the disk,
-# unlinked, and the manager's next start does it instead. That's the next
-# boot for an account that lingers, and the next login for one that doesn't.
+# Chrome, and each time the profile's own folder changes, as when Chrome
+# quits and drops its lock. While Chrome runs it leaves the profile as it
+# is, since a folder swapped under a Chrome that maps its files would go on
+# being written on the disk, unlinked; the run after Chrome quits does it
+# instead, before Chrome is started again.
 #
 # Chrome holds its profile's SingletonLock, a link naming its host and its
 # process, while it runs, and leaves it behind when it crashes or the
@@ -26,7 +26,7 @@
 case ${1:-} in
 -h | --help)
   cat << 'EOF'
-chrome-maps-in-memory  keep Chrome's mapped folders in memory
+chrome-maps-in-memory  Chrome's mapped folders in memory
 
 EXAMPLES
   chrome-maps-in-memory ~/.config/google-chrome \
@@ -82,7 +82,7 @@ for folder in "$@"; do
   chrome=$(holder)
   if [ -n "$chrome" ]; then
     echo "$chrome holds the profile, so $folder and those after it stay on the disk"
-    echo "until this runs again, at the account manager's next start"
+    echo "until Chrome quits and this runs again"
     exit 0
   fi
   # What was there is a cache Chrome fills again, or its histograms, which

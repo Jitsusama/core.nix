@@ -125,7 +125,9 @@ onLinux {
   # second run, a boot's empty runtime folder and a lock Chrome left behind
   # are each handled, and with Chrome running nothing in the profile is
   # touched (tests/chrome-maps-land-in-memory.sh). The unit runs as the
-  # account's manager starts, before the session that starts Chrome.
+  # account's manager starts, before the session that starts Chrome, and
+  # again on each change in the profile's folder, as when Chrome quits;
+  # it doesn't stay active, which would leave the watch nothing to start.
   chrome-maps-land-in-memory =
     let
       home = account (bareNixos [
@@ -135,6 +137,9 @@ onLinux {
       unit =
         home.systemd.user.services.chrome-maps-in-memory
           or (throw "the account has no chrome-maps-in-memory service");
+      watch =
+        home.systemd.user.paths.chrome-maps-in-memory
+          or (throw "the account has no chrome-maps-in-memory watch");
       command = pkgs.writeText "chrome-maps-in-memory" (toString unit.Service.ExecStart);
     in
     assert lib.assertMsg (lib.elem "default.target" (
@@ -143,6 +148,14 @@ onLinux {
     assert lib.assertMsg (lib.elem "graphical-session-pre.target" (
       unit.Unit.Before or [ ]
     )) "chrome-maps-in-memory isn't ordered before the session that starts Chrome.";
+    assert lib.assertMsg (
+      !(unit.Service.RemainAfterExit or false)
+    ) "chrome-maps-in-memory stays active, so its watch can't start it again.";
+    assert lib.assertMsg (
+      watch.Path.PathChanged or null == "%h/.config/google-chrome"
+      && watch.Path.Unit or null == "chrome-maps-in-memory.service"
+      && lib.elem "paths.target" (watch.Install.WantedBy or [ ])
+    ) "chrome-maps-in-memory isn't run again when the profile's folder changes, as Chrome quits.";
     pkgs.runCommandLocal "chrome-maps-land-in-memory" { } ''
       bash ${./tests/chrome-maps-land-in-memory.sh} ${command}
       touch $out

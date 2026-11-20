@@ -360,9 +360,9 @@ let
   # freezing the picture, and never with these folders in memory. Chrome
   # takes no setting to move them, and turning histograms off still leaves
   # the file mapped, so each folder is a link into the runtime folder, made
-  # again each time the account's manager starts (maps-in-memory.sh). A
-  # cache Chrome finds broken, a link left pointing at nothing included, it
-  # makes again on the disk, until the manager's next start links it back.
+  # as the account's manager starts and again whenever Chrome quits
+  # (maps-in-memory.sh). A cache Chrome finds broken, a link left pointing
+  # at nothing included, it makes again on the disk, until it next quits.
   # Only the Default profile's caches move; a profile added later keeps its
   # own on the disk, as all of them were before. The caches are Chrome's
   # own size, tens of megabytes, against the runtime folder's gigabytes.
@@ -400,7 +400,8 @@ in
 
   config = {
     # As the session starts, before Chrome can, and never under a running
-    # Chrome, which a switch would otherwise find.
+    # Chrome, which a switch would otherwise find. It stays inactive once
+    # done, so the watch below can start it again.
     systemd.user.services.chrome-maps-in-memory = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
         Description = "Moves the folders Chrome writes through shared maps into memory";
@@ -408,7 +409,6 @@ in
       };
       Service = {
         Type = "oneshot";
-        RemainAfterExit = true;
         ExecStart = lib.concatStringsSep " " (
           [
             (lib.getExe mapsInMemory)
@@ -419,6 +419,20 @@ in
         );
       };
       Install.WantedBy = [ "default.target" ];
+    };
+    # Each change in the profile's own folder, a lock Chrome drops as it
+    # quits among them, runs it again, so the links are made before Chrome
+    # is next started and not only at the next boot of an account that
+    # lingers. The folder is watched, not the lock: a watch on the lock
+    # follows the link to a file that never exists, and never fires. While
+    # Chrome runs, each of its writes there finds it holding the lock.
+    systemd.user.paths.chrome-maps-in-memory = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Moves Chrome's mapped folders into memory once it quits";
+      Path = {
+        PathChanged = "%h/.config/google-chrome";
+        Unit = "chrome-maps-in-memory.service";
+      };
+      Install.WantedBy = [ "paths.target" ];
     };
 
     jitsusama.keys.chrome = keys;
