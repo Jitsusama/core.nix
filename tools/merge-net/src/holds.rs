@@ -56,7 +56,9 @@ const TERMS: [&str; 7] = [
     "this ends when",
 ];
 
-/// The net's own names, which a hold says only of the net carrying on.
+/// The net's own names, which hold it in a sentence freeing nothing and
+/// are neutral in one freeing something, since a hold names the net there
+/// only to say it carries on.
 const NETS_NAMES: [&str; 2] = ["merge-net", "merge net"];
 
 /// The starts of words naming what the net does, what a hold on it would
@@ -106,6 +108,10 @@ const AFTER_ENDS: [&str; 6] = [", and ", " and ", ", so ", ", but ", ", while ",
 /// The most words an item of what "doesn't hold" frees may have, as "pi
 /// host cuts" does; "the laptop reboots at 21:00" is a clause.
 const FEW: usize = 3;
+
+/// Words opening a clause rather than an item of a list, after its first:
+/// "Slack, the laptop reboots" frees only Slack.
+const CLAUSE_OPENS: [&str; 7] = ["the", "a", "an", "my", "our", "its", "this"];
 
 /// The most words before "is fine" it frees, as "concluding or retiring a
 /// document is fine" does.
@@ -175,7 +181,8 @@ fn held_part(
                 .unwrap_or(sentence.len());
             // What it frees is a list, of items split by ", " and " or ";
             // it ends before the first item of more than `FEW` words, as a
-            // clause spliced on is.
+            // clause spliced on is, or a later one that opens as a clause
+            // does.
             let mut to = phrase.min(clause);
             let mut item = end;
             while item < to {
@@ -184,7 +191,12 @@ fn held_part(
                     .filter_map(|split| sentence[item..to].find(split).map(|at| (at, split.len())))
                     .min()
                     .map_or(to, |(at, len)| item + at + len);
-                if count(&sentence[item..next]) > FEW {
+                let part = &sentence[item..next];
+                let opens = part
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .find(|word| !word.is_empty())
+                    .is_some_and(|word| CLAUSE_OPENS.contains(&word));
+                if count(part) > FEW || (item > end && opens) {
                     to = item;
                 }
                 item = next;
@@ -217,10 +229,7 @@ fn held_part(
 fn about_the_net(text: &str) -> bool {
     // A typographic apostrophe is read as a plain one, so "doesn’t hold"
     // frees as "doesn't hold" does.
-    let mut lower = text.to_ascii_lowercase().replace('\u{2019}', "'");
-    for name in NETS_NAMES {
-        lower = lower.replace(name, "it");
-    }
+    let lower = text.to_ascii_lowercase().replace('\u{2019}', "'");
     let words = |part: &str| -> Vec<String> {
         part.split(|c: char| !c.is_ascii_alphanumeric())
             .map(str::to_owned)
@@ -252,7 +261,23 @@ fn about_the_net(text: &str) -> bool {
                 .iter()
                 .any(|term| sentence.trim_start().starts_with(term))
         })
-        .any(|sentence| nets_work(&held_part(sentence, |rest| names(rest, &HOLDING), event)));
+        .any(|sentence| {
+            // The net's name holds it in a sentence freeing nothing, and is
+            // neutral in one freeing something, as "so merge-net and the
+            // trains carry on" is.
+            let frees = FREES_AFTER
+                .iter()
+                .chain(&FREES_BEFORE)
+                .any(|p| sentence.contains(p));
+            if !frees && NETS_NAMES.iter().any(|name| sentence.contains(name)) {
+                return true;
+            }
+            let mut unnamed = sentence.to_owned();
+            for name in NETS_NAMES {
+                unnamed = unnamed.replace(name, "it");
+            }
+            nets_work(&held_part(&unnamed, |rest| names(rest, &HOLDING), event))
+        });
     holds_its_work || !names(&lower, &ELSEWHERE)
 }
 
@@ -358,15 +383,16 @@ pub fn standing(folder: &Path, since: u64) -> Option<String> {
     for hold in passed_by(&messages) {
         let id = hold["id"].as_str().unwrap_or_default();
         if said.get_or_insert_with(HashSet::new).insert(id.to_owned()) {
-            let text: String = hold["text"]
-                .as_str()
-                .unwrap_or_default()
-                .chars()
-                .take(240)
-                // A newline in a hold would otherwise read as a journal
-                // line of its own.
-                .map(|c| if c.is_control() { ' ' } else { c })
-                .collect();
+            // A newline in a hold would otherwise read as a journal line of
+            // its own.
+            let plain = |said: &str, most: usize| -> String {
+                said.chars()
+                    .take(most)
+                    .map(|c| if c.is_control() { ' ' } else { c })
+                    .collect()
+            };
+            let text = plain(hold["text"].as_str().unwrap_or_default(), 240);
+            let id = plain(id, 40);
             eprintln!("merge-net: passing by hold {id}, not about its work: {text}");
         }
     }
@@ -451,14 +477,14 @@ mod tests {
              Slack MCP and no direct slack.com call, until I end this hold. The drafts-only \
              rule is unchanged: send nothing. This covers Slack only. It doesn't hold builds, \
              merges, switches, reboots, uploads, pi host cuts or anything else. It stays \
-             until ISXEG8's Slack change is live on both machines: optimus has the config \
-             now, the Mac switches about 21:45 to 22:15, and the harness half (#1871) comes \
+             until ISXEG8's Slack change is live on both machines: the laptop has the \
+             config now, the Mac switches about 21:45 to 22:15, and the harness half (#1871) comes \
              at each machine's next pi update after about 21:30.",
             "WCJQSG (renewing 1e21f0d9, rewording a0c38bfb): read and send Slack only through \
              the Tool Gateway's slack tools (mcp__tool_gateway slack_*). This covers Slack \
              only, and nothing else of anyone's work. It stays until ISXEG8's Slack change is \
-             live on both machines: optimus has the config now, the Mac's update lands about \
-             21:45 to 22:15.",
+             live on both machines: the laptop has the config now, the Mac's update lands \
+             about 21:45 to 22:15.",
             "WCJQSG (renewing 45a21014): conclude or retire no quest, on either machine, \
              until I end this hold. Concluding or retiring a document is fine. This covers \
              concluding and retiring quests only. It doesn't hold builds, merges, switches, \
@@ -491,6 +517,13 @@ mod tests {
             "It doesn't hold Slack, the laptop reboots at 21:00.",
             "It doesn't hold Slack - the laptop reboots at 21:00.",
             "It doesn't hold Slack, the laptop's builds go elsewhere tonight.",
+            "It doesn't hold Slack, the laptop reboots.",
+            "It doesn't hold merges, the Mac restarts.",
+            // A hold naming the net, in a sentence freeing nothing, holds it
+            // whatever its verb.
+            "Hold merge-net till 22:00.",
+            "Leave the merge net alone until Slack is back.",
+            "Merge-net stays paused till 21:00.",
             "The laptop reboots tonight and Slack is fine.",
             "The laptop switches tonight and Slack is fine.",
             "A rebuild runs, and Slack is fine.",
