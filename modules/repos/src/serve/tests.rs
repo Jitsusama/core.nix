@@ -144,13 +144,18 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     let calls = std::sync::atomic::AtomicU64::new(0);
     let mut working = Working::start(move |folders: &[PathBuf]| {
         let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let began = Instant::now();
         if call > 0 {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
         }
+        // As `sample` does, a reading held up says so.
+        let whole = began.elapsed() < SAMPLED;
         Sample {
             at: 100 + call * 6_000,
+            awake: whole.then_some(100 + call * 6_000),
             processes: vec![Process {
                 pid: 1,
+                parent: 0,
                 folder: folders[0].clone(),
                 started: 1,
                 ticks: call * 600,
@@ -184,8 +189,8 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     }
     assert_eq!(working.used.len(), 1, "a reading freed again wasn't taken");
     assert!(
-        working.measured,
-        "two readings a minute apart measure a share"
+        !working.measured,
+        "a reading held up measured a share of time that wasn't its own"
     );
 }
 

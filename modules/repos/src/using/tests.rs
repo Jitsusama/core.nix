@@ -14,10 +14,28 @@ fn folders() -> Vec<PathBuf> {
 fn process(pid: u32, folder: &str, started: u64, ticks: u64, memory: u64) -> Process {
     Process {
         pid,
+        parent: 0,
         folder: PathBuf::from(folder),
         started,
         ticks,
         memory: Some(memory),
+    }
+}
+
+/// A process `parent` started, in the tree, since tick 10.
+fn child(pid: u32, parent: u32, ticks: u64) -> Process {
+    Process {
+        parent,
+        ..process(pid, TREE, 10, ticks, 0)
+    }
+}
+
+/// A reading read whole, as much waking time since the first as since boot.
+fn reading(at: u64, processes: Vec<Process>) -> Sample {
+    Sample {
+        at,
+        awake: Some(at),
+        processes,
     }
 }
 
@@ -44,14 +62,14 @@ fn a_process_is_placed_in_the_deepest_folder_holding_it() {
 
 #[test]
 fn each_folder_sums_its_processes_memory() {
-    let now = Sample {
-        at: 1_600,
-        processes: vec![
+    let now = reading(
+        1_600,
+        vec![
             process(1, CHECKOUT, 10, 0, 2_000),
             process(2, CHECKOUT, 10, 0, 3_000),
             process(3, TREE, 10, 0, 5_000),
         ],
-    };
+    );
     let using = using(None, &now);
     assert_eq!(
         using.get(Path::new(CHECKOUT)),
@@ -78,13 +96,13 @@ fn each_folder_sums_its_processes_memory() {
 
 #[test]
 fn processor_time_is_a_share_of_one_core_between_two_readings() {
-    let before = Sample {
-        at: 1_000,
-        processes: vec![process(1, TREE, 10, 100, 0), process(3, TREE, 20, 50, 0)],
-    };
-    let now = Sample {
-        at: 1_600,
-        processes: vec![
+    let before = reading(
+        1_000,
+        vec![process(1, TREE, 10, 100, 0), process(3, TREE, 20, 50, 0)],
+    );
+    let now = reading(
+        1_600,
+        vec![
             // Worked 300 ticks of the 600 between: half a core.
             process(1, TREE, 10, 400, 0),
             // Started since the first reading: its 150 ticks are all since.
@@ -95,9 +113,59 @@ fn processor_time_is_a_share_of_one_core_between_two_readings() {
             // nothing says how much it worked here.
             process(4, TREE, 500, 900, 0),
         ],
-    };
+    );
     let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
     assert_eq!(cpu, Some((300.0 + 150.0 + 30.0) / 600.0));
+}
+
+#[test]
+fn a_child_counted_as_it_worked_is_not_counted_again_once_waited_on() {
+    // The kernel moves a reaped child's whole time into its parent's
+    // cutime, though each reading that saw it counted it already: Joel's
+    // zsh would read as eight cores the minute a long cargo ended.
+    let before = reading(1_000, vec![child(1, 0, 10), child(2, 1, 48_000)]);
+    let now = reading(7_000, vec![child(1, 0, 10 + 48_600)]);
+    let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
+    assert_eq!(cpu, Some(600.0 / 6_000.0), "only cargo's last 600 ticks");
+}
+
+#[test]
+fn a_grandchild_gone_with_its_parent_is_taken_off_the_one_still_working() {
+    // bash waited on cargo, which had waited on a test that ran across the
+    // first reading; node, still working, now holds all three's time.
+    let before = reading(
+        1_000,
+        vec![child(1, 0, 0), child(2, 1, 1_000), child(3, 2, 2_000)],
+    );
+    let now = reading(2_000, vec![child(1, 0, 3_200)]);
+    let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
+    assert_eq!(cpu, Some(200.0 / 1_000.0));
+}
+
+#[test]
+fn a_suspend_between_readings_measures_the_waking_time() {
+    // The time since boot runs on while asleep, and processor time doesn't.
+    let before = reading(1_000, vec![process(1, TREE, 10, 100, 0)]);
+    let now = Sample {
+        at: 1_000 + 60 * 60 * TICKS,
+        ..reading(1_600, vec![process(1, TREE, 10, 400, 0)])
+    };
+    let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
+    assert_eq!(cpu, Some(300.0 / 600.0));
+}
+
+#[test]
+fn a_reading_held_up_measures_no_share_either_side() {
+    // A reading held up past EVEN read the processes after the hold late.
+    let before = reading(1_000, vec![process(1, TREE, 10, 100, 0)]);
+    let held = Sample {
+        awake: None,
+        ..reading(1_600, vec![process(1, TREE, 10, 400, 0)])
+    };
+    let after = reading(2_200, vec![process(1, TREE, 10, 700, 0)]);
+    assert!(!measured(Some(&before), &held), "the one held up");
+    assert!(!measured(Some(&held), &after), "the one after it");
+    assert_eq!(using(Some(&held), &after)[Path::new(TREE)].cpu, None);
 }
 
 fn proc_with(name: &str) -> PathBuf {
@@ -158,11 +226,13 @@ fn a_reading_keeps_the_processes_working_in_a_folder() {
     let mut sample = sample(&proc, &folders());
     sample.processes.sort_by_key(|process| process.pid);
     assert_eq!(sample.at, 1_625, "16.25 s since boot, in ticks");
+    assert!(sample.awake.is_some(), "a quick walk read as held up");
     assert_eq!(
         sample.processes,
         [
             Process {
                 pid: 41,
+                parent: 1,
                 folder: TREE.into(),
                 started: 900,
                 ticks: 100,
@@ -170,6 +240,7 @@ fn a_reading_keeps_the_processes_working_in_a_folder() {
             },
             Process {
                 pid: 42,
+                parent: 1,
                 folder: TREE.into(),
                 started: 1_000,
                 ticks: 10,
@@ -220,25 +291,15 @@ fn a_process_in_a_removed_folder_works_nowhere() {
 
 #[test]
 fn readings_far_apart_measure_no_share() {
-    // After a suspend the time since boot has run on while nothing
-    // worked, so a share of it would read near nothing.
-    let before = Sample {
-        at: 1_000,
-        processes: vec![process(1, TREE, 10, 100, 0)],
-    };
-    let slept = Sample {
-        at: 1_000 + LONGEST + 1,
-        processes: vec![process(1, TREE, 10, 400, 0)],
-    };
+    // A share is of one recent span, not of the time since one long gone.
+    let before = reading(1_000, vec![process(1, TREE, 10, 100, 0)]);
+    let late = reading(1_000 + LONGEST + 1, vec![process(1, TREE, 10, 400, 0)]);
     assert!(
-        !measured(Some(&before), &slept),
+        !measured(Some(&before), &late),
         "readings past LONGEST apart"
     );
-    assert_eq!(using(Some(&before), &slept)[Path::new(TREE)].cpu, None);
-    let soon = Sample {
-        at: 1_000 + LONGEST,
-        ..slept
-    };
+    assert_eq!(using(Some(&before), &late)[Path::new(TREE)].cpu, None);
+    let soon = reading(1_000 + LONGEST, late.processes);
     assert!(measured(Some(&before), &soon), "readings LONGEST apart");
     assert!(!measured(Some(&before), &before), "readings no time apart");
     assert!(!measured(None, &soon), "a first reading");
