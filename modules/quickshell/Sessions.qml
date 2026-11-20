@@ -2618,19 +2618,22 @@ Singleton {
     // included, carrying it over the link when that's another machine's
     // (mycelium's PROTOCOL.md, The Daemon Interface). One it refuses, or
     // that finds no node to ask, is said by `unsteered` with the node's
-    // reason, or none; `then`, when given, is told whether it was put.
-    signal unsteered(var session, string why)
+    // reason, or none, and the act refused where its caller names it
+    // ("wake", "pause"), else "", so a row becoming what one act asked is
+    // taken back only for that act; `then`, when given, is told whether it
+    // was put.
+    signal unsteered(var session, string why, string act)
     function steer(address, fields, then) {
         const upper = String(address).toUpperCase();
         PiSource.steer(upper, fields, answer => {
-            const put = steered(upper, answer);
+            const put = steered(upper, answer, fields?.act ?? "");
             if (then)
                 then(put);
         });
     }
     // Says what became of a steer by the node's answer, the agents
     // daemon's to an act it did by one included, and whether it was put.
-    function steered(address, answer) {
+    function steered(address, answer, act) {
         const upper = String(address).toUpperCase();
         const machine = answer?.steered?.machine;
         if (machine) {
@@ -2640,7 +2643,7 @@ Singleton {
         const why = String(answer?.error?.message ?? "");
         Report.say(`unsteered ${upper}: ${why}`);
         unsteered(running.find(one => String(one.address).toUpperCase() === upper)
-            ?? parkedAs(upper) ?? { address: upper }, why);
+            ?? parkedAs(upper) ?? { address: upper }, why, String(act ?? ""));
         return false;
     }
 
@@ -3128,7 +3131,7 @@ Singleton {
         const upper = String(session.address).toUpperCase();
         PiSource.steer(upper, { act: "wake" }, answer => {
             if (!reopensUnwoken(session, answer))
-                steered(upper, answer);
+                steered(upper, answer, "wake");
         });
     }
     // Reopens where it left off one parked here that the node says no
@@ -3182,7 +3185,7 @@ Singleton {
             delete left[id];
             unwokenReopening = left;
             Report.say(`couldn't reopen ${upper}: no session file or folder of its own`);
-            unsteered(session, why);
+            unsteered(session, why, "wake");
         }, { done: cwd => Report.say(`reopened ${upper}, which nothing held, in ${cwd}`),
             env: fenced ? { PI_SANDBOX: fence } : null });
         return true;

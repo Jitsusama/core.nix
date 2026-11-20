@@ -62,6 +62,9 @@ REALM = "harbour"
 STATE = Path(os.environ["XDG_STATE_HOME"])
 PRESENCE = STATE / "pi/agentic-harness.pi/mesh-workflow/presence"
 STEER = STATE / "pi/agentic-harness.pi/steer"
+# Where the harness marks each session it parks, a JSON file named by its id, which the node
+# reads to call one whose owner is gone parked rather than closed.
+PARKS = STATE / "pi/agentic-harness.pi/park-workflow/parked"
 NODE = Path(os.environ["XDG_RUNTIME_DIR"]) / "mycelium" / f"{REALM}.sock"
 # Where the agents daemon serves Agents' rows, as its unit's socket is.
 ROWS = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "agents.sock"
@@ -1983,6 +1986,10 @@ def at_twice(shell: Shell) -> Iterator[None]:
         shell.as_account(f"niri msg output {name} scale {output['logical']['scale']}")
 
 
+# The rows Networks rests on as it's stepped into, each numbered and neither cut.
+TOP_ROWS = ("core.nix", "harbour")
+
+
 @pytest.mark.usefixtures("at_twice")
 def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
     """Where Networks' rows overflow the card, each step leaves no row or heading cut.
@@ -1997,9 +2004,18 @@ def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
     shell.step_in()
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
     shell.normal()
+    # Read once it rests on its two rows: a frame caught as the step in lays the rows out drew
+    # three (2026-11-20, under a load of 50), and the asserts below say what it rested on.
+    shell.launcher_until(
+        lambda shown: (
+            shown["restsOnARow"]
+            and shown["drawnRows"] == len(shown["gutter"]["numbers"]) == len(TOP_ROWS)
+        )
+    )
     top = shell.showing()
     # core.nix and harbour, each numbered, neither cut.
-    assert top["drawnRows"] == len(top["gutter"]["numbers"]) == len(["core.nix", "harbour"]), top
+    assert top["drawnRows"] == len(top["gutter"]["numbers"]) == len(TOP_ROWS), top
+    assert [name for name in top["rows"] if name in TOP_ROWS] == list(TOP_ROWS), top
     assert top["cut"] == [], top
     steps = [("j", "harbour"), ("j", "machines"), ("k", "harbour"), ("k", "core.nix")]
     for key, name in [*steps, ("G", "machines"), ("gg", "core.nix")]:
@@ -3942,3 +3958,133 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
     assert times < looked / 2, (
         f"keeping {looked} landings looked through the sessions {times}x, not under half"
     )
+
+
+def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell: Shell) -> None:
+    """A parked session's Return lands on Wake, its drawer marking it; a second asks the wake.
+
+    Joel answers a session in any state with one Return (his ask of 19 November). A parked
+    session stands apart from the fixture's, so it's laid here and taken away after, leaving
+    every other case's rows as they were. It's parked as pi parks one, its process gone and
+    its mark laid, so the node holds it parked and the launcher waits for it to wake. Only its
+    holder wakes it, and no holder keeps this one, so the node refuses the wake. It's fenced,
+    and the shell brings no fenced session back by itself, so the launcher says why on its
+    foot at once, its row reading parked again rather than woken.
+    """
+    PARKS.mkdir(parents=True, exist_ok=True)
+    (PARKS / "s-parked.json").write_text("{}")
+    lay("PARKED", "Parked Quest", {"state": "parked", "fence": "fence"}, closed=True)
+    try:
+        # It's listed beside the fixture's rows, so Agents is opened on it here, not by opened.
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Parked Quest" in shown["rows"])
+        shell.type_in("parked quest", selecting="Parked Quest")
+        row = cast("Json", shell.showing()["selected"])
+        assert row["verb"] == "wake", row
+        assert row["told"][:1] == ["\u21b5 wake"], row
+        asleep = row["side"]
+        shell.launcher_until(rested_on("Parked Quest"))
+        acts = shell.showing()["drawer"]["acts"]
+        marked = [one for one in acts if one.startswith("\u21b5 ")]
+        assert marked == ["\u21b5 Wake"], acts
+        first = shell.mark()
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: (
+                shown["mode"] == "normal"
+                and (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 wake"]
+                and not shown["landedFresh"]
+            )
+        )
+        # A wake asked is said as becoming in the same call that asks it, before anything is
+        # drawn (Agents' wakeNow), so none said by now shows the first Return only landed.
+        landed, second = shell.said_since(first)
+        assert not [one for one in landed if one.startswith("becoming agent:PARKED")], landed
+        shell.send_key("ret")
+        unheld = "PARKED isn't parked with a holder to wake it this boot"
+        # Fenced, with no holder, it's reopened by its own id under its fence instead, and
+        # with no session file of its own that's refused too (Sessions' reopensUnwoken).
+        shell.reported(
+            "couldn't reopen PARKED: ",
+            lambda why: why == "no session file or folder of its own",
+            first,
+        )
+        # Its row, drawn as woken from the second Return, is taken back at once, not after
+        # the half minute a wake is waited for.
+        shell.reported(
+            "not become agent:PARKED: ",
+            lambda why: why == unheld,
+            first,
+            timeout=timedelta(seconds=5),
+        )
+        shell.launcher_until(
+            lambda shown: (
+                any(unheld in said.replace("\u00a0", " ") for said in shown["saying"])
+                and (shown["selected"] or {}).get("side") == asleep
+            )
+        )
+        # The second Return asked the one wake: one becoming, one refusal.
+        said, _ = shell.said_since(second)
+        becoming = [one for one in said if one.startswith("becoming agent:PARKED")]
+        assert len(becoming) == 1, said
+    finally:
+        (PRESENCE / "parked.json").unlink(missing_ok=True)
+        (PARKS / "s-parked.json").unlink(missing_ok=True)
+        shell.close_launcher()
+        left_the_node("s-parked")
+
+
+def left_the_node(session: str) -> None:
+    """Wait until the node no longer holds a session laid for one case, as the next begins."""
+    deadline = time.monotonic() + 10
+    while f"session:{session}" in held_by_node():
+        assert time.monotonic() < deadline, f"the node still holds {session}"
+        time.sleep(0.1)
+
+
+def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: Shell) -> None:
+    """A session asking Joel a question is gone to, where it asks, on one Return.
+
+    Its Return is Go To, marked so in its drawer, and what it asked is its row's note, in sight
+    before he presses it, so he knows what he's going to answer. This one runs in no window the
+    sandbox can reach, so Go To says so on the next opening, which shows Return did go to it;
+    raising a window is the desktop VM tests'.
+    """
+    wants = {"kind": "question", "since": datetime.now(UTC).isoformat(), "said": "Which way?"}
+    lay("ASKING", "Asking Quest", {"state": "listening", "busy": False, "wants": wants})
+    try:
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Asking Quest" in shown["rows"])
+        shell.type_in("asking quest", selecting="Asking Quest")
+        row = cast("Json", shell.showing()["selected"])
+        assert row["verb"] == "go to", row
+        assert row["told"][:1] == ["\u21b5 go to"], row
+        assert row["note"] == "Which way?", f"the question is out of sight: {row}"
+        shell.launcher_until(rested_on("Asking Quest"))
+        shown = shell.showing()
+        marked = [one for one in shown["drawer"]["acts"] if one.startswith("\u21b5 ")]
+        assert marked == ["\u21b5 Go To"], shown["drawer"]
+        assert shown["selected"]["note"] == "Which way?", shown["selected"]
+        # In sight: drawn on its row, whole, not only held in the row's data.
+        laid = json.loads(shell.as_account(shell.ipc("laidOut")))["rows"]
+        asked = [
+            word
+            for one in laid
+            for word in one["words"]
+            if re.sub("<[^>]*>", "", word["text"]) == "Which way?"
+        ]
+        assert asked, laid
+        assert not any(word["cut"] for word in asked), asked
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: not shown["open"])
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(
+            lambda shown: any("ASKING not opened" in said for said in shown["saying"])
+        )
+    finally:
+        (PRESENCE / "asking.json").unlink(missing_ok=True)
+        shell.close_launcher()
+        left_the_node("s-asking")

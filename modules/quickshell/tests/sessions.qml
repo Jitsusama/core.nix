@@ -613,6 +613,12 @@ ShellRoot {
             !Niri.spawns.some(one => one.includes("s-stray"))
             && root.strayed === "STRAY isn't parked with a holder to wake it this boot",
             `${root.strayed}: ${Niri.spawns.join("\n")}`);
+        // Said as the Wake refused, so only a row becoming woken is taken
+        // back for it (Agents' onUnsteered), never one a talk refused.
+        expect("and its refusal names the act refused, a wake", root.strayedAct === "wake",
+            root.strayedAct);
+        expect("as one that couldn't be reopened does", root.unfiledAct === "wake",
+            root.unfiledAct);
         expect("one fenced strict reopens by its id, PI_SANDBOX its own fence",
             kitties.filter(one => one.startsWith(
                 `${kitty} ${state}/trees/karst env PI_SANDBOX=strict zsh -lic `)
@@ -841,6 +847,9 @@ ShellRoot {
     property bool steered: false
     // What the node said of waking the one parked elsewhere.
     property string strayed: ""
+    // The act its refusal named.
+    property string strayedAct: ""
+    property string unfiledAct: ""
     property string unfiled: ""
     property string fenced: ""
     property string unsaid: ""
@@ -864,17 +873,19 @@ ShellRoot {
             root.unreached = session.address;
         }
 
-        function onUnsteered(session, why) {
+        function onUnsteered(session, why, act) {
             try {
                 // One Wake mustn't reopen, or can't, is said as the node
                 // refused it (reopensUnwoken); one it reopens never is.
                 if (session.address === "STRAY") {
                     root.strayed = why;
+                    root.strayedAct = act;
                     return;
                 }
                 // One with no session file to reopen is said so too.
                 if (session.address === "NOFILE") {
                     root.unfiled = why;
+                    root.unfiledAct = act;
                     return;
                 }
                 if (session.address === "FENCED") {
@@ -893,6 +904,7 @@ ShellRoot {
                 root.expect("a steer elsewhere is refused by the node, saying why",
                     session.address === "FARAWY" && session.machine === "lighthouse"
                     && why === "lighthouse is out of reach, so FARAWY can't be told now", why);
+                root.expect("and names the act it refused, never a wake", act === "pause", act);
                 const asked = root.steers.find(one => one.ask.address === "FARAWY")?.ask;
                 root.expect("the node is asked with the steer, its address as the mesh writes it",
                     asked?.steer?.act === "pause" && asked?.steer?.from === "joel",
