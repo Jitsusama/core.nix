@@ -303,6 +303,8 @@ in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
   imports = [
+    ./cores.nix
+    ./efficient-work.nix
     ./probe.nix
     ./tiers.nix
   ];

@@ -75,6 +75,7 @@ in
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/processor-telemetry/nixos.nix
+    ../../modules/slices/cores.nix
     ../../modules/touchpad/nixos.nix
     ./camera/camera.nix
     ./kernel/local.nix
@@ -85,6 +86,10 @@ in
 
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
+
+  # Its four performance cores are 0 to 3; the eight efficient and four
+  # low-power efficient cores, 4 to 15, are the kernel's cpu_atom.
+  jitsusama.slices.efficientCores = "4-15";
 
   # The Silicon Security Engine at 00:18.0 had no driver until 7.3's, which
   # only this laptop's parts need, so it's built here rather than in core's

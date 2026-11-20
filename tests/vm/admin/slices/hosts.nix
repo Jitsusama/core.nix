@@ -8,8 +8,10 @@
 # found uncapped through a call with no check to say so. A VM has no
 # microphone, so a silent source stands in for one, and a PulseAudio
 # recorder copied under a call program's name stands in for the call, as
-# tests/vm/sound/calls.nix does. The tests are hosts-vm-test.py, which
-# pytest runs inside the driver.
+# tests/vm/sound/calls.nix does. A second machine, of two cores, names its
+# second as its efficient one, to ask where agents' work and builds run
+# then (modules/slices/efficient-work.nix). The tests are
+# hosts-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
   # Processors enough that a quarter of them is less than all, and as many
@@ -61,6 +63,19 @@ import ../../../lib/pytest-vm-test.nix { inherit pkgs; } {
         };
       }
     ];
+  };
+
+  # Its own machine, since naming efficient cores on the first would leave
+  # the busy-work test's session cores the spinners can't reach.
+  nodes.pinned = {
+    imports = [ self.nixosModules.slices ];
+    virtualisation.cores = 2;
+    jitsusama.slices.efficientCores = "1";
+    users.users.alice = {
+      isNormalUser = true;
+      linger = true;
+    };
+    systemd.slices.build.sliceConfig.CPUWeight = 10;
   };
 
   tests = ./hosts-vm-test.py;

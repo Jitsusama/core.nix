@@ -91,6 +91,68 @@
       "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
       (weight slices.app >= 10 * weight slices.agents && watches "app.slice" && watches "agents.slice");
 
+  # Under every core's load, the processor's one power budget holds each
+  # near the same clock, so one of Joel's threads ran no faster on a
+  # performance core than on an efficient one. A machine that names its
+  # efficient cores keeps agents' work and the builds to them, which leaves
+  # the performance cores and their budget to what he uses, while his own
+  # terminal work, timed work and the daemons he asks stay free. The
+  # account's manager is handed the cpuset controller, without which its
+  # units can't be held to any cores. A machine naming none holds nothing,
+  # and the laptop's hardware names its cores but holds nothing without
+  # the slices.
+  agents-work-keeps-off-the-performance-cores =
+    let
+      machine = modules: (bareNixos modules).config;
+      slices =
+        named:
+        machine [
+          self.nixosModules.graphical
+          { jitsusama.slices.efficientCores = named; }
+        ];
+      held = slices "4-15";
+      free = slices null;
+      laptop = machine [ self.nixosModules.dell-xps-14-da14260 ];
+      cores = config: [
+        config.systemd.user.services.jobs.serviceConfig.AllowedCPUs or null
+        config.systemd.user.slices.jobs-work.sliceConfig.AllowedCPUs or null
+        config.systemd.slices.build.sliceConfig.AllowedCPUs or null
+      ];
+      # jobs.slice itself among them, since a pin there would hold every
+      # slice under it.
+      joels = config: [
+        config.systemd.user.slices.jobs.sliceConfig.AllowedCPUs or null
+        config.systemd.user.slices.jobs-awaited.sliceConfig.AllowedCPUs or null
+        config.systemd.user.slices.jobs-timed.sliceConfig.AllowedCPUs or null
+        config.systemd.user.slices.background.sliceConfig.AllowedCPUs or null
+      ];
+      delegate = config: config.systemd.services."user@".serviceConfig.Delegate or "";
+      delegated =
+        config: lib.isString (delegate config) && lib.elem "cpuset" (lib.splitString " " (delegate config));
+      none = [
+        null
+        null
+        null
+      ];
+      nothing = none ++ [ null ];
+    in
+    holds "agents-work-keeps-off-the-performance-cores"
+      "Naming the efficient cores didn't hold agents' work and builds to them alone, naming none held them anyway, or the laptop's hardware held them without the slices."
+      (
+        cores held == [
+          "4-15"
+          "4-15"
+          "4-15"
+        ]
+        && joels held == nothing
+        && delegated held
+        && cores free == none
+        && !delegated free
+        && laptop.jitsusama.slices.efficientCores == "4-15"
+        && cores laptop == none
+        && !delegated laptop
+      );
+
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes
   # one wait, and not his programs making each other wait.

@@ -3260,6 +3260,11 @@
     agents' sessions have a slice beside Joel's programs, which outweigh it ten times over on the
     processor, and the sorter watches both
   '';
+  agents-work-keeps-off-the-performance-cores = ''
+    a machine naming its efficient cores holds agents' work and builds to them, not Joel's own
+    terminal or timed work or background, handing the account's manager the cpuset controller to
+    do it; one naming none holds nothing, nor does the laptop's hardware without the slices
+  '';
   a-probe-waits-beside-the-programs = ''
     the sorter's probe runs in a slice of its own at Joel's programs' weight from login, so its
     pressure reads what the rest of the machine makes one of them wait
