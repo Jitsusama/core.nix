@@ -19,7 +19,7 @@ QtObject {
         empty: "say what the work is",
         unplaced: "that folder isn't a whole path",
         offered: "a page offered this work; check it, then Return starts it",
-        offeredFrom: "a page offered this work from {cell}; check it, then Return starts it"
+        offeredFrom: "a page offered this work, saying it's from {cell}; check it, then Return starts it"
     })
 
     function cases() {
@@ -59,6 +59,12 @@ QtObject {
             Expect.same(`a session not here, or misshaped, is let go: ${from}`,
                 Sprouting.offered("words:tidy", from, sessionNamed),
                 { words: "tidy", from: null });
+        // Its own check, with a session here for every address: a misshaped cell names none.
+        const anyNamed = () => "Any Quest";
+        for (const from of ["from:tern02", "TERN02", "from:TERN02;rm", "from:ABCDEFGHIJKLM"])
+            Expect.same(`a misshaped cell names no session, whoever is here: ${from}`,
+                Sprouting.offered("words:tidy", from, anyNamed),
+                { words: "tidy", from: null });
         Expect.same("words are read again as one plain line",
             Sprouting.offered("words:  tidy\tthe\nrows\u0007\u001b[2J ", "from:", sessionNamed),
             { words: "tidy the rows[2J", from: null });
@@ -81,7 +87,7 @@ QtObject {
         Expect.same("the foot says a page offered it, from the session by its quest",
             Sprouting.offeredSaid({ words: "tidy", from: { address: "TERN02",
                 name: "Tidy the Rows" } }, said),
-            "a page offered this work from Tidy the Rows; check it, then Return starts it");
+            "a page offered this work, saying it's from Tidy the Rows; check it, then Return starts it");
         Expect.same("and only that a page offered it, from no session here",
             Sprouting.offeredSaid({ words: "tidy", from: null }, said),
             "a page offered this work; check it, then Return starts it");

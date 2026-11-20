@@ -1578,10 +1578,11 @@ Scope {
             return { error: "the link offered no plain words to start new work with" };
         if (inUse())
             return inUseSaid;
-        toldWhence(offer.said);
+        const told = toldWhence(offer.said);
         into("agents");
         ask(offer.act, offer.words);
         prompt.linked();
+        offerHeld = { depth: held.length, told: JSON.stringify(told) };
         return { done: true, said: `${offer.act.name} \u203a ${offer.words}`,
             from: offer.from?.address ?? null };
     }
@@ -3384,7 +3385,15 @@ Scope {
     // a key that means nothing in normal, so none is silent.
     property var saying: []
     property int sayingKeys: -1
-    readonly property bool sayingNow: saying.length > 0 && prompt.keysTaken === sayingKeys
+    readonly property bool sayingNow: saying.length > 0 && (prompt.keysTaken === sayingKeys
+        || offerSaid)
+    // Where a page offered words (newWork), and what the foot says of it,
+    // which stays while its line is held, past the keys Joel types, so he
+    // reads where the words came from as he checks them and presses Return
+    // (Y2YBTS, 2026-11-20); something else said, or the line left, ends it.
+    property var offerHeld: null
+    readonly property bool offerSaid: offerHeld !== null && held.length === offerHeld.depth
+        && JSON.stringify(saying) === offerHeld.told
     // Words that aren't keys, as what an act didn't do and why, say nothing
     // in Return's place, so its last stands at its own width: held there,
     // the why stood a Return's room away from what it was the why of.
@@ -5600,8 +5609,10 @@ Scope {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
         // One that keeps its words, as a talk does, opens on what Joel was
         // typing to it, or sent and not yet delivered, a shell started
-        // again included (Drafts.qml).
-        const kept = typeof offered === "string" ? { text: offered, caret: offered.length }
+        // again included (Drafts.qml). Words a link offered open with the
+        // caret at their start, where Joel reads them from, rather than
+        // past their end (Y2YBTS, 2026-11-20).
+        const kept = typeof offered === "string" ? { text: offered, caret: 0 }
             : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
         restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.
@@ -6083,10 +6094,13 @@ Scope {
         tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
             { what: Theme.alert, why: Theme.muted }), true);
     }
-    // Says where words in the field came from, which nothing failed.
+    // Says where words in the field came from, which nothing failed, and
+    // gives what it said.
     function toldWhence(what) {
-        tellOnOpen(Becoming.told({ mark: Theme.glyph.link, what, why: "" },
-            { what: Theme.text, why: Theme.muted }), true);
+        const told = Becoming.told({ mark: Theme.glyph.link, what, why: "" },
+            { what: Theme.text, why: Theme.muted });
+        tellOnOpen(told, true);
+        return told;
     }
 
     function letGo(keys) {

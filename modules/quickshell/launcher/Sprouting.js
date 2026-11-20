@@ -138,11 +138,13 @@ function offered(words, from, nameOf) {
 
 // What the foot says over new work a link offered, from the words
 // `said` (agents.json's Start New Work's): that a page offered it, and
-// from which session where it named one here, by its quest's name.
+// which session it says it's from where it named one here, by its
+// quest's name, which any page may name, so it's never said as sure.
+// The name goes in as it is, a `$` in it included.
 function offeredSaid(offer, said) {
     const words = said ?? {};
     return offer.from === null ? String(words.offered ?? "")
-        : String(words.offeredFrom ?? "").replace("{cell}", offer.from.name);
+        : String(words.offeredFrom ?? "").replace("{cell}", () => offer.from.name);
 }
 
 // A token's digits, letters and digits alike, so it stays short.

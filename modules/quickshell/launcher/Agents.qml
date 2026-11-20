@@ -1658,8 +1658,13 @@ Provider {
         });
         if (offer === null)
             return null;
+        const act = newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"));
+        // Fresh words, so how the last start ended is no longer theirs to show,
+        // unless one is still starting.
+        if (sprouting !== act.key)
+            sproutSays(act.key, "");
         return {
-            act: newWorkAct("link", "", Words.name("verb:agents:start-new-work:link")),
+            act: act,
             words: offer.words,
             from: offer.from,
             said: Sprouting.offeredSaid(offer, Words.of("agents:start-new-work").said)
