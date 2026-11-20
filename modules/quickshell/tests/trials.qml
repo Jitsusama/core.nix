@@ -374,8 +374,8 @@ QtObject {
         expect("a keeping that took none and was no step back isn't",
             Trials.keptPart({ fresh: 0, laying: 0, split: unstepped }, ", 5 weighing") === ""
                 && Trials.keptPart(null) === "", "shown");
-        expect("a showing says how long rows spent reading what they hold",
-            Trials.readingSaid(12.6) === ", 13 reading what they hold"
+        expect("a showing says how long rows spent reading what they hold, within its parts",
+            Trials.readingSaid(12.6) === ", 13 of those reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
             Trials.readingSaid(12.6));
         // A showing's own parts, as Launcher.qml's compose and search time
