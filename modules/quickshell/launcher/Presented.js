@@ -279,10 +279,12 @@ const keysOwn = ["place:", "category:", "collection:"];
 // A kind's word, as the launcher and its daemons write one.
 const kindWord = /^[a-z][a-z0-9-]*$/;
 
-// A program's own id, as kitty or org.gnome.Evolution. A browser's app
-// window may build one from a page's address, with underscores for its
-// slashes, so one that isn't shaped like this is said as no app at all.
-const appWord = /^[A-Za-z][A-Za-z0-9.-]*$/;
+// A program's own id, as kitty, 1Password or org.gnome.Evolution. A
+// browser's app window may build one from a page's address, with
+// underscores for its slashes, so one that isn't shaped like this is said
+// as no app at all, as is a window that names none.
+const appWord = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+const appsUnnamed = ["null", "undefined"];
 
 // A row's key as a line in the journal may say it: whole where `whole`,
 // as while reports are on; otherwise only its kind, since most keys carry
@@ -302,7 +304,8 @@ function keyShown(key, whole) {
     if (text.startsWith("window:")) {
         const end = text.indexOf(":", "window:".length);
         const app = end < 0 ? "" : text.slice("window:".length, end);
-        return appWord.test(app) ? `window:${app}` : "window";
+        const named = appWord.test(app) && !appsUnnamed.includes(app);
+        return named ? `window:${app}` : "window";
     }
     const kind = text.indexOf(":");
     const said = kind < 0 ? "" : text.slice(0, kind);
@@ -326,7 +329,7 @@ function rowShown(row, whole) {
     } else if (row?.name) {
         said = "answer";
     }
-    return said || "row";
+    return said ? String(said) : "row";
 }
 
 // The drawers presented since the launcher opened, a line a place, as a
