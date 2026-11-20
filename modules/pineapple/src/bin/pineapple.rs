@@ -254,11 +254,14 @@ fn stop_all(context: &terminal_kit::Context) -> Result<(), Failure> {
         .map_err(|error| couldnt_write(&error))?;
     // Only this machine's parking is written here; another's parks there.
     let host = host();
-    let here = pause::sessions(&plan, &[host.as_str()], &mut runs);
-    let parked = watch_parking(context, &id, here);
-    let left = here.map_or(0, |count| count.saturating_sub(parked));
+    let here = pause::session_ids(&plan, &[host.as_str()], &mut runs);
+    let named = watch_parking(context, &id, here.as_deref());
+    let parked = named.len();
+    let left = here.map_or(0, |ids| {
+        ids.iter().filter(|one| !named.contains(one)).count()
+    });
     let there = if took.iter().any(|one| one.recorded && one.machine != host) {
-        ", the other machines' park there"
+        ", the other machines' sessions park there and start no more"
     } else {
         ""
     };
@@ -274,9 +277,13 @@ fn stop_all(context: &terminal_kit::Context) -> Result<(), Failure> {
 }
 
 /// Names each session as the harness writes it parked for the stop `id`,
-/// until every one of `sessions` is or a minute has passed, and answers
-/// how many parked.
-fn watch_parking(context: &terminal_kit::Context, id: &str, sessions: Option<usize>) -> usize {
+/// until every one of `sessions` has, or a minute has passed, and
+/// answers those that parked.
+fn watch_parking(
+    context: &terminal_kit::Context,
+    id: &str,
+    sessions: Option<&[String]>,
+) -> Vec<String> {
     let began = std::time::Instant::now();
     let mut named: Vec<String> = Vec::new();
     loop {
@@ -298,8 +305,9 @@ fn watch_parking(context: &terminal_kit::Context, id: &str, sessions: Option<usi
                 let _ = context.say(&format!("  parked {shown}\n"));
             }
         }
-        if sessions.is_some_and(|count| named.len() >= count) || began.elapsed() >= PARKING {
-            return named.len();
+        let all = sessions.is_some_and(|ids| ids.iter().all(|one| named.contains(one)));
+        if all || began.elapsed() >= PARKING {
+            return named;
         }
         std::thread::sleep(LOOKED);
     }
@@ -461,10 +469,19 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
             resumed.join(", "),
             pause::said("resuming", &undone, None),
         )),
-        Format::Text => context.say(&format!(
-            "resumed {}; agents carry on within a minute\n",
-            resumed.join(", ")
-        )),
+        Format::Text => {
+            // serve's tend may have taken the undo, so what it left is read.
+            let left = pause::left(&state());
+            let still = if left.is_empty() {
+                String::new()
+            } else {
+                format!("; still {}, tried again each minute", left.join(", "))
+            };
+            context.say(&format!(
+                "resumed {}{still}; agents carry on within a minute\n",
+                resumed.join(", ")
+            ))
+        }
         _ => context.answer(&json!({ "schema": "pineapple.resumed/1", "resumed": resumed })),
     };
     written.map_err(|error| couldnt_write(&error))
@@ -483,7 +500,7 @@ fn under_pi() -> Option<String> {
     }
     if let Some(why) = std::fs::read_to_string("/proc/self/cgroup")
         .ok()
-        .and_then(|cgroup| agents_cgroup(&cgroup))
+        .and_then(|cgroup| pause::agents_cgroup(&cgroup))
     {
         return Some(why);
     }
@@ -496,40 +513,6 @@ fn under_pi() -> Option<String> {
             return Some(format!("process {pid}, a parent of this one, is pi"));
         }
         pid = parent_of(&pid.to_string())?;
-    }
-    None
-}
-
-/// Why the cgroup `cgroup` names is agents', or none when it may be
-/// Joel's: a service the user's manager runs is started for something,
-/// not typed, and agents' work and their shells run in slices of their
-/// own; only the awaited part of the jobs slice holds Joel's own terminal
-/// work. Outside the user's manager, as in a build's sandbox, it says
-/// nothing.
-fn agents_cgroup(cgroup: &str) -> Option<String> {
-    let path = cgroup
-        .lines()
-        .find_map(|line| line.strip_prefix("0::"))?
-        .trim();
-    let (_, inside) = path.split_once(".service/").filter(|(manager, _)| {
-        manager
-            .rsplit('/')
-            .next()
-            .is_some_and(|unit| unit.starts_with("user@"))
-    })?;
-    if inside.starts_with("jobs.slice/jobs-awaited.slice/") {
-        return None;
-    }
-    let agents = ["agents.slice/", "jobs.slice/", "offload.slice/"];
-    if agents.iter().any(|slice| inside.starts_with(slice))
-        || inside
-            .rsplit('/')
-            .find(|part| !part.is_empty())
-            .is_some_and(|leaf| leaf.ends_with(".service"))
-    {
-        return Some(format!(
-            "it runs in {inside}, which the user's manager started for agents or a service"
-        ));
     }
     None
 }

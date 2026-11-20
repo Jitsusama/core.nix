@@ -35,19 +35,21 @@ impl Machine {
         self.units.iter_mut().find(|unit| unit.id == id)
     }
 
+    /// Each unit as `systemctl show` says it, its keys in an order other
+    /// than the one asked, which nothing promises.
     fn show(&self, names: &[&str]) -> String {
         names
             .iter()
             .map(
                 |name| match self.units.iter().find(|unit| unit.id == *name) {
                     Some(unit) => format!(
-                        "Id={}\nActiveState=active\nFreezerState={}\nSlice={}\n",
+                        "Slice={}\nId={}\nActiveState=active\nFreezerState={}\n",
+                        unit.slice,
                         unit.id,
                         if unit.frozen { "frozen" } else { "running" },
-                        unit.slice
                     ),
                     None => {
-                        format!("Id={name}\nActiveState=inactive\nFreezerState=running\nSlice=\n")
+                        format!("Slice=\nId={name}\nActiveState=inactive\nFreezerState=running\n")
                     }
                 },
             )
@@ -159,14 +161,16 @@ fn machine() -> Machine {
             running("work-3-4.scope", "jobs-awaited.slice"),
             running("kitty-5-6.scope", "app.slice"),
             running("pineapple-slack.service", "background.slice"),
+            running("run-7-8.scope", "shared.slice"),
         ],
         ..Machine::default()
     }
 }
 
-/// What a stop freezes on [`machine`]: agents' work, never Joel's own
-/// terminal's, the cache, the merge checks or the demo's.
-const FROZEN: &str = "ox4wfv-gate.service jobs.service timed.service work-1-2.scope";
+/// What a stop freezes on [`machine`]: agents' work and the push waiting
+/// on its walk slot, never Joel's own terminal's, the cache, the merge
+/// checks or the demo's.
+const FROZEN: &str = "ox4wfv-gate.service jobs.service timed.service work-1-2.scope run-7-8.scope";
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("pineapple-pause-{name}-{}", std::process::id()));
@@ -354,20 +358,20 @@ fn work_started_or_thawed_while_it_stands_is_frozen_and_thawed_with_the_rest() {
     here.asked.clear();
     here.units
         .push(running("1dzylj-probe.service", "jobs.slice"));
-    here.unit("timed.service").expect("in the fixture").frozen = false;
+    // The jobs sorter thaws a scope by writing its cgroup, and systemd
+    // goes on saying it's frozen, so what it says can't be what's frozen.
     let tended = tend(&state, 2, &mut here);
     assert_eq!(
         tended.froze,
-        vec![
-            "timed.service".to_owned(),
-            "1dzylj-probe.service".to_owned()
-        ],
-        "only what isn't frozen: {tended:?}"
+        vec!["1dzylj-probe.service".to_owned()],
+        "only what's new is added: {tended:?}"
     );
     assert_eq!(
         asked_with(&here, "--user freeze"),
-        vec!["systemctl --user freeze timed.service 1dzylj-probe.service".to_owned()],
-        "it's frozen again: {:?}",
+        vec![format!(
+            "systemctl --user freeze {FROZEN} 1dzylj-probe.service"
+        )],
+        "all of it is frozen again, systemd's frozen or not: {:?}",
         here.asked
     );
     resumed(&state, 3);
@@ -396,6 +400,11 @@ fn a_step_a_resume_cannot_take_is_tried_again_after_a_minute() {
          refused here, tried again each minute",
         "Joel is told what's left and that it's tried again"
     );
+    assert_eq!(
+        pause::left(&state),
+        vec!["cadence.timer, cadence-day.timer stopped".to_owned()],
+        "and it's read back, whoever did the undo"
+    );
     here.asked.clear();
     here.refusing = None;
     tend(&state, 3, &mut here);
@@ -410,11 +419,54 @@ fn a_step_a_resume_cannot_take_is_tried_again_after_a_minute() {
         vec!["systemctl --user start cadence.timer cadence-day.timer".to_owned()],
         "only what was left is tried again"
     );
+    assert!(
+        pause::left(&state).is_empty(),
+        "nothing's left once it's done"
+    );
     here.asked.clear();
     tend(&state, 3 + 120_000, &mut here);
     assert!(
         here.asked.is_empty(),
         "and then it's done: {:?}",
+        here.asked
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_resume_left_to_retry_lets_nothing_go_while_a_newer_stop_stands() {
+    let state = scratch("retry-held");
+    let mut here = machine();
+    pause::stop(&plan(), &state, "stop-all-1", "here", 1, &mut here).expect("stops");
+    resumed(&state, 2);
+    here.refusing = Some("mycelium starts resume");
+    pause::settle(&plan(), &state, "here", 2, &mut here).expect("settles");
+    // The first stop's refusal still stands, so the second leaves it be.
+    here.refusing = None;
+    here.starts_stopped = true;
+    pause::stop(&plan(), &state, "stop-all-2", "here", 3, &mut here).expect("stops again");
+    here.asked.clear();
+    tend(&state, 2 + 60_000, &mut here);
+    assert!(
+        asked_with(&here, "starts resume").is_empty(),
+        "agents start again mid-stop: {:?}",
+        here.asked
+    );
+    let mut resuming = Machine::default();
+    assert!(
+        pause::settle(&plan(), &state, "here", 4, &mut resuming)
+            .expect("settles")
+            .is_empty(),
+        "nor does a resume of the older stop: {:?}",
+        resuming.asked
+    );
+    resumed(&state, 5);
+    here.asked.clear();
+    pause::settle(&plan(), &state, "here", 5, &mut here).expect("settles");
+    assert_eq!(
+        asked_with(&here, "mycelium starts resume"),
+        vec!["mycelium starts resume".to_owned()],
+        "once the newer is resumed, the older lets them go: {:?}",
         here.asked
     );
     let _ = fs::remove_dir_all(&state);
@@ -502,6 +554,62 @@ fn a_stop_reaches_every_realm_this_machine_joins() {
         here.asked
     );
     let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_realm_that_cannot_list_its_sessions_hides_only_its_own_machines() {
+    let state = scratch("realm-down");
+    let mut here = Machine {
+        refusing: Some("sessions --realm personal"),
+        ..machine()
+    };
+    let realms = Plan {
+        machines: vec![],
+        realms: vec!["work".to_owned(), "personal".to_owned()],
+        ..plan()
+    };
+    let took = pause::stop(&realms, &state, "stop-all-1", "here", 1, &mut here).expect("stops");
+    let sessions = pause::sessions(&realms, &pause::recorded(&took), &mut here);
+    assert_eq!(
+        pause::said("stopping", &took, sessions),
+        "stopping every session on here and mac; here couldn't list the sessions in \
+         personal: refused here, so the machines running only those may run on",
+        "the Mac, found in the realm that answers, stops, and Joel is told which didn't"
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
+fn only_agents_places_refuse_the_stop() {
+    let manager = "0::/user.slice/user-1000.slice/user@1000.service/";
+    for (place, agents) in [
+        ("app.slice/kitty-5-0.scope", false),
+        ("app.slice/run-p1-i2.scope", false),
+        ("jobs.slice/jobs-awaited.slice/work-3-4.scope", false),
+        ("agents.slice/mycelium-pi-work.scope", true),
+        ("jobs.slice/jobs.service", true),
+        (
+            "jobs.slice/jobs-work.slice/jobs-work-here.slice/work-1-2.scope",
+            true,
+        ),
+        ("offload.slice/offload-1.scope", true),
+        ("app.slice/run-u7.service", true),
+        ("background.slice/pineapple.service", true),
+    ] {
+        assert_eq!(
+            pause::agents_cgroup(&format!("{manager}{place}\n")).is_some(),
+            agents,
+            "{place} is taken for {}",
+            if agents { "Joel's" } else { "agents'" }
+        );
+    }
+    for outside in ["0::/\n", "0::/system.slice/sshd.service\n", ""] {
+        assert_eq!(
+            pause::agents_cgroup(outside),
+            None,
+            "{outside:?} is outside the user's manager, so it says nothing"
+        );
+    }
 }
 
 #[test]
@@ -604,6 +712,11 @@ fn the_script_a_machine_runs_writes_the_stop_and_stops_its_starts() {
         "starts resume\n",
         "and lets them go again on the resume"
     );
+    assert_eq!(
+        script_run(&home, &said, "resume", true),
+        "",
+        "a resume tried again, its answer having come late, lets nothing go twice"
+    );
     let _ = fs::remove_dir_all(&home);
 }
 
@@ -620,6 +733,11 @@ fn the_script_leaves_starts_refused_there_before_it_refused() {
         script_run(&home, &said, "resume", true),
         "",
         "nor let go on the resume"
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", true),
+        "",
+        "nor on one tried again"
     );
     let _ = fs::remove_dir_all(&home);
 }

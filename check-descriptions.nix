@@ -2955,8 +2955,9 @@
     the table says, and reaches what its words and its place name, or everything, said so; and
     Joel's own command resumes a stop only out of pi's reach, marking it rather than removing it;
     and its daemon serves only live stops to the launcher, taking a press only from Joel's shell;
-    and his stop all, refused under pi, freezes agents' work and timers but never his own, on
-    each machine running a session, until a resume undoes exactly that
+    and his stop all, refused under pi, freezes agents' work and timers here but never his own,
+    and parks every session and refuses new ones on each machine running one, until a resume
+    undoes exactly that
   '';
   pineapple-passes-clippy = ''
     clippy finds nothing in pineapple, the judge of the safe word that stops Joel's agents

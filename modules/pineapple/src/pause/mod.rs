@@ -22,6 +22,7 @@
 //! stands, [`tend`] freezes agents' work started since, as `pineapple
 //! serve` asks it to each time it looks.
 
+mod cgroup;
 mod reach;
 mod system;
 mod units;
@@ -32,7 +33,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-pub use reach::{script, sessions};
+pub use cgroup::agents_cgroup;
+pub use reach::{script, session_ids, sessions};
 pub use system::{Runs, System};
 
 use reach::Reached;
@@ -290,7 +292,8 @@ fn undo(
 /// resume is under way: while a stop-all stands, freezes agents' work and
 /// stops agents' timers started since, adding them to what it paused so
 /// its resume undoes them too; once its record is resumed, however that
-/// was, undoes what it paused, as [`settle`] does.
+/// was, undoes what it paused, as [`settle`] does, but never while a
+/// newer stop-all stands, whose hold that undo would let go.
 ///
 /// # Errors
 ///
@@ -306,6 +309,7 @@ pub fn tend(
         return Ok(Tended::default());
     };
     let standing = standing_ids(state);
+    let held = stands(state).is_some();
     let mut tended = Tended::default();
     for (_, mut paused) in pauses(state) {
         let id = paused["id"].as_str().unwrap_or_default().to_owned();
@@ -314,7 +318,7 @@ pub fn tend(
         }
         if standing.contains(&id) {
             tended.froze.extend(hold(plan, state, &mut paused, runs)?);
-        } else if paused["retry_at"].as_u64().is_none_or(|retry| retry <= at) {
+        } else if !held && paused["retry_at"].as_u64().is_none_or(|retry| retry <= at) {
             tended
                 .took
                 .extend(undo(plan, state, &mut paused, host, at, runs)?);
@@ -325,21 +329,33 @@ pub fn tend(
 
 /// Freezes agents' work and stops agents' timers running again since the
 /// stop `paused`, which a restart of the user's manager or a switch may
-/// have started, and adds them to what it paused.
+/// have started, and adds them to what it paused; answers those that are
+/// new to it.
+///
+/// Every unit of agents' work is frozen again each time, not only those
+/// systemd says run: the jobs sorter thaws a scope by writing its cgroup
+/// itself, and systemd goes on saying it is frozen.
 fn hold(
     plan: &Plan,
     state: &Path,
     paused: &mut Value,
     runs: &mut dyn Runs,
 ) -> io::Result<Vec<String>> {
-    let work: Vec<String> = units::agents_work(plan, runs)
+    let listed: Vec<String> = units::agents_work(plan, runs)
         .unwrap_or_default()
         .into_iter()
-        .filter(|unit| unit.freezer != "frozen")
         .map(|unit| unit.id)
+        .collect();
+    let froze = names(paused, "froze");
+    let work: Vec<String> = listed
+        .iter()
+        .filter(|unit| !froze.contains(unit))
+        .cloned()
         .collect();
     let timers = units::active_timers(plan, runs).unwrap_or_default();
     if work.is_empty() && timers.is_empty() {
+        // What still runs is looked at again next time.
+        let _ = units::settle(plan, runs, "freeze", &listed);
         return Ok(Vec::new());
     }
     let id = paused["id"].as_str().unwrap_or_default().to_owned();
@@ -357,8 +373,8 @@ fn hold(
     if !timers.is_empty() {
         let _ = runs.run(&plan.systemctl, &units::user(&["stop"], &timers));
     }
-    // What still runs is looked at again next time.
-    let _ = units::settle(plan, runs, "freeze", &work);
+    // Written down first, so a resume thaws whatever this freezes.
+    let _ = units::settle(plan, runs, "freeze", &listed);
     Ok(work.into_iter().chain(timers).collect())
 }
 
@@ -378,6 +394,10 @@ pub fn settle(
     runs: &mut dyn Runs,
 ) -> io::Result<Vec<Took>> {
     let _held = lock(state)?;
+    // An older stop's undo would let go what a newer one, standing, holds.
+    if stands(state).is_some() {
+        return Ok(Vec::new());
+    }
     let standing = standing_ids(state);
     let mut took = Vec::new();
     for (_, mut paused) in pauses(state) {
@@ -387,6 +407,41 @@ pub fn settle(
         }
     }
     Ok(took)
+}
+
+/// What each stop-all resumed, but not yet undone, still holds, as Joel
+/// is told it: what a tend that took the undo from his resume, or one
+/// that couldn't finish it, left to be tried again.
+#[must_use]
+pub fn left(state: &Path) -> Vec<String> {
+    let standing = standing_ids(state);
+    let mut left = Vec::new();
+    for (_, paused) in pauses(state) {
+        let id = paused["id"].as_str().unwrap_or_default();
+        if !paused["undone"].is_null() || standing.iter().any(|one| one == id) {
+            continue;
+        }
+        for (key, held) in [("froze", "frozen"), ("timers", "stopped")] {
+            let units = names(&paused, key);
+            if !units.is_empty() {
+                left.push(format!("{} {held}", units.join(", ")));
+            }
+        }
+        if !names(&paused, "starts").is_empty() {
+            left.push("agents' starts refused".to_owned());
+        }
+        let machines: Vec<String> = paused["machines"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Reached::from_kept)
+            .map(|one| one.machine)
+            .collect();
+        if !machines.is_empty() {
+            left.push(format!("{} not yet resumed", machines.join(", ")));
+        }
+    }
+    left
 }
 
 /// The machines whose sessions park for a stop that `took`, each once.

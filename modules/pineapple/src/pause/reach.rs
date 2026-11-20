@@ -99,19 +99,32 @@ pub fn resume_starts(
         .collect()
 }
 
-/// Each session mycelium lists in each realm, once, or why it couldn't
-/// list them.
-fn listed(plan: &Plan, runs: &mut dyn Runs) -> Result<Vec<(Value, Option<String>)>, String> {
+/// Each session mycelium lists in each realm that answers, once, and why
+/// each realm that didn't couldn't: one realm's node being down hides
+/// only that realm's machines.
+fn listed(plan: &Plan, runs: &mut dyn Runs) -> (Vec<(Value, Option<String>)>, Vec<String>) {
     let Some(mycelium) = &plan.mycelium else {
-        return Ok(Vec::new());
+        return (Vec::new(), Vec::new());
     };
     let mut found: Vec<(Value, Option<String>)> = Vec::new();
+    let mut failed = Vec::new();
     for realm in realms(plan) {
-        let value = runs
+        let answer = runs
             .run(mycelium, &asked(&["sessions"], realm.as_deref()))
             .and_then(|text| {
                 serde_json::from_str::<Value>(&text).map_err(|error| error.to_string())
-            })?;
+            });
+        let value = match answer {
+            Ok(value) => value,
+            Err(why) => {
+                let what = realm.as_deref().map_or_else(
+                    || "list the sessions".to_owned(),
+                    |realm| format!("list the sessions in {realm}"),
+                );
+                failed.push(couldnt(&what, &why));
+                continue;
+            }
+        };
         for one in value
             .pointer("/Ok/Sessions")
             .and_then(Value::as_array)
@@ -125,7 +138,7 @@ fn listed(plan: &Plan, runs: &mut dyn Runs) -> Result<Vec<(Value, Option<String>
             found.push((one.clone(), realm.clone()));
         }
     }
-    Ok(found)
+    (found, failed)
 }
 
 /// The other machines a stop reaches: those the plan names, and each one
@@ -146,13 +159,12 @@ pub fn others(
             realm: realms(plan).into_iter().next().flatten(),
         })
         .collect();
-    let sessions = listed(plan, runs).unwrap_or_else(|why| {
+    let (sessions, unlisted) = listed(plan, runs);
+    for why in unlisted {
         failed.push(format!(
-            "{}, so only the machines the plan names stop",
-            couldnt("list the machines running sessions", &why)
+            "{why}, so the machines running only those may run on"
         ));
-        Vec::new()
-    });
+    }
     for (one, realm) in sessions {
         let Some(machine) = one["machine"].as_str() else {
             continue;
@@ -171,13 +183,24 @@ pub fn others(
 /// How many sessions mycelium lists running on `machines`, in every
 /// realm, or none when it can't say.
 pub fn sessions(plan: &Plan, machines: &[&str], runs: &mut dyn Runs) -> Option<usize> {
+    session_ids(plan, machines, runs).map(|ids| ids.len())
+}
+
+/// Each session mycelium lists running on `machines`, in every realm, by
+/// the id the harness writes as it parks one, or none when it can't say
+/// for every realm.
+pub fn session_ids(plan: &Plan, machines: &[&str], runs: &mut dyn Runs) -> Option<Vec<String>> {
     plan.mycelium.as_ref()?;
-    let sessions = listed(plan, runs).ok()?;
+    let (sessions, failed) = listed(plan, runs);
+    if !failed.is_empty() {
+        return None;
+    }
     Some(
         sessions
             .iter()
             .filter(|(one, _)| machines.contains(&one["machine"].as_str().unwrap_or_default()))
-            .count(),
+            .filter_map(|(one, _)| one["id"].as_str().map(str::to_owned))
+            .collect(),
     )
 }
 
@@ -195,10 +218,15 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
         ),
         None => (String::new(), String::new()),
     };
+    // A resume whose answer came too late is tried again, so the first
+    // that finishes says so, and one after it lets nothing go: the starts
+    // Joel refused before the stop stay refused.
     let starts = if act == "resume" {
         format!(
-            "if [ -e \"$kept\" ]; then rm -f \"$kept\"; \
-             else \"$m\" starts resume{flag} >/dev/null; fi\n"
+            "resumed=\"$d/{file}.resumed{mark}\"\n\
+             if [ -e \"$resumed\" ] || [ -e \"$kept\" ]; then : > \"$resumed\"; \
+             else \"$m\" starts resume{flag} >/dev/null; : > \"$resumed\"; fi\n",
+            file = file_of(id),
         )
     } else {
         format!(

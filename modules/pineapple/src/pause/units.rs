@@ -12,6 +12,9 @@ const JOBS: &str = "jobs.slice";
 const TIMED: &str = "jobs-timed.slice";
 /// The prefix of the slices agents' work is sorted into, by quest.
 const WORK: &str = "jobs-work";
+/// Where agents put a push that waits on its walk slot themselves, which
+/// the slices' rules count as agents' too (../slices/agents-ask-first.rules).
+const SHARED: &str = "shared.slice";
 
 /// A unit as systemd shows it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -51,8 +54,9 @@ pub fn active_timers(plan: &Plan, runs: &mut dyn Runs) -> Result<Vec<String>, St
 }
 
 /// Each unit of agents' work running now: every service and scope in the
-/// jobs slice itself, in its timed slice, and in each slice of the work
-/// it sorts by quest, but never one the plan keeps, wherever it runs.
+/// jobs slice itself, in its timed slice, in each slice of the work it
+/// sorts by quest, and in the shared slice where pushes wait, but never
+/// one the plan keeps, wherever it runs.
 ///
 /// # Errors
 ///
@@ -77,7 +81,9 @@ pub fn agents_work(plan: &Plan, runs: &mut dyn Runs) -> Result<Vec<Shown>, Strin
     }
     Ok(show(plan, runs, &units)?
         .into_iter()
-        .filter(|unit| unit.slice == JOBS || unit.slice == TIMED || unit.slice.starts_with(WORK))
+        .filter(|unit| {
+            [JOBS, TIMED, SHARED].contains(&unit.slice.as_str()) || unit.slice.starts_with(WORK)
+        })
         .filter(|unit| !plan.keep.iter().any(|kept| matches(kept, &unit.id)))
         .collect())
 }
@@ -142,32 +148,29 @@ pub fn matches(pattern: &str, name: &str) -> bool {
     rest.ends_with(last)
 }
 
-/// Each unit `systemctl show` describes, from its blocks of lines, each
-/// opening with the unit's `Id=`.
+/// Each unit `systemctl show` describes, from its blocks of lines parted
+/// by a blank one, read in whatever order systemd says their keys: the
+/// systemd here says `Id=` first, which nothing promises.
 fn shown(text: &str) -> Vec<Shown> {
-    let mut found: Vec<Shown> = Vec::new();
-    for line in text.lines() {
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        if key == "Id" {
-            found.push(Shown {
-                id: value.to_owned(),
-                ..Shown::default()
-            });
-            continue;
-        }
-        let Some(unit) = found.last_mut() else {
-            continue;
-        };
-        match key {
-            "Slice" => value.clone_into(&mut unit.slice),
-            "FreezerState" => value.clone_into(&mut unit.freezer),
-            "ActiveState" => value.clone_into(&mut unit.active),
-            _ => {}
-        }
-    }
-    found
+    text.split("\n\n")
+        .filter_map(|block| {
+            let mut unit = Shown::default();
+            for line in block.lines() {
+                let Some((key, value)) = line.split_once('=') else {
+                    continue;
+                };
+                let field = match key {
+                    "Id" => &mut unit.id,
+                    "Slice" => &mut unit.slice,
+                    "FreezerState" => &mut unit.freezer,
+                    "ActiveState" => &mut unit.active,
+                    _ => continue,
+                };
+                value.clone_into(field);
+            }
+            (!unit.id.is_empty()).then_some(unit)
+        })
+        .collect()
 }
 
 fn first_words(listed: &str) -> Vec<String> {
