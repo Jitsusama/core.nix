@@ -2,10 +2,11 @@
 //! health says of it: once as it starts, once at each new kind of cause
 //! and once as it ends, and of a disk flapping at its edge, no more than
 //! once every ten minutes, with how many short spells went unsaid before
-//! it, or, once the ten minutes pass with none on or as health ends, in a
-//! notice of their own. A spell lasts only as long as health's run, so a start after one
-//! says the next spell at once, and a spell that outlasts a run, as one
-//! given up on does when its last try fails, is never told ended.
+//! it, or, once the ten minutes pass with none on or as a run ends with its
+//! follower, in a notice of their own; a stop ends a run with them untold.
+//! A spell lasts only as long as health's run, so a start after one says
+//! the next spell at once, and a spell that outlasts a run, as one given
+//! up on does when its last try fails, is never told ended.
 
 use std::io;
 use std::path::Path;
@@ -167,8 +168,9 @@ impl Spell {
     }
 
     /// The run's final write, `written`, handed back, with the short spells
-    /// kept unsaid told through `notice` if it wrote into `into`, as health
-    /// ending within the quiet would otherwise lose them.
+    /// kept unsaid told through `notice` if it wrote into `into`, as a run
+    /// ending with its follower within the quiet would otherwise lose them.
+    /// A stop, restart or reboot ends health before this, losing them yet.
     pub(super) fn ending(
         &mut self,
         written: io::Result<()>,
