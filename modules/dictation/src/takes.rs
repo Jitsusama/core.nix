@@ -328,6 +328,39 @@ mod tests {
         raw.iter().map(|s| s * level / loudest).collect()
     }
 
+    /// `seconds` of a breath through the throat at about `level`: white
+    /// noise rung through two resonances, at 600 and 1200 Hz and each
+    /// 200 Hz wide, as a vowel's first two shape the breath before it.
+    /// Rung that narrowly, noise is alike to itself a few periods on.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a test's few seconds of samples"
+    )]
+    fn throat(seconds: f32, level: f32) -> Vec<f32> {
+        let ring = |sound: &[f32], pitch: f32| -> Vec<f32> {
+            let rate = RATE as f32;
+            let fade = (-std::f32::consts::PI * 200.0 / rate).exp();
+            let turn = 2.0 * fade * (std::f32::consts::TAU * pitch / rate).cos();
+            let (mut last, mut before) = (0.0_f32, 0.0_f32);
+            sound
+                .iter()
+                .map(|white| {
+                    let next = white + turn * last - fade * fade * before;
+                    (before, last) = (last, next);
+                    next
+                })
+                .collect()
+        };
+        let white = noise(seconds, 1.0, false);
+        let raw: Vec<f32> = ring(&white, 600.0)
+            .iter()
+            .zip(ring(&white, 1200.0))
+            .map(|(low, high)| low + high)
+            .collect();
+        let loudest = raw.iter().fold(0.0_f32, |most, s| most.max(s.abs()));
+        raw.iter().map(|s| s * level / loudest).collect()
+    }
+
     /// `seconds` of a voice at about -27 dBFS: a pitch and its first twelve
     /// harmonics, each fainter, the pitch rising a tenth as a question's
     /// does.
@@ -423,6 +456,7 @@ mod tests {
             ("white", noise(1.0, 0.1, false)),
             ("brown", noise(1.0, 0.1, true)),
             ("a breath", breath(1.0, 0.1)),
+            ("a breath through the throat", throat(1.0, 0.1)),
         ];
         for (name, loud) in sounds {
             let sound = [quiet(2.0), loud, quiet(2.0)].concat();
@@ -448,6 +482,20 @@ mod tests {
             .map(|(voice, hiss)| voice + hiss)
             .collect();
         let sound = [quiet(2.0), hissy, quiet(2.0)].concat();
+        assert_eq!(cut(&sound).len(), 1);
+    }
+
+    #[test]
+    fn a_voice_riding_on_a_drift_is_a_take() {
+        // The drift is three times the voice, as a breath into the
+        // microphone or a draught carries it: read as it comes, it is
+        // alike to itself at every lag and hides the voice's repeat.
+        let drifting: Vec<f32> = voice(0.4, 85.0)
+            .iter()
+            .zip(noise(0.4, 0.13, true))
+            .map(|(voice, drift)| voice + drift)
+            .collect();
+        let sound = [quiet(2.0), drifting, quiet(2.0)].concat();
         assert_eq!(cut(&sound).len(), 1);
     }
 
