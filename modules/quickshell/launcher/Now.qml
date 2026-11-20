@@ -180,17 +180,37 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open)
-                provider.feltOpening(() => provider.opens());
-            else
+            if (!provider.launcher.open) {
+                provider.openingAt = -1;
                 provider.openedAt = Number.POSITIVE_INFINITY;
+                return;
+            }
+            provider.openingAt = Date.now();
+            if (!provider.asleep)
+                provider.feltOpening(() => provider.opens());
         }
     }
 
+    // When the launcher opened while Now slept, kept till Now wakes in its
+    // turn (Launcher.qml's wakeNext), so its opening work runs in its own
+    // slice, not in the turn the launcher opened in: the bindings on when
+    // it opened, the notices over every one held, ran there inside the
+    // launcher's unnamed "opening", about 12 of its 100 ms over twelve of
+    // the keys lab's openings (its profile, 2026-11-20). -1 when shut, or
+    // once its opening work has run.
+    property real openingAt: -1
+    onAsleepChanged: {
+        if (!asleep && openingAt >= 0 && provider.launcher?.open)
+            provider.feltOpening(() => provider.opens());
+    }
+
     // Its work as the launcher opens, felt whole: the bindings on when it
-    // opened and the hour its looks are split by run as they're set.
+    // opened and the hour its looks are split by run as they're set. When
+    // it opened is when the launcher did, however late Now woke, so a
+    // notice read since still holds still.
     function opens() {
-        provider.openedAt = Date.now();
+        provider.openedAt = provider.openingAt >= 0 ? provider.openingAt : Date.now();
+        provider.openingAt = -1;
         provider.looksHour = Math.floor(Date.now() / 3600000);
         provider.reweather();
         // Placing the time and the date makes Time's and Today's rows, so
@@ -1655,6 +1675,7 @@ Provider {
     // Super+N with notices on screen, is those notices alone (onScreenRow),
     // passing through where Desktop stands, so - climbs to the notices'
     // own place rather than a For You that may hold nothing of them.
+    leadsInto: ["forYou", "notices", "onScreen"]
     function leadsTo(name) {
         if (name === "forYou")
             return [waiting];

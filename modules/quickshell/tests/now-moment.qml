@@ -1087,7 +1087,19 @@ ShellRoot {
             now.borrowed({ place: "power", key: "power:energy" })?.eyebrow
                 === "held \u00b7 battery", "it wasn't drawn");
         expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
+        // Opened while Now waits its turn to wake, its opening work waits
+        // too, and once it wakes it says it opened when the launcher did.
+        const shutBefore = Date.now();
+        now.asleep = true;
         theLauncher.open = true;
+        const keptOpening = now.openingAt;
+        expect("opened asleep, Now keeps when it opened and does nothing yet",
+            keptOpening >= shutBefore && now.openedAt === Number.POSITIVE_INFINITY,
+            JSON.stringify([keptOpening, now.openedAt]));
+        now.asleep = false;
+        expect("and woken, it opened when the launcher did",
+            now.openedAt === keptOpening && now.openingAt === -1,
+            JSON.stringify([now.openedAt, keptOpening, now.openingAt]));
         expect("and turns while it's open", now.drawing, "it rested");
         expect("opening reads the weather, before the meeting",
             JSON.stringify(names())
@@ -2300,6 +2312,12 @@ ShellRoot {
             now.leadsTo("onScreen").length === 1
                 && now.leadsTo("onScreen")[0].key === "on:waiting:screen",
             JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
+        // Each name it says it leads into, which the chords' places ask of
+        // it without making a row, leads deeper, and no other name does.
+        expect("each name Now says it leads into leads deeper, and another none",
+            now.leadsInto.every(name => now.leadsTo(name) !== null)
+                && now.leadsTo("weather") === null,
+            JSON.stringify(now.leadsInto.map(name => now.leadsTo(name) !== null)));
         now.openedAt = wasOpenedAt;
         const first = byKey(forYou());
         const mail = first["on:mail"];
