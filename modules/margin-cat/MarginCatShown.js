@@ -39,10 +39,14 @@ function heard(frame, from, last) {
 // and as `counted`, its `begun`, how many frames the shell began
 // meanwhile, so a walk whose frames went unasked of says so rather than
 // reading slower than it ran, and `what` it was: a walk, or a hop, said
-// the same way.
+// the same way. Its `resumed`, each frame in `shown` that came first after
+// it was held under the launcher, leaves the hold out of its gaps, and the
+// journal says how many times it was held.
 function walked(shown, drawing, unseen, counted) {
     const begun = counted?.begun ?? 0;
-    const gaps = shown.slice(1).map((at, i) => at - shown[i]).sort((a, b) => a - b);
+    const resumed = counted?.resumed ?? [];
+    const gaps = shown.slice(1).map((at, i) => at - shown[i])
+        .filter((_, i) => !resumed.includes(i + 1)).sort((a, b) => a - b);
     const costs = drawing.slice().sort((a, b) => a - b);
     const tenths = ms => Math.round((ms ?? 0) * 10) / 10;
     const said = {
@@ -54,12 +58,18 @@ function walked(shown, drawing, unseen, counted) {
         drawn: tenths(drawing.reduce((most, ms) => Math.max(most, ms), 0)),
         unseen,
         begun,
-        stepped: counted?.stepped ?? 0
+        stepped: counted?.stepped ?? 0,
+        held: resumed.length
     };
     const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${begun} frames `
         + "a median "        + `${said.median} ms `
         + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn in `
         + `${said.typical} ms typically and within ${said.drawn} ms, ${unseen} never shown, `
-        + `stepped ${said.stepped} times`;
+        + `stepped ${said.stepped} times`
+        + (said.held > 0 ? `, held under the launcher ${heldTimes(said.held)}` : "");
     return { said, line };
+}
+
+function heldTimes(times) {
+    return times === 1 ? "once" : `${times} times`;
 }

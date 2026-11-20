@@ -198,6 +198,19 @@ PanelWindow {
     property int tellsAt: 0
     property int tellsBegun: 0
     property int tellsStepped: 0
+    // How it was held under the launcher while it went (stilled): the
+    // frames the shell began for others meanwhile, left out of its own,
+    // where the hold began, and each frame in `shown` that came first after
+    // one, so the journal leaves the hold out of its gaps.
+    property int heldBegun: 0
+    property int heldAt: 0
+    property var resumedAt: []
+    function unheld(): void {
+        heldBegun = 0;
+        resumedAt = [];
+        if (stilled)
+            heldAt = window.FramePresentation.framesBegun;
+    }
     // How often this screen draws, in ms, as its last walk showed.
     property real frameMs: 1000 / 60
     // The workspace this screen shows, its id and index, so a move
@@ -459,13 +472,12 @@ PanelWindow {
             shown = [];
             costs = [];
             unseen = 0;
+            unheld();
             steps = 0;
             begunAt = window.FramePresentation.framesBegun;
         }
         going = plan;
         goes(walker);
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // A move to the workspace `way` below (1) or above (-1): it rides the one it leaves off
@@ -484,11 +496,10 @@ PanelWindow {
         shown = [];
         costs = [];
         unseen = 0;
+        unheld();
         steps = 0;
         begunAt = window.FramePresentation.framesBegun;
         goes(mover);
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // A move's plan from `from` to its seat `to` over the new workspace's
@@ -620,7 +631,7 @@ PanelWindow {
         sayWalked();
         telling = what;
         tellsAt = window.FramePresentation.framesBegun;
-        tellsBegun = tellsAt - begunAt;
+        tellsBegun = tellsAt - begunAt - heldBegun;
         tellsStepped = steps;
         answering.restart();
     }
@@ -634,7 +645,7 @@ PanelWindow {
         const what = telling;
         telling = "";
         const told = Shown.walked(shown, costs, unseen,
-            { begun: tellsBegun, stepped: tellsStepped, what });
+            { begun: tellsBegun, stepped: tellsStepped, what, resumed: resumedAt });
         console.info(told.line);
         if (told.said.frames > 10)
             frameMs = told.said.median;
@@ -684,10 +695,12 @@ PanelWindow {
     }
     // After a frame's answer, `heard` (Shown.heard): the walk told once
     // every frame of it is in, or the next frame asked of while it goes.
+    // Nothing is asked while it's held under the launcher, since each ask
+    // draws a frame of its own (stilled, below).
     function answered(heard: var): void {
         if (heard.ends)
             sayWalked();
-        else if (telling === "")
+        else if (telling === "" && !stilled)
             window.FramePresentation.ask();
     }
     // The longest a walk done waits to hear of its last frames.
@@ -922,6 +935,7 @@ PanelWindow {
         shown = [];
         costs = [];
         unseen = 0;
+        unheld();
         steps = 0;
         begunAt = window.FramePresentation.framesBegun;
         goingTo = wanted;
@@ -932,8 +946,6 @@ PanelWindow {
         // own walk's end, and sets no walk off.
         if (playing.to.x !== place.x || playing.to.y !== place.y)
             strolled = playing.to;
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // Its yarn where a play has it, or null; and, a key cutting the
@@ -951,7 +963,7 @@ PanelWindow {
             return;
         if (going === null ? !yarnKept : going.kind === undefined
             || (yarnKept && going.kind !== "chase"))
-            yarnFades.restart();
+            goes(yarnFades);
     }
     NumberAnimation {
         id: yarnFades
@@ -997,30 +1009,45 @@ PanelWindow {
         }
     }
 
-    // Under the launcher's card it holds where it got to: a walk, a
-    // play or a move is paused, never cut short or skipped ahead, and
-    // goes on from there as the card goes, since a paused clock keeps
-    // its elapsedTime. Joel's keys are in the launcher then, and each
-    // of the cat's frames is one the shell draws beside theirs: on his
-    // laptop it drew 10 to 19 minutes an hour while he worked
-    // (2026-11-19), one walk running under every round of a lab's
-    // keys.
+    // Under the launcher's card it holds where it got to and draws
+    // nothing: a walk or a move is paused, never skipped ahead, and goes
+    // on from there as the card goes, since a paused clock keeps its
+    // elapsedTime, and nothing asks niri of its frames meanwhile, since
+    // each ask draws one. A play off its seat ends as a key ends it, and
+    // its walk back is held the same way (MarginCat.qml goes still).
+    // Joel's keys are in the launcher then, and each of the cat's frames
+    // is one the shell draws beside theirs: on his laptop it drew 10 to
+    // 19 minutes an hour while he worked (2026-11-19), one walk running
+    // under every round of a lab's keys.
     readonly property bool stilled: Launched.up
     onStilledChanged: {
-        for (const clock of [walker, mover]) {
-            if (stilled)
+        for (const clock of [walker, mover, yarnFades]) {
+            if (stilled && clock.running)
                 clock.pause();
-            else
+            else if (!stilled)
                 clock.resume();
         }
+        if (going === null && moving === null)
+            return;
+        if (stilled) {
+            heldAt = window.FramePresentation.framesBegun;
+            return;
+        }
+        heldBegun += window.FramePresentation.framesBegun - heldAt;
+        resumedAt = resumedAt.concat([shown.length]);
+        if (window.FramePresentation.available)
+            window.FramePresentation.ask();
     }
 
-    // Sets `clock`, the walker or the mover, going from its start, held
-    // at once while the launcher's card is up.
+    // Sets `clock`, the walker, the mover or the yarn's fading, going
+    // from its start, and asks niri of its frames; held at once while the
+    // launcher's card is up, asking nothing.
     function goes(clock: var): void {
         clock.restart();
         if (stilled)
             clock.pause();
+        else if (clock !== yarnFades && window.FramePresentation.available)
+            window.FramePresentation.ask();
     }
 
     // Until the keys rest on the column, so a tap along them never
