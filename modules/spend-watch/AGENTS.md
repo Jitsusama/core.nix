@@ -135,10 +135,11 @@ feed speaks.
   told: its work went on another key, as two teams' did on 17 and 18
   November when the pi host sent its own key for every conversation.
   Plans and budgets first billed within the day are left out, since
-  nothing bills them to disagree; a warehouse settled more than 48
-  hours behind, or past now, is told once in their place, and a feed
-  the config runs that bills pi without saying how far it has settled
-  holds every budget back. A budget a session asked for in the last
+  nothing bills them to disagree; a feed settled more than 48 hours
+  behind, or past now, is told once in their place, by name, and a
+  feed the config runs that bills pi without saying how far it has
+  settled holds every budget back, told as a note under a key of its
+  own, after any wrong row, since it hides none. A budget a session asked for in the last
   day and the harness couldn't draw on, as its budget entry says, is
   told with how many sessions missed it, the day they start rather
   than a day later. Cadence counts both kinds of finding each hour

@@ -19,9 +19,16 @@ pub const KEY: &str = "budgets-billed-under-logged";
 const FINDING: &str = "finding:unbilled:";
 
 /// The keys of the findings that say no budget was judged: the one a
-/// spend-watch on hold writes, and the one saying the warehouse stopped
-/// settling its bill.
-const UNJUDGED: [&str; 2] = ["held", "finding:unbilled-unsettled"];
+/// spend-watch on hold writes, and what begins those saying a feed's
+/// settled row is wrong or stopped, or that it hasn't settled at all,
+/// each behind the feed's name. The check
+/// `cadence-reads-the-keys-spend-watch-writes` finds each in
+/// spend-watch's source.
+const UNJUDGED: [&str; 3] = [
+    "held",
+    "finding:unbilled-unsettled:",
+    "finding:unbilled-held:",
+];
 
 /// How old spend-watch's heartbeat may be for its collection to be its
 /// word now, in seconds. It beats every thirty seconds, and stops beating
@@ -93,7 +100,7 @@ pub(super) fn told(
         .filter(|findings| {
             !findings
                 .iter()
-                .any(|f| key(f).is_some_and(|key| unjudged.contains(&key)))
+                .any(|f| key(f).is_some_and(|key| unjudged.iter().any(|u| says(key, u))))
         })?;
     Some(
         findings
@@ -103,6 +110,16 @@ pub(super) fn told(
             .filter_map(|f| f.get("name")?.as_str().map(str::to_owned))
             .collect(),
     )
+}
+
+/// Whether `key` is the unjudged key `unjudged`, or, for one ending in a
+/// colon, one it begins.
+fn says(key: &str, unjudged: &str) -> bool {
+    if unjudged.ends_with(':') {
+        key.starts_with(unjudged)
+    } else {
+        key == unjudged
+    }
 }
 
 fn key(finding: &Value) -> Option<&str> {
@@ -170,14 +187,23 @@ mod tests {
     #[test]
     fn no_collection_leaves_it_unjudged() {
         let held = r#"{"findings": [{"key": "held", "name": "Watch on hold"}]}"#;
-        let unsettled = r#"{"findings": [{"key": "finding:unbilled-unsettled",
-            "name": "the warehouse's bill stopped settling"}]}"#;
+        let unsettled = r#"{"findings": [{"key": "finding:unbilled-unsettled:proxy",
+            "name": "the proxy feed's bill stopped settling"}]}"#;
+        let unsaid = r#"{"findings": [{"key": "finding:unbilled-held:proxy",
+            "name": "the proxy feed hasn't said how far pi's bill is settled"}]}"#;
+        // A note Joel marked expected still leaves the day unjudged, since
+        // the bill under it hasn't settled however expected that is.
+        let expected = r#"{"findings": [{"key": "finding:unbilled-held:proxy",
+            "name": "the proxy feed hasn't said how far pi's bill is settled",
+            "role": "expected"}]}"#;
         for collection in [
             None,
             Some("not json"),
             Some("{}"),
             Some(held),
             Some(unsettled),
+            Some(unsaid),
+            Some(expected),
         ] {
             let m = unbilled(collection, Some(&beat(30)), NOW, "WCJQSG");
             assert_eq!(m.target, None, "{collection:?}");

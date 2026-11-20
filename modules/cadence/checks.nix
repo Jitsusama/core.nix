@@ -47,6 +47,19 @@ onLinux {
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # cadence's budget measures match spend-watch's findings by keys copied
+  # from it, so one renamed there would read as no budget unbilled or
+  # missed rather than as an error: reads-the-keys.sh finds each copy on
+  # both sides. It reads the files alone, so neither package rebuilds for
+  # the other.
+  cadence-reads-the-keys-spend-watch-writes =
+    pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
+      ''
+        bash ${./reads-the-keys.sh} ${./src/hour/measures/unbilled.rs} \
+          ${./src/hour/measures/unresolved.rs} ${../spend-watch/src/collection.rs} \
+          ${../spend-watch/src/detect.rs}
+        touch "$out"
+      '';
   # cadence-spec's tests run as it builds: a watch of Spec is served the
   # rows a stand-in cadence prints, and one that fails leaves Spec with
   # none and the daemon answering.
