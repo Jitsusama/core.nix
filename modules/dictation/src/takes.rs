@@ -734,7 +734,11 @@ mod tests {
                 vec![0.0; RATE * 2],
             ]
             .concat();
-            assert_eq!(cut(&answer).len(), 1, "the answer, after {before} s of quiet");
+            assert_eq!(
+                cut(&answer).len(),
+                1,
+                "the answer, after {before} s of quiet"
+            );
         }
     }
 
