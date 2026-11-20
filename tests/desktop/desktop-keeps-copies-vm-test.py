@@ -501,7 +501,8 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
     # alone has the script.
     copy_a_password(desktop)
     said = desktop.as_account(f"fence-reads-no-copy {STAND_IN} 2>&1; echo ended $?")
-    assert said.rstrip().endswith("ended 0"), f"a fenced command read the copy: {said}"
+    # The script says why it failed, a read copy or its own trouble, so that's passed on.
+    assert said.rstrip().endswith("ended 0"), f"fence-reads-no-copy failed: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and

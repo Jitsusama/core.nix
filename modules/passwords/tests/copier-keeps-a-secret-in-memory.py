@@ -19,7 +19,8 @@ the cat then running the real one so a copier that leans on it still holds its c
    running nothing.
 7. A standard input past the copier's cap is refused for being past it, rather than held in
    part, so a refusal for any other reason, such as memory it couldn't lock, fails here.
-8. A secret long enough to outgrow the copier's first page pastes whole.
+8. A secret long enough to outgrow the copier's first page pastes whole, making nothing under
+   TMPDIR, running nothing and staying locked in memory once grown.
 
 Every case is checked and reported before it fails.
 
@@ -145,7 +146,7 @@ class Cases:
             copier.wait()
 
     def copied_long(self) -> None:
-        """Run case 8: a secret past the copier's first page, pasted whole."""
+        """Run case 8: a secret past the copier's first page, pasted whole and held as short."""
         held = secrets.token_hex(LONG // 2)
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
@@ -155,6 +156,9 @@ class Cases:
         try:
             pasted = pasted_once_held(held)
             self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
+            self.check("a 64 KiB secret makes nothing under TMPDIR", self.anything_made())
+            self.check("a 64 KiB secret runs nothing", self.anything_ran())
+            self.check("a grown secret is locked", ended(copier) or unlocked(copier.pid))
         finally:
             copier.kill()
             copier.wait()
