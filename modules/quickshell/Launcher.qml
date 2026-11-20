@@ -136,7 +136,7 @@ Scope {
     // never run off the screen). A page's gap is allowed for whether it
     // shows or not, so what's found never changes how many.
     readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
-        (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - Theme.space.beat)
+        (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - groupGap)
             / rowTall)))
     // How tall the card is but for its rows: its frame, the line and its
     // hairline, the ties either side of the rows, and the foot and its
@@ -9679,9 +9679,9 @@ Scope {
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
-    // as Network's does; home has none. The card's height (Steady.tallFor) and the list read
-    // groupGap, and the rows' lines read it through apart, which is groupGap whenever a row
-    // of the list has a gap, so the plate's lines can't drift from the list's.
+    // as Network's does; home has none. The card's height (Steady.tallFor) and the rows that
+    // fit (rows) read groupGap; the list's rows, and so the plate's lines, read it through
+    // apart (tallOf), which is groupGap whenever a row of the list has a gap.
     readonly property real groupGap: Theme.space.beat
     readonly property real apart: matches.some(row => row.gap) ? groupGap : 0
     // A length to a hundredth, as reports say one, or null for none.
