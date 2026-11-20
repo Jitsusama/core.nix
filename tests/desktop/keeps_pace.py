@@ -29,6 +29,8 @@ from __future__ import annotations
 # splitting what it has between them can stretch one; more would be the builder's own load
 # changing between the turns, which the load's can't be told from.
 PROCESSORS = 4
+# PF_NO_SETAFFINITY, the flag on a thread whose processors the kernel lets no one set.
+UNHOLDABLE = 0x04000000
 
 
 def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float | None:
@@ -65,6 +67,24 @@ def ticks(stat: str) -> tuple[int, int]:
     return steal, user + nice + system + irq + softirq + steal
 
 
+def every_tick(stat: str) -> int:
+    """Give every tick on /proc/stat's first line, idle and iowait with the busy.
+
+    It's the guest's own clock, so its busy ticks weigh against it whatever a read of them took.
+    """
+    return sum(int(field) for field in stat.split()[1:9])
+
+
+def holdable(stat: str) -> bool:
+    """Say from a thread's /proc stat line whether the kernel lets it be held to processors.
+
+    Its flags are the seventh field after its name, which may hold spaces and parentheses, so
+    the fields are read past the last parenthesis.
+    """
+    flags = int(stat.rsplit(")", 1)[1].split()[6])
+    return not flags & UNHOLDABLE
+
+
 class Ledger:
     """The guest's stolen and busy ticks in each turn, under load (True) and frozen (False)."""
 
@@ -72,6 +92,9 @@ class Ledger:
         """Start counting from the kernel's line as it stands."""
         self.last = ticks(stat)
         self.turns: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
+        # Every tick on the last line, as last holds its stolen and busy ones.
+        self.last_every = every_tick(stat)
+        self.ticked: dict[bool, int] = {True: 0, False: 0}
         # Whether the load is between turns, from asking it to turn until it has.
         self.between = False
 
@@ -86,10 +109,13 @@ class Ledger:
     def count(self, stat: str, *, turn: bool | None) -> None:
         """Count the ticks since the last line into this turn, or into none while it turned."""
         now = ticks(stat)
+        every = every_tick(stat)
         if turn is not None and not self.between:
             stolen, busy = self.turns[turn]
             self.turns[turn] = (stolen + now[0] - self.last[0], busy + now[1] - self.last[1])
+            self.ticked[turn] += every - self.last_every
         self.last = now
+        self.last_every = every
 
     def said(self) -> str:
         """Say each turn's stolen and busy ticks, and the share they give, if any."""

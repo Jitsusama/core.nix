@@ -39,7 +39,7 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
-from keeps_pace import PROCESSORS, Ledger
+from keeps_pace import PROCESSORS, Ledger, holdable
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -107,10 +107,17 @@ HELD_TO = 2
 HELD_STOLEN = 0.25
 GAUGING = 10
 # A halted processor has nothing stolen, so little stolen held is a count blind to the builder
-# only while the four are busy: at least this part of the ticks they could in the time counted,
-# at /proc/stat's 100 a second. Held so on 19 November they counted 4204 to 4318 in over 10 s.
+# only while the four are busy: at least this part of every tick the guest counted, by its own
+# clock, so no read's round trip weighs in. Held so on 19 November they counted 4204 to 4318 in
+# a little over 10 s, of about 4300 the four could.
 HELD_BUSY = 0.75
-TICKING = 100
+# The ticks /proc/stat counts a processor each second, and the fewest the four may count while
+# held, a quarter of what they would in GAUGING seconds, so a window the guest stopped counting
+# in fails as that rather than passing on a few ticks. A guest blind to steal, held to two of
+# four, would count about half, so it's still the bar on what was stolen that fails it. A slow
+# read only lengthens the window, and time the builder takes in it the guest counts as stolen.
+USER_HZ = 100
+HELD_TICKS = PROCESSORS * GAUGING * USER_HZ // 4
 # The passes holding the VM's threads may take, past which a hold still missing one fails as that.
 HOLDING = 5
 TAIL = 0.95
@@ -277,8 +284,9 @@ class Timing:
         self.unswapped: dict[bool, list[float]] = {True: [], False: []}
         self.judged: dict[bool, list[float]] = {True: [], False: []}
         self.next = time.monotonic()
-        self.said = self.timed = self.pressing = self.presses = 0
-        self.turns: list[tuple[int, bool]] = []
+        # The keyboard's lines before this run of keys, and each key's turn with the load's.
+        self.logged = self.timed = self.pressing = self.presses = 0
+        self.key_turns: list[tuple[int, bool]] = []
         self.loading = True
         # How long, in ms, the compositor and the shell waited for a processor in each turn, and
         # the turn being pressed with what they'd waited when it began.
@@ -294,10 +302,10 @@ class Timing:
 
     def begin(self) -> None:
         """Begin a run of keys, from where the keyboard's lines and the launcher's count stand."""
-        self.said = int(self.desktop.machine.succeed(f"wc -l < {SAID}").strip())
+        self.logged = int(self.desktop.machine.succeed(f"wc -l < {SAID}").strip())
         self.timed = framed(self.desktop)["timed"]
         self.pressing = 0
-        self.turns = []
+        self.key_turns = []
         # What the shell did before the keys is timed by no bar, so its ticks are passed over.
         self.count(kept=False)
 
@@ -308,13 +316,13 @@ class Timing:
         """
         self.count(kept=True)
         self.ledger.turning()
-        self.turn(on=on)
+        self.thaw_or_freeze(on=on)
         # The ticks while the load turned are neither turn's, so they're passed over, and only
         # then is the turn done: one that fails here leaves the ledger between turns.
         self.count(kept=False)
         self.ledger.turned()
 
-    def turn(self, *, on: bool) -> None:
+    def thaw_or_freeze(self, *, on: bool) -> None:
         """Let the load run or freeze it, counting nothing, as main's load did.
 
         A count that just failed would likely fail again, so a thaw that mustn't wait on one
@@ -333,7 +341,7 @@ class Timing:
         stat = self.desktop.machine.succeed("head -1 /proc/stat")
         self.ledger.count(stat, turn=self.loading if kept else None)
 
-    def end(self) -> None:
+    def finish(self) -> None:
         """Say what the guest counted stolen, then let the load run again if it's frozen.
 
         Said before any of a test's bars is judged, so a run that fails says it too, and before
@@ -347,7 +355,7 @@ class Timing:
             # Let run as main always tried, the last count failed or not: nothing reads the
             # ledger now, so the thaw counts nothing first, which could fail as the last did.
             if not self.loading or self.ledger.between:
-                self.turn(on=True)
+                self.thaw_or_freeze(on=True)
 
     def waiting(self) -> float:
         """Give how long the compositor and the shell have waited for a processor, in ms."""
@@ -382,7 +390,7 @@ class Timing:
             if loaded != self.loading:
                 self.load(on=loaded)
             self.open = (turn, self.waiting())
-        self.turns.append((turn, loaded))
+        self.key_turns.append((turn, loaded))
         self.presses += 1
         self.next = max(self.next, time.monotonic())
         self.desktop.machine.succeed(f"echo {key} > {KEYBOARD}")
@@ -414,10 +422,10 @@ class Timing:
         assert self.pressing <= KEPT, f"a run of {self.pressing} keys outruns the {KEPT} kept"
         # The keyboard says a key once it has let it go.
         machine.wait_until_succeeds(
-            f"[ $(wc -l < {SAID}) -ge {self.said + self.pressing} ]",
+            f"[ $(wc -l < {SAID}) -ge {self.logged + self.pressing} ]",
             timeout=timedelta(seconds=10),
         )
-        lines = machine.succeed(f"tail -n +{self.said + 1} {SAID}").splitlines()
+        lines = machine.succeed(f"tail -n +{self.logged + 1} {SAID}").splitlines()
         noted = self.caught_up()
         self.close_turn()
         # The turn ends once its keys are caught up, so its ticks go to it before what follows.
@@ -431,7 +439,7 @@ class Timing:
         )
         times = zip(
             lines,
-            self.turns,
+            self.key_turns,
             noted["pressed"][-self.pressing :],
             noted["heard"][-self.pressing :],
             noted["frames"][-self.pressing :],
@@ -720,7 +728,7 @@ def test_each_programs_place_is_stepped_into_soon_while_every_core_is_busy(
                     searching.setdefault(place, []).append(search)
                     slowest[place] = max(slowest.get(place, (0, "")), (took, line))
     finally:
-        timing.end()
+        timing.finish()
         desktop.close_launcher()
 
     def middle(times: list[int]) -> int:
@@ -816,6 +824,8 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
     said: list[tuple[bool, Json, Json]] = []
     try:
         desktop.as_account(f"echo '{LISTED} 1 listed' > {CROWD}.new && mv {CROWD}.new {CROWD}")
+        # Setting it up is timed by no bar, so its ticks are passed over, as the others' are.
+        timing.count(kept=False)
         for turn in range(STARTS):
             loaded = turn % 2 == 1
             if loaded != timing.loading:
@@ -831,7 +841,7 @@ def test_the_first_opening_after_the_shell_starts_shows_soon_while_every_core_is
             first[loaded].append(opening["took"])
             said.append((loaded, opening, opened_timed(desktop)))
     finally:
-        timing.end()
+        timing.finish()
         desktop.as_account(f"echo '0 0' > {CROWD}.new && mv {CROWD}.new {CROWD}")
         desktop.launcher_left_closed()
 
@@ -928,7 +938,7 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
                 )
                 each[loaded].append(opening)
     finally:
-        timing.end()
+        timing.finish()
         desktop.launcher_left_closed()
 
     def middle(times: list[int]) -> int:
@@ -992,15 +1002,17 @@ def test_the_launcher_draws_each_key_soon_while_every_core_is_busy(desktop: Desk
                 timing.press("backspace")
         timing.keep()
     finally:
-        timing.end()
+        timing.finish()
         desktop.close_launcher()
     timing.said_and_held()
 
 
-def vm_threads(started: int) -> list[int]:
+def vm_threads(started: int) -> dict[int, bool]:
     """Give every thread of the process that started the VM and of those it started.
 
-    They're QEMU's and the virtiofsd's beside it, which run the VM's work too.
+    They're QEMU's and the virtiofsd's beside it, which run the VM's work too. Each says whether
+    the kernel lets it be held to processors, so one it refuses is passed over rather than
+    failing the hold or leaving the threads after it unheld, and the held subtest names it.
     """
     children: dict[int, list[int]] = {}
     for process in Path("/proc").iterdir():
@@ -1013,13 +1025,21 @@ def vm_threads(started: int) -> list[int]:
             parent = int((process / "stat").read_text().rsplit(")", 1)[1].split()[1])
             children.setdefault(parent, []).append(int(process.name))
     pids = [started]
-    threads: list[int] = []
+    threads: dict[int, bool] = {}
     while pids:
         pid = pids.pop()
         pids.extend(children.get(pid, []))
         with contextlib.suppress(FileNotFoundError, ProcessLookupError):
-            threads.extend(int(thread.name) for thread in Path(f"/proc/{pid}/task").iterdir())
+            for thread in Path(f"/proc/{pid}/task").iterdir():
+                # One gone as this read is none to hold.
+                with contextlib.suppress(FileNotFoundError, ProcessLookupError):
+                    threads[int(thread.name)] = holdable((thread / "stat").read_text())
     return threads
+
+
+def holdable_threads(started: int) -> list[int]:
+    """Give the VM's threads the kernel lets be held to processors."""
+    return [thread for thread, held in vm_threads(started).items() if held]
 
 
 def hold_vm(started: int, processors: Sequence[int]) -> None:
@@ -1030,7 +1050,7 @@ def hold_vm(started: int, processors: Sequence[int]) -> None:
     since a VM left partly held would slow whatever runs on it with no line saying why.
     """
     for _ in range(HOLDING):
-        moved = [hold_thread(thread, processors) for thread in vm_threads(started)]
+        moved = [hold_thread(thread, processors) for thread in holdable_threads(started)]
         if not any(moved):
             return
     unsettled = f"the VM's threads still moved after {HOLDING} passes holding them to {processors}"
@@ -1047,7 +1067,8 @@ def hold_thread(thread: int, processors: Sequence[int]) -> bool:
         # QEMU's workers come and go, and one gone is none to hold.
         return False
     except OSError as error:
-        # The kernel refuses some threads outright, as io_uring's workers, so it names which.
+        # holdable_threads leaves out the threads whose flags say the kernel won't hold them, so
+        # a refusal here is one no flag foretold, and is named.
         name = "gone"
         with contextlib.suppress(OSError):
             name = Path(f"/proc/{thread}/comm").read_text().strip()
@@ -1079,13 +1100,19 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         # Said with the builder's processors, so little stolen tells a hold that never took,
         # or one that changed nothing, from a count blind to one.
         held: dict[str, int] = {}
-        for thread in vm_threads(started):
+        threads = vm_threads(started)
+        for thread in (thread for thread, holds in threads.items() if holds):
             with contextlib.suppress(ProcessLookupError):
                 on = ",".join(map(str, sorted(os.sched_getaffinity(thread))))
                 held[on] = held.get(on, 0) + 1
+        # Those the kernel refuses to hold are named, so a hold that missed them says which.
+        refused: list[str] = []
+        for thread in (thread for thread, holds in threads.items() if not holds):
+            with contextlib.suppress(FileNotFoundError, ProcessLookupError):
+                refused.append(Path(f"/proc/{thread}/comm").read_text().strip())
         print(
             f"the VM's threads, by the builder's processors each may run on: {held},"
-            f" of the builder's {builders}"
+            f" of the builder's {builders}, and those the kernel lets no one hold: {refused}"
         )
         # A hold that didn't take fails as that, so the bar on what was stolen judges the count.
         holding = ",".join(map(str, builders[:HELD_TO]))
@@ -1094,12 +1121,21 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         timing.count(kept=True)
         gauged = time.monotonic() - began
         stolen, busy = timing.ledger.turns[True]
+        every = timing.ledger.ticked[True]
         # Said before the VM is let go, which may fail, so the figures it counted are kept.
-        print(f"held, the guest counted {stolen} of {busy} busy ticks stolen in {gauged:.1f} s")
+        print(
+            f"held, the guest counted {stolen} of {busy} busy ticks stolen, of {every} ticks"
+            f" in {gauged:.1f} s"
+        )
     finally:
         hold_vm(started, builders)
-    least = HELD_BUSY * PROCESSORS * gauged * TICKING
-    assert busy >= least, f"held, the guest's processors were busy {busy} ticks, under {least:.0f}"
+    assert every >= HELD_TICKS, (
+        f"held, the guest counted {every} ticks in {gauged:.1f} s, under the {HELD_TICKS} its"
+        f" processors count in a quarter of {GAUGING} s"
+    )
+    assert busy >= HELD_BUSY * every, (
+        f"held, the guest's processors were busy {busy} of {every} ticks, under {HELD_BUSY:.0%}"
+    )
     assert stolen / busy >= HELD_STOLEN, (
         f"held to {HELD_TO} of the builder's processors, the guest counted {stolen} of {busy}"
         " busy ticks stolen"
