@@ -17,10 +17,15 @@
 //! what's left of its arguments its own way. Where a command says a local
 //! time, `local` reads it through the C library, the one copy of its
 //! `struct tm` every command shares.
+//!
+//! Long because the one path every command runs, from its words to its
+//! exit, stays readable in one place, and its tests drive that whole path
+//! through `run` beside it.
 
 pub mod environment;
 pub mod failure;
 pub mod flags;
+mod handing;
 pub mod help;
 pub mod ink;
 pub mod layout;
@@ -63,6 +68,9 @@ pub struct Context {
     pub room: Room,
     /// How wide stderr is.
     pub err_room: Room,
+    /// How many of `args` are the command's own, the rest handed on to
+    /// the program a subcommand runs (`Help::hands_words_on`).
+    own: usize,
 }
 
 impl Context {
@@ -94,6 +102,7 @@ impl Context {
             theme.as_ref(),
         );
         Ok(Self {
+            own: args.len(),
             room: Room::of_stdout(&environment),
             err_room: Room::of_stderr(&environment),
             environment,
@@ -233,12 +242,17 @@ pub fn run_question(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
+    let (ours, theirs, helped) = handing::split(help, args);
     let mut context =
-        match Context::saying(environment.clone(), args, &forms, !help.keeps_any_unsaid()) {
+        match Context::saying(environment.clone(), ours, &forms, !help.keeps_any_unsaid()) {
             Ok(context) => context,
             Err(failure) => return unread(environment, &failure),
         };
-    let walked = if help.subs.is_empty() {
+    context.args.extend(theirs);
+    context.shared.help |= helped;
+    // A command that hands every word on reads its subcommands its own
+    // way, so its words aren't walked.
+    let walked = if help.subs.is_empty() || help.hands_on.is_some() {
         None
     } else {
         asked_for_help(help, &mut context);
@@ -300,9 +314,14 @@ fn failed(context: &Context, environment: &Environment, failure: &Failure) -> En
     let verbose = context
         .args
         .iter()
+        .take(context.own)
         .any(|arg| arg == "--verbose" || arg == "-v");
+    // A failure said already was said in words for people; a reader of
+    // JSON still gets its object, the only form it reads.
     let said = if context.shared.format.is_json() {
         format!("{}\n", failure.json(verbose))
+    } else if failure.said {
+        String::new()
     } else {
         for_the_journal(
             failure.text(&context.err, context.err_room, verbose),
@@ -599,6 +618,35 @@ mod tests {
         assert_eq!(
             ending.stderr,
             "<3>\u{2715} no such row\n<3>  try  thing go\n"
+        );
+    }
+
+    #[test]
+    fn a_failure_said_already_ends_with_its_code_and_says_nothing_more() {
+        let mut journal = Environment::of([false; 3], &[]);
+        journal.journal = true;
+        for environment in [Environment::of([false; 3], &[]), journal] {
+            let ending = run(&help(), "1.0", &environment, vec!["go".to_owned()], |_| {
+                Err(Failure::new(Exit::TryAgain, "it handed over").said_already())
+            });
+            assert_eq!(
+                (ending.code(), ending.stderr.as_str()),
+                (75, ""),
+                "a failure the command said as it went was said again"
+            );
+        }
+        let ending = run(
+            &help(),
+            "1.0",
+            &Environment::of([false; 3], &[]),
+            vec!["--json".to_owned(), "go".to_owned()],
+            |_| Err(Failure::new(Exit::TryAgain, "it handed over").said_already()),
+        );
+        assert_eq!(ending.code(), 75, "its code is kept under --json");
+        assert!(
+            ending.stderr.contains("\"it handed over\""),
+            "a reader of JSON gets the failure's object: {}",
+            ending.stderr
         );
     }
 

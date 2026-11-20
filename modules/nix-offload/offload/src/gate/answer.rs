@@ -31,8 +31,10 @@ use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
+
+use terminal_kit::{Exit, Failure};
 
 use super::fence::{Fence, Net};
 use super::folder::GateFolder;
@@ -54,19 +56,8 @@ const UNTRUSTED: u8 = 77;
 /// module writes them under XDG's config folder.
 const GATE_REPOS: &str = "gate-repos";
 
-const USED: &str = "Usage: nix-offload answer QUEST COMMIT";
-
-const HELP: &str = "nix-offload answer: run the gate a Mac asked for, from its quest's scratch.
-
-Mycelium starts it, as `nix-offload ask` on the Mac asks. It reads the request and bundle in \
-the quest's handover/gates/COMMIT once, checks the bundle against a fresh clone of the \
-forge's main, runs `nix-offload there --changed` for the commit on the lent builders, and \
-leaves result.json and log beside the bundle. result.json is a convenience: a merge reads the \
-pass the build keeper kept. It gates only the repos jitsusama.nix-offload.gateRepos names, \
-and refuses a link anywhere on the way to the gate or in its own state.
-
-Example:
-  nix-offload answer QEST-20261115-ABC123 0123456789abcdef0123456789abcdef01234567";
+/// What a call asked wrongly is told to type, for how it's asked.
+const HELP: &str = "nix-offload answer --help";
 
 /// Where a gate's answer keeps its own: this machine's state, which no
 /// other machine's files reach.
@@ -550,29 +541,24 @@ fn said_of(exit: u8) -> String {
 
 /// `answer`: the gate for `QUEST COMMIT`, its result left beside the
 /// request.
-pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
-    if arguments
-        .first()
-        .is_some_and(|word| word == "--help" || word == "-h")
-    {
-        println!("{HELP}");
-        return ExitCode::SUCCESS;
-    }
+pub fn answer(arguments: &[String], state: &Path) -> Result<(), Failure> {
     let [quest, commit] = arguments else {
-        eprintln!("nix-offload: answer takes a quest and a commit.\n{USED}");
-        return ExitCode::from(64);
+        return Err(crate::ended::usage("answer takes a quest and a commit").try_this(HELP));
     };
     if !super::plain_quest(quest) || !super::plain_commit(commit) {
-        eprintln!("nix-offload: answer takes a quest's id and a full commit hash.\n{USED}");
-        return ExitCode::from(64);
+        return Err(
+            crate::ended::usage("answer takes a quest's id and a full commit hash").try_this(HELP),
+        );
     }
     let Some(gate) = arrived(quest, commit) else {
-        eprintln!(
-            "nix-offload: answer found no gate at {}, or found a link on the way to it. Run \
-             `nix-offload ask` on the machine asking, which leaves it there and starts this.",
-            super::folder(quest, commit).display()
-        );
-        return ExitCode::from(66);
+        return Err(Failure::new(
+            Exit::NotFound,
+            format!(
+                "answer found no gate at {}, or found a link on the way to it",
+                super::folder(quest, commit).display()
+            ),
+        )
+        .because("`nix-offload ask` on the machine asking leaves it there and starts this"));
     };
     let places = Places {
         state: state.join("nix-offload/gates"),
@@ -589,8 +575,7 @@ pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
     let fence = match Fence::found() {
         Ok(fence) => fence,
         Err(why) => {
-            eprintln!("nix-offload: answer can't fence its git: {why}.");
-            return ExitCode::from(69);
+            return Err(Failure::new(Exit::Unavailable, "answer can't fence its git").because(why));
         }
     };
     let request = super::read_request(&gate);
@@ -619,7 +604,9 @@ pub fn answer(arguments: &[String], state: &Path) -> ExitCode {
         eprintln!("nix-offload: answer couldn't leave its result: {error}");
     }
     println!("{}", found.said);
-    ExitCode::from(exit)
+    crate::ended::coded(exit, || {
+        format!("the gate of {commit} didn't pass, as the line above and its log say")
+    })
 }
 
 // A gate is answered on Linux alone, so its folder refuses to open

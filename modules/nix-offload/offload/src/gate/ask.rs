@@ -12,9 +12,11 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use terminal_kit::{Exit, Failure};
 
 use super::{BUNDLE, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESULT, Repo, Request};
 
@@ -25,31 +27,19 @@ const LONGEST: Duration = Duration::from_hours(2);
 /// How often it looks for the result.
 const LOOKING: Duration = Duration::from_secs(5);
 
-const USED: &str = "Usage: nix-offload ask --quest QUEST [--session ADDRESS] [--on MACHINE] \
-                    [--longest SECONDS]";
+/// The gate's own refusal and not-now, as the table names them, so an ask
+/// ends as an answer to it would.
+const REFUSES: Exit = exit_of(REFUSED);
+const NOT_YET: Exit = exit_of(NOT_NOW);
 
-const HELP: &str = "nix-offload ask: have the machine that gates run `nix-offload there \
---changed` for this tree's commit, and say what it found.
-
-Run it in a tree whose commits are all committed, on a quest shared through mycelium. It \
-leaves the commits since origin's main and the request in the quest's handover/gates/COMMIT, \
-has mycelium start `nix-offload answer` there, and waits for its result.json.
-
-result.json is a convenience, never proof: a merge reads the pass the build keeper kept on \
-the machine that gated.
-
-Options:
-  --quest QUEST       the quest whose scratch carries the gate
-  --session ADDRESS   the asking session's mesh address, for the gate's journal
-  --on MACHINE        the machine that gates, else nix-offload/gates-on in XDG's config
-  --longest SECONDS   how long to wait for the result, else 7200
-
-Exits as the gate did; 65 when what it was asked can't be gated, 75 when no result came in \
-time.
-
-Examples:
-  nix-offload ask --quest QEST-20261115-ABC123
-  nix-offload ask --quest QEST-20261115-ABC123 --session SK1FF0 --on kestrel";
+/// The table's exit for a gate's code, which is always one of its own.
+const fn exit_of(code: u8) -> Exit {
+    match code {
+        65 => Exit::BadInput,
+        75 => Exit::TryAgain,
+        _ => Exit::Bug,
+    }
+}
 
 /// What `ask` was told.
 #[derive(Debug, PartialEq, Eq)]
@@ -121,10 +111,9 @@ fn configured_machine() -> Option<String> {
     Some(named.trim().to_owned()).filter(|name| !name.is_empty())
 }
 
-/// Says what went wrong, as docs/commands.md's three parts, and exits.
-fn failed(code: u8, what: &str, why: &str, instead: &str) -> ExitCode {
-    eprintln!("nix-offload: {what}: {why}. {instead}");
-    ExitCode::from(code)
+/// What went wrong, as docs/commands.md's three parts, ending with `exit`.
+fn failed(exit: Exit, what: &str, why: &str, instead: &str) -> Failure {
+    Failure::new(exit, what).because(format!("{why}. {instead}"))
 }
 
 /// The gate's folder made afresh, holding the bundle and the request.
@@ -186,30 +175,23 @@ fn waited(gate: &Path, commit: &str, longest: Duration) -> Option<Found> {
 }
 
 /// `ask`: the gate of this tree's commit, asked of the machine that gates.
-pub fn ask(arguments: &[String]) -> ExitCode {
-    if arguments
-        .first()
-        .is_some_and(|word| word == "--help" || word == "-h")
-    {
-        println!("{HELP}");
-        return ExitCode::SUCCESS;
-    }
+pub fn ask(arguments: &[String]) -> Result<(), Failure> {
     let asked = match asked(arguments) {
         Ok(asked) => asked,
-        Err(why) => return failed(64, "ask can't read that", &why, USED),
+        Err(why) => {
+            return Err(crate::ended::usage(format!("ask can't read that: {why}"))
+                .try_this("nix-offload ask --help"));
+        }
     };
     let Some(on) = asked.on.clone().or_else(configured_machine) else {
-        return failed(
-            78,
+        return Err(failed(
+            Exit::Config,
             "ask doesn't know which machine gates",
             "neither --on nor nix-offload/gates-on names one",
             "Name it with --on, or set jitsusama.nix-offload.gatesOn in the machine's home.",
-        );
+        ));
     };
-    let (commit, repo) = match gated_here() {
-        Ok(here) => here,
-        Err(code) => return code,
-    };
+    let (commit, repo) = gated_here()?;
     let request = Request {
         repo,
         commit: commit.clone(),
@@ -218,23 +200,21 @@ pub fn ask(arguments: &[String]) -> ExitCode {
     };
     let gate = super::folder(&asked.quest, &commit);
     if let Err(why) = left(&request, &gate) {
-        return failed(
-            70,
+        return Err(failed(
+            Exit::Bug,
             "ask couldn't leave the gate's request",
             &why,
             "Check the quest's scratch folder.",
-        );
+        ));
     }
-    if let Err(code) = started(&asked.quest, &on, &commit) {
-        return code;
-    }
+    started(&asked.quest, &on, &commit)?;
     eprintln!(
         "nix-offload: asked {on} to gate {commit}; waiting for its result in {}",
         gate.display()
     );
     let Some(found) = waited(&gate, &commit, asked.longest) else {
-        return failed(
-            NOT_NOW,
+        return Err(failed(
+            NOT_YET,
             "ask had no result in time",
             &format!(
                 "{} brought none back within {} s",
@@ -242,21 +222,23 @@ pub fn ask(arguments: &[String]) -> ExitCode {
                 asked.longest.as_secs()
             ),
             "Ask again later; a gate that passed meanwhile kept its pass.",
-        );
+        ));
     };
     if let Ok(log) = fs::read_to_string(gate.join(LOG)) {
         eprint!("{log}");
     }
     println!("{}", found.said);
-    ExitCode::from(found.exit)
+    crate::ended::coded(found.exit, || {
+        format!("the gate of {commit} didn't pass, as the line above and its log say")
+    })
 }
 
 /// This tree's commit and its repo on GitHub, once it's committed whole
 /// and past origin's main, or why it can't be gated, already said.
-fn gated_here() -> Result<(String, Repo), ExitCode> {
+fn gated_here() -> Result<(String, Repo), Failure> {
     let commit = git(&["rev-parse", "--verify", "HEAD^{commit}"]).map_err(|why| {
         failed(
-            66,
+            Exit::NotFound,
             "ask needs a git tree with a commit",
             &why,
             "Run it in the tree to gate.",
@@ -266,7 +248,7 @@ fn gated_here() -> Result<(String, Repo), ExitCode> {
         Ok(changes) if changes.is_empty() => {}
         Ok(_) => {
             return Err(failed(
-                REFUSED,
+                REFUSES,
                 "ask gates a commit",
                 "the tree has changes not committed, which the gate wouldn't see",
                 "Commit them, or set them aside, and ask again.",
@@ -274,7 +256,7 @@ fn gated_here() -> Result<(String, Repo), ExitCode> {
         }
         Err(why) => {
             return Err(failed(
-                66,
+                Exit::NotFound,
                 "ask couldn't read the tree's changes",
                 &why,
                 "Run it in the tree to gate.",
@@ -287,7 +269,7 @@ fn gated_here() -> Result<(String, Repo), ExitCode> {
         .and_then(Repo::of_remote)
     else {
         return Err(failed(
-            REFUSED,
+            REFUSES,
             "ask gates a repo on GitHub",
             "origin isn't a GitHub repo",
             "Point origin at the repo on GitHub.",
@@ -300,7 +282,7 @@ fn gated_here() -> Result<(String, Repo), ExitCode> {
     }
     if git(&["rev-list", "--count", "origin/main..HEAD"]).as_deref() == Ok("0") {
         return Err(failed(
-            REFUSED,
+            REFUSES,
             "ask has nothing to gate",
             "HEAD has no commit past origin's main",
             "Commit the change first.",
@@ -311,14 +293,14 @@ fn gated_here() -> Result<(String, Repo), ExitCode> {
 
 /// The quest shared to `on` and `answer` started there for `commit`, or
 /// why not, already said.
-fn started(quest: &str, on: &str, commit: &str) -> Result<(), ExitCode> {
+fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
     // Shared to the machine and waited for, where both ends' mycelium
     // can; otherwise shared, and `answer` finds the gate once it crosses.
     mycelium(&["share", quest, "--to", on, "--wait"])
         .or_else(|_| mycelium(&["share", quest]))
         .map_err(|why| {
             failed(
-                69,
+                Exit::Unavailable,
                 "ask couldn't share the quest",
                 &why,
                 "Check `mycelium machines` reaches the gate's machine.",
@@ -337,7 +319,7 @@ fn started(quest: &str, on: &str, commit: &str) -> Result<(), ExitCode> {
     ];
     mycelium(&answering).map_err(|why| {
         failed(
-            69,
+            Exit::Unavailable,
             "ask couldn't start the gate",
             &why,
             "Check `mycelium machines` says it's ready.",
@@ -351,6 +333,12 @@ mod tests {
 
     fn words(text: &str) -> Vec<String> {
         text.split(' ').map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn an_ask_ends_with_the_gates_own_codes() {
+        assert_eq!(REFUSES.code(), REFUSED);
+        assert_eq!(NOT_YET.code(), NOT_NOW);
     }
 
     #[test]

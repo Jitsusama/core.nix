@@ -54,6 +54,10 @@ pub struct Help {
     /// given words that may be private, as a secret's name or a reason,
     /// refuses without saying it.
     pub says_words: bool,
+    /// Where it hands every word after its name on to the program it
+    /// runs, the words past which even `--help` is that program's
+    /// (`handing.rs`).
+    pub hands_on: Option<Vec<String>>,
 }
 
 /// The widest a name's column grows before a long name's words go on the
@@ -93,7 +97,25 @@ impl Help {
             passes: None,
             ends_done: true,
             says_words: true,
+            hands_on: None,
         }
+    }
+
+    /// The same, handing every word after its name on to the program it
+    /// runs, as a wrapper of nix or cargo does: the kit takes none of the
+    /// shared flags there, only `-h` and `--help` before `--` or any of
+    /// `ends`, past which the words are all the program's.
+    ///
+    /// Given to a whole command's root, it hands on every word, its
+    /// subcommands' included, so the kit answers no `--version`, reads no
+    /// `-v` or `--json`, and answers any `-h` among them with the root's
+    /// help. That's for a command whose words its callers already give
+    /// exactly, which answers help per subcommand itself before the kit
+    /// runs, as nix-offload does, and wants only the kit's ending.
+    #[must_use]
+    pub fn hands_words_on(mut self, ends: &[&str]) -> Self {
+        self.hands_on = Some(ends.iter().map(|&end| end.to_owned()).collect());
+        self
     }
 
     /// The same, ending with the code of the program it runs as its

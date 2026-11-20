@@ -422,6 +422,12 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
     stand_ins(folder.path(), 100);
     let ran = there(folder.path(), &offload);
     assert_eq!(ran.status.code(), Some(100), "{ran:?}");
+    // nix said why it failed, so the kit adds no line of its own, which a
+    // unit's journal would mark an error.
+    assert!(
+        !String::from_utf8_lossy(&ran.stderr).contains('\u{2715}'),
+        "a failed build gained a line of the kit's: {ran:?}"
+    );
     assert_eq!(
         given_to(folder.path()),
         "nix-offload\nnix build --no-link -L --keep-going 'github:o/r/abc#checks.x.a'\n"
@@ -501,7 +507,9 @@ fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
 
     assert_eq!(progress("nowhere").status.code(), Some(75));
     fs::write(folder.path().join("unreached-nix-offload-more"), "").unwrap();
-    assert_eq!(progress("nix-offload-more").status.code(), Some(255));
+    // A builder ssh can't reach is unavailable, the table's 69, rather
+    // than ssh's own 255.
+    assert_eq!(progress("nix-offload-more").status.code(), Some(69));
 }
 
 /// `there` given a derivation the builder lacks, run with `before` while
@@ -3132,10 +3140,17 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     assert!(String::from_utf8_lossy(&ran.stdout).contains("changed  a"));
     fs::remove_file(bin.join("refuses-name-only")).unwrap();
 
-    // Nowhere answers, so changed-checks is told to run here.
+    // Nowhere answers, so changed-checks is told to run here, on a line
+    // of its own and no kit failure line.
     drop(answering);
     let ran = run();
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("so changed-checks runs here"), "{said}");
+    assert!(
+        !said.contains('\u{2715}'),
+        "a run sent nowhere was said as a failure: {said}"
+    );
 }
 
 /// A tree of one commit GitHub has, with a builder lent, for
@@ -3912,6 +3927,18 @@ fn a_build_for_a_busy_macs_system_waits_as_one_nothing_built() {
         ),
         "it never said why it waited: {ran:?}"
     );
+    // A back-off says its own line once and no kit failure line, which a
+    // unit's journal would mark an error.
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(
+        said.matches("waits, ended as one nothing built").count(),
+        1,
+        "the hold wasn't said once: {said}"
+    );
+    assert!(
+        !said.contains('\u{2715}'),
+        "a busy Mac's hold was said as a failure: {said}"
+    );
     let sent = fs::read_to_string(changed.bin.join("ssh-sent")).unwrap_or_default();
     assert!(
         !sent.contains("aarch64-darwin"),
@@ -4171,6 +4198,12 @@ fn a_macs_checks_failing_fail_the_run_and_keep_no_pass() {
 
     let (ran, _) = changed.run(&GATE);
     assert_ne!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("a Mac's checks didn't pass, so this run's pass isn't kept")
+            && !said.contains('\u{2715}'),
+        "the Mac's failure is said once, in its own words: {said}"
+    );
     let kept = changed.kept_at(&head);
     assert!(
         !kept.iter().any(|line| line["run"].is_array()),
@@ -4425,9 +4458,15 @@ fn a_run_that_never_asks_leaves_its_twin_be_and_ends_as_not_taken() {
         Some(75),
         "a run told to wait for nothing didn't end as not taken: {second:?}"
     );
+    let said = String::from_utf8_lossy(&second.stderr);
     assert!(
-        String::from_utf8_lossy(&second.stderr).contains("stop that one to go on"),
+        said.contains("stop that one to go on"),
         "a run leaving its twin be didn't say how to go on: {second:?}"
+    );
+    // A back-off its caller reads by number, so the kit adds no error line.
+    assert!(
+        !said.contains('\u{2715}'),
+        "a run leaving its twin be said so twice: {said}"
     );
 }
 
@@ -6018,9 +6057,11 @@ fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
     let ran = run();
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
     assert!(!bin.join("ssh-was-given").exists(), "it ran somewhere");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("so nothing ran"), "{ran:?}");
     assert!(
-        String::from_utf8_lossy(&ran.stderr).contains("so nothing ran"),
-        "{ran:?}"
+        !said.contains('\u{2715}'),
+        "a run with no builder was said as a failure: {said}"
     );
 }
 

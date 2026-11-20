@@ -93,13 +93,18 @@ let
     # A switch that changes it reloads it rather than restarting it: its
     # end ends the way to its builder, and every build reaching it with
     # that, which cut 8.1 hours of builds at three switches on 3 November.
-    # Told so, it ends at once, exiting 100, which systemd counts as a
+    # Told so, it ends at once, exiting 75 (try again), which systemd counts as a
     # success to start the new unit after; a builder a build reaches is
-    # handed over, its way outlasting the unit (`outlasting`).
+    # handed over, its way outlasting the unit (`outlasting`). A lender from
+    # before the terminal kit's endings exited 100, which is counted too: the
+    # switch that brings 75 in reloads a lender still running the old binary.
+    # A rollback to a generation from before them reloads the new binary under the old unit, which counts
+    # only 100, so each lender records one failed run there; Restart still
+    # starts it again, so lending carries on.
     # It waits only while a builder it handed to a successor finishes.
     ExecReload = "${lib.getExe' pkgs.coreutils "kill"} -HUP $MAINPID";
-    SuccessExitStatus = "100";
-    RestartForceExitStatus = "100";
+    SuccessExitStatus = "75 100";
+    RestartForceExitStatus = "75 100";
     # Its builders are reached with keys of their own, never the account's
     # agent, which ssh would ask first: on 8 November an agent waiting on
     # its person stalled the helpers' ssh at login, and every builder was
