@@ -326,8 +326,8 @@ Provider {
     // a share would tell the hidden rows apart by them. Two things read
     // from them stay on the row on purpose (made), read and never drawn on
     // it: whether it waits, which puts it in For You, and when it was
-    // asked, which orders For You and which its drawer's weight may say
-    // as a wait. Both tell a waiting ask from an answered one, which For
+    // asked, which orders For You, so the order of its alike hidden rows
+    // is all that says it. Both tell a waiting ask from an answered one, which For
     // You's count says anyway, and neither is a name, words or a source.
     // How many wait still shows, in For You, the tray and Asks'
     // own count, since an agent blocked on one needs Joel; which is which

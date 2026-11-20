@@ -3,11 +3,11 @@
 // Off in place, its row reading armed and the foot saying what a second
 // does, and a second Return with no other key between does it. Any other
 // key lets it go, with no time limit, as a landing lasts until the next
-// key (Launcher.qml's landedOn); so does the launcher shutting, and a
-// share beginning (untold) or ending (shareTurns), and niri first saying
-// its casts, a share among them or not, since until then the screen
-// counts as shared. Apart from the launcher, so tests/arming.qml holds
-// it in Qt's own engine.
+// key (Launcher.qml's landedOn); so does the launcher shutting, and, as
+// Asks (secret-asks) tells the launcher, a share beginning (untold) or
+// ending (shareTurns), and niri first saying its casts, a share among
+// them or not, since until then the screen counts as shared. Apart from
+// the launcher, so tests/arming.qml holds it in Qt's own engine.
 //
 // Each press is read against the keys the line has taken (Prompt.qml's
 // keysTaken), which counts every key, Return too, before the launcher

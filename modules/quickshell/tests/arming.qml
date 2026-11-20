@@ -155,7 +155,7 @@ QtObject {
         // Launcher.qml's unheld is told to leave; that it applies it isn't
         // run here, nor by any check, since none shares the screen.
         const ended = Arming.shareTurns(heldWord, heldWord);
-        expect("a share's end leaves nothing armed",
+        expect("shareTurns tells the launcher to leave nothing armed",
             JSON.stringify(ended.armed), JSON.stringify(Arming.rest()));
         expect("a share's end lets go of the foot's word for a held Return",
             ended.quiet, true);
