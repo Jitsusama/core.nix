@@ -14,7 +14,11 @@
 //! Loud isn't always speech: a breath, a cough or a burst of static is
 //! loud too, and Parakeet writes "Yeah." for a breath. A voice has a
 //! pitch and they have none, so a take is only kept when enough of its
-//! loud frames repeat at a voice's pitch.
+//! loud frames repeat at a voice's pitch. A whisper has none either, and
+//! isn't heard: on a call, where nobody whispers to be written down, that
+//! costs less than every breath becoming a word. A tone has a pitch and
+//! is heard, but Parakeet writes nothing for a ringtone, a chime, a chord
+//! or a hum.
 
 use std::collections::VecDeque;
 
