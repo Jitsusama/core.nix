@@ -137,10 +137,17 @@ fn the_budget_leaves_the_logs_a_kept_job_or_a_finding_names() {
             "commit": "9".repeat(40), "failed_log": found.display().to_string(),
         }))
         .expect("the finding");
+    // A VM test's finding names its log too, which ages out as before.
+    state
+        .find(&json!({
+            "kind": "failed", "test": "vm-e",
+            "commit": "5".repeat(40), "log": other.display().to_string(),
+        }))
+        .expect("the VM test's finding");
     assert_eq!(
         state.age_out_logs(now, 0),
         Aged { old: 0, over: 1 },
-        "not just the log nothing names went for the budget"
+        "not just the log only a VM test's finding names went for the budget"
     );
     assert!(
         settling.exists(),
@@ -149,7 +156,7 @@ fn the_budget_leaves_the_logs_a_kept_job_or_a_finding_names() {
     assert!(found.exists(), "a log a finding names went for the budget");
     assert!(
         !other.exists(),
-        "a log nothing names stayed past the budget"
+        "a log only a VM test's finding names stayed past the budget"
     );
 }
 

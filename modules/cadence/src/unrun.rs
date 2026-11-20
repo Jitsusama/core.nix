@@ -33,6 +33,8 @@ pub struct Unrun {
     /// The log of a run a Mac failed before the ones that compared
     /// nothing, when one did.
     pub failed_log: Option<String>,
+    /// The log of the last run that stalled, when they stalled.
+    pub stalled_log: Option<String>,
 }
 
 /// The merges the net let go unrun on a Mac since `since`, oldest first,
@@ -50,6 +52,7 @@ pub fn unrun(findings: &Path, since: i64) -> Vec<Unrun> {
                 base: finding["test"].as_str()?.strip_prefix(CHECK)?.to_owned(),
                 stalled: finding["stalled"] == true,
                 failed_log: finding["failed_log"].as_str().map(str::to_owned),
+                stalled_log: finding["log"].as_str().map(str::to_owned),
             })
         })
         .collect()
@@ -78,11 +81,12 @@ pub fn due(unrun: &[Unrun], landings: &str, told: &mut Told, now: i64) -> Vec<Te
 fn said_to(merge: &Unrun, named: bool) -> String {
     let short = merge.commit.get(..12).unwrap_or(&merge.commit);
     // The net knows a stalled run was taken and didn't end by itself, not
-    // why: past its time, gone silent, or stopped by a signal from outside.
+    // why: past its two hours, gone silent, or stopped by a signal from
+    // outside, so each is said as what may have been.
     let how = match (merge.stalled, &merge.failed_log) {
         (true, _) => format!(
             "a Mac took its Mac checks at {short} twice and both runs stopped unfinished: they \
-             may hang, or something else stopped them"
+             may hang, may take longer than the net's two hours, or something else stopped them"
         ),
         (false, Some(_)) => {
             format!("a Mac failed its Mac checks at {short} once, and no Mac compared them again")
@@ -93,6 +97,10 @@ fn said_to(merge: &Unrun, named: bool) -> String {
         (true, Some(log)) => format!(" A Mac failed them once before that; its log is {log}."),
         (false, Some(log)) => format!(" The failure's log is {log}."),
         (_, None) => String::new(),
+    };
+    let failed = match (merge.stalled, &merge.stalled_log) {
+        (true, Some(log)) => format!(" The last run's log is {log}.{failed}"),
+        _ => failed,
     };
     let what = format!(
         "{how}. The net let them go unchecked.{failed} Build them on a Mac, in a tree at \
@@ -141,6 +149,7 @@ mod tests {
         let mut stalled = unrun_at(200, "dddd", serde_json::json!(4925));
         stalled["stalled"] = serde_json::json!(true);
         stalled["failed_log"] = serde_json::json!("/net/logs/dddd-1.log");
+        stalled["log"] = serde_json::json!("/net/logs/dddd-2.log");
         keep("200-dddd.json", stalled);
         keep(
             "220-eeee.json",
@@ -157,6 +166,7 @@ mod tests {
                     base: "bbbb".to_owned(),
                     stalled: true,
                     failed_log: Some("/net/logs/dddd-1.log".to_owned()),
+                    stalled_log: Some("/net/logs/dddd-2.log".to_owned()),
                 },
                 Unrun {
                     owner_pr: None,
@@ -164,6 +174,7 @@ mod tests {
                     base: "bbbb".to_owned(),
                     stalled: false,
                     failed_log: None,
+                    stalled_log: None,
                 },
             ],
             "an unrun merge since then wasn't read, oldest first with its PR, base, stall \
@@ -182,6 +193,7 @@ mod tests {
             base: "e279db1b".to_owned(),
             stalled: false,
             failed_log: None,
+            stalled_log: None,
         }
     }
 
@@ -210,6 +222,7 @@ mod tests {
             &Unrun {
                 stalled: true,
                 failed_log: Some("/net/logs/fb46-1.log".to_owned()),
+                stalled_log: Some("/net/logs/fb46-2.log".to_owned()),
                 ..merge(Some(4925))
             },
             true,
@@ -222,9 +235,12 @@ mod tests {
         );
         assert!(
             stalled.contains("both runs stopped unfinished")
-                && stalled.contains("may hang, or something else stopped them")
-                && !stalled.contains("two hours")
+                && stalled.contains(
+                    "may hang, may take longer than the net's two hours, or something else \
+                     stopped them"
+                )
                 && !stalled.contains("no Mac compared")
+                && stalled.contains("The last run's log is /net/logs/fb46-2.log.")
                 && stalled.contains("its log is /net/logs/fb46-1.log"),
             "a stall or a failure a Mac saw was told as no Mac comparing: {stalled}"
         );

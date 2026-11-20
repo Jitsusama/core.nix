@@ -2322,6 +2322,14 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             Some(1),
             "a fetch the change names, from a host that doesn't resolve, was let off"
         );
+        // A cache's narinfo, as well as its nar, is the cache's.
+        let narinfo =
+            format!("error: unable to download 'https://cache.nixos.org/0000.narinfo': {resolved}");
+        assert_eq!(
+            mac_ending(Some(1), Some(narinfo.as_bytes())),
+            Some(UNCOMPARED),
+            "a cache's narinfo it couldn't reach counted"
+        );
     }
 
     #[test]

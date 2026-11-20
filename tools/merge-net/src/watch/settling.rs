@@ -370,6 +370,12 @@ impl<'a> Settler<'a> {
         self.holds(test) || self.state.keeps_settling(test)
     }
 
+    /// Whether a Mac's comparison `check` at `merge` was told to its owner
+    /// and let go, so handing it again would start another day of tries.
+    pub fn told(&self, check: &str, merge: &str) -> bool {
+        self.state.found("mac-unrun", check, merge)
+    }
+
     /// Run `write` while nothing else writes the hold.
     pub fn write<R>(&self, write: impl FnOnce() -> R) -> R {
         while self.leaving() {
@@ -657,10 +663,14 @@ impl<'a> Settler<'a> {
                     "{check} at {} stalled twice on a Mac: told, and let go",
                     short(merge)
                 ));
+                // Each stall writes over the log the run after a failure
+                // would have, so the last is one past the failure, if any;
+                // named, the budget keeps it for the owner to read.
+                let stalled = state.log(merge, check, if failed.is_some() { 2 } else { 1 });
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge, "stalled": true,
                     "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
-                    "failed_log": failed,
+                    "failed_log": failed, "log": stalled.display().to_string(),
                 });
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }
