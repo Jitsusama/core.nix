@@ -1143,7 +1143,21 @@ ShellRoot {
             pressing[0]?.forYou?.source === "desktop" && pressing.findIndex(row => row.key
                 === "on:waitingOnYou:kind:look") > 0,
             JSON.stringify(pressing.map(row => [row.key, row.forYou?.source ?? ""])));
+        const filtered = now.filterable();
+        expect("and leads what :filter narrows, as the list does",
+            filtered[0]?.forYou?.source === "desktop",
+            JSON.stringify(filtered.map(row => [row.key, row.forYou?.source ?? ""])));
         now.lookTexts = beforeLook;
+        // Ahead of a session's question too, in For You and home alike.
+        Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
+            session: "s-c", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        const askFirst = now.waitingRows().map(row => row.forYou?.source ?? row.key);
+        const homeAsked = now.homeSays();
+        Sessions.wanting = [];
+        expect("a critical notice leads For You and home's row before a session's question",
+            askFirst[0] === "desktop" && homeAsked.startsWith("Battery at 5%")
+                && homeAsked.includes("1 more"),
+            JSON.stringify([askFirst, homeAsked]));
         // Home's row names For You's first, so it names the notice before a
         // thing to do too, its minutes not said beside the notice's name.
         const toSign = { title: "Sign in to the bank", minutes: 2 };
@@ -1155,9 +1169,23 @@ ShellRoot {
         WaitingOnYou.foremost = null;
         expect("a critical notice leads For You and home's row before a thing to do",
             signFirst[0] === "desktop" && homeFirst.startsWith("Battery at 5%")
-                && !homeFirst.includes("Sign in") && !homeFirst.includes("2 min")
-                && !homeFirst.includes("2 min"),
+                && !homeFirst.includes("Sign in") && !homeFirst.includes("2 min")
+                && homeFirst.includes("1 more"),
             JSON.stringify([signFirst, homeFirst]));
+        // One saying nothing still leads both, home naming the row it
+        // leads For You with, never the session or to-do under it.
+        Notices.history = [Object.assign({}, Notices.history[0], { summary: "" })];
+        WaitingOnYou.now = [toSign];
+        WaitingOnYou.foremost = toSign;
+        const blankRows = now.waitingRows();
+        const homeBlank = now.homeSays();
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
+        expect("a critical notice saying nothing leads home by its row's name",
+            blankRows[0]?.forYou?.source === "desktop" && homeBlank !== ""
+                && homeBlank.startsWith(blankRows[0].name) && !homeBlank.includes("Sign in"),
+            JSON.stringify([blankRows[0]?.name ?? null, homeBlank]));
+        Notices.history = [Object.assign({}, Notices.history[0], { summary: "Battery at 5%" })];
         Notices.live = { "7": {} };
         expect("its card up, neither counts it",
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
