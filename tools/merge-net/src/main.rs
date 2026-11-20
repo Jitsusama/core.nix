@@ -257,13 +257,17 @@ fn rounds(
 
 /// The recent passed runs that could be `commit`'s change, as
 /// `candidates::could_be` chooses them from what git says of each.
-fn candidates(commit: &str, main: &str, files: &[String]) -> Result<Vec<String>, String> {
-    let records = ready::recent_records();
+fn candidates(
+    commit: &str,
+    main: &str,
+    files: &[String],
+    records: &[String],
+) -> Result<Vec<String>, String> {
     let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
-    let said = logged(&records, &["--format=%H%x01%s"]);
+    let said = logged(records, &["--format=%H%x01%s"]);
     let touched = |records: &[String]| logged(records, &["--format=%x01%H", "--name-only"]);
     Ok(candidates::could_be(
-        &records,
+        records,
         said.as_deref(),
         &subjects,
         touched,
@@ -348,12 +352,14 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
         }
-        if let Some(said) = train::gives_way(commit) {
+        // Before the right of way, which boards the train itself, so a
+        // head no round read neither boards it nor merges.
+        if let Err(said) = read_by_a_round(commit, main, files) {
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
         }
-        if !read_by_a_round(commit, main, files) {
-            eprintln!("merge-net: {}", seen::unread(short(commit)));
+        if let Some(said) = train::gives_way(commit) {
+            eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
         }
         return turn::passed(commit, passes, files, said);
@@ -403,7 +409,7 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
     if gated::asked(&asked) {
         return true;
     }
-    let earlier: Vec<String> = same_change(commit, main, files)
+    let earlier: Vec<String> = same_change(commit, main, files, &ready::recent_records())
         .into_iter()
         .filter(|candidate| knows_rules(candidate))
         .collect();
@@ -414,22 +420,28 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
 /// the same change that a clean rebase carried here (`seen.rs`). From 17
 /// to 19 November 240 of 429 reviewed pull requests merged at a head no
 /// round had read, a fix pushed after the council going to main unread.
-fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> bool {
-    let read = seen::witnessed(&seen::rounds_folder());
-    read.contains(commit)
-        || same_change(commit, main, files)
-            .iter()
-            .any(|earlier| read.contains(earlier))
+/// The earlier commits are looked for among those the rounds read, so a
+/// reviewed commit with no pass of its own still counts. Why not, when not.
+fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
+    let folder = seen::rounds_folder();
+    let read = seen::witnessed(&folder)?;
+    if read.contains(commit)
+        || !same_change(commit, main, files, &read.into_iter().collect::<Vec<_>>()).is_empty()
+    {
+        return Ok(());
+    }
+    Err(seen::unread(short(commit)))
 }
 
-/// The earlier commits of `commit`'s change touching `files` whose own
-/// change, against their base on main, is the same patch as `commit`'s.
-fn same_change(commit: &str, main: &str, files: &[String]) -> Vec<String> {
+/// The earlier commits of `commit`'s change among `records` touching
+/// `files` whose own change, against their base on main, is the same patch
+/// as `commit`'s.
+fn same_change(commit: &str, main: &str, files: &[String], records: &[String]) -> Vec<String> {
     let base = git(&["merge-base", main, commit]).unwrap_or_else(|_| main.to_owned());
     let Some(change) = patch_id(Path::new("."), &base, commit) else {
         return Vec::new();
     };
-    candidates(commit, main, files)
+    candidates(commit, main, files, records)
         .unwrap_or_default()
         .into_iter()
         .filter(|candidate| {
@@ -541,8 +553,8 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             }
             // The train merges what it carries, so a head no round read
             // boards no more than it merges through may_merge.
-            if !read_by_a_round(commit, main, &files) {
-                eprintln!("merge-net: {}", seen::unread(short(commit)));
+            if let Err(said) = read_by_a_round(commit, main, &files) {
+                eprintln!("merge-net: {said}");
                 return Ok(ExitCode::FAILURE);
             }
             // A head behind main boards the train as one on it does

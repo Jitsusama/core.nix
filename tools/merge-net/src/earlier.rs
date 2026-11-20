@@ -120,7 +120,11 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         naming.extend(crates.beside(&files, &since));
         Some(naming)
     };
-    let candidates = ready::speakers(commit, behind, &candidates(commit, main, &files)?);
+    let candidates = ready::speakers(
+        commit,
+        behind,
+        &candidates(commit, main, &files, &ready::recent_records())?,
+    );
     let before = match ready::checked_before(&candidates, &ready::record, on_main, &same) {
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.

@@ -32,17 +32,24 @@ pub fn rounds_folder() -> PathBuf {
     state.join("pi/agentic-harness.pi/review/runs")
 }
 
-/// Every commit a round kept under `folder` read in full.
-pub fn witnessed(folder: &Path) -> HashSet<String> {
-    let Ok(files) = fs::read_dir(folder) else {
-        return HashSet::new();
-    };
-    files
+/// Every commit a round kept under `folder` read in full. A folder that
+/// can't be read is said so, since a council asked at the head wouldn't
+/// help where the net can't see the rounds at all, as on a machine where
+/// the harness keeps its review state elsewhere.
+pub fn witnessed(folder: &Path) -> Result<HashSet<String>, String> {
+    let files = fs::read_dir(folder).map_err(|error| {
+        format!(
+            "the review rounds at {} can't be read ({error}), so no head can be shown read; \
+             point MERGE_NET_REVIEW_RUNS at the harness's review/runs",
+            folder.display()
+        )
+    })?;
+    Ok(files
         .flatten()
         .filter(|file| file.path().extension().is_some_and(|e| e == "json"))
         .filter_map(|file| fs::read_to_string(file.path()).ok())
         .flat_map(|text| read_in(&text))
-        .collect()
+        .collect())
 }
 
 /// The commits the rounds of one change's file `text` read in full.
@@ -150,7 +157,7 @@ mod tests {
         for extra in [
             json!({"round": "judge"}),
             json!({"round": "critique"}),
-            json!({"open": true, "outcomes": []}),
+            json!({"open": true}),
             json!({"closed": true}),
             json!({"unpinned": {"read": "checkout"}}),
             json!({"outcomes": [{"participantId": "a", "failure": "timed out"}]}),
@@ -179,11 +186,11 @@ mod tests {
             &[round(&json!({"witness": "bbb"}))],
         );
         file("notes.txt", &[round(&json!({"witness": "ccc"}))]);
-        let seen = witnessed(&folder);
-        assert_eq!(
-            witnessed(&folder.join("gone")),
-            HashSet::new(),
-            "a folder that's gone holds no witness"
+        let seen = witnessed(&folder).unwrap();
+        let gone = witnessed(&folder.join("gone")).unwrap_err();
+        assert!(
+            gone.contains("can't be read"),
+            "a folder that's gone is said so: {gone}"
         );
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
