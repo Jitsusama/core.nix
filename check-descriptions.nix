@@ -19,6 +19,10 @@
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
   '';
+  a-desktop-wait-says-what-it-last-heard = ''
+    a desktop area's wait on what the launcher reports that never passes says the last state it
+    heard, and one whose first read passes hears nothing more
+  '';
   a-failed-boot-says-what-stopped-it = ''
     a failed boot's shell names up to four failed units and their last lines, fitted to a
     terminal's rows with eight left for the shell, in the account's theme with the console's

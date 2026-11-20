@@ -19,4 +19,17 @@ in
           -p no:cacheprovider --import-mode=importlib --quiet keeps-pace-test.py
         touch $out
       '';
+
+  # How an area's wait on what the launcher reports ends, and what one that
+  # never passes says, apart from any VM. Only the two files are copied, for
+  # the same reason.
+  a-desktop-wait-says-what-it-last-heard =
+    pkgs.runCommandLocal "a-desktop-wait-says-what-it-last-heard" { }
+      ''
+        cp ${./heard.py} heard.py
+        cp ${./heard-test.py} heard-test.py
+        PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
+          -p no:cacheprovider --import-mode=importlib --quiet heard-test.py
+        touch $out
+      '';
 }

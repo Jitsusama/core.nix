@@ -573,7 +573,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
   # Reads the colours of the windows it shoots. The desktop it drives
   # is desktop/desktop_session.py, a module of the driver's Python, which
-  # every area imports.
+  # every area imports, with how it waits on what's reported (heard.py).
   extraPythonPackages = python: [
     python.pillow
     (python.toPythonModule (
@@ -581,6 +581,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         ''
           mkdir -p $out/${python.python.sitePackages}
           cp ${./desktop/desktop_session.py} $out/${python.python.sitePackages}/desktop_session.py
+          cp ${./desktop/heard.py} $out/${python.python.sitePackages}/heard.py
         ''
         # And what the looks areas share, only where it's read, so no other
         # area's test moves with it.

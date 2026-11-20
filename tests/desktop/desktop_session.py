@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
+from heard import until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -699,10 +700,10 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
 
         The launcher reports its state each time it changes, so a wait reads it once and then
         hears every change. One that never passes says what it last heard the launcher show
-        (vm_helpers.until_heard).
+        (heard.py).
         """
         since = self.mark()
-        vm_helpers.until_heard(
+        until_heard(
             self.showing(),
             test,
             lambda passes: self.reported("showing ", passes, since, timeout),
