@@ -5434,13 +5434,18 @@ Scope {
         // folder it came from, though it was stepped into without being
         // selected, as the file picker holds each folder on the way to
         // where it opens; Return steps into the selection, so it's the same.
-        // A source no step held before is wanted from here, and what it says
-        // changed as it is, it said of the rows just read (Wanted.readByStep).
+        //
+        // A source no step held before becomes wanted as its step is held,
+        // and says its rows changed, which may be only the rows just read
+        // for the step (Wanted.readByStep, which refreshed() asks).
         newlyHeld = row.from && !held.some(step => step.row?.from === row.from)
             ? row.from : null;
-        held = held.concat([Object.assign(here(), walk?.stood ?? {}, { key: steadyId(row),
-            row: row, rows: into ?? [], learned: meant })]);
-        newlyHeld = null;
+        try {
+            held = held.concat([Object.assign(here(), walk?.stood ?? {}, {
+                key: steadyId(row), row: row, rows: into ?? [], learned: meant })]);
+        } finally {
+            newlyHeld = null;
+        }
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -5625,9 +5630,8 @@ Scope {
     // before the rows read from them (choices, partsOfRows) have heard;
     // each source heard is made again once, in the order heard.
     property var refreshing: []
-    // The source a step is holding while its step is put in `held`, when
-    // no step held it before, whose change then is only what the step read
-    // of it a moment before (Wanted.readByStep, Agents.qml's everything).
+    // The source `enter` steps into, only while it puts the step in
+    // `held`, when no step held that source before (Wanted.readByStep).
     property var newlyHeld: null
     // A change told from a daemon's line is timed from it, on the
     // monotonic clock, to the frame niri presents with it (Hearing.js).
@@ -5660,8 +5664,12 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
+        // Its rows are those the step just read, so none is made again;
+        // its note may have moved, so the choices are joined after the
+        // step's frame rather than in it.
         if (Wanted.readByStep(source, newlyHeld, refreshedFor)) {
             Report.say(`${source.settings.name} said only what its step read`);
+            afterFrame(freshen);
             return;
         }
         // Only a key that acted owns a change beside it, to a place on

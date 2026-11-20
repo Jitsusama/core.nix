@@ -378,6 +378,22 @@ QtObject {
             read({ held: [{ row: { from: people } }] }), false);
         check(failures, "though in a place that reads them they are",
             read({ held: [{ row: { from: now } }] }), true);
+        // A source a step holds anew, laying its rows out afresh while
+        // unwanted, says as it's held only what the step read of it a moment
+        // before, so it isn't made again: Joel's steps into Agents waited 16
+        // to 25 ms for it (his journal, 2026-11-19 and 20).
+        const afresh = { readsAfreshUnwanted: true };
+        const keeps = { readsAfreshUnwanted: false };
+        check(failures, "the source a step holds anew said only what the step read",
+            Wanted.readByStep(afresh, afresh, undefined), true);
+        check(failures, "another source's change as it's held is its own",
+            Wanted.readByStep(keeps, afresh, undefined), false);
+        check(failures, "as is the held source's refresh the launcher asks for",
+            Wanted.readByStep(afresh, afresh, "a row agreed"), false);
+        check(failures, "and any change with no step holding a source anew",
+            Wanted.readByStep(afresh, null, undefined), false);
+        check(failures, "one that kept its rows unwanted says those it made at last",
+            Wanted.readByStep(keeps, keeps, undefined), false);
         check(failures, "nor opening into another place before its step is held",
             read({ entering: people }), false);
         check(failures, "though opening into one that reads them they are",
@@ -1329,20 +1345,6 @@ QtObject {
             Pacing.sinceKey(1090, 1000, 1070), 20);
         check(failures, "and one long after it is no key's",
             Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within, true), false);
-
-        // A source a step holds anew says, as it's held, only what the step
-        // read of it a moment before, so it isn't made again: Joel's steps
-        // into Agents waited 16 to 25 ms for it (his journal, 2026-11-20).
-        const agents = { name: "agents" };
-        const windows = { name: "windows" };
-        check(failures, "the source a step holds anew said only what the step read",
-            Wanted.readByStep(agents, agents, undefined), true);
-        check(failures, "another source's change as it's held is its own",
-            Wanted.readByStep(windows, agents, undefined), false);
-        check(failures, "as is the held source's refresh the launcher asks for",
-            Wanted.readByStep(agents, agents, "a row agreed"), false);
-        check(failures, "and any change with no step holding a source anew",
-            Wanted.readByStep(agents, null, undefined), false);
 
         // A slow act's line says where its time went, each span once, so
         // the 534 ms the old line left out (agents, 595 ms, Joel's journal,

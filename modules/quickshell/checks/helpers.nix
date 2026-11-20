@@ -342,12 +342,15 @@ let
     }:
     let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
+      # Each helper beside the tests, as a line after the tests' own, so a
+      # check given none builds as it did before helpers were given.
+      installed = lib.concatMapStrings (
+        helper: "\ninstall -D -m 644 ${helper} $out/${baseNameOf helper}"
+      ) helpers;
       checked = pkgs.runCommandLocal "${name}-tests" { } ''
         install -D -m 644 ${../tests/launcher_on_niri.py} $out/launcher_on_niri.py
         install -D -m 644 ${../tests/cases_in_parts.py} $out/cases_in_parts.py
-        install -D -m 644 ${tests} $out/${baseNameOf tests}${
-          lib.concatMapStrings (helper: "\ninstall -D -m 644 ${helper} $out/${baseNameOf helper}") helpers
-        }
+        install -D -m 644 ${tests} $out/${baseNameOf tests}${installed}
       '';
       # Each part's bounds: the case it starts at, and the next part's.
       bounds = lib.zipListsWith (from: until: { inherit from until; }) ([ "" ] ++ parts) (

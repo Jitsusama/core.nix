@@ -585,7 +585,9 @@ letter or a step wants them; typed, they're made before the step. With
 `LAB_AGENTS`, one session moves before each step, as his do between his
 looks. By arrow, each step into Agents then made its rows again before
 its frame, "act moved in agents: its own rows", and waited 5 to 9 ms for
-it where typed it waited 1; his waited 16 to 25 (2026-11-20).
+it where typed it waited 1; his waited 16 to 25 (2026-11-20). Since a
+step no longer makes again the rows it just read, each says "agents said
+only what its step read" and waits 1 to 5 ms (2026-11-20).
 `LAB_COSTLIEST` says how many of the
 costliest bindings, handlers and functions each part lists.
 Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces

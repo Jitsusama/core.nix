@@ -2654,16 +2654,17 @@ def test_a_step_into_agents_from_home_makes_its_rows_once(shell: Shell) -> None:
     shell.launcher_ready()
     shell.down_to("Agents")
     # Return comes once the arrow's frames are drawn, as Joel's hand comes after his arrow.
-    shell.held_still()
+    assert shell.held_still(), "the launcher never held still after the arrow"
     since = shell.mark()
     shell.step_in()
     shell.launcher_until(lambda shown: "Stepped Into Quest" in shown["rows"])
     # The step's frame and any made after it are drawn before what they said is read.
-    shell.held_still()
+    assert shell.held_still(), "the launcher never held still after the step"
     said, _ = shell.said_since(since)
     again = [line for line in said if line.startswith("act moved in agents")]
     assert not again, f"the step into Agents made its rows again: {again}"
-    # Agents did say its rows moved, so the case stands where Joel's steps did.
+    # A precondition, not the claim: Agents did say its rows moved as the step was held, so
+    # the case stands where Joel's steps did rather than passing on a change never said.
     assert "agents said only what its step read" in said, f"Agents said no change: {said}"
 
 
