@@ -165,7 +165,10 @@ mod tests {
             boarding(&on(&offer)),
             Ok("on the train from main-w".to_owned())
         );
-        assert!(offered.get());
+        assert!(
+            offered.get(),
+            "a head kept off by nothing was never offered"
+        );
     }
 
     #[test]

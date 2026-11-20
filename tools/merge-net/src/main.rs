@@ -52,6 +52,7 @@
 //!
 //! `merge-net --help` says how each is asked (`command.rs`).
 
+mod aboard;
 mod answers;
 mod apart;
 mod boarding;
@@ -442,77 +443,6 @@ fn run_again(commit: &str) -> String {
         })
 }
 
-/// What to do about `commit`, on main, once it `boarded` the merge train,
-/// which merges it with the others on one run (`train.rs`), or didn't:
-/// wait for the gate holding it, mark its draft ready, or else run it
-/// again alone, as a reader of the kit owed its turn first still has it go
-/// first.
-fn ride_or_run_again(commit: &str, boarded: Result<String, boarding::Off>) -> String {
-    match boarded {
-        Ok(said) | Err(boarding::Off::Draft(said)) => said,
-        Err(boarding::Off::Held) => {
-            "it waits for that gate, so merge again once it ends".to_owned()
-        }
-        Err(_) => {
-            let again = run_again(commit);
-            match train::fell_said(commit) {
-                Some(fell) => format!("{fell}; {again}"),
-                None => again,
-            }
-        }
-    }
-}
-
-/// Whether `commit`, whose pass at `checked` main moved beside, boards the
-/// merge train, asked as `boarding.rs` says, with what the train said once
-/// it did.
-fn boards(
-    commit: &str,
-    main: &str,
-    checked: &str,
-    files: &[String],
-) -> Result<String, boarding::Off> {
-    let passes = [commit, checked];
-    boarding::boarding(&boarding::Asks {
-        kit_first: &|| {
-            turn::waits_to_run(commit).map(|said| said.trim_start_matches("merge-net: ").to_owned())
-        },
-        heard: &|| needs_heard(commit, main, &[checked], files),
-        // Marked as may_merge marks it, before the hold that would keep it.
-        held: &|| {
-            mark_skipped_macs(commit, &passes);
-            turn::waiting(commit, &passes, files)
-        },
-        conflicts: &|| conflicts(commit, main),
-        branch: &|| git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default(),
-        drafted: &train::drafted,
-        offer: &|branch| train::offer(commit, branch),
-        fell: &|| train::fell_said(commit),
-    })
-}
-
-/// Whether `commit` conflicts with origin's main at `main`, as merging the
-/// two would. Where git can't say, the train finds out at its own merge.
-fn conflicts(commit: &str, main: &str) -> bool {
-    Command::new("git")
-        .args(["merge-tree", "--write-tree", "--quiet", main, commit])
-        .status()
-        .is_ok_and(|status| status.code() == Some(1))
-}
-
-/// Keep that `commit` runs changed-checks again over `shared`, on the
-/// train or alone, unless a hold, which keeps its own line, or a draft
-/// kept it off the train.
-fn keep_regated(commit: &str, boarded: &Result<String, boarding::Off>, shared: &[String]) {
-    if !matches!(boarded, Err(boarding::Off::Held | boarding::Off::Draft(_))) {
-        answers::keep(
-            commit,
-            answers::Verdict::Regate(answers::Rerun::Files),
-            shared,
-        );
-    }
-}
-
 /// The newest commit on `main` to change the rules for which VM tests run
 /// before a merge, or nothing when git can't say.
 fn newest_rules(main: &str) -> String {
@@ -587,21 +517,21 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             // A head behind main boards the train as one on it does
             // (`boarding.rs`), and one that can't is told why.
             if behind {
-                let boarded = boards(commit, main, &checked, &files);
-                keep_regated(commit, &boarded, &shared);
+                let boarded = aboard::boards(commit, main, &checked, &files);
+                aboard::keep_regated(commit, &boarded, &shared);
                 let said = boarding::behind_said(commit, main, &checked, &shared, &boarded);
                 eprintln!("merge-net: {said}");
                 return Ok(ExitCode::FAILURE);
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
-            let boarded = boards(commit, main, &checked, &files);
-            keep_regated(commit, &boarded, &shared);
+            let boarded = aboard::boards(commit, main, &checked, &files);
+            aboard::keep_regated(commit, &boarded, &shared);
             eprintln!(
                 "merge-net: the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
-                ride_or_run_again(commit, boarded)
+                aboard::ride_or_run_again(commit, boarded)
             );
         }
         ready::Before::Unchecked => eprintln!(
