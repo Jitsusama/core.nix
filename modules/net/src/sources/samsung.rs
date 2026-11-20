@@ -129,19 +129,21 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
     let mut answering = false;
     let mut silent = None;
     for one in asked {
-        match (one.answer, one.earlier) {
-            (Ok(answer), _) => {
-                // A box that answers as something else isn't a TV, so it's
-                // left out rather than counted as the source failing.
-                if let Ok(tv) = television(one.mac, &answer) {
-                    answering = true;
-                    found.push(tv);
-                }
+        let heard = one
+            .answer
+            .and_then(|answer| television(one.mac.clone(), &answer));
+        // A box that hasn't answered as a TV this minute is kept as silent
+        // when it has before, and otherwise left out, so a box that isn't
+        // a TV never counts as the source failing.
+        match (heard, one.earlier) {
+            (Ok(tv), _) => {
+                answering = true;
+                found.push(tv);
             }
             (Err(why), Some(earlier)) => {
                 if let Ok(tv) = television(one.mac, &earlier) {
                     let name = tv.name.clone().unwrap_or_else(|| "a TV".into());
-                    silent = silent.or(Some(format!("{name} didn't answer: {why}")));
+                    silent = silent.or(Some(format!("{name}: {why}")));
                     found.push(Found {
                         television: Television {
                             power: None,
@@ -177,7 +179,7 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
 /// and addresses, or why the answer isn't a TV's.
 fn television(mac: String, answer: &str) -> Result<Found, String> {
     let Ok(Value::Object(mut detail)) = serde_json::from_str::<Value>(answer) else {
-        return Err("its answer isn't a JSON object".into());
+        return Err("its answer isn't a TV's: it isn't a JSON object".into());
     };
     for key in LEFT_OUT {
         detail.remove(key);
@@ -189,7 +191,7 @@ fn television(mac: String, answer: &str) -> Result<Found, String> {
     let kind = device.get("type").and_then(Value::as_str);
     if kind != Some(A_TV) {
         return Err(format!(
-            "it isn't a TV: it says it's {}",
+            "its answer isn't a TV's: it says it's {}",
             kind.unwrap_or("nothing")
         ));
     }
@@ -404,8 +406,34 @@ pub mod tests {
         );
         assert_eq!(
             source.reason.as_deref(),
-            Some("Living Room didn't answer: it didn't answer: timed out"),
+            Some("Living Room: it didn't answer: timed out"),
             "the reason doesn't name the TV"
+        );
+    }
+
+    #[test]
+    fn a_tv_heard_once_that_answers_as_something_else_keeps_its_name() {
+        let mut heard = Heard::new();
+        remember(&mut heard, MAC.into(), Ok(answer()));
+        let odd = answer().replace(A_TV, "Samsung Soundbar");
+        let asked = remember(&mut heard, MAC.into(), Ok(odd));
+        let (source, found) = read(vec![asked], NOW);
+        let [tv] = found.as_slice() else {
+            panic!("the TV should be kept as one: {found:?}");
+        };
+        assert_eq!(
+            tv.name.as_deref(),
+            Some("Living Room"),
+            "its name went with its answer"
+        );
+        assert!(
+            !tv.television.answering,
+            "an answer that isn't a TV's reads as one"
+        );
+        assert_eq!(
+            source.and_then(|source| source.reason).as_deref(),
+            Some("Living Room: its answer isn't a TV's: it says it's Samsung Soundbar"),
+            "the reason doesn't say what it answered"
         );
     }
 
