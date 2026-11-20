@@ -328,6 +328,16 @@ in
           "from the networks it has joined, moving the moment one changes."
         ];
         asks = "Keep it open a while; say what you'd want to see that it doesn't show.";
+        # Each cell's address on the map, which every other site links a
+        # cell to: opened there, its drawer is open. The map reads a cell's
+        # whole link there too, mycelium:cell/<ADDRESS>@<machine>, as its
+        # address alone.
+        homes = [
+          {
+            kind = "cell";
+            address = "#cell={name}";
+          }
+        ];
       };
       web = {
         name = "What your sessions murmur";

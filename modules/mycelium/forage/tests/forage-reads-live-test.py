@@ -53,8 +53,9 @@ NEED = "a <b>calm</b> field"
 CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # What a first visit to the forage page may cost, drawn from the stand-in's cells. Its files sit
 # at what the page asks for now, on purpose: each module is one more file a first visit waits
-# on, so splitting one out raises this as a choice rather than slipping past it.
-BUDGET = Budget(files=22, kilobytes=545, elements=255)
+# on, so splitting one out raises this as a choice rather than slipping past it. The kit's
+# cell.ts is the 23rd, the one way every site names a cell.
+BUDGET = Budget(files=23, kilobytes=545, elements=255)
 
 
 @pytest.fixture
@@ -223,6 +224,29 @@ def test_the_keys_step_the_cursor(forage_page: Page) -> None:
     expect(forage_page.locator("#panel-body h3"), "the panel didn't follow").to_have_text("OSPREY")
     forage_page.keyboard.press("g")
     selected(forage_page, "KESTRL", "g didn't go to the first row")
+
+
+# A cell named by its whole link, as a notice or another page gives it.
+LINKED = "TERNAA"
+LINKED_AS = f"mycelium:cell/{LINKED}@kestrel#notice:4"
+
+
+def test_a_cell_opens_by_its_whole_link_as_its_address(
+    browser: Browser, forage_served: Served
+) -> None:
+    root, _ = forage_served
+    opened = Opened(browser, f"{root}forage/#cell={LINKED_AS}", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        selected(page, LINKED, f"#cell={LINKED_AS} didn't open {LINKED}")
+        expect(page, "the hash wasn't said as its address").to_have_url(
+            re.compile(f"#cell={LINKED}$")
+        )
+        page.evaluate("location.hash = '#cell=SKIFFS%40kestrel'")
+        selected(page, "SKIFFS", "an address on its machine didn't open its cell")
+    finally:
+        opened.close()
 
 
 def test_a_purpose_written_and_a_cell_gone_are_followed(

@@ -6,6 +6,7 @@ a site's compiled imports land.
 
 | File          | What it holds                                                 |
 | ------------- | ------------------------------------------------------------- |
+| `cell.ts`     | a cell's link to the launcher, and the cell a link names      |
 | `document.ts` | a document's parts, its keys and its switch, wired on load    |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
 | `home.ts`     | the home's cursor over the sites, its keys and its switch     |

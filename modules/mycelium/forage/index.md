@@ -49,7 +49,10 @@ a terminal, `mycelium forage` gathers the realm's.
   cells it split into, the needs it serves and relies on, each with the
   cell at its other end, what it was about and since when, the quest
   above its own, the machine it stands on and the command that says its forage in a
-  terminal. Each cell named there opens when pressed.
+  terminal. Each cell named there opens when pressed, and a link under it talks to
+  the cell in the Launcher.
+- **A cell opens by its link too:** the page opened at `#cell=` with a cell's whole
+  link, as a notice gives it, or its address on its machine, opens on that cell.
 - **Under the sentence, whether what it shows is live:** when the node
   or the sites' server can't be reached, it says since when and why,
   and keeps showing how things stood then.

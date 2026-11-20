@@ -64,11 +64,12 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 25 files since the balance, who started each cell, the tree beside the map,
+# 27 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent and what waits were read in modules of their
-# own, and one spare; about 708 KB, with room above.
-BUDGET = Budget(files=26, kilobytes=745, elements=590)
+# each is doing, what each spent, what waits, how wide each line is drawn and
+# how a cell is named were read in modules of their own; about 708 KB, with
+# room above.
+BUDGET = Budget(files=27, kilobytes=745, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -690,6 +691,8 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
 # something, then the one stuck. Node.json lists them in that order too, so
 # waits.test.ts is what proves the order; this proves the page follows it.
 NEEDING = ("TERN02", "HERON1")
+# The machine the last of them runs on, in node.json, which its link names.
+NEEDING_ON = "osprey"
 NEEDING_SAID = ("One needs you:", "One is stuck:")
 # The first line after Now's heading, and the next line over a list.
 NOW_LEADS = """(() => {
@@ -728,7 +731,9 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     page.evaluate(TALK_HELD)
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
-    assert talked == f"mycelium:cell/{NEEDING[-1]}", f"t talked to {talked}, not the open cell"
+    assert talked == f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}", (
+        f"t talked to {talked}, not the open cell on its machine"
+    )
     page.keyboard.press("a")
     expect(page, "a didn't go round to the first").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
     # A receptor is a cell the Launcher can't talk to, and t says so.
@@ -747,6 +752,37 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     expect(page.locator("#where"), "t with no cell open didn't say so").to_have_text(
         "No cell is open to talk to; a opens the next that needs you."
     )
+
+
+# A cell named the ways another page or a notice names it, each with what
+# may follow its address: its whole link, its address on its machine, and
+# its link as a page escapes it into the hash.
+NAMED = (
+    f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}#notice:4",
+    f"{NEEDING[-1]}@{NEEDING_ON}",
+    f"mycelium%3Acell%2F{NEEDING[-1]}%40{NEEDING_ON}%2Fgo",
+)
+
+
+def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    talk = page.locator('#panel-body a[href^="mycelium:cell/"]')
+    for named in NAMED:
+        page.evaluate("location.hash = ''")
+        expect(talk, "the last cell's drawer stayed open").to_have_count(0)
+        page.evaluate(f"location.hash = '#cell={named}'")
+        expect(talk, f"#cell={named} didn't open its cell's drawer").to_have_attribute(
+            "href", f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}"
+        )
+        expect(page, f"#cell={named} wasn't said as its address").to_have_url(
+            re.compile(f"#cell={NEEDING[-1]}$")
+        )
+    # A stray % typed by hand names nothing, and the map still answers after it.
+    page.evaluate("location.hash = '#cell=%E0%A4%A'")
+    expect(talk, "a stray % opened a cell").to_have_count(0)
+    page.evaluate(f"location.hash = '#cell={NAMED[1]}'")
+    expect(talk, "the map stopped answering after a stray %").to_have_count(1)
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
@@ -826,6 +862,10 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Its link to the Launcher names that machine too, never the basin.
+        expect(
+            body.locator('a[href^="mycelium:cell/"]'), "the cell's link lost its machine"
+        ).to_have_attribute("href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}")
         # Now counts every machine, a basin's each its own, not each mark.
         page.locator("#now-control").click()
         expect(title, "Now never opened").to_have_text("Now")

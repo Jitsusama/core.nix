@@ -8,6 +8,7 @@
 // shows is live and since when. A feed reaches one node, so it shows the
 // cells on this machine; `mycelium forage` in a terminal gathers the realm's.
 
+import { addressIn } from "../../local-sites/kit/cell.ts";
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
@@ -55,14 +56,18 @@ let sought = "";
 // headline's second count asks.
 let hollowOnly = false;
 
-/** The cell `hash` names, as #cell=<address>. */
+/**
+ * The cell `hash` names, as #cell=<address>, or by the cell's whole link or
+ * its address with its machine, as a notice gives it, read as its address.
+ */
 function cellIn(hash: string): string | null {
   const named = CELL_HASH.exec(hash)?.[1];
   if (named === undefined) {
     return null;
   }
   try {
-    return decodeURIComponent(named);
+    const decoded = decodeURIComponent(named);
+    return addressIn(decoded) ?? decoded;
   } catch {
     // A stray % in an address typed by hand names no cell.
     return null;

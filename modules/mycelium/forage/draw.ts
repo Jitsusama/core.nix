@@ -10,6 +10,7 @@
 // read from a record is escaped before it reaches the page, and how far a
 // plan has come is said in words beside its marks.
 
+import { cellLink } from "../../local-sites/kit/cell.ts";
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
 import {
@@ -89,6 +90,19 @@ const MYCELIUM_HOME = "../code/#repo=Jitsusama%2Fmycelium";
 /** Where the map opens on `forage`'s cell. */
 function onMap(forage: Forage): string {
   return `../mycelium/#cell=${encodeURIComponent(forage.cell)}`;
+}
+
+/**
+ * Where else the open cell goes: to the map on Return, and to its Talk in the
+ * launcher by the link the desktop hands it, saying the machine it stands on,
+ * where its address is one the launcher can reach.
+ */
+function goesOf(forage: Forage): string {
+  const cell = `<code>${escaped(forage.cell)}</code>`;
+  const talk = cellLink(forage.cell, forage.machine);
+  const also =
+    talk === null ? "" : `, or <a href="${escaped(talk)}">talk to it in the Launcher</a>`;
+  return `<p class="act">Press <kbd>Return</kbd> to open ${cell} on the map${also}.</p>`;
 }
 
 /** The purpose as the page says it, or that none is written. */
@@ -417,7 +431,7 @@ ${waitsOf(forage)}${documentsOf(forage)}
     <div><dt>In a terminal</dt><dd><code><a href="${MYCELIUM_HOME}">mycelium</a> forage ${escaped(forage.cell)}</code> <button type="button" class="copy" data-copy="${said}">Copy <kbd>y</kbd></button></dd></div>
   </dl>
 </section>
-<p class="act">Press <kbd>Return</kbd> to open <code>${escaped(forage.cell)}</code> on the map.</p>`;
+${goesOf(forage)}`;
 }
 
 export { command, floorOf, forageRow, onMap, panelOf, purposeOf };
