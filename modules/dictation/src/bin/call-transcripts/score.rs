@@ -6,8 +6,8 @@
 //!
 //! Each of the reference's lines is also heard alone, cut from its side
 //! where the reference says it was said, with a little sound either side,
-//! and none too long for Parakeet's window: a second reading, with no cutting, sifting or echo filter but no context
-//! either. It's no floor for the model alone, since a clip also hears
+//! and none too long for Parakeet's window: a second reading, with no
+//! cutting, sifting or echo filter but no context either. It's no floor for the model alone, since a clip also hears
 //! whoever talks over its speaker; the gap between the two readings says
 //! what context and the cutting are worth, a side at a time.
 
@@ -27,9 +27,13 @@ use crate::{Settings, takes};
 const AROUND: f64 = 0.2;
 
 /// The longest a reference line may run, in seconds: the longest a take
-/// runs (`dictation::takes`), so heard alone, with `AROUND` either side, it
-/// fits Parakeet's window.
-const LONGEST: f64 = 14.0;
+/// runs, so heard alone, with `AROUND` either side, it fits Parakeet's
+/// window.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a take is a few hundred thousand samples"
+)]
+const LONGEST: f64 = dictation::takes::LONGEST as f64 / RATE as f64;
 
 #[expect(
     clippy::cast_precision_loss,
@@ -69,7 +73,21 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
             .ok_or_else(|| format!("sides: {entry:?} isn't a meeting and a speaker"))?;
         let file = format!("{name}.ref");
         let lines = reference(&read(&set.join(&file))?).map_err(|e| format!("{file}: {e}"))?;
+        if !lines.iter().any(|line| line.speaker == mine) {
+            return Err(format!(
+                "{file}: {mine} never speaks, so can't be Joel's side"
+            ));
+        }
+        for side in [Side::Mine, Side::Theirs] {
+            let wav = set.join(format!("{name}.{}.wav", label(side)));
+            if !wav.is_file() {
+                return Err(format!("{} isn't there", wav.display()));
+            }
+        }
         meetings.push((name, mine, lines));
+    }
+    if meetings.is_empty() {
+        return Err(format!("{} has no meetings to hear", set.display()));
     }
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut all = Scored::default();
@@ -132,15 +150,20 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
 }
 
 /// The ceiling given as `text`, in tenths of a percent, when it's a
-/// percentage to one place at most: one such as "nan" would pass every
-/// score, and one with two places would print as another.
+/// percentage below 100 to one place at most: one such as "nan" or "100"
+/// would pass every score, and one with two places would print as another.
 pub fn ceiling(text: &str) -> Option<usize> {
     let (whole, tenth) = text.split_once('.').unwrap_or((text, "0"));
     let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
     if !digits(whole) || !digits(tenth) || tenth.len() > 1 {
         return None;
     }
-    Some(whole.parse::<usize>().ok()? * 10 + tenth.parse::<usize>().ok()?)
+    let tenths = whole
+        .parse::<usize>()
+        .ok()?
+        .checked_mul(10)?
+        .checked_add(tenth.parse::<usize>().ok()?)?;
+    (tenths < 1000).then_some(tenths)
 }
 
 /// Whether `tenths` of a percent wrong passes a ceiling of `most`, said
@@ -314,10 +337,32 @@ mod tests {
             reference("0.00 14.00 A Okay\n").is_ok(),
             "a line as long as a take was refused"
         );
+        // 16.01 - 2.01 is a hair over 14 in f64, so only the hundredths
+        // read it as a take's length.
         assert!(
-            reference("80.49 94.49 A Okay\n").is_ok(),
+            reference("2.01 16.01 A Okay\n").is_ok(),
             "a line as long as a take, not from the start, was refused"
         );
+    }
+
+    #[test]
+    fn a_set_is_refused_before_the_model_loads() {
+        let set = tempfile::tempdir().unwrap();
+        let model = Path::new("/no/model/here");
+        let write = |file: &str, text: &str| std::fs::write(set.path().join(file), text).unwrap();
+        let refused = |why: &str| {
+            let said = score(model, set.path(), None).unwrap_err();
+            assert!(said.contains(why), "refused for {said:?}, not {why:?}");
+        };
+        write("sides", "\n");
+        refused("no meetings");
+        write("sides", "M A\n");
+        write("M.ref", "1.00 0.50 A Okay\n");
+        refused("M.ref: a reference line");
+        write("M.ref", "0.50 1.00 B Okay\n");
+        refused("M.ref: A never speaks");
+        write("M.ref", "0.50 1.00 A Okay\n");
+        refused("M.mine.wav isn't there");
     }
 
     #[test]
@@ -325,7 +370,11 @@ mod tests {
         assert_eq!(ceiling("19.9"), Some(199));
         assert_eq!(ceiling("20"), Some(200));
         assert_eq!(ceiling("0"), Some(0));
-        for refused in ["nan", "inf", "-1", "nineteen", "", "19.96", "19.", ".9"] {
+        assert_eq!(ceiling("99.9"), Some(999));
+        let huge = "18446744073709551615";
+        for refused in [
+            "nan", "inf", "-1", "nineteen", "", "19.96", "19.", ".9", "100", huge,
+        ] {
             assert_eq!(ceiling(refused), None, "{refused:?} was taken as a ceiling");
         }
     }

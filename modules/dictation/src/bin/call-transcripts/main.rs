@@ -195,8 +195,11 @@ fn act(args: &[String]) -> Result<(), Failure> {
         ["score", model, set, ceiling] => match score::ceiling(ceiling) {
             Some(most) => score::score(Path::new(model), Path::new(set), Some(most)),
             None => {
-                return Err(Failure::new(Exit::Usage, "the ceiling is a percentage")
-                    .try_this(format!("call-transcripts score {model} {set} 19")));
+                return Err(Failure::new(
+                    Exit::Usage,
+                    "the ceiling is a percentage below 100, to one place at most",
+                )
+                .try_this(format!("call-transcripts score {model} {set} 19")));
             }
         },
         // The kit has refused a word no subcommand answers to, so only a
