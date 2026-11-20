@@ -5,6 +5,7 @@
 .import "../Standing.js" as Standing
 .import "../Cameras.js" as Cameras
 .import "../Seen.js" as Seen
+.import "../TalkOn.js" as TalkOn
 
 function run(failures) {
     let asked = 0;
@@ -300,5 +301,21 @@ function run(failures) {
     machine("a camera's other facts", cameraSplit.rest.map(shown => shown.name),
         ["streaming", "field of view", "USB", "firmware"]);
     machine("a camera with no facts", Cameras.formats(undefined), { modes: [], rest: [] });
+
+    // Ask talks a question over with the orchestrator running first in how
+    // sessions stand, as the agents daemon ranks them, whatever order the
+    // Orchestrators place lists them in; one not ranked yet goes last.
+    const orchestrator = named => ({ one: { address: named }, session: { address: named } });
+    const ranks = new Map([["KELP", 3], ["REEF", 0], ["TERN", 0]]);
+    const ranked = named => ranks.get(named);
+    const talkTo = (listed, rankOf) => TalkOn.firstToTalk(listed.map(orchestrator),
+        running => rankOf(running.address))?.one.address ?? null;
+    machine("Ask talks to the one needing Joel, though listed after one working",
+        talkTo(["KELP", "REEF", "TERN"], ranked), "REEF");
+    machine("one the daemon hasn't ranked goes after one it has",
+        talkTo(["SKUA", "KELP"], ranked), "KELP");
+    machine("none ranked, the first listed",
+        talkTo(["SKUA", "GULL"], () => undefined), "SKUA");
+    machine("none running, none to talk to", talkTo([], () => 0), null);
     return asked;
 }

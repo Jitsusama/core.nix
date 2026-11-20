@@ -31,6 +31,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "TalkOn.js" as TalkOn
 
 Provider {
     id: provider
@@ -171,8 +172,8 @@ Provider {
     // Talking it over with an orchestrator (P9R1KI, 2026-10-26: a row
     // under Ask's answer sending the question on to it): the first one
     // running in the one order of how sessions stand, as the agents
-    // daemon's rows rank them (modules/agents/src/standing.rs), so
-    // one waiting on Joel comes first. Its words go to its inbox as Talk's
+    // daemon's rows rank them (TalkOn.js), so one waiting on Joel comes
+    // first. Its words go to its inbox as Talk's
     // do, and the launcher lands inside its row in Agents, where the talk
     // says how it went as its session replies. With none running, there's
     // no row.
@@ -185,9 +186,7 @@ Provider {
             .map(one => ({ one, session: Sessions.running.find(session => session.address
                 === one.address) ?? null }))
             .filter(each => each.session !== null) : [];
-        const first = running.map((each, at) => Object.assign({ at,
-            rank: agents.rankOf(each.session) }, each))
-            .sort((a, b) => a.rank - b.rank || a.at - b.at)[0] ?? null;
+        const first = TalkOn.firstToTalk(running, session => agents.rankOf(session));
         if (first === null)
             return [];
         const session = first.session;
