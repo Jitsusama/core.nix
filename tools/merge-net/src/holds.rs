@@ -17,11 +17,20 @@
 //! word (`NETS_WORK`), so "rebooted" and "deploying" count, and by a few
 //! words matched whole (`NETS_WORDS`); a hold that stops everything, as
 //! "start nothing", names the net's work too. A sentence saying what goes
-//! on (`FREES`), as "it doesn't hold builds", names the net's work only to
-//! free it, unless it holds something as well (`HOLDING`), as "documents
-//! are fine but start no builds" does. A renewal is about whatever the
-//! hold it replaces was about. This reads the hold's words, a stopgap
-//! until a hold carries its scope in a field of its own.
+//! on, as "it doesn't hold builds" or "Slack is fine", frees only what its
+//! phrase is said of in its own clause (`FREES_AFTER`, `FREES_BEFORE`), so
+//! a reboot beside it still holds, and frees nothing when it holds
+//! something as well (`HOLDING`), as "documents are fine but start no
+//! builds" does. Only a list after "doesn't hold" frees an event such as a
+//! reboot (`EVENTS`). A renewal that doesn't restate its subject, as "no
+//! quest" or "Slack only" beside it do, is about whatever the hold it
+//! replaces was about, and stops the net when that hold can't be found.
+//! This reads
+//! the hold's words, a stopgap until a hold carries its scope in a field of
+//! its own.
+
+use std::collections::HashSet;
+use std::sync::{Mutex, PoisonError};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,45 +40,102 @@ use serde_json::Value;
 /// The groups a hold for the whole machine goes to.
 const EVERYONE: [&str; 2] = ["#machine", "#all"];
 
-/// Words naming a hold's subject that the net never touches. All but the
-/// last name it outright; "quest" is said of much else too.
-const ELSEWHERE: [&str; 6] = [
-    "conclude",
-    "concluding",
-    "retire",
-    "retiring",
-    "slack",
-    "quest",
+/// Words naming a hold's subject that the net never touches. "Quest" is
+/// none, since "for every quest" opens holds on anything.
+const ELSEWHERE: [&str; 5] = ["conclude", "concluding", "retire", "retiring", "slack"];
+
+/// How a sentence opens that says when its hold ends rather than what it
+/// holds, as "It stays until the Mac's update lands" does.
+const TERMS: [&str; 7] = [
+    "it stays",
+    "this stays",
+    "the hold stays",
+    "it lasts",
+    "this lasts",
+    "it ends when",
+    "this ends when",
 ];
+
+/// Words that, in a sentence saying when its hold ends, say it holds
+/// something too, as "it stays until 22:00: start no builds" does. Words
+/// of time, as "after" is, are no such word there.
+const TERM_HOLDS: [&str; 12] = [
+    "no", "nothing", "not", "never", "don", "won", "hold", "stop", "wait", "avoid", "leave",
+    "pause",
+];
+
+/// The net's own names, which hold it in a sentence freeing nothing and
+/// are neutral in one freeing something, since a hold names the net there
+/// only to say it carries on.
+const NETS_NAMES: [&str; 2] = ["merge-net", "merge net"];
 
 /// The starts of words naming what the net does, what a hold on it would
 /// be about, or a hold on everything.
-const NETS_WORK: [&str; 35] = [
+const NETS_WORK: [&str; 41] = [
     "build", "rebuild", "eval", "offload", "test", "merg", "revert", "switch", "restart", "reboot",
     "suspend", "sleep", "shut", "power", "halt", "heavy", "park", "push", "upload", "fetch",
     "quiet", "load", "daemon", "deploy", "compil", "cargo", "disk", "memory", "stop", "paus",
-    "freez", "drain", "job", "run", "start",
+    "freez", "drain", "job", "run", "start", "boot", "kernel", "upgrad", "roll", "firmware",
+    "flash",
 ];
+
+/// Phrases naming the net's work in words too common to count alone, as
+/// "lands" and "down" are.
+const NETS_PHRASES: [&str; 5] = ["on main", "to main", "goes down", "go down", "going down"];
 
 /// Short words naming the net's work, matched whole, since their starts
 /// begin everyday words too, as "gate" begins the Tool Gateway.
-const NETS_WORDS: [&str; 9] = [
-    "nix", "vm", "vms", "cpu", "net", "gate", "gates", "ci", "ram",
+const NETS_WORDS: [&str; 10] = [
+    "nix", "vm", "vms", "cpu", "net", "gate", "gates", "ci", "ram", "kvm",
 ];
 
 /// Words that, in a sentence freeing something, say it holds something
 /// too, so the sentence is read for what it holds after all.
-const HOLDING: [&str; 12] = [
-    "no", "nothing", "not", "never", "stop", "don", "until", "but", "except", "wait", "avoid",
-    "hold",
+const HOLDING: [&str; 20] = [
+    "no", "nothing", "not", "never", "stop", "don", "won", "until", "till", "unless", "but",
+    "except", "wait", "avoid", "hold", "while", "once", "after", "before", "from",
 ];
 
-/// What a sentence says to leave something alone rather than hold it.
-/// `HOLDING` is read in what remains once these are taken out.
-const FREES: [&str; 9] = [
-    "doesn't hold",
-    "does not hold",
-    "don't hold",
+/// The starts of words naming what happens to the machine, which only a
+/// list after "doesn't hold" frees: "the laptop reboots and Slack is fine"
+/// holds.
+const EVENTS: [&str; 13] = [
+    "reboot", "boot", "suspend", "sleep", "shut", "power", "halt", "kernel", "upgrad", "roll",
+    "firmware", "flash", "freez",
+];
+
+/// What a sentence says to leave alone what follows, up to its next such
+/// phrase or clause (`AFTER_ENDS`): a list, whose items are at most `FEW`
+/// words each, since a longer one may be a clause of its own. `HOLDING` is
+/// read in what remains once these are taken out.
+const FREES_AFTER: [&str; 3] = ["doesn't hold", "does not hold", "don't hold"];
+
+/// Where what "doesn't hold" frees ends: a clause of its own begins.
+const AFTER_ENDS: [&str; 6] = [", and ", " and ", ", so ", ", but ", ", while ", ", then "];
+
+/// The most words an item of what "doesn't hold" frees may have, as "pi
+/// host cuts" does; "the laptop reboots at 21:00" is a clause.
+const FEW: usize = 3;
+
+/// Words opening a clause rather than an item of a list, after its first:
+/// "Slack, the laptop reboots" frees only Slack. An item of more than one
+/// word naming the net's work is a clause too, as "the Mac reboots" is
+/// with no article.
+const CLAUSE_OPENS: [&str; 7] = ["the", "a", "an", "my", "our", "its", "this"];
+
+/// The most words before "is fine" it frees, as "concluding or retiring a
+/// document is fine" does.
+const FEW_BEFORE: usize = 5;
+
+/// Where what "is fine" frees begins, read back from it.
+const BEFORE_BEGINS: [&str; 7] = [
+    ", and ", " and ", ", so ", ", but ", ", while ", ", then ", ", ",
+];
+
+/// What a sentence says to leave alone what comes before it, back to its
+/// last such phrase or clause (`BEFORE_BEGINS`), unless that is more than
+/// `FEW_BEFORE` words or names one of the `EVENTS`.
+const FREES_BEFORE: [&str; 6] = [
     "not held",
     "carry on",
     "carries on",
@@ -78,11 +144,105 @@ const FREES: [&str; 9] = [
     "unaffected",
 ];
 
+/// What of `sentence` is left holding once what it frees is taken out: the
+/// words after "doesn't hold", or before "carries on", as far as the phrase
+/// or clause beside it. A sentence still naming a holding word once its
+/// phrases are gone is left whole, and what comes before "carries on" is
+/// kept when it names an `event`.
+fn held_part(
+    sentence: &str,
+    holding: impl Fn(&str) -> bool,
+    event: impl Fn(&str) -> bool,
+    work: impl Fn(&str) -> bool,
+) -> String {
+    let mut found: Vec<(usize, usize, bool)> = FREES_AFTER
+        .iter()
+        .map(|phrase| (phrase, true))
+        .chain(FREES_BEFORE.iter().map(|phrase| (phrase, false)))
+        .flat_map(|(phrase, after)| {
+            sentence
+                .match_indices(phrase)
+                .map(move |(at, _)| (at, at + phrase.len(), after))
+        })
+        .collect();
+    if found.is_empty() {
+        return sentence.to_owned();
+    }
+    found.sort_unstable();
+    let mut unphrased = sentence.to_owned();
+    for phrase in FREES_AFTER.iter().chain(&FREES_BEFORE) {
+        unphrased = unphrased.replace(phrase, " ");
+    }
+    if holding(&unphrased) {
+        return sentence.to_owned();
+    }
+    let count = |part: &str| {
+        part.split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .count()
+    };
+    let mut kept = vec![true; sentence.len()];
+    for (index, &(start, end, after)) in found.iter().enumerate() {
+        let (from, to) = if after {
+            let phrase = found.get(index + 1).map_or(sentence.len(), |next| next.0);
+            let clause = AFTER_ENDS
+                .iter()
+                .filter_map(|ends| sentence[end..].find(ends).map(|at| end + at))
+                .min()
+                .unwrap_or(sentence.len());
+            // What it frees is a list, of items split by ", " and " or ";
+            // it ends before the first item of more than `FEW` words, as a
+            // clause spliced on is, or a later one that opens as a clause
+            // does.
+            let mut to = phrase.min(clause);
+            let mut item = end;
+            while item < to {
+                let (stops, next) = [", ", " or "]
+                    .iter()
+                    .filter_map(|split| sentence[item..to].find(split).map(|at| (at, split.len())))
+                    .min()
+                    .map_or((to, to), |(at, len)| (item + at, item + at + len));
+                // The item without the word or comma that splits it off.
+                let part = &sentence[item..stops];
+                let opens = part
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .find(|word| !word.is_empty())
+                    .is_some_and(|word| CLAUSE_OPENS.contains(&word));
+                let clause = count(part) > 1 && work(part);
+                if count(part) > FEW || (item > end && opens) || clause {
+                    to = item;
+                }
+                item = next;
+            }
+            (start, to)
+        } else {
+            let phrase = index.checked_sub(1).map_or(0, |last| found[last].1);
+            let clause = BEFORE_BEGINS
+                .iter()
+                .filter_map(|begins| sentence[..start].rfind(begins).map(|at| at + begins.len()))
+                .max()
+                .unwrap_or(0);
+            let from = phrase.max(clause).min(start);
+            if count(&sentence[from..start]) > FEW_BEFORE || event(&sentence[from..start]) {
+                continue;
+            }
+            (from, end)
+        };
+        kept[from.min(start)..to.max(end)].fill(false);
+    }
+    sentence
+        .char_indices()
+        .map(|(at, c)| if kept[at] { c } else { ' ' })
+        .collect()
+}
+
 /// Whether a hold's `text` is about the net's work: a sentence that holds
 /// something names some of it, or the hold names no subject the net is
 /// known to be clear of.
 fn about_the_net(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
+    // A typographic apostrophe is read as a plain one, so "doesn’t hold"
+    // frees as "doesn't hold" does.
+    let lower = text.to_ascii_lowercase().replace('\u{2019}', "'");
     let words = |part: &str| -> Vec<String> {
         part.split(|c: char| !c.is_ascii_alphanumeric())
             .map(str::to_owned)
@@ -90,35 +250,81 @@ fn about_the_net(text: &str) -> bool {
     };
     let names = |part: &str, set: &[&str]| words(part).iter().any(|w| set.contains(&w.as_str()));
     let nets_work = |part: &str| {
-        words(part).iter().any(|word| {
-            NETS_WORDS.contains(&word.as_str())
-                || NETS_WORK.iter().any(|start| word.starts_with(start))
-        })
+        // Padded, so "on main" never matches "on maintenance".
+        let spaced: Vec<String> = words(part).into_iter().filter(|w| !w.is_empty()).collect();
+        let spaced = format!(" {} ", spaced.join(" "));
+        NETS_PHRASES
+            .iter()
+            .any(|phrase| spaced.contains(&format!(" {phrase} ")))
+            || words(part).iter().any(|word| {
+                NETS_WORDS.contains(&word.as_str())
+                    || NETS_WORK.iter().any(|start| word.starts_with(start))
+            })
     };
-    // A sentence only frees when, its freeing words taken out, nothing in
-    // it still holds.
-    let frees = |sentence: &str| {
-        let mut rest = sentence.to_owned();
-        let mut freed = false;
-        for phrase in FREES {
-            if rest.contains(phrase) {
-                freed = true;
-                rest = rest.replace(phrase, " ");
-            }
+    let event = |part: &str| {
+        words(part)
+            .iter()
+            .any(|word| EVENTS.iter().any(|start| word.starts_with(start)))
+    };
+    // A colon splits no sentence, since it splits a time in two too. A
+    // sentence saying when its hold ends is read only for a word that holds
+    // something beside the net's work, since its end is often a switch.
+    let holds_its_work = lower.split(['.', ';', '!', '?']).any(|sentence| {
+        // Its own opening, as "the hold stays", holds nothing.
+        if let Some(term) = TERMS
+            .iter()
+            .find(|term| sentence.trim_start().starts_with(*term))
+        {
+            let rest = &sentence.trim_start()[term.len()..];
+            return names(rest, &TERM_HOLDS) && nets_work(rest);
         }
-        freed && !names(&rest, &HOLDING)
-    };
-    let holds_its_work = lower
-        .split(['.', ';', '!', '?', ':'])
-        .filter(|sentence| !frees(sentence))
-        .any(nets_work);
+        // The net's name holds it in a sentence freeing nothing, and is
+        // neutral in one freeing something, as "so merge-net and the
+        // trains carry on" is.
+        let frees = FREES_AFTER
+            .iter()
+            .chain(&FREES_BEFORE)
+            .any(|p| sentence.contains(p));
+        if !frees && NETS_NAMES.iter().any(|name| sentence.contains(name)) {
+            return true;
+        }
+        let mut unnamed = sentence.to_owned();
+        for name in NETS_NAMES {
+            unnamed = unnamed.replace(name, "it");
+        }
+        let held = held_part(&unnamed, |rest| names(rest, &HOLDING), event, nets_work);
+        // Kept whole, the sentence holds something too, and its name for
+        // the net is what it holds, as "Slack is fine, but hold merge-net
+        // until 22:00" does.
+        (held == unnamed && NETS_NAMES.iter().any(|name| sentence.contains(name)))
+            || nets_work(&held)
+    });
     holds_its_work || !names(&lower, &ELSEWHERE)
 }
 
+/// Whether `text` restates what it holds: "no quest", or "only" right
+/// beside a subject the net never touches, as "conclude or retire no
+/// quest" and "this covers Slack only" do. "My Slack hold, no change"
+/// restates nothing.
+fn restates(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect();
+    words.windows(2).any(|pair| {
+        (pair[0] == "no" && pair[1].starts_with("quest"))
+            || (ELSEWHERE.contains(&pair[0]) && pair[1] == "only")
+            || (pair[0] == "only" && ELSEWHERE.contains(&pair[1]))
+    })
+}
+
 /// Whether `hold` is about the net's work, or is a renewal saying too
-/// little to stand alone whose hold it replaces is. A renewal naming its
-/// subject outright, as "conclude or retire no quest" does, says all it
-/// holds, so a switch the hold it replaces mentioned in passing is dropped.
+/// little to stand alone whose hold it replaces is, or can't be found. A
+/// renewal restating its subject, as "conclude or retire no quest" does,
+/// says all it holds, so a switch the hold it replaces mentioned in passing
+/// is dropped; one naming it only, as "renewing the conclude hold until
+/// 21:00" does, keeps what that hold held.
 fn about(hold: &Value, messages: &[Value]) -> bool {
     let mut at = hold;
     // A chain of renewals is short; the bound keeps a loop of them finite.
@@ -127,19 +333,15 @@ fn about(hold: &Value, messages: &[Value]) -> bool {
         if about_the_net(text) {
             return true;
         }
-        let lower = text.to_ascii_lowercase();
-        let outright = lower
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .any(|word| ELSEWHERE[..ELSEWHERE.len() - 1].contains(&word));
-        if outright {
+        if restates(text) || !at["supersedes"].is_string() {
             return false;
         }
         let renewed = messages
             .iter()
             .find(|earlier| earlier["from"] == at["from"] && earlier["id"] == at["supersedes"]);
         match renewed {
-            Some(earlier) if at["supersedes"].is_string() => at = earlier,
-            _ => return false,
+            Some(earlier) => at = earlier,
+            None => return true,
         }
     }
     true
@@ -198,26 +400,63 @@ pub fn standing(folder: &Path, since: u64) -> Option<String> {
         .collect();
     sent.sort_by_key(|(at, _)| *at);
     let messages: Vec<Value> = sent.into_iter().map(|(_, message)| message).collect();
+    let mut said = SAID.lock().unwrap_or_else(PoisonError::into_inner);
+    for hold in passed_by(&messages) {
+        let id = hold["id"].as_str().unwrap_or_default();
+        if said.get_or_insert_with(HashSet::new).insert(id.to_owned()) {
+            // A newline in a hold would otherwise read as a journal line of
+            // its own.
+            let plain = |said: &str, most: usize| -> String {
+                said.chars()
+                    .take(most)
+                    .map(|c| if c.is_control() { ' ' } else { c })
+                    .collect()
+            };
+            let text = plain(hold["text"].as_str().unwrap_or_default(), 240);
+            let id = plain(id, 40);
+            eprintln!("merge-net: passing by hold {id}, not about its work: {text}");
+        }
+    }
     still_held(&messages)
 }
 
-/// The first hold on the whole machine among `messages` that no later one
-/// from its sender answers or replaces.
-pub fn still_held(messages: &[Value]) -> Option<String> {
-    messages.iter().find_map(|hold| {
+/// The holds the net has said it passes by. A misread hold would otherwise
+/// be as silent as the stall it fixes, so each is said once, in the net's
+/// journal.
+static SAID: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+/// The holds on the whole machine among `messages` that no later one from
+/// its sender answers or replaces.
+fn standing_holds(messages: &[Value]) -> impl Iterator<Item = &Value> {
+    messages.iter().filter(|hold| {
         let everyone = hold["to"].as_array().is_some_and(|to| {
             to.iter()
                 .any(|group| EVERYONE.iter().any(|name| group == name))
         });
-        if hold["intent"] != "hold" || !everyone || !about(hold, messages) {
-            return None;
-        }
-        let ended = messages.iter().any(|later| {
-            later["from"] == hold["from"]
-                && (later["re"] == hold["id"] || later["supersedes"] == hold["id"])
-        });
-        (!ended).then(|| hold["text"].as_str().unwrap_or_default().to_owned())
+        let ended = || {
+            messages.iter().any(|later| {
+                later["from"] == hold["from"]
+                    && (later["re"] == hold["id"] || later["supersedes"] == hold["id"])
+            })
+        };
+        hold["intent"] == "hold" && everyone && !ended()
     })
+}
+
+/// The first hold on the whole machine among `messages` still standing and
+/// about the net's work.
+pub fn still_held(messages: &[Value]) -> Option<String> {
+    standing_holds(messages)
+        .find(|hold| about(hold, messages))
+        .map(|hold| hold["text"].as_str().unwrap_or_default().to_owned())
+}
+
+/// The holds on the whole machine among `messages` still standing that the
+/// net passes by.
+fn passed_by(messages: &[Value]) -> Vec<&Value> {
+    standing_holds(messages)
+        .filter(|hold| !about(hold, messages))
+        .collect()
 }
 
 #[cfg(test)]
@@ -252,15 +491,102 @@ mod tests {
             "P9R1KI, renewing the Slack hold: read and send Slack only through the Tool \
              Gateway's slack tools. This covers Slack only. It doesn't hold builds, merges, \
              switches or anything else, so merge-net and the trains carry on.",
+            // A sentence saying when the hold ends is its term, not what it
+            // holds, so the Mac's switch named there holds nothing.
+            "WCJQSG (renewing 1e21f0d9): read and send Slack only through the Tool Gateway's \
+             slack tools (mcp__tool_gateway slack_*). Use no harness `slack` tool, no other \
+             Slack MCP and no direct slack.com call, until I end this hold. The drafts-only \
+             rule is unchanged: send nothing. This covers Slack only. It doesn't hold builds, \
+             merges, switches, reboots, uploads, pi host cuts or anything else. It stays \
+             until ISXEG8's Slack change is live on both machines: the laptop has the \
+             config now, the Mac switches about 21:45 to 22:15, and the harness half (#1871) comes \
+             at each machine's next pi update after about 21:30.",
+            "WCJQSG (renewing 1e21f0d9, rewording a0c38bfb): read and send Slack only through \
+             the Tool Gateway's slack tools (mcp__tool_gateway slack_*). This covers Slack \
+             only, and nothing else of anyone's work. It stays until ISXEG8's Slack change is \
+             live on both machines: the laptop has the config now, the Mac's update lands \
+             about 21:45 to 22:15.",
+            "WCJQSG (renewing 45a21014): conclude or retire no quest, on either machine, \
+             until I end this hold. Concluding or retiring a document is fine. This covers \
+             concluding and retiring quests only. It doesn't hold builds, merges, switches, \
+             reboots, uploads, pi host cuts or anything else. It stays until the quest-share \
+             hotfix is live on both machines (about 20:45) and the restore of the 16 \
+             set-aside quests is checked, on the laptop by about 21:30.",
+            "WCJQSG (renewing 8950e683): conclude or retire no quest, on either machine, \
+             until I end this hold. Concluding or retiring a document is fine. It stays until \
+             KP0L6A's restore of the set-aside quests is checked on both machines. The \
+             laptop's was checked at 22:51; the Mac's comes about 23:30, after the Mac's \
+             update lands. After that it narrows, not ends: no parent quest concluded or \
+             retired, and no concluded quest reopened, until Fri 20 18:00.",
+            "Conclude no quest. The hold stays until the Mac switches at 22:00.",
         ] {
             assert_eq!(still_held(&[saying(text)]), None, "held by: {text}");
+            // A renewal passes on what it restates, even once the hold it
+            // renews is gone, as it is after a reboot.
+            let mut renewal = saying(text);
+            renewal["supersedes"] = json!("gone");
+            assert_eq!(still_held(&[renewal]), None, "held as a renewal: {text}");
         }
     }
 
-    // Each names a quest too, so what holds it is the net's work it names,
-    // not a hold naming no subject.
+    // The 20:07 renewal as sent, with a typographic apostrophe, passes.
+    #[test]
+    fn a_typographic_apostrophe_frees_as_a_plain_one_does() {
+        let text = "WCJQSG: conclude or retire no quest. It doesn\u{2019}t hold builds, merges, \
+                    switches or reboots.";
+        assert_eq!(still_held(&[saying(text)]), None);
+    }
+
+    // Each case is read with a subject the net never touches beside it too,
+    // so what holds it is the net's work it names, not a hold naming none.
     #[test]
     fn a_hold_on_the_nets_work_still_stops_it() {
+        let subjected = |text: &str| format!("Conclude no quest. {text}");
+        for text in [
+            // A freeing phrase frees only its own clause, and only a list
+            // after "doesn't hold" frees a reboot.
+            "It doesn't hold Slack, and the laptop reboots at 21:00.",
+            "It doesn't hold Slack and the laptop reboots at 21:00.",
+            "It doesn't hold Slack, the laptop reboots at 21:00.",
+            "It doesn't hold Slack - the laptop reboots at 21:00.",
+            "It doesn't hold Slack, the laptop's builds go elsewhere tonight.",
+            "It doesn't hold Slack, the laptop reboots.",
+            "It doesn't hold merges, the Mac restarts.",
+            "It doesn't hold Slack, laptop reboots tonight.",
+            "It doesn't hold Slack, Mac restarts.",
+            // A sentence saying when the hold ends still holds what it
+            // says to stop.
+            "It stays until 22:00: start no builds.",
+            "It stays until the Mac is back, and don't merge till then.",
+            // A sentence freeing something that holds something as well
+            // holds the net by name.
+            "Slack is fine, but hold merge-net until 22:00.",
+            "Slack is fine, but leave merge-net alone until 22:00.",
+            // A hold naming the net, in a sentence freeing nothing, holds it
+            // whatever its verb.
+            "Hold merge-net till 22:00.",
+            "Leave the merge net alone until Slack is back.",
+            "Merge-net stays paused till 21:00.",
+            "The laptop reboots tonight and Slack is fine.",
+            "The laptop switches tonight and Slack is fine.",
+            "A rebuild runs, and Slack is fine.",
+            "Builds are fine from 21:00.",
+            "Rebooting the laptop is fine.",
+            // A freeing sentence saying when holds something after all.
+            "Switches are fine once the hotfix is live.",
+            "Merges carry on after 21:00.",
+            "Builds are fine before 21:00, not after.",
+            "Builds are fine till 21:00.",
+            "Merges carry on unless Joel says so.",
+            "Switches are fine while Joel is away.",
+        ] {
+            let text = subjected(text);
+            assert_eq!(
+                still_held(&[saying(&text)]),
+                Some(text.clone()),
+                "not held by: {text}"
+            );
+        }
         for text in [
             "16V6F4, for every quest: the laptop rebooted; start no rebuild until I end this.",
             "P9R1KI, for every quest: Joel is shutting the laptop down. Start nothing.",
@@ -277,6 +603,16 @@ mod tests {
             "P9R1KI, for every quest: merge nothing into any repository, on either machine, \
              until I end this hold at 17:00.",
             "P9R1KI, for every quest: Joel is on a call. Start nothing heavy on the laptop.",
+        ] {
+            for text in [text.to_owned(), subjected(text)] {
+                assert_eq!(
+                    still_held(&[saying(&text)]),
+                    Some(text.clone()),
+                    "not held by: {text}"
+                );
+            }
+        }
+        for text in [
             // A hold that names neither its subject nor the net's work is
             // read as being about everything, so the net fails closed.
             "P9R1KI: stop now, until I end this hold.",
@@ -285,6 +621,17 @@ mod tests {
             // A sentence freeing one thing frees nothing in the others.
             "P9R1KI: conclude no quest and start no VM tests; documents are fine. \
              Everything else carries on.",
+            // "For every quest" names no subject, so a hold worded in no
+            // word the net knows still stops it.
+            "P9R1KI, for every quest: Joel is flashing new firmware. Hold off for now.",
+            "P9R1KI, for every quest: hold everything until 21:00.",
+            // What a sentence frees is what its phrase is said of, so a
+            // reboot beside it still holds.
+            "P9R1KI: retire no quest. Slack is fine, and the laptop reboots at 21:00.",
+            "P9R1KI: retire no quest. It doesn't hold Slack; the laptop goes down at 21:00.",
+            "P9R1KI: conclude nothing. Documents are fine till the kernel upgrade.",
+            "P9R1KI: conclude nothing while the core lock lands on main.",
+            "P9R1KI: retire no quest. A rollback of the laptop is coming; boot nothing new.",
         ] {
             assert_eq!(
                 still_held(&[saying(text)]),
@@ -301,13 +648,39 @@ mod tests {
         let first = json!({ "id": "h1", "from": "A", "to": ["#machine"], "intent": "hold",
             "text": "A: start no VM tests until I end this." });
         let renewed = json!({ "id": "h2", "from": "A", "to": ["#machine"], "intent": "hold",
-            "supersedes": "h1", "text": "A, renewing my quest hold above until 21:00." });
+            "supersedes": "h1", "text": "A, renewing my conclude hold until 21:00." });
         assert_eq!(
             still_held(&[first, renewed.clone()]),
-            Some("A, renewing my quest hold above until 21:00.".to_owned())
+            Some("A, renewing my conclude hold until 21:00.".to_owned()),
+            "a renewal naming its subject but not restating it dropped the builds"
         );
-        assert_eq!(still_held(std::slice::from_ref(&renewed)), None);
-        // One naming its subject outright drops what the first mentioned.
+        // "No change" beside the hold, not its subject, restates nothing.
+        for text in [
+            "A, renewing my conclude hold, no change, until 21:00.",
+            "A, renewing my conclude hold until 21:00; nothing else changed.",
+            "A, renewing my hold on Slack, no change.",
+            "A, renewing concluding, nothing else changed.",
+        ] {
+            let renewed = json!({ "id": "h2", "from": "A", "to": ["#machine"],
+                "intent": "hold", "supersedes": "h1", "text": text });
+            let first = json!({ "id": "h1", "from": "A", "to": ["#machine"],
+                "intent": "hold", "text": "A: start no VM tests until I end this." });
+            assert_eq!(still_held(&[first, renewed]), Some(text.to_owned()));
+        }
+        // One whose hold isn't to be found, as one sent before a reboot,
+        // can't say what it renews, so it stops the net.
+        assert_eq!(
+            still_held(std::slice::from_ref(&renewed)),
+            Some("A, renewing my conclude hold until 21:00.".to_owned())
+        );
+        let fresh = json!({ "id": "s", "from": "A", "to": ["#machine"], "intent": "hold",
+            "text": "A: the Slack token rotates until 21:00." });
+        assert_eq!(
+            still_held(&[fresh]),
+            None,
+            "a hold renewing none was read as one"
+        );
+        // One restating its subject outright drops what the first mentioned.
         let conclude = json!({ "id": "c1", "from": "A", "to": ["#machine"], "intent": "hold",
             "text": "A: conclude no quest; at 18:00 both machines switch." });
         let restated = json!({ "id": "c2", "from": "A", "to": ["#machine"], "intent": "hold",
@@ -316,9 +689,15 @@ mod tests {
         let slack = saying("A: send Slack only through the gateway's tools.");
         let builds = json!({ "id": "b", "from": "B", "to": ["#machine"], "intent": "hold",
             "text": "B, for every quest: start no builds." });
+        let both = [slack, builds];
         assert_eq!(
-            still_held(&[slack, builds]),
+            still_held(&both),
             Some("B, for every quest: start no builds.".to_owned())
+        );
+        assert_eq!(
+            passed_by(&both),
+            [&both[0]],
+            "the Slack hold wasn't the one passed by"
         );
     }
 
