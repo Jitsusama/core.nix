@@ -3003,9 +3003,9 @@ Provider {
         // or the row's own name once that's read or has no summary.
         const leading = latelyBands(Date.now()).bands.map(band => band.source)
             .find(source => latelyComingIn({ forYou: { source: source } })) ?? null;
+        const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
         const critical = leading === null ? ""
-            : String((latelyCriticalHeld[leading] ?? [])[0]?.summary ?? "")
-                || Words.name(`for-you:source:${leading}`);
+            : String(held[0]?.summary ?? "") || Words.name(`for-you:source:${leading}`);
         const asked = sessions.length > 0 && critical === "";
         const lead = sessions.length === 0 && critical === ""
             ? WaitingOnYou.now[0] ?? null : null;
@@ -3019,7 +3019,9 @@ Provider {
         }
         const minutes = typeof lead?.minutes === "number"
             ? waitingSaid("minutes", { minutes: lead.minutes }) : "";
-        const more = toDoCount - 1;
+        // What it names is one of what needs him now, but for a row whose
+        // notice is read while the launcher is open, which nothing counts.
+        const more = toDoCount - (critical !== "" && held.length === 0 ? 0 : 1);
         return [{ said: title, keep: 1, words: true, stays: true },
             { said: minutes, keep: 2, stays: true },
             { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]
