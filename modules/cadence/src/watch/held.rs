@@ -40,9 +40,11 @@ pub fn read(held: &str) -> Option<NetHeld> {
 }
 
 /// The net held by one hold past [`STALLED_MIN`] while main gained merges
-/// since it began, said once for the hold, keyed by when the net first
-/// found it and naming what it says. Only a hold the net still finds
-/// counts.
+/// since it began, said once for each holder, keyed by when the net first
+/// found the stop and who holds it, and naming what it says. The net keeps
+/// one `since` while one hold follows another, so without its holder a
+/// second hold in the same stop would never be asked. Only a hold the net
+/// still finds counts.
 pub fn stalled(s: &Snapshot) -> Option<Breach> {
     let hold = s.net_held_since.as_ref().filter(|_| still_found(s))?;
     let minutes = (s.now - hold.since) / 60;
@@ -57,7 +59,11 @@ pub fn stalled(s: &Snapshot) -> Option<Breach> {
     let why: String = hold.why.chars().take(240).collect();
     let noun = if merged == 1 { "merge" } else { "merges" };
     Some(Breach {
-        key: format!("netheld:{}", hold.since),
+        key: format!(
+            "netheld:{}:{}",
+            hold.since,
+            hold.from.as_deref().unwrap_or("pause")
+        ),
         text: format!(
             "the net has started nothing for {minutes} min while {merged} {noun} landed \
              untested, held by: {why}"
@@ -130,7 +136,11 @@ pub mod tests {
         let since = 100_000 - 31 * 60;
         let said = stalls(&held_for(31, &[since + 60, since + 120]));
         assert_eq!(said.len(), 1, "the stalled net wasn't said: {said:?}");
-        assert_eq!(said[0].key, format!("netheld:{since}"), "keyed by the hold");
+        assert_eq!(
+            said[0].key,
+            format!("netheld:{since}:P9R1KI"),
+            "keyed by the stop and its holder"
+        );
         assert!(
             said[0].text.contains("31 min")
                 && said[0].text.contains("2 merges")
@@ -146,8 +156,34 @@ pub mod tests {
         let later = stalls(&later);
         assert_eq!(
             later.iter().map(|b| b.key.as_str()).collect::<Vec<_>>(),
-            [format!("netheld:{since}")],
+            [format!("netheld:{since}:P9R1KI")],
             "the same hold was said under another key as it stood longer"
+        );
+    }
+
+    #[test]
+    fn a_new_holder_in_the_same_stop_is_asked_in_its_turn() {
+        // The net keeps `since` across holders while each write follows
+        // the last, so only who holds it tells a second hold from the first.
+        let since = 100_000 - 31 * 60;
+        let mut s = held_for(31, &[since + 60]);
+        let first = stalls(&s);
+        s.net_held_since.as_mut().expect("a hold").from = Some("OSPHT4".into());
+        let second = stalls(&s);
+        s.net_held_since.as_mut().expect("a hold").from = None;
+        let paused = stalls(&s);
+        let keys: Vec<&str> = [&first, &second, &paused]
+            .iter()
+            .flat_map(|said| said.iter().map(|b| b.key.as_str()))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                format!("netheld:{since}:P9R1KI"),
+                format!("netheld:{since}:OSPHT4"),
+                format!("netheld:{since}:pause"),
+            ],
+            "a second holder in the same stop was keyed as the first, so never asked"
         );
     }
 
