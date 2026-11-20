@@ -1085,6 +1085,13 @@ QtObject {
         // other half after it, as a title cut mid-pair leaves, a letter alone.
         holds("a letter of two units before a joiner leaves what follows in its place",
             Search.found("x", "\ud83d\ude00\u2060x"), [[3, 4]]);
+        holds("and half of it, found, is washed whole",
+            Search.found("\ud83d", "\ud83d\ude00\u2060x"), [[0, 2]]);
+        // A text read a letter at a time, for one that lowers longer, passes
+        // over a joiner as the fast way does. The pattern is lower case, as one
+        // with a capital is found by its case and never lowered.
+        holds("a letter that lowers longer is found across a joiner after it",
+            Search.found("i\u0307x", "\u0130\u2060x"), [[0, 3]]);
         holds("a half alone before a joiner leaves what follows in its place",
             Search.found("x", "\ud83d\u2060x"), [[2, 3]]);
         // A pattern of what's passed over alone is nothing to find, and
@@ -2053,25 +2060,33 @@ QtObject {
         holds("a part's pieces move right and down by what moved above them",
             Page.shifted([{ line: 3, x: 1, top: 10, base: 18, height: 9 }], 2, 5),
             [{ line: 3, x: 3, top: 15, base: 23, height: 9 }]);
-        const read = new Map([["one", [{ line: 0, x: 0, top: 4, base: 8 }]],
+        // Each case reads afresh, so a case that changed what it was given
+        // fails on its own name and no other.
+        const read = () => new Map([["one", [{ line: 0, x: 0, top: 4, base: 8 }]],
             ["acts", [{ line: 9, x: 0, top: 90, base: 94 }]]]);
         const kept = got => got ? Array.from(got) : got;
         holds("the parts shown keep their pieces, moved by what moved the parts' box",
-            kept(Page.partsKept(read, ["one"], { x: 0, y: 0 }, { x: 1, y: 6 })),
+            kept(Page.partsKept(read(), ["one"], { x: 0, y: 0 }, { x: 1, y: 6 })),
             [["one", [{ line: 0, x: 1, top: 10, base: 14 }]]]);
+        const given = read();
+        Page.partsKept(given, ["one"], { x: 0, y: 0 }, { x: 1, y: 6 });
+        holds("and leave the pieces they were read from where they were", kept(given),
+            kept(read()));
         holds("but none where a part shown wasn't read",
-            Page.partsKept(read, ["one", "two"], { x: 0, y: 0 }, { x: 0, y: 6 }), null);
-        holds("nor with no part shown", Page.partsKept(read, [], { x: 0, y: 0 }, { x: 0, y: 0 }),
-            null);
+            Page.partsKept(read(), ["one", "two"], { x: 0, y: 0 }, { x: 0, y: 6 }), null);
+        holds("nor with no part shown",
+            Page.partsKept(read(), [], { x: 0, y: 0 }, { x: 0, y: 0 }), null);
         holds("nor before the parts were read",
-            Page.partsKept(read, ["one"], undefined, { x: 0, y: 6 }), null);
+            Page.partsKept(read(), ["one"], undefined, { x: 0, y: 6 }), null);
         holds("a part laid keeps all but what it moves, while the parts stand where read",
-            kept(Page.keptStill(read, new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 0 })),
+            kept(Page.keptStill(read(), new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 0 })),
             [["one", [{ line: 0, x: 0, top: 4, base: 8 }]]]);
         holds("but keeps none once the parts' box has moved down since",
-            Page.keptStill(read, new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 6 }), null);
+            Page.keptStill(read(), new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 6 }), null);
         holds("or across",
-            Page.keptStill(read, new Set(["acts"]), { x: 0, y: 0 }, { x: 2, y: 0 }), null);
+            Page.keptStill(read(), new Set(["acts"]), { x: 0, y: 0 }, { x: 2, y: 0 }), null);
+        holds("or before the parts were read, as the parts shown keep none then",
+            Page.keptStill(read(), new Set(["acts"]), null, { x: 0, y: 0 }), null);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",
