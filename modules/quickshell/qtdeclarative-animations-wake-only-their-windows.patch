@@ -2,15 +2,16 @@ From: Joel Gerber <Jitsusama@users.noreply.github.com>
 Subject: [PATCH] Let a started animation wake only the windows it changes
 
 The threaded render loop asked every window it renders for a frame
-whenever an animation started. With more than one window shown, a
-system timer advances animations rather than a window's frame, so
-those frames advanced nothing and drew what each window already
-showed: a shell of six windows drew and presented five frames that
-changed nothing each time one of them began to move. Where that
-timer runs, a started animation now asks for no frames, since each
-item it changes asks its own window for one, and a render-thread
-animator syncs through its own window. With one window shown, where
-its frames advance the animations, it still asks as before.
+whenever an animation started. Unless one window alone is shown, on
+a vsync the loop trusts, a system timer advances animations rather
+than a window's frame, so those frames advanced nothing and drew
+what each window already showed: a shell of six windows drew and
+presented five frames that changed nothing each time one of them
+began to move. Where that timer runs, a started animation now asks
+for no frames, since each item it changes asks its own window for
+one, and a render-thread animator's start asks its own window to
+sync (QQuickAnimatorController::requestSync). Without the timer,
+where a window's frames advance the animations, it asks as before.
 
 ---
 --- a/src/quick/scenegraph/qsgthreadedrenderloop.cpp

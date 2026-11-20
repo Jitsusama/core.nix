@@ -89,7 +89,7 @@
     command = "${lib.getExe pkgs.bash} ${../tests/uncached-pictures-let-go-on-niri.sh} quickshell logs";
   };
 
-  # A window standing still draws no frame as another's animation starts, in
+  # A window standing still draws no frame as others' animations start, in
   # the shell's own Qt (qtdeclarative-animations-wake-only-their-windows.patch)
   # through its threaded render loop
   # (modules/quickshell/tests/still-windows-draw-nothing-as-animations-start-on-niri.sh).
