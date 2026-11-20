@@ -7,6 +7,16 @@
 //! a folder for each day and may leave a hold above its answer, so both
 //! levels are read: on 11 November one Monday hold, whose end had gone
 //! into its day's folder, stood again and held the net for half an hour.
+//!
+//! Not every hold on the machine is about the net's work. On 19 November
+//! holds on concluding quests and on reaching Slack stopped it for over
+//! three hours while 21 merges landed. So a hold passes the net by only
+//! when it names a subject that isn't the net's (`ELSEWHERE`) and none of
+//! the net's work (`NETS_WORK`); any other hold stops it, so one that says
+//! too little fails closed. A sentence saying what goes on (`FREES`), as
+//! "it doesn't hold builds", names the net's work only to free it. This
+//! reads the hold's words, a stopgap until a hold carries its scope in a
+//! field of its own.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,6 +25,97 @@ use serde_json::Value;
 
 /// The groups a hold for the whole machine goes to.
 const EVERYONE: [&str; 2] = ["#machine", "#all"];
+
+/// Words naming a hold's subject that the net never touches.
+const ELSEWHERE: [&str; 6] = [
+    "conclude",
+    "concluding",
+    "retire",
+    "retiring",
+    "slack",
+    "quest",
+];
+
+/// Words naming what the net does, or what a hold on it would be about.
+const NETS_WORK: [&str; 46] = [
+    "build",
+    "builds",
+    "building",
+    "builder",
+    "builders",
+    "nix",
+    "eval",
+    "evaluation",
+    "evaluations",
+    "offload",
+    "vm",
+    "vms",
+    "test",
+    "tests",
+    "gate",
+    "gates",
+    "merge",
+    "merges",
+    "merging",
+    "revert",
+    "reverts",
+    "switch",
+    "switches",
+    "switching",
+    "restart",
+    "restarts",
+    "restarting",
+    "reboot",
+    "reboots",
+    "rebooting",
+    "suspend",
+    "suspends",
+    "heavy",
+    "park",
+    "parked",
+    "parking",
+    "push",
+    "pushes",
+    "upload",
+    "fetch",
+    "fetches",
+    "quiet",
+    "load",
+    "cpu",
+    "net",
+    "daemon",
+];
+
+/// What a sentence says to leave something alone rather than hold it.
+const FREES: [&str; 9] = [
+    "doesn't hold",
+    "does not hold",
+    "don't hold",
+    "not held",
+    "carry on",
+    "carries on",
+    "is fine",
+    "are fine",
+    "unaffected",
+];
+
+/// Whether a hold's `text` is about the net's work: a sentence that holds
+/// something names some of it, or the hold names no subject the net is
+/// known to be clear of.
+fn about_the_net(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let words = |part: &str| -> Vec<String> {
+        part.split(|c: char| !c.is_ascii_alphanumeric())
+            .map(str::to_owned)
+            .collect()
+    };
+    let names = |part: &str, set: &[&str]| words(part).iter().any(|w| set.contains(&w.as_str()));
+    let holds_its_work = lower
+        .split(['.', ';', '!', '?'])
+        .filter(|sentence| !FREES.iter().any(|frees| sentence.contains(frees)))
+        .any(|sentence| names(sentence, &NETS_WORK));
+    holds_its_work || !names(&lower, &ELSEWHERE)
+}
 
 /// The mesh's messages folder.
 pub fn messages() -> PathBuf {
@@ -80,7 +181,8 @@ pub fn still_held(messages: &[Value]) -> Option<String> {
             to.iter()
                 .any(|group| EVERYONE.iter().any(|name| group == name))
         });
-        if hold["intent"] != "hold" || !everyone {
+        let text = hold["text"].as_str().unwrap_or_default();
+        if hold["intent"] != "hold" || !everyone || !about_the_net(text) {
             return None;
         }
         let ended = messages.iter().any(|later| {
@@ -98,6 +200,62 @@ mod tests {
 
     fn hold(id: &str, from: &str, to: &str) -> Value {
         json!({ "id": id, "from": from, "to": [to], "intent": "hold", "text": id })
+    }
+
+    fn saying(text: &str) -> Value {
+        json!({ "id": "h", "from": "A", "to": ["#machine"], "intent": "hold", "text": text })
+    }
+
+    // The four holds that stopped the net from 15:26 to past 18:35 on 19
+    // November, while 21 merges landed: none of them is about its work.
+    #[test]
+    fn a_hold_on_concluding_or_on_slack_leaves_the_net_alone() {
+        for text in [
+            "P9R1KI hold: conclude or retire no quest, on either machine, until I end this \
+             hold. Concluded quests' folders are being deleted. Everything else carries on.",
+            "P9R1KI, renewing the conclude hold: conclude or retire no quest, on either \
+             machine, until I end this hold. Documents are fine. The quest-share hotfix \
+             lands about 18:30.",
+            "P9R1KI, Joel's rule from 17:29, on both work machines: read and send Slack only \
+             through the Tool Gateway's slack tools (mcp__tool_gateway slack_*). Use no \
+             `slack` tool from the harness, and no direct slack.com call, until I end this \
+             hold.",
+            // A hold that says what it leaves alone names the net's work
+            // only to free it.
+            "P9R1KI, renewing the Slack hold: read and send Slack only through the Tool \
+             Gateway's slack tools. This covers Slack only. It doesn't hold builds, merges, \
+             switches or anything else, so merge-net and the trains carry on.",
+        ] {
+            assert_eq!(still_held(&[saying(text)]), None, "held by: {text}");
+        }
+    }
+
+    #[test]
+    fn a_hold_on_the_nets_work_still_stops_it() {
+        for text in [
+            "16V6F4: the input update's switch restarts nix-daemon on optimus. Start no new \
+             nix build, eval or nix-offload there run until I end this hold.",
+            "Integration (16V6F4): optimus switches now, and it restarts nix-daemon.",
+            "P9R1KI: Joel is rebooting optimus in about 15 minutes. Park anything that would \
+             die: local VM tests, gates.",
+            "P9R1KI: merge nothing into any repository, on either machine, until I end this \
+             hold at 17:00.",
+            "P9R1KI: Joel is on a call. Start nothing heavy on optimus.",
+            // A hold that names neither its subject nor the net's work is
+            // read as being about everything, so the net fails closed.
+            "P9R1KI: stop now, until I end this hold.",
+            // One that names a conclude and the net's work is about both.
+            "P9R1KI: conclude no quest, and start no build, until I end this hold.",
+            // A sentence freeing one thing frees nothing in the others.
+            "P9R1KI: conclude no quest and start no VM tests; documents are fine. \
+             Everything else carries on.",
+        ] {
+            assert_eq!(
+                still_held(&[saying(text)]),
+                Some(text.to_owned()),
+                "not held by: {text}"
+            );
+        }
     }
 
     #[test]
