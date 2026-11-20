@@ -895,6 +895,8 @@ QtObject {
         check(failures, "a window's key is said without its title unless reports are on",
             Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
             "window:org.gnome.Evolution");
+        check(failures, "as is one with an empty title",
+            Presented.keyShown("window:kitty:", false), "window:kitty");
         check(failures, "a window key of one part, which may be a title, is said as window",
             Presented.keyShown("window:Inbox", false), "window");
         check(failures, "as is one that names no app, as niri's records leave it",
