@@ -1149,40 +1149,72 @@ def test_every_cell_is_drawn_until_too_small_to_read(mycelium_opened: Opened) ->
     assert cells.count() < CELLS, "every cell was drawn too small to read"
 
 
-# One cell of each kind node.json holds: a receptor, a session leading a
-# network, and a quiet one working in it.
+# One cell of each kind node.json holds: a receptor, a moving session
+# leading a network, and a quiet one working in it.
 SENSOR = f"c:{FED_RECEPTOR}"
-LEADER = "c:SKIFF1"
+LEADER = f"c:{FED_CELL}"
 WORKER = "c:TERN03"
 MARKS = "document.getElementById('map-ground').marksOf({!r})"
+LOOKED = "(look) => {{ document.documentElement.dataset.theme = look; }}"
+
+type Mark = dict[str, str | float | None]
 
 
-def paints(marks: list[dict[str, str | None]]) -> set[str]:
-    """Every ink a cell's marks were painted in, fill or stroke."""
+def marks_of(page: Page, key: str) -> list[Mark]:
+    """Read what one cell's marks are painted in, failing when none were drawn."""
+    marks: list[Mark] = page.evaluate(MARKS.format(key))
+    assert marks, f"{key} wasn't drawn"
+    return marks
+
+
+def paints(marks: list[Mark]) -> set[str | float | None]:
+    """Every ink a cell's marks are painted in, fill or stroke."""
     return {ink for mark in marks for ink in (mark["fill"], mark["stroke"]) if ink}
 
 
-def test_each_kind_of_cell_reads_apart_at_the_whole_map(mycelium_opened: Opened) -> None:
+def membrane_of(marks: list[Mark]) -> Mark:
+    """Find a session's membrane among its marks."""
+    membrane = next((mark for mark in marks if str(mark["cls"]).startswith("m-membrane")), None)
+    assert membrane, f"a session was drawn with no membrane: {marks}"
+    return membrane
+
+
+# A cell keeps its strokes' widths as the map steps out while the cell
+# shrinks, so what tells one kind from another a few pixels across is its
+# inks and widths, which read the same at every zoom; these are read in
+# each look, since each sets its own.
+@pytest.mark.parametrize("look", ["dark", "light"])
+def test_each_kind_of_cell_is_painted_apart(
+    mycelium_opened: Opened, mycelium_node: StandIn, look: str
+) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
-    page.locator("#map-view").focus()
-    page.keyboard.press("0")
-    settled(page, "0 didn't fit the whole map")
-    sensor, leader, worker = (page.evaluate(MARKS.format(key)) for key in (SENSOR, LEADER, WORKER))
-    assert sensor, f"the receptor {SENSOR} wasn't drawn at the whole map"
-    assert leader, f"the leader {LEADER} wasn't drawn at the whole map"
-    assert worker, f"the worker {WORKER} wasn't drawn at the whole map"
-    # A session's dot is its gold, which is most of what shows of a cell
-    # a few pixels across, so a receptor must carry none of it.
-    dot = next(mark for mark in worker if mark["cls"] == "m-quiet")
+    page.evaluate(LOOKED, look)
+    worker = marks_of(page, WORKER)
+    dot = next((mark for mark in worker if mark["cls"] == "m-quiet"), None)
+    assert dot, f"the quiet worker {WORKER} was drawn with no quiet dot: {worker}"
     gold = dot["stroke"]
     assert gold, f"the worker's quiet dot had no ink: {worker}"
-    assert gold not in paints(sensor), f"a receptor was painted in a session's gold: {sensor}"
-    # A leader wears a ring in that gold, which a cell working in a
-    # network doesn't.
-    rings = [mark for mark in leader if mark["cls"] == "m-leads"]
-    assert [ring["stroke"] for ring in rings] == [gold], f"the leader wore no gold ring: {leader}"
-    assert all(mark["cls"] != "m-leads" for mark in worker), f"a worker wore a ring: {worker}"
+    # A session's dot is its gold, which is most of what shows of a cell
+    # a few pixels across, so a receptor carries none of it, quiet or
+    # reading.
+    quiet = marks_of(page, SENSOR)
+    assert gold not in paints(quiet), f"a quiet receptor was painted in a session's ink: {quiet}"
+    mycelium_node.tell("cell", changed=[{"key": f"cell:{FED_RECEPTOR}", "state": "reading"}])
+    page.wait_for_function(
+        f"{MARKS.format(SENSOR)}.some((mark) => mark.cls === 'm-sensing')", timeout=PACE_MS
+    )
+    reading = marks_of(page, SENSOR)
+    assert gold not in paints(reading), (
+        f"a reading receptor was painted in a session's ink: {reading}"
+    )
+    # A leader's membrane is in that gold, and heavier than a worker's.
+    led, worked = membrane_of(marks_of(page, LEADER)), membrane_of(worker)
+    assert led["stroke"] == gold, f"the leader's membrane wasn't in its dot's ink: {led}"
+    assert worked["stroke"] != gold, f"a worker's membrane was in a leader's ink: {worked}"
+    assert float(led["width"] or 0) > float(worked["width"] or 0), (
+        f"the leader's membrane was no heavier than a worker's: {led}, {worked}"
+    )
 
 
 def test_a_line_thins_as_the_map_steps_out_past_its_own_size(mycelium_opened: Opened) -> None:

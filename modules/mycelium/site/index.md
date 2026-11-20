@@ -44,10 +44,11 @@ Nothing on it acts on the network.
 - **Hyphae join a hub to its cells.** Each session is a cell, seeded round
   its hub like the seeds of a sunflower, and joined to it by fine hyphae.
 - **Each kind of cell reads apart at any size.** A session's dot is
-  gold; a receptor, where mail, calls or the calendar come in, is an
-  open dish with its dot in cream, never gold, so even a few pixels
-  across it reads as a sensor. A session that leads a network wears a
-  second gold ring round its membrane.
+  in the working ink, gold in the dark look; a receptor, where mail,
+  calls or the calendar come in, is an open dish with its dot in the
+  dish's own ink, never a session's, so even a few pixels across it
+  reads as a sensor. A session that leads a network draws its membrane
+  heavier, in its dot's ink.
 - **Dotted cross-hyphae join cells sharing something else**: sea glass
   for a repository, gold for a quest, the voice colour for a mesh
   group.

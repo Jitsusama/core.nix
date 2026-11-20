@@ -636,12 +636,15 @@ body {
   stroke-width: 2;
 }
 
-/* A cell that leads a network: a second ring in the session's gold round
-   its membrane, so who holds a network reads before its name does. */
+/* A cell that leads a network: its membrane in the ink of its dot, and
+   heavier, so who holds a network reads before its name does. It is the
+   membrane itself rather than a ring round it, since a cell's strokes
+   keep their width as the map steps out while the cell shrinks, and a
+   second ring would run into the first a few pixels across. A cell that
+   asks or is stuck keeps that ring, which comes after. */
 .m-leads {
-  fill: none;
   stroke: var(--action);
-  stroke-width: 1.75;
+  stroke-width: 2.5;
 }
 
 .m-off {
@@ -842,6 +845,10 @@ body {
   stroke-linecap: round;
 }
 
+.birth.sensor {
+  stroke: var(--strong);
+}
+
 .ghost {
   fill: none;
   stroke: var(--muted);
@@ -921,6 +928,7 @@ body {
   }
 
   .birth,
+  .birth.sensor,
   .ghost,
   .ripple,
   .trail,
