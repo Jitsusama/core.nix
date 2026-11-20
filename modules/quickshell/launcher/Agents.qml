@@ -2072,8 +2072,10 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            provider.wrapAhead();
-            provider.wrapForTyping();
+            provider.feltOpening(() => {
+                provider.wrapAhead();
+                provider.wrapForTyping();
+            });
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";

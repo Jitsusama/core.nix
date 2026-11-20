@@ -618,7 +618,7 @@ Provider {
 
         function onOpenChanged() {
             if (provider.launcher.open)
-                provider.look();
+                provider.feltOpening(() => provider.look());
         }
     }
 

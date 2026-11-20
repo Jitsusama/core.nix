@@ -182,7 +182,7 @@ Provider {
 
         function onOpenChanged() {
             if (provider.launcher.open)
-                provider.refresh();
+                provider.feltOpening(() => provider.refresh());
             // Shut, no drawer shows, so none is watched ahead.
             else
                 provider.drawerWanted = "";

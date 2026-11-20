@@ -183,7 +183,7 @@ Provider {
             if (provider.launcher.open) {
                 provider.openedAt = Date.now();
                 provider.looksHour = Math.floor(Date.now() / 3600000);
-                provider.reweather();
+                provider.feltOpening(() => provider.reweather());
                 // Placing the time and the date makes Time's and Today's
                 // rows, so an opening into a place that shows none of Now's
                 // leaves them stale until Now is wanted (H6EDLC, 2026-11-11),
@@ -196,7 +196,7 @@ Provider {
                 // minute, whenever it came before Now fell asleep, as a
                 // loaded machine's openings into For You did (2026-11-12).
                 if (provider.wanted)
-                    provider.retimeIfStale();
+                    provider.feltOpening(() => provider.retimeIfStale());
             } else {
                 provider.openedAt = Number.POSITIVE_INFINITY;
             }

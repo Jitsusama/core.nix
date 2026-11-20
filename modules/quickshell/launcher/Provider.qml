@@ -42,6 +42,7 @@
 //
 // Long because it's the one shape every source is written to: split, a
 // source's author would read half of what it promises and miss the rest.
+import KeyTimes
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -60,6 +61,22 @@ Scope {
     property real weight: 1
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
+    // Its own work as the launcher opens or shuts, run and felt by its
+    // name, so an opening's longest stall says which source held it
+    // (Launcher.qml's feltSpan). Joel's openings into Now spent 30 and 44
+    // ms of their longest stalls in "opening", the turn of the launcher's
+    // open, against 14 the fill's own laps named (2026-11-20). A launcher
+    // that feels nothing, as a test's stand-in, just has it run.
+    function feltOpening(work) {
+        const felt = provider.launcher?.spansHeard === true;
+        const from = felt ? KeyTimes.now() : 0;
+        try {
+            work();
+        } finally {
+            if (felt)
+                provider.launcher.feltSpan(`${provider.settings.name} opening`, from);
+        }
+    }
     // Whether what it shows is still being read for the first time, as
     // Machine's daemon's first answer is, so a terminal's `launcher show`
     // asks again for its figures rather than saying the placeholder
