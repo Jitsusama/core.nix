@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2310 # run is a step, read in a condition to say which start failed.
 # Runs a Mac's pi host start (modules/pi/darwin.nix) on Linux, under each
 # POSIX shell given, with the Mac's own programs stood in for: getconf, id
 # and sleep by stand-ins the test steers or that say they ran, the rest by
@@ -242,8 +243,10 @@ for shell in "$@"; do
   mkdir -p "${logs}"
   head -c 10485761 /dev/zero >"${log}"
   run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed with a long log"
-  [[ $(stat -c %s "${log}.old") == 10485761 ]] || fail "under ${name} didn't move a log past 10 MB aside"
-  [[ $(stat -c %s "${log}") -lt 10485760 ]] || fail "under ${name} kept writing to a log past 10 MB"
+  old_size=$(stat -c %s "${log}.old")
+  [[ ${old_size} == 10485761 ]] || fail "under ${name} didn't move a log past 10 MB aside"
+  size=$(stat -c %s "${log}")
+  [[ ${size} -lt 10485760 ]] || fail "under ${name} kept writing to a log past 10 MB"
 
   # Three starts in the last ten minutes: the fourth says so and waits ten
   # minutes first, then starts; starts an hour old don't hold it.
@@ -257,7 +260,8 @@ for shell in "$@"; do
   grep -q "started three times in ten minutes" "${log}" ||
     fail "under ${name} didn't say why it waited"
   [[ -e "${work}/words" ]] || fail "under ${name} never started after waiting"
-  [[ $(wc -l <"${log}.starts") == 3 ]] || fail "under ${name} kept $(wc -l <"${log}.starts") starts, not 3"
+  starts=$(wc -l <"${log}.starts")
+  [[ ${starts} == 3 ]] || fail "under ${name} kept ${starts} starts, not 3"
   printf '%s\n' $((now - 3700)) $((now - 3650)) $((now - 3600)) >"${log}.starts"
   run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after three old starts"
   [[ ! -e "${work}/slept" ]] || fail "under ${name} waited after starts an hour old"
