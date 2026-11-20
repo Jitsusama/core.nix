@@ -89,7 +89,6 @@ in
     "*.script"
     "*.svg"
     "*.xml"
-    "*.yml"
     ".luacheckrc"
     ".shellcheckrc"
     "modules/ghostty/config"

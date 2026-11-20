@@ -71,7 +71,7 @@ say, the module says so with `lib.mkBefore`, `lib.mkAfter` or `lib.mkOrder`.
 ## Config Files Stay Files
 
 An application's configuration stays in its own format beside its module
-(`init.lua`, `config.kdl`, `glow.yml`), read in with `builtins.readFile` or
+(`init.lua`, `config.kdl`, `kitty.conf`), read in with `builtins.readFile` or
 linked as a source. Translating it into Nix attribute sets hides it from the
 application's documentation and from its own validators.
 

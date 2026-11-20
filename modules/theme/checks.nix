@@ -704,10 +704,13 @@ in
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design
   # document installed for agents beside the aesthetic skill is passed over:
-  # it describes themes, Osaka Jade among them, and draws nothing. So is the
+  # it describes themes, Osaka Jade among them, and draws nothing. So are the
+  # web-design skill's examples, which describe sites drawn in it, and the
   # web kit's theme.css, which carries the dark look beside the light one on
   # purpose, for a site's reader to choose; the-web-kit-carries-the-theme
-  # proves its own side follows the machine's theme.
+  # proves its own side follows the machine's theme. gh's markdown style is
+  # read too, though no home file holds it: glamour finds it by the session
+  # variable naming it.
   a-theme-changes-everything =
     let
       osakaJade = (builtins.fromTOML (builtins.readFile ./osaka-jade.toml)).palette;
@@ -717,18 +720,13 @@ in
         { home-manager.users.someone.jitsusama.theme.name = "flexoki-light"; }
       ];
       home = account machine;
+      colours = pkgs.writeText "osaka-jade-colours" (lib.concatLines (lib.attrValues osakaJade));
     in
     pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
       test ${lib.escapeShellArg home.jitsusama.theme.colours.background} = '#FFFCF0'
-      if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
-        --glob '!**/skills/aesthetic/design.md' \
-        --glob '!**/jitsusama/web/theme.css' \
-        ${
-          lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
-        } ${home.home-files}/; then
-        echo "The files above kept Osaka Jade's colours when the theme changed."
-        exit 1
-      fi
+      $BASH ${./a-theme-changes-everything-test.sh} ${./a-theme-changes-everything.sh} ${colours}
+      $BASH ${./a-theme-changes-everything.sh} ${colours} \
+        ${home.home-files}/ ${home.home.sessionVariables.GLAMOUR_STYLE}
       touch $out
     '';
 
