@@ -2816,7 +2816,7 @@ in
         # below), so the watch is turned off. shell-preview and the nested
         # niri checks run the working copy outside this unit, and keep it.
         #
-        # Qt writes nothing of the JavaScript it compiles here: with
+        # Qt writes no perf map of the JavaScript it compiles here: with
         # QV4_PROFILE_WRITE_PERF_MAP set it names each function to perf in
         # /tmp/perf-<pid>.map, written from the shell's own thread as it
         # compiles, and /tmp is on the root's btrfs. Joel's shell stood
