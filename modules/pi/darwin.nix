@@ -55,10 +55,10 @@ let
   # command a hosted conversation runs would be told as the person's. A
   # copy, since a link would be named for the file it leads to, and of
   # node's own program, since a script would run node under node's name.
-  # Kept in Nix because it is a copy and one test of the realm's node,
-  # whose path and message only Nix knows.
   named =
     host:
+    # Kept in Nix because it is a copy and one test of the realm's node,
+    # whose path and message only Nix knows.
     pkgs.runCommandLocal "pi-host" { } ''
       if [ "$(head -c 2 ${host.node})" = "#!" ]; then
         echo "jitsusama.pi.hosts: ${host.node} is a script; a Mac's host needs node's own program, which it runs as pi-host." >&2
