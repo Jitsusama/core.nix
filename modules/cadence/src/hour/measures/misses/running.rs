@@ -458,6 +458,18 @@ fn only_lists(diff: &str, files: &[&str]) -> bool {
         })
 }
 
+/// When each running pi host started, or `None` when the hosts couldn't be
+/// listed.
+#[must_use]
+pub fn hosts_started() -> Option<Vec<i64>> {
+    Some(
+        hosts()?
+            .into_iter()
+            .filter_map(|(_, started, _)| started)
+            .collect(),
+    )
+}
+
 /// Each pi host, with the patches its runtime applied where it keeps them,
 /// or `None` when the hosts couldn't be listed.
 fn read_hosts() -> Option<Vec<Host>> {

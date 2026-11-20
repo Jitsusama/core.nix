@@ -391,6 +391,50 @@ fn unrun(
     [never, ended, parked]
 }
 
+/// How long after a pi host starts the node may still be missing its
+/// cells: it lists each again only as the cell resumes. At 08:10 on 20
+/// November the hour read a minute after the background host restarted
+/// and counted 51 quests no cell had taken up, against 8 the hour before,
+/// while by 08:25 the node had 133 of its 143 cells carrying their quest.
+const RESUMING: i64 = 15 * 60;
+
+/// The measures of quests no live cell runs, which read a cell the node
+/// hasn't listed again as gone.
+const UNRUN: [&str; 3] = [
+    "quests-without-cells",
+    "quests-cells-ended",
+    "quests-parked-past-start",
+];
+
+/// The measures of quests no live cell runs, left unjudged and saying so
+/// where a pi host in `started`, each running host's start, began within
+/// `RESUMING` of `now`. Their lines stay, since some may be real; the
+/// measures of the cells the node lists are judged as ever. Hosts that
+/// couldn't be listed leave the hour as it was, and a measure already
+/// unread keeps its one reason.
+pub fn mid_resume(measures: &mut [Measure], started: Option<&[i64]>, now: i64) {
+    let Some(newest) = started
+        .unwrap_or_default()
+        .iter()
+        .copied()
+        .filter(|&at| at <= now && now - at < RESUMING)
+        .max()
+    else {
+        return;
+    };
+    let why = format!(
+        " (read {} min after a pi host started, its cells still coming back)",
+        (now - newest) / 60
+    );
+    for m in measures
+        .iter_mut()
+        .filter(|m| UNRUN.contains(&m.key.as_str()) && m.target.is_some())
+    {
+        m.target = None;
+        m.says.push_str(&why);
+    }
+}
+
 /// The cells `mycelium-map-check --json` says the map draws wrongly, from
 /// its exit and what it printed; unjudged where it couldn't read the node
 /// or didn't run.
@@ -899,6 +943,62 @@ pub(super) mod tests {
                 .iter()
                 .all(|m| m.target.is_none()),
             "with no quest store a cells measure read judged"
+        );
+    }
+
+    #[test]
+    fn quests_read_while_a_host_resumes_its_cells_are_unjudged_and_say_so() {
+        let quests = [quest_of("AAAAAA", "active", "driving", Some("PARENT"))];
+        let read = |started: Option<&[i64]>| {
+            let mut all = cells(&[answer(&[])], Some(&quests), HERE, &zone(), NOW, "F");
+            mid_resume(&mut all, started, NOW);
+            all
+        };
+        let unrun = [
+            "quests-without-cells",
+            "quests-cells-ended",
+            "quests-parked-past-start",
+        ];
+        // At 08:10 on 20 November the hour read a minute after the
+        // background host restarted, and counted 51 quests no cell had
+        // taken up against 8 the hour before.
+        let resuming = read(Some(&[NOW - 4 * 3600, NOW - 60]));
+        for key in unrun {
+            let m = measure(&resuming, key);
+            assert_eq!(
+                m.target, None,
+                "{key} was judged a minute after a host began"
+            );
+            assert!(
+                m.says
+                    .ends_with("(read 1 min after a pi host started, its cells still coming back)"),
+                "{key} didn't say why it went unjudged: {}",
+                m.says
+            );
+        }
+        assert_eq!(
+            measure(&resuming, "quests-without-cells").behind,
+            ["AAAAAA driving, no cell the node knows · PARENT"],
+            "the quests read mid-resume were no longer named"
+        );
+        assert_eq!(
+            measure(&resuming, "cells-idle").target,
+            Some(0.0),
+            "a measure of the cells listed went unjudged"
+        );
+        for started in [None, Some(&[NOW - 15 * 60][..]), Some(&[][..])] {
+            assert!(
+                read(started)
+                    .iter()
+                    .all(|m| m.target == Some(0.0) && !m.says.contains("resum")),
+                "an hour with no host just begun went unjudged: {started:?}"
+            );
+        }
+        let mut unread = cells(&[], Some(&quests), HERE, &zone(), NOW, "F");
+        mid_resume(&mut unread, Some(&[NOW - 60]), NOW);
+        assert!(
+            unread.iter().all(|m| !m.says.contains("still coming back")),
+            "a measure already unread was given a second reason"
         );
     }
 
