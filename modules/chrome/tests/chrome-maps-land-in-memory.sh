@@ -7,17 +7,22 @@
 # with the links there and the runtime folder empty, the folders in memory
 # are made again; that a lock Chrome left behind, its process gone or now
 # another program's, doesn't stop it; that a Chrome which has dropped its
-# lock but still maps a file in the profile is waited for; and that while
-# a Chrome holds the profile, on this host or another, nothing in the
-# profile is touched, though the folders in memory are still made; and
-# that folders reaching outside the profile are refused. The folders are those a
-# running Chrome was seen mapping shared and writable, listed here apart
-# from the module so one dropped there is caught.
+# lock but still maps a file in the profile is waited for, as is one whose
+# maps can't be read; that a Chrome started again while the old one quits
+# stops the move; that one still quitting after the half minute is left
+# to the next run, and the run starts over when it quits as the run ends;
+# and that while a Chrome holds the profile, on this host or another,
+# nothing in the profile is touched, though the folders in memory are
+# still made; and that folders reaching outside the profile are refused.
+# The folders are those a running Chrome was seen mapping shared and
+# writable, listed here apart from the module so one dropped there is
+# caught.
 #
-# Usage: chrome-maps-land-in-memory.sh COMMAND_FILE
+# Usage: chrome-maps-land-in-memory.sh COMMAND_FILE UNREADABLE_CHROME
 set -euo pipefail
 
 command=$(cat "$1")
+unreadable=$2
 if [ -z "$command" ]; then
   echo "the account has no chrome-maps-in-memory command to run"
   exit 1
@@ -46,6 +51,39 @@ run() {
   if ! $command >run.log 2>&1; then
     echo "the account's command fails on its $1 run, saying:"
     cat run.log
+    exit 1
+  fi
+}
+
+# Waits until a stand-in's process has taken Chrome's name, which it does a
+# moment after the fork.
+named() {
+  local name=''
+  while [ "$name" != chrome ]; do
+    sleep 0.1
+    name=$(cat "/proc/$1/comm")
+  done
+}
+
+# Starts a Chrome quitting, which has dropped its lock but still maps a
+# file in the profile: a copy of the shell, named chrome and run from the
+# profile, maps itself there, as Chrome's last processes map their caches.
+# It quits only once the file it's given exists, so a run is seen waiting
+# whatever the machine's load. Its process is left in $quitting.
+quit_later() {
+  mkdir -p "$profile/Crashpad"
+  cp "$BASH" "$profile/Crashpad/chrome"
+  rm -f "$1"
+  # shellcheck disable=SC2016 # The stand-in expands its own argument.
+  "$profile/Crashpad/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$1" &
+  quitting=$!
+  named "$quitting"
+}
+
+# Fails unless the run in the background is still going, and so waiting.
+waiting() {
+  if ! kill -0 "$running" 2>/dev/null; then
+    echo "the command didn't wait for $1"
     exit 1
   fi
 }
@@ -148,12 +186,7 @@ printf '#!%s\nwhile :; do sleep 1; done\n' "$BASH" >chrome
 chmod +x chrome
 ./chrome &
 chrome=$!
-# It takes its name a moment after the fork.
-name=
-while [ "$name" != chrome ]; do
-  sleep 0.1
-  name=$(cat "/proc/$chrome/comm")
-done
+named "$chrome"
 ln -s "$here-$chrome" "$profile/SingletonLock"
 run "running Chrome's"
 kill "$chrome"
@@ -165,36 +198,87 @@ ln -s "elsewhere.example-1" "$profile/SingletonLock"
 run "other host's"
 untouched "with Chrome running on another host"
 
-# A Chrome quitting has dropped its lock but still maps a file in the
-# profile: a copy of the shell, named chrome and run from the profile,
-# maps itself there, as Chrome's last processes map their caches. It
-# quits only once told to, so the command is seen waiting, whatever the
-# machine's load.
+# A Chrome quitting, which has dropped its lock but still maps a file in
+# the profile, is waited for.
 fill
-mkdir -p "$profile/Crashpad"
-cp "$BASH" "$profile/Crashpad/chrome"
-# shellcheck disable=SC2016 # The stand-in expands its own argument.
-"$profile/Crashpad/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$work/quit" &
-quitting=$!
-name=
-while [ "$name" != chrome ]; do
-  sleep 0.1
-  name=$(cat "/proc/$quitting/comm")
-done
+quit_later "$work/quit"
 run "quitting Chrome's" &
 running=$!
 # Two seconds is long past a run that doesn't wait, and short of the half
 # minute a run gives a quitting Chrome.
 sleep 2
-if ! kill -0 "$running" 2>/dev/null; then
-  echo "the command didn't wait for a quitting Chrome that still mapped the profile"
-  exit 1
-fi
+waiting "a quitting Chrome that still mapped the profile"
 untouched "while a quitting Chrome still mapped the profile"
 touch "$work/quit"
 wait "$quitting"
 wait "$running"
 in_memory "once a quitting Chrome has gone"
+
+# So is a Chrome process of this account whose maps can't be read, as a
+# sandboxed one's can't, since what it maps can't be ruled out.
+fill
+rm -f "$work/quit"
+python3 "$unreadable" "$work/quit" &
+hidden=$!
+named "$hidden"
+if grep -q . "/proc/$hidden/maps" 2>/dev/null; then
+  echo "the stand-in's maps can still be read, so it stands in for no sandboxed Chrome"
+  exit 1
+fi
+run "unreadable Chrome's" &
+running=$!
+# As long as the quitting Chrome's wait, for the same reason.
+sleep 2
+waiting "a Chrome process whose maps couldn't be read"
+untouched "while a Chrome process's maps couldn't be read"
+touch "$work/quit"
+wait "$hidden"
+wait "$running"
+in_memory "once a Chrome process whose maps couldn't be read has gone"
+
+# A Chrome started again while the old one quits, as Chrome's own Relaunch
+# does, takes the lock, and the run moves nothing.
+fill
+quit_later "$work/quit"
+run "relaunched Chrome's" &
+running=$!
+# As long as the quitting Chrome's wait, for the same reason.
+sleep 2
+./chrome &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+touch "$work/quit"
+wait "$quitting"
+wait "$running"
+kill "$chrome"
+untouched "with Chrome started again as the old one quit"
+
+# A Chrome still quitting after the half minute is left to the next run,
+# and when it quits as the run ends, the run starts over and moves them.
+# This one case waits the whole half minute, since that's what it proves.
+fill
+quit_later "$work/quit"
+# The last run's log says the same, so it can't be what's read.
+rm -f run.log
+run "long-quitting Chrome's" &
+running=$!
+until grep -q 'holds the profile' run.log 2>/dev/null; do
+  # A tenth of a second between looks at the run's log, which takes half
+  # a minute to say it.
+  sleep 0.1
+done
+waiting "a Chrome still quitting as it gave up, to see it quit"
+untouched "once a Chrome had quit for half a minute"
+touch "$work/quit"
+wait "$quitting"
+wait "$running"
+if ! grep -q 'starts over' run.log; then
+  echo "the command didn't start over when Chrome quit as it ended, saying:"
+  cat run.log
+  exit 1
+fi
+in_memory "once a Chrome that quit as the run ended had gone"
 
 # A folder that reaches outside the profile is refused as asked wrongly,
 # and what's there is kept.

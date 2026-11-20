@@ -123,8 +123,11 @@ onLinux {
   # folder once the account's command runs on a profile Chrome has already
   # filled, its old files gone and the rest of the profile left alone; a
   # second run, a boot's empty runtime folder and a lock Chrome left behind
-  # are each handled, a Chrome still quitting is waited for, and with
-  # Chrome running nothing in the profile is touched
+  # are each handled, a Chrome still quitting is waited for, as is one
+  # whose maps can't be read, one still quitting after half a minute is
+  # left to the next run, which starts over if it quits as the run ends,
+  # and with Chrome running, or started again as it quits, nothing in the
+  # profile is touched
   # (tests/chrome-maps-land-in-memory.sh). The unit runs as the account's
   # manager starts, before the session that starts Chrome, and again on
   # each change in the profile's folder, as when Chrome quits; it doesn't
@@ -161,8 +164,8 @@ onLinux {
       && watch.Path.Unit or null == "chrome-maps-in-memory.service"
       && lib.elem "paths.target" (watch.Install.WantedBy or [ ])
     ) "chrome-maps-in-memory isn't run again when the profile's folder changes, as Chrome quits.";
-    pkgs.runCommandLocal "chrome-maps-land-in-memory" { } ''
-      bash ${./tests/chrome-maps-land-in-memory.sh} ${command}
+    pkgs.runCommandLocal "chrome-maps-land-in-memory" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+      bash ${./tests/chrome-maps-land-in-memory.sh} ${command} ${./tests/unreadable-chrome.py}
       touch $out
     '';
 
