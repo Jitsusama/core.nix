@@ -6,11 +6,11 @@
 # programs said that show something, past lines that show nothing; what
 # systemd said of a unit whose programs said nothing, or nothing that
 # shows; at most four units, and fewer where a terminal's rows leave no
-# room; the account's theme and the console's marks;
-# the way out; why a journal that couldn't be read gave a unit nothing;
-# a file the journal skipped said once, above the way out;
-# each unit described when the journal is slow; and each unit and the
-# way out in time when the journal stalls. How it lays itself out at the
+# room; the account's theme and the console's marks; the way out; why a
+# journal that couldn't be read gave a unit nothing; a file the journal
+# skipped said once, above the way out; each unit described when the
+# journal is slow; and each unit and the way out in time when the
+# journal stalls. How it lays itself out at the
 # console's width is the crate's own tests'.
 # usage: boot-stopped.sh <boot-stopped>
 set -euo pipefail
@@ -189,7 +189,7 @@ said
 [[ $(grep -c '^  x  ' "$work/said") == 4 ]] || fails "it listed other than four units"
 says "     and 5 more"
 
-# On a terminal of sixteen rows, which a console's LINES can say, it
+# On a terminal of sixteen rows, sized as stty sizes a console, it
 # leaves eight for the emergency shell's own words, so it fits what
 # matters most in the rest: a unit, the count of the others and the way
 # out. util-linux's script gives it the terminal, sized as a console's
@@ -203,7 +203,9 @@ rows=$(wc -l < "$work/said")
 ((rows <= 8)) || fails "it drew $rows rows where the console leaves it eight"
 says "  x  home.mount  Mount /home"
 says "     mount: /home: wrong fs type"
-grep -q -E '^     and [0-9]+ more$' "$work/said" || fails "it didn't count the units left out"
+# Nine units failed, so those not shown are nine less those that are.
+shown=$(grep -c '^  x  ' "$work/said")
+says "     and $((9 - shown)) more"
 says "     Ctrl+Alt+Delete restarts; hold Space as it starts for an older generation."
 
 # A file the journal skipped is said once, for every unit, since any
