@@ -284,22 +284,30 @@ fn went_back(on: &Joined, measured: &Measured, to: &str, why: Option<&Against>) 
         measure::ms(measured.p95),
         measured.lost
     );
-    let against = |than: &Measured, when: &str| {
-        format!(
-            "{carried}, worse than the {} with {:.1}% {to} carried {when}",
+    let spurned = format!(
+        "; it keeps off {} for {} minutes",
+        on.point,
+        choose::SPURNED.as_secs() / 60
+    );
+    let because = match why {
+        Some(Against::Worse(than)) => format!(
+            "{carried}, worse than the {} with {:.1}% lost {to} carried before{spurned}",
             measure::ms(than.p95),
             than.lost
-        )
-    };
-    let because = match why {
-        Some(Against::Worse(than)) => against(than, "before"),
-        Some(Against::Usually(than)) => against(than, "usually, at that minute's loss"),
+        ),
+        Some(Against::Usually(than)) => format!(
+            "{carried}, worse than the {} {to} usually carries at p95, with the {:.1}% lost \
+             it carried before; it may try {} again once settled",
+            measure::ms(than.p95),
+            than.lost,
+            on.point
+        ),
         Some(Against::Slowed(before)) => format!(
-            "{} moved {} Mbit/s under load, where {to} moved {before}",
+            "{} moved {} Mbit/s under load, where {to} moved {before}{spurned}",
             on.point,
             measured.moving.unwrap_or(0)
         ),
-        Some(Against::Badly) => format!("{carried}, badly for a wider band's room"),
+        Some(Against::Badly) => format!("{carried}, badly for a wider band's room{spurned}"),
         None => carried,
     };
     format!("{} goes back to {to}, as {because}", on.card)
@@ -788,6 +796,53 @@ mod tests {
         assert!(
             why.contains("heard at -61 dBm,"),
             "it says the station's own signal where fainter than the scan's: {why}"
+        );
+    }
+
+    #[test]
+    fn a_card_going_back_says_what_judged_its_trial_and_how_long_it_keeps_off() {
+        let on = joined(HALL);
+        let before = Measured {
+            lost: 1.5,
+            ..carried(76)
+        };
+        let line = |why: &Against| went_back(&on, &carried(50), DESK, Some(why));
+        let usual = Measured {
+            p95: Some(ms(14)),
+            ..before.clone()
+        };
+
+        let worse = line(&Against::Worse(before));
+        let usually = line(&Against::Usually(usual));
+        let slowed = line(&Against::Slowed(52));
+        let badly = line(&Against::Badly);
+
+        let carried =
+            format!("goes back to {DESK}, as {HALL} carried 50.0 ms at p95 with 0.0% lost");
+        let kept = format!("; it keeps off {HALL} for 60 minutes");
+        assert!(
+            worse.ends_with(&format!(
+                "{carried}, worse than the 76.0 ms with 1.5% lost {DESK} carried before{kept}"
+            )),
+            "a worse trial says what it left carried, and its hour off: {worse}"
+        );
+        assert!(
+            usually.ends_with(&format!(
+                "{carried}, worse than the 14.0 ms {DESK} usually carries at p95, with the \
+                 1.5% lost it carried before; it may try {HALL} again once settled"
+            )),
+            "a trial judged on the usual says so, and that it isn't kept off: {usually}"
+        );
+        assert!(
+            slowed.ends_with(&format!(
+                "goes back to {DESK}, as {HALL} moved 200 Mbit/s under load, where {DESK} \
+                 moved 52{kept}"
+            )),
+            "a download cut says what each moved: {slowed}"
+        );
+        assert!(
+            badly.ends_with(&format!("{carried}, badly for a wider band's room{kept}")),
+            "a trial for a wider band's room says it carried badly there: {badly}"
         );
     }
 
