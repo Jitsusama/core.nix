@@ -393,11 +393,9 @@ impl Recording {
 }
 
 /// Adds to a call's record whoever its Tuple call or Meet says is on it
-/// now, since people join and leave as it goes, Joel, `me`, left out of a
-/// Meet's. A meeting's invitation isn't asked again, since who it asked
-/// doesn't change with who comes, but its Meet is, since the google
-/// daemon may follow it only once its window opens. It's asked every
-/// `LOOK_AGAIN`, since it was last `looked`, while a call is recorded.
+/// now (meet.rs's `still_on`), since people join and leave as it goes,
+/// Joel, `me`, left out of a Meet's. It's asked every `LOOK_AGAIN`, since
+/// it was last `looked`, while a call is recorded.
 fn look_again(
     book: &Shared,
     runtime: &Path,
@@ -420,13 +418,7 @@ fn look_again(
         return;
     };
     // Asked outside the book's lock, since a daemon may be slow.
-    let seen = if known == Some(meeting::Known::Tuple) {
-        meeting::on_tuple(runtime).map(|on| (on.people, on.known))
-    } else {
-        crate::meet::on_meet(runtime, event.as_deref(), me)
-            .map(|people| (people, Some(meeting::Known::Meet)))
-    };
-    let Some(seen) = seen else {
+    let Some(seen) = crate::meet::still_on(runtime, known, event.as_deref(), me) else {
         return;
     };
     let mut book = book.lock();

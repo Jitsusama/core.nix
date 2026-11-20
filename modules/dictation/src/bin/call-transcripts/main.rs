@@ -332,7 +332,13 @@ fn serve(
         let book = Arc::clone(&book);
         std::thread::spawn(move || receptor::keep(&receptor, &book));
     }
-    follow::follow(&book, calls, &jobs, &calling, &own_name())
+    // A Meet names him by his whole name, so his first alone could be
+    // someone else's; with none, a Meet's people are never told from his.
+    let whole = whole_name().unwrap_or_default();
+    if whole.is_empty() {
+        eprintln!("call-transcripts: the account has no name, so no Meet names their side");
+    }
+    follow::follow(&book, calls, &jobs, &calling, &whole)
 }
 
 fn summarize(
@@ -416,6 +422,14 @@ fn takes(sound: &[f32]) -> Vec<Take> {
 /// The account's own name, its first word as the system knows it, for
 /// Joel's lines; or "Me" where it has none.
 fn own_name() -> String {
+    whole_name()
+        .and_then(|name| name.split_whitespace().next().map(str::to_owned))
+        .unwrap_or_else(|| "Me".to_owned())
+}
+
+/// The account's whole name as the system knows it, the part of its
+/// entry's comment before any comma; or none where it has none.
+fn whole_name() -> Option<String> {
     let user = std::env::var("USER").unwrap_or_default();
     std::fs::read_to_string("/etc/passwd")
         .ok()
@@ -423,10 +437,15 @@ fn own_name() -> String {
             passwd.lines().find_map(|entry| {
                 let fields: Vec<&str> = entry.split(':').collect();
                 (fields.first() == Some(&user.as_str()))
-                    .then(|| fields.get(4)?.split([' ', ',']).next().map(str::to_owned))
+                    .then(|| {
+                        fields
+                            .get(4)?
+                            .split(',')
+                            .next()
+                            .map(|name| name.trim().to_owned())
+                    })
                     .flatten()
             })
         })
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Me".to_owned())
 }
