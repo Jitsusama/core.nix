@@ -860,7 +860,7 @@ Scope {
     }
 
     // A row found for a place that lives deeper, as "notices" finds
-    // Desktop inside For You, steps in through the rows above it, by Return, Tab or
+    // Now's Desktop inside Now, steps in through the rows above it, by Return, Tab or
     // Ctrl+], so - climbs back out the way it went in. It's asked before
     // the row's own ways in, which it carries from the row it copies.
     function steppedAsLed(row) {

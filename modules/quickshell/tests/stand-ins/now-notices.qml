@@ -12,6 +12,8 @@ Singleton {
     property var resting: ({})
     property var waiting: []
     property bool gathered: false
+    // None in front, as Notices.qml's noFront, so Super+N's own rows read.
+    property var front: ({ id: null, critical: null, waiting: 0, order: [] })
 
     function markRead(ids) {}
     function seen() {}

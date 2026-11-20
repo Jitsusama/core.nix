@@ -2065,6 +2065,11 @@ ShellRoot {
                 && now.leadsTo("notices")[1].key === "on:waiting:desktop"
                 && now.leadsTo("notices").length === 2,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // What's on screen is reached the same way, through For You.
+        expect("and Super+N with notices on screen goes through For You to them",
+            now.leadsTo("onScreen").length === 2 && now.leadsTo("onScreen")[0] === now.waiting
+                && now.leadsTo("onScreen")[1].key === "on:waiting:screen",
+            JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
         // Read elsewhere while Joel looks, which Lately doesn't hold still,
         // it no longer waits, but Desktop keeps the place he found it in.
         now.openedAt = Date.now() - 1000;
@@ -2187,6 +2192,10 @@ ShellRoot {
                 && now.leadsTo("notices").length === 1
                 && now.leadsTo("notices")[0].key === "on:waiting:desktop",
             JSON.stringify(now.leadsTo("notices").map(row => row.key)));
+        expect("and Super+N with notices on screen goes straight to them, under Now",
+            now.leadsTo("onScreen").length === 1
+                && now.leadsTo("onScreen")[0].key === "on:waiting:screen",
+            JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
         now.openedAt = wasOpenedAt;
         const first = byKey(forYou());
         const mail = first["on:mail"];
@@ -2283,7 +2292,9 @@ ShellRoot {
         outright("held right under Now, what's on screen, they are",
             underNow("on:waiting:screen"), 1);
         outright("and Desktop right under Now, they are", underNow("on:waiting:desktop"), 1);
-        outright("but Mail right under Now, they aren't", underNow("piece:mail"), 0);
+        outright("and Slack's notices right under Now, they are",
+            underNow("on:waiting:slack"), 1);
+        outright("but Mail right under Now, they aren't", underNow("on:mail"), 0);
         outright("as they are with nothing held", [], 1);
     }
 
