@@ -18,6 +18,9 @@ line the shell says of them as it closes, since an update is held to it too: 6 o
 on Joel's shell took longer (2026-11-11). A fourth times going into a long drawer by Ctrl+W l,
 whose frame lays only the lines that show and the rest after it, and a fifth a j typed a set time
 after going in, which waited on the rest of a long run while it was laid in one go.
+
+Long because every timing shares the one shell, its walk of windows and its reading of what the
+shell said, so a run's figures on both sides come from the same place, rounds and builder.
 """
 
 from __future__ import annotations
