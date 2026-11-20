@@ -108,8 +108,10 @@ feed speaks.
   source's health does. `src/caps.rs` `held`. A raise whose end the feed
   can't say, over a fallback already spent, is warned while it stands,
   since the cap refuses the moment it ends and no day can be warned
-  ahead of; the clock's middle path says when the allowance is reached at
-  this pace, and the warning and the near one carry it.
+  ahead of; one the feed could know and gives no end isn't, since it has
+  none. The clock's middle path says by which hour the allowance is
+  reached at this pace, over the hours its paths cover, and the warning
+  and the near one carry it with the hour the pace was judged in.
 - **Detectors.** Each threshold is set for a stated false-alarm rate. A
   burn is a minute CUSUM against twice a working hour's rate (the median
   hour of eight weeks that spent a dollar) at any time of day, since
@@ -139,7 +141,9 @@ feed speaks.
   behind, or past now, is told once in their place, by name, and a
   feed the config runs that bills pi without saying how far it has
   settled holds every budget back, told as a note under a key of its
-  own, after any wrong row, since it hides none. A budget a session asked for in the last
+  own, after any wrong row, since it hides none, and as a warning once
+  it has billed for more than 48 hours without settling. A budget a
+  session asked for in the last
   day and the harness couldn't draw on, as its budget entry says, is
   told with how many sessions missed it, the day they start rather
   than a day later. Cadence counts both kinds of finding each hour
