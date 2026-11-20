@@ -197,6 +197,9 @@ struct Working {
     asked: bool,
     /// Paces in a row with no reading taken.
     missed: u32,
+    /// Whether any reading has answered since the daemon started: until
+    /// one has, nothing says what works, which isn't that nothing does.
+    answered: bool,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
 }
@@ -224,6 +227,7 @@ impl Working {
             told,
             asked: false,
             missed: 0,
+            answered: false,
             used: BTreeMap::new(),
             measured: false,
         }
@@ -247,9 +251,13 @@ impl Working {
             }
         }
         if let Some((used, measured)) = found {
+            if self.missed >= STALE {
+                eprintln!("repos: the reading of /proc answers again");
+            }
             self.used = used;
             self.measured = measured;
             self.missed = 0;
+            self.answered = true;
         } else {
             self.missed += 1;
             if self.missed >= STALE {
@@ -257,20 +265,30 @@ impl Working {
                 self.measured = false;
             }
             if self.missed == STALE {
+                // A restart reads the same process again, and waits on it
+                // again, so the line names it rather than offering one.
+                let held = using::reading().map_or(String::new(), |pid| {
+                    format!(", held up reading the memory of process {pid}")
+                });
                 eprintln!(
-                    "repos: the reading of /proc hasn't answered in {STALE} minutes, so what \
-                     works in each repository is said unread until it does; a restart reads \
-                     it again"
+                    "repos: the reading of /proc has missed {STALE} paces in a row{held}, so \
+                     what works in each repository is said unread until it answers"
                 );
             }
         }
     }
 
+    /// Whether what works in each repository can't be said: no reading has
+    /// answered yet, or none has for `STALE` paces.
+    fn unread(&self) -> bool {
+        !self.answered || self.missed >= STALE
+    }
+
     /// Every record the feed says: the disk's, and what works in each
-    /// repository as last read, or unread once the reading has gone stale.
+    /// repository as last read, or unread where it can't be said.
     fn said(&self, record: &Record) -> Vec<Value> {
         let mut said = feed::records(record);
-        if self.missed >= STALE {
+        if self.unread() {
             said.extend(feed::unread(record));
         } else {
             said.extend(feed::using(record, &self.used, self.measured));

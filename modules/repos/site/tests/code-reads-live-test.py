@@ -68,9 +68,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # What a first visit to Code may cost, drawn from the stand-in's repositories: two of the files
 # are the map of ties, its view and its logic, one says what works in each repository, and the
 # kilobytes and elements count its section, its keys' lines in the list of keys and the tying
-# cell's link too, and two of the kilobytes lead each tree's cells on to the other repositories
-# they work across.
-BUDGET = Budget(files=34, kilobytes=575, elements=275)
+# cell's link too, two of the kilobytes lead each tree's cells on to the other repositories
+# they work across, and two say what works unread where the daemon's reading stopped.
+BUDGET = Budget(files=34, kilobytes=577, elements=275)
 CELLS_SITE = "cells/"
 
 

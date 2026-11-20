@@ -14,7 +14,7 @@
 //! children's once it has waited on them, in the ticks of a hundredth of
 //! a second Linux's interface always counts in. A build's compilers start
 //! and end between two readings, so they're counted in the cargo that
-//! waited on them.
+//! waited on them, while it's placed in a folder at both readings.
 //!
 //! A child a reading saw was counted as it worked, and when it's waited
 //! on the kernel moves its whole time into its parent, so what the
@@ -28,11 +28,20 @@
 //! reading it and reading its parent, in a walk of under a second, is
 //! counted twice in that reading, and one handed to another process to
 //! wait on since the last reading is taken off the wrong ancestor, which
-//! reads low for a minute. A process the reader may not look in works in
-//! no folder, so its time is counted only once its parent waits on it.
+//! reads low for a minute.
 //!
-//! A folder's is a share of one core over the waking time between two readings, no
-//! more than `LONGEST` apart, each read whole within `EVEN`: a process
+//! Time reaches a folder only through a process placed in it at both
+//! readings, so some is never counted. A process working in no folder,
+//! whether out of every tree or one like `sudo` the reader may not look
+//! in, is counted for none of the time it works there, save what it took
+//! since the last reading once a placed parent waits on it. And one
+//! waited on by a process in no folder, as the user's service manager or
+//! a terminal's server, loses what it took since the last reading, while
+//! one that starts and ends between readings under such a parent is
+//! counted nowhere.
+//!
+//! A folder's is a share of one core over the waking time between two
+//! readings, no more than `LONGEST` apart, each read whole within `EVEN`: a process
 //! new since the first is counted from its start, and one that only moved
 //! in since isn't counted, as nothing says how long it has worked there.
 //! A process whose working folder was removed works nowhere.
@@ -45,6 +54,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -143,6 +153,16 @@ pub fn placed<'a>(folders: &'a [PathBuf], folder: &Path) -> Option<&'a Path> {
         .map(PathBuf::as_path)
 }
 
+/// The process whose memory a reading is reading, 0 between them. A read
+/// of `smaps_rollup` waits while the process holds its memory map, as one
+/// faulting on a mount that hung may for good, and this names it.
+static READING: AtomicU32 = AtomicU32::new(0);
+
+/// The process whose memory a reading is held on, where one is.
+pub fn reading() -> Option<u32> {
+    Some(READING.load(Ordering::Relaxed)).filter(|pid| *pid != 0)
+}
+
 /// A reading of `proc`, Linux's `/proc`, of every process, placing each
 /// whose working folder lies in one of `folders`; nothing where there's no
 /// `/proc`, as on a Mac.
@@ -178,9 +198,10 @@ fn sample_by(proc: &Path, folders: &[PathBuf], mut clock: impl FnMut() -> u64) -
                 .filter(|working| !working.to_string_lossy().ends_with(" (deleted)"))
                 .and_then(|working| placed(folders, &working).map(Path::to_path_buf));
             let memory = folder.as_ref().and_then(|_| {
-                fs::read_to_string(path.join("smaps_rollup"))
-                    .ok()
-                    .and_then(|said| shared(&said))
+                READING.store(pid, Ordering::Relaxed);
+                let said = fs::read_to_string(path.join("smaps_rollup"));
+                READING.store(0, Ordering::Relaxed);
+                said.ok().and_then(|said| shared(&said))
             });
             Some(Process {
                 pid,
