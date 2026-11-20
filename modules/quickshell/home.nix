@@ -837,14 +837,17 @@ let
 
   # Every file the shell reads, by its store path, and the list of them its
   # start links, so a switch that changes any is told from one that doesn't.
-  # The list names the command the shell runs and its environment too: a
-  # switch bringing a new Quickshell with the same files left the shell on
-  # the old build, since only its files were compared (2026-11-14, 04:23).
+  # The list names the command the shell runs and its environment too, the
+  # names it unsets included: a switch bringing a new Quickshell with the
+  # same files left the shell on the old build, since only its files were
+  # compared (2026-11-14, 04:23).
   shellFiles = lib.mapAttrsToList (_: file: "${file.source}") (
     lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
   );
   shellFilesList = pkgs.writeText "quickshell-files" (
-    lib.concatLines (shellFiles ++ [ shellCommand ] ++ shellEnvironment)
+    lib.concatLines (
+      shellFiles ++ [ shellCommand ] ++ shellEnvironment ++ map (name: "-${name}") shellUnsets
+    )
   );
 
   # Compiles the shell's files before the shell restarts onto them (./starts-warm.sh).
@@ -872,6 +875,12 @@ let
     # the quest it says it runs under, read by its name alone, so the shell
     # never holds the secrets beside it (asker-says/src/main.rs).
     "POLKIT_ASKER_SAYS=${lib.getExe (pkgs.callPackage ./asker-says/package.nix { })}"
+  ];
+  # What the shell's environment never holds, whatever sets it, each name's
+  # reason given where the unit takes them (UnsetEnvironment, below).
+  shellUnsets = [
+    "QT_QPA_PLATFORMTHEME"
+    "QV4_PROFILE_WRITE_PERF_MAP"
   ];
 in
 {
@@ -2761,13 +2770,11 @@ in
         NotifyAccess = "all";
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
-        # theme itself. Qt's perf map is unset too, so one exported for a
-        # profile never reaches Joel's shell through the login's environment
-        # (Environment, below).
-        UnsetEnvironment = [
-          "QT_QPA_PLATFORMTHEME"
-          "QV4_PROFILE_WRITE_PERF_MAP"
-        ];
+        # theme itself. Qt's perf map is unset too (Environment, below):
+        # systemd unsets a name last, over the unit's own settings and the
+        # login's environment alike, so one exported for a profile never
+        # reaches Joel's shell.
+        UnsetEnvironment = shellUnsets;
         # niri calls back a surface it isn't drawing, as behind the lock or on
         # a dark screen, only once a second. Qt took a callback 100 ms late for
         # a window gone out of sight and drew it whole when it came, asking for

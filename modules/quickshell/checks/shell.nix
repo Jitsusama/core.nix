@@ -272,16 +272,17 @@
   # the shell's own thread, to /tmp on the root's disk, so it's set for a
   # profile of a shell of its own and never left on Joel's (the unit's
   # Environment says why). It came on once for a profile and stayed, so
-  # its coming back is held here: the unit sets none, and unsets one the
-  # login's environment gives it. Read with no fallback, so a unit renamed
-  # fails rather than passes having read nothing.
+  # its coming back is held here. The unit unsetting it is what keeps it
+  # off, since systemd unsets a name over every setting of it; the unit
+  # setting none keeps the shell's environment, which the handover
+  # compares, saying what the shell runs with.
   quickshell-writes-no-perf-map =
     let
       service = (account graphical).systemd.user.services.quickshell.Service;
       named = lib.hasInfix "QV4_PROFILE_WRITE_PERF_MAP=";
     in
     holds "quickshell-writes-no-perf-map"
-      "Quickshell's unit lets Qt write a perf map from the shell's thread to the root's disk."
+      "Quickshell's unit sets Qt's perf map, or leaves one the login gives it set."
       (
         lib.elem "QV4_PROFILE_WRITE_PERF_MAP" service.UnsetEnvironment
         && !lib.any named (lib.toList service.Environment)
