@@ -12,9 +12,15 @@ shift
 # An empty list of colours would match nothing, and pass whatever the home
 # holds; a path that isn't there would be read as a link that can't be
 # followed, and pass unread.
-test -s "$colours"
+if ! test -s "$colours"; then
+  echo "There are no colours to look for in $colours."
+  exit 1
+fi
 for path in "$@"; do
-  test -e "$path"
+  if ! test -e "$path"; then
+    echo "$path isn't there to read."
+    exit 1
+  fi
 done
 
 said=$(mktemp -d)
