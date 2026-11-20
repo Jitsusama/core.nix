@@ -35,7 +35,7 @@ in
       # Each time it starts, after a fault or a stop, it reads today's
       # journals again from the day's start. What it saw itself since its
       # last write, as the lid and the disk, is lost to a fault or a stop,
-      # as is a day before held as it couldn't be written.
+      # as is what it couldn't write of a day before, held to try again.
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
@@ -51,8 +51,8 @@ in
         "follow"
       ];
       RunAtLoad = true;
-      # As on Linux, it only stops on a fault and reads the day again when
-      # it's back; launchd waits 10 s between starts.
+      # As on Linux, it reads the day again each time it starts, and loses
+      # the same to a fault or a stop; launchd waits 10 s between starts.
       KeepAlive = true;
       # Whatever the account runs comes first, as background.slice does on
       # Linux.
