@@ -12,7 +12,10 @@
 //! asked again in five minutes: on
 //! 17 November a choice asked inside half a minute of a dark network heard
 //! nobody, and replaced six reflectors that answered again a moment later
-//! with none.
+//! with none. A choice that leaves no pool at all is asked again every
+//! 5 s for the first six, then twice as long each time nobody answers, up
+//! to five minutes, since a network still coming up answers nobody for a
+//! moment, and a recording without reflectors hears no delay to shape by.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
@@ -75,6 +78,11 @@ const MISSES: u32 = 3;
 const REPOOL: Duration = Duration::from_secs(3_600);
 /// How soon a pool too small to vote with, or kept, is asked for again.
 const SHORT_REPOOL: Duration = Duration::from_secs(300);
+/// How soon a choice that left no pool is asked again, for the first few.
+const DARK_REPOOL: Duration = Duration::from_secs(5);
+/// How many choices running may leave no pool before the wait doubles:
+/// about 40 s of a network coming up, asks included.
+const DARK_SOON: u32 = 6;
 /// How long the candidates asked for a pool are waited on.
 const ASKING_FOR: Duration = Duration::from_millis(1_500);
 
@@ -169,6 +177,15 @@ fn asks_again(short: bool, kept: bool, failing: bool, since: Duration) -> bool {
     (failing && !kept) || since > due
 }
 
+/// How long an empty pool waits for its next choice, after `dark` choices
+/// running heard nobody: 5 s after each of the first six, then twice as
+/// long after each since, up to five minutes.
+fn dark_wait(dark: u32) -> Duration {
+    DARK_REPOOL
+        .saturating_mul(1 << dark.saturating_sub(DARK_SOON).min(6))
+        .min(SHORT_REPOOL)
+}
+
 /// The pool a recording probes, and how it came to be.
 pub struct Pool {
     reflectors: Vec<(&'static str, Ipv4Addr)>,
@@ -187,6 +204,9 @@ pub struct Pool {
     reachable: usize,
     /// Each of it lost this many times running since it was chosen.
     misses: BTreeMap<Ipv4Addr, u32>,
+    /// How many choices running left it empty, so the next is asked soon
+    /// and then less often.
+    dark: u32,
 }
 
 impl Pool {
@@ -197,10 +217,9 @@ impl Pool {
             at: now,
             settled: false,
             kept: false,
-            // None to reach still leaves an empty pool short, to be asked
-            // for again in five minutes, as it always was.
-            reachable: operators(candidates).max(1),
+            reachable: operators(candidates),
             misses: BTreeMap::new(),
+            dark: 0,
         }
     }
 
@@ -231,8 +250,8 @@ impl Pool {
     /// Takes a choice that's done at `now`, on `link`: the pool it heard,
     /// or the pool there is, kept for one choice. Answers what to say in
     /// the service's log when the pool changes, is first chosen, is kept,
-    /// or a keep ends, and not every five minutes on a network that
-    /// answers no timestamps.
+    /// or a keep ends, and not at each choice on a network that answers
+    /// no timestamps.
     pub fn settle(&mut self, link: &str, asking: &Asking, now: Instant) -> Option<String> {
         self.at = now;
         self.misses.clear();
@@ -252,12 +271,22 @@ impl Pool {
         let changed = chosen.iter().collect::<BTreeSet<_>>()
             != self.reflectors.iter().collect::<BTreeSet<_>>();
         let said = (changed || !self.settled || self.kept).then(|| {
+            let again = if chosen.is_empty() {
+                "; asking again in 5 s, then less often"
+            } else {
+                ""
+            };
             format!(
-                "recording {link} with {} reflectors from {} operators",
+                "recording {link} with {} reflectors from {} operators{again}",
                 chosen.len(),
                 operators(&chosen)
             )
         });
+        self.dark = if chosen.is_empty() {
+            self.dark.saturating_add(1)
+        } else {
+            0
+        };
         self.reflectors = chosen;
         self.settled = true;
         self.kept = false;
@@ -266,6 +295,9 @@ impl Pool {
 
     /// Whether to ask for a new pool at `now`.
     pub fn asks_again(&self, now: Instant) -> bool {
+        if self.reflectors.is_empty() && self.dark > 0 {
+            return now.saturating_duration_since(self.at) > dark_wait(self.dark);
+        }
         let failing = self.misses.values().any(|m| *m >= MISSES);
         let short = operators(&self.reflectors) < ENOUGH.min(self.reachable);
         asks_again(
@@ -534,7 +566,10 @@ mod tests {
         let mut pool = Pool::new(start, &public());
         assert_eq!(
             pool.settle("wlp0s20f3", &heard(&[]), start).as_deref(),
-            Some("recording wlp0s20f3 with 0 reflectors from 0 operators")
+            Some(
+                "recording wlp0s20f3 with 0 reflectors from 0 operators; asking again in 5 s, \
+                 then less often"
+            )
         );
     }
 
@@ -643,14 +678,54 @@ mod tests {
         );
     }
 
+    // A network still coming up answers nobody for a moment: the call
+    // test's client chose before its server answered, and with no
+    // reflectors for five minutes it never held the link.
     #[test]
-    fn an_empty_pool_is_asked_for_again_in_five_minutes_wherever_it_is() {
+    fn an_empty_pool_is_asked_for_again_soon_then_less_often() {
+        let moment = Duration::from_millis(1);
+        let mut now = Instant::now();
+        let mut pool = Pool::new(now, &public());
+        let waits = [5, 5, 5, 5, 5, 5, 10, 20, 40, 80, 160, 300, 300];
+        for (n, wait) in waits.into_iter().enumerate() {
+            let said = pool.settle("wlp0s20f3", &heard(&[]), now);
+            assert_eq!(said.is_some(), n == 0, "choice {n} said: {said:?}");
+            let due = Duration::from_secs(wait);
+            assert!(
+                !pool.asks_again(now + due),
+                "choice {n} was asked for again inside {wait} s"
+            );
+            assert!(
+                pool.asks_again(now + due + moment),
+                "choice {n} waited past {wait} s"
+            );
+            now += due + moment;
+        }
+        assert_eq!(dark_wait(u32::MAX), SHORT_REPOOL, "past five minutes");
+        // A pool that answered, then a keep, then nobody again, starts
+        // from 5 s once more.
+        pool.settle("wlp0s20f3", &heard(&three()), now);
+        pool.settle("wlp0s20f3", &heard(&[]), now);
+        assert!(pool.kept(), "the pool that answered wasn't kept");
+        pool.settle("wlp0s20f3", &heard(&[]), now);
+        assert!(
+            !pool.asks_again(now + DARK_REPOOL),
+            "a pool that answered and went dark again was asked at once"
+        );
+        assert!(
+            pool.asks_again(now + DARK_REPOOL + moment),
+            "a pool that answered and went dark again waited past 5 s"
+        );
+    }
+
+    #[test]
+    fn an_empty_pool_is_asked_for_again_soon_wherever_it_is() {
         let start = Instant::now();
         for candidates in [vec![("named", at(9))], vec![], public()] {
             let mut pool = Pool::new(start, &candidates);
             pool.settle("wlp0s20f3", &heard(&[]), start);
             assert!(
-                pool.asks_again(start + SHORT_REPOOL + MINUTE),
+                pool.asks_again(start + DARK_REPOOL + Duration::from_millis(1)),
                 "an empty pool from {} candidates waited",
                 candidates.len()
             );
