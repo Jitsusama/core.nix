@@ -2,17 +2,9 @@
 
 use super::*;
 
-/// A state of the test's own. The tests run side by side, so a number
-/// counted for each keeps two that chose the same name from emptying
-/// each other's folder.
-fn state(name: &str) -> State {
-    static MADE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!("merge-net-{name}-{}-{made}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    let state = State::at(root);
-    state.make().expect("made");
-    state
+/// A state of the test's own, gone when the test ends.
+fn state(name: &str) -> Scratch {
+    Scratch::named(name)
 }
 
 #[test]

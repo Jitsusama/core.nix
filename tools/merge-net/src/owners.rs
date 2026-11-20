@@ -178,22 +178,66 @@ fn named(file: &str, text: &str, read: &impl Fn(&str) -> Option<String>, found: 
 
 /// The relative paths `text` names, `./x` and `../x`.
 fn beside(text: &str) -> Vec<String> {
-    let is_path = |c: char| c.is_ascii_alphanumeric() || "._/-".contains(c);
     let mut found = Vec::new();
     let mut rest = text;
     while let Some(at) = rest.find("./") {
         let start = rest[..at].rfind(|c: char| !is_path(c)).map_or(0, |i| i + 1);
-        let end = at
-            + rest[at..]
-                .find(|c: char| !is_path(c))
-                .unwrap_or(rest.len() - at);
-        let path = &rest[start..end];
+        let (tail, length) = path_at(&rest[at..]);
+        let path = format!("{}{tail}", &rest[start..at]);
         if path.starts_with("./") || path.starts_with("../") {
             found.push(path.trim_end_matches('.').to_owned());
         }
-        rest = &rest[end.max(at + 2)..];
+        rest = &rest[(at + length).max(at + 2)..];
     }
     found
+}
+
+fn is_path(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "._/-".contains(c)
+}
+
+/// The path `text` begins with, and how far into `text` it runs. A value
+/// built into it, `${area}`, reads as `*`, a glob owning each file it could
+/// name: read as the path's end, `./screens-${area}-vm-test.py` owned no
+/// file of the screens VM test's cases until 20 November.
+fn path_at(text: &str) -> (String, usize) {
+    let mut path = String::new();
+    let mut at = 0;
+    while let Some(c) = text[at..].chars().next() {
+        if is_path(c) {
+            path.push(c);
+            at += c.len_utf8();
+        } else if let Some(length) = text[at..]
+            .starts_with("${")
+            .then(|| built(&text[at..]))
+            .flatten()
+        {
+            path.push('*');
+            at += length;
+        } else {
+            break;
+        }
+    }
+    (path, at)
+}
+
+/// How long the `${...}` `text` begins with is, to its own closing brace,
+/// or nothing when it never closes.
+fn built(text: &str) -> Option<usize> {
+    let mut depth = 0_usize;
+    for (at, c) in text.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(at + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// `path` taken from the folder `here`, with its `.` and `..` worked out,
@@ -490,6 +534,32 @@ mod tests {
         assert_eq!(
             beside("a ./x.py, \"${../y/z.sh}\" and 1.5./"),
             words("./x.py ../y/z.sh")
+        );
+    }
+
+    #[test]
+    fn a_path_built_from_a_value_owns_each_file_it_could_name() {
+        // 20 November: `tests = ./screens-${area}-vm-test.py;` owned only
+        // `tests/vm/screens/screens-`, so a change to a screens case named
+        // no VM test to run before it merged.
+        assert_eq!(
+            beside("tests = ./screens-${area}-vm-test.py; f ../theme/${t}.toml;"),
+            words("./screens-*-vm-test.py ../theme/*.toml")
+        );
+        assert_eq!(
+            beside("readFile ./ir-camera/${name}.py) ${./a.sh}"),
+            words("./ir-camera/*.py ./a.sh")
+        );
+        let tests = [(
+            "vm-screens".to_owned(),
+            vec!["tests/vm/screens/screens-*-vm-test.py".to_owned()],
+        )];
+        assert_eq!(
+            owners(
+                &tests,
+                &["tests/vm/screens/screens-launcher-vm-test.py".to_owned()]
+            ),
+            words("vm-screens")
         );
     }
 }
