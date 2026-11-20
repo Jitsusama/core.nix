@@ -1563,6 +1563,13 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         ),
         "the stand-down went unsaid: {said}"
     );
+    assert!(
+        said.contains(
+            "it stands down 26 s, too short to try its path every 30 s, so a stand-down ends \
+             on its timer alone"
+        ),
+        "a stand-down too short for any trial went unsaid: {said}"
+    );
     let again = said
         .find("it stood down 26 s, so it takes requests again, on connections opened afresh")
         .unwrap_or_else(|| panic!("taking requests again went unsaid: {said}"));
@@ -1606,7 +1613,8 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
     );
 
     // Tried 2 s in and each second after, a path still failing keeps it
-    // standing down.
+    // standing down. Three trials by 5 s in, as one every two seconds
+    // would make two.
     tokio::time::sleep_until((stood_down + Duration::from_secs(5)).into()).await;
     let got = ask(&relay.socket, request(&host, "/echo", b"hi")).await;
     assert_eq!(
@@ -1621,7 +1629,7 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
     );
     let tried = trials();
     assert!(
-        tried >= 2,
+        tried >= 3,
         "its path wasn't tried each second as it stood down: {tried} trials"
     );
     assert_eq!(
@@ -1630,8 +1638,8 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
         "a request went on while it stood down"
     );
 
-    // A path that answers a trial's first request and fails the next, or
-    // answers each with a 502, still keeps it standing down.
+    // A path that answers a trial's first two requests and fails the
+    // third, or answers each with a 502, still keeps it standing down.
     for (failing, how) in [
         (ANSWERS_THE_FIRST_TWO, "failing partway"),
         (ANSWERS_502, "answering 502"),

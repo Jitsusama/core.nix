@@ -1655,11 +1655,12 @@ impl Relay {
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
         } else if let Some((was_at, was)) = reset_on {
             // Reset, then lost some other way when it went again, so it's
-            // still counted with the requests reset that failed.
+            // still counted with the requests reset that failed, and said
+            // as the 421 or the 502 chosen above.
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
                 "model-relay: a request reset on connection {was_at}.{was} couldn't be \
-                 carried again, so pi goes directly: {}",
+                 carried again, so {then}: {}",
                 with_causes(why)
             );
         } else {
