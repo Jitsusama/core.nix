@@ -318,16 +318,7 @@ fn run(args: &Args) -> io::Result<()> {
         snapshot.answered_by.insert(by, answers);
     }
     for question in asking::tick(&snapshot, &mut state) {
-        let to = match question.to {
-            To::Watcher => watcher.as_str(),
-            To::Switcher => snapshot.switcher.as_deref().unwrap_or(watcher),
-            To::Holder => snapshot
-                .net_held_since
-                .as_ref()
-                .and_then(|held| held.from.as_deref())
-                .unwrap_or(watcher),
-            To::Orchestrator => orchestrator.as_str(),
-        };
+        let (to, by) = question.to.addressed(&snapshot, watcher, orchestrator);
         let text = match question.to {
             To::Watcher | To::Switcher | To::Holder => asked_to_answer(&question.text),
             To::Orchestrator => question.text.clone(),
@@ -335,7 +326,6 @@ fn run(args: &Args) -> io::Result<()> {
         let message = message(to, question.to.intent(), text);
         mesh.send(&message)?;
         if let Some(key) = &question.key {
-            let by = matches!(question.to, To::Switcher | To::Holder).then_some(to);
             state.asked_as(key, &message.id, now, &question.text, by);
         }
     }

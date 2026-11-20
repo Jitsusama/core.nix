@@ -4,7 +4,7 @@
 //! concluding quests and Slack kept the net starting nothing from 15:26 to
 //! past 18:35 while 21 merges landed, and nobody was told.
 
-use super::{Breach, Snapshot, held};
+use super::{Breach, Snapshot, held as still_found};
 
 /// How long one hold may keep the net starting nothing while merges land
 /// untested, in minutes.
@@ -24,6 +24,7 @@ pub struct NetHeld {
 
 /// The hold in the net's `held.json`, once the net says since when. A file
 /// written before the net kept `since` gives none, so it's read as it was.
+/// Its sender is kept as a bare address, as the mesh reads who answered.
 #[must_use]
 pub fn read(held: &str) -> Option<NetHeld> {
     let held: serde_json::Value = serde_json::from_str(held).ok()?;
@@ -32,6 +33,7 @@ pub fn read(held: &str) -> Option<NetHeld> {
         why: held["why"].as_str().unwrap_or_default().to_owned(),
         from: held["from"]
             .as_str()
+            .map(|from| from.trim().trim_start_matches('@'))
             .filter(|from| !from.is_empty())
             .map(str::to_owned),
     })
@@ -42,7 +44,7 @@ pub fn read(held: &str) -> Option<NetHeld> {
 /// found it and naming what it says. Only a hold the net still finds
 /// counts.
 pub fn stalled(s: &Snapshot) -> Option<Breach> {
-    let hold = s.net_held_since.as_ref().filter(|_| held(s))?;
+    let hold = s.net_held_since.as_ref().filter(|_| still_found(s))?;
     let minutes = (s.now - hold.since) / 60;
     let merged = s
         .landings
@@ -83,6 +85,11 @@ pub mod tests {
             read("{\"at\":9,\"since\":1,\"why\":\"a reboot\",\"from\":\"\"}").and_then(|h| h.from),
             None,
             "a sender left empty was read as one named"
+        );
+        assert_eq!(
+            read("{\"since\":1,\"why\":\"x\",\"from\":\"@P9R1KI\"}").and_then(|h| h.from),
+            Some("P9R1KI".into()),
+            "a sender written as a mesh mention wasn't read as its address"
         );
         assert_eq!(
             read("{\"at\":1794602830,\"why\":\"a reboot\"}"),
@@ -131,10 +138,30 @@ pub mod tests {
             "its time, its merges or its why went unsaid: {}",
             said[0].text
         );
-        let later = stalls(&held_for(90, &[since + 60]));
+        // The same hold an hour on keeps its key, so asking's seen-state
+        // says it once.
+        let mut later = held_for(31, &[since + 60]);
+        later.now += 60 * 60;
+        later.net_held = Some(later.now - 60);
+        let later = stalls(&later);
         assert_eq!(
-            later[0].key, "netheld:94600",
-            "the same hold is said under one key however long it stands"
+            later.iter().map(|b| b.key.as_str()).collect::<Vec<_>>(),
+            [format!("netheld:{since}")],
+            "the same hold was said under another key as it stood longer"
+        );
+    }
+
+    #[test]
+    fn a_hold_counts_from_its_thirtieth_minute_and_merges_after_it_began() {
+        let since = 100_000 - STALLED_MIN * 60;
+        assert_eq!(
+            stalls(&held_for(STALLED_MIN, &[since + 1])).len(),
+            1,
+            "a hold of exactly half an hour wasn't said"
+        );
+        assert!(
+            stalls(&held_for(STALLED_MIN, &[since])).is_empty(),
+            "a merge landing the second the hold began was counted as waiting on it"
         );
     }
 
