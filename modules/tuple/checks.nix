@@ -121,7 +121,7 @@ onLinux {
       home = account graphical;
       service = home.systemd.user.services.tuple.Service;
       post = service.ExecStartPost;
-      setting = name: toString (service.${name} or "");
+      setting = name: "${name}=${toString (service.${name} or "")}";
       declared = ''^pub const READY_FOLLOWED: &str = r"(.*)";$'';
       lines = lib.splitString "\n" (builtins.readFile ../health/src/launches.rs);
       lost = "tuple-says-when-ready reads READY_FOLLOWED off one line of launches.rs, a raw string";

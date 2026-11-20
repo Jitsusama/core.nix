@@ -18,21 +18,36 @@
 # Given the ExecStartPost's program, the systemctl and log it names, what
 # modules/health takes for a ready line (launches.rs's READY_FOLLOWED), and
 # the unit's SyslogIdentifier, SyslogLevel, LogLevelMax, LogFilterPatterns
-# and StandardOutput, each empty when unset. It refuses settings health
-# couldn't read the unit by, having first judged a table of its own, since
-# the unit's real settings reach few of the refusals.
+# and StandardOutput, each as Name=value, empty when unset, so a swapped
+# argument fails. It refuses settings health couldn't read the unit by,
+# having first judged a table of its own, since the unit's real settings
+# reach few of the refusals.
 set -euo pipefail
 
 post=$1
 systemctl=$2
 log=$3
 ready=$4
-named=$5
-level=$6
-ceiling=$7
-filters=$8
-output=$9
 here=$PWD
+
+# Sets `value` to the setting named `$2`, given as `$1`.
+setting() {
+  if [[ $1 != "$2="* ]]; then
+    echo "given '$1' where $2 belongs"
+    exit 1
+  fi
+  value=${1#"$2="}
+}
+setting "$5" SyslogIdentifier
+named=${value}
+setting "$6" SyslogLevel
+level=${value}
+setting "$7" LogLevelMax
+ceiling=${value}
+setting "$8" LogFilterPatterns
+filters=${value}
+setting "$9" StandardOutput
+output=${value}
 
 # Sets `n` to the syslog priority a level names, by name or by number as
 # systemd takes it, or -1 for none.
@@ -70,7 +85,9 @@ judged() {
   priority "${at:-info}"
   local said_at=${n}
   priority "${most:-debug}"
-  if [[ ${name} != tuple ]]; then
+  if [[ -z ${name} ]]; then
+    refused="tuple.service sets no SyslogIdentifier, so its lines go out under the script's name"
+  elif [[ ${name} != tuple ]]; then
     refused="tuple.service names its lines '${name}', not tuple"
   elif ((said_at < 5 || said_at > 6)); then
     refused="tuple.service logs at ${at}, where health doesn't read"
@@ -85,27 +102,36 @@ judged() {
   fi
 }
 
-# Each row: refused or taken, then a name, level, ceiling, filters and output.
+# Each row: taken, or words its refusal must hold, so each is refused for its
+# own reason; then a name, level, ceiling, filters and output. A row naming
+# neither, or blank, fails.
 while IFS='|' read -r want name at most filter out; do
   judged "${name}" "${at}" "${most}" "${filter}" "${out}"
-  if [[ ${want} == refused && -z ${refused} || ${want} == taken && -n ${refused} ]]; then
-    echo "judged ${name}|${at}|${most}|${filter}|${out} wrongly: ${refused:-taken}"
+  if [[ ${want} == taken ]]; then
+    wrong=${refused}
+  elif [[ -z ${want} || ${refused} != *"${want}"* ]]; then
+    wrong="wanted '${want}' but got '${refused:-taken}'"
+  else
+    wrong=
+  fi
+  if [[ -n ${wrong} ]]; then
+    echo "judged ${name}|${at}|${most}|${filter}|${out} wrongly: ${wrong}"
     exit 1
   fi
 done <<'SETTINGS'
-refused|||||
-refused|tuple-says-ready||||
-refused|tuple|debug|||
-refused|tuple|warning|||
-refused|tuple|7|||
-refused|tuple|loud|||
-refused|tuple|notice|notice||
-refused|tuple||warning||
-refused|tuple||5||
-refused|tuple||quiet||
-refused|tuple|||~ready|
-refused|tuple||||null
-refused|tuple||||file:/tmp/x
+sets no SyslogIdentifier|||||
+names its lines|tuple-says-ready||||
+logs at debug|tuple|debug|||
+logs at warning|tuple|warning|||
+logs at 7|tuple|7|||
+logs at loud|tuple|loud|||
+keeps nothing past notice|tuple|notice|notice||
+keeps nothing past warning|tuple||warning||
+keeps nothing past 5|tuple||5||
+isn't a level|tuple||quiet||
+filters its lines|tuple|||~ready|
+sends its output to null|tuple||||null
+sends its output to file|tuple||||file:/tmp/x
 taken|tuple||||
 taken|tuple|6|||journal
 taken|tuple|notice|||journal+console
