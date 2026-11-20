@@ -661,11 +661,12 @@ QtObject {
         // longest hold apart, one of them not held waiting on the pace to its
         // refresh (H6EDLC, Super+N, 2026-11-19). Each place is said its own
         // way, so a place with none held beside it says no hold.
+        // The longest hold comes after a shorter one, so the first isn't it.
         const heldApart = Presented.changesSaid([
-            { place: "machine", from: 0, heard: 5, held: 10, refreshed: 40, begun: 48, at: 70 },
-            { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
             { place: "machine", from: 100, heard: 102, held: 110, refreshed: 122, begun: 130,
                 at: 190 },
+            { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
+            { place: "machine", from: 0, heard: 5, held: 10, refreshed: 40, begun: 48, at: 70 },
             { place: "machine", from: 200, heard: 204, refreshed: 214, begun: 220, at: 250 }
         ]);
         check(failures, "a change held for home's find says the hold apart from the pace",
