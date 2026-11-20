@@ -5172,6 +5172,12 @@
     the Surface Laptop 4's touchscreen driver, as its source stands once patched, names system_wq
     nowhere, the queue Linux 7.3 says it will remove and warns of once a boot
   '';
+  hang-panic-sleeps-whole = ''
+    hang-panic's sleep hook, run with an empty PATH against a stand-in of busctl, stops systemd's
+    runtime watchdog for each step that hibernates and hands it back to systemd's own setting
+    after, leaves it running through a suspend, suspend-then-hibernate's first step included,
+    and touches nothing when it isn't running
+  '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run with an
     empty PATH against a stand-in of busctl, stops that watchdog before a sleep and starts it again
@@ -6001,6 +6007,22 @@
     a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last
     stage, and Plymouth hears which; an account's units that ignore SIGTERM hold its manager under
     ten seconds, alone or in a reboot
+  '';
+  vm-a-hang-leaves-a-record = ''
+    hang-panic arms the watchdog at a minute, stops it for a hibernation and has it armed again at
+    once after, turns the NMI watchdog on over perf's off for a hard lockup to panic, not a soft
+    one, and holds a panic's 10 s over the command line's; netconsole sends the kernel's lines to
+    the listener's own hardware address, where the Mac's listener command keeps them and drops a
+    line from outside its network, each line numbered and timed, refuses an address nothing
+    answers for now though the machine remembers one, follows the listener to another card
+    past the one remembered, makes a missing or turned-off target again at the next asking, keeps
+    it while nothing has changed or the listener sleeps, its name unanswered too, lets it go while
+    the card is off the listener's network or on another numbered the same, or another machine
+    holds the address sent to while the name goes unanswered, starts with the system as a switch
+    would start it, loading its module itself, stays up through a start the listener missed,
+    which fails no switch, and sends once the following finds it, stops when its card is
+    unplugged and sends again once it's back and renamed, and a panic's words and its 10 s
+    arrive before the kernel restarts, sooner than the watchdog could
   '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the
