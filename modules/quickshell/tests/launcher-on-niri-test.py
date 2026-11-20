@@ -4221,11 +4221,11 @@ def test_each_eero_heads_the_devices_on_it(shell: Shell) -> None:
 
 
 def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
-    """The Home Network's list, a gap above each eero, ends on a whole row wherever it rests.
+    """The Home Network's list, a gap above each eero, ends on a whole row where a key leaves it.
 
     It's drawn in home's card, which keeps one shape, so its gaps left its last row cut at the
-    foot. Its view rests on a row's top and draws only the rows wholly in it, the clear room
-    under them less than a row's and drawn on by nothing (Y2YBTS, 2026-11-20 [95c35e88]).
+    foot. Its view rests on a row's top, draws only the rows wholly in it, and draws the row a
+    move lands on (Y2YBTS, 2026-11-20 [95c35e88]).
     """
     shell.answer("eero")
     shell.launcher_until(functools.partial(selecting, "Home Network"))
@@ -4253,13 +4253,20 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
             shown["inView"],
         )
 
+    # Read again, so a state the opening only passed through doesn't count.
     shell.launcher_until(rested)
-    count = shell.showing()["count"]
-    assert count > 2 * shell.showing()["drawnRows"], parts(shell.showing())
+    opened = shell.showing()
+    assert rested(opened), parts(opened)
+    count = opened["count"]
+    assert count > 2 * opened["drawnRows"], parts(opened)
     for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
-
+        # The cursor's number, absolute, is drawn only beside a row the view draws.
         def landed(shown: Json, at: int = at) -> bool:
-            return shown["current"] == at and rested(shown)
+            return bool(
+                shown["current"] == at
+                and shown["gutter"]["cursor"] == str(at + 1)
+                and rested(shown)
+            )
 
         shell.send_chars(key)
         shell.launcher_until(landed)

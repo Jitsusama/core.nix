@@ -6670,7 +6670,9 @@ Scope {
     // Whether the list's view rests whole, on a row's top and drawing only
     // the rows wholly in it: one with headings, or a place's own with a gap
     // (Headings.restsWhole), a find's as it always has, as unheaded says.
-    readonly property bool restsWhole: Headings.restsWhole(matches, typed !== "")
+    // Spaces alone find nothing, as the search's words drop them, and list
+    // the place whole.
+    readonly property bool restsWhole: Headings.restsWhole(matches, typed.trim() !== "")
     // Where the selection was, which it leaves a heading the way it went
     // from.
     property int currentWas: 0
