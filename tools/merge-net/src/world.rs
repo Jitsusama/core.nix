@@ -640,13 +640,20 @@ impl Real {
         // One that couldn't be started compared nothing, and says nothing
         // of the merge, so it waits for the next round rather than being
         // read as a stall told to the merge's owner. Why is said in the
-        // net's journal, since a cause that lasts, as a full disk, is the
-        // net's to mend and not the merge's.
+        // net's journal and in the run's log, which net.log points at,
+        // since a cause that lasts, as a full disk, is the net's to mend
+        // and not the merge's.
         let unstarted = |why: String| {
-            eprintln!(
+            let said = format!(
                 "merge-net: a Mac's comparison at {} couldn't start: {why}",
                 commit.get(..12).unwrap_or(commit)
             );
+            eprintln!("{said}");
+            let _ = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log)
+                .and_then(|mut kept| writeln!(kept, "{said}"));
             Some(UNCOMPARED)
         };
         let apart = match Comparing::at(self, commit) {
@@ -712,11 +719,26 @@ fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
     }
 }
 
-/// The errors a build prints when a cache can't be reached, as nix printed
-/// them on 19 November when the Mac couldn't name its caches' hosts: each
-/// error line's start, and words it must hold beside.
-const NETWORK_ERRORS: [(&str, &str); 6] = [
-    ("unable to download ", "Could not resolve host"),
+/// What a download says when the network or the cache failed it, not
+/// what it fetched: on 19 November the Mac couldn't name its caches'
+/// hosts, and a resolver that times out, a link that won't connect or a
+/// cache that's down fails the same way. A 404 isn't among them, since a
+/// fetch the change names can be missing.
+const NETWORK_WORDS: [&str; 8] = [
+    "Could not resolve host",
+    "Resolving timed out",
+    "Timeout was reached",
+    "Failed to connect",
+    "Couldn't connect to server",
+    "HTTP error 502",
+    "HTTP error 503",
+    "HTTP error 504",
+];
+
+/// The errors a build prints after a cache couldn't be reached, as nix
+/// printed them on 19 November: each error line's start, and words it must
+/// hold beside.
+const NETWORK_ERRORS: [(&str, &str); 5] = [
     ("Cannot build ", ""),
     ("path ", "there is no substituter that can build it"),
     ("some references of path ", "could not be realised"),
@@ -733,7 +755,7 @@ const NETWORK_ERRORS: [(&str, &str); 6] = [
 const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
 
 /// Whether a failed run's log says it failed on the network alone: some
-/// error names a host that couldn't be resolved, every error is one
+/// download failed with `NETWORK_WORDS`, every other error is one
 /// `NETWORK_ERRORS` names, every reason is that dependencies failed, and
 /// no other line says why, as one that a check no longer evaluates. An evaluation error, a builder that
 /// failed (which a fetch failing on the network prints too, so that stays
@@ -743,13 +765,17 @@ fn unresolved(words: &str) -> bool {
     for line in words.lines().map(str::trim_start) {
         if let Some(error) = line.strip_prefix("error:") {
             let error = error.trim_start();
-            let known = NETWORK_ERRORS
-                .iter()
-                .any(|(start, beside)| error.starts_with(start) && error.contains(beside));
+            let unreached = error
+                .strip_prefix("unable to download ")
+                .is_some_and(|why| NETWORK_WORDS.iter().any(|word| why.contains(word)));
+            let known = unreached
+                || NETWORK_ERRORS
+                    .iter()
+                    .any(|(start, beside)| error.starts_with(start) && error.contains(beside));
             if !known {
                 return false;
             }
-            named |= error.contains("Could not resolve host");
+            named |= unreached;
         } else if let Some(reason) = line.strip_prefix("Reason:") {
             let reason = reason.trim();
             if !(reason.ends_with(" dependencies failed.")
@@ -1906,6 +1932,26 @@ mod tests {
     }
 
     #[test]
+    fn a_mac_comparison_that_cannot_start_compared_nothing() {
+        // Read as a stall, it would be told to the merge's owner, though
+        // the cause, here a commit the checkout lacks, is the net's.
+        let (net, root) = a_net("unstarted-mac", &json!([]));
+        let log = root.join("unstarted.log");
+        let ended = net.compared_on_a_mac(&"0".repeat(40), "base", &log, &|| false);
+        let said = fs::read_to_string(&log).unwrap_or_default();
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(
+            ended,
+            Some(UNCOMPARED),
+            "a Mac's comparison that couldn't start wasn't read as comparing nothing"
+        );
+        assert!(
+            said.contains("couldn't start: "),
+            "why a Mac's comparison couldn't start wasn't kept in its log: {said}"
+        );
+    }
+
+    #[test]
     fn a_landing_asks_whether_it_is_still_wanted_with_the_checkout_given_back() {
         let moving = Mutex::new(());
         let free = Mutex::new(None);
@@ -2177,6 +2223,39 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             mac_ending(Some(1), Some(built_here.as_bytes())),
             Some(UNCOMPARED),
             "changed-checks' own word that a check failed, said after any failed build, counted"
+        );
+    }
+
+    #[test]
+    fn a_cache_that_timed_out_refused_or_was_down_compared_nothing_but_a_404_fails() {
+        let resolved = "Could not resolve hostname (6) Could not resolve host: cache.nixos.org\n";
+        // Only the error line ends on the host; the warning retries.
+        let error = LOOKUPS
+            .find(resolved)
+            .expect("the error line's lookup words are in the fixture");
+        let failed_with = |why: &str| {
+            format!(
+                "{}{why}\n{}",
+                &LOOKUPS[..error],
+                &LOOKUPS[error + resolved.len()..]
+            )
+        };
+        for why in [
+            "Timeout was reached (28) Resolving timed out after 5000 milliseconds",
+            "Couldn't connect to server (7) Failed to connect to cache.nixos.org port 443",
+            "HTTP error 503 (curl error: Service Unavailable)",
+        ] {
+            assert_eq!(
+                mac_ending(Some(1), Some(failed_with(why).as_bytes())),
+                Some(UNCOMPARED),
+                "a comparison that failed only on a cache it couldn't reach counted: {why}"
+            );
+        }
+        let missing = failed_with("HTTP error 404 (curl error: Not Found)");
+        assert_eq!(
+            mac_ending(Some(1), Some(missing.as_bytes())),
+            Some(1),
+            "a download missing from where the change named was let off as the network"
         );
     }
 
