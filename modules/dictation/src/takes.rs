@@ -26,8 +26,11 @@ use crate::parakeet::{RATE, WINDOW};
 
 /// The loudness of each 20 ms is judged once.
 const FRAME: usize = RATE / 50;
-/// A pause this long ends a take: about the gap between sentences.
-const PAUSE_FRAMES: usize = 25;
+/// A pause this long ends a take: a second, longer than most gaps
+/// between a speaker's sentences, so Parakeet hears each with the one
+/// after it. Half a second misheard 18.7% of the meetings' words, a
+/// second 17.7%, and a second and a half no fewer.
+const PAUSE_FRAMES: usize = 50;
 /// What's kept before speech starts and after it ends, so a word's soft
 /// start and end stay in.
 const EDGE_FRAMES: usize = 10;
