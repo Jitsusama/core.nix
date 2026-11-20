@@ -311,6 +311,7 @@ body {
 }
 
 .lines {
+  position: relative;
   flex: 1 1 auto;
   min-inline-size: 0;
   display: grid;
@@ -1238,12 +1239,26 @@ body {
 
 /* New work's line stands where find's does, its words the widest part,
    then the cell it starts from, then the hand-off in full ink, so the
-   one act on the line reads as the one to press. */
+   one act on the line reads as the one to press. Laid over the trail's
+   room from its top, a line too narrow for one row hangs its second
+   over the map, as a sheet would, rather than pushing the map down. */
 .sprout {
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 0;
+  inset-inline: 0;
+  min-block-size: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0 var(--mark);
+  background: var(--background);
+}
+
+@media (max-width: 30rem) {
+  .sprout {
+    border-block-end: 1px solid var(--rule);
+  }
 }
 
 .sprout svg {
