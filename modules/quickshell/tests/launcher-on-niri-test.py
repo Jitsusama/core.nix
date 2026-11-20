@@ -4279,20 +4279,37 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
 
 
 def none_drawn_cut(shell: Shell, where: str) -> None:
-    """Fail, naming them, where the card's list's box cuts any row's words at top or foot.
+    """Fail, naming them, where a box cuts a row's words, or the selected row's ground, down.
 
-    Read from where each text's letters are drawn and what clips them (Launcher.qml's
-    drawnTexts), not from the rule that placed the view, so a row the rule took for whole and
-    drew cut is caught. A row's name reading on is clipped across, never down, so it's no cut.
+    Read from where each text's line is drawn and what clips it (Launcher.qml's drawnTexts),
+    and the selected row's ground from where it's laid (groundCut), not from the rule's own
+    extents, so a row the rule took for whole and drew cut is caught. Where the view rests is
+    `restsOnARow`'s, from the rows' tops. A row's name reading on is clipped across, never
+    down, so it's no cut.
     """
     cut = rows_drawn_cut(shell)
     assert cut == [], f"{where}: drawn cut: {cut}"
+    assert not shell.showing()["groundCut"], f"{where}: the selected row's ground is cut"
 
 
 def rows_drawn_cut(shell: Shell) -> list[str]:
-    """Give the words of the card's rows that its list's box cuts at their top or foot."""
-    card = json.loads(shell.as_account(shell.ipc("drawnTexts")))[0]
-    listed = [text for text in card if "/QQuickListView" in text["from"]]
+    """Give the words of the card's rows that a box cuts at their top or foot.
+
+    Read until two reads agree on where each stands down the card, since Qt lays a row out
+    again only before its next frame, so words read between a change and that frame stand
+    where they were. Across is left out, as a long name reads on.
+    """
+    deadline = time.monotonic() + 5
+    last = None
+    while True:
+        card = json.loads(shell.as_account(shell.ipc("drawnTexts")))[0]
+        listed = [text for text in card if "/QQuickListView" in text["from"]]
+        standing = [(text["said"], text["ink"]["y"], text["cutDown"]) for text in listed]
+        if standing == last:
+            break
+        assert time.monotonic() < deadline, f"the rows' words never stood still: {standing}"
+        last = standing
+        time.sleep(0.1)
     assert listed, f"no row's words were drawn: {card}"
     return [text["said"] for text in listed if text["cutDown"]]
 
@@ -4309,8 +4326,8 @@ def home_network_in_normal(shell: Shell) -> None:
 def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) -> None:
     """The wheel leaves the Home Network's list on a row's top, no row drawn cut at its foot.
 
-    The wheel moves the view by pixels, so it stops anywhere; the list then rests on the row
-    the view stopped in, as a step does (Launcher.qml's onMovementEnded).
+    The wheel moves the view by pixels, so it can stop inside a row; once it stops, the list
+    rests on the nearest row's top (Launcher.qml's onMovementEnded, Headings.rested).
     """
     home_network_in_normal(shell)
     card = shell.showing()["card"]
@@ -4318,32 +4335,38 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     shell.as_account(f"{wlrctl} pointer move -100000 -100000")
     middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
     shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
-    # Down by less than two rows, so the view stops inside one, then back up the same.
+    # Down and back up by a turn that isn't a whole number of rows, so the view can stop
+    # inside one.
     for by in [70, -70]:
         was = shell.showing()["scrolled"]
         # Said, so a wait that runs out names which way the wheel went and from where.
         print(f"the wheel by {by} from {was}")
         shell.as_account(f"{wlrctl} pointer scroll {by} 0")
 
+        # Once the view has stopped, so one the wheel only passed through doesn't count.
         def rested(shown: Json, was: int = was, by: int = by) -> bool:
             return bool(
-                (shown["scrolled"] - was) * by > 0 and shown["restsOnARow"] and shown["cut"] == []
+                not shown["moving"]
+                and (shown["scrolled"] - was) * by > 0
+                and shown["restsOnARow"]
+                and shown["cut"] == []
             )
 
         shell.launcher_until(rested)
-        # Read again once it's stood, so a view the wheel only passed through doesn't count.
-        time.sleep(0.5)
         shown = shell.showing()
+        print(f"the wheel by {by} rested at {shown['scrolled']}")
         assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
         none_drawn_cut(shell, f"the wheel by {by}")
     shell.close_launcher()
 
 
 def test_the_home_network_rests_whole_again_once_its_find_is_gone(shell: Shell) -> None:
-    """A find in the Home Network keeps the old rule, and taking it away gives the whole row.
+    """Once a find in the Home Network is taken away, its list ends on a whole row again.
 
     A find drops headings and sets its own rows, so the list rests whole only on the place's
-    own list (Headings.restsWhole); once the letters are gone, it's that list again.
+    own list (Headings.restsWhole); once the letters are gone, it's that list again, and G
+    lands on its last row drawn whole. Where a find leaves the view as it goes is a case of
+    its own, not this one.
     """
     home_network_in_normal(shell)
     whole = shell.showing()["count"]
@@ -4356,7 +4379,20 @@ def test_the_home_network_rests_whole_again_once_its_find_is_gone(shell: Shell) 
     )
     shell.normal()
     shell.send_chars("G")
-    shell.launcher_until(lambda shown: shown["current"] == whole - 1 and shown["cut"] == [])
+
+    # The cursor's number is drawn only beside a row the view draws. Where the view rests isn't
+    # asked: here G was seen to land off a row's top (20 Nov), with no row drawn cut, and why
+    # is the Sat 21 Nov follow-up's.
+    def landed(shown: Json) -> bool:
+        return bool(
+            shown["current"] == whole - 1
+            and shown["gutter"]["cursor"] == str(whole)
+            and shown["cut"] == []
+        )
+
+    shell.launcher_until(landed)
+    shown = shell.showing()
+    assert landed(shown), (shown["current"], shown["gutter"], shown["cut"])
     none_drawn_cut(shell, "after the find, at the foot")
     shell.close_launcher()
 

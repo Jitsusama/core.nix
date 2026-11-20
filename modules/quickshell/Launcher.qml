@@ -9922,6 +9922,11 @@ Scope {
             cut: list.cut(),
             restsOnARow: list.restsOnARow(),
             drawnRows: list.drawnRows(),
+            // Whether the selected row's ground is cut by the view's edge,
+            // read from where it's laid rather than the rule's extent, and
+            // whether the wheel or a flick still moves the view.
+            groundCut: list.groundCut(),
+            moving: list.moving,
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -10052,7 +10057,7 @@ Scope {
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // And the keys it would say with room for all, before any give way.
             wanted: foot.toldNow.map(key => `${key[0]} ${key[1]}`),
-            // How far the list is scrolled, which only a key changes.
+            // How far the list is scrolled, by a key, the wheel or a flick.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
             // title it draws itself, whether it holds more than fits, and
@@ -14936,6 +14941,24 @@ Scope {
                                         drawn += 1;
                                 }
                                 return drawn;
+                            }
+
+                            // Whether the selected row's ground is drawn
+                            // partly outside the list's box, from where its
+                            // row is laid on the box rather than from
+                            // extentOf, so a check sees its foot cut where
+                            // the rule took it for whole. One wholly out of
+                            // view is hidden, not cut.
+                            function groundCut() {
+                                const entry = root.current < 0 ? null
+                                    : list.itemAtIndex(root.current);
+                                if (entry === null || entry.opacity === 0)
+                                    return false;
+                                const ground = entry.drawnRow;
+                                const top = ground.mapToItem(listBox, 0, 0).y;
+                                const bottom = top + ground.height;
+                                return bottom > 0.5 && top < listBox.height - 0.5
+                                    && (top < -0.5 || bottom > listBox.height + 0.5);
                             }
 
                             // Whether the view starts where a row does, with
