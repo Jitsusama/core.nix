@@ -31,6 +31,9 @@ SCAN_COLUMNS = 5
 NEIGHBOUR = "10.42.0.99"
 NEIGHBOUR_ADDRESS = "02:00:00:00:42:99"
 
+# How near, in dB, Lantern's two are heard when set alike, as hwsim gives the same air.
+ALIKE = 3
+
 
 def knows_a_neighbour(machine: BaseMachine) -> None:
     """Have the Wi-Fi card know the neighbour, as it knows one it has asked after lately."""
@@ -190,20 +193,35 @@ def test_a_card_losing_its_echoes_during_a_call_gives_way_to_another_at_once(
     for radio in ("wlan0", "wlan5"):
         machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
 
-    def hears_the_second(_: bool) -> bool:
-        """Have the cards look, and say whether they heard Lantern's second."""
-        wifid.ask("Scan")
-        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
+    def hears_both_alike(_: bool) -> bool:
+        """Have the cards look, and say whether the look heard the second as loud."""
+        # The second is kept from the subtest before, heard then at -45 dBm, so only a look
+        # since its power went up says it's near enough: on 20 Nov 2026 the card gave way
+        # only once a look that ended 16 s into the loss heard it at -30. What the last look
+        # heard is read before another is asked, so none is under way as the call begins:
+        # one begun then ran 19 s as the link lost every frame.
+        levels: dict[str, int] = {}
+        for line in machine.succeed("wpa_cli -i wlan2 scan_results").splitlines():
+            fields = line.split("\t")
+            if len(fields) == SCAN_COLUMNS and fields[4] == "Lantern":
+                levels[fields[0]] = int(fields[2])
+        first, second = levels.get("02:00:00:00:00:00"), levels.get("02:00:00:00:05:00")
+        alike = first is not None and second is not None and abs(first - second) <= ALIKE
+        if not alike:
+            wifid.ask("Scan")
+        return alike
 
-    retry(hears_the_second, timeout=timedelta(seconds=60))
+    retry(hears_both_alike, timeout=timedelta(seconds=90))
     machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    # The looks just asked lost echoes as they took the card off its channel, and are left
+    # out: counted, they moved the card as the call began (2026-11-20), before any loss.
     answer = wifid.acting({"act": "calling", "on": True})
     assert answer == {"id": 1, "done": True}, answer
-    since = wifid.journal_now()
     # Nothing the first sends the card arrives, its echoes' answers among it, while what
     # manages the link passes beside the queue.
     machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem loss 100%")
+    since = wifid.journal_now()
     try:
         # Two lost come within about three seconds, an echo waited on a second, where the
         # minute's choice would hold the card until two minutes had lost a tenth.
@@ -219,6 +237,7 @@ def test_a_card_losing_its_echoes_during_a_call_gives_way_to_another_at_once(
             timeout=timedelta(seconds=30),
         )
     finally:
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
         machine.succeed("ip netns exec air tc qdisc del dev wlan0 root")
         answer = wifid.acting({"act": "calling", "on": False})
         assert answer == {"id": 1, "done": True}, answer

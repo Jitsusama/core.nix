@@ -868,6 +868,12 @@ impl Air<'_> {
                 self.cards.insert(path.to_string(), (card, step));
             }
         }
+        let scanning = changed.get("Scanning").map(|scanning| &**scanning);
+        if let Some(&zvariant::Value::Bool(scanning)) = scanning
+            && let Some(card) = self.named(bus, path).await
+        {
+            change(&self.state, |state| state.scanning(&card, scanning));
+        }
         let point = changed.get("CurrentBSS").map(|point| &**point);
         if let Some(zvariant::Value::ObjectPath(point)) = point {
             self.at.insert(path.to_string(), point.to_string());

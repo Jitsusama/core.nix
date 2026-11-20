@@ -48,6 +48,15 @@ pub const FAINTER: i32 = 6;
 /// point's window fills before it's judged.
 pub const BETWEEN: Duration = Duration::from_secs(30);
 
+/// How long into a look the echoes it loses are left out, as the look's
+/// rather than the link's. A look takes the card off its channel, and
+/// looks asked once a second in a test lost 8 of the 10 echoes before a
+/// call (2026-11-20). One over every channel takes 5 to 6 s (main.rs), but
+/// a card can't leave a channel whose point no longer answers, so a fading
+/// link's look runs long: one begun as a test's link lost every frame
+/// took 19 s, and left out whole, held the card there throughout.
+pub const LOOK: Duration = Duration::from_secs(6);
+
 /// Why a call's link is fading.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Why {
