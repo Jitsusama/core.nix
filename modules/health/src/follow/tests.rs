@@ -165,7 +165,12 @@ const OVERSLEPT: Duration = Duration::from_secs(1);
 /// `unwritable_for` times, or ever at `usize::MAX`; then a held sender
 /// sends `tomorrow_after_room` more of the next day's lines. A `busy`
 /// held sender sends a line of the day at every look, as a busy journal
-/// does, and one sends a line of the day at look `late`, if any.
+/// does, and one sends a line of the day at look `late`, if any. At each
+/// look in `flaps`, the day turns writable if it wasn't, or unwritable if
+/// it was, as a disk at the edge of full flaps between the two. The wall
+/// clock runs with the awake one but for a `slept`: after so many looks,
+/// the machine sleeps so long, which only the wall clock sees, from the
+/// next look at the clock, as `run` looks at it before the lid in a tick.
 #[derive(Default)]
 struct Ran {
     before: i64,
@@ -178,6 +183,8 @@ struct Ran {
     tomorrow_after_room: i64,
     busy: bool,
     late: usize,
+    flaps: &'static [usize],
+    slept: Option<(usize, Duration)>,
 }
 
 /// What a `Ran` came to: what `run` returned, what it left unread, how
@@ -228,20 +235,8 @@ impl Ran {
             fs::write(&days, "").expect("a file in the folder's place");
         }
         let mut follower = Follower::new("2026-11-12", &days, TimeZone::UTC);
-        let (send, read) = mpsc::channel();
+        let (send, read) = self.sent();
         let line = |second| Some(warning(NOON + second));
-        for second in 0..self.before {
-            send.send(line(second)).expect("a line sent");
-        }
-        for _ in 0..self.ends {
-            send.send(None).expect("a follower's end sent");
-        }
-        for second in 0..self.after {
-            send.send(line(self.before + second)).expect("a line sent");
-        }
-        for second in 0..self.tomorrow {
-            send.send(line(DAY + second)).expect("a line sent");
-        }
         let held = RefCell::new((self.held_for > Duration::ZERO).then(|| send.clone()));
         drop(send);
         let start = Instant::now();
@@ -267,7 +262,13 @@ impl Ran {
             first.set(first.get().or(Some(clock.get())));
             clock.get()
         };
-        let now = || moved(self.step);
+        let now = || {
+            let at = moved(self.step);
+            (
+                at,
+                self.on_the_wall(at.saturating_duration_since(start), looks.get()),
+            )
+        };
         let idle_waits = Cell::new(0);
         let wait = |time: Duration| {
             idle_waits.set(idle_waits.get() + usize::from(time.is_zero()));
@@ -286,6 +287,9 @@ impl Ran {
                 for second in 0..self.tomorrow_after_room {
                     send_held(line(DAY + self.tomorrow + second));
                 }
+            }
+            if self.flaps.contains(&looks.get()) {
+                flap(&days);
             }
             if self.late > 0 && looks.get() == self.late {
                 send_held(line(self.before + self.after));
@@ -315,6 +319,49 @@ impl Ran {
             today: written(&days, "2026-11-12"),
             tomorrow: written(&days, "2026-11-13"),
         }
+    }
+
+    /// The lines sent before the run starts, and the followers' ends among
+    /// them, with the sender that sent them.
+    fn sent(&self) -> (mpsc::Sender<Option<String>>, mpsc::Receiver<Option<String>>) {
+        let (send, read) = mpsc::channel();
+        let line = |second| Some(warning(NOON + second));
+        for second in 0..self.before {
+            send.send(line(second)).expect("a line sent");
+        }
+        for _ in 0..self.ends {
+            send.send(None).expect("a follower's end sent");
+        }
+        for second in 0..self.after {
+            send.send(line(self.before + second)).expect("a line sent");
+        }
+        for second in 0..self.tomorrow {
+            send.send(line(DAY + second)).expect("a line sent");
+        }
+        (send, read)
+    }
+
+    /// The wall clock, in microseconds, once the run has been awake
+    /// `awake` and looked at the lid `looks` times.
+    fn on_the_wall(&self, awake: Duration, looks: usize) -> i64 {
+        let asleep = self
+            .slept
+            .filter(|&(after, _)| looks >= after)
+            .map_or(Duration::ZERO, |(_, slept)| slept);
+        NOON + i64::try_from((awake + asleep).as_micros()).expect("a test's length")
+    }
+}
+
+/// Turn `days` writable if it isn't, or unwritable if it is, as a disk
+/// at the edge of full flaps between the two.
+fn flap(days: &Path) {
+    if days.is_file() {
+        fs::remove_file(days).expect("room made for the day");
+    } else {
+        if days.exists() {
+            fs::remove_dir_all(days).expect("the day's folder taken away");
+        }
+        fs::write(days, "").expect("a file in the folder's place");
     }
 }
 
@@ -479,7 +526,10 @@ fn a_busy_journal_still_ticks_every_half_minute() {
     let mut asked = 0;
     let now = || {
         asked += 1;
-        start + Duration::from_secs(10 * asked)
+        (
+            start + Duration::from_secs(10 * asked),
+            NOON + wall(10 * asked),
+        )
     };
     // Only the looks taken as the lines are read count, not those taken
     // as health waits out its start once its follower has ended.

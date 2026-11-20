@@ -20,8 +20,10 @@ static HEARD: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
 
 /// Keep what `say_marked` says, at its `mark`.
 pub(super) fn hear(words: &str, mark: u8) {
-    // No test's code runs under the lock, but taking it back from a panic
-    // keeps one test's failure from failing every saying after it.
+    // Only this push and the filter in `marks_of` run under the lock, and
+    // neither panics, so no test's failure can poison it; were one to all
+    // the same, taking it back would keep it from failing every saying
+    // after it.
     HEARD
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -480,7 +482,7 @@ fn the_journals_last_line_is_where_journald_numbered_its_last() {
         "a journalctl that failed gave an end"
     );
     assert_marked(
-        "a journalctl that couldn't number its last line",
+        "a journalctl that failed giving its last line",
         &[" -c exit 7 ended, ", "may be heard out of order"],
         1,
         WARNING,
@@ -541,15 +543,15 @@ fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
 fn a_replay_that_cant_start_sends_every_followers_end() {
     // Said as a failure, which health ends on, each way it can't, each
     // named for its way so the marks read are its own.
-    let reading = || Command::new("/nonexistent/reading-journalctl");
-    for (newest, reading) in [
+    let unstartable = || Command::new("/nonexistent/reading-journalctl");
+    for (newest, history) in [
         (Command::new("/nonexistent/newest-journalctl"), None),
-        (writing(&[]), Some(reading as fn() -> Command)),
+        (writing(&[]), Some(unstartable as fn() -> Command)),
     ] {
         let (send, heard) = mpsc::channel();
         let count = replayed_by(
             newest,
-            move |_| reading.map_or_else(|| writing(&[]), |reading| reading()),
+            move |_| history.map_or_else(|| writing(&[]), |start| start()),
             |_, _| writing(&[]),
             &send,
             &Children::default(),

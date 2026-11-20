@@ -647,7 +647,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
         run(
             &mut follower,
             &read,
-            Instant::now,
+            || (Instant::now(), Timestamp::now().as_microsecond()),
             thread::sleep,
             lid::look,
             &FAILS,
@@ -683,10 +683,11 @@ fn ended_by(
 }
 
 /// Take the followers' lines until one has ended, which its `None` says,
-/// and health has run `SETTLED` by `now`, and every half minute, however
-/// busy the journals are, look at the lid and write the day. Each
-/// follows for as long as health runs, so an end is a fault, and health
-/// starting again follows every one again.
+/// and health has run `SETTLED` by `now`, the awake clock and the wall's,
+/// in microseconds, and every half minute, however busy the journals are,
+/// look at the lid and write the day. Each follows for as long as health
+/// runs, so an end is a fault, and health starting again follows every one
+/// again.
 ///
 /// Health ends no sooner than `SETTLED` from its start, however its
 /// followers end, so the day isn't read again every few seconds where
@@ -708,22 +709,21 @@ fn ended_by(
 fn run(
     follower: &mut Follower,
     read: &Receiver<Option<String>>,
-    mut now: impl FnMut() -> Instant,
+    mut now: impl FnMut() -> (Instant, i64),
     mut wait: impl FnMut(Duration),
     mut look: impl FnMut() -> Looked,
     say: &dyn Fn(&str),
     notice: &dyn Fn(&str),
 ) -> io::Result<()> {
-    let started = now();
+    let (started, _) = now();
     let mut ticked = started;
     let mut ended = false;
     let mut hearing = true;
     let mut spell = Spell::default();
     loop {
-        let at = now();
+        let (at, wall) = now();
         let ran = at.saturating_duration_since(started);
         if spell.gave_up(at) && ran >= SETTLED {
-            let wall = Timestamp::now().as_microsecond();
             spell.last_try(follower, at, wall, say, notice)?;
         }
         if ended && !spell.is_on() && ran >= SETTLED {
@@ -757,8 +757,7 @@ fn run(
             });
         }
         // Dated once the line is taken, as the wait for it may be long.
-        let at = now();
-        let wall = Timestamp::now().as_microsecond();
+        let (at, wall) = now();
         if let Some(error) = refused {
             spell.tried(Some(&error), at, wall, &follower.into, say, notice);
         }
