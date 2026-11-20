@@ -21,6 +21,9 @@ the cat then running the real one so a copier that leans on it still holds its c
    part, so a refusal for any other reason, such as memory it couldn't lock, fails here.
 8. A secret long enough to outgrow the copier's first page pastes whole, making nothing under
    TMPDIR, running nothing and staying locked in memory once grown.
+9. It says it's ready before it's given the secret, and by then can't be read through /proc.
+10. It says it holds the copy once it's given it.
+11. A copy it refuses is never said to be held.
 
 Every case is checked and reported before it fails.
 
@@ -32,6 +35,7 @@ import ctypes
 import errno
 import os
 import secrets
+import select
 import shutil
 import subprocess
 import sys
@@ -61,7 +65,7 @@ LIBC = ctypes.CDLL(None, use_errno=True)
 
 
 class Cases:
-    """The eight cases, run against one copier, with how each came out."""
+    """The eleven cases, run against one copier, with how each came out."""
 
     def __init__(self, copier: str, shell: str, folder: Path) -> None:
         """Run them against `copier`, its stand-ins run by `shell` and its TMPDIR in `folder`."""
@@ -97,9 +101,9 @@ class Cases:
     def copier_started(self, stdin: int) -> subprocess.Popen[bytes]:
         """Start the copier as the daemon does, reading from `stdin`, keeping what it says."""
         return subprocess.Popen(
-            [self.copier, "--sensitive", "--foreground", "--type", TEXT],
+            [self.copier, "--sensitive", "--say-held", "--foreground", "--type", TEXT],
             stdin=stdin,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.environment,
         )
@@ -127,16 +131,22 @@ class Cases:
         return f"ran {ran} from PATH" if ran else None
 
     def copied(self) -> None:
-        """Run cases 1 to 5: a secret copied and pasted, and the copier holding it."""
+        """Run cases 1 to 5, 9 and 10: a secret copied and pasted, and the copier holding it."""
         held = f"secret-{secrets.token_hex(8)}"
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
         os.close(reading)
+        said = said_next(copier)
+        unready = None if said == "ready" else f"it said {said!r} rather than ready"
+        self.check("it says it's ready first", unready or readable(copier.pid))
         os.write(writing, held.encode())
         os.close(writing)
         try:
             pasted = pasted_once_held(held)
             self.check("the secret pastes whole", None if pasted else "it never pasted")
+            said = said_next(copier)
+            unheld = None if said == "held" else f"it said {said!r} rather than held"
+            self.check("it says it holds the copy", unheld)
             self.check("nothing is made under TMPDIR", self.anything_made())
             self.check("nothing on PATH runs", self.anything_ran())
             self.check("it can't be read through /proc", ended(copier) or readable(copier.pid))
@@ -168,9 +178,11 @@ class Cases:
         unreadable = os.open(self.made.parent, os.O_RDONLY | os.O_DIRECTORY)
         copier = self.copier_started(unreadable)
         os.close(unreadable)
-        failed = refusal(*ended_within(copier), UNREADABLE)
+        ended, said, told = ended_within(copier)
+        failed = refusal(ended, said, UNREADABLE)
         self.check("an unreadable stdin is refused", failed or self.anything_made())
         self.check("an unreadable stdin runs nothing", self.anything_ran())
+        self.check("an unreadable stdin is never said held", said_held(told))
 
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
@@ -178,8 +190,10 @@ class Cases:
         with contextlib.suppress(BrokenPipeError):
             os.write(writing, b"x" * TOO_LONG)
         os.close(writing)
-        failed = refusal(*ended_within(copier), PAST_THE_CAP)
+        ended, said, told = ended_within(copier)
+        failed = refusal(ended, said, PAST_THE_CAP)
         self.check("a stdin past the cap is refused", failed or self.anything_made())
+        self.check("a stdin past the cap is never said held", said_held(told))
 
 
 def pasted_once_held(held: str) -> bool:
@@ -195,6 +209,18 @@ def pasted_once_held(held: str) -> bool:
             return True
         time.sleep(0.2)
     return False
+
+
+def said_next(copier: subprocess.Popen[bytes]) -> str:
+    """Answer the next line the copier says on its standard output, or none if none comes."""
+    if copier.stdout is None or not select.select([copier.stdout], [], [], PATIENCE)[0]:
+        return ""
+    return copier.stdout.readline().decode(errors="replace").strip()
+
+
+def said_held(told: str) -> str | None:
+    """Say a refusing copier said it held the copy, if it said so, as it may say only ready."""
+    return None if told.split() in ([], ["ready"]) else f"it said {told.split()}"
 
 
 def ended(copier: subprocess.Popen[bytes]) -> str | None:
@@ -219,15 +245,18 @@ def unlocked(pid: int) -> str | None:
     return "its status names no VmLck"
 
 
-def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str]:
-    """Answer how the copier ended, or None, ended here, if it held on, and what it said."""
+def ended_within(copier: subprocess.Popen[bytes]) -> tuple[int | None, str, str]:
+    """Answer how the copier ended, or None, ended here, if it held on, and what it said.
+
+    What it said is on its standard error, then its standard output.
+    """
     try:
-        _, said = copier.communicate(timeout=PATIENCE)
+        told, said = copier.communicate(timeout=PATIENCE)
     except subprocess.TimeoutExpired:
         copier.kill()
-        _, said = copier.communicate()
-        return None, said.decode(errors="replace")
-    return copier.returncode, said.decode(errors="replace")
+        told, said = copier.communicate()
+        return None, said.decode(errors="replace"), told.decode(errors="replace")
+    return copier.returncode, said.decode(errors="replace"), told.decode(errors="replace")
 
 
 def refusal(ended: int | None, said: str, why: str) -> str | None:
