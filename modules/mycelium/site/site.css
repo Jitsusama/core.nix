@@ -315,6 +315,7 @@ body {
   flex: 1 1 auto;
   align-self: stretch;
   min-inline-size: 0;
+  container-type: inline-size;
   display: grid;
   align-items: center;
 }
@@ -1234,12 +1235,12 @@ body {
 /* New work's line stands where find's does, its words the widest part,
    then the cell it starts from, then the hand-off in full ink, so the
    one act on the line reads as the one to press. Laid over the trail's
-   room from its top, a line too narrow for one row hangs its second
-   over the map, as a sheet would, rather than pushing the map down; its
-   rule lies on the line's own while it holds one row, and under the
-   sheet when it hangs. The drawer starts below what hangs (view.js sets
-   --hang), so none of it is covered: by its edge, since padding in a
-   box that scrolls is scrolled past to keep what's read in place. */
+   room from its top. Where the room is narrow, as on a phone, the line
+   says less so it still holds one row (below), since a second row can
+   go nowhere that neither covers the drawer nor moves it. Only a line
+   too narrow even for that hangs a row over what's under it, as a sheet
+   would, rather than pushing the map down; its rule lies on the line's
+   own while it holds one row, and under the sheet when it hangs. */
 .sprout {
   position: absolute;
   z-index: 3;
@@ -1252,10 +1253,6 @@ body {
   gap: 0 var(--mark);
   border-block-end: 1px solid var(--rule);
   background: var(--background);
-}
-
-.panel {
-  margin-block-start: var(--hang, 0px);
 }
 
 .sprout svg {
@@ -1287,6 +1284,7 @@ body {
 }
 
 .sprout-go {
+  flex: none;
   min-block-size: 44px;
   padding: 0 var(--mark);
   background: none;
@@ -1297,6 +1295,32 @@ body {
   text-underline-offset: 0.25em;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.go-short {
+  display: none;
+}
+
+/* Narrow, the line keeps its field and the cell it starts from, cut
+   short, and its button says only Start, its whole name still said. */
+@container (max-width: 36rem) {
+  .sprout input[type="text"] {
+    flex-basis: 6rem;
+  }
+
+  .sprout-from span {
+    max-inline-size: 7rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .go-long {
+    display: none;
+  }
+
+  .go-short {
+    display: inline;
+  }
 }
 
 .find-count {

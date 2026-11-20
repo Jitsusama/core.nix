@@ -797,11 +797,6 @@ PLACED = """(selector) => {
   const r = document.querySelector(selector).getBoundingClientRect();
   return [r.left + scrollX, r.top + scrollY, r.width, r.height];
 }"""
-# Whether the drawer's first line starts at or under the hanging sheet.
-CLEAR_OF_SHEET = """() => {
-  const sheet = document.getElementById("sprout-line").getBoundingClientRect();
-  return document.getElementById("panel-body").getBoundingClientRect().top >= sheet.bottom - 1;
-}"""
 # Where the field's chosen words start and end.
 CHOSEN = """(() => {
   const f = document.getElementById("sprout");
@@ -952,9 +947,7 @@ def test_find_and_new_work_never_stand_together(mycelium_opened: Opened) -> None
     expect(trail, "the trail stood beside new work").to_be_hidden()
 
 
-def test_new_works_line_hangs_over_the_map_on_a_phone(
-    browser: Browser, mycelium_served: Served
-) -> None:
+def test_new_works_line_holds_one_row_on_a_phone(browser: Browser, mycelium_served: Served) -> None:
     root, _ = mycelium_served
     opened = Opened(browser, f"{root}mycelium/", SIZES[0], "dark")
     try:
@@ -963,21 +956,24 @@ def test_new_works_line_hangs_over_the_map_on_a_phone(
         page.locator("#map-view").focus()
         page.keyboard.press("a")
         expect(page, "a didn't open a cell").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
-        was = page.evaluate(PLACED, "#map")
+        was = [page.evaluate(PLACED, s) for s in ("#map", "#panel-body")]
         page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
         expect(page.locator("#sprout-from-words"), "the open cell wasn't offered").to_be_visible()
-        # Too narrow for one row, the line hangs its second over the map,
-        # which stays where it was, and the drawer makes room under it.
+        # Narrow, the line says less and holds one row, so it neither
+        # covers the drawer nor moves it or the map.
+        go = page.locator(".sprout-go")
+        expect(go, "the button lost its whole name").to_have_accessible_name(
+            "Start It in the Launcher"
+        )
+        expect(go, "the button kept its long words").to_have_text("Start", use_inner_text=True)
         _, top, _, tall = page.evaluate(PLACED, "#sprout-line")
-        assert tall > 44 + 1, f"the line held one row, {tall} px tall"
-        assert page.evaluate(PLACED, "#map") == was, "the line moved the map"
-        # The drawer makes its room once the line is laid out, a frame on.
-        try:
-            page.wait_for_function(CLEAR_OF_SHEET, timeout=PACE_MS)
-        except PlaywrightTimeoutError:
-            _, body, _, _ = page.evaluate(PLACED, "#panel-body")
-            room = page.evaluate("getComputedStyle(document.getElementById('panel')).marginTop")
-            pytest.fail(f"the line, to {top + tall}, covers the drawer from {body}, given {room}")
+        _, body, _, _ = page.evaluate(PLACED, "#panel-body")
+        # One row is the trail's room and the rule under it.
+        _, _, _, room = page.evaluate(PLACED, ".lines")
+        assert tall <= room + 1.5, f"the line took more than a row, {tall} px in {room}"
+        assert top + tall - 1 <= body, f"the line, to {top + tall}, covers the drawer from {body}"
+        now = [page.evaluate(PLACED, s) for s in ("#map", "#panel-body")]
+        assert now == was, f"the line moved the map or the drawer: {was} to {now}"
     finally:
         opened.close()
 
