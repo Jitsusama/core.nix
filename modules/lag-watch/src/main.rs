@@ -10,10 +10,11 @@
 //! were ready, and in a call the worst of Tuple's and of Chrome's call
 //! threads, each apart; how long Chrome's and Slack's drawing threads
 //! waited, at all times, leaving out tabs the app lowered as hidden, for
-//! the hourly measure cadence judges to read; and, every two seconds, how long niri takes to answer on
-//! its socket, which it does from the same loop that reads input and
-//! draws. Each window is tagged with the system generation and how hard
-//! the work behind Joel was working, so like is compared with like.
+//! the hourly measure cadence judges to read; and, every two seconds,
+//! how long niri takes to answer on its socket, which it does from the
+//! same loop that reads input and draws. Each window is tagged with the
+//! system generation and how hard the work behind Joel was working, so
+//! like is compared with like.
 //!
 //! The latest window goes to $XDG_RUNTIME_DIR/lag-watch/status.json, for
 //! the shell to show: its `trouble` in sentences; `worst`, one word for
@@ -174,10 +175,15 @@ fn answer_report(context: &Context, hours: u64) -> Result<(), Failure> {
 /// slices it watches are this account's.
 fn account(cgroups: &Path) -> Option<PathBuf> {
     let own = fs::read_to_string("/proc/self/cgroup").ok()?;
-    let path = own.lines().find_map(|l| l.strip_prefix("0::"))?;
+    Some(cgroups.join(manager(&own)?.trim_start_matches('/')))
+}
+
+/// The account's manager in a process's cgroup, as `/proc/<pid>/cgroup`
+/// names it, such as `/user.slice/user-1000.slice/user@1000.service`.
+fn manager(cgroup: &str) -> Option<&str> {
+    let path = cgroup.lines().find_map(|l| l.strip_prefix("0::"))?;
     let end = path.find(".service").filter(|_| path.contains("/user@"))?;
-    let manager = &path[..end + ".service".len()];
-    Some(cgroups.join(manager.trim_start_matches('/')))
+    Some(&path[..end + ".service".len()])
 }
 
 fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snapshot {
@@ -430,8 +436,8 @@ fn run() -> Result<(), Failure> {
     };
     let proc = PathBuf::from("/proc");
     started();
-    let within = account.strip_prefix(&cgroups).unwrap_or(&account);
-    let mut apps = apps::Apps::of_account(&format!("/{}", within.display()));
+    let own = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let mut apps = apps::Apps::of_account(manager(&own).unwrap_or_default());
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
@@ -548,7 +554,7 @@ mod tests {
             &dir,
             // The compositor first, so its own nice is never what's asked.
             &[
-                hidden_drawing,
+                hidden_drawing.clone(),
                 hidden,
                 shown.clone(),
                 shown_drawing.clone(),
@@ -563,7 +569,35 @@ mod tests {
             BTreeMap::from([("chrome-ui".to_string(), 1)]),
             "one hidden tab, counted once"
         );
+        // Shown again, the app raises the tab, and the next window reads it.
+        let stat = "72 (chrome) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0\n";
+        fs::write(dir.join("72/stat"), stat).unwrap();
+        let s = snapshot(&dir, &dir, std::slice::from_ref(&hidden_drawing));
+        assert_eq!(s.threads.keys().collect::<Vec<_>>(), [&hidden_drawing]);
+        assert!(s.lowered.is_empty(), "{:?}", s.lowered);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_account_is_the_manager_in_the_watch_s_own_cgroup() {
+        let own =
+            "0::/user.slice/user-1000.slice/user@1000.service/session.slice/lag-watch.service\n";
+        assert_eq!(
+            manager(own),
+            Some("/user.slice/user-1000.slice/user@1000.service")
+        );
+        // As the apps take it, a process of Joel's is found by it.
+        let apps = apps::Apps::of_account(manager(own).unwrap());
+        let scope = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-a.scope\n";
+        assert!(
+            apps.launched_by_joel(scope),
+            "Joel's app isn't found by the account"
+        );
+        assert_eq!(manager("0::/system.slice/lag-watch.service\n"), None);
+        assert_eq!(
+            account(Path::new("/sys/fs/cgroup")).is_some(),
+            manager(&fs::read_to_string("/proc/self/cgroup").unwrap()).is_some()
+        );
     }
 
     #[test]
