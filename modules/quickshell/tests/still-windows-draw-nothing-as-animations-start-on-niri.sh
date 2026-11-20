@@ -23,9 +23,15 @@ export QT_LOGGING_RULES=qt.scenegraph.renderloop.debug=true
 said=$logs/shell.log
 ran=0
 timeout 120 qs -p "$shell" > "$said" 2>&1 || ran=$?
+# What each window drew, and Qt's own lines on its timer, which say how
+# many windows it found shown, said before every verdict below so a
+# failure reads beside them, since the log goes with a failed build;
+# neither ends the script when it's missing.
+grep 'drew' "$said" || true
+grep 'animation timer' "$said" | sed 's/.*\*\*\* //' | sort | uniq -c || true
 # The case exits 2 for a verdict of its own, and anything else is the shell.
 if [ "$ran" -eq 2 ]; then
-  echo "The case failed (Qt's render-loop lines are in $said):" >&2
+  echo "The case failed:" >&2
   grep -v 'qt.scenegraph.renderloop' "$said" >&2
   exit 1
 fi
@@ -34,17 +40,15 @@ if [ "$ran" -ne 0 ]; then
   grep -v 'qt.scenegraph.renderloop' "$said" >&2
   exit 1
 fi
-# What each window drew, and Qt's own lines on its timer, which say how
-# many windows it found shown, said before the verdicts below so a
-# failure reads beside them; neither ends the script when it's missing.
-grep 'drew' "$said" || true
-grep 'animation timer' "$said" | sed 's/.*\*\*\* //' | sort | uniq -c || true
 
 # Without these, the case is another loop's, or fewer windows', or starts
 # that never reached the patched branch, which it says nothing about: Qt
-# goes there only as its animations start again after stopping, so each
-# of the ten starts must have started its timer with all three windows
-# shown. The timer's line is Qt's own wording, which a Qt bump may change.
+# goes there only as its animations start again after stopping, so its
+# timer must have started with all three windows shown at least as often
+# as the case starts them. Counted over the whole run, which starts it
+# beyond the ten as well, so one start missing it can pass; that start's
+# still window would then draw for the patch's undoing anyway. The
+# timer's line is Qt's own wording, which a Qt bump may change.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
@@ -52,8 +56,8 @@ fi
 timed=$(grep -c 'Starting system (not vsync-based) animation timer (exposedWindows=3 ' "$said" \
   || true)
 if [ "$timed" -lt 10 ]; then
-  echo "Qt started its animation timer with all three windows shown $timed times, not at" \
-    "each of the ten starts: 'Starting system (not vsync-based) animation timer" \
+  echo "Qt started its animation timer with all three windows shown $timed times, fewer" \
+    "than the ten starts: 'Starting system (not vsync-based) animation timer" \
     "(exposedWindows=3 ...)'." >&2
   exit 1
 fi

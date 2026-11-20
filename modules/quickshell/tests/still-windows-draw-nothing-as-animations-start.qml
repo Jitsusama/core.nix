@@ -216,7 +216,7 @@ ShellRoot {
             return;
         }
         root.stillBefore = root.stillDrawn;
-        stillWindow.color = "#202020";
+        stillWindow.color = "white";
         heard.running = true;
     }
 
