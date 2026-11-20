@@ -118,7 +118,10 @@
         config.systemd.user.slices.jobs-work.sliceConfig.AllowedCPUs or null
         config.systemd.slices.build.sliceConfig.AllowedCPUs or null
       ];
+      # jobs.slice itself among them, since a pin there would hold every
+      # slice under it.
       joels = config: [
+        config.systemd.user.slices.jobs.sliceConfig.AllowedCPUs or null
         config.systemd.user.slices.jobs-awaited.sliceConfig.AllowedCPUs or null
         config.systemd.user.slices.jobs-timed.sliceConfig.AllowedCPUs or null
         config.systemd.user.slices.background.sliceConfig.AllowedCPUs or null
@@ -131,6 +134,7 @@
         null
         null
       ];
+      nothing = none ++ [ null ];
     in
     holds "agents-work-keeps-off-the-performance-cores"
       "Naming the efficient cores didn't hold agents' work and builds to them alone, naming none held them anyway, or the laptop's hardware held them without the slices."
@@ -140,7 +144,7 @@
           "4-15"
           "4-15"
         ]
-        && joels held == none
+        && joels held == nothing
         && delegated held
         && cores free == none
         && !delegated free
