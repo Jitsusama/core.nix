@@ -9,7 +9,12 @@
 # without it. No watchdog: the host pings only where systemd asks it to. No
 # cap on restarts and no notice of a host left down, so the start keeps its
 # own: a fourth start within ten minutes waits ten minutes first, as
-# Linux's allows three. No exit the host is never restarted from: one it
+# Linux's allows three, and a start by hand counts, so removing the log's
+# .starts file beside it lets the next start go at once. No systemctl for
+# a host to restart itself through onto a new pi or harness, so it exits
+# with a failure, which launchd starts again. No call heard elsewhere: a
+# Mac's a-call-is-on hears only this Mac, so a host's own restart waits out
+# a call here, not one on another of the person's machines. No exit the host is never restarted from: one it
 # was refused with, 78, restarts as any failure does and says why in its
 # log again each time, so a start past 10 MB of log moves it aside, keeping
 # one old one. No journal: a running host writes into the same log until
@@ -79,22 +84,17 @@ let
   logOf = realm: kind: "${folder}/Library/Logs/pi-host-${realm}-${kind}.log";
 
   # A daemon's environment is launchd's alone, so the account's home and
-  # locale, which its login's shell sets, are put first, for a realm's own
+  # language, which its login's shell sets, are put first, for a realm's own
   # to replace as on Linux, so commands read and print text as they do in a
-  # terminal.
+  # terminal. Only LANG: the shell's LC_ALL would outrank a realm's LANG,
+  # which Linux's hosts never get.
   accountsOwn = {
     HOME = folder;
     USER = account;
   }
-  // lib.mapAttrs (_: toString) (
-    lib.filterAttrs (
-      name: _:
-      lib.elem name [
-        "LANG"
-        "LC_ALL"
-      ]
-    ) (home.programs.zsh.sessionVariables or { })
-  );
+  // lib.optionalAttrs (home.programs.zsh.sessionVariables ? LANG) {
+    LANG = toString home.programs.zsh.sessionVariables.LANG;
+  };
 
   ofTheAccount = lib.replaceStrings [ "$HOME" "$USER" ] [ folder account ];
 
@@ -143,7 +143,7 @@ let
     now=$(/bin/date +%s)
     if [ -n "$(/usr/bin/sed -n 3p "$starts" 2>/dev/null)" ] &&
       [ "$(/usr/bin/sed -n 1p "$starts")" -gt "$((now - 600))" ]; then
-      echo "pi-host: started three times in ten minutes; waiting ten minutes to start again"
+      echo "pi-host: started three times in ten minutes; waiting ten minutes to start again; removing $starts lets the next start go at once"
       /bin/sleep 600
       now=$(/bin/date +%s)
     fi
@@ -186,7 +186,7 @@ let
       ProgramArguments = [
         "/bin/sh"
         "-c"
-        "/bin/wait4path /nix/store && exec /bin/sh ${startAt realm kind}"
+        "/bin/wait4path /nix/store && exec /bin/sh ${lib.escapeShellArg (startAt realm kind)}"
       ];
       RunAtLoad = true;
       # The host parks what it holds when told to stop and then exits
@@ -216,7 +216,22 @@ let
 in
 {
   config = {
-    assertions = lib.mapAttrsToList (name: user: {
+    # env hands a realm's environment to the host's node, which System
+    # Integrity Protection doesn't guard, so a Mac's loader would read a
+    # DYLD_ variable there and load a library into the host, as Linux's
+    # refuses LD_PRELOAD for.
+    assertions =
+      lib.mapAttrsToList (
+        realm: host:
+        let
+          given = lib.filter (lib.hasPrefix "DYLD_") (lib.attrNames host.environment);
+        in
+        {
+          assertion = given == [ ];
+          message = "jitsusama.pi.hosts.${realm}.environment gives ${lib.concatStringsSep ", " given}, which a Mac's loader reads to load a library into the pi host. Drop it; a command that needs one sets it itself.";
+        }
+      ) hosts
+      ++ lib.mapAttrsToList (name: user: {
       assertion = name == account || (user.jitsusama.pi.hosts or { }) == { };
       message =
         if account == null then
