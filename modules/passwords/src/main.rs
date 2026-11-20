@@ -1314,10 +1314,10 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     if said.recv_timeout(patience).as_deref() != Ok("ready") {
         return Err(refused_by(child, "the copier never said it was ready"));
     }
-    if let Some(mut input) = child.stdin.take()
-        && let Err(why) = input.write_all(value.as_bytes())
+    if let Some(input) = child.stdin.take()
+        && let Err(why) = given_within(input, value.as_bytes(), patience)
     {
-        return Err(refused_by(child, &why.to_string()));
+        return Err(refused_by(child, &why));
     }
     if said.recv_timeout(patience).as_deref() != Ok("held") {
         return Err(refused_by(child, "the copier never said it held the copy"));
@@ -1347,6 +1347,43 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
         }
     });
     Ok(u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// Writes `secret` to the copier and closes its input, refusing where the
+/// copier hasn't taken it all within `patience`, so a copier that says
+/// it's ready and never reads can't hold the ask past what a pipe holds.
+fn given_within(mut input: ChildStdin, secret: &[u8], patience: Duration) -> Result<(), String> {
+    let fd = input.as_raw_fd();
+    // SAFETY: fcntl changes only the flags of a pipe this owns.
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, libc::O_NONBLOCK) } == -1 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    let deadline = Instant::now() + patience;
+    let mut left = secret;
+    while !left.is_empty() {
+        match input.write(left) {
+            Ok(wrote) => left = left.get(wrote..).unwrap_or_default(),
+            Err(why) if why.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(why) if why.kind() == std::io::ErrorKind::WouldBlock => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err("the copier never took the whole copy".to_owned());
+                }
+                let waits = libc::c_int::try_from(remaining.as_millis())
+                    .unwrap_or(libc::c_int::MAX)
+                    .max(1);
+                let mut writable = libc::pollfd {
+                    fd,
+                    events: libc::POLLOUT,
+                    revents: 0,
+                };
+                // SAFETY: poll reads and writes only the one pollfd given.
+                unsafe { libc::poll(&raw mut writable, 1, waits) };
+            }
+            Err(why) => return Err(why.to_string()),
+        }
+    }
+    Ok(())
 }
 
 /// An ask to start the copier at a path, and where its start is told.
