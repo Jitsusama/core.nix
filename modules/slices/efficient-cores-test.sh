@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # Proves efficient-cores.sh holds only the efficient cores' clock ceiling,
-# within each core's own range, lets one hold stand at a time, and gives
-# each core back the ceiling it had, even after a hold that failed partway.
+# within each core's own range, lets one hold stand at a time, waits its
+# turn behind another's lock, and frees each core to its highest clock,
+# even after a hold or a free that failed partway.
 # Usage: efficient-cores-test <efficient-cores>, run in an empty folder,
 # where it builds a stand-in sysfs.
 set -euo pipefail
@@ -43,6 +44,17 @@ exits() {
   fi
 }
 
+# waits <words...>: the script, given the words, is still waiting after
+# a second, which timeout says by ending it with 124.
+waits() {
+  local got=0
+  timeout 1 "${cores}" "$@" >/dev/null 2>&1 || got=$?
+  if [[ "${got}" != 124 ]]; then
+    echo "'$*' exited ${got} rather than waiting its turn"
+    exit 1
+  fi
+}
+
 # Two performance cores, then three efficient ones, the last two of which
 # reach less, as the laptop's low-power ones do, and a performance core
 # between them, so the list's ranges are read rather than assumed. The
@@ -79,6 +91,7 @@ ceilings "${free}"
 exits 0 hold 400
 ceilings "4800000 4700000 400000 800000 4700000 400000"
 exits 0 free
+ceilings "${free}"
 exits 0 hold 5000
 ceilings "4800000 4700000 3700000 3300000 4700000 3300000"
 exits 0 free
@@ -93,18 +106,30 @@ chmod u+w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
 exits 0 free 1600
 ceilings "${free}"
 
-# A free the kernel refuses partway fails and keeps the hold's note, so
-# another speed is still refused, and asking again frees the rest.
+# A free the kernel refuses on one core still frees the others, fails,
+# and keeps the hold's note, so another speed is still refused, and asking
+# again frees the rest.
 exits 0 hold 1600
-chmod a-w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
+chmod a-w "$sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq"
 exits 1 free 1600
+ceilings "4800000 4700000 1600000 3300000 4700000 3300000"
 exits 75 hold 2000
-chmod u+w "$sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq"
+chmod u+w "$sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq"
 exits 0 free 1600
 ceilings "${free}"
 exits 0 hold 2000
 ceilings "4800000 4700000 2000000 2000000 4700000 2000000"
 exits 0 free 2000
+ceilings "${free}"
+
+# A hold or a free waits while another holds the lock, so two units
+# started together take their turns rather than both passing the check.
+mkdir -p "${EFFICIENT_CORES_RUN}"
+exec 8>"${EFFICIENT_CORES_RUN}/lock"
+flock 8
+waits hold 1600
+waits free
+exec 8>&-
 ceilings "${free}"
 
 exits 0 --help

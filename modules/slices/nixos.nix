@@ -593,7 +593,10 @@ in
       # never stopped ends itself after an hour, as its sleep ends, so an
       # agent that dies mid-measurement leaves no cores held and no unit
       # failed. A refused or failed hold is let go rather than left failed,
-      # since the journal keeps what it said. Nothing starts it at boot.
+      # since the journal keeps what it said; a free the kernel refused
+      # leaves /run/efficient-cores/held behind to say the cores are still
+      # held, and starting and stopping that speed again frees them.
+      # Nothing starts it at boot.
       # Administrators may start and stop it (efficient-cores.rules).
       "efficient-cores-held@" = {
         description = "Holds the efficient cores' clock at most %i MHz";

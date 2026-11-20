@@ -9,14 +9,19 @@
 # One hold stands at a time: it writes down its speed before it holds,
 # under a lock, so a second hold at another speed is refused even when
 # both start together, and a hold that failed partway is freed in full.
-# The note goes only once every core is freed, so a free the kernel
-# refused partway can be asked again.
+# A free tries every core, and the note goes only once each is freed, so
+# a free the kernel refused on some core fails and can be asked again;
+# until it is, the note under /run is what says the cores are held, since
+# the unit is let go.
 #
 # Freeing writes each core's highest clock rather than the ceiling read
 # before the hold, because the kernel reads back the lowest of every
 # limit on a core, a thermal one among them, and writing that back would
-# keep it as ours once it lifted. The kernel keeps each other limit on
-# its own, so freeing ours leaves theirs standing.
+# keep it as ours once it lifted. The kernel keeps its own limits apart
+# from this file, so freeing leaves them standing. A program writing the
+# same file shares one request with us, though, so freeing lifts its
+# limit too; on the laptop, every efficient core's ceiling read its
+# highest clock when this was written, so none was set.
 #
 # Its help and failures take the shape every command of ours does
 # (docs/commands.md), by hand. EFFICIENT_CORES_SYSFS puts sysfs under
@@ -103,7 +108,7 @@ hold() {
 # speed, as a unit's stop gives its own, it leaves a hold at another speed
 # alone.
 free() {
-  local mhz=${1:-} cores n
+  local mhz=${1:-} cores n max refused=0
   if [[ ! -e "${run}/held" ]]; then
     echo "efficient-cores: nothing is held"
     return
@@ -115,8 +120,15 @@ free() {
   if [[ -r "${atom}" ]]; then
     cores=$(efficient)
     while read -r n; do
-      cp "${cpu}/cpu${n}/cpufreq/cpuinfo_max_freq" "${cpu}/cpu${n}/cpufreq/scaling_max_freq"
+      max=$(<"${cpu}/cpu${n}/cpufreq/cpuinfo_max_freq")
+      if ! echo "${max}" >"${cpu}/cpu${n}/cpufreq/scaling_max_freq"; then
+        refused=1
+      fi
     done <<<"${cores}"
+  fi
+  if ((refused)); then
+    echo "efficient-cores: the kernel refused to free a core, so the hold stands" >&2
+    exit 1
   fi
   rm "${run}/held"
   echo "efficient-cores: each efficient core is free to its highest clock"
