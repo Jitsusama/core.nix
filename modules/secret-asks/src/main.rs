@@ -71,6 +71,7 @@ fn help() -> Help {
         "secret-asks ask --item REF --tree . --why WORDS",
         "put up an ask for the checker",
     )
+    .words_unsaid()
     .exit(
         Exit::Failed,
         "the daemon stopped, or the ask couldn't be put up",
@@ -157,20 +158,14 @@ fn given(command: &str, args: &[String], known: &[&str]) -> Result<Vec<Vec<Strin
     Ok(given)
 }
 
-/// The usage failure for a word a command doesn't read. It's named only
-/// where it reads as a flag: any other may be a word of a reason left
-/// unquoted, or an item given with `=`, neither of which an error says.
+/// The usage failure for a word a command doesn't read, which it never
+/// says: it may be a word of a reason left unquoted, or an item given
+/// with `=`. A dash word is answered with the flag nearest it.
 fn unread(command: &str, word: &str, known: &[&str]) -> Failure {
-    let named = word.strip_prefix("--").is_some_and(|name| {
-        !name.is_empty()
-            && name
-                .chars()
-                .all(|letter| letter.is_ascii_lowercase() || letter == '-')
-    });
     let failure = if known.is_empty() {
         Failure::new(Exit::Usage, format!("{command} takes no words"))
-    } else if named {
-        flags::unknown("flag", word, known)
+    } else if word.starts_with('-') {
+        flags::unknown_unsaid("flag", word, known)
     } else {
         Failure::new(
             Exit::Usage,
@@ -212,8 +207,9 @@ fn serve(args: &[String]) -> Result<(), Failure> {
     let checker = std::env::current_exe().map_err(|why| {
         Failure::new(Exit::Failed, "it can't say where it runs from").because(why.to_string())
     })?;
-    // The daemon serves until it can't, saying why on stderr as it stops,
-    // so it only ever ends as a failure, with the code it always had.
+    // The daemon serves until it can't, so it only ever ends as a failure,
+    // with the code it always had. It says why on stderr where it can,
+    // and nothing where its watch on the folder simply ends.
     let _stopped: ExitCode = daemon::run(Config {
         socket: socket.into(),
         asks: asks.into(),
@@ -230,7 +226,7 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         gh: first(&given[10]).map(PathBuf::from),
     });
     Err(Failure::new(Exit::Failed, "it stopped serving")
-        .try_this("journalctl --user -u secret-asks"))
+        .because("it said why just above, or its watch on the asks folder ended"))
 }
 
 /// Sixteen random bytes as 32 lowercase hex characters.
@@ -330,7 +326,9 @@ fn body(context: &Context) -> Result<(), Failure> {
         Some((command, rest)) if command == "serve" => serve(rest),
         Some((command, rest)) if command == "ask" => ask(context, rest),
         Some((command, rest)) if command == "received" => received(context, rest),
-        Some((command, _)) => Err(flags::unknown("command", command, &COMMANDS)),
+        Some((command, _)) => {
+            Err(flags::unknown_unsaid("command", command, &COMMANDS).try_this("secret-asks --help"))
+        }
         None => Err(Failure::new(Exit::Usage, "it takes serve, ask or received")
             .try_this("secret-asks --help")),
     }
@@ -396,6 +394,17 @@ mod tests {
             &["serve", "--item", item, "lighthouse"],
             &["received", "lighthouse"],
             &["ask", "--item=op://Vault/Hidden/password"],
+            // A first word that's no command, read by the walk and by the
+            // body, as an item given with `=` before any command is.
+            &["lighthouse"],
+            &["--item=op://Vault/Hidden/password"],
+            // A reason's dash word, read by the walk before a word left
+            // over, and by the body as the last word.
+            &["ask", "--why", "To", "--lighthouse", "Hidden"],
+            &["ask", "--item", item, "--lighthouse"],
+            // A reason's word read as a shared flag's value.
+            &["ask", "--why", "To", "--format", "lighthouse"],
+            &["ask", "--why", "To", "--color=lighthouse"],
         ] {
             for (place, ending) in refused_everywhere(line) {
                 assert_eq!(
@@ -415,13 +424,76 @@ mod tests {
     }
 
     #[test]
-    fn a_mistyped_flag_is_named_with_the_one_meant() {
-        let ending = ran(&["ask", "--itme", "x"]);
-        assert_eq!(ending.exit, Exit::Usage, "a mistyped flag wasn't refused");
-        assert!(
-            ending.stderr.contains("--itme") && ending.stderr.contains("--item"),
-            "the error didn't name the flag and the one meant: {}",
+    fn a_mistyped_flag_is_answered_with_the_one_meant_and_never_said() {
+        // The walk reads a dash word before a word left over, and the body
+        // one at the end; both answer alike.
+        for line in [&["ask", "--itme", "x"][..], &["ask", "--itme"]] {
+            let ending = ran(line);
+            assert_eq!(ending.exit, Exit::Usage, "{line:?} wasn't refused");
+            assert!(
+                ending.stderr.contains("did you mean --item?") && !ending.stderr.contains("--itme"),
+                "{line:?} didn't offer the flag meant, or said the one given: {}",
+                ending.stderr
+            );
+        }
+    }
+
+    #[test]
+    fn an_ask_keeps_each_flag_in_its_own_field() {
+        let asks = std::env::temp_dir().join(format!("secret-asks-fields-{}", std::process::id()));
+        std::fs::create_dir_all(&asks).expect("the asks folder couldn't be made");
+        let folder = asks.display().to_string();
+        let ending = ran(&[
+            "ask",
+            "--quest-title",
+            "a quest",
+            "--item",
+            "op://V/I/p",
+            "--session",
+            "a session",
+            "--tree",
+            "/t",
+            "--given",
+            "GIVEN",
+            "--why",
+            "a reason",
+            "--quest-id",
+            "Q1",
+            "--asks",
+            folder.as_str(),
+        ]);
+        assert_eq!(
+            ending.exit,
+            Exit::Done,
+            "the ask wasn't put up: {}",
             ending.stderr
+        );
+        // The id goes to the process's own stdout, so the ask is found as
+        // the one file put up in its folder.
+        let put: Vec<_> = std::fs::read_dir(&asks)
+            .expect("the asks folder couldn't be read")
+            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+            .collect();
+        let read = |name: &String| {
+            let id = secret_asks::ask::id_of(name)?.to_owned();
+            let text = std::fs::read_to_string(asks.join(name)).ok()?;
+            Ask::read(&id, &text).ok()
+        };
+        let ask = match put.as_slice() {
+            [name] => read(name),
+            _ => None,
+        };
+        let _ = std::fs::remove_dir_all(&asks);
+        let ask = ask.unwrap_or_else(|| panic!("not one ask that reads back was put up: {put:?}"));
+        assert_eq!(
+            [&ask.item, &ask.tree, &ask.why, &ask.given, &ask.session],
+            ["op://V/I/p", "/t", "a reason", "GIVEN", "a session"],
+            "a flag landed in another's field"
+        );
+        assert_eq!(
+            ask.quest,
+            Some(("Q1".to_owned(), "a quest".to_owned())),
+            "the quest's id and title were swapped or lost"
         );
     }
 
