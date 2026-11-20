@@ -19,15 +19,15 @@ const HANGS: &str = "HEALTH_STOPPED_HANGS";
 /// day, its run waiting on that history's end.
 const REPLAYS: &str = "HEALTH_STOPPED_REPLAYS";
 
-/// Set only for a copy whose run's error is kept before it's stopped, as
-/// a run's is that returns just before a stop.
+/// Set only for a copy whose run returns its error at once, the copy
+/// then waiting to be stopped before `main` would say it.
 const FAILS_FIRST: &str = "HEALTH_STOPPED_FAILS_FIRST";
 
-/// The error the copy's run returns once stopped.
-const FAILS_ENDING: &str = "health: the copy's run failed as it ended";
+/// The error the copy's run returns once its follower ends.
+const FAILS_ENDING: &str = "the follower ended";
 
-/// The error the copy's run returns before it's stopped, if it fails first.
-const FAILS_BEFORE: &str = "health: the copy's run failed before the stop";
+/// The error the copy's run returns at once, if it fails first.
+const FAILS_BEFORE: &str = "the copy's run failed before the stop";
 
 /// How long the stopped copy's run takes to write once its follower
 /// ends, so a stop that didn't wait for it would end health first.
@@ -148,6 +148,16 @@ impl Stopped {
             .expect("the copy said its history")
     }
 
+    /// Wait for the copy's run to have returned, as it marks if it fails
+    /// first.
+    fn returned(&self) {
+        let since = Instant::now();
+        while !self.told_in().with_extension("returned").exists() {
+            assert!(since.elapsed() < WAITS, "the copy's run never returned");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     /// What the copy said on its stderr.
     fn failed(&self) -> String {
         std::fs::read_to_string(self.folder.path().join("stderr")).unwrap_or_default()
@@ -259,7 +269,8 @@ impl Drop for Stopped {
 /// health rests between its looks, and once its follower ends, writes a
 /// little later, as health writes the day, and leaves with an error, or
 /// never returns if it hangs. Asked, it replays a history too, its run
-/// waiting on that history's end, or keeps its error before the stop.
+/// waiting on that history's end, or returns its error at once and waits
+/// for a stop where `main` would say it.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
 fn a_health_to_stop() {
@@ -278,6 +289,7 @@ fn a_health_to_stop() {
     let followers = Followers::default();
     let ender = followers.ender();
     let caught = told.with_extension("caught");
+    let fails_first = std::env::var_os(FAILS_FIRST).is_some();
     // As follow() runs, so this is how health ends.
     let ran = until_stopped(
         move || {
@@ -304,13 +316,12 @@ fn a_health_to_stop() {
                 std::fs::write(told.with_extension("history"), id).expect("said");
                 thread::spawn(move || history.ended())
             });
-            let fails_first = std::env::var_os(FAILS_FIRST).is_some();
-            if fails_first {
-                unsaid(FAILS_BEFORE.to_owned());
-            }
             let saying = told.with_extension("saying");
             std::fs::write(&saying, format!("{follower}{masks}")).expect("said");
             std::fs::rename(&saying, told).expect("said");
+            if fails_first {
+                return Err(io::Error::other(FAILS_BEFORE));
+            }
             rest(WAITS);
             while let Ok(Some(_)) = sent.recv() {}
             if std::env::var_os(HANGS).is_some() {
@@ -323,12 +334,16 @@ fn a_health_to_stop() {
             }
             thread::sleep(WRITES_LATE);
             std::fs::write(told.with_extension("written"), "").expect("its write");
-            if !fails_first {
-                unsaid(FAILS_ENDING.to_owned());
-            }
-            Err::<(), _>(io::Error::other("the follower ended"))
+            Err::<(), _>(io::Error::other(FAILS_ENDING))
         },
     );
+    if fails_first {
+        // Where `main` would say the run's error, a stop coming first.
+        std::fs::write(told.with_extension("returned"), "").expect("its return marked");
+        loop {
+            thread::park();
+        }
+    }
     std::process::exit(if ran.is_ok() { 0 } else { LEAVES });
 }
 
@@ -358,7 +373,9 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
     assert!(
         took < ENDS_LATE + WRITES_WITHIN
             && !stopped.failed().contains(UNWRITTEN)
-            && stopped.failed().contains(FAILS_ENDING),
+            && stopped
+                .failed()
+                .contains(&format!("health: {FAILS_ENDING}")),
         "a stop waited {took:?} though health's run had returned, said it hadn't, or left \
          its error unsaid: {}",
         stopped.failed()
@@ -468,10 +485,14 @@ fn a_stop_says_the_error_a_run_returned_just_before_it() {
     // The run's error is left for `main`, which a stop's end of health
     // never lets run.
     let mut stopped = Stopped::starting(Some(FAILS_FIRST));
+    stopped.returned();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
     assert!(
-        ended.signal() == Some(libc::SIGTERM) && stopped.failed().contains(FAILS_BEFORE),
+        ended.signal() == Some(libc::SIGTERM)
+            && stopped
+                .failed()
+                .contains(&format!("health: {FAILS_BEFORE}")),
         "a stop ended health ({ended}) without saying the error its run returned first: {}",
         stopped.failed()
     );
