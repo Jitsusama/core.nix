@@ -464,6 +464,9 @@ mod tests {
             ("brown", noise(1.0, 0.1, true)),
             ("a breath", breath(1.0, 0.1)),
             ("a breath through the throat", throat(1.0, 0.1)),
+            // Its frames are voiced now and then, so a long one must not
+            // be heard just by lasting.
+            ("a long breath through the throat", throat(3.0, 0.1)),
         ];
         for (name, loud) in sounds {
             let sound = [quiet(2.0), loud, quiet(2.0)].concat();
