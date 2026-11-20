@@ -59,6 +59,8 @@ pub fn stalled(s: &Snapshot) -> Option<Breach> {
     }
     let why: String = hold.why.chars().take(240).collect();
     let noun = if merged == 1 { "merge" } else { "merges" };
+    // The minutes are the stop's, which one hold may have passed to
+    // another, so the hold is named as the one holding it now.
     Some(Breach {
         key: format!(
             "netheld:{}:{}",
@@ -67,7 +69,7 @@ pub fn stalled(s: &Snapshot) -> Option<Breach> {
         ),
         text: format!(
             "the net has started nothing for {minutes} min while {merged} {noun} landed \
-             untested, held by: {why}"
+             untested, now held by: {why}"
         ),
     })
 }
