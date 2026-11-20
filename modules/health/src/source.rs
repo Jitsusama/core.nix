@@ -604,17 +604,16 @@ impl Children {
         self.running().children.remove(&id)
     }
 
-    /// Kill and wait on each child still running, and start none after.
+    /// Kill every child still running before waiting on any, so one stuck
+    /// past its kill can't spare the others, and start none after.
     fn end(&self) {
-        let children = {
+        let mut children = {
             let mut running = self.running();
             running.ended = true;
             mem::take(&mut running.children)
         };
-        for mut child in children.into_values() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+        children.values_mut().map(Child::kill).for_each(drop);
+        children.values_mut().map(Child::wait).for_each(drop);
     }
 }
 
