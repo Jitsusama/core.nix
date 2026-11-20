@@ -848,7 +848,17 @@ Provider {
                 provider.elsewhere("unopened", session), Theme.alert]]);
         }
 
-        function onUnsteered(session, why) {
+        // A refused Wake whose row was becoming woken is taken back at once,
+        // said as not done, rather than reading done for as long as
+        // Becoming waits (a refused Wake read listening for 30 s). Only a
+        // Wake: another steer refused meanwhile, a talk say, is said as
+        // itself and leaves the Wake's row be.
+        function onUnsteered(session, why, act) {
+            const key = `agent:${session.address}`;
+            if (act === "wake" && why !== "" && provider.launcher?.becoming?.[key]) {
+                provider.refused(key, why);
+                return;
+            }
             provider.launcher?.tellOnOpen([[session.address,
                 provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
                 Theme.alert]]);
@@ -1366,10 +1376,11 @@ Provider {
             ?? { ask: id, address: session.address };
         const said = Object.assign({}, ask, fields ?? {});
         if (!rowsKind) {
-            Sessions.steered(session.address, null);
+            Sessions.steered(session.address, null, id);
             return;
         }
-        rowsKind.ask(said, answer => took?.(answer) || Sessions.steered(session.address, answer));
+        rowsKind.ask(said, answer => took?.(answer)
+            || Sessions.steered(session.address, answer, id));
     }
 
     // Reopens a closed orchestrator, its row reading as listening until its
