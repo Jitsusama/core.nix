@@ -136,7 +136,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         // A host just started still has cells the node hasn't listed again.
-        measures::mid_resume(&mut measures, measures::hosts_started().as_deref(), now);
+        measures::mid_resume(&mut measures, measures::hosts_started(now).as_deref(), now);
         let (exit, out) = exit_and_out("mycelium-map-check", &["--json"]);
         measures.push(measures::mapped(exit, &out, fallback));
         let looks = looks(&state_home.join("pi/agentic-harness.pi/looks"));

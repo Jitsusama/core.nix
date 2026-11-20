@@ -458,16 +458,78 @@ fn only_lists(diff: &str, files: &[&str]) -> bool {
         })
 }
 
-/// When each running pi host started, or `None` when the hosts couldn't be
-/// listed.
+/// When each pi host on this machine last resumed its conversations, as
+/// `resumed` reads it, or `None` when the hosts couldn't be listed.
 #[must_use]
-pub fn hosts_started() -> Option<Vec<i64>> {
+pub fn hosts_started(now: i64) -> Option<Vec<i64>> {
+    let units = command(
+        "systemctl",
+        &[
+            "--user",
+            "list-units",
+            "--type=service",
+            "--no-legend",
+            "--plain",
+            "pi-host-*",
+        ],
+    )
+    .ok()?;
     Some(
-        hosts()?
-            .into_iter()
-            .filter_map(|(_, started, _)| started)
+        units
+            .lines()
+            .filter_map(|line| {
+                line.split_whitespace()
+                    .next()
+                    .filter(|unit| host_unit(unit))
+            })
+            .filter_map(|unit| {
+                let shown = command(
+                    "systemctl",
+                    &[
+                        "--user",
+                        "show",
+                        "--timestamp=unix",
+                        "-p",
+                        "ActiveState",
+                        "-p",
+                        "ExecMainStartTimestamp",
+                        "-p",
+                        "ActiveEnterTimestamp",
+                        unit,
+                    ],
+                )
+                .ok()?;
+                resumed(&shown, now)
+            })
             .collect(),
     )
+}
+
+/// When a pi host, from its `systemctl show`, last resumed its
+/// conversations, or `None` when it isn't running. A host tells systemd
+/// it's ready only once it has resumed each, which under load has taken 8
+/// to 9 minutes, so one still activating resumes `now`, and one active
+/// resumed when it became so, or when its process began if that was later.
+/// An active host always carries the time it became so; one without it is
+/// taken as long started, which leaves the hour judged as it was.
+fn resumed(shown: &str, now: i64) -> Option<i64> {
+    let field = |name: &str| {
+        shown
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
+            .map(str::trim)
+    };
+    let at = |name: &str| {
+        field(name)
+            .and_then(|at| at.strip_prefix('@')?.parse::<i64>().ok())
+            .filter(|&at| at > 0)
+    };
+    match field("ActiveState")? {
+        "activating" | "reloading" => Some(now),
+        "active" => at("ActiveEnterTimestamp")
+            .map(|entered| entered.max(at("ExecMainStartTimestamp").unwrap_or(entered))),
+        _ => None,
+    }
 }
 
 /// Each pi host, with the patches its runtime applied where it keeps them,
