@@ -57,7 +57,9 @@ isn't counted again. The share is of the waking time between readings,
 so a suspend leaves it as it was. A build the Nix daemon runs
 for one works as its own user in its own folder, so it's counted
 nowhere, and a Mac says none of it. Where the daemon can't say, the page
-says nothing of it, and the rest of the page stands as it was.
+says nothing of it, and the rest of the page stands as it was; where its
+reading of `/proc` stops answering for three minutes, each repository
+says its processes are unread rather than that nothing works in it.
 
 ## Keys
 
@@ -90,7 +92,9 @@ read. Each `tree:<path>` has `repository`, `checkout`, `path`,
 `title`, `branch`, `checks` and `review`. Each `using:<key>` has its
 `repository`, its `processes`, `memory` in bytes and `cpu` as a share of
 one core, null until two readings are a minute apart and after a reading
-held up, and `folders`, each checkout or tree anything works in with its `path` and the same three.
+held up, all three null while the reading has stopped answering, and
+`folders`, each checkout or tree anything works in with its `path` and
+the same three.
 Times are RFC 3339, UTC.
 
 `repos --json` says the same as one record, and `repos <name>` one

@@ -256,14 +256,25 @@ impl Working {
                 self.used.clear();
                 self.measured = false;
             }
+            if self.missed == STALE {
+                eprintln!(
+                    "repos: the reading of /proc hasn't answered in {STALE} minutes, so what \
+                     works in each repository is said unread until it does; a restart reads \
+                     it again"
+                );
+            }
         }
     }
 
     /// Every record the feed says: the disk's, and what works in each
-    /// repository as last read.
+    /// repository as last read, or unread once the reading has gone stale.
     fn said(&self, record: &Record) -> Vec<Value> {
         let mut said = feed::records(record);
-        said.extend(feed::using(record, &self.used, self.measured));
+        if self.missed >= STALE {
+            said.extend(feed::unread(record));
+        } else {
+            said.extend(feed::using(record, &self.used, self.measured));
+        }
         said
     }
 }

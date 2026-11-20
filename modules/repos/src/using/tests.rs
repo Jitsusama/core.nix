@@ -15,18 +15,30 @@ fn process(pid: u32, folder: &str, started: u64, ticks: u64, memory: u64) -> Pro
     Process {
         pid,
         parent: 0,
-        folder: PathBuf::from(folder),
+        folder: Some(PathBuf::from(folder)),
         started,
-        ticks,
+        own: ticks,
+        children: 0,
         memory: Some(memory),
     }
 }
 
-/// A process `parent` started, in the tree, since tick 10.
-fn child(pid: u32, parent: u32, ticks: u64) -> Process {
+/// A process `parent` started, in the tree, since tick 10, with its own
+/// ticks and those of the children it has waited on.
+fn child(pid: u32, parent: u32, own: u64, children: u64) -> Process {
     Process {
         parent,
-        ..process(pid, TREE, 10, ticks, 0)
+        children,
+        ..process(pid, TREE, 10, own, 0)
+    }
+}
+
+/// The same, working in no folder the reader can place.
+fn unplaced(pid: u32, parent: u32, own: u64, children: u64) -> Process {
+    Process {
+        folder: None,
+        memory: None,
+        ..child(pid, parent, own, children)
     }
 }
 
@@ -123,10 +135,62 @@ fn a_child_counted_as_it_worked_is_not_counted_again_once_waited_on() {
     // The kernel moves a reaped child's whole time into its parent's
     // cutime, though each reading that saw it counted it already: Joel's
     // zsh would read as eight cores the minute a long cargo ended.
-    let before = reading(1_000, vec![child(1, 0, 10), child(2, 1, 48_000)]);
-    let now = reading(7_000, vec![child(1, 0, 10 + 48_600)]);
+    let before = reading(1_000, vec![child(1, 0, 10, 0), child(2, 1, 48_000, 0)]);
+    let now = reading(7_000, vec![child(1, 0, 10, 48_600)]);
     let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
     assert_eq!(cpu, Some(600.0 / 6_000.0), "only cargo's last 600 ticks");
+}
+
+#[test]
+fn a_child_out_of_every_folder_is_taken_off_only_once_waited_on() {
+    // A shell that ran a long build cds out of every tree, or ends and
+    // isn't yet waited on: its parent hasn't its time yet, so nothing comes
+    // off the parent's own work, and all of it comes off once it's reaped.
+    let before = reading(1_000, vec![child(1, 0, 0, 0), child(2, 1, 30_000, 0)]);
+    let out = reading(7_000, vec![child(1, 0, 600, 0), unplaced(2, 1, 30_100, 0)]);
+    let reaped = reading(13_000, vec![child(1, 0, 600, 30_200)]);
+    let share = |before, now| using(Some(before), now)[Path::new(TREE)].cpu;
+    assert_eq!(
+        share(&before, &out),
+        Some(600.0 / 6_000.0),
+        "while it's out"
+    );
+    assert_eq!(
+        share(&out, &reaped),
+        Some(100.0 / 6_000.0),
+        "once it's reaped, only its last 100 ticks"
+    );
+}
+
+#[test]
+fn a_child_the_reader_cannot_look_in_is_taken_off_once_waited_on() {
+    // sudo is setuid, so its working folder can't be read, but its stat
+    // can: Joel's rebuild under it lands in zsh's time when it ends.
+    let before = reading(
+        1_000,
+        vec![
+            child(1, 0, 0, 0),
+            unplaced(2, 1, 10, 0),
+            unplaced(3, 2, 12_000, 0),
+        ],
+    );
+    let now = reading(7_000, vec![child(1, 0, 0, 12_100)]);
+    let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
+    assert_eq!(
+        cpu,
+        Some(90.0 / 6_000.0),
+        "only the rebuild's last 90 ticks"
+    );
+}
+
+#[test]
+fn a_child_waited_on_elsewhere_leaves_its_ancestors_own_work() {
+    // A killed shell's cargo is handed to a subreaper, which waits on it:
+    // node's children's time never grew, and its own work still counts.
+    let before = reading(1_000, vec![child(1, 0, 0, 0), child(2, 1, 30_000, 0)]);
+    let now = reading(7_000, vec![child(1, 0, 600, 0)]);
+    let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
+    assert_eq!(cpu, Some(600.0 / 6_000.0));
 }
 
 #[test]
@@ -135,9 +199,13 @@ fn a_grandchild_gone_with_its_parent_is_taken_off_the_one_still_working() {
     // first reading; node, still working, now holds all three's time.
     let before = reading(
         1_000,
-        vec![child(1, 0, 0), child(2, 1, 1_000), child(3, 2, 2_000)],
+        vec![
+            child(1, 0, 0, 0),
+            child(2, 1, 1_000, 0),
+            child(3, 2, 2_000, 0),
+        ],
     );
-    let now = reading(2_000, vec![child(1, 0, 3_200)]);
+    let now = reading(2_000, vec![child(1, 0, 0, 3_200)]);
     let cpu = using(Some(&before), &now)[Path::new(TREE)].cpu;
     assert_eq!(cpu, Some(200.0 / 1_000.0));
 }
@@ -227,25 +295,24 @@ fn a_reading_keeps_the_processes_working_in_a_folder() {
     sample.processes.sort_by_key(|process| process.pid);
     assert_eq!(sample.at, 1_625, "16.25 s since boot, in ticks");
     assert!(sample.awake.is_some(), "a quick walk read as held up");
+    let read = |pid, folder: Option<&str>, started, own, memory| Process {
+        pid,
+        parent: 1,
+        folder: folder.map(PathBuf::from),
+        started,
+        own,
+        children: 0,
+        memory,
+    };
     assert_eq!(
         sample.processes,
         [
-            Process {
-                pid: 41,
-                parent: 1,
-                folder: TREE.into(),
-                started: 900,
-                ticks: 100,
-                memory: Some(894 * 1024),
-            },
-            Process {
-                pid: 42,
-                parent: 1,
-                folder: TREE.into(),
-                started: 1_000,
-                ticks: 10,
-                memory: None
-            },
+            read(41, Some(TREE), 900, 100, Some(894 * 1024)),
+            read(42, Some(TREE), 1_000, 10, None),
+            // Placed nowhere, so its memory is never read, but its time is
+            // read, as a child's may land in a parent that is placed.
+            read(43, None, 10, 2, None),
+            read(44, None, 10, 2, None),
         ]
     );
     let _ = fs::remove_dir_all(&proc);
@@ -264,9 +331,9 @@ fn a_process_counts_the_children_it_has_waited_on() {
         sample
             .processes
             .iter()
-            .map(|process| process.ticks)
+            .map(|process| (process.own, process.children))
             .collect::<Vec<_>>(),
-        [5_100],
+        [(100, 5_000)],
         "its own 100 ticks and its children's 5,000"
     );
     let _ = fs::remove_dir_all(&proc);
@@ -285,7 +352,25 @@ fn a_process_in_a_removed_folder_works_nowhere() {
         &stat(41, "cargo", 70, 30, 900),
         None,
     );
-    assert_eq!(sample(&proc, &folders()).processes, []);
+    let folders: Vec<_> = sample(&proc, &folders())
+        .processes
+        .into_iter()
+        .map(|process| process.folder)
+        .collect();
+    assert_eq!(folders, [None]);
+    let _ = fs::remove_dir_all(&proc);
+}
+
+#[test]
+fn a_walk_past_even_is_read_as_held_up() {
+    let proc = proc_with("held");
+    pid(&proc, 41, Some(TREE), &stat(41, "cargo", 70, 30, 900), None);
+    let walked = |took: u64| {
+        let mut times = [500, 500 + took].into_iter();
+        sample_by(&proc, &folders(), || times.next().unwrap_or(u64::MAX)).awake
+    };
+    assert_eq!(walked(EVEN), Some(500), "a walk of EVEN is whole");
+    assert_eq!(walked(EVEN + 1), None, "a walk past EVEN is held up");
     let _ = fs::remove_dir_all(&proc);
 }
 

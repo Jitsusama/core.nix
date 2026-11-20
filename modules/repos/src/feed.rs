@@ -137,6 +137,24 @@ pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> 
     said
 }
 
+/// Each repository of `record` with what works in it unread, its figures
+/// null, where the reading of `/proc` has stopped answering: said as
+/// nothing working, it would read as a measurement of none.
+pub fn unread(record: &Record) -> Vec<Value> {
+    let each = record.repositories.iter().map(|repository| {
+        json!({
+            "key": format!("using:{}", repository.key),
+            "kind": "using",
+            "repository": repository.key,
+            "processes": null,
+            "memory": null,
+            "cpu": null,
+            "folders": [],
+        })
+    });
+    each.collect()
+}
+
 /// How the sources stand, as health says them: git always read, since a
 /// reading is the disk's; GitHub answering once a refresh has asked it,
 /// with what it couldn't see as its reason, and not answering when what

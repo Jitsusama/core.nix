@@ -20,7 +20,8 @@ function footed<T>(by: ReadonlyMap<string, T>): T[] {
 
 /** What works in one folder, or a repository's folders together. */
 interface Use {
-  readonly processes: number;
+  /** How many processes work there, unknown while the daemon's reading has stopped answering. */
+  readonly processes: number | undefined;
   /** The memory they hold, in bytes. */
   readonly memory: number;
   /** Their processor time as a share of one core, unknown until two readings are taken. */
@@ -37,7 +38,7 @@ interface Using {
 /** A use read from `fields`, a record's or one folder's in it. */
 function readUse(fields: Fields): Use {
   return {
-    processes: number(fields, "processes") ?? 0,
+    processes: number(fields, "processes"),
     memory: number(fields, "memory") ?? 0,
     cpu: number(fields, "cpu"),
   };
@@ -72,10 +73,17 @@ function share(cpu: number): string {
   return `${cpu.toFixed(1)} cores`;
 }
 
+/** What a use says while the daemon's reading has stopped answering, rather than nothing,
+ * which would read as nothing working. */
+const UNREAD = "processes unread";
+
 /** A use in a row's few words: its processor and memory, and nothing when nothing works in
  * it, so a quiet repository's row stays quiet. */
 function usedBriefly(use: Use | undefined): string {
-  if (use === undefined || use.processes === 0) {
+  if (use?.processes === undefined) {
+    return use === undefined ? "" : UNREAD;
+  }
+  if (use.processes === 0) {
     return "";
   }
   const memory = `${bytes(use.memory)} of memory`;
@@ -84,8 +92,8 @@ function usedBriefly(use: Use | undefined): string {
 
 /** A use as the drawer says it: how many processes work there, then what they take. */
 function usedFully(use: Use | undefined): string {
-  if (use === undefined || use.processes === 0) {
-    return "";
+  if (use?.processes === undefined || use.processes === 0) {
+    return usedBriefly(use);
   }
   const count = use.processes.toLocaleString("en-CA");
   const processes = `${count} ${use.processes === 1 ? "process" : "processes"}`;
@@ -93,4 +101,4 @@ function usedFully(use: Use | undefined): string {
 }
 
 export type { Use, Using };
-export { footed, USING, usedBriefly, usedFully, usingOf };
+export { footed, UNREAD, USING, usedBriefly, usedFully, usingOf };
