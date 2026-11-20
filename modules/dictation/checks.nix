@@ -219,12 +219,12 @@
         made silence.wav trim 0 5
         made low.wav synth 2 sine 440 vol 0.1
         made high.wav synth 2 sine 480 vol 0.1
-        sox -m low.wav high.wav ring.wav
+        sox -R -m low.wav high.wav ring.wav
         made chime.wav synth 1.5 pluck A5 vol 0.3 fade 0 1.5 1.4
         made c.wav synth 3 pluck C4 vol 0.15
         made e.wav synth 3 pluck E4 vol 0.15
         made g.wav synth 3 pluck G4 vol 0.15
-        sox -m c.wav e.wav g.wav chord.wav
+        sox -R -m c.wav e.wav g.wav chord.wav
         made hum.wav synth 3 square 60 vol 0.05
         sox room.wav noise.wav room.wav ask.wav room.wav mine.wav
         sox silence.wav click.wav silence.wav breath.wav silence.wav cough.wav silence.wav \
