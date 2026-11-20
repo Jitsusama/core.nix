@@ -42,6 +42,9 @@ const HANGS_UP: Duration = Duration::from_secs(2);
 /// as health's own way out after its run.
 const LEAVES: i32 = 3;
 
+/// What a stop that ended health before its run returned says.
+const UNWRITTEN: &str = "a stop ended health before it wrote the day";
+
 /// The mask a process's status gives for `signal`.
 fn bit(signal: c_int) -> u64 {
     1 << (signal - 1)
@@ -99,6 +102,7 @@ impl Stopped {
             .envs(hangs.then_some((HANGS, "")))
             .process_group(0)
             .stdout(Stdio::null())
+            .stderr(std::fs::File::create(folder.path().join("stderr")).expect("its stderr"))
             .spawn()
             .expect("the health to stop starts");
         let mut stopped = Self {
@@ -120,6 +124,11 @@ impl Stopped {
     /// What the follower said of its end, if it said anything.
     fn said(&self) -> Option<String> {
         std::fs::read_to_string(self.told_in().with_extension("said")).ok()
+    }
+
+    /// What the copy said on its stderr.
+    fn failed(&self) -> String {
+        std::fs::read_to_string(self.folder.path().join("stderr")).unwrap_or_default()
     }
 
     /// Whether the copy's run wrote as it ended.
@@ -306,8 +315,9 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
          didn't wait for health's run to write the day"
     );
     assert!(
-        took < ENDS_LATE + WRITES_WITHIN,
-        "a stop waited {took:?} though health's run had returned"
+        took < ENDS_LATE + WRITES_WITHIN && !stopped.failed().contains(UNWRITTEN),
+        "a stop waited {took:?} though health's run had returned, or said it hadn't: {}",
+        stopped.failed()
     );
     // Were the stops blocked rather than caught, every follower would block
     // them too, as a run that blocked them showed (`SigBlk` 0x4003, though
@@ -352,12 +362,20 @@ fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
     // `ending` fails past `WAITS`, well past the `ENDS_LATE` and
     // `WRITES_WITHIN` this stop takes, so a stop that waited for good fails.
     let mut stopped = Stopped::starting(true);
+    let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
+    let took = since.elapsed();
     assert_eq!(
         ended.signal(),
         Some(libc::SIGTERM),
         "a stop waited on a run that never returns ({ended})"
+    );
+    assert!(
+        took >= WRITES_WITHIN && stopped.failed().contains(UNWRITTEN),
+        "a stop to a run that never returns ended health {took:?} on, or didn't say the day \
+         went unwritten: {}",
+        stopped.failed()
     );
 }
 
