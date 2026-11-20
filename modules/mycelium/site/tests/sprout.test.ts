@@ -68,6 +68,9 @@ it("says the cell it comes from only when that is an address", () => {
   );
   assert.equal(isAddress("TERN02"), true, "an address should be one");
   assert.equal(isAddress(null), false, "no cell should be no address");
+  for (const from of ["T", "9", "ABCDEFGHIJKL"]) {
+    assert.equal(isAddress(from), true, `${from} should be an address, 1 to 12 long`);
+  }
   for (const from of ["tern02", "TERN-02", "", "ABCDEFGHIJKLM", "X&words=Y", "calls@kestrel"]) {
     assert.equal(isAddress(from), false, `${JSON.stringify(from)} should be no address`);
     assert.equal(

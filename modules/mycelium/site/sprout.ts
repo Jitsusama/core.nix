@@ -62,7 +62,9 @@ export const sproutLink = (typed: string, from: string | null): string | null =>
  * the words again.
  */
 export const handedWords = (from: string | null): string =>
-  `Sent to the Launcher's Start New Work${from === null ? "" : `, from ${from}`}; nothing starts until you press Return there. If it didn't open, wait a moment, then s brings the words back.`;
+  `Sent to the Launcher's Start New Work${from === null ? "" : `, from ${from}`}; ` +
+  "nothing starts until you press Return there. " +
+  "If it didn't open, wait a moment, then s brings the words back.";
 
 /** What the map says once the line holds as many letters as it takes. */
 export const FULL_WORDS = `The line holds ${LONGEST_WORDS} letters; any past that were left off.`;
