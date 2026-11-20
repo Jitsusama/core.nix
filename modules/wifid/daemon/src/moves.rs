@@ -154,6 +154,9 @@ fn chosen(
     if let Some(unreached) = chooser.unreached() {
         println!("<6>{}", kept_off(on, &unreached));
     }
+    if let Some(narrower) = chooser.began_keeping_wide() {
+        println!("<6>{}", kept_wide(on, measured, here.signal, &narrower));
+    }
     match choice {
         Choice::Stay => None,
         Choice::Try(to) => {
@@ -248,6 +251,16 @@ fn kept_off(on: &Joined, unreached: &str) -> String {
         on.card,
         choose::SPURNED.as_secs() / 60,
         on.point
+    )
+}
+
+/// Why a card keeps to its wider band where it would once have tried a
+/// narrower one.
+fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> String {
+    format!(
+        "{} keeps to {} on its wider band rather than try {narrower}, as it loses {:.1}% \
+         heard at {signal} dBm",
+        on.card, on.point, measured.lost
     )
 }
 
@@ -695,6 +708,19 @@ mod tests {
         assert!(
             loaded.ends_with(queued),
             "says it left mid-download: {loaded}"
+        );
+    }
+
+    #[test]
+    fn a_card_keeping_to_its_wider_band_says_what_it_kept_off_and_why() {
+        let why = kept_wide(&joined(DESK), &carried(34), -38, HALL);
+
+        assert!(
+            why.ends_with(&format!(
+                "keeps to {DESK} on its wider band rather than try {HALL}, as it loses 0.0% \
+                 heard at -38 dBm"
+            )),
+            "a wider band kept to says what and why: {why}"
         );
     }
 
