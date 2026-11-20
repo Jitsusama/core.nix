@@ -118,12 +118,16 @@ let
     mv -f log.txt log.1.txt
   '';
 
-  # Says the daemon is ready once it runs, under Tuple's own name
-  # (says-ready.sh).
+  # Says the daemon is ready once its unit is, under Tuple's own name,
+  # looking for ten seconds (says-ready.sh); tuple-says-when-ready swaps
+  # systemctl and systemd-cat for its stand-ins.
   saysReady = pkgs.writeShellScript "tuple-says-ready" ''
-    PATH=${
-      lib.makeBinPath [ pkgs.coreutils ]
-    } exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${lib.getExe' pkgs.systemd "systemctl"} "$@"
+    PATH=${lib.makeBinPath [ pkgs.coreutils ]} exec ${lib.getExe pkgs.bash} ${./says-ready.sh} ${
+      lib.escapeShellArgs [
+        (lib.getExe' pkgs.systemd "systemctl")
+        (lib.getExe' pkgs.systemd "systemd-cat")
+      ]
+    } "$1" 200
   '';
 
   # Puts our entry back when it no longer reads as ours (puts-back.sh).
@@ -206,8 +210,9 @@ in
       ExecStartPre = "${keepsLogs}";
       ExecStart = "${tuple} start";
       # Tuple says only that it started, with no time, so a switch's
-      # restart of it went untimed; this says it, under Tuple's name.
-      ExecStartPost = "@${saysReady} tuple %n";
+      # restart of it went untimed; this says when it's ready. Its - keeps
+      # it from ever failing the start: all it can lose is a line.
+      ExecStartPost = "-${saysReady} %n";
       ExecStop = "${tuple} stop";
       Restart = "on-failure";
       # A call is real time: its sound, camera and screen are encoded and

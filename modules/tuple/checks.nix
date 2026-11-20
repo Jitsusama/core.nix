@@ -106,6 +106,25 @@ onLinux {
       touch $out
     '';
 
+  # Tuple says only that it started, so the service says when it's ready,
+  # after systemd's own line, where health takes it: its own ExecStartPost,
+  # run against a stand-in systemctl and systemd-cat
+  # (tests/tuple-says-when-ready.sh).
+  tuple-says-when-ready =
+    let
+      post = (account graphical).systemd.user.services.tuple.Service.ExecStartPost;
+    in
+    pkgs.runCommandLocal "tuple-says-when-ready" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/tuple-says-when-ready.sh} ${
+        lib.escapeShellArgs [
+          (lib.removeSuffix " %n" (lib.removePrefix "-" post))
+          (lib.getExe' pkgs.systemd "systemctl")
+          (lib.getExe' pkgs.systemd "systemd-cat")
+        ]
+      }
+      touch $out
+    '';
+
   # WebRTC inside Tuple asks real-time priorities in an order the account's
   # limit inverts, granting only its low-priority thread one, so the daemon
   # is given none, and comes first by its share and its nice value alone.

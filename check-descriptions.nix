@@ -5135,6 +5135,10 @@
     one that ran a minute; what the follow says as it ends is logged once while it says the same, a
     signed-out Tuple's in plain words
   '';
+  tuple-says-when-ready = ''
+    Tuple's service returns from starting at once, then says once it's active how long it took, from
+    a start or the crash before a restart, in the words health reads, and nothing with no start
+  '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it
   '';
