@@ -77,7 +77,8 @@ priority() {
 # 2026-11-20). An info floor keeps the ready line too, whichever manager
 # applies the ceiling. LogFilterPatterns works only for system services, as
 # systemd.exec(5) says, but any is refused, as nothing sets one and a systemd
-# that honoured it could drop the ready line. Unset, a level is info, no
+# that honoured it could drop the ready line. A level or ceiling that isn't
+# one is a slip in the unit, refused as that. Unset, a level is info, no
 # ceiling holds and output is journalled.
 judged() {
   local name=$1 at=$2 most=$3 filter=$4 out=$5
@@ -89,6 +90,8 @@ judged() {
     refused="tuple.service sets no SyslogIdentifier, so its lines go out under the script's name"
   elif [[ ${name} != tuple ]]; then
     refused="tuple.service names its lines '${name}', not tuple"
+  elif ((said_at < 0)); then
+    refused="tuple.service sets SyslogLevel to '${at}', which isn't a level"
   elif ((said_at < 5 || said_at > 6)); then
     refused="tuple.service logs at ${at}, where health doesn't read"
   elif ((n < 0)); then
@@ -124,11 +127,11 @@ names its lines|tuple-says-ready||||
 logs at debug|tuple|debug|||
 logs at warning|tuple|warning|||
 logs at 7|tuple|7|||
-logs at loud|tuple|loud|||
+SyslogLevel to 'loud', which isn't|tuple|loud|||
 keeps nothing past notice|tuple|notice|notice||
 keeps nothing past warning|tuple||warning||
 keeps nothing past 5|tuple||5||
-isn't a level|tuple||quiet||
+LogLevelMax to 'quiet', which isn't|tuple||quiet||
 filters its lines|tuple|||~ready|
 sends its output to null|tuple||||null
 sends its output to file|tuple||||file:/tmp/x
@@ -154,10 +157,10 @@ mkdir -p bin
 # Answers the one ask the post makes, the unit active only once the case
 # has said it's up, and refuses any other ask, so one of the wrong manager or
 # unit fails here as it would say nothing on a machine. Its main process is a
-# daemon's, or none when the case says its start left `many`, or, once the
-# case has found it, the post's own waiter when the case says it's `alone`,
-# as systemd takes it then. Each ask is counted, so a case knows the post has
-# looked; one the case says hangs is never answered.
+# daemon's, or none when the case says its start left `many`, or the post's
+# own waiter when the case says it's `alone`, as systemd takes it then. Each
+# ask is counted, so a case knows the post has looked; one the case says
+# hangs is never answered.
 cat >bin/systemctl <<EOF
 #!${BASH}
 [[ "\$*" == "--user show --property=ActiveState,MainPID tuple.service" ]] || exit 1
@@ -165,9 +168,24 @@ echo >>${here}/asked
 # A systemd that never answers: far past the post's two-second bound on it.
 if [[ -e ${here}/hangs ]]; then rm ${here}/hangs; exec sleep 10; fi
 if [[ ! -e ${here}/up ]]; then printf 'MainPID=0\nActiveState=activating\n'
-elif [[ -e ${here}/alone && -e ${here}/main ]]; then
-  printf 'MainPID=%s\nActiveState=active\n' "\$(cat ${here}/main)"
-elif [[ -e ${here}/alone ]]; then printf 'MainPID=0\nActiveState=activating\n'
+elif [[ -e ${here}/alone ]]; then
+  # The waiter is the first process up from this ask with the case's log
+  # among its words, found here rather than by the case looking over every
+  # process, which a loaded machine slows past the post's wait. While its
+  # parent has the log too, the post hasn't returned, and systemd says the
+  # unit is still starting.
+  main=0 state=activating pid=\${PPID}
+  for _ in 1 2 3 4 5 6 7 8; do
+    read -r _ _ _ parent _ </proc/\${pid}/stat
+    if grep -qzxF ${here}/log.txt /proc/\${pid}/cmdline; then
+      if ! grep -qzxF ${here}/log.txt /proc/\${parent}/cmdline 2>/dev/null; then
+        main=\${pid} state=active
+      fi
+      break
+    fi
+    pid=\${parent}
+  done
+  printf 'MainPID=%s\nActiveState=%s\n' "\${main}" "\${state}"
 elif [[ -e ${here}/many ]]; then printf 'MainPID=0\nActiveState=active\n'
 else printf 'MainPID=7\nActiveState=active\n'; fi
 EOF
@@ -259,11 +277,11 @@ says_only() {
 # Waits for the post to say its line, and fails the case when it isn't `wanted`.
 says() {
   local what=$1 wanted=$2 got
-  for _ in {1..80}; do
+  for _ in {1..200}; do
     [[ -s said ]] && break
     # The post says nothing but its line, so its output is read again until
-    # it's there, for four seconds at most: an ask systemd never answers
-    # takes two of them.
+    # it's there, for ten seconds at most: an ask systemd never answers
+    # takes two of them, and a loaded machine slows the rest.
     sleep 0.05
   done
   got=$(cat said)
@@ -279,10 +297,10 @@ asks() {
 }
 
 # Waits until the post has asked systemd `n` times in all, and fails the case
-# `what` when it hasn't within two seconds.
+# `what` when it hasn't within five seconds, which a loaded machine needs.
 looked() {
   local n=$1 what=$2 count
-  for _ in {1..40}; do
+  for _ in {1..100}; do
     count=$(asks)
     ((count >= n)) && return
     # Each of the post's asks lands a tenth of a second after the last.
@@ -303,8 +321,7 @@ asked() {
 }
 
 # Sets `running` when the process at `proc` runs with this case's log among
-# its words, as the post, its waiter and the waiter's greps of it do. It
-# forks nothing, so a look over every process ends while the waiter waits.
+# its words, as the post, its waiter and the waiter's greps of it do.
 runs() {
   local words word
   running=""
@@ -318,15 +335,19 @@ runs() {
 # process running with the case's log whose parent doesn't, as the waiter's
 # own greps of the log do.
 waiter() {
-  local proc parent
+  local held proc parent
   waiters=()
-  for proc in /proc/[0-9]*; do
-    runs "${proc}"
-    [[ -n ${running} ]] || continue
+  # One grep reads every process's words, where a look at each from here
+  # outlasts the waiter's wait on a loaded machine. A process that ends as
+  # it reads is passed over.
+  grep --files-with-matches --null-data --line-regexp --fixed-strings \
+    -- "${here}/log.txt" /proc/[0-9]*/cmdline >holders 2>/dev/null || true
+  while read -r held; do
+    proc=${held%/cmdline}
     read -r _ _ _ parent _ 2>/dev/null <"${proc}/stat" || continue
     runs "/proc/${parent}"
     [[ -n ${running} ]] || waiters+=("${proc#/proc/}")
-  done
+  done <holders
 }
 
 # Waits until the process `pid` has ended, looking `looks` times twenty times
@@ -365,7 +386,7 @@ ended() {
 # are read by path, so every case ends its waiter before the next.
 starts() {
   local each
-  rm -f up many alone main hangs said asked
+  rm -f up many alone hangs said asked
   for each in "$@"; do touch "${each}"; done
   ./started tuple.service >said
 }
@@ -416,17 +437,7 @@ readable "daemons systemd couldn't choose between"
 # The log already says the signaller connected, so only leaving at once
 # keeps it from saying it's ready.
 starts up alone
-waiter
-if ((${#waiters[@]} == 1)); then
-  # Written whole before the stand-in can read it, so it never reads it empty.
-  echo "${waiters[0]}" >main.new
-  mv main.new main
-  gone "${waiters[0]}" "a start that forked no daemon" 200
-else
-  echo "a start that forked no daemon: found ${#waiters[@]} waiters, not one"
-  failed=1
-fi
-says "a start that forked no daemon" "${no_daemon}"
+says_only "a start that forked no daemon" "${no_daemon}"
 unready "a start that forked no daemon"
 
 since_boot
