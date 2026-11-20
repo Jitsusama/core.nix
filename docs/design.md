@@ -1732,8 +1732,9 @@ works the same way everywhere.
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
   the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
-  in For You only while one of its own notices is critical, unread and
-  off the screen, so Mail's, which holds no notices, never does. Once
+  in For You, after To Read and before Later, only while one of its own
+  notices is critical, unread and off the screen, so Mail's, which holds
+  no notices, never does. Once
   there it stays until the launcher next opens, unless it comes to hold
   nothing, and one that turns critical while Joel is under Now's own
   rows waits until he steps into For You or out of Now. Otherwise it's
