@@ -14778,9 +14778,10 @@ Scope {
                             }
 
                             // The selection onto its row, from where Qt has
-                            // just laid it.
+                            // just laid it and how tall it's drawn, as its
+                            // words sit on its foot.
                             function pickOn(entry) {
-                                list.pickY = entry.y + list.rowHeight(entry.index) - root.rowTall;
+                                list.pickY = entry.y + entry.height - root.rowTall;
                             }
 
                             // Where a row's own place starts and ends in the
@@ -15080,9 +15081,16 @@ Scope {
                                 // Home Network's foot left the selection's
                                 // ground off its row, cut at the list's top
                                 // (2026-11-20).
+                                // A row whose place in the list changes while
+                                // it stays put, as rows come above a scrolled
+                                // list, or which gains a gap above it, is laid
+                                // anew too.
                                 onYChanged: entry.placed()
+                                onHeightChanged: entry.placed()
+                                onIndexChanged: entry.placed()
                                 function placed() {
-                                    if (!entry.aside && entry.index === root.current)
+                                    if (!entry.aside && entry.index >= 0
+                                        && entry.index === root.current)
                                         list.pickOn(entry);
                                 }
                                 // What it took, from `from` to `to`, added to
