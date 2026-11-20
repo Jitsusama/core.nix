@@ -37,14 +37,15 @@
 //! part of the quarter that agents waiting straight are owed.
 //!
 //! Agents get what Joel leaves, split evenly between the lanes on which
-//! some wait, with two exceptions. The VPN's agents may go short by up to
-//! a twentieth of the VPN's whole share, the band it stays still inside,
-//! which can be a good part of their half beside his. And what's held of
-//! his straight lane for a few seconds after he stops is only lent to
-//! agents straight while it lasts. So a push straight to a builder gets
-//! half rather than the sixteenth CAKE's bulk tin gave it, which on 16
-//! November was 346 kbit/s of 5.5 Mb/s. The
-//! split isn't by flows: on 16 November at 20:25 agents held 117 flows to
+//! some wait, with three exceptions. The VPN's agents may go short by up
+//! to a twentieth of the VPN's whole share, the band it stays still inside,
+//! which can be a good part of their half beside his. Agents straight go
+//! short, down to their part of the quarter, while the VPN's share stands
+//! or falls above what it's asked. And what's held of his straight lane for
+//! a few seconds after he stops is only lent to agents straight while it
+//! lasts. Even so a push straight to a builder gets half rather than the
+//! sixteenth CAKE's bulk tin gave it, which on 16 November was 346 kbit/s
+//! of 5.5 Mb/s. The split isn't by flows: on 16 November at 20:25 agents held 117 flows to
 //! the model inside the VPN and a few straight to the builders, so a
 //! split by flows gave the builders' copies 8 kbit/s and they failed.
 //!
