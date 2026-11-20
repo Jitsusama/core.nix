@@ -139,8 +139,7 @@ class Cases:
         said = said_next(copier)
         unready = None if said == "ready" else f"it said {said!r} rather than ready"
         self.check("it says it's ready first", unready or readable(copier.pid))
-        os.write(writing, held.encode())
-        os.close(writing)
+        given(writing, held)
         try:
             pasted = pasted_once_held(held)
             self.check("the secret pastes whole", None if pasted else "it never pasted")
@@ -161,8 +160,7 @@ class Cases:
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
         os.close(reading)
-        os.write(writing, held.encode())
-        os.close(writing)
+        given(writing, held)
         try:
             pasted = pasted_once_held(held)
             self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
@@ -211,11 +209,19 @@ def pasted_once_held(held: str) -> bool:
     return False
 
 
+def given(writing: int, held: str) -> None:
+    """Give the copier its secret, leaving one that has already ended to fail the checks after."""
+    with contextlib.suppress(BrokenPipeError):
+        os.write(writing, held.encode())
+    os.close(writing)
+
+
 def said_next(copier: subprocess.Popen[bytes]) -> str:
     """Answer the next line the copier says on its standard output, or none if none comes."""
     if copier.stdout is None or not select.select([copier.stdout], [], [], PATIENCE)[0]:
         return ""
-    return copier.stdout.readline().decode(errors="replace").strip()
+    line: bytes = copier.stdout.readline()
+    return line.decode(errors="replace").strip()
 
 
 def said_held(told: str) -> str | None:
