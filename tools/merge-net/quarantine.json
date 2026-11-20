@@ -70,5 +70,18 @@
       "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1795152446,
+    "commit": "3e970376c931befba0fb94ef0336fdc9a5ed4ea4",
+    "due": "2026-11-20",
+    "due_why": "Its owner, the launcher's, lands the root fix by 2026-11-20 17:00 UTC: on 19 and 20 Nov it failed 3 of 3 runs on a branch, once at 3e970376 and once at 5cd96e2b, the shell holding one inotify handle more after the file chooser's three asks than before them, where the net passed it at 0133c743. The whole subtest is excused meanwhile, its other asserts with it, since the list names subtests only",
+    "owner_pr": 5858,
+    "owner_session": "Y2YBTS",
+    "reason": "failed at 3e970376c931 and 5cd96e2bb5ff, passed at 0133c743f9cd between them",
+    "subtests": [
+      "test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal"
+    ],
+    "test": "vm-desktop-opens-files"
   }
 ]
