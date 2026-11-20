@@ -77,45 +77,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     // bad one is refused at once rather than after the meetings before it
     // are heard.
     let sides = read(&set.join("sides"))?;
-    let mut meetings: Vec<Meeting> = Vec::new();
-    for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
-        let mut fields = entry.split_whitespace();
-        let (Some(name), Some(mine), None) = (fields.next(), fields.next(), fields.next()) else {
-            return Err(format!("sides: {entry:?} isn't a meeting and a speaker"));
-        };
-        if meetings.iter().any(|meeting| meeting.name == name) {
-            return Err(format!("sides: {name} is named twice"));
-        }
-        let file = format!("{name}.ref");
-        let lines = reference(&read(&set.join(&file))?).map_err(|e| format!("{file}: {e}"))?;
-        if !lines.iter().any(|line| line.speaker == mine) {
-            return Err(format!(
-                "{file}: {mine} never speaks, so can't be Joel's side"
-            ));
-        }
-        let last = lines.iter().map(|line| line.end).fold(0.0, f64::max);
-        let mut sounds = [Vec::new(), Vec::new()];
-        for side in [Side::Mine, Side::Theirs] {
-            let file = set.join(format!("{name}.{}.wav", label(side)));
-            let sound = sound(&file)?;
-            if sound.len() < samples(last) {
-                return Err(format!(
-                    "{} ends before its reference's last line, at {last} s",
-                    file.display()
-                ));
-            }
-            sounds[index(side)] = sound;
-        }
-        meetings.push(Meeting {
-            name,
-            mine,
-            reference: lines,
-            sounds,
-        });
-    }
-    if meetings.is_empty() {
-        return Err(format!("{} has no meetings to hear", set.display()));
-    }
+    let meetings = meetings(set, &sides)?;
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut all = Scored::default();
     for Meeting {
@@ -177,6 +139,51 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
         Some(most) => verdict(total.tenths(), most).map(|passed| println!("{passed}")),
         None => Ok(()),
     }
+}
+
+/// The meetings `sides` names in `set`, each refused when its line,
+/// reference or either side's recording is wrong.
+fn meetings<'a>(set: &Path, sides: &'a str) -> Result<Vec<Meeting<'a>>, String> {
+    let mut meetings: Vec<Meeting> = Vec::new();
+    for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
+        let mut fields = entry.split_whitespace();
+        let (Some(name), Some(mine), None) = (fields.next(), fields.next(), fields.next()) else {
+            return Err(format!("sides: {entry:?} isn't a meeting and a speaker"));
+        };
+        if meetings.iter().any(|meeting| meeting.name == name) {
+            return Err(format!("sides: {name} is named twice"));
+        }
+        let file = format!("{name}.ref");
+        let lines = reference(&read(&set.join(&file))?).map_err(|e| format!("{file}: {e}"))?;
+        if !lines.iter().any(|line| line.speaker == mine) {
+            return Err(format!(
+                "{file}: {mine} never speaks, so can't be Joel's side"
+            ));
+        }
+        let last = lines.iter().map(|line| line.end).fold(0.0, f64::max);
+        let mut sounds = [Vec::new(), Vec::new()];
+        for side in [Side::Mine, Side::Theirs] {
+            let file = set.join(format!("{name}.{}.wav", label(side)));
+            let sound = sound(&file)?;
+            if sound.len() < samples(last) {
+                return Err(format!(
+                    "{} ends before its reference's last line, at {last} s",
+                    file.display()
+                ));
+            }
+            sounds[index(side)] = sound;
+        }
+        meetings.push(Meeting {
+            name,
+            mine,
+            reference: lines,
+            sounds,
+        });
+    }
+    if meetings.is_empty() {
+        return Err(format!("{} has no meetings to hear", set.display()));
+    }
+    Ok(meetings)
 }
 
 /// The ceiling given as `text`, in tenths of a percent, when it's a
