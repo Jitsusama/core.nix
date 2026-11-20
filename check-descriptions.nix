@@ -21,7 +21,9 @@
   '';
   a-desktop-wait-says-what-it-last-heard = ''
     a desktop area's wait on what the launcher reports that never passes says the last state it
-    heard, and one whose first read passes hears nothing more
+    heard, one a change passes ends there, one whose first read passes hears nothing more, each
+    giving back the state that passed, and a test that trips keeps its error, noting what it
+    last heard
   '';
   a-failed-boot-says-what-stopped-it = ''
     a failed boot's shell names up to four failed units and their last lines, fitted to a

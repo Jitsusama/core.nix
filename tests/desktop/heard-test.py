@@ -57,9 +57,21 @@ def test_a_change_that_passes_is_told_so() -> None:
         message = "no change passed"
         raise AssertionError(message)
 
-    until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
+    passed = until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
     wanted = list(said_in_turn[:2])
     assert heard == wanted, f"the wait heard on past the change that passed: {heard}"
+    assert passed == {"rows": ["Restart"]}, f"the wait gave back {passed}, not what passed"
+
+
+def test_a_test_that_trips_keeps_its_error_and_says_the_last_state_heard() -> None:
+    # A state with no rows trips a test that reads the first, as stepped_back would.
+    def hear(passes: Callable[[str], object]) -> None:
+        passes('{"rows": []}')
+
+    with pytest.raises(IndexError) as tripped:
+        until_heard({"rows": ["Install"]}, lambda now: now["rows"][0] == "Restart", hear, "it")
+    notes = getattr(tripped.value, "__notes__", [])
+    assert notes == ['it, last heard: {"rows": []}'], f"the tripped wait noted: {notes}"
 
 
 def test_a_state_passing_at_first_read_hears_nothing() -> None:
@@ -68,4 +80,5 @@ def test_a_state_passing_at_first_read_hears_nothing() -> None:
         raise AssertionError(message)
 
     restart = {"rows": ["Restart"]}
-    until_heard(restart, lambda now: now == restart, hear, "it")
+    passed = until_heard(restart, lambda now: now == restart, hear, "it")
+    assert passed is restart, f"the wait gave back {passed}, not the first read that passed"

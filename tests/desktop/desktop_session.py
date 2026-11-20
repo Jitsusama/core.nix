@@ -695,15 +695,15 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
 
     def launcher_until(
         self, test: Callable[[Json], object], timeout: timedelta = timedelta(seconds=30)
-    ) -> None:
-        """Wait until what the launcher shows passes the test.
+    ) -> Json:
+        """Wait until what the launcher shows passes the test, and give back what passed.
 
         The launcher reports its state each time it changes, so a wait reads it once and then
         hears every change. One that never passes says what it last heard the launcher show
         (heard.py).
         """
         since = self.mark()
-        until_heard(
+        return until_heard(
             self.showing(),
             test,
             lambda passes: self.reported("showing ", passes, since, timeout),

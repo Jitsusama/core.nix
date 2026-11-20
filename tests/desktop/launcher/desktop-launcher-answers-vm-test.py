@@ -1445,18 +1445,20 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
             )
 
         # Nothing says when the shell took the third Return, so its line may show before the
-        # step back is read. Each one heard is let go with Escape, which only lets a line go,
-        # and the wait goes on once the line has gone, so a second Escape never follows one
-        # line. A Return taken only after the step back is read, over 3 s late, isn't seen.
-        for _ in range(3):
-            desktop.launcher_until(
-                lambda shown: shown["command"] is not None or stepped_back(shown)
-            )
-            if desktop.showing()["command"] is None:
-                break
+        # step back is seen. The wait acts on the state it saw pass rather than asking again,
+        # since the launcher may have moved on since. A line seen is the third Return's, which
+        # Escape lets go; nothing else closes a line, so the Escape can't land on the step
+        # instead. Only that one Return can write one, so a second line fails the wait for the
+        # step back, and a Return taken only after the step back is seen, over 3 s late, isn't.
+        shown = desktop.launcher_until(
+            lambda shown: shown["command"] is not None or stepped_back(shown)
+        )
+        if shown["command"] is not None:
+            assert shown["command"].get("line") == "install!", shown["command"]
+            # Said so the net's logs count how often the late line comes.
+            print("firmware: the third Return's line came first, let go with Escape")
             machine.send_key("esc")
-            desktop.launcher_until(lambda shown: shown["command"] is None)
-        desktop.launcher_until(stepped_back)
+            desktop.launcher_until(stepped_back)
         desktop.shoot("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()
         assert ran == ["update bios --assume-yes --no-reboot-check"], ran
