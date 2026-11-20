@@ -254,6 +254,13 @@ struct Trial {
     from: String,
     to: String,
     before: Measured,
+    /// What the point left usually carries, as loaded as the card was,
+    /// where it's learned: a trial carrying worse than the quicker of this
+    /// and `before` goes back. On 19 Nov 2026 at a desk the hall's radio
+    /// was tried on ch52's one minute of 75.5 ms at p95, where it usually
+    /// carried about 14, and kept 21 minutes at 45 to 57 ms, as it was
+    /// only less bad than that minute.
+    usual: Option<Measured>,
     /// Whether the move was for a wider band's room, the card using it,
     /// kept unless it carries badly rather than unless it carries worse
     /// than the narrower one left. One made idle, the wider band known no
@@ -418,6 +425,7 @@ impl Chooser {
             from: point.to_owned(),
             to: chosen.point.clone(),
             before: measured.clone(),
+            usual: usual.cloned(),
             banded: banded.is_some() && used(measured),
             widened: !wide(frequency) && wide(chosen.frequency),
         });
@@ -537,7 +545,8 @@ impl Chooser {
     }
 
     /// Judges the move on trial, if any, from what the card's point carried:
-    /// `Stay` while it's on trial, `Back` where it carried worse, or nothing
+    /// `Stay` while it's on trial, `Back` where it carried worse than the
+    /// point it left did or usually does, whichever is quicker, or nothing
     /// once it's over and choosing goes on. A card not on the point it tried
     /// never reached it, and that point is kept off as one carrying worse is.
     /// A trial over while the card brings a download down waits for it to
@@ -590,7 +599,7 @@ impl Chooser {
         } else if trial.banded {
             badly(measured)
         } else {
-            worse(measured, &trial.before) || slowed
+            worse(measured, quickest(&trial.before, trial.usual.as_ref())) || slowed
         };
         back.then(|| {
             self.spurned.insert(point.to_owned(), now);
@@ -2239,6 +2248,39 @@ pub(crate) mod tests {
 
         assert_eq!(early, Choice::Stay, "a minute is no trial");
         assert_eq!(judged, Choice::Back(DESK.into()), "worse once tried");
+    }
+
+    #[test]
+    fn a_trial_only_less_bad_than_one_slow_minute_goes_back() {
+        let start = Instant::now();
+        let judged = |usual: Option<Measured>| {
+            let mut chooser = after_a_bad_minute(DESK);
+            let own = Other {
+                point: DESK.into(),
+                ..hall(-50, Some(20), usual)
+            };
+            let around = [own, hall(-45, Some(20), None)];
+            let slow = carried(76, 0.0);
+            let tried = chooser.choose(start, (DESK, &slow, -50, CH52), &around, false);
+            assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+            chooser.choose(
+                start + TRIAL,
+                (HALL, &carried(50, 0.0), -45, CH52),
+                &[],
+                false,
+            )
+        };
+
+        assert_eq!(
+            judged(Some(carried(14, 0.0))),
+            Choice::Back(DESK.into()),
+            "50 ms is worse than the 14 the desk usually carries, as on 19 Nov"
+        );
+        assert_eq!(
+            judged(None),
+            Choice::Stay,
+            "with nothing learned of the desk, 50 is better than its 76"
+        );
     }
 
     #[test]
