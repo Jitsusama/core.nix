@@ -170,26 +170,30 @@ function shifted(pieces, dx, dy) {
 // read, or a part that wasn't read, since the rest would then be kept
 // without it and its lines lost.
 function partsKept(pieces, texts, was, now) {
-    if (!was || texts.length === 0)
+    if (!was || texts.length === 0) {
         return null;
-    const kept = new Map();
+    }
+    const shown = new Map();
     for (const text of texts) {
         const read = pieces.get(text);
-        if (!read)
+        if (!read) {
             return null;
-        kept.set(text, shifted(read, now.x - was.x, now.y - was.y));
+        }
+        shown.set(text, shifted(read, now.x - was.x, now.y - was.y));
     }
-    return kept;
+    return shown;
 }
 
 // The pieces a part laid under the run leaves where they were read: all
-// but those it moves. None once the parts' box has moved since its last
+// but those it moves, `moving`. None once the parts' box has moved since its last
 // read, `was`, to `now`, since pieces kept then would sit where the parts
-// were, and nothing reading from that read would ever move them back.
-function keptStill(pieces, moved, was, now) {
-    if (was && (now.x !== was.x || now.y !== was.y))
+// were, and nothing reading from that read would ever move them back; nor
+// with no last read, as partsKept keeps none then, so every line is read.
+function keptStill(pieces, moving, was, now) {
+    if (!was || now.x !== was.x || now.y !== was.y) {
         return null;
-    return new Map(Array.from(pieces).filter(([text]) => !moved.has(text)));
+    }
+    return new Map(Array.from(pieces).filter(([text]) => !moving.has(text)));
 }
 
 // Whether a view's top cuts a line partway, which Vim's never does, its

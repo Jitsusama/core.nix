@@ -241,8 +241,8 @@ function intoSaid(one) {
 // can't end the line early or forge another: `parts` what of it went on
 // making it, `split` what of that went on which, as Trials.makingSplit
 // says it, then waiting for its frame and drawing it.
-function drawerTook(key, drawn, parts, split) {
-    return `launcher: drawer for ${quoted(key)} took ${drawn} ms to its frame,`
+function drawerTook(key, ms, parts, split) {
+    return `launcher: drawer for ${quoted(key)} took ${ms} ms to its frame,`
         + ` ${parts.making} ms making${split}, ${parts.waiting} waiting for its frame,`
         + ` ${parts.drawing} drawing it, ${parts.came}`;
 }
