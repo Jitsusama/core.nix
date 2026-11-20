@@ -16,7 +16,11 @@ it("reads the typed words as one line", () => {
 
 it("hands no link without words", () => {
   assert.equal(sproutLink("", null), null, "nothing typed should hand nothing");
-  assert.equal(sproutLink(" \n\t ", "TERN02"), null, "only spaces should hand nothing, from a cell too");
+  assert.equal(
+    sproutLink(" \n\t ", "TERN02"),
+    null,
+    "only spaces should hand nothing, from a cell too",
+  );
 });
 
 it("percent-encodes the words, so none of them can add to the link", () => {
