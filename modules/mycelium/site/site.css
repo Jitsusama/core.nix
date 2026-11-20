@@ -1294,6 +1294,13 @@ body {
   cursor: pointer;
 }
 
+/* An agent names its cell, at any length, so the name is cut to fit. */
+.sprout-from span {
+  max-inline-size: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sprout-go {
   flex: none;
   min-block-size: 44px;
@@ -1313,16 +1320,15 @@ body {
 }
 
 /* Narrow, the line keeps its field and the cell it starts from, cut
-   short, and its button says only Start, its whole name still said. */
-@container (max-width: 36rem) {
+   shorter, and its button says only Start, its whole name still said.
+   Said in full, the line takes about 38rem. */
+@container (max-width: 40rem) {
   .sprout input[type="text"] {
     flex-basis: 6rem;
   }
 
   .sprout-from span {
     max-inline-size: 7rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .go-long {
