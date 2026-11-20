@@ -17,8 +17,8 @@
 use std::ops::AddAssign;
 
 /// What's left out of both sides as a hesitation.
-const HESITATIONS: [&str; 12] = [
-    "ah", "eh", "er", "erm", "hmm", "mhm", "mm", "mm-hmm", "uh", "uh-huh", "um", "um-hmm",
+const HESITATIONS: [&str; 13] = [
+    "ah", "eh", "er", "erm", "hm", "hmm", "mhm", "mm", "mm-hmm", "uh", "uh-huh", "um", "um-hmm",
 ];
 
 /// `text`'s words as they're compared, heard.
@@ -26,7 +26,7 @@ const HESITATIONS: [&str; 12] = [
 pub fn words(text: &str) -> Vec<String> {
     let lower = text.to_lowercase();
     lower
-        .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '\'' | '-' | '_')))
+        .split(|c: char| !(c.is_alphanumeric() || matches!(c, '\'' | '-' | '_')))
         .map(|word| word.replace('_', ""))
         .filter(|word| !HESITATIONS.contains(&word.trim_matches(['\'', '-'])))
         .flat_map(|word| {
@@ -34,7 +34,9 @@ pub fn words(text: &str) -> Vec<String> {
                 .map(|part| part.trim_matches('\'').to_owned())
                 .collect::<Vec<_>>()
         })
-        .filter(|word| !word.is_empty())
+        // A hesitation spelled with a hyphen the list doesn't hold, such
+        // as "mm-hm", is still one in its parts.
+        .filter(|word| !word.is_empty() && !HESITATIONS.contains(&word.as_str()))
         .collect()
 }
 
@@ -165,6 +167,16 @@ mod tests {
             words("a T_V_ and a T_ Rex"),
             ["a", "tv", "and", "a", "t", "rex"]
         );
+    }
+
+    #[test]
+    fn a_hesitation_with_a_hyphen_is_left_out_in_its_parts() {
+        assert_eq!(words("Mm-hm, uh-oh, mm-kay"), ["oh", "kay"]);
+    }
+
+    #[test]
+    fn a_word_with_an_accent_is_one_word() {
+        assert_eq!(words("a naïve café"), ["a", "naïve", "café"]);
     }
 
     #[test]

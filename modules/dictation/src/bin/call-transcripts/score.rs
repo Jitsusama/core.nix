@@ -26,6 +26,10 @@ use crate::{Settings, takes};
 /// it, so its first and last words aren't cut.
 const AROUND: f64 = 0.2;
 
+/// The longest a reference line may run, in seconds: the longest a take
+/// runs (`dictation::takes`), so heard alone it fits Parakeet's window.
+const LONGEST: f64 = 14.0;
+
 /// One line of a reference: when it was said, by whom, and its words.
 struct Said {
     start: f64,
@@ -105,18 +109,32 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<f64>) -> Result<(), Strin
         return Err(format!("{} has no words to hear", set.display()));
     }
     match ceiling {
-        Some(most) if total.rate() > most => Err(format!(
-            "it misheard {:.1}% of the words, above the {most:.1}% it may",
-            total.rate()
-        )),
-        Some(most) => {
-            println!(
-                "it misheard {:.1}% of the words, under the {most:.1}% it may",
-                total.rate()
-            );
-            Ok(())
-        }
+        Some(most) => verdict(total.rate(), most).map(|passed| println!("{passed}")),
         None => Ok(()),
+    }
+}
+
+/// The ceiling given as `text`, when it's a finite percentage: one such
+/// as "nan" would pass every score.
+pub fn ceiling(text: &str) -> Option<f64> {
+    text.parse::<f64>()
+        .ok()
+        .filter(|most| most.is_finite() && *most >= 0.0)
+}
+
+/// Whether `rate` percent wrong passes a ceiling of `most`, said either
+/// way. The rate is held to the ceiling as it's said, to one place, so a
+/// failure never reads as being at the ceiling.
+fn verdict(rate: f64, most: f64) -> Result<String, String> {
+    let said = (rate * 10.0).round() / 10.0;
+    if said > most {
+        Err(format!(
+            "it misheard {said:.1}% of the words, above the {most:.1}% it may"
+        ))
+    } else {
+        Ok(format!(
+            "it misheard {said:.1}% of the words, within the {most:.1}% it may"
+        ))
     }
 }
 
@@ -167,6 +185,12 @@ fn reference(text: &str) -> Result<Vec<Said>, String> {
                     .ok_or_else(|| format!("a reference line without its times: {line:?}"))
             };
             let (start, end) = (seconds()?, seconds()?);
+            let fits = start <= end && end - start <= LONGEST;
+            if !fits {
+                return Err(format!(
+                    "a reference line has to end after it starts, within {LONGEST} s: {line:?}"
+                ));
+            }
             let speaker = parts.next().unwrap_or_default().to_owned();
             let text = parts.next().unwrap_or_default().to_owned();
             Ok(Said {
@@ -246,6 +270,43 @@ mod tests {
         assert!(
             reference("A Okay\n").is_err(),
             "a line with no times was read"
+        );
+    }
+
+    #[test]
+    fn a_reference_line_ending_before_it_starts_or_past_a_take_is_refused() {
+        assert!(
+            reference("60.85 54.95 A Okay\n").is_err(),
+            "a line ending before it starts was read"
+        );
+        assert!(
+            reference("0.00 14.50 A Okay\n").is_err(),
+            "a line longer than a take was read"
+        );
+        assert!(
+            reference("0.00 14.00 A Okay\n").is_ok(),
+            "a line as long as a take was refused"
+        );
+    }
+
+    #[test]
+    fn only_a_finite_percentage_is_a_ceiling() {
+        assert_eq!(ceiling("19.9"), Some(19.9));
+        assert_eq!(ceiling("0"), Some(0.0));
+        for refused in ["nan", "inf", "-1", "nineteen", ""] {
+            assert_eq!(ceiling(refused), None, "{refused:?} was taken as a ceiling");
+        }
+    }
+
+    #[test]
+    fn a_rate_is_held_to_its_ceiling_as_it_is_said() {
+        assert_eq!(
+            verdict(19.94, 19.9),
+            Ok("it misheard 19.9% of the words, within the 19.9% it may".to_owned())
+        );
+        assert_eq!(
+            verdict(19.96, 19.9),
+            Err("it misheard 20.0% of the words, above the 19.9% it may".to_owned())
         );
     }
 

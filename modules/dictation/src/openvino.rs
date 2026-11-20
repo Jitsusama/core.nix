@@ -264,8 +264,7 @@ impl Core {
         Ok(Model(model))
     }
 
-    /// `model` compiled for `device`, such as NPU or CPU, saying its
-    /// `priority` on the NPU, the one device it's for.
+    /// `model` compiled for `device`, such as NPU or CPU, told what `properties_on` says.
     ///
     /// # Errors
     ///
@@ -324,7 +323,7 @@ impl Core {
         Ok(Compiled(compiled))
     }
 
-    /// `model` compiled for the CPU to run on one thread, for a model run
+    /// `model` compiled for the CPU as `compile` compiles one, but on one thread, for a model run
     /// often on little at a time, as a microphone's every frame is, where
     /// spreading each run across every core costs more than it saves.
     ///
@@ -332,10 +331,11 @@ impl Core {
     ///
     /// When the CPU can't run the model.
     pub fn compile_on_one_thread(&self, model: &Model) -> Result<Compiled> {
-        let properties = [Property {
+        let mut properties = properties_on("CPU", Priority::Background);
+        properties.push(Property {
             key: c"INFERENCE_NUM_THREADS".as_ptr(),
             value: c"1".as_ptr().cast(),
-        }];
+        });
         let mut compiled = ptr::null_mut();
         // SAFETY: the model is alive, the properties' strings are static and
         // counted, and the out pointer is valid.
