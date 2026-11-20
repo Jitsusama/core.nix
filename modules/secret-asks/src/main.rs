@@ -146,6 +146,11 @@ fn given(command: &str, args: &[String], known: &[&str]) -> Result<Vec<Vec<Strin
     let mut given = vec![Vec::new(); known.len()];
     let mut args = args.iter();
     while let Some(arg) = args.next() {
+        // `--` only ends the kit's shared flags, so a reason that is
+        // exactly one, as `--why --help`, can be given after it.
+        if arg == "--" {
+            continue;
+        }
         let Some(at) = known.iter().position(|name| name == arg) else {
             return Err(unread(command, arg, known));
         };
@@ -164,6 +169,15 @@ fn given(command: &str, args: &[String], known: &[&str]) -> Result<Vec<Vec<Strin
 fn unread(command: &str, word: &str, known: &[&str]) -> Failure {
     let failure = if known.is_empty() {
         Failure::new(Exit::Usage, format!("{command} takes no words"))
+    } else if let Some(flag) = word
+        .split_once('=')
+        .and_then(|(flag, _)| known.iter().find(|known| **known == flag))
+    {
+        Failure::new(
+            Exit::Usage,
+            format!("{flag} takes its value as the next word"),
+        )
+        .because("a value after = isn't read, and isn't said here")
     } else if word.starts_with('-') {
         flags::unknown_unsaid("flag", word, known)
     } else {
@@ -192,12 +206,45 @@ fn default_asks() -> Option<PathBuf> {
     std::env::var_os("XDG_RUNTIME_DIR").map(|runtime| PathBuf::from(runtime).join("secret-asks"))
 }
 
-fn serve(args: &[String]) -> Result<(), Failure> {
+/// What serve was told, each flag in its own field.
+#[derive(Debug, PartialEq)]
+struct Served {
+    socket: String,
+    asks: String,
+    vocabulary: String,
+    item: String,
+    op: String,
+    git: String,
+    loginctl: String,
+    account: Option<String>,
+    journal: Option<String>,
+    forges: Vec<String>,
+    gh: Option<String>,
+}
+
+/// serve's flags, each read from its place in `SERVE_FLAGS`.
+fn served(args: &[String]) -> Result<Served, Failure> {
     let given = given("serve", args, &SERVE_FLAGS)?;
     let take = |at: usize| first(&given[at]).ok_or_else(|| missing("serve", SERVE_FLAGS[at]));
-    let (socket, asks, vocabulary, item) = (take(0)?, take(1)?, take(2)?, take(3)?);
-    let (op, git, loginctl) = (take(4)?, take(5)?, take(6)?);
-    let read = std::fs::read_to_string(&vocabulary).map_err(|why| why.to_string());
+    Ok(Served {
+        socket: take(0)?,
+        asks: take(1)?,
+        vocabulary: take(2)?,
+        item: take(3)?,
+        op: take(4)?,
+        git: take(5)?,
+        loginctl: take(6)?,
+        account: first(&given[7]),
+        journal: first(&given[8]),
+        forges: given[9].clone(),
+        gh: first(&given[10]),
+    })
+}
+
+fn serve(args: &[String]) -> Result<(), Failure> {
+    let served = served(args)?;
+    let vocabulary = &served.vocabulary;
+    let read = std::fs::read_to_string(vocabulary).map_err(|why| why.to_string());
     let words = read
         .and_then(|text| Words::from_vocabulary(&text).map_err(|why| why.to_string()))
         .map_err(|why| {
@@ -211,19 +258,21 @@ fn serve(args: &[String]) -> Result<(), Failure> {
     // with the code it always had. It says why on stderr where it can,
     // and nothing where its watch on the folder simply ends.
     let _stopped: ExitCode = daemon::run(Config {
-        socket: socket.into(),
-        asks: asks.into(),
-        item,
-        account: first(&given[7]),
-        op: op.into(),
-        git: git.into(),
-        loginctl: loginctl.into(),
+        socket: served.socket.into(),
+        asks: served.asks.into(),
+        item: served.item,
+        account: served.account,
+        op: served.op.into(),
+        git: served.git.into(),
+        loginctl: served.loginctl.into(),
         checker,
         home: std::env::var("HOME").unwrap_or_default(),
         words,
-        journal: first(&given[8]).map_or_else(|| reading::JOURNAL.into(), PathBuf::from),
-        forges: given[9].clone(),
-        gh: first(&given[10]).map(PathBuf::from),
+        journal: served
+            .journal
+            .map_or_else(|| reading::JOURNAL.into(), PathBuf::from),
+        forges: served.forges,
+        gh: served.gh.map(PathBuf::from),
     });
     Err(Failure::new(Exit::Failed, "it stopped serving")
         .because("it said why just above, or its watch on the asks folder ended"))
@@ -282,32 +331,61 @@ fn ask(context: &Context, args: &[String]) -> Result<(), Failure> {
             Failure::new(Exit::Failed, "it can't put the ask up")
                 .because(format!("{}: {why}", asks.display()))
         })?;
-    context.say(&format!("{id}\n")).map_err(|why| {
+    let json = serde_json::json!({ "schema": "secret-asks.asked/1", "id": id });
+    answered(
+        context,
+        &mut std::io::stdout().lock(),
+        &format!("{id}\n"),
+        &json,
+    )
+    .map_err(|why| {
         Failure::new(Exit::Failed, "it couldn't print the ask's id").because(why.to_string())
     })
 }
 
-/// What the checker says of its variables: each but the few every command
-/// is given, by name and length only, or that it was given nothing.
-fn lengths(variables: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>) -> String {
-    use std::fmt::Write;
-    let said = variables
-        .filter(|(name, _)| !["PATH", "HOME", "LANG"].iter().any(|kept| name == *kept))
-        .fold(String::new(), |mut said, (name, value)| {
-            let length = value.to_string_lossy().chars().count();
-            // Writing to a String can't fail.
-            let _ = writeln!(
-                said,
-                "{}: received {length} characters",
-                name.to_string_lossy()
-            );
-            said
-        });
-    if said.is_empty() {
-        "received nothing\n".to_owned()
+/// The answer in the form asked for: the text a pipe has always had, or
+/// JSON under `--json` and `--format jsonl`.
+fn answered(
+    context: &Context,
+    out: &mut dyn std::io::Write,
+    text: &str,
+    json: &serde_json::Value,
+) -> std::io::Result<()> {
+    if context.format().is_json() {
+        context.answer_to(out, json)
     } else {
-        said
+        write!(out, "{text}")
     }
+}
+
+/// Each variable the checker was given but the few every command is, by
+/// name and length only.
+fn counted(
+    variables: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Vec<(String, usize)> {
+    variables
+        .filter(|(name, _)| !["PATH", "HOME", "LANG"].iter().any(|kept| name == *kept))
+        .map(|(name, value)| {
+            let length = value.to_string_lossy().chars().count();
+            (name.to_string_lossy().into_owned(), length)
+        })
+        .collect()
+}
+
+/// What the checker says of its variables as text, or that it was given
+/// nothing.
+fn lengths(counted: &[(String, usize)]) -> String {
+    use std::fmt::Write;
+    if counted.is_empty() {
+        return "received nothing\n".to_owned();
+    }
+    counted
+        .iter()
+        .fold(String::new(), |mut said, (name, length)| {
+            // Writing to a String can't fail.
+            let _ = writeln!(said, "{name}: received {length} characters");
+            said
+        })
 }
 
 /// The checker, saying its variables' lengths and never what they hold.
@@ -315,9 +393,22 @@ fn received(context: &Context, args: &[String]) -> Result<(), Failure> {
     if let Some(word) = args.first() {
         return Err(unread("received", word, &[]));
     }
-    context
-        .say(&lengths(std::env::vars_os()))
-        .map_err(|why| Failure::new(Exit::Failed, "it couldn't print").because(why.to_string()))
+    let counted = counted(std::env::vars_os());
+    let lengths_by_name: serde_json::Map<String, serde_json::Value> = counted
+        .iter()
+        .map(|(name, length)| (name.clone(), (*length).into()))
+        .collect();
+    let json = serde_json::json!({
+        "schema": "secret-asks.received/1",
+        "received": lengths_by_name,
+    });
+    answered(
+        context,
+        &mut std::io::stdout().lock(),
+        &lengths(&counted),
+        &json,
+    )
+    .map_err(|why| Failure::new(Exit::Failed, "it couldn't print").because(why.to_string()))
 }
 
 /// The command's body, by its first word.
@@ -344,8 +435,9 @@ mod tests {
     use std::ffi::OsString;
     use terminal_kit::{Ending, Environment};
 
-    /// A line run through the command's own body, as main runs it. Each
-    /// case here is refused before anything is written or said.
+    /// A line run through the command's own body, as main runs it, into a
+    /// pipe. What the body prints goes to the test's own stdout, so an
+    /// ask's id is found by the file it put up.
     fn ran(line: &[&str]) -> Ending {
         ran_in(&Environment::of([false; 3], &[]), line)
     }
@@ -438,38 +530,17 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_ask_keeps_each_flag_in_its_own_field() {
-        let asks = std::env::temp_dir().join(format!("secret-asks-fields-{}", std::process::id()));
+    /// An ask's line run into a folder of its own, with the ask it put up
+    /// there, when it put up one that reads back.
+    fn put_up(purpose: &str, line: &[&str]) -> (Ending, Option<Ask>) {
+        let asks =
+            std::env::temp_dir().join(format!("secret-asks-{purpose}-{}", std::process::id()));
+        // A folder an earlier run left is cleared, so only this run's ask
+        // is found.
+        let _ = std::fs::remove_dir_all(&asks);
         std::fs::create_dir_all(&asks).expect("the asks folder couldn't be made");
         let folder = asks.display().to_string();
-        let ending = ran(&[
-            "ask",
-            "--quest-title",
-            "a quest",
-            "--item",
-            "op://V/I/p",
-            "--session",
-            "a session",
-            "--tree",
-            "/t",
-            "--given",
-            "GIVEN",
-            "--why",
-            "a reason",
-            "--quest-id",
-            "Q1",
-            "--asks",
-            folder.as_str(),
-        ]);
-        assert_eq!(
-            ending.exit,
-            Exit::Done,
-            "the ask wasn't put up: {}",
-            ending.stderr
-        );
-        // The id goes to the process's own stdout, so the ask is found as
-        // the one file put up in its folder.
+        let ending = ran(&[line, &["--asks", folder.as_str()]].concat());
         let put: Vec<_> = std::fs::read_dir(&asks)
             .expect("the asks folder couldn't be read")
             .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
@@ -484,7 +555,38 @@ mod tests {
             _ => None,
         };
         let _ = std::fs::remove_dir_all(&asks);
-        let ask = ask.unwrap_or_else(|| panic!("not one ask that reads back was put up: {put:?}"));
+        (ending, ask)
+    }
+
+    #[test]
+    fn an_ask_keeps_each_flag_in_its_own_field() {
+        let (ending, ask) = put_up(
+            "fields",
+            &[
+                "ask",
+                "--quest-title",
+                "a quest",
+                "--item",
+                "op://V/I/p",
+                "--session",
+                "a session",
+                "--tree",
+                "/t",
+                "--given",
+                "GIVEN",
+                "--why",
+                "a reason",
+                "--quest-id",
+                "Q1",
+            ],
+        );
+        assert_eq!(
+            ending.exit,
+            Exit::Done,
+            "the ask wasn't put up: {}",
+            ending.stderr
+        );
+        let ask = ask.expect("not one ask that reads back was put up");
         assert_eq!(
             [&ask.item, &ask.tree, &ask.why, &ask.given, &ask.session],
             ["op://V/I/p", "/t", "a reason", "GIVEN", "a session"],
@@ -498,6 +600,143 @@ mod tests {
     }
 
     #[test]
+    fn a_reason_that_is_a_shared_flag_is_kept_after_the_line_end() {
+        let (ending, ask) = put_up(
+            "after-the-end",
+            &[
+                "ask",
+                "--",
+                "--item",
+                "op://V/I/p",
+                "--tree",
+                "/t",
+                "--why",
+                "--help",
+            ],
+        );
+        assert_eq!(
+            ending.exit,
+            Exit::Done,
+            "the ask wasn't put up: {}",
+            ending.stderr
+        );
+        assert_eq!(
+            ask.map(|ask| ask.why).as_deref(),
+            Some("--help"),
+            "the reason after -- wasn't kept whole"
+        );
+    }
+
+    #[test]
+    fn serve_keeps_each_flag_in_its_own_field() {
+        let line = [
+            "--gh",
+            "/gh",
+            "--forge",
+            "f1",
+            "--account",
+            "acct",
+            "--loginctl",
+            "/lc",
+            "--journal",
+            "/j",
+            "--git",
+            "/git",
+            "--op",
+            "/op",
+            "--item",
+            "op://V/I/p",
+            "--vocabulary",
+            "/v",
+            "--asks",
+            "/a",
+            "--forge",
+            "f2",
+            "--socket",
+            "/s",
+        ]
+        .map(str::to_owned);
+        let owned = str::to_owned;
+        assert_eq!(
+            served(&line).ok(),
+            Some(Served {
+                socket: owned("/s"),
+                asks: owned("/a"),
+                vocabulary: owned("/v"),
+                item: owned("op://V/I/p"),
+                op: owned("/op"),
+                git: owned("/git"),
+                loginctl: owned("/lc"),
+                account: Some(owned("acct")),
+                journal: Some(owned("/j")),
+                forges: vec![owned("f1"), owned("f2")],
+                gh: Some(owned("/gh")),
+            }),
+            "a flag landed in another's field"
+        );
+    }
+
+    #[test]
+    fn a_line_missing_a_flag_or_its_value_ends_as_asked_wrongly() {
+        for line in [
+            &["ask", "--item"][..],
+            &["ask", "--tree", "/t", "--why", "w"],
+            &["serve", "--socket", "/s"],
+            &["serve"],
+        ] {
+            let ending = ran(line);
+            assert_eq!(
+                ending.code(),
+                64,
+                "{line:?} didn't end as asked wrongly: {}",
+                ending.stderr
+            );
+        }
+    }
+
+    #[test]
+    fn an_item_given_with_an_equals_is_told_how_flags_take_values() {
+        let ending = ran(&["ask", "--item=op://Vault/Hidden/password"]);
+        assert!(
+            ending
+                .stderr
+                .contains("--item takes its value as the next word")
+                && !ending.stderr.contains("Hidden"),
+            "an item given with = wasn't told what's wrong, or was said: {}",
+            ending.stderr
+        );
+    }
+
+    #[test]
+    fn an_answer_is_text_into_a_pipe_and_json_when_asked() {
+        let json = serde_json::json!({ "schema": "secret-asks.asked/1", "id": "abc" });
+        let said = |shared: &[&str]| {
+            let args = shared.iter().map(|word| (*word).to_owned()).collect();
+            let context = Context::new(Environment::of([false; 3], &[]), args, &[])
+                .expect("the shared flags weren't taken");
+            let mut out = Vec::new();
+            answered(&context, &mut out, "abc\n", &json).expect("the answer wasn't written");
+            String::from_utf8(out).expect("the answer wasn't text")
+        };
+        let read = |line: &str| -> serde_json::Value {
+            serde_json::from_str(line).expect("the answer wasn't one JSON line")
+        };
+        assert_eq!(said(&[]), "abc\n", "a pipe didn't get the id alone");
+        assert_eq!(
+            read(&said(&["--json"])),
+            json,
+            "--json didn't answer the id as JSON"
+        );
+        let mut line = json.clone();
+        line["type"] = "answer".into();
+        assert_eq!(
+            read(&said(&["--format", "jsonl"])),
+            line,
+            "jsonl didn't answer the id as one typed line"
+        );
+    }
+
+    #[test]
     fn the_checker_says_each_length_and_never_a_value() {
         let given = [
             ("PATH", "/bin"),
@@ -507,12 +746,12 @@ mod tests {
         ]
         .map(|(name, value)| (OsString::from(name), OsString::from(value)));
         assert_eq!(
-            lengths(given.into_iter()),
+            lengths(&counted(given.into_iter())),
             "RELEASED: received 7 characters\n",
             "the checker didn't say the one length alone"
         );
         assert_eq!(
-            lengths(std::iter::empty()),
+            lengths(&[]),
             "received nothing\n",
             "the checker given nothing didn't say so"
         );
