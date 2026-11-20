@@ -131,14 +131,20 @@ fn take(stream: &mut impl Read, buffer: &mut Vec<u8>, wanted: usize) -> Result<V
     Ok(buffer.drain(..wanted).collect())
 }
 
-/// The body `head` says follows, read whole from `buffer` and `stream`,
-/// at most `most` bytes, chunks joined.
-pub fn read_body(
-    stream: &mut impl Read,
-    buffer: &mut Vec<u8>,
-    head: &Head,
-    most: usize,
-) -> Result<Vec<u8>, Unread> {
+/// How a request's body is framed, as its head says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Framing {
+    /// No body.
+    Empty,
+    /// A body of this many bytes.
+    Length(usize),
+    /// A chunked body.
+    Chunked,
+}
+
+/// How the body `head` says follows is framed, refusing one read two ways
+/// or one past `most` bytes before any of it is read.
+pub fn framing(head: &Head, most: usize) -> Result<Framing, Unread> {
     let lengths = head.count("content-length");
     let encodings = head.count("transfer-encoding");
     if lengths > 0 && encodings > 0 {
@@ -155,35 +161,121 @@ pub fn read_body(
                 "a transfer encoding other than chunked".to_owned(),
             ));
         }
-        return chunks(stream, buffer, most);
+        return Ok(Framing::Chunked);
     }
     if lengths == 0 {
-        return Ok(Vec::new());
+        return Ok(Framing::Empty);
     }
-    let length: usize = head
+    let length = head
         .header("content-length")
-        .and_then(|value| value.parse().ok())
+        .and_then(decimal)
         .ok_or_else(|| Unread::Malformed("a length that isn't one number".to_owned()))?;
-    if length > most {
-        return Err(Unread::TooLarge);
+    match usize::try_from(length) {
+        Ok(length) if length <= most => Ok(Framing::Length(length)),
+        _ => Err(Unread::TooLarge),
     }
-    take(stream, buffer, length)
+}
+
+/// A length as HTTP writes one: decimal digits alone, with no sign or
+/// space, which some readers take and others don't, so the relay reads
+/// it only the one way every reader does.
+pub fn decimal(text: &str) -> Option<u64> {
+    let digits = !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    digits.then(|| text.parse().ok()).flatten()
+}
+
+/// A chunk's size from its line: hex digits alone, then any extensions,
+/// which are dropped, for the same reason as [`decimal`].
+fn chunk_size(line: &str) -> Option<u64> {
+    let size = line
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches([' ', '\t']);
+    let digits = !size.is_empty() && size.bytes().all(|byte| byte.is_ascii_hexdigit());
+    digits.then(|| u64::from_str_radix(size, 16).ok()).flatten()
+}
+
+/// The body `head` says follows, read whole from `buffer` and `stream`,
+/// at most `most` bytes, chunks joined.
+pub fn read_body(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    head: &Head,
+    most: usize,
+) -> Result<Vec<u8>, Unread> {
+    let framed = framing(head, most)?;
+    read_framed(stream, buffer, framed, most)
+}
+
+/// A body framed as `framed`, read whole from `buffer` and `stream`, at
+/// most `most` bytes, chunks joined.
+pub fn read_framed(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    framed: Framing,
+    most: usize,
+) -> Result<Vec<u8>, Unread> {
+    match framed {
+        Framing::Empty => Ok(Vec::new()),
+        Framing::Length(length) => take(stream, buffer, length),
+        Framing::Chunked => chunks(stream, buffer, most),
+    }
+}
+
+/// Copy one chunked body from `buffer` and `stream` to `out`, its chunks
+/// as sent but framed anew: each size in plain hex with no extensions,
+/// and the last with no trailers. It stops at the body's end, so nothing
+/// the sender says after it, and no line of its own a client might read
+/// another way, is ever copied.
+pub fn copy_chunks(
+    stream: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    out: &mut impl Write,
+) -> Result<(), Unread> {
+    loop {
+        let size = chunk_size(&line(stream, buffer)?)
+            .ok_or_else(|| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        if size == 0 {
+            // Trailers are read past and dropped, as a request's are.
+            while !line(stream, buffer)?.is_empty() {}
+            out.write_all(b"0\r\n\r\n")?;
+            return out.flush().map_err(Unread::Io);
+        }
+        write!(out, "{size:x}\r\n")?;
+        let held = usize::try_from(size)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        out.write_all(&buffer[..held])?;
+        buffer.drain(..held);
+        let left = size - held as u64;
+        if io::copy(&mut (&mut *stream).take(left), out)? < left {
+            return Err(Unread::Malformed("a body cut short".to_owned()));
+        }
+        if !take(stream, buffer, 2)?.eq(b"\r\n") {
+            return Err(Unread::Malformed(
+                "a chunk not ended by its line".to_owned(),
+            ));
+        }
+        out.write_all(b"\r\n")?;
+    }
 }
 
 /// A chunked body, joined.
 fn chunks(stream: &mut impl Read, buffer: &mut Vec<u8>, most: usize) -> Result<Vec<u8>, Unread> {
     let mut body = Vec::new();
     loop {
-        let sized = line(stream, buffer)?;
-        let size = sized.split(';').next().unwrap_or_default().trim();
-        let size = usize::from_str_radix(size, 16)
-            .map_err(|_| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        let size = chunk_size(&line(stream, buffer)?)
+            .ok_or_else(|| Unread::Malformed("a chunk whose size isn't one".to_owned()))?;
+        let size = usize::try_from(size).unwrap_or(usize::MAX);
         if size == 0 {
             // Trailers, which the door drops, end at an empty line.
             while !line(stream, buffer)?.is_empty() {}
             return Ok(body);
         }
-        if body.len() + size > most {
+        // Said as what's left, since a size near the largest number would
+        // wrap a sum past the limit.
+        if size > most.saturating_sub(body.len()) {
             return Err(Unread::TooLarge);
         }
         body.extend(take(stream, buffer, size)?);
@@ -240,6 +332,73 @@ pub fn read_status(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<u16, 
     }
 }
 
+/// A response's head, as the relay passes one back.
+#[derive(Debug, Clone)]
+pub struct Answer {
+    pub status: u16,
+    pub reason: String,
+    /// Each header, its name as sent.
+    pub headers: Vec<(String, Vec<u8>)>,
+}
+
+impl Answer {
+    /// The value of the header named `name`, when there's exactly one,
+    /// as text.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        let mut found = self
+            .headers
+            .iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case(name));
+        let first = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        std::str::from_utf8(&first.1).ok().map(str::trim)
+    }
+}
+
+/// A response's head read from `stream`, with whatever was read past it
+/// left in `buffer`.
+pub fn read_answer(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<Answer, Unread> {
+    loop {
+        let mut headers = [httparse::EMPTY_HEADER; MOST_HEADERS];
+        let mut response = httparse::Response::new(&mut headers);
+        match response.parse(buffer) {
+            Ok(httparse::Status::Complete(length)) => {
+                let answer = Answer {
+                    status: response
+                        .code
+                        .ok_or_else(|| Unread::Malformed("an answer with no status".to_owned()))?,
+                    reason: response.reason.unwrap_or_default().to_owned(),
+                    headers: response
+                        .headers
+                        .iter()
+                        .map(|header| (header.name.to_owned(), header.value.to_vec()))
+                        .collect(),
+                };
+                buffer.drain(..length);
+                return Ok(answer);
+            }
+            Ok(httparse::Status::Partial) => {}
+            Err(error) => {
+                return Err(Unread::Malformed(format!(
+                    "an answer that won't parse: {error}"
+                )));
+            }
+        }
+        if buffer.len() >= MOST_HEAD {
+            return Err(Unread::Malformed("an answer's head past 64 KiB".to_owned()));
+        }
+        if more(stream, buffer)? == 0 {
+            return Err(if buffer.is_empty() {
+                Unread::Gone
+            } else {
+                Unread::Malformed("an answer cut short".to_owned())
+            });
+        }
+    }
+}
+
 /// Write a whole request: its line, `headers`, a length and `body`.
 pub fn write_request(
     out: &mut impl Write,
@@ -272,6 +431,7 @@ pub fn write_answer(out: &mut impl Write, status: u16, message: &str) -> io::Res
         400 => "Bad Request",
         403 => "Forbidden",
         413 => "Payload Too Large",
+        417 => "Expectation Failed",
         429 => "Too Many Requests",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
@@ -347,6 +507,64 @@ mod tests {
             matches!(read(b"GET / HTTP/1.0\r\n\r\n"), Err(Unread::Malformed(_))),
             "HTTP/1.0 is refused"
         );
+    }
+
+    #[test]
+    fn a_chunk_sized_near_the_largest_number_is_too_large_not_wrapped() {
+        // 1024 is the most; a size that would wrap a sum past it reads as
+        // too large, never as a small body.
+        assert!(
+            matches!(
+                read(
+                    b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n\
+                      2\r\nab\r\nffffffffffffffff\r\n"
+                ),
+                Err(Unread::TooLarge)
+            ),
+            "a wrapping chunk size wasn't refused"
+        );
+    }
+
+    #[test]
+    fn a_chunked_body_is_framed_anew_and_nothing_after_it_copied() {
+        let mut stream = &b"de\r\n0\r\nX-T: 1\r\n\r\nHTTP/1.1 200 OK\r\n"[..];
+        let mut buffer = b"03\r\nabc\r\n2 ;x=y\r\n".to_vec();
+        let mut out = Vec::new();
+        copy_chunks(&mut stream, &mut buffer, &mut out).expect("copied");
+        assert_eq!(out, b"3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n");
+        for odd in [
+            &b"+3\r\nabc\r\n"[..],
+            b" 3\r\nabc\r\n",
+            b"0x3\r\nabc\r\n",
+            b"\r\n",
+        ] {
+            let mut buffer = odd.to_vec();
+            assert!(
+                matches!(
+                    copy_chunks(&mut &b""[..], &mut buffer, &mut Vec::new()),
+                    Err(Unread::Malformed(_))
+                ),
+                "{:?} was read as a size",
+                String::from_utf8_lossy(odd)
+            );
+        }
+        let mut cut = &b""[..];
+        let mut short = b"5\r\nab".to_vec();
+        assert!(
+            matches!(
+                copy_chunks(&mut cut, &mut short, &mut Vec::new()),
+                Err(Unread::Malformed(_))
+            ),
+            "a chunk cut short isn't said"
+        );
+    }
+
+    #[test]
+    fn a_length_is_read_only_as_plain_digits() {
+        assert_eq!(decimal("05"), Some(5), "leading zeros");
+        for odd in ["+5", "-5", " 5", "5 ", "", "5,5", "99999999999999999999"] {
+            assert_eq!(decimal(odd), None, "{odd:?} was read as a length");
+        }
     }
 
     #[test]

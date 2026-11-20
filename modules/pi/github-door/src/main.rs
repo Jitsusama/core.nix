@@ -103,7 +103,7 @@ fn help() -> Help {
         .option("--while PID", "the process whose life the relay lasts")
         .example(
             "pi-github-door relay --socket door.sock --while $$",
-            "the port, for HTTPS_PROXY",
+            "the port, for HTTPS_PROXY and http_proxy",
         )
         .exit(Exit::Failed, "no port, or the relay couldn't start")
         .exit(Exit::Usage, "a flag is missing or unknown"),

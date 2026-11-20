@@ -4321,7 +4321,9 @@
     repository's settings, protection written or a mutation off its list, judged by its fields,
     never reaches GitHub and names its route; another credential is refused, the token is read
     again on a 401, git's fetch passes, other hosts are tunnelled unseen, the session asked for
-    least lately is given back once 256 are open, and the relay leaves with the process it watches
+    least lately is given back once 256 are open, and the relay carries plain HTTP straight out,
+    one request a connection and refused to GitHub's four names, and leaves with the process it
+    watches
   '';
   pi-github-door-passes-clippy = ''
     clippy finds nothing in pi-github-door or its tests, the door a fenced pi command reaches
