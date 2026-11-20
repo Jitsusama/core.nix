@@ -621,6 +621,30 @@ import ./host-checks.nix args
         && !(mac.systemd.user.timers ? pi-windows-elsewhere)
       );
 
+  # Ended sessions' work trees are swept in a unit of their own, beneath
+  # everything Joel uses, an hour after each sweep ends, rather than on a
+  # pi host's one thread; a Mac, with no systemd, gets none yet.
+  pi-sweeps-trees-outside-its-hosts =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      service = home.systemd.user.services.pi-sweep;
+      timer = home.systemd.user.timers.pi-sweep;
+      first = value: lib.head (lib.toList value);
+    in
+    holds "pi-sweeps-trees-outside-its-hosts"
+      "pi's tree sweep doesn't run an hour after each sweep ends, runs outside jobs.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
+      (
+        lib.elem "timers.target" timer.Install.WantedBy
+        && first timer.Timer.OnUnitInactiveSec == "1h"
+        && service.Service.Slice == "jobs.slice"
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
+          first service.Service.ExecStart
+        )
+        && lib.hasSuffix "/scripts/pi-sweep.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.timers ? pi-sweep)
+      );
+
   # pi's status line tells a folder and git as the prompt does: by the
   # prompt's root markers, the prompt's git-engine, and the theme's marks,
   # each by the name the harness reads it under.

@@ -130,6 +130,7 @@ let
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
   restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
   windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
+  sweepScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-sweep.ts";
   carryScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-carry.ts";
   verbsScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-verbs.ts";
 
@@ -745,6 +746,37 @@ in
       Timer = {
         OnCalendar = "*:0/5";
         AccuracySec = "10s";
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
+
+    # The sweep of ended sessions' work trees, in a process of its own
+    # rather than on a pi host's one thread, where its git calls and folder
+    # listings held every conversation in the host for up to 262 s on 19
+    # November. While it runs, the hosts' own sweeps stand down, and they
+    # take over again two hours after it last started, so stopping this
+    # timer hands sweeping back to them. It runs in jobs.slice, beneath
+    # everything Joel uses, an hour after each sweep ends, however long
+    # that sweep took; a machine without the harness's script skips it.
+    systemd.user.services.pi-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Sweeps ended pi sessions' work trees";
+        ConditionPathExists = sweepScript;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
+        Slice = "jobs.slice";
+        # A sweep has taken 22 minutes on a loaded machine; one past two
+        # hours is wedged, and its lock goes stale for the next.
+        TimeoutStartSec = "2h";
+      };
+    };
+    systemd.user.timers.pi-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Sweeps ended pi sessions' work trees every hour";
+      Timer = {
+        OnActiveSec = "5min";
+        OnUnitInactiveSec = "1h";
       };
       Install.WantedBy = [ "timers.target" ];
     };

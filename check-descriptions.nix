@@ -2793,6 +2793,11 @@
     holds, so the next boot can offer them back, in background.slice with the store's node, skipped
     where the harness isn't installed, and never on a Mac
   '';
+  pi-sweeps-trees-outside-its-hosts = ''
+    ended pi sessions' work trees are swept by a unit of their own an hour after each sweep ends,
+    in jobs.slice with the store's node and no module-type warning, rather than on a pi host's
+    thread, skipped where the harness isn't installed, and never on a Mac
+  '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
     processes use a version
