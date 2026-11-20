@@ -271,13 +271,13 @@ impl State {
     /// for cadence: it waits out what a hold stops, a switch or a round,
     /// and counts from the hold's end, since on 13 November it said three
     /// merges weren't on and the net was six hours behind under a hold
-    /// that stopped both from 09:55 to 15:47. It keeps `since`, when this
-    /// hold was first seen standing (`held_since`), so cadence can say when
-    /// one has stopped the net too long while main moves.
+    /// that stopped both from 09:55 to 15:47. It keeps `since`, when the
+    /// net was first seen held, whatever held it (`held_since`), so cadence
+    /// can say when holds have stopped the net too long while main moves.
     pub fn held(&self, why: &str) -> Result<(), String> {
         let file = self.root.join("held.json");
         let at = now();
-        let since = held_since(read_json(&file).as_ref(), why, at);
+        let since = held_since(read_json(&file).as_ref(), at);
         write_json(&file, &json!({ "at": at, "why": why, "since": since }))
     }
 
@@ -575,12 +575,13 @@ fn remove(path: &Path) -> Result<(), String> {
 /// that ended and one that began.
 const HELD_GAP_S: u64 = 180;
 
-/// When the hold `why`, seen at `at`, began: when `prior`, the last
-/// `held.json`, first saw it, if it named the same hold no more than
-/// `HELD_GAP_S` before; otherwise `at`.
-fn held_since(prior: Option<&Value>, why: &str, at: u64) -> u64 {
+/// When the net's stop, held again at `at`, began: when `prior`, the last
+/// `held.json`, first saw it held, if it was held no more than
+/// `HELD_GAP_S` before; otherwise `at`. Whatever held it counts, since on
+/// 19 November holds renewed and reworded stopped the net for over three
+/// hours, and a stop counted from each rewording would never read long.
+fn held_since(prior: Option<&Value>, at: u64) -> u64 {
     prior
-        .filter(|prior| prior["why"] == why)
         .filter(|prior| {
             prior["at"]
                 .as_u64()

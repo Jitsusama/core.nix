@@ -281,31 +281,26 @@ fn the_heads_and_the_hold_outlast_the_program() {
 
 // cadence reads `since` to say when a hold has stopped the net for half an
 // hour while main moves, as the conclude and Slack holds of 19 November
-// did for over four hours, so it stays put while the same hold stands and
-// starts again for another hold or after a gap.
+// did for over four hours, so it stays put while the net stays held,
+// whatever holds it, and starts again after a gap.
 #[test]
 fn a_hold_keeps_when_it_began_while_it_stands() {
-    let first = held_since(None, "a reboot", 1_000);
+    let first = held_since(None, 1_000);
     assert_eq!(first, 1_000, "a hold newly seen begins now");
     let still = json!({ "at": 1_060, "why": "a reboot", "since": first });
     assert_eq!(
-        held_since(Some(&still), "a reboot", 1_120),
+        held_since(Some(&still), 1_120),
         1_000,
-        "the same hold seen a minute on began when it was first seen"
+        "a stop seen a minute on, by this hold or its rewording, began when it was first seen"
     );
     assert_eq!(
-        held_since(Some(&still), "a call", 1_120),
-        1_120,
-        "another hold begins when it's seen"
-    );
-    assert_eq!(
-        held_since(Some(&still), "a reboot", 1_060 + HELD_GAP_S + 1),
+        held_since(Some(&still), 1_060 + HELD_GAP_S + 1),
         1_060 + HELD_GAP_S + 1,
         "a hold seen again after a gap begins again"
     );
     let older = json!({ "at": 1_060, "why": "a reboot" });
     assert_eq!(
-        held_since(Some(&older), "a reboot", 1_120),
+        held_since(Some(&older), 1_120),
         1_120,
         "a held.json written before `since` begins the hold now"
     );
