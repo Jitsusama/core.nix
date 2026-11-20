@@ -258,6 +258,19 @@ function keyInSaid(one) {
         + `${Math.round(one.at - one.from)} ms from the key${swap}${into}${screensSaid([one])}`;
 }
 
+// How long after going in a key in a drawer still says its time from it.
+const intoSoon = 1000;
+
+// When a key heard at `keyAt` says its time from going in at `into`, both
+// on KeyTimes's clock: always where `whole`, as while reports are on and
+// the drawer lab reads it for every key, however long the lay held it;
+// otherwise only within a second of going in, which is what that time is
+// read for, since two minutes on it would read as a fault. Undefined where
+// it says none.
+function intoKept(keyAt, into, whole) {
+    return whole || keyAt - into < intoSoon ? into : undefined;
+}
+
 // A row's key as a line in the journal may say it: whole where `whole`,
 // as while reports are on, but a window's without its title, which may
 // be a mail's subject or a document's name, so `window:<app>:<title>`

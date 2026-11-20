@@ -874,8 +874,16 @@ QtObject {
             'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
             + "18 to the shell's swap, 131 from going in");
         // Two minutes into a drawer, its time from going in would read as
-        // a fault, so a key long after says none.
-        check(failures, "and none from going in for a key long after it",
+        // a fault, so a key long after says none; but while reports are on
+        // every key says it, as the drawer lab reads it however long the
+        // lay held the key.
+        check(failures, "a key just inside a second of going in keeps its time from it",
+            Presented.intoKept(1999, 1000, false), 1000);
+        check(failures, "and one a second after keeps none",
+            Presented.intoKept(2000, 1000, false), undefined);
+        check(failures, "but one long after keeps it while reports are on",
+            Presented.intoKept(121000, 1000, true), 1000);
+        check(failures, "and a key that keeps none says none from going in",
             Presented.keyInSaid({ act: "previous", key: "place:emoji", from: 0, at: 60 }),
             'launcher: previous in the drawer for "place:emoji" presented 60 ms from the key');
         check(failures, "a key in a drawer quotes its key so a title can't forge a line",

@@ -21,20 +21,36 @@ const unbroken = /\u00a0/g;
 // so they're passed over, or /t-shirt would be found nowhere.
 const unseen = /[\u2060\u200b]/;
 
-// A text with what's passed over taken out, and where each of its letters
-// stands in the text, one past its last too, so a place found in it is
-// said on the text as it stands.
-function seen(text) {
-    let letters = "";
-    const at = [];
-    for (let from = 0; from < text.length; from++) {
-        if (!unseen.test(text[from])) {
-            letters += text[from];
-            at.push(from);
-        }
+// A text as it's searched: what's passed over taken out, in lower case
+// unless `byCase`, with where each of its letters starts and ends in the
+// text, so a place found in it is said on the text as it stands. Lower case
+// can be longer than the letter it lowers (an I with a dot above is an i
+// and a dot), and each of its letters stands where that letter does. Most
+// texts hold nothing passed over and lower letter for letter, so they're
+// searched as they are, with nothing to map, since a search reads every
+// line of a drawer on each key typed.
+function seen(text, byCase) {
+    const lowered = byCase ? text : text.toLowerCase();
+    if (lowered.length === text.length && !unseen.test(text)) {
+        return { letters: lowered, starts: null, ends: null };
     }
-    at.push(text.length);
-    return { letters, at };
+    let letters = "";
+    const starts = [];
+    const ends = [];
+    let from = 0;
+    while (from < text.length) {
+        const letter = String.fromCodePoint(text.codePointAt(from));
+        if (!unseen.test(letter)) {
+            const read = byCase ? letter : letter.toLowerCase();
+            letters += read;
+            for (let unit = 0; unit < read.length; unit++) {
+                starts.push(from);
+                ends.push(from + letter.length);
+            }
+        }
+        from += letter.length;
+    }
+    return { letters, starts, ends };
 }
 
 // Whether a pattern is matched by its case: only once it has a capital.
@@ -50,19 +66,21 @@ function found(pattern, text) {
         return [];
     }
     const byCase = cased(pattern);
-    const plain = seen(text);
-    const spaced = plain.letters.replace(unbroken, " ");
-    const looked = byCase ? spaced : spaced.toLowerCase();
-    const sought = seen(byCase ? pattern : pattern.toLowerCase()).letters.replace(unbroken, " ");
+    const plain = seen(text, byCase);
+    const looked = plain.letters.replace(unbroken, " ");
+    const sought = seen(pattern, byCase).letters.replace(unbroken, " ");
     const spans = [];
     if (sought === "") {
         return spans;
     }
     let from = looked.indexOf(sought);
     while (from >= 0) {
-        // Its end is one past its last letter, so a joiner after the
+        // Its end is where its last letter ends, so a joiner after the
         // place found isn't taken into it.
-        spans.push([plain.at[from], plain.at[from + sought.length - 1] + 1]);
+        const last = from + sought.length - 1;
+        spans.push(plain.starts === null
+            ? [from, last + 1]
+            : [plain.starts[from], plain.ends[last]]);
         from = looked.indexOf(sought, from + sought.length);
     }
     return spans;
