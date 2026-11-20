@@ -26,6 +26,7 @@ use dictation::transcript::{self, Line, Side, markdown};
 
 use crate::Settings;
 use crate::book::{self, Record, Shared, TRANSCRIPT, write_whole};
+use crate::filed;
 use crate::{notices, said};
 
 /// How long Parakeet is kept once the last call is written, so a call
@@ -186,14 +187,15 @@ fn title_of(book: &Shared, key: &str) -> String {
 
 /// What a call already says, taken up again: what the transcript of a
 /// call rejoined, or recorded before the daemon restarted, holds, a line
-/// Joel's only when it's under his name, `me`.
+/// Joel's only when it's under his name, `me`. Only its Transcript
+/// section is read, so the summary's quotes are never lines said twice.
 fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
     let lines = book
         .lock()
         .record(key)
         .and_then(|record| record.transcript.clone())
         .and_then(|file| std::fs::read_to_string(file).ok())
-        .map(|text| transcript::read(&text, me))
+        .map(|text| transcript::read(filed::transcript(&text), me))
         .unwrap_or_default();
     Writing {
         lines,
@@ -201,9 +203,12 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
     }
 }
 
-/// Writes a call's transcript whole, their side under their name where
-/// the record knows it for certain, and says in its record where it is,
-/// how it opens and whether it's still being written.
+/// Writes a call's file whole, its transcript under its summary, their
+/// side under their name where the record knows it for certain, and
+/// says in its record where it is, how it opens and whether it's still
+/// being written. The summary is the record's, so writing the
+/// transcript again keeps it; a call that's still on has none, since
+/// a rejoin lets the last one go.
 fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool) {
     let mut book = book.lock();
     let Some(record) = book.record(key).cloned() else {
@@ -214,12 +219,13 @@ fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool)
     if !lines.is_empty() {
         let them = record.them(me);
         let note = record.note(me);
-        let written = markdown(lines, me, them.as_deref(), note.as_deref());
+        let said = markdown(lines, me, them.as_deref(), note.as_deref());
+        let written = filed::whole(&record.title, record.summary.as_deref(), &said);
         if let Err(why) = write_whole(&file, &written) {
             eprintln!("call-transcripts: writing {}: {why}", file.display());
             return;
         }
-        opening = book::opening(&written);
+        opening = book::opening(&said);
     }
     let transcript = file.exists().then_some(file);
     if record.transcript != transcript

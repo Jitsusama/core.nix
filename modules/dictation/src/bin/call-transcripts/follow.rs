@@ -296,40 +296,54 @@ fn start(
     record.account = rejoined(record.account.take(), account);
     record.people = meeting::joined(std::mem::take(&mut record.people), &people);
     record.known = record.known.or(known);
-    record.ended = None;
+    let ended = record.ended.take();
     record.transcribing = true;
+    // A summary of the call's first legs would read as the whole of it,
+    // so a rejoined call says its summary is to come until it ends. One
+    // that can't be heard keeps it, as its file still does.
+    let summed = record.summary.take();
     let since = usize::try_from((at - record.started) / 1000).unwrap_or(0) * RATE;
     book.lock().put(record.clone());
-    let recorders = Recorder::start(
+    let mine = Recorder::start(
         &format!("call-transcripts-mine-{count}"),
         &key,
         Side::Mine,
         since,
         jobs,
-    )
-    .and_then(|mut mine| {
-        match Recorder::start(
-            &format!("call-transcripts-theirs-{count}"),
-            &key,
-            Side::Theirs,
-            since,
-            jobs,
-        ) {
-            Ok(theirs) => Ok((mine, theirs)),
-            // Joel's side alone would be half a call, heard as all of it.
-            Err(why) => {
-                mine.stop();
-                Err(why)
-            }
-        }
-    });
-    let (mine, theirs) = match recorders {
-        Ok(both) => both,
+    );
+    let mut mine = match mine {
+        Ok(mine) => mine,
         Err(why) => {
-            book.lock().put(Record {
-                transcribing: false,
+            unheard(
+                book,
+                Record {
+                    summary: summed,
+                    ended,
+                    ..record
+                },
+                None::<fn()>,
+                jobs,
+            );
+            return Err(why);
+        }
+    };
+    let theirs = Recorder::start(
+        &format!("call-transcripts-theirs-{count}"),
+        &key,
+        Side::Theirs,
+        since,
+        jobs,
+    );
+    let theirs = match theirs {
+        Ok(theirs) => theirs,
+        // Joel's side alone would be half a call, heard as all of it.
+        Err(why) => {
+            let record = Record {
+                summary: summed,
+                ended,
                 ..record
-            });
+            };
+            unheard(book, record, Some(|| mine.stop()), jobs);
             return Err(why);
         }
     };
@@ -340,6 +354,32 @@ fn start(
         theirs,
         asked: HashMap::new(),
     })
+}
+
+/// Puts a call whose recording couldn't start back as it was, `record`
+/// holding its summary and end again, and leaves nothing waiting on it.
+/// Joel's side, if it started, is stopped after, so what it heard is
+/// written under the summary put back; its own end and the end said here
+/// for their side, which never started, let hear finish the call, as it
+/// sums nothing up while a call is half done. A call with no recorder
+/// is asked to be summed up, as a rejoin that took its summary away
+/// might have been the only way it would be again.
+fn unheard(book: &Shared, record: Record, stop_mine: Option<impl FnOnce()>, jobs: &Sender<Job>) {
+    let key = record.key.clone();
+    book.lock().put(Record {
+        transcribing: false,
+        ..record
+    });
+    let _ = match stop_mine {
+        Some(stop) => {
+            stop();
+            jobs.send(Job::Done {
+                key,
+                side: Side::Theirs,
+            })
+        }
+        None => jobs.send(Job::SumUp { key }),
+    };
 }
 
 impl Recording {
@@ -626,6 +666,73 @@ mod tests {
             rejoined(None, ours()),
             None,
             "a call with no account took one on rejoining"
+        );
+    }
+
+    /// A call rejoined, as `start` leaves its record before recording.
+    fn rejoining(calls: &Path) -> (Shared, Record) {
+        let record = Record {
+            key: "call:e1".to_owned(),
+            title: "Planning".to_owned(),
+            started: 10,
+            ended: None,
+            event: Some("e1".to_owned()),
+            person: None,
+            account: None,
+            people: Vec::new(),
+            known: None,
+            folder: calls.join("call-e1"),
+            transcript: None,
+            opening: None,
+            summary: None,
+            transcribing: true,
+        };
+        let mut book = crate::book::Book::default();
+        book.put(record.clone());
+        (Shared::new(book), record)
+    }
+
+    #[test]
+    fn a_rejoin_that_cant_record_is_put_back_and_finished_by_hear() {
+        let calls = tempfile::tempdir().unwrap();
+        let (book, record) = rejoining(calls.path());
+        let (jobs, heard) = mpsc::channel();
+        let stopped = std::cell::Cell::new(false);
+        let back = Record {
+            summary: Some("- kept".to_owned()),
+            ended: Some(20),
+            ..record
+        };
+        unheard(&book, back, Some(|| stopped.set(true)), &jobs);
+        let held = book.lock().record("call:e1").cloned().unwrap();
+        assert_eq!(
+            (held.summary.as_deref(), held.ended, held.transcribing),
+            (Some("- kept"), Some(20), false),
+            "the record wasn't put back as it was"
+        );
+        assert!(stopped.get(), "Joel's side was left recording");
+        assert!(
+            matches!(
+                heard.try_recv(),
+                Ok(Job::Done { key, side: Side::Theirs }) if key == "call:e1"
+            ),
+            "hear wasn't told their side is done, so the call stays half done"
+        );
+    }
+
+    #[test]
+    fn a_call_with_no_recorder_is_asked_to_be_summed_up() {
+        let calls = tempfile::tempdir().unwrap();
+        let (book, record) = rejoining(calls.path());
+        let (jobs, heard) = mpsc::channel();
+        unheard(&book, record, None::<fn()>, &jobs);
+        assert!(
+            matches!(heard.try_recv(), Ok(Job::SumUp { key }) if key == "call:e1"),
+            "a rejoin that took its summary away left it unsummed"
+        );
+        assert!(
+            !book.lock().record("call:e1").unwrap().transcribing,
+            "the call is said to be still written"
         );
     }
 

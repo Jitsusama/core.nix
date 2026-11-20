@@ -240,7 +240,7 @@ be read, marked unread and archived.
 | not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | transcript | what was said on a call, Joel's words and the others' in the order they were said, written on the machine as the call goes | | `call-transcripts` |
-| summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when | | `summary.md` |
+| summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when, kept under the Summary heading of the call's `transcript.md`, over the transcript | | `## Summary` |
 | noise cancelled | a microphone's voice with the sounds around it taken out on the machine, offered as a microphone of its own named for it | noise suppression, denoised | `noise-cancelled` |
 | noise cancelling | which cleaner the microphones' noise is cancelled by now, an input's part, or none | | the trial daemon's `running` |
 | cleaner | one way of cancelling noise, DeepFilterNet full or gentle or RNNoise, or none, the microphone as calls hear it | denoiser | `raw`, `deepfilternet`, `deepfilternet-gentle`, `rnnoise` |

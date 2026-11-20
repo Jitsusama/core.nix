@@ -31,7 +31,6 @@
   "modules/console/font/src/main.rs" = 10;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
-  "modules/dictation/src/bin/call-transcripts/book.rs" = 1;
   "modules/dictation/src/bin/call-transcripts/meeting.rs" = 1;
   "modules/dictation/src/bin/call-transcripts/notices.rs" = 6;
   "modules/dictation/src/bin/call-transcripts/said.rs" = 3;
@@ -286,7 +285,7 @@
   "modules/wifid/sign-in/src/main.rs" = 6;
   "modules/wifid/sign-in/src/socks.rs" = 4;
   "modules/zathura/next-document/src/main.rs" = 4;
-  "tests/vm/sound/call-transcripts-vm-test.py" = 9;
+  "tests/vm/sound/call-transcripts-vm-test.py" = 8;
   "tests/vm/devices/desk-facts-vm-test.py" = 4;
   "tests/desktop/desktop-launcher-answers-vm-test.py" = 4;
   "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 1;

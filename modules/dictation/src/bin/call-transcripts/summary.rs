@@ -202,6 +202,10 @@ pub fn summarize(
     kept.sort_unstable_by_key(|(index, _)| *index);
     let kept: Vec<String> = kept.into_iter().map(|(_, quote)| quote).collect();
     let mut summary = String::new();
+    // On one line, as the call's file heads it, since a calendar title
+    // can hold line breaks, and a line of it left under the Summary
+    // heading could pass for the Transcript's.
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
     if !title.is_empty() {
         let _ = write!(summary, "# {title}\n\n");
     }
