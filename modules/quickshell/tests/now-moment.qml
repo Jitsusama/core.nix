@@ -2003,6 +2003,10 @@ ShellRoot {
             JSON.stringify(keysOf(now.everything()).slice(1 + moment, 4 + moment).sort())
                 === JSON.stringify(asksNothing.slice().sort()),
             JSON.stringify([moment, keysOf(now.everything())]));
+        // Lately's places are fixed while the launcher is open, so these
+        // start shut, as Now hears it, and say when it opens (openedAt).
+        const wasOpenedAt = now.openedAt;
+        now.openedAt = Number.POSITIVE_INFINITY;
         // A critical notice unread is one to do, so Desktop, which holds
         // it, stands in For You while it waits, and leaves Now's rows.
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
@@ -2070,6 +2074,7 @@ ShellRoot {
                 && now.leadsTo("notices").length === 1
                 && now.leadsTo("notices")[0].key === "on:waiting:desktop",
             JSON.stringify(now.leadsTo("notices").map(row => row.key)));
+        now.openedAt = wasOpenedAt;
         const first = byKey(forYou());
         const mail = first["on:mail"];
         let before = now.tally.rows;
