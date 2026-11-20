@@ -55,6 +55,13 @@ machine, one path through each connection.
 
 ## Layout
 
+Many entries because every file here is named by where it sits: the
+shell's files reach one another by relative path (`import "Bands.js" as
+Bands`) and through `qs`, which names a type by the folder it sits in, and
+the install lists and the checks name each file by its path.
+Moving a file rewrites every place that names it, so the folder is split
+into kinds at a quiet moment its owner chooses, not alongside other work.
+
 - `*.qml` at the top: the singletons and the surfaces, `shell.qml` making
   each surface.
 - `*.js` at the top: what a surface works out apart from drawing, such as
