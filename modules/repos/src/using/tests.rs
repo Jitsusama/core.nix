@@ -190,7 +190,11 @@ fn a_process_counts_the_children_it_has_waited_on() {
     pid(&proc, 41, Some(TREE), cargo, None);
     let sample = sample(&proc, &folders());
     assert_eq!(
-        sample.processes.iter().map(|process| process.ticks).collect::<Vec<_>>(),
+        sample
+            .processes
+            .iter()
+            .map(|process| process.ticks)
+            .collect::<Vec<_>>(),
         [5_100],
         "its own 100 ticks and its children's 5,000"
     );
@@ -203,7 +207,13 @@ fn a_process_in_a_removed_folder_works_nowhere() {
     // after it, which would place it in the checkout holding that tree.
     let proc = proc_with("deleted");
     let gone = format!("{CHECKOUT}/.trees/gone (deleted)");
-    pid(&proc, 41, Some(&gone), &stat(41, "cargo", 70, 30, 900), None);
+    pid(
+        &proc,
+        41,
+        Some(&gone),
+        &stat(41, "cargo", 70, 30, 900),
+        None,
+    );
     assert_eq!(sample(&proc, &folders()).processes, []);
     let _ = fs::remove_dir_all(&proc);
 }
@@ -220,7 +230,10 @@ fn readings_far_apart_measure_no_share() {
         at: 1_000 + LONGEST + 1,
         processes: vec![process(1, TREE, 10, 400, 0)],
     };
-    assert!(!measured(Some(&before), &slept), "readings past LONGEST apart");
+    assert!(
+        !measured(Some(&before), &slept),
+        "readings past LONGEST apart"
+    );
     assert_eq!(using(Some(&before), &slept)[Path::new(TREE)].cpu, None);
     let soon = Sample {
         at: 1_000 + LONGEST,

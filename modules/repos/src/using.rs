@@ -10,11 +10,17 @@
 //! memory is its proportional share, `Pss` in `smaps_rollup`, so forty
 //! compilers sharing one library count it once between them, and it's
 //! said in kilobytes whatever the machine's page size. Its processor time
-//! is `utime` and `stime` in `stat`, in the ticks of a hundredth of a
-//! second Linux's interface always counts in, and a folder's is a share
-//! of one core between two readings: a process new since the first is
-//! counted from its start, and one that only moved in since isn't
-//! counted, as nothing says how long it has worked there.
+//! is `utime` and `stime` in `stat`, with `cutime` and `cstime`, its
+//! children's once it has waited on them, in the ticks of a hundredth of
+//! a second Linux's interface always counts in. A build's compilers start
+//! and end between two readings, so they're counted in the cargo that
+//! waited on them; a child that lived across a reading is counted again
+//! for its time before it, which runs a little high rather than missing
+//! the build. A folder's is a share of one core between two readings no
+//! more than `LONGEST` apart: a process new since the first is counted
+//! from its start, and one that only moved in since isn't counted, as
+//! nothing says how long it has worked there. A process whose working
+//! folder was removed works nowhere.
 //!
 //! Only `/proc` says any of it, so only Linux has it, and only for the
 //! processes the reader may look in: Joel's own. A build the Nix daemon
@@ -31,12 +37,21 @@ use serde::Serialize;
 pub const TICKS: u64 = 100;
 
 /// The furthest apart two readings may be and still measure a share,
-/// three of the daemon's minutes.
+/// three of the daemon's minutes: the time since boot runs on through a
+/// suspend, when nothing works, so a share of it would read near none.
 pub const LONGEST: u64 = 3 * 60 * TICKS;
 
-/// Whether `now` measures processor time since `before`.
+/// Whether `now` measures processor time since `before`: some time, and
+/// no more than `LONGEST`, passed between them.
 pub fn measured(before: Option<&Sample>, now: &Sample) -> bool {
-    before.is_some_and(|before| now.at > before.at)
+    between(before, now).is_some()
+}
+
+/// The ticks between two readings, where they measure a share.
+fn between(before: Option<&Sample>, now: &Sample) -> Option<u64> {
+    before
+        .map(|before| now.at.saturating_sub(before.at))
+        .filter(|between| (1..=LONGEST).contains(between))
 }
 
 /// One process placed in a folder, as one reading saw it.
@@ -103,6 +118,9 @@ pub fn sample(proc: &Path, folders: &[PathBuf]) -> Sample {
             let pid = entry.file_name().to_str()?.parse().ok()?;
             let own = entry.path();
             let working = fs::read_link(own.join("cwd")).ok()?;
+            if working.to_string_lossy().ends_with(" (deleted)") {
+                return None;
+            }
             let folder = placed(folders, &working)?.to_path_buf();
             let (started, ticks) = stat(&fs::read_to_string(own.join("stat")).ok()?)?;
             let memory = fs::read_to_string(own.join("smaps_rollup"))
@@ -129,15 +147,19 @@ fn uptime(said: &str) -> Option<u64> {
     Some(whole.parse::<u64>().ok()? * TICKS + hundredths.parse::<u64>().ok()?)
 }
 
-/// When a process started and the processor time it has taken, from its
-/// `stat`: fields 22, and 14 and 15, counted from after its name, which is
-/// read to its last bracket since a name may hold one.
+/// When a process started and the processor time it and its waited-on
+/// children have taken, from its `stat`: fields 22, and 14 to 17, counted
+/// from after its name, which is read to its last bracket since a name
+/// may hold one.
 fn stat(said: &str) -> Option<(u64, u64)> {
     let (_, rest) = said.rsplit_once(')')?;
     let fields: Vec<&str> = rest.split_whitespace().collect();
     // Field 3, its state, is the first after the name.
     let field = |number: usize| fields.get(number - 3)?.parse::<u64>().ok();
-    Some((field(22)?, field(14)? + field(15)?))
+    Some((
+        field(22)?,
+        field(14)? + field(15)? + field(16)? + field(17)?,
+    ))
 }
 
 /// A process's share of memory, in bytes, from its `smaps_rollup`.
@@ -172,9 +194,7 @@ pub fn using(before: Option<&Sample>, now: &Sample) -> BTreeMap<PathBuf, Use> {
             };
         }
     }
-    let between = before
-        .map(|before| now.at.saturating_sub(before.at))
-        .filter(|at| *at > 0);
+    let between = between(before, now);
     using
         .into_iter()
         .map(|(path, (mut folder, worked))| {

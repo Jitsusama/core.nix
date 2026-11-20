@@ -8,6 +8,16 @@
 import { type Fields, isObject, number, text } from "../../local-sites/kit/records.ts";
 import { bytes } from "./weight.ts";
 
+/** The kind saying what works in each repository: followed too, but never waited for, since a
+ * daemon that doesn't read processes (an older one, a stand-in) leaves the grove whole. */
+const USING = "using";
+
+/** Of how each kind stands, `by` kind, what the page's foot stands on: every kind but what works
+ * in each, which an older daemon refuses, and that mustn't call the disk's reading broken. */
+function footed<T>(by: ReadonlyMap<string, T>): T[] {
+  return [...by].filter(([kind]) => kind !== USING).map(([, each]) => each);
+}
+
 /** What works in one folder, or a repository's folders together. */
 interface Use {
   readonly processes: number;
@@ -83,4 +93,4 @@ function usedFully(use: Use | undefined): string {
 }
 
 export type { Use, Using };
-export { usedBriefly, usedFully, usingOf };
+export { footed, USING, usedBriefly, usedFully, usingOf };

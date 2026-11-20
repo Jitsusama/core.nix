@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { usedBriefly, usedFully, usingOf } from "../using.ts";
+import { footed, usedBriefly, usedFully, usingOf } from "../using.ts";
 
 const record = {
   key: "using:github:owl/core",
@@ -49,6 +49,15 @@ it("says only the memory until two readings measure the processor", () => {
   const first = usingOf({ ...record, cpu: null });
   assert.equal(first.whole.cpu, undefined);
   assert.equal(usedFully(first.whole), "3 processes: 1.3 GB of memory");
+});
+
+it("never lets an older daemon's refusal of what works call the page broken", () => {
+  const standing = new Map([
+    ["tree", "live"],
+    ["using", "broken"],
+    ["change", "stale"],
+  ]);
+  assert.deepEqual(footed(standing), ["live", "stale"]);
 });
 
 it("says nothing where nothing works, so a quiet row stays quiet", () => {

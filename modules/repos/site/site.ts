@@ -20,9 +20,9 @@ import {
   type Repository,
   type Season,
   stepped,
-  USING,
 } from "./model.ts";
 import { UNHEARD, watchMycelium } from "./mycelium.ts";
+import { footed, USING } from "./using.ts";
 import {
   copyFolder,
   element,
@@ -92,8 +92,8 @@ const current = (): Repository | undefined =>
   grove?.repositories.find((each) => each.key === cursor);
 
 function sayWhen(): void {
-  const now = worst(standings.values());
-  asof.textContent = footOf(grove, now, heard.values());
+  const now = worst(footed(standings));
+  asof.textContent = footOf(grove, now, footed(heard));
   asof.dataset["state"] = now?.state ?? "connecting";
 }
 

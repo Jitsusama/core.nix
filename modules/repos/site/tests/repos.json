@@ -100,6 +100,14 @@
           { "path": "/home/ada/src/core", "processes": 1, "memory": 300000000, "cpu": 0.1 },
           { "path": "/home/ada/trees/grove", "processes": 2, "memory": 1000000000, "cpu": 0.3 }
         ]
+      },
+      {
+        "key": "using:local:~/src/notes",
+        "repository": "local:~/src/notes",
+        "processes": 0,
+        "memory": 0,
+        "cpu": 0,
+        "folders": []
       }
     ]
   }

@@ -14,7 +14,7 @@ import {
   texts,
 } from "../../local-sites/kit/records.ts";
 import { joined } from "./joins.ts";
-import { type Use, usingOf } from "./using.ts";
+import { type Use, USING, usingOf } from "./using.ts";
 import { type Weight, weightOf } from "./weight.ts";
 
 /** When a tree was last written, as the grove draws it: in leaf, budding, bare or a stump. */
@@ -251,10 +251,6 @@ const REPOSITORY_KEY = /^repository:/u;
 
 /** The kinds the daemon reads from the disk, which the page waits for before it settles. */
 const KINDS = ["reading", "repository", "checkout", "tree", "change"] as const;
-
-/** The kind saying what works in each repository: followed too, but never waited for, since a
- * daemon that doesn't read processes (an older one, a stand-in) leaves the grove whole. */
-const USING = "using";
 
 /** What each kind's watch holds. */
 type Feed = { readonly [kind in (typeof KINDS)[number] | typeof USING]: Held };
