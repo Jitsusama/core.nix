@@ -11,10 +11,65 @@ loop's waits 50 ms in all, then logs and leaves the rest queued. A shm
 pool's Destroy leaves a full socket to that flush, which ends the same
 turn, so a burst of destroys waits once rather than once each. A
 selection's waits as long as it takes, since its data is read at once
-and the compositor writes it only once it has the request. What is left
-queued waits safely only from wayland-backend 0.3.12, which buffers
-without bound, so newer-backend.patch takes 0.3.17, as upstream has.
+and the selection's owner writes it only once the compositor has the
+request to pass on. What is left queued goes out at a later flush, and
+the main loop, which polled the compositor's socket only for reading,
+now also waits for room to write while anything is left, since nothing
+else wakes it once the compositor has read what it was sent. Leaving it
+queued is safe only from wayland-backend 0.3.12, which buffers without
+bound, so newer-backend.patch takes 0.3.17, as upstream has.
 
+diff --git a/Cargo.toml b/Cargo.toml
+index 3ce3053..be557d8 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -60,7 +60,7 @@ systemd = ["dep:sd-notify"]
+ fontconfig = ["dep:fontconfig"]
+ 
+ [dev-dependencies]
+-rustix = { workspace = true, features = ["fs"] }
++rustix = { workspace = true, features = ["fs", "net"] }
+ testwl = { path = "testwl" }
+ 
+ [build-dependencies]
+diff --git a/src/lib.rs b/src/lib.rs
+index d3bf003..070e68d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -70,6 +70,17 @@ pub fn version() -> &'static str {
+     version
+ }
+ 
++/// What the main loop waits on from the compositor: its events, and room to write while a flush
++/// left requests queued, since nothing else wakes satellite to send them once the compositor has
++/// read what it was sent.
++fn compositor_flags(flush_pending: bool) -> PollFlags {
++    if flush_pending {
++        PollFlags::IN | PollFlags::OUT
++    } else {
++        PollFlags::IN
++    }
++}
++
+ pub fn main(mut data: impl RunData) -> Option<()> {
+     info!("Starting xwayland-satellite version {}", version());
+ 
+@@ -177,6 +188,7 @@ pub fn main(mut data: impl RunData) -> Option<()> {
+     ];
+ 
+     loop {
++        fds[0] = PollFd::from_borrowed_fd(server_fd, compositor_flags(server_state.flush_pending()));
+         match poll(&mut fds, None) {
+             Ok(_) => {
+                 if !fds[3].revents().is_empty() {
+@@ -244,6 +256,7 @@ pub fn main(mut data: impl RunData) -> Option<()> {
+             xstate.update_global_scale(scale);
+         }
+ 
++        fds[0] = PollFd::from_borrowed_fd(server_fd, compositor_flags(server_state.flush_pending()));
+         match poll(&mut fds, None) {
+             Ok(_) => {
+                 if !fds[3].revents().is_empty() {
 diff --git a/src/server/dispatch.rs b/src/server/dispatch.rs
 index 3815022..e997d41 100644
 --- a/src/server/dispatch.rs
@@ -31,7 +86,7 @@ index 3815022..e997d41 100644
              other => warn!("unhandled shmpool request: {other:?}"),
          }
 diff --git a/src/server/mod.rs b/src/server/mod.rs
-index a436331..4fad185 100644
+index a436331..8672258 100644
 --- a/src/server/mod.rs
 +++ b/src/server/mod.rs
 @@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
@@ -43,7 +98,25 @@ index a436331..4fad185 100644
  use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
  use wayland_client::{
      Connection, EventQueue, Proxy, QueueHandle,
-@@ -770,39 +770,7 @@ impl<C: XConnection> ServerState<C> {
+@@ -468,6 +468,9 @@ pub struct InnerServerState<S: X11Selection> {
+ 
+     world: MyWorld,
+     queue: EventQueue<MyWorld>,
++    // Whether the last flush left requests queued, which the main loop then waits for room to
++    // send, since nothing else wakes it once the compositor has read what it was sent.
++    flush_pending: std::cell::Cell<bool>,
+     qh: QueueHandle<MyWorld>,
+     globals_map: HashMap<GlobalName, (Global, GlobalId)>,
+     client: Client,
+@@ -570,6 +573,7 @@ impl<S: X11Selection> ServerState<NoConnection<S>> {
+             pids: HashSet::new(),
+             client,
+             queue,
++            flush_pending: Default::default(),
+             qh,
+             globals_map,
+             dh,
+@@ -770,39 +774,7 @@ impl<C: XConnection> ServerState<C> {
  
          self.handle_selection_events();
          self.handle_activations();
@@ -84,7 +157,7 @@ index a436331..4fad185 100644
      }
  
      fn close_x_window(&mut self, window: x::Window) {
-@@ -817,6 +785,54 @@ impl<C: XConnection> ServerState<C> {
+@@ -817,6 +789,65 @@ impl<C: XConnection> ServerState<C> {
      }
  }
  
@@ -92,15 +165,21 @@ index a436331..4fad185 100644
 +    /// Flush requests to the compositor, waiting while its socket is full for `patience` in all,
 +    /// or for as long as it takes with none. What isn't written stays queued for the next flush,
 +    /// which wayland-backend buffers without bound from 0.3.12, so a compositor falling behind
-+    /// slows satellite rather than killing it and every X11 window with it. A patience of zero
-+    /// leaves a full socket to the main loop's flush, which comes at the end of the same turn,
-+    /// and says nothing, since a burst of requests would otherwise say it once each.
++    /// slows satellite rather than killing it and every X11 window with it; one that stops
++    /// reading altogether leaves the queue growing in satellite's memory, as libwayland's would.
++    /// A patience of zero leaves a full socket to the main loop's flush, which comes at the end
++    /// of the same turn, and says nothing, since a burst of requests would otherwise say it once
++    /// each. Whatever is left, the main loop then wakes to send once the socket has room.
 +    pub(crate) fn flush_queue(&self, patience: Option<Duration>) {
 +        let deadline = patience.map(|patience| Instant::now() + patience);
 +        let mut waited = false;
++        self.flush_pending.set(true);
 +        loop {
 +            match self.queue.flush() {
-+                Ok(()) => return,
++                Ok(()) => {
++                    self.flush_pending.set(false);
++                    return;
++                }
 +                Err(wayland_client::backend::WaylandError::Io(error))
 +                    if error.kind() == std::io::ErrorKind::WouldBlock => {}
 +                Err(other) => panic!("Failed flushing clientside events: {other:#?}"),
@@ -134,38 +213,45 @@ index a436331..4fad185 100644
 +            }
 +        }
 +    }
++
++    /// Whether the last flush left requests queued for the compositor.
++    pub fn flush_pending(&self) -> bool {
++        self.flush_pending.get()
++    }
 +}
 +
  impl<S: X11Selection + 'static> InnerServerState<S> {
      pub fn clientside_fd(&self) -> BorrowedFd<'_> {
          self.queue.as_fd()
 diff --git a/src/server/selection.rs b/src/server/selection.rs
-index bd32aaa..d502e9d 100644
+index bd32aaa..6894bd0 100644
 --- a/src/server/selection.rs
 +++ b/src/server/selection.rs
-@@ -159,7 +159,9 @@ impl<T: SelectionType> ForeignSelection<T> {
+@@ -159,7 +159,10 @@ impl<T: SelectionType> ForeignSelection<T> {
          state: &ServerState<impl XConnection>,
      ) -> Vec<u8> {
          let mut pipe = T::receive_offer(&self.inner, mime_type).unwrap();
 -        state.queue.flush().unwrap();
-+        // The pipe is read at once, and the compositor writes it only once it has the request,
-+        // so this waits for a full socket however long it takes.
++        // The pipe is read at once, and the selection's owner writes it only once the compositor
++        // has the request to pass on, so this waits for a full socket however long it takes. The
++        // read that follows has no bound either, as upstream's never had.
 +        state.flush_queue(None);
          let mut data = Vec::new();
          pipe.read_to_end(&mut data).unwrap();
          data
 diff --git a/src/server/tests.rs b/src/server/tests.rs
-index fa70c7d..21d2c08 100644
+index fa70c7d..bff3bb0 100644
 --- a/src/server/tests.rs
 +++ b/src/server/tests.rs
-@@ -3343,3 +3343,70 @@ fn decorations_max_height_int_max() {
+@@ -3343,3 +3343,75 @@ fn decorations_max_height_int_max() {
  /// See Pointer::handle_event for an explanation.
  #[test]
  fn popup_pointer_motion_workaround() {}
 +
 +// A client destroying a shm pool while satellite's socket to the compositor is full, as a storm
 +// of X11 windows can leave it, slows satellite rather than killing it, and what it sends later
-+// still arrives.
++// still arrives. testwl reads on this thread, never while satellite polls, so this covers the
++// Destroy, the backlog past 4 KB and the pending flush, not a retry after poll finds room.
 +#[test]
 +fn shm_pool_destroy_with_full_socket() {
 +    let (mut f, compositor) = TestFixture::new_with_compositor();
@@ -188,10 +274,12 @@ index fa70c7d..21d2c08 100644
 +        f.xwls_display.dispatch_clients(&mut *f.satellite).unwrap();
 +    };
 +
-+    // Fill satellite's socket to the compositor by not letting testwl read it. A default unix
-+    // socket takes a few hundred rounds, so a thousand that never fill it fail rather than hang.
++    // Fill satellite's socket to the compositor by not letting testwl read it. The send buffer is
++    // shrunk to the kernel's floor of a few KB, so a builder's own socket defaults don't decide
++    // whether it fills; a hundred rounds of about 1.2 KB that never fill it fail rather than hang.
++    rustix::net::sockopt::set_socket_send_buffer_size(f.satellite.clientside_fd(), 4096).unwrap();
 +    let mut filled = false;
-+    for _ in 0..1000 {
++    for _ in 0..100 {
 +        resize(&pool, &mut f);
 +        match f.satellite.queue.flush() {
 +            Ok(()) => {}
@@ -217,15 +305,17 @@ index fa70c7d..21d2c08 100644
 +        resize(&backlog, &mut f);
 +    }
 +    f.satellite.run();
++    assert!(f.satellite.flush_pending(), "the backlog all went out with testwl not reading");
 +
 +    // The stream is ordered and losing a request ends it, so a surface asked for after the
 +    // backlog arriving means all of it did. Each run lets testwl read a socketful.
 +    let _surface = compositor.create_surface();
 +    for _ in 0..20 {
 +        f.run();
-+        if !f.testwl.created_surfaces().is_empty() {
++        if !f.testwl.created_surfaces().is_empty() && !f.satellite.flush_pending() {
 +            break;
 +        }
 +    }
 +    assert_eq!(f.testwl.created_surfaces().len(), 1);
++    assert!(!f.satellite.flush_pending(), "requests were still queued once testwl read");
 +}
