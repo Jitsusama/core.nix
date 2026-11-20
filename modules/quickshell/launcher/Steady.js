@@ -119,6 +119,15 @@ function hiddenGone(ways) {
         last: ways.last !== null && shown(ways.last) ? ways.last : null };
 }
 
+// Whether a way back that `had` places a moment ago and has `left` now was
+// emptied by a share, and says so: the key had somewhere to go until the
+// share let it go, so Ctrl+O's silence or Ctrl+T's E73 would read as the
+// key broken. Otherwise it says what Vim says (Launcher.qml's jump,
+// toLastPlace and tagBack).
+function shareEmptied(had, left) {
+    return had > 0 && left === 0;
+}
+
 // Where the selection goes in them, from where it `was`: { row, at,
 // lowest, nth }, the id of the row it was on ("" for none), its place, and
 // how many rows alike in that id stood above it. It goes onto that row, the
