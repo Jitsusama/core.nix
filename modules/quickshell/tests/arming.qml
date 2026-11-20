@@ -148,11 +148,25 @@ QtObject {
         expect("nor a word with no held Return said",
             Arming.letsHeldGo([["q", "quit"]], []), false);
 
+        // A share ending lets go of any arm as well, as its start does
+        // (untold): one made on an ask's row in the paced refresh after a
+        // share began would let the first Return after it, no key between,
+        // release on a line read before the share. This is what
+        // Launcher.qml's unheld is told to leave; that it applies it isn't
+        // run here, nor by any check, since none shares the screen.
+        const ended = Arming.shareTurns(heldWord, heldWord);
+        expect("shareTurns tells the launcher to leave nothing armed",
+            JSON.stringify(ended.armed), JSON.stringify(Arming.rest()));
+        expect("a share's end lets go of the foot's word for a held Return",
+            ended.quiet, true);
+        expect("but a share's end keeps another word said since",
+            Arming.shareTurns([["q", "quit"]], heldWord).quiet, false);
+
         // Which places may be kept to draw at once at the next opening
-        // (Launcher.qml's keepPlace): never one whose rows a share hides,
-        // since a share starting while it's shut would leave the kept copy
-        // drawing its first frame as it was before (ISXEG8, 2026-11-19).
-        expect("a place that hides its rows is never kept",
+        // (Launcher.qml's keepPlace): never one that says it's never kept,
+        // as Asks does, a second guard beside Wanted.keptPlaceListed's
+        // refusing kept rows under a share (ISXEG8, 2026-11-19).
+        expect("a place that says it's never kept isn't",
             Arming.keepsPlace({ keptNever: true }), false);
         expect("any other place is", Arming.keepsPlace({}), true);
         expect("and so is one no source has", Arming.keepsPlace(null), true);

@@ -283,7 +283,7 @@ ShellRoot {
 
     Component.onCompleted: {
         link.tell("d1");
-        steps([arming, untimed, returned, returnedThenAnswered, typed, typedThenAnswered,
+        steps([arming, keptNever, untimed, returned, returnedThenAnswered, typed, typedThenAnswered,
             upOnTheFind, upOnTheFindAnswered, escaped, escapedThenAnswered, moving, shown,
             entryTold, reopened, reopenedThenEscaped, reopenedThenMoved, reopenedAndShown, left,
             moved, changed, stepping, stepped, steppedBack, movedBack, drawn, outside, refused,
@@ -305,6 +305,13 @@ ShellRoot {
         same("and a first Return on it only arms", Arming.pressed(Arming.rest(), root.key,
             { keysTaken: 1, counted: 1, now: 0, wait: 300 }).act, "armed");
         same("so nothing is sent", link.sent, []);
+    }
+
+    // The real Asks says it's never kept for a later opening, whose steps
+    // a share would draw (Launcher.qml's intoKept). That the launcher
+    // finds it by name as it keeps a place isn't run here.
+    function keptNever() {
+        same("Asks says it's never kept for a later opening", Arming.keepsPlace(asks), false);
     }
 
     // Opened from outside, as any process running as Joel may open it.
@@ -708,6 +715,12 @@ ShellRoot {
         same("nor its search words", [finds(root.madeBefore), finds(row())], [true, false]);
         // What a ready row draws of the kept fields: its glyph.
         same("while keeping what says it's an ask", row()?.glyph, root.madeBefore?.glyph);
+        // Read and never drawn on the row: whether it waits puts it in For
+        // You, and when it was asked orders For You.
+        same("and whether it waits and when it was asked, which For You reads",
+            [row()?.waiting, row()?.asked], [true, 1000]);
+        same("so For You still has when it was asked to order it by",
+            asks.forYou.map(one => one.thing.since), [1000]);
         // The row made showing says so, by the source that hides it now, so
         // no way back goes to a place holding it (Steady.hiddenGone); one
         // made hidden says nothing, so such a place stays.
@@ -777,7 +790,7 @@ ShellRoot {
         // screen is shared over an ask that would arm (Arming.letsHeldGo
         // decides whether it still says it), and what another place told
         // during the share stays, since nothing hidden is in it.
-        same("and the launcher is asked to let go only of why Return held it",
+        same("and the launcher is asked to unhold, not to forget what was told",
             [stage.untolds - untolds, stage.unhelds - unhelds], [0, 1]);
         same("nor is it held still", [row()?.still, row()?.stillWhy], [undefined, undefined]);
     }

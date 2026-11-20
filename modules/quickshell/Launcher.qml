@@ -3408,12 +3408,17 @@ Scope {
     // Lets go of the foot's word for a Return held still (run), once what
     // held it may no longer, as a share ending lets an ask arm. Only while
     // the foot still says it (Arming.letsHeldGo): what else it says, or
-    // waits to say as the launcher next opens, stays.
+    // waits to say as the launcher next opens, stays. Any arm goes too
+    // (Arming.shareTurns says why). No check reaches this from a share's
+    // end, as none shares the screen; closing runs it, but rests the arm
+    // itself after (closing, below), so no check sees this arm go.
     property var heldSaying: []
     function unheld() {
-        if (Arming.letsHeldGo(saying, heldSaying))
+        const left = Arming.shareTurns(saying, heldSaying);
+        if (left.quiet)
             say([]);
         heldSaying = [];
+        armed = left.armed;
     }
     function tellOnOpen(told, loose) {
         if (open) {
