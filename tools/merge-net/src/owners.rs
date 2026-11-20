@@ -35,18 +35,30 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
     let checks = fs::read_to_string(root.join("checks.nix")).ok()?;
     let folders = folders(&fs::read_to_string(root.join("flake.nix")).ok()?);
     let read = |file: &str| fs::read_to_string(root.join(file)).ok();
-    let known: Vec<String> = gathered(&checks)
-        .iter()
-        .filter_map(|file| read(file))
-        .chain([checks.clone()])
-        .flat_map(|text| importing(&text))
+    let sources: Vec<(String, String)> = gathered(&checks)
+        .into_iter()
+        .filter_map(|file| Some((read(&file)?, file)))
+        .chain([(checks.clone(), "checks.nix".to_owned())])
         .collect();
+    let known: Vec<String> = sources
+        .iter()
+        .flat_map(|(text, _)| importing(text))
+        .collect();
+    // The `checks.nix` that calls a test owns it too, since the values its
+    // call gives, an area or a screen, are part of what the test is.
+    let called_from = |name: &str| {
+        sources
+            .iter()
+            .find(|(text, _)| vm_tests(text).iter().any(|test| test.name == name))
+            .map(|(_, file)| file.clone())
+    };
     let mut tests: Vec<(String, Vec<String>)> = every_vm_test(&checks, read)
         .into_iter()
         .map(|test| {
             // A file it can't read still owns itself.
             let text = fs::read_to_string(root.join(&test.file)).unwrap_or_default();
-            let paths = owned(&test.file, &text, &test.given, &folders, read);
+            let mut paths = owned(&test.file, &text, &test.given, &folders, read);
+            paths.extend(called_from(&test.name));
             (test.name, paths)
         })
         .collect();
