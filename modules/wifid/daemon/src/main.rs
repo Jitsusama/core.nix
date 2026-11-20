@@ -240,7 +240,7 @@ async fn serve(
         picked: RefCell::default(),
         held: RefCell::default(),
         astray: RefCell::default(),
-        sent_back: RefCell::default(),
+        alone: RefCell::default(),
     };
     wifid.add_cards().await;
 
@@ -1330,9 +1330,9 @@ struct Wifid<'a> {
     /// The cards that took another network as they were let go, each with
     /// the network they were held on, to look again once joined.
     astray: RefCell<HashMap<String, OwnedObjectPath>>,
-    /// The cards sent back to the point they left with their other
-    /// networks off, until they've joined again or come off their network.
-    sent_back: RefCell<HashSet<String>>,
+    /// The cards moving with their other networks off, until they've
+    /// joined again, or are let join whatever they hear.
+    alone: RefCell<HashSet<String>>,
 }
 
 impl Wifid<'_> {
@@ -1622,7 +1622,7 @@ impl Wifid<'_> {
                 // It starts again on no network, Joel's pick or another,
                 // and with every network on.
                 self.picked.borrow_mut().clear();
-                self.sent_back.borrow_mut().clear();
+                self.alone.borrow_mut().clear();
                 self.add_cards().await;
             }
             "org.freedesktop.network1" => {
@@ -2135,7 +2135,7 @@ impl Wifid<'_> {
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
             let network = interface.current_network().await?;
             self.hold(&network, bssid).await?;
-            self.held.borrow_mut().insert(card.clone(), network);
+            self.held.borrow_mut().insert(card.clone(), network.clone());
             let step = interface.state().await?;
             if self.on_its_way(&card, bssid, &step) {
                 println!("<7>{card} is {step} on its own, held to {bssid}");
@@ -2154,6 +2154,7 @@ impl Wifid<'_> {
                     .into_iter()
                     .find(|joined| joined.card == card)
                     .map(|joined| joined.point);
+                self.keep_alone(&card, &interface, &network).await?;
                 self.arrivals
                     .borrow_mut()
                     .asked(&card, from.as_deref(), bssid, Instant::now());
@@ -2167,6 +2168,7 @@ impl Wifid<'_> {
             }
         };
         if let Err(error) = roamed.await {
+            self.together(&card, true).await;
             self.let_go(&card, false).await;
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
@@ -2240,7 +2242,7 @@ impl Wifid<'_> {
                 Ok(()) => Ok(()),
                 Err(refused) => {
                     println!("<7>{card} joins {from} alone, as it couldn't move: {refused}");
-                    self.sent_back.borrow_mut().insert(card.clone());
+                    self.alone.borrow_mut().insert(card.clone());
                     interface.select_network(&network.as_ref()).await
                 }
             }
@@ -2249,8 +2251,8 @@ impl Wifid<'_> {
             return true;
         };
         self.arrivals.borrow_mut().forget(&card);
-        self.sent_back.borrow_mut().remove(&card);
         println!("<4>{card} couldn't go back to {from}: {error}");
+        self.together(&card, free).await;
         false
     }
 
@@ -2271,7 +2273,7 @@ impl Wifid<'_> {
         if free && self.arrivals.borrow().going_back(card) {
             return;
         }
-        self.sent_back.borrow_mut().remove(card);
+        self.alone.borrow_mut().remove(card);
         self.picked.borrow_mut().remove(card);
         if free {
             self.turn_on_networks(card).await;
@@ -2305,11 +2307,41 @@ impl Wifid<'_> {
             "<4>{card} didn't get back to {to} within {} ms, so may join any network",
             arrive::BACK_AFTER.as_millis()
         );
-        self.sent_back.borrow_mut().remove(card);
-        if free && !self.picked.borrow().contains(card) {
+        self.together(card, free).await;
+        self.let_go(card, free).await;
+    }
+
+    /// Turns off the card's networks but the one it's moving on, so
+    /// wpa_supplicant can't take another as the point it's moving to
+    /// fails. Left on, it was joining the Roadside Inn as wifid heard
+    /// the move had failed, and turning that join down as the card went
+    /// back had it blame the point the card went back to, ignore it for
+    /// ten seconds and look 800 ms for another (2026-11-20).
+    async fn keep_alone(
+        &self,
+        card: &str,
+        interface: &InterfaceProxy<'_>,
+        network: &OwnedObjectPath,
+    ) -> zbus::Result<()> {
+        self.alone.borrow_mut().insert(card.to_owned());
+        for other in interface.networks().await? {
+            if other != *network {
+                self.joinable(&other).await?.set_enabled(false).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Turns the card's other networks on again where a move kept them
+    /// off. A card on the network Joel picked keeps them off while it's
+    /// on it, and one in a join the shell asked for has them turned on as
+    /// the join ends, however it ends.
+    async fn together(&self, card: &str, free: bool) {
+        let alone = self.alone.borrow_mut().remove(card);
+        if alone && free && !self.picked.borrow().contains(card) {
+            println!("<7>{card} may join its other networks again");
             self.turn_on_networks(card).await;
         }
-        self.let_go(card, free).await;
     }
 
     /// Whether the card, at this step, is joining the access point it's
@@ -2425,13 +2457,9 @@ impl Wifid<'_> {
     /// joined. Picking again partway into that join had wpa_supplicant's
     /// next try refused, and the network it was held on ignored for ten
     /// seconds (2026-11-15), so it waits until the join is done. A card
-    /// sent back with its other networks off has them on again.
+    /// that moved with its other networks off has them on again.
     async fn settled(&self, card: &str, free: bool) {
-        let sent_back = self.sent_back.borrow_mut().remove(card);
-        if sent_back && free && !self.picked.borrow().contains(card) {
-            println!("<7>{card} is back, and may join its other networks again");
-            self.turn_on_networks(card).await;
-        }
+        self.together(card, free).await;
         let Some(held) = self.astray.borrow_mut().remove(card) else {
             return;
         };
