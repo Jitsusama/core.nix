@@ -24,7 +24,7 @@
 //! comes off its network on the way, is handed back, once, with the point
 //! its card left, so the card is sent back there rather than left on no
 //! network: the 16 Nov failure scanned for 18 s. The way back is followed
-//! as a move of its own, with no way back.
+//! as a move of its own, tried once more where it falls short too.
 
 use std::collections::HashMap;
 
@@ -57,8 +57,9 @@ struct Move {
     /// The access point it was asked to move to.
     to: String,
     /// The access point it left, to go back to if it doesn't get there,
-    /// until it's handed back. None for a way back, or a card already off
-    /// its point when it was held.
+    /// until it's handed back: for a first way back, the point it's on its
+    /// way to, to try once more. None for a way back tried again, or a
+    /// card already off its point when it was held.
     from: Option<String>,
     asked: Instant,
     /// When it was first said to have left the point it was on.
@@ -140,11 +141,16 @@ impl Arrivals {
     /// wpa_supplicant took next, and can join there first, as it joined
     /// the Roadside Inn in a test for 85 ms (2026-11-20). So a way back is
     /// followed past a join elsewhere, each said, to the point it was sent
-    /// to, and has no way back of its own.
-    pub fn back(&mut self, card: &str, to: &str, now: Instant) {
+    /// to.
+    ///
+    /// A first way back, `again`, can be tried once more, as one in a test
+    /// fell off 69 ms in, wpa_supplicant carrying on with the join it had
+    /// queued before it was sent back (2026-11-20). One tried again has no
+    /// way back of its own.
+    pub fn back(&mut self, card: &str, to: &str, now: Instant, again: bool) {
         let moved = Move {
             to: to.to_owned(),
-            from: None,
+            from: again.then(|| to.to_owned()),
             asked: now,
             left: None,
             lost: false,
@@ -658,7 +664,7 @@ mod tests {
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.unreached(now + BACK_AFTER);
-        arrivals.back("wlan0", DESK, now + BACK_AFTER);
+        arrivals.back("wlan0", DESK, now + BACK_AFTER, false);
 
         let due = arrivals.due();
         let back = arrivals.joined("wlan0", Some(DESK), now + ms(1150));
@@ -687,7 +693,7 @@ mod tests {
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.step("wlan0", "disconnected", now + ms(295));
         arrivals.fell_off("wlan0");
-        arrivals.back("wlan0", DESK, now + ms(306));
+        arrivals.back("wlan0", DESK, now + ms(306), true);
 
         let inn = arrivals.joined("wlan0", Some(HALL), now + ms(344));
         let back = arrivals.joined("wlan0", Some(DESK), now + ms(689));
@@ -710,6 +716,39 @@ mod tests {
             }),
             "and then where it was sent back to"
         );
+    }
+
+    #[test]
+    fn a_first_way_back_falling_short_is_tried_once_more_and_no_more() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.fell_off("wlan0");
+        arrivals.back("wlan0", DESK, now + ms(189), true);
+
+        let due = arrivals.due();
+        let off = arrivals.fell_off("wlan0");
+        arrivals.back("wlan0", DESK, now + ms(258), false);
+        let again = arrivals.fell_off("wlan0");
+        let late = arrivals.unreached(now + ms(258) + BACK_AFTER);
+
+        assert_eq!(
+            due,
+            Some(now + ms(189) + BACK_AFTER),
+            "a first way back has a second"
+        );
+        assert_eq!(
+            off,
+            Some(Unreached {
+                card: "wlan0".into(),
+                from: DESK.into(),
+                to: DESK.into(),
+                why: Short::Off
+            }),
+            "tried again at the point it was going back to"
+        );
+        assert_eq!(again, None, "a second way back has none");
+        assert_eq!(late, [], "nor once it's late");
     }
 
     #[test]
