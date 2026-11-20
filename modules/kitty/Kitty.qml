@@ -58,8 +58,12 @@ Provider {
     property string hosts: ""
     // The machines worked out from config and hosts, until either changes
     // (KittyOpens.js's machinesKept). A field, not a property, so keeping
-    // them as a drawer is made tells no binding anything changed.
-    readonly property var held: ({ machines: null })
+    // them as a drawer is made tells no binding anything changed. They're
+    // worked out again just after a file changes, once for both, so the
+    // next drawer doesn't pay for it in the frame of Joel's key.
+    readonly property var kept: ({ machines: null })
+    onConfigChanged: Qt.callLater(provider.everyMachine)
+    onHostsChanged: Qt.callLater(provider.everyMachine)
     // The tabs and panes closed since the launcher opened, by key.
     property var closed: []
 
@@ -253,9 +257,9 @@ Provider {
     }
 
     function everyMachine() {
-        provider.held.machines = Opens.machinesKept(provider.held.machines, provider.config,
+        provider.kept.machines = Opens.machinesKept(provider.kept.machines, provider.config,
             provider.hosts);
-        return provider.held.machines.all;
+        return provider.kept.machines.all;
     }
 
     function machinesNow(state) {

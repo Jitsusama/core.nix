@@ -332,6 +332,9 @@ QtObject {
             ["devbox", "build", "quoted", "lower"]);
         check("handed out frozen", Object.isFrozen(kept.all) && kept.all.every(Object.isFrozen),
             true);
+        check("their settings, other names and keys frozen too",
+            kept.all.every(one => [one.options, one.also, one.keys].every(Object.isFrozen)
+                && one.options.every(Object.isFrozen)), true);
 
         // ssh is told the port known_hosts gave, and a config's machine by
         // its name alone, its block saying the rest.
