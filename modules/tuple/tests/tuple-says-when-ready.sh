@@ -160,29 +160,44 @@ mkdir -p bin
 # daemon's, or none when the case says its start left `many`, or the post's
 # own waiter when the case says it's `alone`, as systemd takes it then. Each
 # ask is counted, so a case knows the post has looked; one the case says
-# hangs is never answered.
+# hangs is never answered. The case's folder is written in quoted once, so
+# any name it has is read back as itself.
+printf -v quoted %q "${here}"
 cat >bin/systemctl <<EOF
 #!${BASH}
 [[ "\$*" == "--user show --property=ActiveState,MainPID tuple.service" ]] || exit 1
-echo >>${here}/asked
+here=${quoted}
+echo >>"\${here}/asked"
 # A systemd that never answers: far past the post's two-second bound on it.
-if [[ -e ${here}/hangs ]]; then rm ${here}/hangs; exec sleep 10; fi
-if [[ ! -e ${here}/up ]]; then printf 'MainPID=0\nActiveState=activating\n'
-elif [[ -e ${here}/alone && -e ${here}/returned ]]; then
+if [[ -e \${here}/hangs ]]; then rm "\${here}/hangs"; exec sleep 10; fi
+# Whether the process holds the case's log among its words, read here in
+# bash, so no process this starts holds it too and looks like a waiter.
+holds() {
+  local word
+  while IFS= read -r -d '' word; do
+    [[ \${word} == "\${here}/log.txt" ]] && return 0
+  done 2>/dev/null </proc/\$1/cmdline
+  return 1
+}
+if [[ ! -e \${here}/up ]]; then printf 'MainPID=0\nActiveState=activating\n'
+elif [[ -e \${here}/alone && -e \${here}/returned ]]; then
   # Alone in the unit once the case has seen the post return, the waiter is
   # what systemd takes for its main process: the topmost of the processes up
   # from this ask with the case's log among their words, however many
   # subshells sit between. Found here, on the ask, rather than by the case
   # looking over every process, which a loaded machine slows past the wait.
+  # With none found, the case hears so, rather than taking what's said for
+  # the post's.
   main=0 pid=\${PPID}
   for _ in 1 2 3 4 5 6 7 8; do
-    if grep -qzxF '${here}/log.txt' /proc/\${pid}/cmdline 2>/dev/null; then main=\${pid}
+    if holds "\${pid}"; then main=\${pid}
     elif ((main > 0)); then break; fi
-    read -r _ _ _ pid _ </proc/\${pid}/stat || break
+    read -r _ _ _ pid _ 2>/dev/null </proc/\${pid}/stat || break
   done
-  printf 'MainPID=%s\nActiveState=active\n' "\${main}"
-elif [[ -e ${here}/alone ]]; then printf 'MainPID=0\nActiveState=activating\n'
-elif [[ -e ${here}/many ]]; then printf 'MainPID=0\nActiveState=active\n'
+  if ((main == 0)); then echo >>"\${here}/lost"; state=activating; else state=active; fi
+  printf 'MainPID=%s\nActiveState=%s\n' "\${main}" "\${state}"
+elif [[ -e \${here}/alone ]]; then printf 'MainPID=0\nActiveState=activating\n'
+elif [[ -e \${here}/many ]]; then printf 'MainPID=0\nActiveState=active\n'
 else printf 'MainPID=7\nActiveState=active\n'; fi
 EOF
 chmod +x bin/systemctl
@@ -190,9 +205,15 @@ chmod +x bin/systemctl
 sed "s|${systemctl}|${here}/bin/systemctl|; s|${log}|${here}/log.txt|; s| 30\$| 10|" \
   "${post}" >started
 chmod +x started
-grep -q "${here}/bin/systemctl" started
-grep -q "${here}/log.txt" started
-grep -q ' 10$' started
+# Each swap must have taken, or the cases would run the post on the
+# machine's systemctl, its log or its whole wait.
+for swapped in "${here}/bin/systemctl" "${here}/log.txt" ' 10$'; do
+  if ! grep -q -- "${swapped}" started; then
+    echo "the post's wrapper didn't take the test's swap for '${swapped}':"
+    echo "it says its systemctl, its log or its wait of 30 seconds otherwise now"
+    exit 1
+  fi
+done
 
 failed=0
 # Three of the post's looks, a tenth of a second apart, any of which would say
@@ -209,9 +230,10 @@ no_daemon="tuple: its start left no daemon of its own, so none to time"
 # gives up must have waited.
 WAITED_OUT=950
 
-# The look for the waiter takes GNU grep's flags. A grep refusing them would
-# find no waiter, which most cases take for one already ended, so it ends
-# the run instead.
+# The look for the waiter takes GNU grep's flags, which the check's own grep
+# has. A grep refusing them, as another first on a hand run's PATH may,
+# would find no waiter, which most cases take for one already ended, so it
+# ends the run instead.
 look=0
 grep --files-with-matches --null-data --line-regexp --fixed-strings -- x /dev/null || look=$?
 if ((look > 1)); then
@@ -390,12 +412,18 @@ ended() {
 # says from now in a file of the case's own, so a post still waiting from the
 # case before can't speak into it. What it asks, and the stand-in's flags,
 # are read by path, so every case ends its waiter before the next. Once the
-# post returns, as systemd sees ExecStartPost end, the stand-in hears so.
+# post returns, as systemd sees ExecStartPost end, the stand-in hears so; a
+# post that doesn't return within POST_RETURNS is stopped, as systemd would
+# stop it, and fails the run, rather than holding the check without a word.
+POST_RETURNS=20
 starts() {
   local each
-  rm -f up many alone hangs returned said asked
+  rm -f up many alone hangs returned lost said asked
   for each in "$@"; do touch "${each}"; done
-  ./started tuple.service >said
+  if ! timeout "${POST_RETURNS}" ./started tuple.service >said; then
+    echo "the post didn't return within ${POST_RETURNS} seconds, as systemd would stop it"
+    failed=1
+  fi
   touch returned
 }
 
@@ -443,9 +471,21 @@ says_only "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
 readable "daemons systemd couldn't choose between"
 
 # The log already says the signaller connected, so only leaving at once
-# keeps it from saying it's ready.
+# keeps it from saying it's ready, and a waiter that said so and sat out its
+# wait would keep the unit up for nothing.
+since_boot
+began=${now}
 starts up alone
 says_only "a start that forked no daemon" "${no_daemon}"
+since_boot
+if [[ -e lost ]]; then
+  echo "a start that forked no daemon: the stand-in found no waiter above the post's ask"
+  failed=1
+fi
+if ((now - began >= WAITED_OUT)); then
+  echo "a start that forked no daemon: the waiter sat out its wait rather than leaving"
+  failed=1
+fi
 unready "a start that forked no daemon"
 
 since_boot
