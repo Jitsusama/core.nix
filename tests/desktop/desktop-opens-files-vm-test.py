@@ -263,19 +263,9 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     )
     # The files, then each folder from /home down to the notes.
     held = 1 + notes.count("/")
-    # What the shell watches, each path a line of an inotify's fdinfo,
-    # counted before any ask: each folder held is read and watched only
-    # while it's asked. Watches are counted, not the inotify handles that
-    # hold them, since a FileView keeps its handle for life once it has
-    # watched (quickshell's fileview-keeps-its-watcher.patch). A daemon's
-    # socket is watched only until its wire answers, and SystemParts' is
-    # first wanted as the launcher first makes home, at the first ask when
-    # this test runs alone, so one handle of no watches stays (2026-11-20).
-    watches = (
-        "cat /proc/$(systemctl --user show quickshell -p MainPID --value)/fdinfo/*"
-        " 2>/dev/null | grep -c '^inotify' || true"
-    )
-    watching = int(desktop.as_account(watches))
+    # Counted before any ask: each folder held is read and watched only
+    # while it's asked.
+    watches_no_more = watching_now(desktop, "three asks")
 
     def choose(mode: str, name: str = "") -> None:
         """Ask the portal for a file in the notes, and wait until the launcher holds them."""
@@ -327,17 +317,58 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     answered("0", f"file://{notes}/plan.md")
 
     saved_by_commands(desktop, choose, answered, notes)
+    # Counted while the notes are still there, since a folder's watch goes
+    # by itself once the folder does.
+    watches_no_more()
     desktop.as_account(f"rm -r {notes} {beside}")
-    # Three asks later, the shell watches no more than it did before them.
-    try:
-        machine.wait_until_succeeds(
-            desktop.in_session(f'[ "$({watches})" -le {watching} ]'),
-            timeout=timedelta(seconds=30),
-        )
-    except AssertionError:
-        after = desktop.as_account(watches).strip()
-        kept = f"the shell watches {after} paths after three asks, {watching} before"
-        raise AssertionError(kept) from None
+
+
+def watching_now(desktop: Desktop, since: str) -> Callable[[], None]:
+    """Count the paths the shell watches, and give the check that it later watches no more.
+
+    Each path is a line of an inotify's fdinfo. Watches are counted, not the
+    inotify handles that hold them, since a FileView keeps its handle for
+    life once it has watched (quickshell's fileview-keeps-its-watcher.patch).
+    A daemon's socket is watched only until its wire answers, and
+    SystemParts' is first wanted as the launcher first makes home, at the
+    chooser's first ask when its test runs alone, so one handle of no
+    watches stays (2026-11-20). The shell's process is pinned, so one that
+    restarted or went gives no count at all, rather than one watching
+    nothing.
+    """
+    machine = desktop.machine
+    shell = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    if shell in {"", "0"}:
+        stopped = "the shell isn't running"
+        raise AssertionError(stopped)
+    watches = (
+        f"test -d /proc/{shell} && {{ cat /proc/{shell}/fdinfo/* 2>/dev/null"
+        " | grep -c '^inotify' || true; }"
+    )
+    # Two counts a second apart that agree, since a daemon's socket is
+    # watched for a moment while its wire comes up.
+    settled = f'a="$({watches})" && sleep 1 && [ "$a" = "$({watches})" ] && echo "$a"'
+    watching = int(
+        machine.wait_until_succeeds(desktop.in_session(settled), timeout=timedelta(seconds=30))
+    )
+
+    def no_more() -> None:
+        """Wait until the shell watches no more paths than it did when counted."""
+        try:
+            machine.wait_until_succeeds(
+                desktop.in_session(f'[ "$({watches})" -le {watching} ]'),
+                timeout=timedelta(seconds=30),
+            )
+        except AssertionError:
+            after = machine.execute(desktop.in_session(watches))[1].strip()
+            kept = (
+                f"the shell watches {after} paths after {since}, {watching} before"
+                if after
+                else f"the shell that watched {watching} paths before {since} is gone"
+            )
+            raise AssertionError(kept) from None
+
+    return no_more
 
 
 def saved_by_commands(
