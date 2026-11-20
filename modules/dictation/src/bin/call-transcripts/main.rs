@@ -36,6 +36,11 @@
 //!     write down each meeting in SET as a call and print the share of
 //!     its words each side got wrong, written down and heard alone
 //!     (score.rs); fail when the set's, written down, is above CEILING
+//! call-transcripts voices SPEAKER_MODEL SET [RIGHT NAMED]
+//!     tell the voices of each meeting's far end in SET apart, and print
+//!     how much of what was named was named right, and how much of the
+//!     speech was named (apart.rs); fail when the set's are below RIGHT
+//!     and NAMED, percentages
 //! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]
 //!     print the summary of the call titled TITLE that a transcript
 //!     writes down (summary.rs), the others on it called NAME if given,
@@ -59,7 +64,10 @@
 //! compiled model kept in `SUMMARIZER_CACHE`, a folder of its own for
 //! the same reason. Its tokenizer needs OpenVINO's tokenizers library,
 //! found by `OPENVINO_TOKENIZERS_PATH_GENAI`, as the service sets it.
+//! Their side's voices are told apart with the speaker model at
+//! `CALL_TRANSCRIPTS_VOICES` (voices.rs), and aren't when it's unset.
 
+mod apart;
 mod ask;
 mod book;
 mod filed;
@@ -142,6 +150,18 @@ fn help() -> Help {
                 ),
         )
         .subcommand(
+            Help::new("voices", "how well it tells meetings' voices apart")
+                .argument("<speaker-model>", "the speaker model's ONNX file")
+                .argument("<set>", "the meetings' folder, as meetings.nix lays it out")
+                .argument("[right]", "the least percent named right that passes")
+                .argument("[named]", "the least percent of speech named that passes")
+                .example(
+                    "call-transcripts voices ~/t.onnx ~/set 90 70",
+                    "fails below either",
+                )
+                .exit(Exit::Failed, "a file can't be read, or it's below a floor"),
+        )
+        .subcommand(
             Help::new("summarize", "the summary a transcript makes")
                 .argument("<summarizer-dir>", "the language model's folder")
                 .argument("<title>", "the call's title")
@@ -202,6 +222,21 @@ fn act(args: &[String]) -> Result<(), Failure> {
                 .try_this(format!("call-transcripts score {model} {set} 19")));
             }
         },
+        ["voices", model, set] => apart::apart(Path::new(model), Path::new(set), None),
+        ["voices", model, set, right, named] => {
+            match (score::ceiling(right), score::ceiling(named)) {
+                (Some(right), Some(named)) => {
+                    apart::apart(Path::new(model), Path::new(set), Some((right, named)))
+                }
+                _ => {
+                    return Err(Failure::new(
+                        Exit::Usage,
+                        "each floor is a percentage below 100, to one place at most",
+                    )
+                    .try_this(format!("call-transcripts voices {model} {set} 90 70")));
+                }
+            }
+        }
         // The kit has refused a word no subcommand answers to, so only a
         // subcommand given too few or too many words is left.
         [first, ..] => {
@@ -216,11 +251,13 @@ fn act(args: &[String]) -> Result<(), Failure> {
     result.map_err(|error| Failure::new(Exit::Failed, error))
 }
 
-/// Where Parakeet runs, as dictation's Whisper does.
+/// Where Parakeet runs, as dictation's Whisper does, and the speaker
+/// model their side's voices are told apart with, where there's one.
 pub struct Settings {
     pub model: PathBuf,
     pub device: String,
     pub cache: Option<PathBuf>,
+    pub voices: Option<PathBuf>,
 }
 
 impl Settings {
@@ -229,6 +266,7 @@ impl Settings {
             model,
             device: std::env::var("DICTATION_DEVICE").unwrap_or_else(|_| "NPU".to_owned()),
             cache: std::env::var_os("DICTATION_CACHE").map(PathBuf::from),
+            voices: std::env::var_os("CALL_TRANSCRIPTS_VOICES").map(PathBuf::from),
         }
     }
 
@@ -340,6 +378,7 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
                     start: take.start,
                     end: take.start + take.samples.len(),
                     text,
+                    voice: None,
                 });
             }
         }

@@ -20,13 +20,15 @@ pub enum Side {
 }
 
 /// A take heard: who said it, from when to when in the call, in samples,
-/// and what.
+/// and what; for their side, which of the voices told apart it is, from
+/// 0, where it's one (voices.rs).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Line {
     pub side: Side,
     pub start: usize,
     pub end: usize,
     pub text: String,
+    pub voice: Option<usize>,
 }
 
 /// How near in time a line of Joel's must be to one of theirs to be its
@@ -40,45 +42,63 @@ const ECHO_SHARE: f32 = 0.6;
 /// What the others on a call are called where nobody knows who they are.
 pub const OTHERS: &str = "Others";
 
+/// What a voice told apart is called, before its number from 1.
+const VOICE: &str = "Voice ";
+
+/// What the transcript says once it has voices, so a voice is never
+/// taken for a person someone has named.
+pub const VOICES_NOTE: &str = "Their side's voices are told apart by how they sound, and \
+    numbered in the order they first spoke; who each one is isn't known. Lines no voice was \
+    sure of stay under Others.";
+
 /// The transcript: lines in the order they were said, echoes left out, a
 /// speaker's lines in a row joined into one paragraph under the time it
 /// began, Joel's under `me` and theirs under `them`, or Others when who
 /// they are isn't known, or is called the same as Joel, whose lines
-/// wouldn't be told from theirs then. A `note` saying where their name
-/// came from, or who was on the call, comes first, under the heading.
+/// wouldn't be told from theirs then. Where `them` isn't known, a line of
+/// theirs with a voice is under Voice and its number, and the voices'
+/// note says what that means. A `note` saying where their name came from,
+/// or who was on the call, comes first, under the heading.
 pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let them = them.filter(|them| *them != me).unwrap_or(OTHERS);
+    let named = them.filter(|them| *them != me);
     let mut heard: Vec<&Line> = lines.iter().filter(|line| !echoes(line, lines)).collect();
     heard.sort_by_key(|line| line.start);
+    let voiced = named.is_none() && heard.iter().any(|line| line.voice.is_some());
     let mut paragraphs = vec!["# Transcript".to_owned()];
     paragraphs.extend(note.map(str::to_owned));
-    // The note is no line, so a run of lines never joins onto it.
+    if voiced {
+        paragraphs.push(VOICES_NOTE.to_owned());
+    }
+    // The notes are no line, so a run of lines never joins onto them.
     let mut last = None;
     for line in heard {
+        let who = match (line.side, named, line.voice.filter(|_| voiced)) {
+            (Side::Mine, ..) => me.to_owned(),
+            (Side::Theirs, Some(them), _) => them.to_owned(),
+            (Side::Theirs, None, Some(voice)) => format!("{VOICE}{}", voice + 1),
+            (Side::Theirs, None, None) => OTHERS.to_owned(),
+        };
         match paragraphs.last_mut() {
-            Some(paragraph) if last == Some(line.side) => {
+            Some(paragraph) if last.as_ref() == Some(&who) => {
                 paragraph.push(' ');
                 paragraph.push_str(&line.text);
             }
             _ => {
-                let who = match line.side {
-                    Side::Mine => me,
-                    Side::Theirs => them,
-                };
                 let mut paragraph = String::new();
                 let _ = write!(paragraph, "**{who}**, {}: {}", clock(line.start), line.text);
                 paragraphs.push(paragraph);
             }
         }
-        last = Some(line.side);
+        last = Some(who);
     }
     paragraphs.join("\n\n") + "\n"
 }
 
 /// The lines of a transcript `markdown` wrote, a paragraph each, so a
 /// call taken up again after the daemon restarts goes on from them, a
-/// line Joel's only when it's under `me`. Only when each began is kept,
-/// which is all the layout needs.
+/// line Joel's only when it's under `me`, and one of theirs under a
+/// voice read back with it. Only when each began is kept, which is all
+/// the layout needs.
 pub fn read(transcript: &str, me: &str) -> Vec<Line> {
     transcript
         .split("\n\n")
@@ -89,11 +109,18 @@ pub fn read(transcript: &str, me: &str) -> Vec<Line> {
                 .split(':')
                 .try_fold(0, |sum, part| part.parse::<usize>().map(|n| sum * 60 + n))
                 .ok()?;
+            let side = if who == me { Side::Mine } else { Side::Theirs };
+            let voice = who
+                .strip_prefix(VOICE)
+                .and_then(|number| number.parse::<usize>().ok())
+                .and_then(|number| number.checked_sub(1))
+                .filter(|_| side == Side::Theirs);
             Some(Line {
-                side: if who == me { Side::Mine } else { Side::Theirs },
+                side,
                 start: seconds * RATE,
                 end: seconds * RATE,
                 text: text.trim_end().to_owned(),
+                voice,
             })
         })
         .collect()
@@ -157,7 +184,84 @@ mod tests {
             start: second * RATE,
             end: (second + 2) * RATE,
             text: text.to_owned(),
+            voice: None,
         }
+    }
+
+    fn voiced(second: usize, voice: usize, text: &str) -> Line {
+        Line {
+            voice: Some(voice),
+            ..line(Side::Theirs, second, text)
+        }
+    }
+
+    #[test]
+    fn voices_told_apart_are_numbered_said_to_be_no_names_and_read_back() {
+        let lines = [
+            voiced(0, 0, "Shall we start?"),
+            voiced(3, 1, "Yes, go ahead."),
+            voiced(6, 1, "I have the numbers."),
+            line(Side::Theirs, 9, "Mm."),
+            line(Side::Mine, 12, "Thanks."),
+        ];
+        let want = [
+            "# Transcript",
+            "",
+            "Invited: Ada, Bo and Cy.",
+            "",
+            VOICES_NOTE,
+            "",
+            "**Voice 1**, 0:00: Shall we start?",
+            "",
+            "**Voice 2**, 0:03: Yes, go ahead. I have the numbers.",
+            "",
+            "**Others**, 0:09: Mm.",
+            "",
+            "**Joel**, 0:12: Thanks.",
+            "",
+        ];
+        let written = markdown(&lines, "Joel", None, Some("Invited: Ada, Bo and Cy."));
+        assert_eq!(
+            written,
+            want.join("\n"),
+            "the voices weren't laid out as told apart"
+        );
+        let back: Vec<Option<usize>> = read(&written, "Joel").iter().map(|l| l.voice).collect();
+        assert_eq!(
+            back,
+            [Some(0), Some(1), None, None],
+            "the voices didn't read back as they were written"
+        );
+        assert_eq!(
+            markdown(
+                &read(&written, "Joel"),
+                "Joel",
+                None,
+                Some("Invited: Ada, Bo and Cy.")
+            ),
+            written,
+            "a transcript with voices didn't write again as it was"
+        );
+    }
+
+    #[test]
+    fn a_side_named_for_certain_is_named_whatever_its_voices() {
+        let lines = [voiced(0, 0, "Hello."), voiced(3, 1, "Hi.")];
+        let written = markdown(&lines, "Joel", Some("Ada"), None);
+        assert!(
+            written.contains("**Ada**, 0:00: Hello. Hi.") && !written.contains(VOICES_NOTE),
+            "a side named for certain was split into voices: {written}"
+        );
+    }
+
+    #[test]
+    fn joel_saying_voice_is_still_joel() {
+        let written = markdown(&[line(Side::Mine, 0, "Hello.")], "Voice 1", None, None);
+        assert_eq!(
+            read(&written, "Voice 1")[0].voice,
+            None,
+            "Joel's own line was read back as a voice of theirs"
+        );
     }
 
     #[test]

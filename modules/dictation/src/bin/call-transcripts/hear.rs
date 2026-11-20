@@ -12,6 +12,12 @@
 //! starts with nothing compiled for this build, which a switch or a boot
 //! does and a call never does, it's compiled then and let go.
 //!
+//! Each take of theirs is also given to the speaker model, loaded and let
+//! go with Parakeet, for an embedding of how it sounds; once the call is
+//! written down whole the takes are grouped by voice (voices.rs), unless
+//! the record already names their side. Only the embeddings are kept
+//! until then, never the sound.
+//!
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
 //! are never held at once. What can't be heard is said in a notice
@@ -23,6 +29,7 @@ use std::time::Duration;
 
 use dictation::parakeet::Parakeet;
 use dictation::transcript::{self, Line, Side, markdown};
+use dictation::voices::{self, Heard, Voices};
 
 use crate::Settings;
 use crate::book::{self, Record, Shared, TRANSCRIPT, write_whole};
@@ -48,11 +55,14 @@ pub enum Job {
     SumUp { key: String },
 }
 
-/// A call being written.
+/// A call being written, with each take of theirs that was embedded and
+/// which of the lines it is.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
     done: HashSet<Side>,
+    heard: Vec<Heard>,
+    heard_lines: Vec<usize>,
 }
 
 /// Hears every take given, until nothing more can be; each call written
@@ -65,6 +75,7 @@ pub fn hear(
     me: &str,
 ) {
     let mut speech: Option<Parakeet> = None;
+    let mut speakers: Option<Voices> = None;
     let mut calls: HashMap<String, Writing> = HashMap::new();
     let mut unsummed: Vec<String> = Vec::new();
     // The calls already told they couldn't be heard, so it's said once.
@@ -72,6 +83,7 @@ pub fn hear(
     compile_ahead(settings);
     loop {
         if calls.is_empty() && !unsummed.is_empty() {
+            speakers = None;
             if speech.take().is_some() {
                 eprintln!("call-transcripts: Parakeet let go");
             }
@@ -84,6 +96,7 @@ pub fn hear(
                 Ok(job) => job,
                 Err(RecvTimeoutError::Timeout) => {
                     speech = None;
+                    speakers = None;
                     eprintln!("call-transcripts: Parakeet let go");
                     continue;
                 }
@@ -134,11 +147,21 @@ pub fn hear(
                 let Some(text) = said::spoken(&text) else {
                     continue;
                 };
+                if side == Side::Theirs
+                    && let Some(embedding) = embed(settings, &mut speakers, &samples)
+                {
+                    writing.heard_lines.push(writing.lines.len());
+                    writing.heard.push(Heard {
+                        embedding,
+                        samples: samples.len(),
+                    });
+                }
                 writing.lines.push(Line {
                     side,
                     start,
                     end: start + samples.len(),
                     text,
+                    voice: None,
                 });
                 write(book, &key, &writing.lines, me, true);
             }
@@ -148,6 +171,7 @@ pub fn hear(
                     .or_insert_with(|| resumed(book, &key, me));
                 writing.done.insert(side);
                 if writing.done.len() == 2 {
+                    tell_apart(book, &key, writing, me);
                     write(book, &key, &writing.lines, me, false);
                     calls.remove(&key);
                     told.remove(&key);
@@ -177,6 +201,55 @@ fn compile_ahead(settings: &Settings) {
     }
 }
 
+/// How a take of theirs sounds, from the speaker model, loaded first if
+/// it isn't; none when there's no model, or it fails, which is logged and
+/// leaves the take under Others.
+fn embed(settings: &Settings, speakers: &mut Option<Voices>, samples: &[f32]) -> Option<Vec<f32>> {
+    let model = settings.voices.as_deref()?;
+    if speakers.is_none() {
+        match Voices::load(model) {
+            Ok(loaded) => *speakers = Some(loaded),
+            Err(why) => {
+                eprintln!("call-transcripts: the speaker model didn't load: {why}");
+                return None;
+            }
+        }
+    }
+    match speakers.as_mut()?.embed(samples) {
+        Ok(embedding) => embedding,
+        Err(why) => {
+            eprintln!("call-transcripts: a take's voice wasn't heard: {why}");
+            None
+        }
+    }
+}
+
+/// Gives each of their lines the voice its take was grouped into, unless
+/// the record names their side for certain, as when one other person was
+/// on the call; no more voices than the people known to be on it. A line
+/// taken up again from before a restart or a rejoin has no embedding, so
+/// once any take is embedded it's under Others: which of the new voices it
+/// was can't be said.
+fn tell_apart(book: &Shared, key: &str, writing: &mut Writing, me: &str) {
+    if writing.heard.is_empty() {
+        return;
+    }
+    let Some(record) = book.lock().record(key).cloned() else {
+        return;
+    };
+    if record.them(me).is_some() {
+        return;
+    }
+    let people = record.known.map(|_| record.people.len());
+    for line in &mut writing.lines {
+        line.voice = None;
+    }
+    let grouped = voices::group(&writing.heard, people);
+    for (&index, voice) in writing.heard_lines.iter().zip(grouped) {
+        writing.lines[index].voice = voice;
+    }
+}
+
 /// A call's title, as its record has it.
 fn title_of(book: &Shared, key: &str) -> String {
     book.lock()
@@ -199,7 +272,7 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
         .unwrap_or_default();
     Writing {
         lines,
-        done: HashSet::new(),
+        ..Writing::default()
     }
 }
 
