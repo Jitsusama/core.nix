@@ -172,6 +172,8 @@ LANDINGS += [
 ]
 # How many rows' keys a step into Landed may weigh: one of each run alike, not each of them.
 WEIGHED_INTO_LANDED = 3
+# How many of the rows it made last the launcher names by key (Provider.qml's tallyKept).
+LATELY_KEPT = 16
 
 
 def landed_today() -> str:
@@ -1236,16 +1238,17 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.close_launcher()
     opened(shell)
     boss = {"busy": True, "state": "busy"}
-    at_top = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
+    made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    # The same row changing back costs no more held in Landed than it did at Agents' top.
+    # A session changing while Landed is held remakes none of its landings. Counted against
+    # Agents' top, a change measured as one pass there and two here failed 1 run in 4, since
+    # the top is laid out once for each source that hears it; so the landings are named by key
+    # (Provider.qml's tally keeps the last rows made). Remaking them made 26 rows to the top's 9.
     inside = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss))
-    # Agents' top is laid out once for each source that hears a change, Sessions and the agents
-    # daemon, and the two land in one pass or two as they fall, so a change costs up to twice
-    # what one pass did; remaking Landed's landings cost 26 to the top's 9.
-    assert inside <= 2 * at_top, f"a change made {inside} rows in Landed, {at_top} at Agents' top"
+    remade = landings_made_last(shell, inside)
+    assert not remade, f"a change remade {len(remade)} of Landed's landings: {remade}"
 
 
 def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shell) -> None:
@@ -1407,6 +1410,13 @@ def picks_kept() -> dict[str, Json]:
         if path.read_text().strip():
             said.update(cast("dict[str, Json]", json.loads(path.read_text())))
     return said
+
+
+def landings_made_last(shell: Shell, made: int) -> list[str]:
+    """Give the keys of the landings among the last `made` rows Agents made."""
+    assert made <= LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
+    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
+    return [key for key in (lately[-made:] if made else []) if key.startswith("agents:landed:")]
 
 
 def made_through(shell: Shell, change: Callable[[], None]) -> int:
