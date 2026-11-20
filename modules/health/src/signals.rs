@@ -3,8 +3,8 @@
 //! and a signal that ends health unhandled ends none of them, each living
 //! on until its next line finds no one reading. So the signals that ask
 //! health to stop are caught, and a thread waiting on what the catch writes
-//! ends the followers, gives health's run `WRITES_WITHIN` to write the
-//! day and return, then ends health by the same signal, so whatever
+//! ends the followers, gives health's run `WRITES_WITHIN` from the stop to
+//! write the day and return, then ends health by the same signal, so whatever
 //! started health sees the stop it asked for. A service manager's stop
 //! ends health's whole group anyway, but only this writes what health
 //! held unwritten, as on a restart or a reboot.
@@ -20,10 +20,12 @@
 //! the same stop ended, as a terminal's interrupt ends its whole group,
 //! says nothing of its end, and health's own end waits for the signal's.
 //! A second stop before the first has ended health ends it at once,
-//! leaving any follower not yet ended and the day unwritten, so a stop can
-//! never hang; but a hangup heard again is the same stop, as a terminal
-//! closing sends one from its shell and another from the kernel, and the
-//! first stop's `WRITES_WITHIN` still bounds it.
+//! leaving any follower not yet ended and the day unwritten, but a hangup
+//! during a stop is the same stop: a terminal closing sends one from its
+//! shell and another from the kernel, and a session's scope stopped sends
+//! one just after its stop. The first stop's `WRITES_WITHIN` bounds it all
+//! the same, counted from the catch, whether or not the followers end, so
+//! a stop can never hang.
 
 use std::io::{self, PipeReader, Read as _};
 use std::mem;
@@ -57,14 +59,15 @@ static STOPPED: AtomicBool = AtomicBool::new(false);
 /// room to run the catch.
 pub const CAUGHT_WITHIN: Duration = Duration::from_millis(250);
 
-/// How long a stop waits for `run` to return once the followers are
-/// ended, so it writes the day, before it ends health all the same: a
-/// write takes milliseconds. A stop gives longer by default, systemd 90
+/// How long a stop waits for `run` to return, so it writes the day,
+/// before it ends health all the same: the followers' kill and a write
+/// take milliseconds. A stop gives longer by default, systemd 90
 /// seconds and launchd 20, but a reboot gives the account's services 5 in
 /// all (`modules/systemd/nixos.nix`), counted from before health hears of
 /// it, so this stays well under that, and a write that doesn't make it is
-/// said before the kill. It counts from the followers' end, which their
-/// kill makes quick.
+/// said before the kill. It counts from the stop's catch, the followers
+/// ended beside it, so one that won't end, stuck on a stalled disk, can't
+/// hold the stop.
 pub(crate) const WRITES_WITHIN: Duration = Duration::from_secs(3);
 
 /// Whether `run` has returned, and the stop's thread and `rest` woken as
@@ -105,14 +108,14 @@ pub fn until_stopped<T>(
 /// From now on, a signal that asks health to stop calls `end`, on a
 /// thread of its own, wakes a `rest`, waits up to `WRITES_WITHIN` for
 /// `until_stopped`'s run to return, then ends health by that signal. A
-/// second while the first's runs ends health at once, so a stop can't
-/// hang.
+/// second while the first's runs ends health at once, unless it's a
+/// hangup, the same stop.
 fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
     let mut caught = catch(&STOPPING)?;
     thread::spawn(move || {
         let mut signal = [0];
         if caught.read_exact(&mut signal).is_ok() {
-            end();
+            thread::spawn(end);
             let (returned, woken) = &RAN;
             let returned = returned.lock().unwrap_or_else(PoisonError::into_inner);
             woken.notify_all();
@@ -215,7 +218,7 @@ fn catch(signals: &[c_int]) -> io::Result<PipeReader> {
 /// The catch: the stop marked and its signal written for the thread
 /// waiting on it, as little else is safe within a catch; or, for a stop
 /// caught while one is under way, health ended by its signal as the catch
-/// returns, unless it's a hangup heard again, the same stop.
+/// returns, unless it's a hangup, the same stop.
 extern "C" fn heard(signal: c_int) {
     // SAFETY: errno is this thread's, and kept for the code the catch
     // interrupted, which may be about to read it.

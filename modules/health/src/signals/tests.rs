@@ -23,6 +23,10 @@ const REPLAYS: &str = "HEALTH_STOPPED_REPLAYS";
 /// then waiting to be stopped before `main` would say it.
 const FAILS_FIRST: &str = "HEALTH_STOPPED_FAILS_FIRST";
 
+/// Set only for a copy whose ender never returns, as one waiting on a
+/// follower stuck on a stalled disk.
+const ENDS_NEVER: &str = "HEALTH_STOPPED_ENDS_NEVER";
+
 /// Set only for a copy started hearing hangups, as in a terminal, rather
 /// than ignoring them, as under `nohup`.
 const HEARS_HANGUPS: &str = "HEALTH_STOPPED_HEARS_HANGUPS";
@@ -111,7 +115,7 @@ impl Stopped {
     }
 
     /// The copy started with `asked` set, if any (`HANGS`, `REPLAYS`,
-    /// `FAILS_FIRST` or `HEARS_HANGUPS`), once it has said its follower.
+    /// `FAILS_FIRST`, `ENDS_NEVER` or `HEARS_HANGUPS`), once it has said its follower.
     fn starting(asked: Option<&str>) -> Self {
         let folder = tempfile::tempdir().expect("a folder");
         let health = Command::new(std::env::current_exe().expect("this test"))
@@ -274,7 +278,8 @@ impl Drop for Stopped {
 /// little later, as health writes the day, and leaves with an error, or
 /// never returns if it hangs. Asked, it replays a history too, its run
 /// waiting on that history's end, or returns its error at once and waits
-/// for a stop where `main` would say it, or hears hangups as in a terminal.
+/// for a stop where `main` would say it, or never ends its follower once
+/// stopped, or hears hangups as in a terminal.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
 fn a_health_to_stop() {
@@ -299,11 +304,17 @@ fn a_health_to_stop() {
     let ender = followers.ender();
     let caught = told.with_extension("caught");
     let fails_first = std::env::var_os(FAILS_FIRST).is_some();
+    let ends_never = std::env::var_os(ENDS_NEVER).is_some();
     // As follow() runs, so this is how health ends.
     let ran = until_stopped(
         move || {
             std::fs::write(&caught, "").expect("the stop marked");
             thread::sleep(ENDS_LATE);
+            if ends_never {
+                loop {
+                    thread::park();
+                }
+            }
             ender();
         },
         || {
@@ -380,7 +391,7 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
          didn't wait for health's run to write the day"
     );
     assert!(
-        took < ENDS_LATE + WRITES_WITHIN
+        took < WRITES_WITHIN
             && !stopped.failed().contains(UNWRITTEN)
             && stopped
                 .failed()
@@ -434,8 +445,8 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
 
 #[test]
 fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
-    // `ending` fails past `WAITS`, well past the `ENDS_LATE` and
-    // `WRITES_WITHIN` this stop takes, so a stop that waited for good fails.
+    // `ending` fails past `WAITS`, well past the `WRITES_WITHIN` this stop
+    // takes, so a stop that waited for good fails.
     let mut stopped = Stopped::starting(Some(HANGS));
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
@@ -447,7 +458,7 @@ fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
         "a stop waited on a run that never returns ({ended})"
     );
     assert!(
-        took >= ENDS_LATE + WRITES_WITHIN && stopped.failed().contains(UNWRITTEN),
+        took >= WRITES_WITHIN && stopped.failed().contains(UNWRITTEN),
         "a stop to a run that never returns ended health {took:?} on, or didn't say the day \
          went unwritten: {}",
         stopped.failed()
@@ -511,13 +522,19 @@ fn a_stop_says_the_error_a_run_returned_just_before_it() {
 fn a_rest_with_no_stop_waits_its_whole_time() {
     // No stop is ever caught in this process, only in the copies, so a
     // rest here must wait it out, as a run's rest must, or it would spin.
+    // On a thread of its own, so a rest that waits for good fails here
+    // rather than hangs the tests.
     let time = Duration::from_millis(100);
-    let since = Instant::now();
-    rest(time);
-    let took = since.elapsed();
+    let (rested, waited) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let since = Instant::now();
+        rest(time);
+        let _ = rested.send(since.elapsed());
+    });
+    let took = waited.recv_timeout(WAITS);
     assert!(
-        took >= time,
-        "a rest with no stop waited only {took:?} of {time:?}"
+        took.is_ok_and(|took| took >= time),
+        "a rest with no stop waited {took:?} rather than {time:?}"
     );
 }
 
@@ -538,17 +555,55 @@ fn a_hangup_heard_again_is_the_same_stop() {
 }
 
 #[test]
-fn a_second_stop_ends_health_at_once_leaving_its_follower() {
-    // The first stop's end of the followers is late, so a second that
-    // waited on it would end health by the first, its follower ended.
-    let mut stopped = Stopped::start();
+fn a_hangup_after_another_stop_is_the_same_stop() {
+    // As a session's scope stopped sends its stop and a hangup just after,
+    // or a terminal is closed on a health already interrupted.
+    let mut stopped = Stopped::starting(Some(HEARS_HANGUPS));
     stopped.send(libc::SIGTERM, false);
     stopped.caught();
-    stopped.send(libc::SIGINT, false);
+    stopped.send(libc::SIGHUP, false);
     let ended = stopped.ending();
     assert_eq!(
-        (ended.signal(), gone(stopped.follower)),
-        (Some(libc::SIGINT), false),
-        "a second stop waited for the first to end health ({ended})"
+        (ended.signal(), gone(stopped.follower), stopped.wrote()),
+        (Some(libc::SIGTERM), true, true),
+        "a hangup after a stop ended health ({ended}) before its follower or the day's write"
     );
+}
+
+#[test]
+fn a_stop_whose_followers_never_end_still_ends_health_in_time() {
+    // As a follower stuck on a stalled disk outlives its kill, so health's
+    // end of it never returns, and the stop's bound must count without it.
+    let mut stopped = Stopped::starting(Some(ENDS_NEVER));
+    let since = Instant::now();
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    let took = since.elapsed();
+    assert!(
+        ended.signal() == Some(libc::SIGTERM)
+            && took >= WRITES_WITHIN
+            && stopped.failed().contains(UNWRITTEN),
+        "a stop whose followers never end ended health ({ended}) {took:?} on, or didn't say \
+         the day went unwritten: {}",
+        stopped.failed()
+    );
+}
+
+#[test]
+fn a_second_stop_ends_health_at_once_leaving_its_follower() {
+    // The first stop's end of the followers is late, so a second that
+    // waited on it would end health by the first, its follower ended. An
+    // interrupt typed twice is a second stop too, unlike a hangup.
+    for (first, second) in [(libc::SIGTERM, libc::SIGINT), (libc::SIGINT, libc::SIGINT)] {
+        let mut stopped = Stopped::start();
+        stopped.send(first, false);
+        stopped.caught();
+        stopped.send(second, false);
+        let ended = stopped.ending();
+        assert_eq!(
+            (ended.signal(), gone(stopped.follower)),
+            (Some(second), false),
+            "a second stop ({second}) waited for the first ({first}) to end health ({ended})"
+        );
+    }
 }
