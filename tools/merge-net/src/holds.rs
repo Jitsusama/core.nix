@@ -233,14 +233,14 @@ mod tests {
     #[test]
     fn a_hold_on_the_nets_work_still_stops_it() {
         for text in [
-            "16V6F4: the input update's switch restarts nix-daemon on optimus. Start no new \
+            "16V6F4: the input update's switch restarts nix-daemon on the laptop. Start no new \
              nix build, eval or nix-offload there run until I end this hold.",
-            "Integration (16V6F4): optimus switches now, and it restarts nix-daemon.",
-            "P9R1KI: Joel is rebooting optimus in about 15 minutes. Park anything that would \
+            "Integration (16V6F4): the laptop switches now, and it restarts nix-daemon.",
+            "P9R1KI: Joel is rebooting the laptop in about 15 minutes. Park anything that would \
              die: local VM tests, gates.",
             "P9R1KI: merge nothing into any repository, on either machine, until I end this \
              hold at 17:00.",
-            "P9R1KI: Joel is on a call. Start nothing heavy on optimus.",
+            "P9R1KI: Joel is on a call. Start nothing heavy on the laptop.",
             // A hold that names neither its subject nor the net's work is
             // read as being about everything, so the net fails closed.
             "P9R1KI: stop now, until I end this hold.",
