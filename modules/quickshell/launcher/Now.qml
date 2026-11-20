@@ -277,6 +277,7 @@ Provider {
         Qt.callLater(retime);
         Qt.callLater(looksHeard);
         Qt.callLater(armLift);
+        replaceLately();
     }
     onLauncherChanged: Qt.callLater(retime)
     onWantedChanged: {
@@ -1702,7 +1703,8 @@ Provider {
         value: provider.cellNotices
     }
     // What waits on Joel now, among it a critical notice unread, which
-    // waits in For You's Desktop as the tray says (ForYouHolds.qml).
+    // waits in For You in the Lately row holding it, as the tray says
+    // (ForYouHolds.qml; latelyInForYou).
     readonly property int waitsNow: ForYouHolds.count
     readonly property var criticalNotices: ForYouHolds.holds.notices
     // The sessions there are to reopen, Agents' own row, drawn the same as
@@ -2061,7 +2063,7 @@ Provider {
     }
     readonly property var bandsKept: ({ items: null, minute: -1, bands: null, times: 0 })
     // A critical notice unread is among what needs him now, as the margin's
-    // tray counts it (ForYouHolds.qml), though For You's Desktop holds it;
+    // tray counts it (ForYouHolds.qml), though the Lately row holding it does;
     // one standing under its cell is a row among the bands, which the tray
     // counts as one too, and never again as critical (Holding.js's joined),
     // so every row in the band is counted, once, and the two never differ.
@@ -2233,25 +2235,44 @@ Provider {
             latelyRows(now).filter(latelyInForYou));
     }
 
-    // Whether one of Lately's rows stands in For You: Desktop only while
-    // it holds a critical notice unread, which is one to do (toDoCount).
-    // It asks Desktop's own notices as it holds them, by the tray's rule
-    // (Holding.js's held), so one read while Joel looks keeps Desktop where
-    // he found it until the launcher closes, and a critical one Slack's row
-    // holds leaves Desktop where it is.
-    // Mail, Slack and Desktop otherwise ask nothing of Joel, so they stand
-    // in Now's own rows, after the moment's, and leave For You to what
-    // needs him (Joel, 2026-11-19: "I almost never know what I am supposed
-    // to do with it"; Y2YBTS, 2026-11-19). Each asking of `all`, For You
-    // and its filter is a pass of all of Lately's rows, so each keeps
-    // every row (latelyKept) whichever it shows.
+    // Whether one of Lately's rows stands in For You: only while its own
+    // notices hold a critical one unread, which is one to do (toDoCount),
+    // so the row For You counts it in is one For You lists. Mail, Slack
+    // and Desktop otherwise ask nothing of Joel, so they stand in Now's
+    // own rows, after the moment's, and leave For You to what needs him
+    // (Joel, 2026-11-19: "I almost never know what I am supposed to do
+    // with it"; Y2YBTS, 2026-11-19). Each asking of `all`, For You and its
+    // filter is a pass of all of Lately's rows, so each keeps every row
+    // (latelyKept) whichever it shows.
     function latelyInForYou(row) {
-        return row.forYou?.source === "desktop" && desktopCritical;
+        return latelyPlaced[row.forYou?.source] === true;
     }
-    readonly property bool desktopCritical: Holding.held({
-        notices: noticesOf.desktop ?? [],
-        onScreen: Object.keys(Notices.live).filter(id => !(id in Notices.resting))
-    }).notices.length > 0
+    // Which sources hold a critical notice unread, each asking its own
+    // notices as it holds them by the tray's rule (Holding.js's held), so
+    // a critical one Slack's row holds lifts Slack's row, not Desktop.
+    readonly property var latelyCritical: {
+        const onScreen = Object.keys(Notices.live).filter(id => !(id in Notices.resting));
+        const up = {};
+        for (const source of Lately.SOURCES)
+            up[source] = Holding.held({ notices: noticesOf[source] ?? [], onScreen: onScreen })
+                .notices.length > 0;
+        return up;
+    }
+    // Where Lately's rows stand, fixed while the launcher is open, so a
+    // notice read, withdrawn, woken onto the screen or put away while Joel
+    // looks never moves the row he stands in, or the one On Screen climbs
+    // to; the next opening places them again. One that comes while it's
+    // open is counted at once, its row moving at the next opening.
+    // Never bound, since a binding would follow every notice while open.
+    property var latelyPlaced: ({})
+    onLatelyCriticalChanged: replaceLately()
+    onOpenedAtChanged: replaceLately()
+    function replaceLately() {
+        if (openedAt !== Number.POSITIVE_INFINITY)
+            return;
+        if (Lately.SOURCES.some(source => latelyPlaced[source] !== latelyCritical[source]))
+            latelyPlaced = latelyCritical;
+    }
 
     // What came for Joel, Lately, in Now's own rows after the moment's, or
     // For You's (latelyInForYou; Joel: "a notice stays until read or
@@ -2283,7 +2304,8 @@ Provider {
     readonly property var unreadNotices: heldNotices.desktop
     readonly property var noticesOf: heldNotices
 
-    // Desktop and History are For You's, which is Now's, so a notice
+    // Desktop and History are Now's, Desktop in For You while it holds a
+    // critical notice unread (latelyInForYou), so a notice
     // forgotten, brought back or read is said again in them: the launcher
     // makes a place again only when what it was entered from changes.
     Connections {

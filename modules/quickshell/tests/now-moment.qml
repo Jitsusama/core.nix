@@ -2037,6 +2037,10 @@ ShellRoot {
         // Opened with its card up, Desktop stands in Now's rows, and stays
         // there once the card's put away unread, so On Screen's climb goes
         // where Desktop still stands.
+        expect("a critical notice with its card up leaves Desktop in Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
         now.openedAt = Date.now();
         Notices.live = {};
         expect("a critical card put away while the launcher's open leaves Desktop in Now's rows",
@@ -2060,8 +2064,9 @@ ShellRoot {
                 && now.leadsTo("notices").length === 1,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
         Notices.history = told;
-        expect("once it's gone, Desktop goes back to Now's rows, Super+N with it",
-            !keysOf(inForYou()).includes("on:waiting:desktop")
+        expect("once it's gone, Slack's row goes back to Now's, and Super+N to Desktop there",
+            !keysOf(inForYou()).includes("on:slack")
+                && !keysOf(inForYou()).includes("on:waiting:desktop")
                 && now.leadsTo("notices").length === 1
                 && now.leadsTo("notices")[0].key === "on:waiting:desktop",
             JSON.stringify(now.leadsTo("notices").map(row => row.key)));

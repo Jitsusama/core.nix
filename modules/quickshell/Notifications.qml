@@ -98,7 +98,7 @@ Scope {
     // The notices in the launcher: those on screen while any wait on the arrival line, in
     // normal, so j and k go through them at once and Return acts on one, the cursor on the
     // one the line shows, as the daemon chose it (Joel, 2026-11-14: "super-n no longer lets
-    // me interact with the one in focus"); with none, or under Do Not Disturb, For You's
+    // me interact with the one in focus"); with none, or under Do Not Disturb,
     // Desktop, those unread and then History (launcher/Now.qml's leadsTo).
     function history() {
         const front = line.chosen;
