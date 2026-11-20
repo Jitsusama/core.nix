@@ -714,7 +714,7 @@ pub(crate) fn notice(words: &str) {
 }
 
 /// sd-daemon(3)'s mark for a notice.
-const NOTICE: u8 = 5;
+pub(crate) const NOTICE: u8 = 5;
 
 // A notice is below a warning, or health's warnings follower, which reads
 // `-p warning`, would count each as one of health's own.
@@ -727,10 +727,15 @@ const _: () = assert!(
 const WARNING: u8 = 4;
 
 /// sd-daemon(3)'s mark for an error.
-const ERROR: u8 = 3;
+pub(crate) const ERROR: u8 = 3;
 
 fn say_marked(words: &str, mark: u8) {
     static JOURNAL: OnceLock<bool> = OnceLock::new();
+    // Kept for the tests to read which mark each saying went at, since
+    // a warning said as a failure, or a failure as a warning, passes
+    // otherwise.
+    #[cfg(test)]
+    tests::hear(words, mark);
     let journal = *JOURNAL.get_or_init(|| terminal_kit::Environment::here().journal);
     // A Mac's stderr is a log file, which a full disk can't take, and
     // `eprintln!` would panic on it, ending health every few seconds.
@@ -757,5 +762,6 @@ fn as_marked(words: &str, journal: bool, mark: u8) -> String {
         .join("\n")
 }
 
+// The follower's tests read the marks it says at too.
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

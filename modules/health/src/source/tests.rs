@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
@@ -14,6 +14,47 @@ mod real_journal;
 
 // The followers health ends as it ends.
 mod followers;
+
+/// Every saying of health's own and its mark, from every test at once.
+static HEARD: Mutex<Vec<(u8, String)>> = Mutex::new(Vec::new());
+
+/// Keep what `say_marked` says, at its `mark`.
+pub(super) fn hear(words: &str, mark: u8) {
+    // No test's code runs under the lock, but taking it back from a panic
+    // keeps one test's failure from failing every saying after it.
+    HEARD
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .push((mark, words.to_owned()));
+}
+
+/// Check that `what`, each saying heard holding every one of `words`,
+/// was said at least `times` and every time at `mark`, telling words never
+/// heard, as reworded words are, from words said at another mark.
+pub(crate) fn assert_marked(what: &str, words: &[&str], times: usize, mark: u8) {
+    let marks = marks_of(words);
+    assert!(
+        marks.len() >= times,
+        "{what} was heard {} times, not at least {times}; were its words changed?",
+        marks.len()
+    );
+    assert!(
+        marks.iter().all(|said| *said == mark),
+        "{what} wasn't said at mark {mark} every time: {marks:?}"
+    );
+}
+
+/// The mark of each saying heard so far holding every one of `words`,
+/// which name the test's own, since the tests run at once.
+fn marks_of(words: &[&str]) -> Vec<u8> {
+    HEARD
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(_, said)| words.iter().all(|word| said.contains(word)))
+        .map(|(mark, _)| *mark)
+        .collect()
+}
 
 /// A shell running `script`: the build's own where it gives one, which
 /// a build's sandbox has where it has no /bin/sh.
@@ -261,13 +302,20 @@ fn a_replay_whose_follower_cant_follow_on_sends_every_followers_end() {
         if *at == 0 {
             writing(&[])
         } else {
-            Command::new("/nonexistent/journalctl")
+            Command::new("/nonexistent/follow-on-journalctl")
         }
     });
     assert_eq!(
         ends, 3,
         "with {ends} of 2 ends and the follower's, a follower that couldn't follow on would go \
          unheard, with no start again, until another ended"
+    );
+    // Said as a failure, which health ends on.
+    assert_marked(
+        "a follower that couldn't follow on",
+        &["couldn't follow on from the day's replay: /nonexistent/follow-on-journalctl"],
+        1,
+        ERROR,
     );
 }
 
@@ -323,6 +371,13 @@ fn a_history_ending_in_failure_is_whole_only_as_a_grep_that_found_nothing() {
         "a history that wrote nothing gave a line"
     );
     assert!(!failed.ended(), "a history that failed was taken as whole");
+    // Said as a warning, which health runs on through.
+    assert_marked(
+        "a history ended early",
+        &["history asking ", " -c exit 1 ended early"],
+        1,
+        WARNING,
+    );
     assert_eq!(
         failed.name,
         format!("{} -c exit 1", sh("").get_program().to_string_lossy()),
@@ -419,6 +474,17 @@ fn the_journals_last_line_is_where_journald_numbered_its_last() {
             .is_err_and(|error| error.to_string().starts_with("/nonexistent/journalctl: ")),
         "a journalctl that couldn't start wasn't an error naming it"
     );
+    // Said as a warning, which health runs on through.
+    assert!(
+        last_written(sh("exit 7")).is_ok_and(|last| last.is_none()),
+        "a journalctl that failed gave an end"
+    );
+    assert_marked(
+        "a journalctl that couldn't number its last line",
+        &[" -c exit 7 ended, ", "may be heard out of order"],
+        1,
+        WARNING,
+    );
 }
 
 #[test]
@@ -473,10 +539,12 @@ fn the_replay_asks_the_journals_last_line_first_off_healths_own_thread() {
 
 #[test]
 fn a_replay_that_cant_start_sends_every_followers_end() {
-    let nowhere = || Command::new("/nonexistent/journalctl");
+    // Said as a failure, which health ends on, each way it can't, each
+    // named for its way so the marks read are its own.
+    let reading = || Command::new("/nonexistent/reading-journalctl");
     for (newest, reading) in [
-        (nowhere(), None),
-        (writing(&[]), Some(nowhere as fn() -> Command)),
+        (Command::new("/nonexistent/newest-journalctl"), None),
+        (writing(&[]), Some(reading as fn() -> Command)),
     ] {
         let (send, heard) = mpsc::channel();
         let count = replayed_by(
@@ -494,6 +562,16 @@ fn a_replay_that_cant_start_sends_every_followers_end() {
             vec![None; count],
             "a replay that couldn't start didn't send every follower's end, so health would rest \
              on its every sender being gone"
+        );
+    }
+    for way in ["newest", "reading"] {
+        assert_marked(
+            &format!("a replay that couldn't start its {way}"),
+            &[&format!(
+                "the day's replay couldn't start: /nonexistent/{way}-journalctl"
+            )],
+            1,
+            ERROR,
         );
     }
 }
