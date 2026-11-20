@@ -481,6 +481,21 @@ QtObject {
                 queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
 
+        // After optimus's reset on 2026-11-20, Reopen Them All gave four
+        // sessions kept nowhere, which ran with no window, windows on their
+        // orchestrator's workspace, and sent one kept on the second
+        // workspace to its orchestrator's third.
+        const keptHere = Object.assign({ leads: false }, here);
+        expect("kept somewhere, it opens there, not at its orchestrator's",
+            Reopening.broughtBack(true, keptHere, true), { window: true, home: false });
+        expect("kept nowhere, it comes back held without a window",
+            Reopening.broughtBack(true, null, true), { window: false, home: false });
+        expect("with no places known, none is taken for windowless",
+            Reopening.broughtBack(true, null, false), { window: true, home: true });
+        expect("handed over or started alone, it opens as it did, going home",
+            [Reopening.broughtBack(false, null, true), Reopening.broughtBack(false, keptHere, true)],
+            [{ window: true, home: true }, { window: true, home: true }]);
+
         // Reopen Them All begins the next session only while the machine has
         // room for it, as the machine queue judges it, so eighty sessions
         // never start into a machine already short of memory or disk.
