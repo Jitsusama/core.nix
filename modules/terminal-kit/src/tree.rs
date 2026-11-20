@@ -167,6 +167,8 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
             continue;
         }
         let here = walked.chain.last().copied().unwrap_or(root);
+        // A mark holds for every level under the one it's on.
+        let unsaid = !root.says_words || walked.chain.iter().any(|level| !level.says_words);
         let answers = |sub: &&Help| sub.name == *word || sub.aliases.contains(word);
         // An old word typed where its collection now takes a name, as
         // `findings expect KEY` before `findings KEY expect`, still
@@ -182,8 +184,14 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
         };
         let old = (filled == 0).then_some(first).flatten();
         if old.is_none() && takes_name(here, filled) {
+            // A level whose words are unsaid is typed again by what its
+            // argument is called, never by what was given for it.
+            let name = here.arguments.get(filled).or(here.arguments.last());
+            typed.push(match name {
+                Some(name) if unsaid => crate::failure::shell_word(&name.name).into_owned(),
+                _ => crate::failure::shell_word(word).into_owned(),
+            });
             filled += 1;
-            typed.push(crate::failure::shell_word(word).into_owned());
             continue;
         }
         if let Some(sub) = old.or_else(|| here.subs.iter().find(answers)) {
@@ -215,10 +223,20 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
                 .iter()
                 .flat_map(|entry| flag_names(&entry.name))
                 .collect();
-            flags::unknown("option", flag, &names)
+            if unsaid {
+                flags::unknown_unsaid("option", flag, &names)
+            } else {
+                flags::unknown("option", flag, &names)
+            }
+        } else if here.subs.is_empty() && unsaid {
+            Failure::new(Exit::Usage, format!("{path} takes no more words")).because(
+                "a word was left over, not said here, since it may be a reason or a secret's name",
+            )
         } else if here.subs.is_empty() {
             Failure::new(Exit::Usage, format!("{path} takes no more words"))
                 .because(format!("{word} is one too many"))
+        } else if unsaid {
+            flags::unknown_unsaid("command", word, &here.command_names())
         } else {
             flags::unknown("command", word, &here.command_names())
         };
@@ -353,6 +371,76 @@ mod tests {
         assert_eq!(failure.then.as_deref(), Some("eero --help"));
         let failure = walk(&help, &words("internet sqn")).expect_err("sqn is no command");
         assert_eq!(failure.then.as_deref(), Some("eero internet --help"));
+    }
+
+    #[test]
+    fn a_level_whose_words_are_unsaid_never_says_one_back() {
+        let help = Help::new("asks", "asks for secrets")
+            .subcommand(
+                Help::new("ask", "puts one up")
+                    .option("--why WORDS", "the reason")
+                    .words_unsaid(),
+            )
+            .subcommand(
+                Help::new("show", "shows one")
+                    .argument("<item>", "the item")
+                    .words_unsaid(),
+            )
+            .words_unsaid();
+        for line in [
+            "ask --why To lighthouse",
+            "show Hidden lighthouse",
+            "ask --why To --lighthouse Hidden",
+            "lighthouse",
+        ] {
+            let failure = walk(&help, &words(line)).expect_err("a word was left over");
+            assert_eq!(
+                failure.exit,
+                Exit::Usage,
+                "{line} wasn't refused as asked wrongly"
+            );
+            let said = format!("{failure:?}");
+            assert!(
+                !said.contains("lighthouse") && !said.contains("Hidden"),
+                "{line}'s refusal said a word it was given: {said}"
+            );
+        }
+        let failure = walk(&help, &words("show Hidden lighthouse")).expect_err("one too many");
+        assert_eq!(
+            failure.then.as_deref(),
+            Some("asks show '<item>' --help"),
+            "the try line didn't type the item by what it's called, quoted to run nothing"
+        );
+    }
+
+    #[test]
+    fn a_mark_holds_for_every_level_under_it() {
+        let help = Help::new("asks", "asks for secrets").subcommand(
+            Help::new("vault", "one vault's")
+                .subcommand(
+                    Help::new("show", "shows one")
+                        .argument("<item>", "the item")
+                        .option("--why WORDS", "the reason"),
+                )
+                .words_unsaid(),
+        );
+        for line in [
+            "vault show Hidden lighthouse",
+            "vault show Hidden --why To --lighthouse x",
+            "vault lighthouse",
+        ] {
+            let failure = walk(&help, &words(line)).expect_err("a word was left over");
+            let said = format!("{failure:?}");
+            assert!(
+                !said.contains("lighthouse") && !said.contains("Hidden"),
+                "{line}'s refusal below a marked level said a word it was given: {said}"
+            );
+        }
+        let failure = walk(&help, &words("lighthouse")).expect_err("no such command");
+        assert!(
+            format!("{failure:?}").contains("lighthouse"),
+            "the unmarked level above stopped naming what it was given: {failure:?}"
+        );
     }
 
     #[test]

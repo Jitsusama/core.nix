@@ -64,6 +64,17 @@ pub struct Shared {
 /// in its order. `forms` names the forms of its own a command offers
 /// beside the three.
 pub fn take(args: Vec<String>, forms: &[&str]) -> Result<(Shared, Vec<String>), Failure> {
+    take_saying(args, forms, true)
+}
+
+/// As `take`, saying a value `--format` or `--color` can't be only where
+/// `says` is set: a command whose words may be private
+/// (`Help::words_unsaid`) may have been given a reason's word there.
+pub(crate) fn take_saying(
+    args: Vec<String>,
+    forms: &[&str],
+    says: bool,
+) -> Result<(Shared, Vec<String>), Failure> {
     let mut shared = Shared::default();
     let mut rest = Vec::new();
     let mut args = args.into_iter();
@@ -85,11 +96,11 @@ pub fn take(args: Vec<String>, forms: &[&str]) -> Result<(Shared, Vec<String>), 
             "--json" => shared.format = Format::Json,
             "--format" => {
                 let value = attached.or_else(|| args.next());
-                shared.format = format(value.as_deref(), forms)?;
+                shared.format = format(value.as_deref(), forms, says)?;
             }
             "--color" => {
                 let value = attached.or_else(|| args.next());
-                shared.colour = colour(value.as_deref())?;
+                shared.colour = colour(value.as_deref(), says)?;
             }
             _ => rest.push(arg),
         }
@@ -97,7 +108,7 @@ pub fn take(args: Vec<String>, forms: &[&str]) -> Result<(Shared, Vec<String>), 
     Ok((shared, rest))
 }
 
-fn format(value: Option<&str>, forms: &[&str]) -> Result<Format, Failure> {
+fn format(value: Option<&str>, forms: &[&str], says: bool) -> Result<Format, Failure> {
     match value {
         Some("text") => Ok(Format::Text),
         Some("json") => Ok(Format::Json),
@@ -108,12 +119,12 @@ fn format(value: Option<&str>, forms: &[&str]) -> Result<Format, Failure> {
                 .into_iter()
                 .chain(forms.iter().copied())
                 .collect();
-            Err(asked_wrongly("--format", value, &names))
+            Err(asked_wrongly("--format", value, &names, says))
         }
     }
 }
 
-fn colour(value: Option<&str>) -> Result<Colour, Failure> {
+fn colour(value: Option<&str>, says: bool) -> Result<Colour, Failure> {
     match value {
         Some("auto") => Ok(Colour::Auto),
         Some("always") => Ok(Colour::Always),
@@ -122,12 +133,14 @@ fn colour(value: Option<&str>) -> Result<Colour, Failure> {
             "--color",
             value,
             &["never", "always", "auto"],
+            says,
         )),
     }
 }
 
-fn asked_wrongly(flag: &str, value: Option<&str>, names: &[&str]) -> Failure {
+fn asked_wrongly(flag: &str, value: Option<&str>, names: &[&str], says: bool) -> Failure {
     let what = match value {
+        Some(_) if !says => format!("{flag} can't be what was given, not said here"),
         Some(value) => format!("{flag} can't be {value}"),
         None => format!("{flag} needs a value"),
     };
@@ -190,6 +203,20 @@ fn edits(one: &str, other: &str) -> usize {
 /// does where one is near.
 pub fn unknown(what: &str, word: &str, known: &[&str]) -> Failure {
     let failure = Failure::new(Exit::Usage, format!("no {what} called {word}"));
+    match nearest(word, known) {
+        Some(near) => failure.because(format!("did you mean {near}?")),
+        None => failure.because(format!("the {what}s are {}", and(known))),
+    }
+}
+
+/// As `unknown`, never saying the word, for a level whose words may be
+/// private (`Help::words_unsaid`): the nearest known one is still offered,
+/// since it says only what the command knows.
+pub fn unknown_unsaid(what: &str, word: &str, known: &[&str]) -> Failure {
+    let failure = Failure::new(
+        Exit::Usage,
+        format!("no such {what}, the word given not said here"),
+    );
     match nearest(word, known) {
         Some(near) => failure.because(format!("did you mean {near}?")),
         None => failure.because(format!("the {what}s are {}", and(known))),
@@ -268,6 +295,58 @@ mod tests {
         assert_eq!(
             unknown("subcommand", "zebra", &known).why.as_deref(),
             Some("the subcommands are show, do and completion")
+        );
+    }
+
+    #[test]
+    fn a_command_whose_words_are_unsaid_never_says_a_shared_flag_or_a_byte_back() {
+        use crate::{Environment, Help, run, run_os};
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        let help = || Help::new("thing", "does a thing").command("go", "does it");
+        let unsaid = help().words_unsaid();
+        // Marking only a subcommand keeps these unsaid too, since they're
+        // refused before the line reaches it.
+        let below = Help::new("thing", "does a thing")
+            .subcommand(Help::new("go", "does it").words_unsaid());
+        let environment = Environment::of([false; 3], &[]);
+        for help in [&unsaid, &below] {
+            for line in ["go --format lighthouse", "go --color=lighthouse"] {
+                let ending = run(help, "1.0", &environment, args(line), |_| Ok(()));
+                assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
+                assert!(
+                    !ending.stderr.contains("lighthouse"),
+                    "{line}'s refusal said its value: {}",
+                    ending.stderr
+                );
+            }
+            let bytes = vec![
+                OsString::from("go"),
+                OsString::from_vec(b"light\xffhouse".to_vec()),
+            ];
+            let ending = run_os(help, "1.0", &environment, bytes, |_| Ok(()));
+            assert_eq!(
+                ending.exit,
+                Exit::Usage,
+                "a byte that isn't text wasn't refused"
+            );
+            assert!(
+                !ending.stderr.contains("light"),
+                "the refusal said the argument: {}",
+                ending.stderr
+            );
+        }
+        let said = run(
+            &help(),
+            "1.0",
+            &environment,
+            args("go --format lighthouse"),
+            |_| Ok(()),
+        );
+        assert!(
+            said.stderr.contains("lighthouse"),
+            "an unmarked command stopped saying a bad form: {}",
+            said.stderr
         );
     }
 }

@@ -22,6 +22,9 @@ serde_json = "1"
 sha1-checked = { version = "0.10", default-features = false }
 # The digest a yes carries back, of everything the line showed.
 sha2 = "0.10"
+# The shape every command of ours takes: help, usage and named exits
+# (../terminal-kit).
+terminal-kit = { path = "../terminal-kit" }
 
 [dev-dependencies]
 # Starts the daemon for its test and asks it (../daemon-client).

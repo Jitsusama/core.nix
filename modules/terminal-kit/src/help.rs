@@ -50,6 +50,10 @@ pub struct Help {
     /// Whether it can end done; one kept only to refuse can't, so its
     /// help lists no 0.
     pub ends_done: bool,
+    /// Whether a word left over after it is named in the refusal; one
+    /// given words that may be private, as a secret's name or a reason,
+    /// refuses without saying it.
+    pub says_words: bool,
 }
 
 /// The widest a name's column grows before a long name's words go on the
@@ -88,6 +92,7 @@ impl Help {
             listed: true,
             passes: None,
             ends_done: true,
+            says_words: true,
         }
     }
 
@@ -138,6 +143,24 @@ impl Help {
     pub fn never_done(mut self) -> Self {
         self.ends_done = false;
         self
+    }
+
+    /// The same, never saying back a word given to it or any level under
+    /// it: a word of a reason or a secret's name left unquoted is refused
+    /// unsaid, where an error would show it to a terminal, a journal or a
+    /// model.
+    #[must_use]
+    pub fn words_unsaid(mut self) -> Self {
+        self.says_words = false;
+        self
+    }
+
+    /// Whether it or any level under it keeps its words unsaid. The shared
+    /// flags and a word that isn't text are refused before the line is
+    /// walked, when which level it reaches isn't yet known, so one marked
+    /// level anywhere keeps them unsaid for the whole command.
+    pub(crate) fn keeps_any_unsaid(&self) -> bool {
+        !self.says_words || self.subs.iter().any(Help::keeps_any_unsaid)
     }
 
     /// Its subcommands as its help lists them: those declared with

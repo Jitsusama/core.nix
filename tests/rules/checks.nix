@@ -387,6 +387,7 @@
         repos = pkgs.callPackage ../../modules/repos/package.nix { };
         rhythm = pkgs.callPackage ../../modules/rhythm/package.nix { };
         screen-text = dictation;
+        secret-asks = pkgs.callPackage ../../modules/secret-asks/package.nix { };
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shaper = pkgs.callPackage ../../modules/shaper/package.nix { };
         shell-preview = pkgs.callPackage ../../tools/shell-preview/package.nix { };

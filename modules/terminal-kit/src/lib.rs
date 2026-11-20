@@ -72,7 +72,18 @@ impl Context {
         args: Vec<String>,
         forms: &[&str],
     ) -> Result<Self, Failure> {
-        let (shared, args) = flags::take(args, forms)?;
+        Self::saying(environment, args, forms, true)
+    }
+
+    /// As `new`, saying a shared flag's wrong value only where `says` is
+    /// set, as a command whose words may be private doesn't.
+    fn saying(
+        environment: Environment,
+        args: Vec<String>,
+        forms: &[&str],
+        says: bool,
+    ) -> Result<Self, Failure> {
+        let (shared, args) = flags::take_saying(args, forms, says)?;
         let theme = ink::theme(&environment);
         let out = Pen::new(
             Ink::decide(environment.stdout, shared.colour, &environment),
@@ -222,10 +233,11 @@ pub fn run_question(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
-    let mut context = match Context::new(environment.clone(), args, &forms) {
-        Ok(context) => context,
-        Err(failure) => return unread(environment, &failure),
-    };
+    let mut context =
+        match Context::saying(environment.clone(), args, &forms, !help.keeps_any_unsaid()) {
+            Ok(context) => context,
+            Err(failure) => return unread(environment, &failure),
+        };
     let walked = if help.subs.is_empty() {
         None
     } else {
@@ -367,20 +379,25 @@ pub fn run_os(
     args: Vec<OsString>,
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> Ending {
-    match texts(args) {
+    match texts(args, !help.keeps_any_unsaid()) {
         Ok(args) => run(help, version, environment, args, body),
         Err(failure) => unread(environment, &failure),
     }
 }
 
-/// The arguments as text, or the failure of one that isn't.
-fn texts(args: Vec<OsString>) -> Result<Vec<String>, Failure> {
+/// The arguments as text, or the failure of one that isn't, saying it
+/// only where `says` is set.
+fn texts(args: Vec<OsString>, says: bool) -> Result<Vec<String>, Failure> {
     args.into_iter()
         .map(OsString::into_string)
         .collect::<Result<_, _>>()
         .map_err(|word| {
-            Failure::new(Exit::Usage, "an argument isn't UTF-8 text")
-                .because(format!("{} can't be read as text", word.to_string_lossy()))
+            let failure = Failure::new(Exit::Usage, "an argument isn't UTF-8 text");
+            if says {
+                failure.because(format!("{} can't be read as text", word.to_string_lossy()))
+            } else {
+                failure.because("it isn't said here, since it may be private")
+            }
         })
 }
 
@@ -455,7 +472,10 @@ pub fn ask(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> ExitCode {
     let environment = Environment::here();
-    let ending = match texts(std::env::args_os().skip(1).collect()) {
+    let ending = match texts(
+        std::env::args_os().skip(1).collect(),
+        !help.keeps_any_unsaid(),
+    ) {
         Ok(args) => run_question(help, version, &environment, args, body),
         Err(failure) => unread(&environment, &failure),
     };

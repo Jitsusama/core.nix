@@ -2,8 +2,9 @@
 # builds. It serves with the serving side every daemon shares
 # (../daemon-serve) in the one form every daemon's rows take
 # (../ready-rows), and its test asks it with the client every daemon's
-# tests share (../daemon-client), so the source is cut from the modules
-# folder holding all four, and built from this one. Its tests make git
+# tests share (../daemon-client), and takes its command line's shape from
+# the terminal kit (../terminal-kit), so the source is cut from the
+# modules folder holding all five, and built from this one. Its tests make git
 # trees for an ask to run in, and read the launcher's words.json, which
 # the daemon says its rows in.
 {
@@ -27,6 +28,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/secret-asks";

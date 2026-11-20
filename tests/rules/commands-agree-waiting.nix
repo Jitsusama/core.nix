@@ -10,9 +10,4 @@
   ];
   pi-carry = [ "helps" ];
   pi-verbs = [ "helps" ];
-  secret-asks = [
-    "kit"
-    "exits"
-    "helps"
-  ];
 }
