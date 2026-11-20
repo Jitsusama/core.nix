@@ -17,6 +17,10 @@
 //! what's left of its arguments its own way. Where a command says a local
 //! time, `local` reads it through the C library, the one copy of its
 //! `struct tm` every command shares.
+//!
+//! Long because the one path every command runs, from its words to its
+//! exit, stays readable in one place, and its tests drive that whole path
+//! through `run` beside it.
 
 pub mod environment;
 pub mod failure;

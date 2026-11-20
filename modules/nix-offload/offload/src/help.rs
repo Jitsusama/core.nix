@@ -159,13 +159,16 @@ fn there() -> Help {
     .exit(
         Exit::Unavailable,
         "part of it was left unbuilt, owed for when a machine that builds it \
-         answers, or with --changed no builder took the checks named",
+         answers; with --changed no builder took the checks named, or a busy \
+         Mac holds a run for its system",
     )
     .exit(
         Exit::TryAgain,
         "no builder took it, so nothing was built: with --changed, \
-         changed-checks builds it here, and otherwise ask again once one is lent",
+         changed-checks builds it here, and otherwise ask again once one is lent; \
+         or a nearby Mac's part waits for the Mac, the rest built",
     )
+    .exit(Exit::Bug, "it couldn't start itself again, marked for its run")
     .passes(
         "nix's own code, 100 for a failed build; changed-checks' with --changed; \
          the command's with --run",
@@ -481,12 +484,16 @@ fn keep() -> Help {
 fn busy() -> Help {
     Help::new(
         "busy",
-        "says whether this Mac is past its room for more work, as a gate's comparisons judge it",
+        "says whether this Mac is past its room for more work, by its load alone, \
+         as a person's own part is judged",
     )
     .example("nix-offload busy", "before rebuilding a Mac's system")
     .exit(Exit::Done, "it's past its room")
     .exit(Exit::Failed, "it has room")
-    .exit(Exit::Unavailable, "it couldn't say its load, which a caller counts as busy")
+    .exit(
+        Exit::Unavailable,
+        "it couldn't say its load, which a caller counts as busy",
+    )
 }
 
 #[cfg(test)]

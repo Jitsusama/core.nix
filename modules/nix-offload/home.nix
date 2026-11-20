@@ -95,10 +95,10 @@ let
     # that, which cut 8.1 hours of builds at three switches on 3 November.
     # Told so, it ends at once, exiting 75 (try again), which systemd counts as a
     # success to start the new unit after; a builder a build reaches is
-    # handed over, its way outlasting the unit (`outlasting`). Before 17
-    # November it exited 100, which is counted too: the switch that brings
-    # 75 in reloads a lender still running the old binary. A rollback past
-    # that day reloads the new binary under the old unit, which counts
+    # handed over, its way outlasting the unit (`outlasting`). A lender from
+    # before the terminal kit's endings exited 100, which is counted too: the
+    # switch that brings 75 in reloads a lender still running the old binary.
+    # A rollback to a generation from before them reloads the new binary under the old unit, which counts
     # only 100, so each lender records one failed run there; Restart still
     # starts it again, so lending carries on.
     # It waits only while a builder it handed to a successor finishes.
