@@ -719,12 +719,19 @@ pub fn build_args(
     args
 }
 
+/// The hold a pause file in the net's state folder `state` makes, which no
+/// session's address holds, so cadence asks no one to end it.
+fn paused(state: &Path) -> Option<holds::Held> {
+    let file = state.join("pause");
+    file.exists().then(|| holds::Held {
+        why: format!("{} is there", file.display()),
+        from: None,
+    })
+}
+
 impl World for Real {
-    fn held(&self) -> Option<String> {
-        if self.state.join("pause").exists() {
-            return Some(format!("{} is there", self.state.join("pause").display()));
-        }
-        holds::standing(&holds::messages(), self.booted)
+    fn held(&self) -> Option<holds::Held> {
+        paused(&self.state).or_else(|| holds::standing(&holds::messages(), self.booted))
     }
 
     fn head(&self) -> Result<String, String> {
@@ -1296,6 +1303,20 @@ fn run(command: &mut Command) -> Result<String, String> {
 mod tests {
     use super::*;
     use crate::tests::git_in;
+
+    // cadence asks `from` to end a long stop, so a pause, which no session
+    // holds, must name none: as "pause" it read as a session's address.
+    #[test]
+    fn a_pause_holds_the_net_in_no_sessions_name() {
+        let dir = std::env::temp_dir().join(format!("merge-net-paused-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(paused(&dir), None, "no pause file held the net");
+        fs::write(dir.join("pause"), "").unwrap();
+        let held = paused(&dir);
+        fs::remove_dir_all(&dir).unwrap();
+        let held = held.expect("a pause file didn't hold the net");
+        assert_eq!(held.from, None, "a pause named a session: {held:?}");
+    }
 
     #[test]
     fn the_watch_ends_once_another_build_is_installed() {

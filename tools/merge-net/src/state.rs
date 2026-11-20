@@ -271,11 +271,24 @@ impl State {
     /// for cadence: it waits out what a hold stops, a switch or a round,
     /// and counts from the hold's end, since on 13 November it said three
     /// merges weren't on and the net was six hours behind under a hold
-    /// that stopped both from 09:55 to 15:47.
-    pub fn held(&self, why: &str) -> Result<(), String> {
+    /// that stopped both from 09:55 to 15:47. It keeps `since`, when the
+    /// net was first seen held, whatever held it (`held_since`), so cadence
+    /// can say when holds have stopped the net too long while main moves,
+    /// and `from`, the mesh address of the session whose hold stops it now,
+    /// so cadence can ask them; null where no session's does, as for a
+    /// pause file. A new holder keeps `since` and changes `from`, so an ask
+    /// made once per `since` alone never reaches the new holder, and one
+    /// that names its silence names the old holder's; an asker keys on
+    /// both.
+    /// `since` counts the time the net starts nothing: a round already
+    /// running when a hold lands writes it as it ends.
+    pub fn held(&self, why: &str, from: Option<&str>) -> Result<(), String> {
+        let file = self.root.join("held.json");
+        let at = now();
+        let since = held_since(read_json(&file).as_ref(), at);
         write_json(
-            &self.root.join("held.json"),
-            &json!({ "at": now(), "why": why }),
+            &file,
+            &json!({ "at": at, "why": why, "since": since, "from": from }),
         )
     }
 
@@ -566,6 +579,32 @@ fn remove(path: &Path) -> Result<(), String> {
         }
         _ => Ok(()),
     }
+}
+
+/// The gap between writes of `held.json` at which a hold ended and another
+/// began: the net writes it each minute it looks while held. It is
+/// cadence's `HELD_FRESH_S` (modules/cadence/src/watch.rs), at which
+/// cadence reads the net as free, so the two say the same of a stop.
+const HELD_GAP_S: u64 = 180;
+
+/// When the net's stop, held again at `at`, began: when `prior`, the last
+/// `held.json`, first saw it held, if it was held less than
+/// `HELD_GAP_S` before; otherwise `at`. Whatever held it counts, since on
+/// 19 November holds renewed and reworded stopped the net for over three
+/// hours, and a stop counted from each rewording would never read long.
+fn held_since(prior: Option<&Value>, at: u64) -> u64 {
+    // A prior written later than now, or a stop begun after it, is a clock
+    // that moved back, and begins the stop now.
+    prior
+        .filter(|prior| {
+            prior["at"]
+                .as_u64()
+                .and_then(|last| at.checked_sub(last))
+                .is_some_and(|gap| gap < HELD_GAP_S)
+        })
+        .and_then(|prior| prior["since"].as_u64())
+        .filter(|since| *since <= at)
+        .unwrap_or(at)
 }
 
 fn read_json(path: &Path) -> Option<Value> {
