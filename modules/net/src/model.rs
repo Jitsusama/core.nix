@@ -208,6 +208,9 @@ pub struct Device {
     /// A printer's own figures, on a device with the printer role.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<Printer>,
+    /// A television's own figures, on a device with the television role.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub television: Option<Television>,
     /// How fast it carries data each way, on a device eero counts it for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speed: Option<Speed>,
@@ -230,6 +233,10 @@ pub enum Role {
     Receiver,
     /// A device that prints what's sent to it over the home network.
     Printer,
+    /// A device that shows what it's sent on a screen of its own, as a TV
+    /// does; not `screen`, which the glossary keeps for the machine's
+    /// monitor.
+    Television,
     /// A thing that only joins the network, as a laptop or a phone does;
     /// not `host`, which the glossary keeps for pi's host.
     Client,
@@ -345,6 +352,14 @@ pub struct Modem {
     /// last started, and none until that reaches back an hour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lately_s: Option<u64>,
+}
+
+/// What a television says of itself.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Television {
+    /// Whether it's on or in standby, in its own word; a TV switched off
+    /// at the wall says nothing, so it has no figures at all.
+    pub power: Option<String>,
 }
 
 /// What a receiver says it's doing.

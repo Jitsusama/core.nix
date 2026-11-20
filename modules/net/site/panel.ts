@@ -34,6 +34,7 @@ const CALLED: { readonly [source: string]: string } = {
   sony: "Sony's receivers",
   hp: "HP's printers",
   airplay: "the Apple TVs",
+  samsung: "the Samsung TVs",
 };
 
 /** What a source knows, said where it can't be shown. */

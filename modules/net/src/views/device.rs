@@ -1,6 +1,7 @@
 //! `net devices NAME`: one device in layers. What every device can say,
 //! its ports, radios and links, a role's own figures (a modem's channels
-//! and log, a receiver's volume and what it's doing, a printer's ink),
+//! and log, a receiver's volume and what it's doing, a printer's ink, a
+//! television's power),
 //! then what each source says that none of those held, in the source's own words.
 
 use terminal_kit::layout::{self, Align, ITEMS, Room};
@@ -84,6 +85,12 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         );
         facts.push(("pages printed", pages.as_deref()));
         let mut block = vec![pen.label("printer")];
+        block.extend(known_facts(&facts, pen, room));
+        blocks.push(block);
+    }
+    if let Some(television) = &device.television {
+        let facts = [("power", television.power.as_deref())];
+        let mut block = vec![pen.label("television")];
         block.extend(known_facts(&facts, pen, room));
         blocks.push(block);
     }
@@ -623,6 +630,26 @@ mod tests {
                 !text.contains("PowerSaveTimeout") && !text.contains("TotalImpressions"),
                 "its settings and counters bury its section, rather than staying in --json: \
                  {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_television_shows_whether_its_on() {
+        let network = network();
+        let tv = find(&network, "Living Room").expect("the television");
+        for room in ROOMS {
+            let text = device(&network, tv, now(), &Pen::plain(), room);
+            assert_eq!(layout::overrun(&text, room), None);
+            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(
+                text.contains("TELEVISION"),
+                "its block has no label: {text}"
+            );
+            assert!(words.contains("power on"), "its power isn't shown: {text}");
+            assert!(
+                text.contains("QN55Q70CAFXZC"),
+                "its model isn't shown: {text}"
             );
         }
     }

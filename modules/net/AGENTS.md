@@ -11,14 +11,15 @@ derived from what's read.
 ## The Words
 
 A device is one box, and its roles are what it does: modem, router,
-access point, switch, receiver, printer or client (docs/glossary.md's Network
-words). One eero is one device with the router and access point roles,
-listed once. Each vendor is a source behind those roles: eero's record
-(the eero daemon's), the cable modem's status pages, the switch's web
-page, a Sony receiver's UPnP answers, an HP printer's status pages and
-an Apple TV's AirPlay answer. No vendor's command reads another vendor's
-equipment, so the modem, the switch, the receiver, the printer and the
-Apple TV are net's alone, and `eero` keeps only what's eero's.
+access point, switch, receiver, printer, television or client
+(docs/glossary.md's Network words). One eero is one device with the
+router and access point roles, listed once. Each vendor is a source
+behind those roles: eero's record (the eero daemon's), the cable modem's
+status pages, the switch's web page, a Sony receiver's UPnP answers, an
+HP printer's status pages, an Apple TV's AirPlay answer and a Samsung
+TV's own page. No vendor's command reads another vendor's equipment, so
+the modem, the switch, the receiver, the printer, the Apple TV and the
+TV are net's alone, and `eero` keeps only what's eero's.
 
 ## The Record
 
@@ -32,7 +33,8 @@ Apple TV are net's alone, and `eero` keeps only what's eero's.
   out, and why.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
-  what it's doing, a printer's ink and what it's doing), a client's `speed`
+  what it's doing, a printer's ink and what it's doing, a television's
+  power), a client's `speed`
   each way as eero counts it, now and at its busiest in eero's last hour
   with when, and `detail`, every
   field each source gives about it in the source's own words.
@@ -153,6 +155,18 @@ what net says of the day.
   `detail.airplay`, but for the keys it pairs with and the address it
   was asked from. What it's playing and its volume are said only to a
   paired device, and pairing waits on Joel's yes, so none is asked.
+- A Samsung TV: each device eero lists with Samsung as its maker and
+  generic or media streamer as its kind, at the address eero gives, so
+  no phone, tablet or computer is asked. It asks `:8001/api/v2/` once,
+  two seconds at most, following no redirect: what the TV says of itself
+  to anyone, as JSON. Only an answer saying `Samsung SmartTV` counts.
+  `src/sources/samsung.rs` makes eero's device for it a television,
+  with its model, whether it's on or in standby, and the name it was
+  given on its own screen, which stands for eero's unless Joel nicknamed
+  it there. A TV switched off at the wall doesn't answer. The answer
+  stays as `detail.samsung`, but for its ids and the addresses eero
+  gives. Sending it a key waits on Joel pressing Allow on the TV, so
+  none is sent.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's

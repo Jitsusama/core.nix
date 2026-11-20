@@ -49,6 +49,14 @@
       "read_at": 1794702033,
       "since": null,
       "reason": null
+    },
+    {
+      "name": "samsung",
+      "what": "the Samsung TVs eero lists, read and never changed",
+      "state": "answering",
+      "read_at": 1794702033,
+      "since": null,
+      "reason": null
     }
   ],
   "devices": [
@@ -6622,6 +6630,101 @@
           "node": "2001"
         }
       }
+    },
+    {
+      "id": "mac:02:00:00:00:00:90",
+      "name": "Living Room",
+      "roles": ["television"],
+      "source": "eero",
+      "read_at": 1794092083,
+      "vendor": "Samsung Electronics Co.,Ltd",
+      "model": "QN55Q70CAFXZC",
+      "hardware": null,
+      "firmware": null,
+      "serial": null,
+      "macs": ["02:00:00:00:00:90"],
+      "addresses": ["10.0.0.90"],
+      "up_s": null,
+      "ports": [],
+      "radios": [
+        {
+          "name": "5 GHz",
+          "band": "5 GHz",
+          "channel": 149,
+          "width_mhz": null,
+          "busy_pct": null,
+          "power_dbm": null
+        }
+      ],
+      "path": {
+        "through": ["eero:2001", "eero:2003", "modem"],
+        "down": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 369.86,
+          "unmeasured": 2
+        },
+        "up": {
+          "a": "modem",
+          "b": null,
+          "room_mbps": 11.93,
+          "unmeasured": 2
+        }
+      },
+      "television": {
+        "power": "on"
+      },
+      "detail": {
+        "eero": {
+          "address": "10.0.0.90",
+          "addresses": ["10.0.0.90"],
+          "band": "5 GHz",
+          "channel": 149,
+          "ethernet": false,
+          "hostname": "samsung",
+          "kind": "generic",
+          "mac": "02:00:00:00:00:90",
+          "make": "Samsung",
+          "manufacturer": "Samsung Electronics Co.,Ltd",
+          "name": "samsung",
+          "nickname": null,
+          "node": "2001"
+        },
+        "samsung": {
+          "device": {
+            "EdgeBlendingSupport": "false",
+            "EdgeBlendingSupportGroup": "0",
+            "FrameTVSupport": "false",
+            "GamePadSupport": "true",
+            "ImeSyncedSupport": "true",
+            "Language": "en_US",
+            "OS": "Tizen",
+            "PowerState": "on",
+            "TokenAuthSupport": "true",
+            "VoiceSupport": "true",
+            "WallScreenRatio": "-1",
+            "WallService": "false",
+            "countryCode": "CA",
+            "description": "Samsung DTV RCR",
+            "developerMode": "0",
+            "firmwareVersion": "Unknown",
+            "model": "23_NKM2_QTV_T09",
+            "modelName": "QN55Q70CAFXZC",
+            "mouseWheelSupport": "false",
+            "name": "Living Room",
+            "networkType": "wireless",
+            "resolution": "3840x2160",
+            "smartHubAgreement": "true",
+            "ssid": "02:00:00:00:20:01",
+            "type": "Samsung SmartTV"
+          },
+          "isSupport": "{\"DMP_DRM_PLAYREADY\":\"false\",\"DMP_DRM_WIDEVINE\":\"false\",\"DMP_available\":\"true\",\"EDEN_available\":\"true\",\"FrameTVSupport\":\"false\",\"ImeSyncedSupport\":\"true\",\"TokenAuthSupport\":\"true\",\"remote_available\":\"true\",\"remote_fourDirections\":\"true\",\"remote_touchPad\":\"true\",\"remote_voiceControl\":\"true\"}\n",
+          "name": "Living Room",
+          "remote": "1.0",
+          "type": "Samsung SmartTV",
+          "version": "2.0.25"
+        }
+      }
     }
   ],
   "links": [
@@ -6939,6 +7042,21 @@
       "channel": 149,
       "signal_dbm": null,
       "source": "eero"
+    },
+    {
+      "a": {
+        "device": "mac:02:00:00:00:00:90",
+        "radio": "5 GHz"
+      },
+      "b": {
+        "device": "eero:2001",
+        "radio": "5 GHz high"
+      },
+      "medium": "wifi",
+      "speed_mbps": null,
+      "channel": 149,
+      "signal_dbm": null,
+      "source": "eero"
     }
   ],
   "internet": {
@@ -7103,7 +7221,7 @@
       "kind": "ceiling",
       "device": "modem",
       "on": "down",
-      "says": "The internet is the narrowest point down for 7 of the 18 devices on the eeros: 370 Mb/s, as eero last measured it."
+      "says": "The internet is the narrowest point down for 8 of the 19 devices on the eeros: 370 Mb/s, as eero last measured it."
     },
     {
       "kind": "ceiling",
