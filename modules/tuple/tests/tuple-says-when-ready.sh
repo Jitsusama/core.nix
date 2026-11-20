@@ -17,8 +17,8 @@
 #
 # Given the ExecStartPost's program, the systemctl and log it names, what
 # modules/health takes for a ready line (launches.rs's READY_FOLLOWED), and
-# the unit's SyslogIdentifier, SyslogLevel and StandardOutput, each empty
-# when unset.
+# the unit's SyslogIdentifier, SyslogLevel, LogLevelMax and StandardOutput,
+# each empty when unset.
 set -euo pipefail
 
 post=$1
@@ -27,7 +27,8 @@ log=$3
 ready=$4
 named=$5
 level=$6
-output=$7
+ceiling=$7
+output=$8
 here=$PWD
 
 # Sets `n` to the syslog priority a level names, by name or by number as
@@ -51,10 +52,14 @@ priority() {
 # be Tuple's, not the script's, which changes with each build; and it reads
 # ready lines only from notice to information priority (health/src/journal.rs),
 # so the unit's lines must go out there, to the journal. Unset, a level is
-# info and output is journalled. A user unit's LogLevelMax and
-# LogFilterPatterns drop nothing, as only the system's manager tells journald
-# them (systemd.exec(5) says so of the second; a user unit under each kept
-# its line on systemd 262, 2026-11-20), so neither is read.
+# info and output is journalled. A user unit's LogLevelMax keeps none of the
+# user manager's own lines about it past its level, and health times a start
+# from systemd's Stopping and Started lines, at info, so it may not sit below
+# info, whatever level the unit's lines go out at. It drops none of the unit's
+# own lines, as only the system's manager tells journald a ceiling, nor does
+# LogFilterPatterns, which systemd.exec(5) says works for system services
+# alone: a user unit under each kept its line on systemd 262, and the notice
+# ceiling lost its Started line (2026-11-20). Unset, no ceiling holds.
 if [[ ${named} != tuple ]]; then
   echo "tuple.service names its lines '${named}', not tuple"
   exit 1
@@ -63,6 +68,11 @@ priority "${level:-info}"
 said_at=${n}
 if ((said_at < 5 || said_at > 6)); then
   echo "tuple.service logs at ${level}, where health doesn't read"
+  exit 1
+fi
+priority "${ceiling:-debug}"
+if ((n < 6)); then
+  echo "tuple.service keeps nothing past ${ceiling}, so not systemd's Started line"
   exit 1
 fi
 case ${output} in
