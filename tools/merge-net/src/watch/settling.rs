@@ -439,7 +439,13 @@ impl<'a> Settler<'a> {
             let Some(job) = Job::from_json(&kept) else {
                 continue;
             };
-            if kept["after"].as_u64().is_some_and(|after| after > now()) {
+            // A rest is at most `RESTS.1`, so one ending further off was
+            // set before the clock stepped back, and is due rather than
+            // left to rest, untried and untold, for as far as it stepped.
+            if kept["after"]
+                .as_u64()
+                .is_some_and(|after| after > now() && after <= now() + RESTS.1)
+            {
                 continue;
             }
             let mut queue = lock(&self.queue);
@@ -591,12 +597,15 @@ impl<'a> Settler<'a> {
     fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
         // A held net starts nothing, so a rested comparison taken up while
-        // it's held rests again rather than being sent.
+        // it's held rests again rather than being sent. Its day is moved on
+        // by the rest, so a long hold doesn't use it up and leave one
+        // unsent try after it told as a day with no Mac.
         if let Some(why) = world.held() {
             state.say(&format!(
                 "{check} at {} waits while the net is held: {why}",
                 short(merge)
             ));
+            let since = since.saturating_add(RESTS.0).min(now());
             return rest(state, merge, check, since, RESTS.0);
         }
         let outcome = attempt(world, state, merge, check);

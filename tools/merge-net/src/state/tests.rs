@@ -114,6 +114,45 @@ fn the_budget_leaves_the_logs_the_net_still_reads() {
     );
 }
 
+#[test]
+fn the_budget_leaves_the_logs_a_kept_job_or_a_finding_names() {
+    let state = state("still-told");
+    let now = SystemTime::now();
+    let merge = "7".repeat(40);
+    state
+        .keep_settling(
+            "a-macs-checks-since-8888",
+            &json!({"kind": "mac", "merge": merge, "test": "a-macs-checks-since-8888", "since": 1}),
+        )
+        .expect("the job");
+    let written =
+        |name: &str, minutes: u64| log_aged(&state, now, name, Duration::from_mins(minutes), 40);
+    let day = 24 * 60;
+    let settling = written("777777777777-a-macs-checks-since-8888-1.log", 2 * day);
+    let found = written("999999999999-a-macs-checks-since-8888-1.log", 2 * day);
+    let other = written("555555555555-vm-e-1.log", 2 * day);
+    state
+        .find(&json!({
+            "kind": "mac-unrun", "test": "a-macs-checks-since-8888",
+            "commit": "9".repeat(40), "failed_log": found.display().to_string(),
+        }))
+        .expect("the finding");
+    assert_eq!(
+        state.age_out_logs(now, 0),
+        Aged { old: 0, over: 1 },
+        "not just the log nothing names went for the budget"
+    );
+    assert!(
+        settling.exists(),
+        "a log of a merge a kept job settles went for the budget"
+    );
+    assert!(found.exists(), "a log a finding names went for the budget");
+    assert!(
+        !other.exists(),
+        "a log nothing names stayed past the budget"
+    );
+}
+
 /// A log `name` of `bytes` bytes, last written `age` before `now`.
 fn log_aged(state: &State, now: SystemTime, name: &str, age: Duration, bytes: usize) -> PathBuf {
     let path = state.root.join("logs").join(name);
