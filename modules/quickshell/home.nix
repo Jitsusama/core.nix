@@ -1127,6 +1127,8 @@ in
       rather than guessing how long something takes. While it's on, the
       launcher's timing lines name each row whole, so window titles, which
       may be a mail's subject or a document's name, go to the journal too.
+      While it's off, they name a row by its kind alone, such as power or
+      wifi, a window by its app, and a place's own answer as answer.
     '';
   };
 

@@ -2767,7 +2767,9 @@ def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> N
 
     Network's own answers carry no key and its commands no source, so the lab's walk through
     it said 15 of its drawers as `drawer for ""` and all of them as drawers in home
-    (2026-11-12), and neither could be told from home's in Joel's journal.
+    (2026-11-12), and neither could be told from home's in Joel's journal. The nested shell
+    runs with reports on, so each is said by its name here; with them off, as on Joel's
+    machines, an answer is said as one, which pacing.qml's rowShown cases hold.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()

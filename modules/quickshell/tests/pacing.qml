@@ -901,8 +901,8 @@ QtObject {
             Presented.keyShown("place:emoji", false), "place:emoji");
         check(failures, "but any other key only by its kind, as a network's name is",
             Presented.keyShown("wifi:Harbour House", false), "wifi");
-        check(failures, "a row named but with no key says nothing of it with reports off",
-            Presented.rowShown({ name: "Re: my offer" }, false), "");
+        check(failures, "a row named but with no key is said only as an answer with reports off",
+            Presented.rowShown({ name: "Re: my offer" }, false), "answer");
         check(failures, "and its name while they're on",
             Presented.rowShown({ name: "Address" }, true), "Address");
         check(failures, "a row's key is what's said of a row that has one",

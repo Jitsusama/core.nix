@@ -295,12 +295,17 @@ function keyShown(key, whole) {
 
 // The row a drawer is for as the journal may say it: by its key, or by
 // its name where it has none, as a place's own answers have, but only
-// while reports are on, since a name is what a source wrote.
+// while reports are on, since a name is what a source wrote. Otherwise
+// such a row is said as `answer`, the launcher's own word, so it's never
+// said as `drawer for ""`, and the place it's tallied in tells whose.
 function rowShown(row, whole) {
     if (whole) {
         return row?.key || row?.name || "";
     }
-    return keyShown(row?.key || "", false);
+    if (row?.key) {
+        return keyShown(row.key, false);
+    }
+    return row?.name ? "answer" : "";
 }
 
 // The drawers presented since the launcher opened, a line a place, as a
