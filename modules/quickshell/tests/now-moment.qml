@@ -1306,11 +1306,14 @@ ShellRoot {
             JSON.stringify(plainDrawer.facts));
         const steeredBefore = Sessions.steered.length;
         asked?.run();
+        // The node took it, so it leaves what waits at once (Looks.js's taken).
         expect("Return answers with its first choice",
             Sessions.steered.length === steeredBefore + 1
                 && Sessions.steered[steeredBefore]?.fields?.value === "merge"
-                && askingRow()?.side === "answered Queue It",
+                && askingRow() === undefined,
             JSON.stringify([Sessions.steered.slice(steeredBefore), askingRow()?.side]));
+        // Later cases count the steers the shell itself sends from none.
+        Sessions.steered = Sessions.steered.slice(0, steeredBefore);
         now.lookAnswers = {};
         now.lookTexts = {};
 

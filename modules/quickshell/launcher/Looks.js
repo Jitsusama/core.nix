@@ -60,6 +60,33 @@ function look(text) {
     });
 }
 
+// A quest's id as its title ends with it, "(INV-31016)", which says
+// nothing to Joel (attachments/what-needs-me-table.md, 2026-11-19).
+const TITLE_ID = /\s*\([A-Z][A-Z0-9]*-\d+\)\s*$/u;
+
+// Who a look comes from, in plain words: what its session says, else its
+// quest's title without its id (`quest`, the index's entry, or null), else
+// "". Never the quest's id, which tells Joel nothing.
+function askerOf(one, quest) {
+    const asker = written(one.asker);
+    return asker !== "" ? asker : String(quest?.title ?? "").replace(TITLE_ID, "");
+}
+
+// What a look asks of Joel, and what happens if he does nothing, as its
+// session writes them (85PKB2, 2026-11-19), or "". Read here rather than
+// into the look, since a look is written back as it was read (`rewritten`).
+function askOf(one) {
+    return written(one.ask);
+}
+
+function ifNothingOf(one) {
+    return written(one.ifNothing);
+}
+
+function written(value) {
+    return typeof value === "string" ? value : "";
+}
+
 // A look's choices as it's offered them, each { value, label }: one
 // naming no value left out, one naming no label labelled by its value,
 // and at most OFFERED.
