@@ -36,7 +36,7 @@
   "modules/dictation/src/bin/call-transcripts/notices.rs" = 6;
   "modules/dictation/src/bin/call-transcripts/said.rs" = 3;
   "modules/dictation/src/bin/call-transcripts/summarizer.rs" = 6;
-  "modules/dictation/src/bin/call-transcripts/summary_tests.rs" = 20;
+  "modules/dictation/src/bin/call-transcripts/summary_tests.rs" = 18;
   "modules/dictation/src/bin/dictation-chord.rs" = 1;
   "modules/dictation/src/bin/meaning/known.rs" = 8;
   "modules/dictation/src/bin/meaning/quiet.rs" = 4;

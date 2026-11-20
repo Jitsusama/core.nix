@@ -81,9 +81,19 @@ fn the_others_are_named_where_the_call_knows_them() {
         asked: Vec::new(),
     };
     let summary = summarize(&mut |p, _| Ok(model.ask(p)), "Review", Some("Ada"), CALL).unwrap();
-    assert!(summary.contains("- Ada, to Joel: \"we should move the review to Thursday\""));
-    assert!(summary.contains("- Joel, to Ada: \"tell the team\""));
-    assert!(model.asked[0].contains("a call between Joel and Ada"));
+    assert!(
+        summary.contains("- Ada, to Joel: \"we should move the review to Thursday\""),
+        "their quote is said by them, to Joel: {summary}"
+    );
+    assert!(
+        summary.contains("- Joel, to Ada: \"tell the team\""),
+        "Joel's quote is said to them: {summary}"
+    );
+    assert!(
+        model.asked[0].contains("a call between Joel and Ada"),
+        "the model is told who was on the call: {}",
+        model.asked[0]
+    );
 }
 
 #[test]
