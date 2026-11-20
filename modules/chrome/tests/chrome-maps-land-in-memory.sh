@@ -148,6 +148,12 @@ printf '#!%s\nwhile :; do sleep 1; done\n' "$BASH" >chrome
 chmod +x chrome
 ./chrome &
 chrome=$!
+# It takes its name a moment after the fork.
+name=
+while [ "$name" != chrome ]; do
+  sleep 0.1
+  name=$(cat "/proc/$chrome/comm")
+done
 ln -s "$here-$chrome" "$profile/SingletonLock"
 run "running Chrome's"
 kill "$chrome"
@@ -161,35 +167,48 @@ untouched "with Chrome running on another host"
 
 # A Chrome quitting has dropped its lock but still maps a file in the
 # profile: a copy of the shell, named chrome and run from the profile,
-# maps itself there, as Chrome's last processes map their caches.
+# maps itself there, as Chrome's last processes map their caches. It
+# quits only once told to, so the command is seen waiting, whatever the
+# machine's load.
 fill
 mkdir -p "$profile/Crashpad"
 cp "$BASH" "$profile/Crashpad/chrome"
-"$profile/Crashpad/chrome" -c 'sleep 3; true' &
+# shellcheck disable=SC2016 # The stand-in expands its own argument.
+"$profile/Crashpad/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$work/quit" &
 quitting=$!
-# The copy's map is there once its own name is, a moment after the fork.
 name=
 while [ "$name" != chrome ]; do
   sleep 0.1
   name=$(cat "/proc/$quitting/comm")
 done
-run "quitting Chrome's"
-if kill -0 "$quitting" 2>/dev/null; then
-  echo "the command moved the folders while a quitting Chrome still mapped the profile"
+run "quitting Chrome's" &
+running=$!
+# Two seconds is long past a run that doesn't wait, and short of the half
+# minute a run gives a quitting Chrome.
+sleep 2
+if ! kill -0 "$running" 2>/dev/null; then
+  echo "the command didn't wait for a quitting Chrome that still mapped the profile"
   exit 1
 fi
+untouched "while a quitting Chrome still mapped the profile"
+touch "$work/quit"
+wait "$quitting"
+wait "$running"
 in_memory "once a quitting Chrome has gone"
 
-# A folder that reaches outside the profile is refused, the profile kept.
+# A folder that reaches outside the profile is refused as asked wrongly,
+# and what's there is kept.
 fill
-if "${command%% *}" "$profile" "$runtime/chrome" ../outside >run.log 2>&1; then
-  echo "the command took a folder outside the profile"
+mkdir -p "$home/.config/outside"
+echo kept >"$home/.config/outside/index"
+refused=0
+"${command%% *}" "$profile" "$runtime/chrome" ../outside >run.log 2>&1 || refused=$?
+if [ "$refused" != 64 ]; then
+  echo "the command took a folder outside the profile, ending $refused rather than 64"
   exit 1
 fi
-for folder in "${folders[@]}"; do
-  index=$(cat "$profile/$folder/index")
-  if [ "$index" != old ]; then
-    echo "after a folder outside the profile, the command touched $folder"
-    exit 1
-  fi
-done
+outside=$(cat "$home/.config/outside/index")
+if [ -L "$home/.config/outside" ] || [ "$outside" != kept ]; then
+  echo "the command touched a folder outside the profile"
+  exit 1
+fi

@@ -63,6 +63,8 @@ fi
 profile=$1 memory=$2
 shift 2
 here=$(uname -n)
+# A process's maps name the files' real paths, past any link on the way.
+real=$(realpath -m -- "$profile")
 for folder in "$@"; do
   case /$folder/ in
   // | */../* | */./* | //*)
@@ -91,13 +93,17 @@ holder() {
 
 # Says which Chrome process still maps a file in the profile, or nothing.
 # Each process's name is read by the shell itself, since a machine runs
-# thousands, and only Chrome's maps are searched.
+# thousands, and only Chrome's maps are searched. A live Chrome process
+# whose maps can't be read counts as mapping the profile, since what
+# can't be seen can't be ruled out.
 quitting() {
-  local proc comm
+  local proc comm found
   for proc in /proc/[0-9]*; do
     read -r comm 2>/dev/null <"$proc/comm" || continue
     [ "$comm" = chrome ] || continue
-    if grep -qF " $profile/" "$proc/maps" 2>/dev/null; then
+    found=0
+    grep -qF " $real/" "$proc/maps" 2>/dev/null || found=$?
+    if [ "$found" = 0 ] || { [ "$found" = 2 ] && [ -e "$proc" ]; }; then
       echo "Chrome, as process ${proc#/proc/}, still quitting,"
       return 0
     fi
@@ -106,15 +112,17 @@ quitting() {
 
 # Says what holds the profile once a quitting Chrome has had its half
 # minute, or nothing when nothing does.
+# The lock is read last, after the slower look through the processes, so
+# a Chrome starting meanwhile is seen before anything is moved.
 held() {
-  local chrome wait
+  local chrome lock wait
   for wait in $(seq 30); do
-    chrome=$(holder)
-    if [ -n "$chrome" ]; then
-      echo "$chrome"
+    chrome=$(quitting)
+    lock=$(holder)
+    if [ -n "$lock" ]; then
+      echo "$lock"
       return 0
     fi
-    chrome=$(quitting)
     [ -n "$chrome" ] || return 0
     # A second between looks lets Chrome's last processes go.
     [ "$wait" = 30 ] || sleep 1
