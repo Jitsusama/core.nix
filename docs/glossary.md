@@ -153,7 +153,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | release | giving back a tree one holds | prune, reap | `work release`; `quest tree-release` |
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
-| tree sweep | the harness giving back ended sessions' spent trees, each hour by a timer of its own, or by each pi host on its thread while the timer's sweep hasn't finished in two hours | | `pi-sweep`, `jitsusama.pi.sweep` |
+| tree sweep | the harness giving back ended sessions' spent trees, each hour by a timer of its own, or by each pi host on its thread unless that timer's sweep finished in the last two hours and judged every provider the host has, so always on a Mac, which runs no timer | | `pi-sweep`, `jitsusama.pi.sweep` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
 | version | one commit of a pi package installed on the machine, which a pi runs | | `versions/<commit>` |
 | sweep | pi-packages removing the versions no pi runs, keeping current and the one before, at each pi's start or end; not the tree sweep | | `pi-packages sweep` |
