@@ -69,21 +69,16 @@ pub(crate) const WRITES_WITHIN: Duration = Duration::from_secs(3);
 /// it does or as a stop is caught.
 static RAN: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 
-/// The run's error, kept by `unsaid` for a stop caught after it, to say.
+/// The error `until_stopped`'s run returned, kept for a stop caught
+/// before `main` says it, as health then ends by its signal and `main`
+/// never does: the stop says it once the run has returned, as `main` may
+/// have too should the stop come just after.
 static UNSAID: Mutex<Option<String>> = Mutex::new(None);
-
-/// Keep `words`, the error the run returns, for a stop caught before
-/// `main` says them, as health then ends by its signal and `main` never
-/// does: the stop says them once the run has returned, as `main` may
-/// have too should it come just after.
-pub fn unsaid(words: String) {
-    *UNSAID.lock().unwrap_or_else(PoisonError::into_inner) = Some(words);
-}
 
 /// `run`, with health's stops caught: a stop calls `end`, on a thread of
 /// its own, waits up to `WRITES_WITHIN` for `run` to return, then ends
 /// health by its signal, and once one is caught, health ends by it alone,
-/// whatever `run` returns.
+/// whatever `run` returns, saying the error it returned (`UNSAID`).
 ///
 /// # Errors
 ///
@@ -95,6 +90,9 @@ pub fn until_stopped<T>(
 ) -> io::Result<T> {
     ending(end)?;
     let ran = run();
+    if let Err(error) = &ran {
+        *UNSAID.lock().unwrap_or_else(PoisonError::into_inner) = Some(format!("health: {error}"));
+    }
     let (returned, woken) = &RAN;
     *returned.lock().unwrap_or_else(PoisonError::into_inner) = true;
     woken.notify_all();

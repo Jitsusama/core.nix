@@ -637,11 +637,18 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let (lines, read) = mpsc::channel();
     // Dropped however this returns, ending every follower still running.
     let followers = Followers::default();
+    // What health ends on once the run returns well, kept out of the run's
+    // own error, which a stop says.
+    let mut ended = None;
     // A stop ends the followers first, then health (`signals.rs`).
     signals::until_stopped(followers.ender(), || {
-        let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
+        ended = Some(ended_by(
+            source.start(&now, &lines, &followers),
+            &lines,
+            FAILS,
+        ));
         drop(lines);
-        let ran = run(
+        run(
             &mut follower,
             &read,
             || (Instant::now(), Timestamp::now().as_microsecond()),
@@ -650,13 +657,11 @@ pub fn follow(into: &Path) -> io::Result<()> {
             signals::stopping,
             &FAILS,
             &NOTICES,
-        );
-        // A stop ends health by its signal, so `main` never says this.
-        if let Err(error) = &ran {
-            signals::unsaid(format!("health: {error}"));
-        }
-        ran.and(Err(ended))
+        )
     })
+    .and(Err(
+        ended.unwrap_or_else(|| io::Error::other("its run never began"))
+    ))
 }
 
 /// What health ends on once `run` returns, given how its followers
