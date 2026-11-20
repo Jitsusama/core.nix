@@ -24,7 +24,7 @@
 //! comes off its network on the way, is handed back, once, with the point
 //! its card left, so the card is sent back there rather than left on no
 //! network: the 16 Nov failure scanned for 18 s. The way back is followed
-//! as a move of its own, tried once more where it falls short too.
+//! as a move of its own, given `BACK_AFTER` too, whatever its steps say.
 
 use std::collections::HashMap;
 
@@ -57,9 +57,8 @@ struct Move {
     /// The access point it was asked to move to.
     to: String,
     /// The access point it left, to go back to if it doesn't get there,
-    /// until it's handed back: for a first way back, the point it's on its
-    /// way to, to try once more. None for a way back tried again, or a
-    /// card already off its point when it was held.
+    /// until it's handed back. None for a way back, or a card already off
+    /// its point when it was held.
     from: Option<String>,
     asked: Instant,
     /// When it was first said to have left the point it was on.
@@ -141,16 +140,11 @@ impl Arrivals {
     /// wpa_supplicant took next, and can join there first, as it joined
     /// the Roadside Inn in a test for 85 ms (2026-11-20). So a way back is
     /// followed past a join elsewhere, each said, to the point it was sent
-    /// to.
-    ///
-    /// A first way back, `again`, can be tried once more, as one in a test
-    /// fell off 69 ms in, wpa_supplicant carrying on with the join it had
-    /// queued before it was sent back (2026-11-20). One tried again has no
-    /// way back of its own.
-    pub fn back(&mut self, card: &str, to: &str, now: Instant, again: bool) {
+    /// to, until it's stranded.
+    pub fn back(&mut self, card: &str, to: &str, now: Instant) {
         let moved = Move {
             to: to.to_owned(),
-            from: again.then(|| to.to_owned()),
+            from: None,
             asked: now,
             left: None,
             lost: false,
@@ -179,13 +173,44 @@ impl Arrivals {
         self.moves.insert(card.to_owned(), moved);
     }
 
-    /// When the next move with a way back is due to take it, if any.
+    /// When the next move with a way back is due to take it, or the next
+    /// way back to be stranded, if any.
     pub fn due(&self) -> Option<Instant> {
         self.moves
             .values()
-            .filter(|moving| moving.from.is_some())
+            .filter(|moving| moving.from.is_some() || moving.back)
             .map(|moving| moving.asked + BACK_AFTER)
             .min()
+    }
+
+    /// Whether the card is on its way back to the point it left. Selected
+    /// there alone, wpa_supplicant starts its join over, and says the card
+    /// disconnected meanwhile, twice in a test, 117 and 18 ms in, before it
+    /// got there 279 ms after it was sent (2026-11-20). So a card on its way
+    /// back is given until it's stranded, rather than judged by its steps.
+    pub fn going_back(&self, card: &str) -> bool {
+        self.moves.get(card).is_some_and(|moving| moving.back)
+    }
+
+    /// Hands back each card whose way back hasn't reached its point
+    /// `BACK_AFTER` after it was sent, with that point, and forgets it, so
+    /// the card can be let join whatever it hears.
+    pub fn stranded(&mut self, now: Instant) -> Vec<(String, String)> {
+        let stranded: Vec<String> = self
+            .moves
+            .iter()
+            .filter(|(_, moving)| moving.back && now >= moving.asked + BACK_AFTER)
+            .map(|(card, _)| card.clone())
+            .collect();
+        let mut stranded: Vec<_> = stranded
+            .into_iter()
+            .filter_map(|card| {
+                let moving = self.moves.remove(&card)?;
+                Some((card, moving.to))
+            })
+            .collect();
+        stranded.sort();
+        stranded
     }
 
     /// Hands back each move not at its point `BACK_AFTER` after the ask,
@@ -664,12 +689,14 @@ mod tests {
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.unreached(now + BACK_AFTER);
-        arrivals.back("wlan0", DESK, now + BACK_AFTER, false);
+        arrivals.back("wlan0", DESK, now + BACK_AFTER);
 
-        let due = arrivals.due();
+        let off = arrivals.fell_off("wlan0");
+        let late = arrivals.unreached(now + ms(1999));
         let back = arrivals.joined("wlan0", Some(DESK), now + ms(1150));
 
-        assert_eq!(due, None, "a way back has none of its own");
+        assert_eq!(off, None, "a way back has none of its own as it falls off");
+        assert_eq!(late, [], "nor as it's late");
         assert_eq!(
             back,
             Some(Arrival::Reached {
@@ -693,7 +720,7 @@ mod tests {
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.step("wlan0", "disconnected", now + ms(295));
         arrivals.fell_off("wlan0");
-        arrivals.back("wlan0", DESK, now + ms(306), true);
+        arrivals.back("wlan0", DESK, now + ms(306));
 
         let inn = arrivals.joined("wlan0", Some(HALL), now + ms(344));
         let back = arrivals.joined("wlan0", Some(DESK), now + ms(689));
@@ -719,36 +746,34 @@ mod tests {
     }
 
     #[test]
-    fn a_first_way_back_falling_short_is_tried_once_more_and_no_more() {
+    fn a_way_back_not_there_in_a_second_is_stranded_once_whatever_its_steps_said() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.fell_off("wlan0");
-        arrivals.back("wlan0", DESK, now + ms(189), true);
+        arrivals.back("wlan0", DESK, now + ms(189));
+        arrivals.step("wlan0", "disconnected", now + ms(306));
 
         let due = arrivals.due();
-        let off = arrivals.fell_off("wlan0");
-        arrivals.back("wlan0", DESK, now + ms(258), false);
-        let again = arrivals.fell_off("wlan0");
-        let late = arrivals.unreached(now + ms(258) + BACK_AFTER);
+        let going = arrivals.going_back("wlan0");
+        let early = arrivals.stranded(now + ms(1188));
+        let stranded = arrivals.stranded(now + ms(189) + BACK_AFTER);
+        let again = arrivals.stranded(now + ms(3000));
 
         assert_eq!(
             due,
             Some(now + ms(189) + BACK_AFTER),
-            "a first way back has a second"
+            "due a second after it's sent"
         );
+        assert!(going, "still going back, though it said it disconnected");
+        assert_eq!(early, [], "not before its second is up");
         assert_eq!(
-            off,
-            Some(Unreached {
-                card: "wlan0".into(),
-                from: DESK.into(),
-                to: DESK.into(),
-                why: Short::Off
-            }),
-            "tried again at the point it was going back to"
+            stranded,
+            [("wlan0".to_owned(), DESK.to_owned())],
+            "stranded short of the point it was sent to"
         );
-        assert_eq!(again, None, "a second way back has none");
-        assert_eq!(late, [], "nor once it's late");
+        assert_eq!(again, [], "once");
+        assert!(!arrivals.going_back("wlan0"), "and forgotten");
     }
 
     #[test]
