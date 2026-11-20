@@ -86,6 +86,8 @@ impl Watch {
         let real = fs::canonicalize(&node).unwrap();
         fs::write(devices.join("Unplugged"), format!("{}\n", real.display())).unwrap();
         fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
+        // And one another camera's run is writing, saying this node too.
+        fs::write(devices.join("Plugged.123"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -196,6 +198,10 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
         fs::read_to_string(devices.join("Another")).unwrap(),
         "/dev/video9\n",
         "another camera's node file was touched"
+    );
+    assert!(
+        devices.join("Plugged.123").exists(),
+        "a file being written was taken from its writer"
     );
 }
 

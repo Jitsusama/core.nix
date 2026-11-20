@@ -168,9 +168,7 @@ fn device_file(output: &Path) -> Option<PathBuf> {
 
 /// Says which node the output's camera is, as its real path, or with none,
 /// removes what said it, so a reader never finds the camera by a node it
-/// no longer is. Saying it removes any other camera's file saying the same
-/// node, as a run killed before it could remove its own leaves one, and
-/// the node is this camera's now: one unit watches each node.
+/// no longer is.
 fn say_device(output: &Path, node: Option<&Path>) {
     let Some(file) = device_file(output) else {
         return;
@@ -182,10 +180,7 @@ fn say_device(output: &Path, node: Option<&Path>) {
             let said = format!("{}\n", node.display());
             fs::create_dir_all(folder)
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
-                .and_then(|()| {
-                    forget_node(folder, &file, &said);
-                    replace(&file, &said)
-                })
+                .and_then(|()| replace(&file, &said))
         }
         None => match fs::remove_file(&file) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
@@ -373,6 +368,13 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     tidy(&output);
     if let Some(file) = device_file(&output) {
         tidy(&file);
+        // A USB camera's unit is the one that watches its node, so another
+        // camera's file saying it was left by a run killed before it could
+        // remove it. A loopback's unit removes its own as it stops, and one
+        // with no card may say a node another camera has since been given.
+        if let Some(folder) = file.parent() {
+            forget_node(folder, &file, &format!("{}\n", node.display()));
+        }
     }
     say_device(&output, Some(&node));
     let mut record = Record::new(&options.sysfs, &options.debugfs);
