@@ -19,9 +19,15 @@ pub const KEY: &str = "budgets-billed-under-logged";
 const FINDING: &str = "finding:unbilled:";
 
 /// The keys of the findings that say no budget was judged: the one a
-/// spend-watch on hold writes, and the one saying the warehouse stopped
-/// settling its bill.
-const UNJUDGED: [&str; 2] = ["held", "finding:unbilled-unsettled"];
+/// spend-watch on hold writes, the one saying a feed's settled row is
+/// wrong or stopped, and the one saying a feed hasn't settled at all.
+/// The check `cadence-reads-the-keys-spend-watch-writes` finds each in
+/// spend-watch's source.
+const UNJUDGED: [&str; 3] = [
+    "held",
+    "finding:unbilled-unsettled",
+    "finding:unbilled-held",
+];
 
 /// How old spend-watch's heartbeat may be for its collection to be its
 /// word now, in seconds. It beats every thirty seconds, and stops beating
@@ -121,23 +127,6 @@ fn seconds(now: i64) -> f64 {
 mod tests {
     use super::*;
 
-    /// spend-watch's source, where the keys copied above are written.
-    const DETECT: &str = include_str!("../../../../spend-watch/src/detect.rs");
-    const COLLECTION: &str = include_str!("../../../../spend-watch/src/collection.rs");
-
-    // The keys are copies of spend-watch's, so one renamed there would read
-    // as no budget unbilled here rather than as an error; this says so.
-    #[test]
-    fn the_keys_are_spend_watchs() {
-        assert!(COLLECTION.contains(r#"format!("finding:{}", finding.key)"#));
-        assert_eq!(FINDING, "finding:unbilled:");
-        assert!(DETECT.contains(r#"format!("unbilled:{budget}")"#));
-        assert_eq!(UNJUDGED[1], "finding:unbilled-unsettled");
-        assert!(DETECT.contains(r#"pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";"#));
-        assert_eq!(UNJUDGED[0], "held");
-        assert!(COLLECTION.contains(r#"line("held", "Watch on hold""#));
-    }
-
     /// As spend-watch wrote it for 17 to 18 November, the teams renamed:
     /// two budgets billed under what they logged, one more Joel marked
     /// expected, beside findings of other kinds.
@@ -188,13 +177,16 @@ mod tests {
     fn no_collection_leaves_it_unjudged() {
         let held = r#"{"findings": [{"key": "held", "name": "Watch on hold"}]}"#;
         let unsettled = r#"{"findings": [{"key": "finding:unbilled-unsettled",
-            "name": "the warehouse's bill stopped settling"}]}"#;
+            "name": "the proxy feed's bill stopped settling"}]}"#;
+        let unsaid = r#"{"findings": [{"key": "finding:unbilled-held",
+            "name": "the proxy feed hasn't said how far pi's bill is settled"}]}"#;
         for collection in [
             None,
             Some("not json"),
             Some("{}"),
             Some(held),
             Some(unsettled),
+            Some(unsaid),
         ] {
             let m = unbilled(collection, Some(&beat(30)), NOW, "WCJQSG");
             assert_eq!(m.target, None, "{collection:?}");

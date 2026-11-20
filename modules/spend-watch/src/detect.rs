@@ -1530,8 +1530,11 @@ const UNBILLED_STALE_HOURS: i64 = crate::picture::LISTED_HOURS - UNBILLED_HOURS;
 /// It's held over the hours every warehouse feed the config runs has
 /// settled, since a settled hour's bill no longer grows and a feed that
 /// lags holds the window back rather than reading as a key billing
-/// nothing. A feed settled more than two days behind has stopped, and
-/// one settled past now is wrong; either is told in place of any budget. Both sides are pi's alone: the
+/// nothing. A feed settled more than two days behind has stopped, one
+/// settled past now is wrong, and one billing with no settled hour holds
+/// the window back; each is told in place of any budget, the wrong row
+/// first, since a feed that holds back hides nothing. Both sides are pi's
+/// alone: the
 /// bill's `pi` tool, and the logs' list prices as the picture's series
 /// attributed them, a run's agents to the budget of the session that
 /// started them. Only budgets a feed billed pi for before the window are
@@ -1544,23 +1547,29 @@ pub fn unbilled(
     config: &Config,
 ) -> Result<Vec<Finding>, String> {
     let runs: HashSet<&str> = config.feeds.iter().map(|feed| feed.name.as_str()).collect();
-    let (through, furthest) = match warehouse_settled(history, &runs)? {
-        Settled::Never => return Ok(Vec::new()),
-        Settled::Held(feed) => return Ok(vec![held_finding(&feed)]),
-        Settled::Through { least, most } => (least, most),
-    };
+    let settled = warehouse_settled(history, &runs)?;
     // A feed's settled hour only moves on, so one it gave past now stands
     // for good, and no day under it can be judged: the hours before it
     // weren't all billed, whatever it says. Any feed's can be, however far
-    // behind another is. It's told in place of any budget, as a warehouse
-    // that stopped settling is.
+    // behind another is, and however another holds back. It's told in
+    // place of any budget, as a warehouse that stopped settling is.
     let now = crate::time::hour_of(picture.now);
-    if furthest > now {
-        return Ok(vec![unsettled_finding(picture, furthest)]);
+    if let Some((most, feed)) = settled.most.filter(|(most, _)| *most > now) {
+        return Ok(vec![unsettled_finding(picture, &feed, most)]);
     }
-    if through < now - UNBILLED_STALE_HOURS {
-        return Ok(vec![unsettled_finding(picture, through)]);
+    if let Some((least, feed)) = settled
+        .least
+        .clone()
+        .filter(|(least, _)| *least < now - UNBILLED_STALE_HOURS)
+    {
+        return Ok(vec![unsettled_finding(picture, &feed, least)]);
     }
+    if let Some(feed) = settled.held {
+        return Ok(vec![held_finding(&feed)]);
+    }
+    let Some((through, _)) = settled.least else {
+        return Ok(Vec::new());
+    };
     let first = through - UNBILLED_HOURS;
     let budgets = &picture.budgets;
     let mut judged = HashSet::new();
@@ -1619,15 +1628,16 @@ pub fn unbilled(
 }
 
 /// How far the warehouse feeds the config runs have settled pi's bill.
-enum Settled {
-    /// None has said, and none bills pi from the warehouse.
-    Never,
-    /// This feed bills pi from the warehouse but hasn't said how far it
-    /// has settled, so no day can be judged on its bills until it does.
-    Held(String),
-    /// The least and the most of the hours they've settled through,
-    /// exclusive.
-    Through { least: i64, most: i64 },
+struct Settled {
+    /// The hour settled through, exclusive, of the feed settled least
+    /// far, and its name; none when no feed has said.
+    least: Option<(i64, String)>,
+    /// The same of the feed settled furthest.
+    most: Option<(i64, String)>,
+    /// The first by name of the feeds that bill pi from the warehouse but
+    /// haven't said how far they've settled, so no day can be judged on
+    /// their bills until they do.
+    held: Option<String>,
 }
 
 /// How far every warehouse feed the config runs has settled. A feed
@@ -1643,14 +1653,20 @@ fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Settled,
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })
         .map_err(fail)?;
-    let mut through: Option<(i64, i64)> = None;
+    let mut least: Option<(i64, String)> = None;
+    let mut most: Option<(i64, String)> = None;
     let mut settling = HashSet::new();
     for row in rows {
         let (feed, settled) = row.map_err(fail)?;
         if runs.contains(feed.as_str()) {
-            through = Some(through.map_or((settled, settled), |(least, most)| {
-                (least.min(settled), most.max(settled))
-            }));
+            // Ties go by name, so the feed told is the same each pass.
+            let here = (settled, feed.clone());
+            if least.as_ref().is_none_or(|was| here < *was) {
+                least = Some(here.clone());
+            }
+            if most.as_ref().is_none_or(|was| here > *was) {
+                most = Some(here);
+            }
             settling.insert(feed);
         }
     }
@@ -1659,32 +1675,33 @@ fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Settled,
     // so no day can be judged on its bills until it does.
     let mut billing = history
         .db
-        .prepare("SELECT DISTINCT feed FROM billed WHERE source = 'warehouse' AND tool = 'pi'")
+        .prepare(
+            "SELECT DISTINCT feed FROM billed WHERE source = 'warehouse' AND tool = 'pi'
+             ORDER BY feed",
+        )
         .map_err(fail)?;
     let feeds = billing
         .query_map([], |row| row.get::<_, String>(0))
         .map_err(fail)?;
+    let mut held = None;
     for feed in feeds {
         let feed = feed.map_err(fail)?;
         if runs.contains(feed.as_str()) && !settling.contains(&feed) {
-            return Ok(Settled::Held(feed));
+            held = Some(feed);
+            break;
         }
     }
-    Ok(
-        through.map_or(Settled::Never, |(least, most)| Settled::Through {
-            least,
-            most,
-        }),
-    )
+    Ok(Settled { least, most, held })
 }
 
 /// What's told while a feed that bills pi from the warehouse hasn't said
-/// how far it has settled: a note, which never takes a notice, keyed as
-/// the warehouse that stopped settling is, so cadence reads the day as
-/// unjudged rather than as no budget unbilled.
+/// how far it has settled: a note, which never takes a notice, keyed
+/// apart from a wrong row's warning, so marking one expected leaves the
+/// other to be told. cadence reads either as the day unjudged rather
+/// than as no budget unbilled.
 fn held_finding(feed: &str) -> Finding {
     let mut f = finding(
-        UNBILLED_UNSETTLED.into(),
+        UNBILLED_HELD.into(),
         "unbilled",
         Severity::Note,
         format!("the {feed} feed hasn't said how far pi's bill is settled"),
@@ -1698,27 +1715,30 @@ fn held_finding(feed: &str) -> Finding {
     f
 }
 
-/// What's told when the warehouse last settled `through` (exclusive), too
-/// long ago to judge any budget's bill by: none is judged until it
-/// settles again.
-fn unsettled_finding(picture: &Picture, through: i64) -> Finding {
+/// What's told when `feed` last settled `through` (exclusive), too long
+/// ago to judge any budget's bill by, or past now: none is judged until
+/// it settles again, or its row is put right.
+fn unsettled_finding(picture: &Picture, feed: &str, through: i64) -> Finding {
     let since = picture
         .zone
         .clock(crate::time::hour_start(through), picture.now);
     let (title, detail) = if through > crate::time::hour_of(picture.now) {
         (
-            "the warehouse's bill is settled past now",
+            format!("the {feed} feed's bill is settled past now"),
+            // The settled hour never moves back, so the feed can't put it
+            // right by settling again; the row in spend-watch's history
+            // has to be.
             format!(
-                "The warehouse says it has settled pi's bill to {since}, which hasn't \
-                 come yet, so no budget's bill is held against its logs until the row \
-                 is put right."
+                "The {feed} feed says it has settled pi's bill to {since}, which \
+                 hasn't come yet, so no budget's bill is held against its logs until \
+                 the feed's settled row in spend-watch's history is put right."
             ),
         )
     } else {
         (
-            "the warehouse's bill stopped settling",
+            format!("the {feed} feed's bill stopped settling"),
             format!(
-                "The warehouse has settled pi's bill only to {since}, more than \
+                "The {feed} feed has settled pi's bill only to {since}, more than \
                  {UNBILLED_STALE_HOURS} hours ago, so no budget's bill is held against \
                  its logs until it settles again."
             ),
@@ -1728,7 +1748,7 @@ fn unsettled_finding(picture: &Picture, through: i64) -> Finding {
         UNBILLED_UNSETTLED.into(),
         "unbilled",
         Severity::Warning,
-        title.into(),
+        title,
         detail,
     );
     f.badge = format!("to {since}");
@@ -1741,6 +1761,10 @@ fn unsettled_finding(picture: &Picture, through: i64) -> Finding {
 /// `unbilled:` and a budget's name, since it isn't one, and cadence reads
 /// it as the count unjudged.
 pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";
+
+/// The key of the note that says a feed billing pi hasn't said how far it
+/// has settled, which cadence also reads as the count unjudged.
+pub const UNBILLED_HELD: &str = "unbilled-held";
 
 /// Each budget a session asked for in the last day and the harness
 /// couldn't draw on, as the harness wrote it in the session's log: its
@@ -3197,7 +3221,7 @@ mod tests {
         );
         turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
         let both = config_running(&["proxy", "second"]);
-        assert_eq!(unbilled_keys_running(&history, &both), [UNBILLED_UNSETTLED]);
+        assert_eq!(unbilled_keys_running(&history, &both), [UNBILLED_HELD]);
         let picture = Picture::read(&history, &both, NOW).unwrap();
         let found = unbilled(&picture, &history, &both).unwrap();
         assert_eq!(
@@ -3208,6 +3232,90 @@ mod tests {
             )
         );
         assert_eq!(unbilled_keys(&history), ["unbilled:teal"]);
+    }
+
+    // A feed that holds back hides nothing, so a wrong row beside it is
+    // still told, as a warning: past now, or stopped settling.
+    #[test]
+    fn a_held_feed_hides_no_wrong_row() {
+        let wrong = |through: &str| {
+            let history = History::memory();
+            billed_before(&history);
+            billed_on(
+                &history,
+                "second",
+                "2026-10-07T12:00:00Z",
+                "pi",
+                "teal",
+                1.0,
+            );
+            settled_to(&history, "third", through);
+            let all = config_running(&["proxy", "second", "third"]);
+            let picture = Picture::read(&history, &all, NOW).unwrap();
+            let found = unbilled(&picture, &history, &all).unwrap();
+            (
+                found[0].key.clone(),
+                found[0].severity,
+                found[0].title.clone(),
+            )
+        };
+        assert_eq!(
+            wrong("2026-10-15T00:00:00Z"),
+            (
+                UNBILLED_UNSETTLED.to_owned(),
+                Severity::Warning,
+                "the third feed's bill is settled past now".to_owned()
+            )
+        );
+        assert_eq!(
+            wrong("2026-10-12T12:00:00Z"),
+            (
+                UNBILLED_UNSETTLED.to_owned(),
+                Severity::Warning,
+                "the third feed's bill stopped settling".to_owned()
+            )
+        );
+    }
+
+    // Of two feeds that hold back, the first by name is told, whichever
+    // billed first, so the note doesn't change from one pass to the next.
+    #[test]
+    fn the_first_held_feed_by_name_is_told() {
+        let history = History::memory();
+        billed_before(&history);
+        billed_on(&history, "third", "2026-10-07T12:00:00Z", "pi", "teal", 1.0);
+        billed_on(
+            &history,
+            "second",
+            "2026-10-07T12:00:00Z",
+            "pi",
+            "teal",
+            1.0,
+        );
+        let all = config_running(&["proxy", "second", "third"]);
+        let picture = Picture::read(&history, &all, NOW).unwrap();
+        let found = unbilled(&picture, &history, &all).unwrap();
+        assert_eq!(found[0].note, "second not settled");
+    }
+
+    // One feed that stopped settling is told however fresh another is, so
+    // a stale feed can't hide behind one that settles on time.
+    #[test]
+    fn a_stale_feed_beside_a_fresh_one_is_told() {
+        let history = History::memory();
+        billed_before(&history);
+        settled_to(&history, "second", "2026-10-12T12:00:00Z");
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        let both = config_running(&["proxy", "second"]);
+        let picture = Picture::read(&history, &both, NOW).unwrap();
+        let found = unbilled(&picture, &history, &both).unwrap();
+        assert_eq!(
+            (found[0].key.as_str(), found[0].title.as_str()),
+            (
+                UNBILLED_UNSETTLED,
+                "the second feed's bill stopped settling"
+            )
+        );
     }
 
     // A feed whose bill is all the meter's never settles, so it holds no
@@ -3239,7 +3347,7 @@ mod tests {
         assert_eq!(unbilled_keys_running(&history, &both), [UNBILLED_UNSETTLED]);
         let picture = Picture::read(&history, &both, NOW).unwrap();
         let found = unbilled(&picture, &history, &both).unwrap();
-        assert_eq!(found[0].title, "the warehouse's bill is settled past now");
+        assert_eq!(found[0].title, "the second feed's bill is settled past now");
     }
 
     // The settled hour may be the one under way, and as far back as the
@@ -3287,7 +3395,7 @@ mod tests {
         let findings = unbilled(&picture, &history, &config).unwrap();
         assert_eq!(
             findings[0].title,
-            "the warehouse's bill is settled past now"
+            "the proxy feed's bill is settled past now"
         );
     }
 

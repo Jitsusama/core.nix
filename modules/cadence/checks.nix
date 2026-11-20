@@ -47,6 +47,29 @@ onLinux {
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # cadence's budget measures match spend-watch's findings by keys copied
+  # from it, so one renamed there would read as no budget unbilled or
+  # missed rather than as an error: each copy is found on both sides. It
+  # reads the files alone, so neither package rebuilds for the other.
+  cadence-reads-the-keys-spend-watch-writes =
+    pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
+      ''
+        has() {
+          grep -qF -- "$2" "$1" || { echo "$1 no longer holds: $2" >&2; exit 1; }
+        }
+        has ${./src/hour/measures/unbilled.rs} 'const FINDING: &str = "finding:unbilled:";'
+        has ${./src/hour/measures/unbilled.rs} '"finding:unbilled-unsettled"'
+        has ${./src/hour/measures/unbilled.rs} '"finding:unbilled-held"'
+        has ${./src/hour/measures/unresolved.rs} 'const FINDING: &str = "finding:unresolved:";'
+        has ${../spend-watch/src/collection.rs} 'format!("finding:{}", finding.key)'
+        has ${../spend-watch/src/collection.rs} 'line("held", "Watch on hold"'
+        has ${../spend-watch/src/detect.rs} 'format!("unbilled:{budget}")'
+        has ${../spend-watch/src/detect.rs} 'pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";'
+        has ${../spend-watch/src/detect.rs} 'pub const UNBILLED_HELD: &str = "unbilled-held";'
+        has ${../spend-watch/src/detect.rs} 'pub const UNRESOLVED: &str = "unresolved";'
+        has ${../spend-watch/src/detect.rs} 'format!("{UNRESOLVED}:{budget}")'
+        touch "$out"
+      '';
   # cadence-spec's tests run as it builds: a watch of Spec is served the
   # rows a stand-in cadence prints, and one that fails leaves Spec with
   # none and the daemon answering.
