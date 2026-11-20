@@ -613,6 +613,45 @@ mod tests {
     }
 
     #[test]
+    fn speech_across_dropped_packets_is_heard_whole() {
+        // A call drops a few packets now and then, and sends nothing in
+        // their place: the line hasn't changed, so its floor still holds,
+        // and the words after the gap mustn't set a floor of their own.
+        let sound = [
+            quiet(2.0),
+            voice(1.5, 150.0),
+            vec![0.0; RATE / 5],
+            voice(2.5, 150.0),
+            quiet(2.0),
+        ]
+        .concat();
+        let takes = cut(&sound);
+        assert_eq!(takes.len(), 1, "the words across the gap");
+        assert!(
+            seconds(takes[0].samples.len()) >= 4.2,
+            "{}",
+            seconds(takes[0].samples.len())
+        );
+    }
+
+    #[test]
+    fn a_short_answer_after_a_dropped_part_of_a_frame_is_a_take() {
+        // Packets dropped part of the way into a frame leave it mostly
+        // nothing, but not quite: it mustn't set a floor under the line's
+        // hiss, or the hiss reads as loud and the answer is lost in it.
+        let sound = [
+            noise(3.0, 0.005, false),
+            vec![0.0; FRAME - 20],
+            noise(3.5, 0.005, false),
+            voice(0.3, 150.0),
+            noise(3.5, 0.005, false),
+            quiet(2.0),
+        ]
+        .concat();
+        assert_eq!(cut(&sound).len(), 1, "the answer in the hiss");
+    }
+
+    #[test]
     fn words_with_nothing_between_are_a_take() {
         // A far end that gates its line sends nothing between words, so
         // the words alone mustn't set the floor they're heard against.
