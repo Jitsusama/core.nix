@@ -236,10 +236,10 @@ function tallFor(shown, rows, rowTall, gap) {
 // but for the list's first, which stands where the list starts (VKCF3Z,
 // 2026-11-15 [90904822]). Whether it's a heading the caller says, as
 // Headings.js decides it. A row's gap is its own, whatever list it comes
-// from, and the same value tallFor counts. The two agree for rows with no
-// heading and at most one gap among them; tallFor counts one gap however
-// many stand apart, and a heading as a row, which is left to its own
-// change.
+// from, and the same value tallFor counts. The two agree for as many rows
+// as the card has room for, with no heading and at most one gap among them;
+// tallFor sizes a shorter list for the room, counts one gap however many
+// stand apart, and a heading as a row, which is left to its own change.
 function tallOf(heading, gap, at, sizes) {
     if (heading) {
         return (at === 0 ? 0 : sizes.rung) + sizes.heading;

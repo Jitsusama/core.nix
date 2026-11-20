@@ -338,7 +338,7 @@ QtObject {
         }
 
         // A row in the list stands its band high, with the gap above one
-        // that stands apart whatever list it comes from, and a heading its
+        // that stands apart wherever in the list it stands, and a heading its
         // line, with the groups' rung above it but for the list's first.
         const rowSizes = { row: 16, heading: 10, gap: 8, rung: 4 };
         const rowHeights = [
