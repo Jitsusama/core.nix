@@ -743,7 +743,7 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
         (world.say)(&format!("{id} runs again, so it waits no more"));
     }
     let mut kept = next(before, era, &now, at);
-    keep(&file, &kept).map_err(|f| f.because(format!("in the {realm} realm")))?;
+    keep(&file, &kept)?;
     if kept.waiting.is_empty() {
         return Ok(());
     }
@@ -760,7 +760,7 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
         },
         |line| (world.say)(&line),
     );
-    keep(&file, &kept).map_err(|f| f.because(format!("in the {realm} realm")))
+    keep(&file, &kept)
 }
 
 /// Every realm's run, each on its own, so one realm's node being away

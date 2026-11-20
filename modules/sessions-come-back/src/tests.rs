@@ -1025,12 +1025,12 @@ fn a_start_the_node_refused_is_tried_next_run_and_one_unheard_waits() {
         (Ok(r#"{"Err":"busy"}"#.to_string()), None, "a refusal"),
         (
             Err(Unheard::Late(START_WITHIN)),
-            Some(AT + 60),
+            Some(true),
             "no answer in time",
         ),
         (
             Err(Unheard::Failed("broken pipe".into())),
-            Some(AT + 60),
+            Some(true),
             "a client that failed, after the node may have taken it",
         ),
     ] {
@@ -1050,10 +1050,13 @@ fn a_start_the_node_refused_is_tried_next_run_and_one_unheard_waits() {
         assert_eq!(
             kept.waiting
                 .iter()
-                .map(|w| (w.session.id.as_str(), w.tries, w.unanswered))
+                .map(|w| {
+                    let asked = w.unanswered.map(|at| (AT + 60..=AT + 62).contains(&at));
+                    (w.session.id.as_str(), w.tries, asked)
+                })
                 .collect::<Vec<_>>(),
             vec![("a", 1, unanswered)],
-            "{case} keeps it waiting"
+            "{case} keeps it waiting, stamped when it was asked, as a slow disk allows"
         );
         let back = Node::new(ONE_HOLD, ONE_SESSION);
         back.run("two", &folder, AT + 120, &|_| {})
