@@ -537,7 +537,11 @@ It gives:
 
 - the shared flags (`--format`, `--json`, `--color`, `-h`, `--help`,
   `--version`), taken from the arguments before the command reads the
-  rest its own way;
+  rest its own way. They're taken wherever they stand before `--`, even
+  as another flag's value, so a machine that asks for JSON gets it
+  however wrongly it asks. A value that may itself be one, as a reason
+  given to secret-asks may, goes after `--`, which such a command reads
+  past;
 - the ink decision above for each stream, and the theme's colours and marks;
 - help set in the levels from what the command declares, and the same
   declaration as JSON for the check;
