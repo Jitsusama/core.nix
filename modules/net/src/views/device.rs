@@ -89,12 +89,13 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         blocks.push(block);
     }
     if let Some(television) = &device.television {
-        // A TV heard before but silent this minute keeps its block, saying
-        // so rather than an old answer's power.
+        // A TV heard before that didn't answer as one this minute, silent
+        // or answering as something else, keeps its block, saying so
+        // rather than an old answer's power.
         let power = if television.answering {
             television.power.as_deref()
         } else {
-            Some("not answering")
+            Some("not answering as a TV")
         };
         let facts = [("power", power)];
         let mut block = vec![pen.label("television")];
@@ -679,7 +680,7 @@ mod tests {
         let text = device(&network, tv, now(), &Pen::plain(), ROOMS[0]);
         let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            words.contains("power not answering"),
+            words.contains("power not answering as a TV"),
             "its silence isn't said: {text}"
         );
     }

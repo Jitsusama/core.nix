@@ -109,8 +109,9 @@ fn hear_the_printer(devices: &mut [Device], found: hp::Found) {
 }
 
 /// Puts what an Apple TV said on eero's device for it: it stays a client,
-/// since no role of the glossary's names a box that plays to a screen,
-/// but its model and build are its own, and its answer sits beside eero's.
+/// since a television is a box with a screen of its own and an Apple TV
+/// has none, but its model and build are its own, and its answer sits
+/// beside eero's.
 fn hear_the_apple_tv(devices: &mut [Device], found: airplay::Found) {
     let id = format!("mac:{}", found.mac);
     let Some(device) = devices.iter_mut().find(|device| device.id == id) else {
