@@ -116,6 +116,13 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         Some("runtime"),
         "switched in, but a host patch didn't wait on the hosts"
     );
+    let added =
+        |_: &str| Some("modules/pi/host-patches/x.patch\nmodules/pi/hosted-pi.nix".to_owned());
+    assert_eq!(
+        judge("core", at, Some("f00d"), all, added, lack),
+        Some("runtime"),
+        "a new patch with its line in core's runtime build wasn't judged by the patch"
+    );
     // A fix to how core builds its runtime, with no patch, can't be seen in
     // a runtime built elsewhere, while a note beside the patches reaches no
     // host at all.
@@ -170,8 +177,22 @@ fn a_host_is_read_by_its_units_main_process() {
         Some(format!("/nix/store/{OLD}-pi-host-runtime-1.5.0").into()),
         "a host's runtime wasn't read as the store path its pi lies in"
     );
-    let other = format!("PI_PACKAGE_DIR=/nix/store/{OLD}-pi-1.5.0/lib\0");
-    assert_eq!(runtime(other.as_bytes()), None, "a pi not a host's runtime");
+    let other = format!("PI_PACKAGE_DIR=/nix/store/{OLD}-pi-coding-agent-1.5.0/lib\0");
+    assert_eq!(
+        runtime(other.as_bytes()),
+        Some(format!("/nix/store/{OLD}-pi-coding-agent-1.5.0").into()),
+        "a runtime named otherwise, as core's own build is, wasn't read"
+    );
+    let stopped = format!(
+        "MainPID=0\nEnvironment=HOME=/x \
+         \"PI_PACKAGE_DIR=/nix/store/{OLD}-pi-host-runtime-1.5.0/lib/pi\" A=b\n"
+    );
+    assert_eq!(
+        unit_runtime(&stopped),
+        Some(format!("/nix/store/{OLD}-pi-host-runtime-1.5.0").into()),
+        "a host with no process wasn't read by the runtime its unit starts it on"
+    );
+    assert_eq!(unit_runtime("MainPID=0\nEnvironment=HOME=/x\n"), None);
     assert_eq!(
         runtime(b"PI_PACKAGE_DIR=/home/x/pi\0"),
         None,
@@ -375,9 +396,13 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         .expect("git runs");
     let sha = String::from_utf8_lossy(&out.stdout).trim().to_owned();
     commit(&[("x.patch", Some("newer"))], "a later fix");
+    // The side branch merged since, its text taking the patch back to one
+    // without the fix.
     git(
         &repo,
-        &["merge", "-q", "--no-ff", "-s", "ours", "-m", "side", "side"],
+        &[
+            "merge", "-q", "--no-ff", "-X", "theirs", "-m", "side", "side",
+        ],
     );
     // A revert to a state from before the step before the fix, a rewrite
     // built on it, and a later removal of what the fix rewrote.
@@ -407,6 +432,14 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         versions(&path, "0000000000000000000000000000000000000000", &patches),
         None,
         "a merge cadence doesn't have read as one carrying nothing"
+    );
+    assert!(
+        matches!(state(&path, &sha, "gone.patch"), Ok(None)),
+        "a patch the merge removed wasn't read as absent"
+    );
+    assert!(
+        state(&path, "0000000000000000000000000000000000000000", "x.patch").is_err(),
+        "a commit git can't read was taken for one lacking the patch"
     );
     std::fs::remove_dir_all(&repo).expect("the scratch history removed");
 }

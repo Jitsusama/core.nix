@@ -440,41 +440,43 @@ fn applied(root: &Path) -> Option<Applied> {
 /// Each of `patches` by name, with every state of it a runtime may hold and
 /// carry the change: as the merge `sha` left it, `None` where it removed
 /// it, and as each merge on main's own line has left it since, up to the
-/// first that removes it or brings back a state it had before `sha`, as a
-/// revert does: what follows is built on the patch without the change. A
-/// side branch's commits aren't read, as one cut before the merge holds the
-/// patch without it. `None` when git can't say.
+/// first that removes it or brings back a state it had without the change,
+/// as a revert does: what follows is built on the patch without it. A state
+/// without the change is one from before `sha`, on any branch, or one on a
+/// branch cut before it and merged since, which a merge may bring to main.
+/// `None` when git can't say.
 fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
-    let log = |range: &str, patch: &str| {
-        command(
-            "git",
-            &[
-                "-C",
-                path,
-                "log",
-                "--first-parent",
-                "--format=%H",
-                range,
-                "--",
-                patch,
-            ],
-        )
-        .ok()
+    let log = |how: &[&str], patch: &str| {
+        let mut args = vec!["-C", path, "log", "--format=%H"];
+        args.extend_from_slice(how);
+        args.extend(["--", patch]);
+        command("git", &args).ok()
     };
+    let range = format!("{sha}..{}", main_of(path));
+    let parent = format!("{sha}^1");
     let mut versions = Wanted::new();
     for patch in patches {
-        // The log fails for a merge cadence doesn't have, so a patch
-        // missing from it is one the merge removed, not one unfetched.
-        let since = log(&format!("{sha}..{}", main_of(path)), patch)?;
-        let earlier = log(&format!("{sha}^1"), patch)?;
+        let read = |commit: &str| state(path, commit.trim(), patch).ok();
+        // The log fails for a merge cadence doesn't have, and a state git
+        // can't read fails the whole, so a patch missing from a commit is
+        // one it lacks, not one unfetched.
+        let since = log(&["--first-parent", &range], patch)?;
+        let earlier = log(&["--full-history", &parent], patch)?;
+        let apart = log(&["--full-history", &range], patch)?;
+        let after = log(&["--full-history", "--ancestry-path", &range], patch)?;
         let mut before: Vec<Option<String>> = earlier
             .lines()
-            .map(|commit| state(path, commit.trim(), patch))
-            .collect();
-        before.push(state(path, &format!("{sha}^1"), patch));
-        let mut states = vec![state(path, sha, patch)];
+            .chain(
+                apart
+                    .lines()
+                    .filter(|commit| !after.lines().any(|a| a == *commit)),
+            )
+            .map(read)
+            .collect::<Option<_>>()?;
+        before.push(read(&parent)?);
+        let mut states = vec![read(sha)?];
         for commit in since.lines().rev() {
-            let later = state(path, commit.trim(), patch);
+            let later = read(commit)?;
             if later.is_none() || before.contains(&later) {
                 break;
             }
@@ -486,9 +488,19 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
     Some(versions)
 }
 
-/// The patch at `file` as `commit` holds it, or `None` where it holds none.
-fn state(path: &str, commit: &str, file: &str) -> Option<String> {
-    command("git", &["-C", path, "show", &format!("{commit}:{file}")]).ok()
+/// The patch at `file` as `commit` holds it, `None` where it holds none, or
+/// an error where git can't read the commit: a failure taken for absence
+/// would read a patch the merge added as one it removed, and tell a runtime
+/// lacking it fixed.
+fn state(path: &str, commit: &str, file: &str) -> std::io::Result<Option<String>> {
+    let listed = command(
+        "git",
+        &["-C", path, "ls-tree", "--name-only", commit, "--", file],
+    )?;
+    if listed.trim().is_empty() {
+        return Ok(None);
+    }
+    command("git", &["-C", path, "show", &format!("{commit}:{file}")]).map(Some)
 }
 
 /// Whether a runtime that `applied` these loads a change, holding each of
@@ -510,10 +522,12 @@ fn input_pin(lock: &str, input: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The runtime each running pi host loads its pi from and when it started,
-/// each `None` where it couldn't be read. A host is the main process of a
-/// unit core's host module names `pi-host-REALM-KIND`, so what it starts,
-/// which keeps its environment after the host moves on, isn't read.
+/// The runtime each pi host loads its pi from and when it started, each
+/// `None` where it couldn't be read. A host is the main process of a unit
+/// core's host module names `pi-host-REALM-KIND`, so what it starts, which
+/// keeps its environment after the host moves on, isn't read. A host with
+/// no main process, stopped, failed or restarting, comes back on the
+/// runtime its unit names, so it's judged by that rather than left out.
 fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
     let units = command(
         "systemctl",
@@ -521,9 +535,7 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
             "--user",
             "list-units",
             "--type=service",
-            // A host down for a moment, restarting or failed comes back on
-            // its unit's runtime, so it is read too, as one cadence can't see.
-            "--state=active,activating,deactivating,reloading,failed",
+            "--all",
             "--no-legend",
             "--plain",
             "pi-host-*",
@@ -533,6 +545,8 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
     Some(
         units
             .lines()
+            // A unit gone from the config, though still listed, is no host's.
+            .filter(|line| line.split_whitespace().nth(1) == Some("loaded"))
             .filter_map(|line| line.split_whitespace().next())
             .filter(|unit| host_unit(unit))
             .map(|unit| {
@@ -546,14 +560,19 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
                         "MainPID",
                         "-p",
                         "ActiveEnterTimestamp",
+                        "-p",
+                        "Environment",
                         unit,
                     ],
                 )
                 .unwrap_or_default();
                 let (pid, started) = shown_host(&shown);
-                let runtime = pid
-                    .and_then(|pid| std::fs::read(format!("/proc/{pid}/environ")).ok())
-                    .and_then(|environ| runtime(&environ));
+                let runtime = match pid {
+                    Some(pid) => std::fs::read(format!("/proc/{pid}/environ"))
+                        .ok()
+                        .and_then(|environ| runtime(&environ)),
+                    None => unit_runtime(&shown),
+                };
                 (runtime, started)
             })
             .collect(),
@@ -592,17 +611,33 @@ fn runtime(environ: &[u8]) -> Option<std::path::PathBuf> {
     let dir = environ
         .split(|&b| b == 0)
         .find_map(|var| var.strip_prefix(b"PI_PACKAGE_DIR="))?;
-    let dir = Path::new(std::str::from_utf8(dir).ok()?);
-    let name = dir
+    store_root(std::str::from_utf8(dir).ok()?)
+}
+
+/// The runtime a host's unit starts it on, from its `Environment` as
+/// `systemctl show` gives it, for a host with no process to read.
+fn unit_runtime(shown: &str) -> Option<std::path::PathBuf> {
+    let environment = shown
+        .lines()
+        .find_map(|line| line.strip_prefix("Environment="))?;
+    let dir = environment
+        .split_whitespace()
+        .find_map(|var| var.trim_matches('"').strip_prefix("PI_PACKAGE_DIR="))?;
+    store_root(dir)
+}
+
+/// The store path `dir` lies in, whatever it's named: what makes it a host's
+/// runtime is the copies of its patches it keeps, which `applied` reads.
+fn store_root(dir: &str) -> Option<std::path::PathBuf> {
+    let name = Path::new(dir)
         .strip_prefix("/nix/store")
         .ok()?
         .components()
         .next()?
         .as_os_str()
         .to_str()?;
-    let (hash, rest) = name.split_once('-')?;
-    (hash.len() == 32 && rest.starts_with("pi-host-runtime-"))
-        .then(|| Path::new("/nix/store").join(name))
+    let (hash, _) = name.split_once('-')?;
+    (hash.len() == 32).then(|| Path::new("/nix/store").join(name))
 }
 
 #[cfg(test)]
