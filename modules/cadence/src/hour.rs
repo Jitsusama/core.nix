@@ -17,6 +17,7 @@ mod lines;
 mod measures;
 mod owing;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -242,8 +243,8 @@ fn gather(
             &measures::failed_in,
         ),
         landed(&core_log, &harness_log, &machine_log, now),
-        rounds_per_merge(state_home, &core_log, &harness_log, now),
     ];
+    all.extend(rounds_per_merge(state_home, &core_log, &harness_log, now));
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
@@ -276,25 +277,50 @@ fn gather(
 }
 
 /// The council rounds each change merged to core's and the harness's
-/// mains in the last day took, from the harness's review runs, reading
-/// only the records written since the oldest round that could count.
-fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> Measure {
+/// mains in the last day took, from the harness's review runs and the
+/// fixes their findings led to, reading only the records written since
+/// the oldest round that could count, with who landed each change from
+/// the mesh's landing notes of the last day, read only when a merge is to
+/// be filed. Each note's sender is taken to the quest its presence works
+/// on, as the spend measure does, since a session can end before its
+/// drag is due while its quest's cell answers.
+fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> Vec<Measure> {
     use measures::rounds::{BEFORE, Main, rounds};
     let since = u64::try_from(now - DAY - BEFORE).map_or(std::time::UNIX_EPOCH, |s| {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
-    let records: Vec<String> = fs::read_dir(state_home.join("pi/agentic-harness.pi/review/runs"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|entry| {
-            entry
-                .metadata()
-                .and_then(|m| m.modified())
-                .is_ok_and(|at| at >= since)
-        })
-        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
-        .collect();
+    let review = state_home.join("pi/agentic-harness.pi/review");
+    let written = |folder: &str| -> Vec<String> {
+        fs::read_dir(review.join(folder))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|at| at >= since)
+            })
+            .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+            .collect()
+    };
+    let landed = || {
+        let mesh = Mesh {
+            root: state_home.join("pi/agentic-harness.pi"),
+        };
+        let notes = mesh.sent_since((now - DAY) * 1000);
+        let presences = mesh.all();
+        let mut landed = BTreeMap::new();
+        for (quest, changes) in measures::spent::landed_by(
+            notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
+            |address| measures::spent::quest_of(&presences, address),
+        ) {
+            for change in changes {
+                landed.insert(change, quest.clone());
+            }
+        }
+        landed
+    };
     let mains = [
         Main {
             repo: "github:Jitsusama/core.nix",
@@ -305,7 +331,14 @@ fn rounds_per_merge(state_home: &Path, core: &str, harness: &str, now: i64) -> M
             log: harness,
         },
     ];
-    rounds(&mains, &records, now, measures::ASKS)
+    rounds(
+        &mains,
+        &written("runs"),
+        &written("fixes"),
+        landed,
+        now,
+        measures::ASKS,
+    )
 }
 
 /// Each quest's spend today beside what it landed since midnight here,

@@ -408,7 +408,8 @@ pub fn crashes(json: &str) -> BTreeMap<String, u32> {
 /// for a unit that failed, a system's and the account's alike, but for
 /// runs: those `holders::a_run` names, and a start of systemd-run's in
 /// `runs` that nobody `held`, since a session that names a run for itself
-/// or holds it by an owner line is told. A part of its name that's only
+/// or holds it by an owner line is told, unless the run is a red one,
+/// which has to fail (`holders::red`). A part of its name that's only
 /// digits, a scope's pid, is put as `*`, so the agents' many work scopes
 /// are one name.
 #[must_use]
@@ -437,7 +438,8 @@ pub fn failed_units(
             continue;
         };
         let invocation = entry.user_invocation.or(entry.invocation);
-        let a_run = invocation.is_some_and(|id| runs.contains_key(&id)) && !held(&unit);
+        let a_run = invocation.is_some_and(|id| runs.contains_key(&id))
+            && (!held(&unit) || holders::red(&unit));
         if holders::a_run(&unit) || a_run {
             continue;
         }
@@ -673,6 +675,7 @@ mod tests {
                 "c3".to_owned(),
                 "y2ybts-race-timers-2044.service".to_owned(),
             ),
+            ("e5".to_owned(), "y2ybts-first-red2-1236.service".to_owned()),
         ]);
         let failed = concat!(
             r#"{"USER_UNIT":"spent-check1.service","USER_INVOCATION_ID":"a1"}"#,
@@ -683,6 +686,11 @@ mod tests {
             "\n",
             r#"{"USER_UNIT":"y2ybts-race-timers-2044.service","USER_INVOCATION_ID":"c3"}"#,
             "\n",
+            r#"{"USER_UNIT":"y2ybts-first-red2-1236.service","USER_INVOCATION_ID":"e5"}"#,
+            "\n",
+            // Red by name, but no run of systemd-run's, so still told.
+            r#"{"USER_UNIT":"red-light.service","USER_INVOCATION_ID":"f6"}"#,
+            "\n",
             r#"{"USER_UNIT":"camera.service"}"#,
         );
         let held = |unit: &str| unit.starts_with("y2ybts-");
@@ -692,11 +700,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 ("camera.service".to_owned(), 1),
+                ("red-light.service".to_owned(), 1),
                 ("spent-check1.service".to_owned(), 1),
                 ("y2ybts-race-timers-*.service".to_owned(), 1),
             ],
-            "a run nobody holds was named, or a unit that isn't that run, or a run its \
-             session holds, was lost"
+            "a run nobody holds, or a red run, was named, or a unit that isn't that run, or \
+             a run its session holds, was lost"
         );
     }
 

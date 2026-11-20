@@ -3,20 +3,43 @@
 //! than from the count a landing note types, which is free text and which
 //! no note before 15:20 on 19 November carried. WCJQSG ruled then that past
 //! round 5 a round raises only what would mislead Joel or break something,
-//! and J7XHQN asked for the measure; no target is set yet, so it shows
-//! unjudged and names each merge past 5.
+//! and J7XHQN asked for the measure. At 18:48 WCJQSG set its target, a
+//! median of at most 3, and asked that each merge past 5 be named with
+//! what its rounds after the fifth caught, and filed as drag to the merge's
+//! owner when they caught nothing. What a round caught is read from the
+//! harness's record of the fixes committed for its findings, a judge's
+//! finding counting for the council it consolidated.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use super::{Class, Measure, count, median, seconds};
+use super::{Class, Measure, count, median, seconds, short};
 
 /// The measure's key, from one hour to the next.
 pub const KEY: &str = "rounds-per-merge";
 
 /// The round past which WCJQSG's ruling narrows what a round may raise.
 pub const PAST: usize = 5;
+
+/// The median rounds per merge WCJQSG set as the target.
+pub const TARGET: f64 = 3.0;
+
+/// The key of a merge's own line when its rounds past five fixed
+/// nothing, before the change it names.
+pub const FRUITLESS: &str = "rounds-past-five-fixed-nothing:";
+
+/// What the median says when it read no record of rounds, or none of
+/// fixes, so it can't tell which merges' rounds past five fixed nothing.
+const NO_RUNS: &str = "no review record read";
+const NO_FIXES: &str = "no fixes record read";
+
+/// Whether `median`, the rounds measure, read the records that say which
+/// merges' rounds past five fixed nothing.
+#[must_use]
+pub fn read_whole(median: &Measure) -> bool {
+    median.key == KEY && !median.says.contains(NO_RUNS) && !median.says.contains(NO_FIXES)
+}
 
 /// How long before its merge a round still counts toward it. A branch's
 /// name can be cut again for a later change, so a round older than this
@@ -78,6 +101,8 @@ struct Reviewed {
     /// the branch when the tree was cut for it.
     tree: String,
     councils: Vec<(String, i64)>,
+    /// Each judge's or critique's id with the round it read, its basis.
+    bases: Vec<(String, String)>,
 }
 
 impl Reviewed {
@@ -108,12 +133,23 @@ impl Reviewed {
                 Some((id.to_owned(), seconds(&run["startedAt"])?))
             })
             .collect();
+        let bases = record["runs"]
+            .as_array()?
+            .iter()
+            .filter_map(|run| {
+                Some((
+                    run["id"].as_str()?.to_owned(),
+                    run["basis"].as_str()?.to_owned(),
+                ))
+            })
+            .collect();
         Some(Self {
             repo: change["repo"]["key"].as_str()?.to_owned(),
             named: named.to_owned(),
             hosted,
             tree: tree.to_owned(),
             councils,
+            bases,
         })
     }
 
@@ -138,18 +174,75 @@ impl Reviewed {
     }
 }
 
+/// What each council's findings led to, by the council's id: the subject
+/// of each finding whose fix was committed, from `fixes`, each the text of
+/// one file of the harness's review fixes. A finding a judge consolidated
+/// names the judge's run, so it is taken back through `bases`, each run's
+/// basis, to the council it came from.
+fn caught(fixes: &[String], bases: &BTreeMap<&str, &str>) -> BTreeMap<String, Vec<String>> {
+    let mut caught: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for text in fixes {
+        let Ok(record) = serde_json::from_str::<Value>(text) else {
+            continue;
+        };
+        for fix in record["fixes"].as_array().into_iter().flatten() {
+            let finding = &fix["subject"]["finding"];
+            let (Some(run), Some(subject)) = (
+                finding["origin"]["runId"].as_str(),
+                finding["subject"].as_str(),
+            ) else {
+                continue;
+            };
+            // A critique reads a judge, which reads a council; a few steps
+            // reach it, and a loop in the record ends there.
+            let mut run = run;
+            for _ in 0..3 {
+                match bases.get(run) {
+                    Some(earlier) => run = earlier,
+                    None => break,
+                }
+            }
+            if fix["outcome"]["kind"].as_str() == Some("committed") {
+                caught
+                    .entry(run.to_owned())
+                    .or_default()
+                    .push(subject.to_owned());
+            }
+        }
+    }
+    caught
+}
+
 /// The median council rounds per change merged to `mains` in the day
 /// before `now`, from `records`, each the text of one file of the
-/// harness's review runs. A council counts toward a merge when it started
-/// in the `BEFORE` up to it, and once however many records hold it. A
-/// change with a record but no council counts nought; one with no record
-/// at all may be one the matching can't see, so it is counted apart
-/// rather than read as nought.
+/// harness's review runs, then a line of its own for each merge past five
+/// whose rounds after the fifth led to no fix in `fixes`, owned by whoever
+/// `landed` it, else `owner`; `landed` is asked only when there is one.
+/// With no fixes record read, what the rounds fixed can't be told, so
+/// the line says so and none is filed. A council counts toward a merge
+/// when it started in the `BEFORE` up to it, and once by its id however
+/// many records hold it. A change with a record but no council counts
+/// nought; one with no record at all may be one the matching can't see,
+/// so it is counted apart rather than read as nought.
 #[must_use]
-pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Measure {
+pub fn rounds(
+    mains: &[Main],
+    records: &[String],
+    fixes: &[String],
+    landed: impl FnOnce() -> BTreeMap<String, String>,
+    now: i64,
+    owner: &str,
+) -> Vec<Measure> {
     let reviewed: Vec<Reviewed> = records.iter().filter_map(|r| Reviewed::read(r)).collect();
+    let bases: BTreeMap<&str, &str> = reviewed
+        .iter()
+        .flat_map(|r| &r.bases)
+        .map(|(id, basis)| (id.as_str(), basis.as_str()))
+        .collect();
+    let caught = caught(fixes, &bases);
+    let fixes_read = !fixes.is_empty();
     let mut unrecorded = 0;
-    let mut each: Vec<(usize, String)> = mains
+    let mut each: Vec<(usize, String, Vec<String>)> = mains
         .iter()
         .flat_map(|main| merged(main, now))
         .filter_map(|m| {
@@ -158,25 +251,37 @@ pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Meas
                 unrecorded += 1;
                 return None;
             }
-            let councils: BTreeSet<&str> = about
+            let by_id: BTreeMap<&str, i64> = about
                 .iter()
                 .flat_map(|r| &r.councils)
+                .map(|(id, at)| (id.as_str(), *at))
+                .collect();
+            let councils: BTreeSet<(i64, &str)> = by_id
+                .into_iter()
                 .filter(|(_, at)| *at <= m.at && *at >= m.at - BEFORE)
-                .map(|(id, _)| id.as_str())
+                .map(|(id, at)| (at, id))
+                .collect();
+            let after_fifth: Vec<String> = councils
+                .iter()
+                .skip(PAST)
+                .flat_map(|(_, id)| caught.get(*id).into_iter().flatten().cloned())
                 .collect();
             let label = m.repo.rsplit('/').next().unwrap_or(m.repo);
-            Some((councils.len(), format!("{label}#{}", m.number)))
+            Some((councils.len(), format!("{label}#{}", m.number), after_fifth))
         })
         .collect();
-    let mut figures: Vec<f64> = each.iter().map(|(n, _)| count(*n)).collect();
+    let mut figures: Vec<f64> = each.iter().map(|(n, _, _)| count(*n)).collect();
     figures.sort_by(f64::total_cmp);
     each.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    each.retain(|(n, _, _)| *n > PAST);
     let read = if reviewed.is_empty() {
-        ", no review record read".to_owned()
+        format!(", {NO_RUNS}")
+    } else if !fixes_read {
+        format!(" with a review record, {unrecorded} with none, {NO_FIXES}")
     } else {
         format!(" with a review record, {unrecorded} with none")
     };
-    Measure {
+    let median = Measure {
         key: KEY.to_owned(),
         class: Class::Ship,
         says: format!(
@@ -184,14 +289,38 @@ pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Meas
             figures.len()
         ),
         now: median(&figures),
-        target: None,
+        target: Some(TARGET),
         owner: owner.to_owned(),
         behind: each
-            .into_iter()
-            .filter(|(n, _)| *n > PAST)
-            .map(|(n, change)| format!("{change}: {n} rounds"))
+            .iter()
+            .map(|(n, change, fixed)| match fixed.as_slice() {
+                _ if !fixes_read => format!("{change}: {n} rounds, what they fixed unread"),
+                [] => format!("{change}: {n} rounds, those past five fixed nothing"),
+                [one] => format!("{change}: {n} rounds, past five fixed {}", short(one)),
+                [first, rest @ ..] => format!(
+                    "{change}: {n} rounds, past five fixed {} and {} more",
+                    short(first),
+                    rest.len()
+                ),
+            })
             .collect(),
-    }
+    };
+    each.retain(|(_, _, fixed)| fixes_read && fixed.is_empty());
+    let landed = if each.is_empty() {
+        BTreeMap::new()
+    } else {
+        landed()
+    };
+    let fruitless = each.into_iter().map(|(n, change, _)| Measure {
+        key: format!("{FRUITLESS}{change}"),
+        class: Class::Ship,
+        says: format!("council rounds on {change}, whose rounds past five fixed nothing"),
+        now: count(n),
+        target: Some(count(PAST)),
+        owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
+        behind: Vec::new(),
+    });
+    std::iter::once(median).chain(fruitless).collect()
 }
 
 #[cfg(test)]
@@ -267,13 +396,14 @@ mod tests {
                 ],
             ),
             // By its branch, the same council again in another record,
-            // once, and one only this record holds.
+            // once though this record has it start a second apart, and one
+            // only this record holds.
             record(
                 "local-range",
                 CORE,
                 "origin/main..here/eleven",
                 "elsewhere",
-                &[started("council-b", 600), started("council-c", 300)],
+                &[started("council-b", 601), started("council-c", 300)],
             ),
             // By its tree, at a commit: six rounds, past the ruling's five.
             record(
@@ -303,27 +433,128 @@ mod tests {
                 &[started("council-yonder", 600)],
             ),
         ];
-        let m = rounds(
+        let all = rounds(
             &[Main {
                 repo: CORE,
                 log: &log,
             }],
             &records,
+            &[],
+            || panic!("asked who landed a merge though none is filed"),
             NOW,
             "ORCH",
         );
+        let m = &all[0];
         assert_eq!(m.key, KEY);
-        assert_eq!(m.target, None, "no target is set yet");
+        assert_eq!(m.target, Some(3.0), "WCJQSG's target");
         // #14's only record is another repository's, so it has none; the
         // two reverts are no change of their own.
         assert_eq!(
             m.says,
             "median council rounds per change merged in the last day, of 3 with a review \
-             record, 1 with none"
+             record, 1 with none, no fixes record read"
         );
         // 0, 3 and 6.
         assert_eq!(m.now, 3.0, "rounds of #11 to #13");
-        assert_eq!(m.behind, ["core.nix#12: 6 rounds"]);
+        // No fixes record was read, so what #12's rounds fixed is unknown
+        // and nothing is filed on it.
+        assert_eq!(m.behind, ["core.nix#12: 6 rounds, what they fixed unread"]);
+        assert_eq!(all.len(), 1, "#12 filed though its fixes went unread");
+    }
+
+    /// The harness's record of the fixes committed for findings, each by
+    /// the council that raised it, and one answered rather than fixed.
+    fn fixes(committed: &[(&str, &str)]) -> String {
+        let fixes: Vec<serde_json::Value> = committed
+            .iter()
+            .map(|(run, subject)| {
+                serde_json::json!({"subject": {"finding": {"subject": subject,
+                    "origin": {"runId": run}}}, "outcome": {"kind": "committed"}})
+            })
+            .chain(std::iter::once(serde_json::json!({"subject": {"finding": {
+                "subject": "answered", "origin": {"runId": "council-b-1"}}},
+                "outcome": {"kind": "answered"}})))
+            .collect();
+        serde_json::json!({ "fixes": fixes }).to_string()
+    }
+
+    #[test]
+    fn a_merge_past_five_says_what_its_later_rounds_fixed_or_goes_to_its_owner() {
+        let log = format!(
+            "aaaa {} Merge pull request #21 from Jitsusama/here/a\n\
+             bbbb {} Merge pull request #22 from Jitsusama/here/b\n\
+             cccc {} Merge pull request #23 from Jitsusama/here/c\n",
+            NOW - 60,
+            NOW - 120,
+            NOW - 180
+        );
+        // Seven rounds each, a minute apart, the sixth and seventh past five.
+        // Their ids count down as time goes on, so a round is taken as past
+        // five by when it started, not by its id: council-x-1 and
+        // council-x-0 are the sixth and seventh.
+        let seven = |change: &str| -> Vec<String> {
+            (0..7)
+                .map(|n| started(&format!("council-{change}-{}", 6 - n), 3600 - 60 * n))
+                .collect()
+        };
+        let records: Vec<String> = ["21", "22", "23"]
+            .iter()
+            .zip(["a", "b", "c"])
+            .map(|(number, change)| {
+                let mut runs = seven(change);
+                // A judge that consolidated #23's seventh.
+                if change == "c" {
+                    runs.push(started("judge-c", 30).replace(
+                        r#""round": "council""#,
+                        r#""round": "judge", "basis": "council-c-0""#,
+                    ));
+                }
+                record("github", CORE, number, "elsewhere", &runs)
+            })
+            .collect();
+        // #21's fifth round fixed one, which isn't past five; #23's seventh
+        // fixed two, one through its judge; #22's sixth was only answered.
+        let fixed = [fixes(&[
+            ("council-a-2", "in the fifth"),
+            ("judge-c", "a test that never failed"),
+            ("council-c-0", "a second"),
+        ])];
+        let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
+        let all = rounds(
+            &[Main {
+                repo: CORE,
+                log: &log,
+            }],
+            &records,
+            &fixed,
+            || landed,
+            NOW,
+            "ORCH",
+        );
+        assert_eq!(
+            all[0].behind,
+            [
+                "core.nix#21: 7 rounds, those past five fixed nothing",
+                "core.nix#22: 7 rounds, those past five fixed nothing",
+                "core.nix#23: 7 rounds, past five fixed a test that never failed and 1 more",
+            ]
+        );
+        let fruitless: Vec<(&str, &str, f64)> = all[1..]
+            .iter()
+            .map(|m| (m.key.as_str(), m.owner.as_str(), m.now))
+            .collect();
+        assert_eq!(
+            fruitless,
+            [
+                ("rounds-past-five-fixed-nothing:core.nix#21", "ORCH", 7.0),
+                ("rounds-past-five-fixed-nothing:core.nix#22", "B8RBNW", 7.0),
+            ],
+            "a merge whose rounds past five fixed nothing goes to who landed it"
+        );
+        assert!(
+            all[1..].iter().all(|m| m.past().is_some()),
+            "each is past its target of five, so it's filed"
+        );
     }
 
     #[test]
@@ -332,15 +563,18 @@ mod tests {
             "aaaa {} Merge pull request #11 from Jitsusama/here\n",
             NOW - 60
         );
-        let m = rounds(
+        let all = rounds(
             &[Main {
                 repo: CORE,
                 log: &log,
             }],
             &[],
+            &[],
+            BTreeMap::new,
             NOW,
             "ORCH",
         );
+        let m = &all[0];
         assert!(
             m.says.ends_with("of 0, no review record read"),
             "{}",

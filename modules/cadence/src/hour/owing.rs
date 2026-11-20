@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, drag};
+use super::measures::{BLIND, Class, HELD, Measure, drag, rounds};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -81,6 +81,22 @@ fn filed(m: &Measure) -> Vec<Filed> {
         figure(m.now),
         figure(m.target.unwrap_or_default())
     );
+    // A merge's rounds can't be taken back, so its figure never comes in:
+    // the owner is asked what they caught, and it closes as the merge
+    // leaves the day's count.
+    if m.key.starts_with(rounds::FRUITLESS) {
+        return vec![Filed {
+            key: format!("hour:{}", m.key),
+            owner: m.owner.clone(),
+            text: format!(
+                "cadence hour: {says}. Past round five a round raises only what would \
+                 mislead Joel or break something. Please reply with what those rounds \
+                 caught that the fixes record misses, or what keeps the next merge to five. \
+                 It closes by itself once the merge is a day old."
+            ),
+            says,
+        }];
+    }
     let owners = by_owner(m);
     if !owners.is_empty() {
         return owners
@@ -145,9 +161,14 @@ fn routed(class: Class) -> bool {
 /// back in once none of the measure's lines names them, since a cell's
 /// line goes only when it is fixed. A clean file's line can go as the day
 /// turns, so a clean one waits for its zone. A measure that couldn't be
-/// read says nothing, so it closes none.
+/// read says nothing, so it closes none. A merge whose rounds past five
+/// fixed nothing is back in once its line is gone, the merge a day old,
+/// unless the rounds measure couldn't read the review record.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
+    if key.starts_with(rounds::FRUITLESS) {
+        return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
+    }
     // The ask for a check closes once the check merged and only a measure
     // holds the miss; that hold is its own finding, closing once judged.
     let asked = key.strip_prefix("miss:").map(|what| (what, false));
@@ -194,7 +215,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// of every class that was filed before them, so while they lead it each
 /// of his apps' figures past its target goes to its own owner, as each
 /// miss does, and the drag the rest of the hour would have is filed too:
-/// his misses still reach their owners whatever his apps read.
+/// his misses still reach their owners whatever his apps read. So does a
+/// merge whose rounds past five fixed nothing, which WCJQSG asked be filed
+/// to whoever landed it, whatever else leads.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -209,16 +232,13 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
-    let Some(lead) = drag(measures) else {
-        return Vec::new();
-    };
     let rest: Vec<Measure> = measures
         .iter()
         .filter(|m| m.class != Class::Apps)
         .cloned()
         .collect();
-    let mut dragging = vec![lead];
-    if lead.class == Class::Apps {
+    let mut dragging: Vec<&Measure> = drag(measures).into_iter().collect();
+    if let Some(lead) = dragging.first().copied().filter(|m| m.class == Class::Apps) {
         dragging.extend(
             measures
                 .iter()
@@ -226,6 +246,12 @@ pub fn file(
         );
         dragging.extend(drag(&rest));
     }
+    // Never the lead, which passes them over, so filed whatever leads.
+    dragging.extend(
+        measures
+            .iter()
+            .filter(|m| m.key.starts_with(rounds::FRUITLESS) && m.past().is_some()),
+    );
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -417,6 +443,49 @@ mod tests {
             "each figure past its target and the misses weren't filed"
         );
         assert_eq!(ledger[2].axis, Class::Miss.name(), "filed as a miss");
+    }
+
+    #[test]
+    fn a_merge_whose_rounds_past_five_fixed_nothing_goes_to_who_landed_it() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec!["History paused · RCTRF8".to_owned()];
+        let mut fruitless = measure(
+            &format!("{}core.nix#12", rounds::FRUITLESS),
+            Class::Ship,
+            7.0,
+            Some(5.0),
+        );
+        fruitless.owner = "B8RBNW".to_owned();
+        let mut ledger = Vec::new();
+        let told = file(
+            &mut ledger,
+            &[misses, fruitless.clone()],
+            "2026-11-19",
+            1000,
+        );
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["RCTRF8", "B8RBNW"],
+            "the merge's rounds weren't filed beside the miss that leads"
+        );
+        // Alone, it still files, and never leads the drag.
+        let mut alone = Vec::new();
+        let median = measure(rounds::KEY, Class::Ship, 2.0, Some(rounds::TARGET));
+        let both = [median.clone(), fruitless];
+        assert!(drag(&both).is_none(), "a merge's rounds led the drag");
+        assert_eq!(file(&mut alone, &both, "2026-11-19", 1000).len(), 1);
+        // Still in the day's count an hour on, it stays open; a day on, its
+        // line gone, it closes; with the record unread, it would have
+        // stayed open.
+        file(&mut alone, &both, "2026-11-19", 4600);
+        assert!(alone[0].open, "closed while the merge was still counted");
+        let mut unread = median.clone();
+        unread.says = "median council rounds, of 0, no review record read".to_owned();
+        file(&mut alone, &[unread], "2026-11-20", 90_000);
+        assert!(alone[0].open, "closed though the review record went unread");
+        file(&mut alone, &[median], "2026-11-20", 90_000);
+        assert!(!alone[0].open, "never closed once the merge left the day");
     }
 
     #[test]

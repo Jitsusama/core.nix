@@ -103,11 +103,13 @@ impl Measure {
 }
 
 /// The measure to move this hour: the first class with one past its
-/// target, and within it the one furthest past.
+/// target, and within it the one furthest past. A merge's rounds past five
+/// can't move, so they are filed to its owner apart and never lead.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
+        .filter(|m| !m.key.starts_with(rounds::FRUITLESS))
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
@@ -131,43 +133,49 @@ const fn count(n: usize) -> f64 {
     n as f64
 }
 
+/// A date that slipped: when it was due, the ask's words and its owner.
+type Slip = (i64, String, String);
+
 /// The dates promised in the orchestrator's `asks.jsonl` that passed in
 /// the day before `now` without their ask landing by then, of asks of
-/// the kind `which`. A date moved is a new line beside the old, so each
-/// move counts as a slip.
+/// the kind `which`. Every date an ask was given counts, from its
+/// `promised`, each with when it was given, so a date moved in place
+/// after it passed is still a slip; one moved before it passed isn't. A
+/// line without `promised` gives its `expected` alone.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
-    // The list writes an ask again to move its date, which counts again,
-    // or to re-mark, land or put it down, which doesn't: each date of an
-    // ask, by when and what was asked, is read from its latest line, in
-    // the order the list first wrote it.
-    let mut latest: BTreeMap<[String; 3], (usize, Value)> = BTreeMap::new();
+    // The list writes an ask again to move its date, or to re-mark, land
+    // or put it down: each date of an ask, by when and what was asked, is
+    // read from its latest line, in the order the list first wrote it.
+    let mut latest: BTreeMap<[String; 3], (usize, Option<Slip>)> = BTreeMap::new();
     for (order, ask) in lines(text).enumerate() {
-        let key = [&ask["at"], &ask["words"], &ask["expected"]].map(Value::to_string);
-        let first = latest.get(&key).map_or(order, |(first, _)| *first);
-        latest.insert(key, (first, ask));
-    }
-    let mut latest: Vec<(usize, Value)> = latest.into_values().collect();
-    latest.sort_by_key(|(order, _)| *order);
-    let mut slipped: Vec<(i64, String, String)> = latest
-        .into_iter()
-        .map(|(_, ask)| ask)
-        .filter(|ask| tracking::of(ask) == Some(which))
-        .filter_map(|ask| {
-            let expected = seconds(&ask["expected"])?;
-            let landed = seconds(&ask["landed"]);
-            let late = expected <= now
+        let ours = tracking::of(&ask) == Some(which);
+        let landed = seconds(&ask["landed"]);
+        for (expected, moved) in promised(&ask) {
+            let late = ours
+                && expected <= now
                 && expected > now - DAY
-                && landed.is_none_or(|landed| landed > expected);
-            late.then(|| {
+                && landed.is_none_or(|landed| landed > expected)
+                && moved.is_none_or(|moved| moved >= expected);
+            let key = [
+                ask["at"].to_string(),
+                ask["words"].to_string(),
+                expected.to_string(),
+            ];
+            let first = latest.get(&key).map_or(order, |(first, _)| *first);
+            let slip = late.then(|| {
                 (
                     expected,
                     ask["words"].as_str().unwrap_or_default().to_owned(),
                     first_owner(ask["owner"].as_str().unwrap_or_default()),
                 )
-            })
-        })
-        .collect();
+            });
+            latest.insert(key, (first, slip));
+        }
+    }
+    let mut latest: Vec<(usize, Option<Slip>)> = latest.into_values().collect();
+    latest.sort_by_key(|(order, _)| *order);
+    let mut slipped: Vec<Slip> = latest.into_iter().filter_map(|(_, slip)| slip).collect();
     slipped.sort_by_key(|(expected, _, _)| *expected);
     Measure {
         key: which.key("slips"),
@@ -189,6 +197,28 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
             .map(|(_, words, owner)| format!("{} · {owner}", short(words)))
             .collect(),
     }
+}
+
+/// Each date `ask` was given, with when the date after it was given, if
+/// one was: its `promised`, oldest first, then its `expected` where that
+/// isn't the last promised, given at a time unknown.
+fn promised(ask: &Value) -> Vec<(i64, Option<i64>)> {
+    let mut given: Vec<(Option<i64>, Option<i64>)> = ask["promised"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| (seconds(&p["expected"]), seconds(&p["given"])))
+        .collect();
+    let current = seconds(&ask["expected"]);
+    if current.is_some() && given.last().map(|(date, _)| *date) != Some(current) {
+        given.push((current, None));
+    }
+    given
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (date, _))| Some(((*date)?, given.get(i + 1)?.1)))
+        .chain(given.last().and_then(|(date, _)| Some(((*date)?, None))))
+        .collect()
 }
 
 /// How long Joel's asks in the orchestrator's `asks.jsonl` took to put a
