@@ -119,13 +119,36 @@ function hiddenGone(ways) {
         last: ways.last !== null && shown(ways.last) ? ways.last : null };
 }
 
-// Whether a way back that `had` places a moment ago and has `left` now was
-// emptied by a share, and says so: the key had somewhere to go until the
-// share let it go, so Ctrl+O's silence or Ctrl+T's E73 would read as the
-// key broken. Otherwise it says what Vim says (Launcher.qml's jump,
-// toLastPlace and tagBack).
-function shareEmptied(had, left) {
-    return had > 0 && left === 0;
+// The ways back a share has let go and their keys haven't yet said so, as
+// { back, ahead, tags, last }: none as the launcher opens.
+function noneLetGo() {
+    return { back: false, ahead: false, tags: false, last: false };
+}
+
+// Which ways back stand let go once a share's letting go moves each from
+// `had` places to `left` (counts by way, the last place 1 or 0), from the
+// `marks` before it: a way it emptied is let go, as untold empties every
+// way at a share's start and hiddenGone some at a press, and a way that
+// holds a place again is not, its key having somewhere to go. Each way
+// keeps its own mark, so a press that empties all four leaves the other
+// three keys to say so at their own first press.
+function waysLetGo(marks, had, left) {
+    const now = {};
+    for (const way of Object.keys(noneLetGo())) {
+        now[way] = left[way] === 0 && (marks[way] === true || had[way] > 0);
+    }
+    return now;
+}
+
+// What a press of `way`'s key, finding it empty, says: whether the share
+// let it go (`say`), as the key had somewhere to go until then, so its
+// silence or Ctrl+T's E73 would read as the key broken, and the marks
+// after, that way's spent, so its next press says what Vim says
+// (Launcher.qml's jump, toLastPlace and tagBack).
+function letGoTold(marks, way) {
+    const after = Object.assign({}, marks);
+    after[way] = false;
+    return { say: marks[way] === true, marks: after };
 }
 
 // Where the selection goes in them, from where it `was`: { row, at,

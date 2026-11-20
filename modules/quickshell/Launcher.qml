@@ -3389,6 +3389,7 @@ Scope {
         toldOnOpen = [];
         say([]);
         forgetGone();
+        const had = wayCounts();
         const left = Steady.shareStarts({ rows: matches, at: current, back: jumpsBack,
             ahead: jumpsAhead, tags: tagsBack, last: lastPlace }, pairedId);
         if (left.rows.length !== matches.length) {
@@ -3399,6 +3400,7 @@ Scope {
         jumpsAhead = left.ahead;
         tagsBack = left.tags;
         lastPlace = left.last;
+        markLetGo(had);
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
@@ -4205,11 +4207,10 @@ Scope {
     // a source that hides now, before any way back is taken
     // (Steady.hiddenGone): untold empties them as a share starts, but a
     // key before Asks' rows are remade records the step as it was named,
-    // and Copies never says a share began. Answers how many each way
-    // held a moment before, so a key the share has just emptied says so.
+    // and Copies never says a share began. Each way it empties is let go
+    // (letGoBy), for its key to say so.
     function hiddenForgotten() {
-        const had = { back: jumpsBack.length, ahead: jumpsAhead.length, tags: tagsBack.length,
-            last: lastPlace !== null ? 1 : 0 };
+        const had = wayCounts();
         const left = Steady.hiddenGone({ back: jumpsBack, ahead: jumpsAhead, tags: tagsBack,
             last: lastPlace });
         const dropped = jumpsBack.length - left.back.length + jumpsAhead.length
@@ -4227,19 +4228,33 @@ Scope {
             tagsBack = left.tags;
         if (left.last !== lastPlace)
             lastPlace = left.last;
-        return had;
+        markLetGo(had);
     }
-    // The foot's word for a way back `act` the share has just emptied, as
-    // Tab's "not here" is said: once, at the press that found it empty.
-    function letGoSaid(act) {
-        say([[hintKey(act), (Words.field.hints ?? {}).letGo ?? ""]]);
+    // The ways back a share has let go whose keys haven't yet said so
+    // (Steady.waysLetGo), none as the launcher opens.
+    property var letGoBy: Steady.noneLetGo()
+    function wayCounts() {
+        return { back: jumpsBack.length, ahead: jumpsAhead.length, tags: tagsBack.length,
+            last: lastPlace !== null ? 1 : 0 };
+    }
+    function markLetGo(had) {
+        letGoBy = Steady.waysLetGo(letGoBy, had, wayCounts());
+    }
+    // Says on the foot, as Tab's "not here" is said, that the share let go
+    // of `way`, found empty by `act`'s key, at that way's first press since:
+    // whether it did.
+    function letGoSaid(way, act) {
+        const told = Steady.letGoTold(letGoBy, way);
+        letGoBy = told.marks;
+        if (told.say)
+            say([[hintKey(act), (Words.field.hints ?? {}).letGo ?? ""]]);
+        return told.say;
     }
     function jump(by) {
-        const had = hiddenForgotten();
+        hiddenForgotten();
         const from = by < 0 ? jumpsBack : jumpsAhead;
         if (from.length === 0) {
-            if (Steady.shareEmptied(by < 0 ? had.back : had.ahead, 0))
-                letGoSaid(by < 0 ? "jumpBack" : "jumpForward");
+            letGoSaid(by < 0 ? "back" : "ahead", by < 0 ? "jumpBack" : "jumpForward");
             return;
         }
         const to = from[from.length - 1];
@@ -4342,10 +4357,9 @@ Scope {
         return enter(row);
     }
     function toLastPlace() {
-        const had = hiddenForgotten();
+        hiddenForgotten();
         if (lastPlace === null) {
-            if (Steady.shareEmptied(had.last, 0))
-                letGoSaid("lastPlace");
+            letGoSaid("last", "lastPlace");
             return;
         }
         const to = lastPlace;
@@ -4478,14 +4492,12 @@ Scope {
 
     // Ctrl+T: back to the place Ctrl+] left last, as it was left, as Vim's
     // pops its tag stack; with none, Vim's E73, the rows staying put, or
-    // the foot's word where a share has just let the last of them go.
+    // at the first press since a share let them go, the foot's word.
     function tagBack() {
-        const had = hiddenForgotten();
+        hiddenForgotten();
         if (tagsBack.length === 0) {
-            if (Steady.shareEmptied(had.tags, 0)) {
-                letGoSaid("tagBack");
+            if (letGoSaid("tags", "tagBack"))
                 return;
-            }
             // Where the command line is, as E492 and E21 are.
             commandSay((Words.field.hints ?? {}).E73 ?? "", true);
             return;
@@ -8339,6 +8351,8 @@ Scope {
             jumpsAhead = [];
         if (tagsBack.length > 0)
             forgetFollows();
+        if (Object.values(letGoBy).some(Boolean))
+            letGoBy = Steady.noneLetGo();
         prompt.forget();
     }
     // Long enough for the closing frame to be drawn first, so letting the
@@ -10555,6 +10569,7 @@ Scope {
         jumpsBack = [];
         jumpsAhead = [];
         forgetFollows();
+        letGoBy = Steady.noneLetGo();
     }
 
     // How deep the place it opened on is: home's 0, or a collection opened
