@@ -20,7 +20,7 @@
 //!   told it moved each minute.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use daemon_serve::asks::Domain;
 use serde_json::{Value, json};
@@ -33,7 +33,14 @@ use crate::views::{answered, change_at};
 /// The daemon as its clients know it.
 pub const DOMAIN: Domain = Domain {
     name: "repos",
-    kinds: &["reading", "repository", "checkout", "tree", "change"],
+    kinds: &[
+        "reading",
+        "repository",
+        "checkout",
+        "tree",
+        "change",
+        "using",
+    ],
     sole: &["reading"],
     named_only: &[],
 };
@@ -95,8 +102,39 @@ pub fn records(record: &Record) -> Vec<Value> {
 /// its processor time only where `measured`, two readings having been
 /// taken, and none otherwise rather than nothing.
 pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> Vec<Value> {
-    let _ = (record, used, measured);
-    Vec::new()
+    let cpu = |share: Option<f64>| measured.then(|| share.unwrap_or(0.0));
+    let mut said = Vec::new();
+    for repository in &record.repositories {
+        let paths = repository.checkouts.iter().flat_map(|checkout| {
+            std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
+        });
+        let mut whole = Use::default();
+        let mut folders = Vec::new();
+        for path in paths {
+            let Some(one) = used.get(Path::new(path)) else {
+                continue;
+            };
+            whole.processes += one.processes;
+            whole.memory += one.memory;
+            whole.cpu = Some(whole.cpu.unwrap_or(0.0) + one.cpu.unwrap_or(0.0));
+            folders.push(json!({
+                "path": path,
+                "processes": one.processes,
+                "memory": one.memory,
+                "cpu": cpu(one.cpu),
+            }));
+        }
+        said.push(json!({
+            "key": format!("using:{}", repository.key),
+            "kind": "using",
+            "repository": repository.key,
+            "processes": whole.processes,
+            "memory": whole.memory,
+            "cpu": cpu(whole.cpu),
+            "folders": folders,
+        }));
+    }
+    said
 }
 
 /// How the sources stand, as health says them: git always read, since a
