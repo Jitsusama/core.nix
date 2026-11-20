@@ -259,6 +259,7 @@ async fn serve(
         stalls: Stalls::default(),
         left: Vec::new(),
         settled: Vec::new(),
+        at: HashMap::new(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -685,6 +686,13 @@ struct Air<'a> {
     /// The cards that have just joined a network, by name, for one that
     /// went astray as it was let go to look again.
     settled: Vec<String>,
+    /// The access point each card was last said to be at, by the card's
+    /// path and the point's, as wpa_supplicant said them in turn. A join
+    /// is credited to the point it was said at, since by the time wifid
+    /// reads its signal the card can be on its way to another: one sent
+    /// back said it reached a point it was still authenticating with
+    /// (2026-11-20).
+    at: HashMap<String, String>,
 }
 
 impl Air<'_> {
@@ -834,7 +842,11 @@ impl Air<'_> {
                     change(&self.state, |state| state.attempting(&card));
                 }
                 if step == "completed" && before != "completed" {
-                    let on = self.joined(bus, path).await;
+                    let said = match changed.get("CurrentBSS").map(|point| &**point) {
+                        Some(zvariant::Value::ObjectPath(point)) => Some(point.to_string()),
+                        _ => self.at.get(path.as_str()).cloned(),
+                    };
+                    let on = self.joined(bus, path, said.as_deref()).await;
                     let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
                     if let Some(arrived) = arrived {
                         println!("{}", arrived.said(&card));
@@ -858,6 +870,7 @@ impl Air<'_> {
         }
         let point = changed.get("CurrentBSS").map(|point| &**point);
         if let Some(zvariant::Value::ObjectPath(point)) = point {
+            self.at.insert(path.to_string(), point.to_string());
             // wpa_supplicant says only where a card's steps have got to when
             // it sends, so a move can come as a new point alone, the card
             // joined throughout.
@@ -910,15 +923,23 @@ impl Air<'_> {
 
     /// Notes the channel the card joined its network on, so a card looks
     /// there first when it next has no network, and says the access point
-    /// it joined, where it's heard.
-    async fn joined(&self, bus: &Connection, card: &ObjectPath<'_>) -> Option<String> {
-        let point = match interface(bus, card.to_owned().into()).await {
-            Ok(interface) => interface.current_access_point().await,
-            Err(error) => Err(error),
+    /// it joined, where it's heard: the one wpa_supplicant said, by its
+    /// path, or where it said none, the one it's at now.
+    async fn joined(
+        &self,
+        bus: &Connection,
+        card: &ObjectPath<'_>,
+        said: Option<&str>,
+    ) -> Option<String> {
+        let point = match said {
+            Some(point) => Some(point.to_owned()),
+            None => match interface(bus, card.to_owned().into()).await {
+                Ok(interface) => interface.current_access_point().await.ok(),
+                Err(_) => None,
+            }
+            .map(|point| point.to_string()),
         };
-        let point = point
-            .ok()
-            .and_then(|point| self.points.get(point.as_str()))?;
+        let point = point.and_then(|point| self.points.get(point.as_str()))?;
         let heard = point.heard()?;
         if let Some(frequency) = point.frequency()
             && let Err(error) = self.seen.borrow_mut().joined(&heard.name, frequency)
@@ -2205,7 +2226,7 @@ impl Wifid<'_> {
             self.held.borrow_mut().insert(card.clone(), network);
             self.arrivals
                 .borrow_mut()
-                .asked(&card, None, &from, Instant::now());
+                .back(&card, &from, Instant::now());
             match interface.roam(&from).await {
                 Ok(()) => Ok(()),
                 Err(refused) => {

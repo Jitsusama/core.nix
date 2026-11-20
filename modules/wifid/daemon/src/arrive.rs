@@ -65,6 +65,8 @@ struct Move {
     left: Option<Instant>,
     /// Whether it's been said lost already.
     lost: bool,
+    /// Whether it's a way back, followed past a join elsewhere.
+    back: bool,
 }
 
 /// How a move ended.
@@ -128,6 +130,25 @@ impl Arrivals {
             asked,
             left: None,
             lost: false,
+            back: false,
+        };
+        self.moves.insert(card.to_owned(), moved);
+    }
+
+    /// Takes in that the card was sent back to the access point it left.
+    /// A card sent back as it falls off is already on its way to whatever
+    /// wpa_supplicant took next, and can join there first, as it joined
+    /// the Roadside Inn in a test for 85 ms (2026-11-20). So a way back is
+    /// followed past a join elsewhere, each said, to the point it was sent
+    /// to, and has no way back of its own.
+    pub fn back(&mut self, card: &str, to: &str, now: Instant) {
+        let moved = Move {
+            to: to.to_owned(),
+            from: None,
+            asked: now,
+            left: None,
+            lost: false,
+            back: true,
         };
         self.moves.insert(card.to_owned(), moved);
     }
@@ -147,6 +168,7 @@ impl Arrivals {
             asked: now,
             left: Some(now),
             lost: false,
+            back: false,
         };
         self.moves.insert(card.to_owned(), moved);
     }
@@ -237,17 +259,24 @@ impl Arrivals {
         if let Some(gone) = self.overdue(card, now) {
             return gone.unseen();
         }
-        let done = self.moves.remove(card)?;
-        let asked = now - done.asked;
-        let to = done.to;
+        let moving = self.moves.get(card)?;
+        let asked = now - moving.asked;
+        let to = moving.to.clone();
+        let reached = on.is_some_and(|on| to.eq_ignore_ascii_case(on));
+        let followed = moving.back && !reached;
+        let done = if followed {
+            None
+        } else {
+            self.moves.remove(card)
+        };
         let Some(on) = on else {
             return Some(Arrival::Unnamed { to, asked });
         };
-        if !to.eq_ignore_ascii_case(on) {
+        if !reached {
             let on = on.to_owned();
             return Some(Arrival::Elsewhere { to, on, asked });
         }
-        let off = done.left.map(|left| now - left);
+        let off = done.and_then(|done| done.left).map(|left| now - left);
         Some(Arrival::Reached { to, asked, off })
     }
 
@@ -629,7 +658,7 @@ mod tests {
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.unreached(now + BACK_AFTER);
-        arrivals.asked("wlan0", None, DESK, now + BACK_AFTER);
+        arrivals.back("wlan0", DESK, now + BACK_AFTER);
 
         let due = arrivals.due();
         let back = arrivals.joined("wlan0", Some(DESK), now + ms(1150));
@@ -643,6 +672,43 @@ mod tests {
                 off: None
             }),
             "timed from its own ask"
+        );
+        assert_eq!(
+            arrivals.joined("wlan0", Some(DESK), now + ms(2000)),
+            None,
+            "ended"
+        );
+    }
+
+    #[test]
+    fn a_way_back_overtaken_by_a_join_elsewhere_is_followed_on_to_its_point() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.step("wlan0", "disconnected", now + ms(295));
+        arrivals.fell_off("wlan0");
+        arrivals.back("wlan0", DESK, now + ms(306));
+
+        let inn = arrivals.joined("wlan0", Some(HALL), now + ms(344));
+        let back = arrivals.joined("wlan0", Some(DESK), now + ms(689));
+
+        assert_eq!(
+            inn,
+            Some(Arrival::Elsewhere {
+                to: DESK.into(),
+                on: HALL.into(),
+                asked: ms(38)
+            }),
+            "the join it was already on its way to is said"
+        );
+        assert_eq!(
+            back,
+            Some(Arrival::Reached {
+                to: DESK.into(),
+                asked: ms(383),
+                off: None
+            }),
+            "and then where it was sent back to"
         );
     }
 
