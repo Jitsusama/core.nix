@@ -25,6 +25,9 @@
 //! its card left, so the card is sent back there rather than left on no
 //! network: the 16 Nov failure scanned for 18 s. The way back is followed
 //! as a move of its own, given `BACK_FOR`, whatever its steps say.
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! steps they prove, as every module in wifid keeps them.
 
 use std::collections::HashMap;
 
