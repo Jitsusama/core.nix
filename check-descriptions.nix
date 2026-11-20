@@ -1841,11 +1841,13 @@
     requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, sends
     a request the origin reset before its answer once more on another connection, one already
     open, even beside one kept, or one opened for a burst of them together, whose failure to open
-    each hears at once, and says it as a 502 when reset again, when its connection was kept with
-    none other open, when none would open or when the reset said to calm down, retiring its
-    connection, sends on no body too large or
-    left unfinished, stands down past its share failed with the 421 that sends pi direct, staying
-    through its idle time and taking requests again after on connections opened afresh, over one
+    each hears at once, and sends pi direct with its own 421 when reset again or lost, when its
+    connection was kept with none other open or when none would open, but says a 502 when a
+    reset, first or again, said to calm down, retiring its connection, sends on no body too large
+    or left unfinished, stands down past its share failed with the 421 that sends pi direct,
+    staying through its idle time, trying its path as it stands down, kept down by a trial failing
+    partway or answered with a 5xx, taking requests again once the path answers three in a row,
+    then trying it no more, or after, on connections opened afresh, over one
     opened while it stood down, for answers broken off midway as their connection falls or requests
     sent again once it takes requests again, though never for requests no connection would take,
     resets saying to calm down, answers pi gives up on or answers sent before it took requests

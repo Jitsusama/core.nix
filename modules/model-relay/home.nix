@@ -21,14 +21,19 @@
 # answered as a 421, which sends pi direct, and the journal says why. A
 # request the origin resets before its answer begins, saying its stream was
 # refused or a protocol error, goes once more, on
-# another connection, and the one that reset it takes no more; reset again,
-# reset saying anything else, or with no other connection to go on, it's a
-# 502, for pi's own retry. Past 15 in 100 failed of what it finished in ten
-# minutes, 20 at least, it stands down, sending each request direct with its
-# 421, for ten minutes, or twice as long as the last when that ended within
-# the hour, to an hour, while it runs: one that leaves once idle, or is
-# restarted, starts over. The journal says when it stands down, and when
-# the first request after finds it taking requests again; restarting it
+# another connection, and the one that reset it takes no more; reset or
+# said goodbye to saying anything else, first or again, it's a 502, for pi's
+# own retry. Reset again the same way, lost on its path when sent again, or
+# with no other connection to go on, it's the relay's own 421, so pi sends
+# it direct at once. Past 15 in 100
+# failed of what it finished in ten minutes, 20 at least, it stands down,
+# sending each request direct with its 421. After a minute, longer as
+# stand-downs double, and every half minute after, it tries its path on a
+# connection of its own, and takes requests again once the origin answers
+# three in a row; otherwise after ten minutes, or twice as long as the last
+# when that ended within the hour, to an hour, while it runs: one that
+# leaves once idle, or is restarted, starts over. The journal says when it
+# stands down, each trial, and when it takes requests again; restarting it
 # ends a stand-down.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
