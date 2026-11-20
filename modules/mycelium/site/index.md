@@ -119,7 +119,8 @@ Nothing on it acts on the network.
   beside the look's switch, and a line says whether the map is live
   from this machine's node and since when, its mark a disc while live
   and a ring once it isn't. The line just over the map says where the
-  keys are, and its words zoom, show the map whole and open Now.
+  keys are, and its words zoom, show the map whole, start new work and
+  open Now.
   A screen reader hears coarser words (a few at work, most at work),
   and only when those change. A
   drawer slides in from the right over an empty gutter the map keeps
@@ -129,7 +130,8 @@ Nothing on it acts on the network.
   the questions waiting and holds standing that hold the flow; then how
   the whole network stands, what it spent today, how to read the map
   and the network as a tree. Full stop, or the last control over the
-  map, opens Now. A cell's drawer talks to it in the Launcher, and one
+  map, opens Now. A cell's drawer talks to it in the Launcher, starts
+  new work from it, and one
   with a forage opens the forage page on it, saying what it is for and
   how far its plans have come.
 - **Signal against noise** is said in Now: of the latest messages,
@@ -209,6 +211,12 @@ The keyboard comes first and the pointer works too.
 - **Full stop** opens Now in the drawer, and closes it again.
 - **a** opens the next cell that needs him, in Now's order, and again
   the one after; **t** talks to the open cell in the Launcher.
+- **s** opens new work's line in the find line's place: say the work
+  in your words, and Return hands them to the Launcher's Start New
+  Work, from the cell open as the line opened unless its tick is
+  cleared. The page starts nothing itself: the Launcher opens with the
+  words filled in, and only your Return there starts the work. Escape
+  closes the line, and the control beside Now opens it too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,
   h closes it or climbs, g and G go to the first and last, and Return
@@ -224,7 +232,10 @@ json`, `mycelium machines` and `mycelium messages` print. The server
 passes networks and cells whole, of the machines only the fields the
 page draws, and of the messages never their words. The line over the
 map says whether it is live and since when, and when the node or the
-server can't be reached, it keeps the last map and says so. What it draws holds:
+server can't be reached, it keeps the last map and says so. The page
+asks nothing of the node: new work goes to the Launcher as a
+`mycelium:sprout` link, and the Launcher asks for it once you press
+Return there. What it draws holds:
 
 - `at`: when the map was last handed a change.
 - `cells`: every session, each with its name (its address), title, window

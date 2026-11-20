@@ -441,7 +441,8 @@ body {
   }
 
   .trail,
-  .find {
+  .find,
+  .sprout {
     flex-basis: 100%;
     order: 2;
   }
@@ -1214,8 +1215,63 @@ body {
 }
 
 .find[hidden],
+.sprout[hidden],
+.sprout-from[hidden],
 .trail[hidden] {
   display: none;
+}
+
+/* New work's line stands where find's does, its words the widest part,
+   then the cell it starts from, then the hand-off in full ink, so the
+   one act on the line reads as the one to press. */
+.sprout {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--mark);
+}
+
+.sprout svg {
+  flex: none;
+  inline-size: 18px;
+  block-size: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sprout input[type="text"] {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+  min-block-size: 44px;
+}
+
+.sprout-from {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tie);
+  min-block-size: 44px;
+  color: var(--text);
+  font: italic 400 var(--step-small) / 1 var(--serif);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sprout-go {
+  min-block-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 0;
+  color: var(--strong);
+  font: italic 400 var(--step-small) / 1 var(--serif);
+  text-decoration: underline 1px;
+  text-underline-offset: 0.25em;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .find-count {

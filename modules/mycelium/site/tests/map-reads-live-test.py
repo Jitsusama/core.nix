@@ -64,12 +64,12 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 27 files since the balance, who started each cell, the tree beside the map,
+# 28 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent, what waits, how wide each line is drawn and
-# how a cell is named were read in modules of their own; about 708 KB, with
-# room above.
-BUDGET = Budget(files=27, kilobytes=745, elements=590)
+# each is doing, what each spent, what waits, how wide each line is drawn, how
+# a cell is named and what new work hands the Launcher were read in modules of
+# their own; about 712 KB, with room above.
+BUDGET = Budget(files=28, kilobytes=750, elements=600)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -783,6 +783,66 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) 
     expect(talk, "a stray % opened a cell").to_have_count(0)
     page.evaluate(f"location.hash = '#cell={NAMED[1]}'")
     expect(talk, "the map stopped answering after a stray %").to_have_count(1)
+
+
+# What new work's line hands the Launcher, said back once the line closes.
+HANDED = "Handed to the Launcher's Start New Work"
+
+
+def test_s_hands_new_work_to_the_launcher_from_the_open_cell(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    line = page.locator("#sprout-line")
+    # With no cell open, s hands the words alone, and Return with none
+    # hands nothing at all.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(line, "s didn't open new work's line").to_be_visible()
+    expect(page.locator("#trail"), "the trail stood beside the line").to_be_hidden()
+    expect(page.locator("#sprout-from-line"), "a cell was offered with none open").to_be_hidden()
+    page.keyboard.press("Enter")
+    assert page.evaluate("window.talkedTo") is None, "Return with no words handed something on"
+    page.keyboard.type("tidy the rows & more")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == "mycelium:sprout?words=tidy%20the%20rows%20%26%20more", f"s handed {handed}"
+    expect(line, "the line stayed open once it handed the work on").to_be_hidden()
+    expect(page.locator("#where"), "the hand-off wasn't said").to_contain_text(HANDED)
+    # From a cell's drawer, its address goes with the words, and a tick
+    # lets it go.
+    page.keyboard.press("a")
+    expect(page, "a didn't open a cell").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    expect(page.locator("#sprout-from-line"), "the open cell wasn't offered").to_be_visible()
+    page.keyboard.type("follow up")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    want = f"mycelium:sprout?words=follow%20up&from={NEEDING[0]}"
+    assert handed == want, f"the drawer handed {handed}, not {want}"
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.locator("#sprout-from").uncheck()
+    page.locator("#sprout").fill("on its own")
+    page.locator("#sprout").press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == "mycelium:sprout?words=on%20its%20own", f"the cleared tick handed {handed}"
+    # Escape closes the line and hands nothing; a receptor is never
+    # offered as the cell work starts from.
+    page.evaluate(f"location.hash = '#cell={FED_RECEPTOR}'")
+    expect(page.locator("#panel-title"), "the receptor's drawer never opened").to_contain_text(
+        FED_RECEPTOR_TITLE
+    )
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-from-line"), "a receptor was offered").to_be_hidden()
+    page.keyboard.type("not this")
+    page.keyboard.press("Escape")
+    expect(line, "Escape didn't close new work's line").to_be_hidden()
+    expect(page.locator("#trail"), "the trail didn't come back").to_be_visible()
+    assert page.evaluate("window.talkedTo") == "mycelium:sprout?words=on%20its%20own", (
+        "Escape handed the words on"
+    )
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:

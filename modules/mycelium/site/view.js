@@ -44,6 +44,7 @@ import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, parts
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
+import { handedWords, NO_WORDS, sproutLink } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -128,6 +129,15 @@ import {
   const find = document.getElementById("find");
   const findLine = document.getElementById("find-line");
   const findCount = document.getElementById("find-count");
+  const sproutLine = document.getElementById("sprout-line");
+  const sproutInput = document.getElementById("sprout");
+  const sproutFromLine = document.getElementById("sprout-from-line");
+  const sproutFromBox = document.getElementById("sprout-from");
+  const sproutFromWords = document.getElementById("sprout-from-words");
+  const sproutGo = document.getElementById("sprout-link");
+  const sproutControl = document.getElementById("sprout-control");
+  // The cell new work would start from, the one open as its line opened.
+  let sproutFrom = null;
   const trail = document.getElementById("trail");
   const trailSteps = document.getElementById("trail-steps");
   // What the find line matched, in the order n steps through them, and
@@ -2684,6 +2694,7 @@ import {
     if (b.dataset.zoom === "in") zoomBy(1.25);
     else if (b.dataset.zoom === "out") zoomBy(0.8);
     else if (b.dataset.zoom === "now") toggleNow();
+    else if (b.dataset.zoom === "sprout") toggleSprout();
     else fit();
   });
 
@@ -3426,6 +3437,7 @@ import {
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
       (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.host)) +
+      (receptor ? "" : `<p class="led"><button type="button" class="inline" data-sprout-from="${esc(s.address)}">Start New Work From It</button></p>`) +
       // The forage page lists only cells with a forage, so only those link there.
       (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
       factList(facts) +
@@ -3645,6 +3657,7 @@ import {
   };
   const openFind = () => {
     findVisited = false;
+    closeSprout({ said: false });
     trail.hidden = true;
     findLine.hidden = false;
     find.focus();
@@ -3660,6 +3673,64 @@ import {
     if (inFind) view.focus({ preventScroll: true });
     if (view.contains(document.activeElement)) where.textContent = "Find closed; the whole map is back in its full ink.";
   };
+  // ---- New work: words handed to the Launcher's Start New Work. ----
+
+  // The line takes the trail's place as find's does, and the two never
+  // stand together. It hands the words on as a link the desktop gives the
+  // Launcher (sprout.ts says why), from the cell open as it opened, which
+  // a tick lets go of; a receptor is never one, as it is never talked to.
+  const sproutableFrom = (address) => !!address && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
+  const openSprout = (from) => {
+    closeFind();
+    sproutFrom = sproutableFrom(from) ? from : null;
+    sproutFromLine.hidden = sproutFrom === null;
+    sproutFromBox.checked = true;
+    sproutFromWords.textContent = sproutFrom ? `From ${current?.byAddress.get(sproutFrom)?.short || sproutFrom}` : "";
+    trail.hidden = true;
+    sproutLine.hidden = false;
+    sproutControl.setAttribute("aria-expanded", "true");
+    sproutInput.focus();
+  };
+  function closeSprout({ said = true } = {}) {
+    if (sproutLine.hidden) return;
+    const inLine = sproutLine.contains(document.activeElement);
+    sproutInput.value = "";
+    sproutInput.setCustomValidity("");
+    sproutLine.hidden = true;
+    trail.hidden = false;
+    sproutFrom = null;
+    sproutControl.setAttribute("aria-expanded", "false");
+    if (inLine) view.focus({ preventScroll: true });
+    if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
+  }
+  const toggleSprout = () => (sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null) : closeSprout());
+  sproutLine.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
+    const link = sproutLink(sproutInput.value, from);
+    // No words is said where they go, in the field's own bubble, and once
+    // to a screen reader, until a word is typed.
+    if (!link) {
+      sproutInput.setCustomValidity(NO_WORDS);
+      sproutInput.reportValidity();
+      where.textContent = NO_WORDS;
+      return;
+    }
+    sproutGo.href = link;
+    sproutGo.click();
+    const short = from === null ? null : current?.byAddress.get(from)?.short || from;
+    closeSprout({ said: false });
+    where.textContent = handedWords(short);
+  });
+  sproutInput.addEventListener("input", () => sproutInput.setCustomValidity(""));
+  // Escape closes the line from anywhere in it, its tick and button too,
+  // which the page's own keys leave alone as fields.
+  sproutLine.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    closeSprout();
+  });
+
   find.addEventListener("input", () => refind());
   find.addEventListener("keydown", (e) => {
     const asked = findKey(e.key);
@@ -3849,6 +3920,11 @@ import {
       where.textContent = `Opened ${openedWords({ kind, id })}; its details are in the drawer.`;
       requestAnimationFrame(() => panelBody.querySelector("h2")?.setAttribute("tabindex", "-1"));
       requestAnimationFrame(() => panelBody.querySelector("[data-back]")?.focus({ preventScroll: true }));
+      return;
+    }
+    const sprout = e.target.closest("[data-sprout-from]");
+    if (sprout) {
+      openSprout(sprout.dataset.sproutFrom);
       return;
     }
     // The way back to the whole map is the way to Now, as it says.
@@ -4673,6 +4749,8 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
+    sprout: () => openSprout(chosen?.kind === "cell" ? chosen.id : null),
+    "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),
     "let-go": () => letGo(),
@@ -4692,6 +4770,7 @@ import {
       keysOpen: keys.open,
       onMap: !!e.target.closest?.("#main"),
       findOpen: !findLine.hidden,
+      sproutOpen: !sproutLine.hidden,
       finding: finding(),
       chosen: !!chosen,
       nowOpen: !!nowOpen,
@@ -4719,13 +4798,13 @@ import {
     e.preventDefault();
     view.focus();
   });
-  const taps = { "/": openFind, ".": toggleNow, "?": toggleKeys };
+  const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
   for (const kbd of document.querySelectorAll(".head .keys kbd")) {
     const act = taps[kbd.textContent];
     if (!act) continue;
     kbd.setAttribute("role", "button");
     kbd.tabIndex = 0;
-    kbd.setAttribute("aria-label", { "/": "Find a cell", ".": "Now", "?": "Keys" }[kbd.textContent]);
+    kbd.setAttribute("aria-label", { "/": "Find a cell", s: "Start new work", ".": "Now", "?": "Keys" }[kbd.textContent]);
     kbd.addEventListener("click", act);
     kbd.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
