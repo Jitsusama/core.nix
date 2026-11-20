@@ -42,6 +42,30 @@ function acts(standing, windowed, here) {
     return ids;
 }
 
+// The acts a session offers from a row it's behind but isn't its own, as
+// a landing's in For You: Talk and Go To of its own acts, in their order,
+// so Joel reaches whoever made the thing from the thing (Joel,
+// 2026-11-16: "i have no way to go from the thing it shows to engaging
+// with the thing working on it"). None steers or ends it, since that row
+// is about what it made, not how it runs, so where it runs, which only
+// Close weighs, never changes them. One `asking` a question or a yes has
+// no Talk, as What Needs Me gives none (Now.qml's talkTo): its ask runs
+// until he answers, so words said to it would come after the answer they
+// were meant to shape. Parked, it runs no ask, so Talk stays.
+function behindActs(standing, windowed, asking) {
+    const talks = !asking || standing === "parked";
+    return acts(standing, windowed, false)
+        .filter(id => id === "switch" || (id === "talk" && talks));
+}
+
+// Whether a session's presence holds an ask open, a question or a yes,
+// the one reading behind both a landing's acts and What Needs Me's Talk,
+// so a kind of want added later is weighed in one place.
+function asks(presence) {
+    const kind = presence?.wants?.kind;
+    return kind === "question" || kind === "approval";
+}
+
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name

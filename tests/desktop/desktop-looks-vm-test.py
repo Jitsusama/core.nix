@@ -46,6 +46,9 @@ INTERNET_PAGES = 20
 # More rows than the Home Network lists, so stepping down to one that isn't there fails rather
 # than going on.
 MOST_ROWS_STEPPED = 40
+# Past the launcher's card closing, 250 ms after it's gone from view (Launcher.qml's
+# leavingLater), so a closing card's last report can't pass for one still open.
+PAST_THE_CLOSING = 0.5
 # What warp asks warp-cli, each answered by the contract's file of the same name.
 WARP_QUESTIONS = ("status", "tunnel-stats", "settings", "dns-stats")
 
@@ -999,6 +1002,37 @@ def closed_stand_last(desktop: Desktop, shot: str) -> None:
     desktop.step_out()
 
 
+def a_landing_opens(desktop: Desktop, from_its_step: bool) -> None:
+    """Open the landing, by Return on its row or from its parts, and land where it lives.
+
+    Its parts are its own Open, then its cell's acts: TESTQC, which landed it, has its window, so
+    Go To, then Talk. Either way it keeps the launcher and steps into the landing in Agents \u203a
+    Landed, and reads it, so each landing is opened one way; the row's way at the first scale.
+    """
+    if from_its_step:
+        desktop.follow()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Open", "Go To", "Talk"]
+                and (shown["selected"] or {}).get("name") == "Open"
+            )
+        )
+        # The drawer follows into the step, which must not read the landing: a read one leaves
+        # To Try, taking the step Joel stands in with it. A read is a round trip, so it's waited.
+        stepped = desktop.showing()["held"]
+        time.sleep(PAST_THE_CLOSING)
+        held = desktop.showing()
+        assert held["held"] == stepped, f"the landing's step went from under him: {held}"
+        assert held["rows"] == ["Open", "Go To", "Talk"], f"the step's acts changed: {held}"
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["agents", "Landed", TRYING] and shown["open"]
+    )
+    # A closing card still reports the trail it held until it's gone, so it's asked again.
+    time.sleep(PAST_THE_CLOSING)
+    assert desktop.showing()["open"], f"the launcher closed on Open: {desktop.showing()}"
+
+
 def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     """Shoot For You's one landing to try, Landed, then a landing's drawer, then History.
 
@@ -1032,9 +1066,7 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
         )
     )
     desktop.shoot(f"launcher-for-you-landing-at-{shot}")
-    # Return steps into it where it lives, Agents \u203a Landed, and reads it.
-    desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRYING])
+    a_landing_opens(desktop, from_its_step=shot != "1-5")
     desktop.step_out()
     desktop.step_out()
     desktop.down_to("Landed")

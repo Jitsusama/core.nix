@@ -219,6 +219,7 @@
     "launcher/NowGroups.js"
     "launcher/Order.js"
     "launcher/PlaceRow.js"
+    "launcher/SessionRow.js"
     "launcher/Showing.js"
     "pieces/Holding.js"
   ];

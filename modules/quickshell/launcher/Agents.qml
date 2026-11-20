@@ -2197,14 +2197,27 @@ Provider {
         void landedMoves;
         return (rowsKind?.held ?? {})["landed-days:agents"]?.days ?? {};
     }
-    // The session here that landed `one`, by its id, else by its address,
-    // or null once it has ended.
+    // The session here that landed `one`, by its id, or by its address only
+    // for a landing that names no id, or null once it has ended. A landing
+    // naming an id no session holds now has no lander: another session at
+    // its address never saw it, and Talk would send Joel's words there.
     function landerOf(one) {
         const here = Sessions.running.concat(Sessions.parked);
         provider.tally.sought += here.length;
-        return here.find(session => one.session.id !== ""
-            && session.presence?.session === one.session.id)
-            ?? here.find(session => session.address === one.session.address) ?? null;
+        if (one.session.id !== "")
+            return here.find(session => session.presence?.session === one.session.id) ?? null;
+        return here.find(session => session.address === one.session.address) ?? null;
+    }
+    // What a landing's row in For You offers of the session that landed it,
+    // Talk and Go To as its own row does (SessionRow.js's behindActs), so
+    // what the mesh said reaches whoever said it; none once it has ended,
+    // and no Talk while it asks a question or a yes.
+    function landerActs(one) {
+        const session = provider.landerOf(one);
+        if (session === null)
+            return [];
+        return SessionRow.behindActs(stateOf(session), windowedOf(session),
+            SessionRow.asks(session.presence)).map(id => sessionAct(session, id));
     }
     // Joel reads a landing, which the daemon keeps, and tells as its record
     // moves; one read already is asked nothing.
@@ -2442,8 +2455,10 @@ Provider {
         });
         const running = new Set(Sessions.running);
         const windowedNow = one => {
-            const session = (one.session.id !== "" ? byId.get(one.session.id) : undefined)
-                ?? byAddress.get(one.session.address) ?? null;
+            // By its address only for a landing that names no id, as
+            // landerOf, so Go To shows only where its Return goes.
+            const session = (one.session.id !== "" ? byId.get(one.session.id)
+                : byAddress.get(one.session.address)) ?? null;
             return session !== null && running.has(session) && provider.windowedOf(session);
         };
         const toChange = one => () => Niri.spawn(["xdg-open", one.url]);
@@ -2587,22 +2602,48 @@ Provider {
     readonly property var forYou: {
         const said = Words.of("agents:landed").said ?? {};
         const today = String(Calendars.today ?? "");
+        const opens = one => {
+            provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
+            provider.readLanding(one.key);
+        };
+        // Its own Open leads its step, as a look's does, so the ↵ its drawer
+        // marks is what Return does and the one Go To is the session's. It
+        // keeps the launcher as the row does, since the row always stays
+        // (Catalogue.js's closingFirst sets how a staying row's own act runs).
+        const own = one => thing({
+            key: `verb:agents:landed:open:${one.key}`,
+            verb: Words.verb("verb:on:look:open"),
+            name: Words.name("verb:on:look:open"),
+            glyph: Words.glyph("verb:on:look:open"),
+            hue: "action",
+            run: () => opens(one)
+        });
         const row = (one, fields) => thing(Object.assign({
             thing: true,
             name: one.name ?? one.what,
-            verb: "go to",
+            // Its own Open's word, so that act leads its step (Catalogue.js's
+            // leading) rather than the Go To of the session that landed it.
+            verb: Words.verb("verb:on:look:open"),
             glyph: Theme.glyph.toTry,
             readsLanding: one.key,
             trail: provider.landingTrail(one),
             spot: "",
             stays: true,
             changes: false,
-            // Every one says go to, so the foot weighs one of a run.
+            // Its step's Open walks to Landed in the launcher too, so Return
+            // there keeps it rather than closing it on nothing.
+            alwaysStays: true,
+            // Every one says open, so the foot weighs one of a run.
             keysAlike: "landing:for-you",
-            run: () => {
-                provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
-                provider.readLanding(one.key);
-            }
+            // Asked as it's stepped into, since its session may have gone;
+            // a read one's in History too, since who landed it is still
+            // whom Joel would talk to of it.
+            // Each act names the landing as the row does, so a drawer out on
+            // the row that follows into its step doesn't read the landing and
+            // take its row from To Try while Joel stands in it.
+            verbs: () => [own(one)].concat(provider.landerActs(one))
+                .map(act => Object.assign(act, { readsLanding: one.key })),
+            run: () => opens(one)
         }, provider.landingShows(one), fields));
         const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
             JSON.stringify([one, fields.hue, today]), () => row(one, fields));

@@ -55,6 +55,44 @@ QtObject {
                     + `not "${want}"`);
         }
 
+        // A row a session is behind but isn't its own, as a landing's,
+        // offers Talk and Go To of its acts, in their order, and none that
+        // steers or ends it: Go To only where it has a window, and one
+        // parked only Talk, which wakes it, though a window be said of it.
+        // One asking a question or a yes has no Talk, as What Needs Me gives
+        // none (Now.qml's talkTo); one stuck, or parked, keeps it.
+        const behind = [
+            ["working", true, false, "switch talk"],
+            ["listening", false, false, "talk"],
+            ["paused", true, false, "switch talk"],
+            ["parked", true, false, "talk"],
+            ["needs", true, true, "switch"],
+            ["needs", false, false, "talk"],
+            ["parked", false, true, "talk"],
+            // Asking its orchestrator, not Joel, it isn't his to answer,
+            // yet words said to it still come after the answer.
+            ["listening", true, true, "switch"]
+        ];
+        for (const [state, windowed, asking, want] of behind) {
+            const got = SessionRow.behindActs(state, windowed, asking).join(" ");
+            if (got !== want)
+                failures.push(`the acts behind one ${state}${asking ? " asking" : ""}: `
+                    + `"${got}", not "${want}"`);
+        }
+        // A question or a yes holds an ask open; a want of another kind,
+        // or none, doesn't.
+        const asking = [
+            [{ wants: { kind: "question" } }, true],
+            [{ wants: { kind: "approval" } }, true],
+            [{ wants: { kind: "action" } }, false],
+            [{ wants: null }, false],
+            [undefined, false]
+        ];
+        for (const [presence, want] of asking) {
+            if (SessionRow.asks(presence) !== want)
+                failures.push(`asks of ${JSON.stringify(presence)}: not ${want}`);
+        }
+
 
         // A row says how it stands and what it spent today at its right,
         // the spend kept longest, and nothing more: its address and folder
