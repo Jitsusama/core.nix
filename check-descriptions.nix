@@ -2255,9 +2255,11 @@
     let go while its blur region was empty, making none when it opens again, and takes back the set
     it gave up on growing when it goes back to its first size, and the grown set when it grows
     again, but not for a size of the grown width at another height or of the grown area on its
-    side; of fourteen sizes nearly filling the screen, it takes back one three others followed, so
-    the pool holds more than the launcher's set on a 4K screen, but keeps none of the first when
-    it comes back to it, so it holds less than about 85 MiB
+    side; of fourteen sizes nearly filling the screen, it takes back one three others followed,
+    and takes it back whole again once it is the oldest the pool holds whole, so the pool holds
+    at least about 63 MiB and, at a cap under about 69 MiB, takes a new set before keeping the one
+    given up, but keeps none of the first when it comes back to it, so it holds less than about
+    85 MiB
   '';
   niri-keeps-secret-copies-from-sandboxes = ''
     the session's niri, nested in the sandbox, offers a sandbox's focused window no copy a password

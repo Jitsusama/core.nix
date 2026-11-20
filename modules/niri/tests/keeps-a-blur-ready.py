@@ -11,15 +11,15 @@ blurs. It opens with a blur region over all of it, shuts by an empty one, opens 
 goes back to its first size and draws once more as it is, each step waiting for niri to draw it.
 It takes the grown size's width at another height, then its area turned on its side, while the
 grown set is kept, so a pool matching on width or on bytes alone would hand that set out, and
-takes the grown size back to show that set was kept. Then it
-nearly fills the screen at fourteen sizes in turn, more than the pool's 64 MiB keeps, going back
-to the second after five and to the first at the end. niri says at debug what each blur's
+takes the grown size back to show that set was kept. Then it nearly fills the screen at fourteen
+sizes in turn, more than the pool's 64 MiB keeps, going back to the second after five, to it
+again after the last, and to the first at the end. niri says at debug what each blur's
 textures came from, and each step is judged by what niri said after it alone: the first opening
 makes its set, shutting and a frame that changes nothing make none, opening again takes the whole
 set back, growing gives the set up for the next blur of its size, which going back takes, a size
 sharing only a width or an area with a kept set makes its own, the walk's second set is still
-kept after three newer sizes, and its first has been let go by the time the walk comes back to
-it.
+kept after three newer sizes and once more after all of them, and its first has been let go by
+the time the walk comes back to it.
 
 usage: keeps-a-blur-ready.py <niri's log>
 """
@@ -239,6 +239,20 @@ def main() -> None:
     )
     for size in FILLING[RECALLED_AFTER:]:
         fill(launcher, steps, size, expect=(whole, 0), why="a size the pool had never seen")
+    # After the last size it goes back to the second once more. That set is then the oldest the
+    # pool holds whole, about 63 MiB with the eight newer ones, so a pool under that has let some
+    # of it go. Under about 69 MiB, so has one keeping the last size's set before taking the
+    # second's, which pushes out the very set about to be taken; over it there is room for both,
+    # so the order is shown only at a cap under that. About 1 MiB is to spare at 64 MiB, so sets
+    # grown by another niri fail here too.
+    fill(
+        launcher,
+        steps,
+        FILLING[1],
+        expect=(0, whole),
+        why="the pool let go of the oldest set it held whole: it keeps less than about 63 MiB, "
+        "or kept the set given up before taking this one, or each set grew",
+    )
     fill(
         launcher,
         steps,
