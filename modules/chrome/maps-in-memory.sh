@@ -152,7 +152,7 @@ while :; do
     chrome=$(held)
     if [ -n "$chrome" ]; then
       echo "$chrome holds the profile, so $folder and those after it stay on the disk"
-      echo "until this runs again, as Chrome next quits or the user's manager next starts"
+      echo "until this runs again, as Chrome next quits or the account's manager next starts"
       break
     fi
     # What was there is a cache Chrome fills again, or its histograms, which
