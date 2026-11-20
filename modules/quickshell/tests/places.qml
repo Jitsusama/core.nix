@@ -487,14 +487,27 @@ QtObject {
         // workspace to its orchestrator's third.
         const keptHere = Object.assign({ leads: false }, here);
         expect("kept somewhere, it opens there, not at its orchestrator's",
-            Reopening.broughtBack(true, keptHere, true), { window: true, home: false });
+            Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
         expect("kept nowhere, it comes back held without a window",
-            Reopening.broughtBack(true, null, true), { window: false, home: false });
+            Reopening.broughtBack(true, null, true, true), { window: false, home: true });
         expect("with no places known, none is taken for windowless",
-            Reopening.broughtBack(true, null, false), { window: true, home: true });
+            Reopening.broughtBack(true, null, false, true), { window: true, home: true });
+        expect("carried or given back, never kept here, it opens as it did",
+            Reopening.broughtBack(true, null, true, false), { window: true, home: true });
         expect("handed over or started alone, it opens as it did, going home",
-            [Reopening.broughtBack(false, null, true), Reopening.broughtBack(false, keptHere, true)],
+            [Reopening.broughtBack(false, null, true, true),
+                Reopening.broughtBack(false, keptHere, true, true)],
             [{ window: true, home: true }, { window: true, home: true }]);
+        // Nothing on screen says one started without a window, so it isn't
+        // begun again until its pi has had time to say it runs.
+        const startedAt = { "held-1": 1000 };
+        expect("started without a window moments ago, it isn't begun again",
+            Reopening.startedHeldLately(startedAt, "held-1", 1000 + 60 * 1000), true);
+        expect("long since, or never, it may be",
+            [Reopening.startedHeldLately(startedAt, "held-1", 1000 + 5 * 60 * 1000),
+                Reopening.startedHeldLately(startedAt, "held-2", 2000),
+                Reopening.startedHeldLately(undefined, "held-1", 2000)],
+            [false, false, false]);
 
         // Reopen Them All begins the next session only while the machine has
         // room for it, as the machine queue judges it, so eighty sessions

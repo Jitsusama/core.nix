@@ -277,13 +277,17 @@ ShellRoot {
     }
 
     // Each is asked to reopen as a plain pi, as Reopen Them All asks the last
-    // boot's, telling each to carry on.
+    // boot's, telling each to carry on; with them, one carried here from
+    // another machine, which no boot here kept.
     function told() {
         if (!find("STALE") || !Sessions.parkedAs("NAPPED"))
             return;
         stage = "asked";
-        Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp" }, { id: "s-stale", cwd: "/tmp" },
-            { id: "s-napped", cwd: "/tmp" }], (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
+        Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", way: "boot" },
+            { id: "s-stale", cwd: "/tmp", way: "boot" },
+            { id: "s-napped", cwd: "/tmp", way: "boot" },
+            { id: "s-carried", cwd: "/tmp", way: "carried" }],
+            (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
             kept({ "s-napped": keptOn(2) }), Sessions.carryOn);
     }
 
@@ -292,7 +296,7 @@ ShellRoot {
     }
     function asked() {
         const woken = steers.find(one => one.address === "NAPPED");
-        if (piFor("s-stale").length === 0 || !woken)
+        if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken)
             return;
         Expect.expect("one its host lists is begun no more", piFor("s-viewed").length === 0,
             Niri.spawns.join("\n"));
@@ -305,9 +309,20 @@ ShellRoot {
             JSON.stringify(Sessions.keptPlaces));
         // Kept nowhere as the boot ended, it had no window, so it comes back
         // held without one, and the walk goes on without waiting for one.
+        // Its folder and its carry-on go as the shell's own `$1` and `$0`,
+        // after its words, so neither is read as the shell's.
+        const held = piFor("s-stale")[0] ?? "";
         Expect.expect("one kept nowhere comes back held, with no window",
-            piFor("s-stale").length === 1 && piFor("s-stale")[0].includes("holds add --detached")
-            && !piFor("s-stale")[0].includes("/pi-sessions/kitty.sock"),
+            piFor("s-stale").length === 1
+            && held.includes("holds add --detached --folder \"$1\" -- pi --session s-stale")
+            && (held.endsWith(` -- "$0" ${Sessions.carryOn} /tmp`)
+                || held.endsWith(" pi --session s-stale zsh /tmp"))
+            && !held.includes("/pi-sessions/kitty.sock"),
+            Niri.spawns.join("\n"));
+        Expect.expect("one carried here, though kept nowhere, still opens in a window",
+            piFor("s-carried").length === 1
+            && piFor("s-carried")[0].includes("/pi-sessions/kitty.sock")
+            && !piFor("s-carried")[0].includes("holds add --detached"),
             Niri.spawns.join("\n"));
         stage = "adrift";
         Sessions.reopenAll([{ id: "s-adrift", cwd: "/given-back", quest: "QEST-ADRIFT" }],
