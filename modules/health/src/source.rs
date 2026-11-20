@@ -755,7 +755,7 @@ const _: () = assert!(
 );
 
 /// sd-daemon(3)'s mark for a warning.
-const WARNING: u8 = 4;
+pub(crate) const WARNING: u8 = 4;
 
 /// sd-daemon(3)'s mark for an error.
 pub(crate) const ERROR: u8 = 3;

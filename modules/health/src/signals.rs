@@ -6,9 +6,8 @@
 //! has the followers ended, gives them and health's run `WRITES_WITHIN`
 //! from the stop to end and to write the day and return, then ends health
 //! by the same signal, so whatever started health sees the stop it asked
-//! for. A service manager's stop
-//! ends health's whole group anyway, but only this writes what health
-//! held unwritten, as on a restart or a reboot.
+//! for. A service manager's stop ends health's whole group anyway, but only
+//! this writes what health held unwritten, as on a restart or a reboot.
 //!
 //! The signals are caught rather than blocked and waited for: a blocked
 //! signal stays blocked in every child, so a follower would sit out a
@@ -20,10 +19,10 @@
 //! A stop under way is `stopping`, from the moment it's caught: a follower
 //! the same stop ended, as a terminal's interrupt ends its whole group,
 //! says nothing of its end, and health's own end waits for the signal's.
-//! A second stop before the first has ended health ends it at once,
-//! saying so, leaving any follower not yet ended and the day unwritten,
-//! as one who interrupts twice asks; but a hangup
-//! during a stop is the same stop: a terminal closing sends one from its
+//! A second stop before the first has ended health ends it at once, as
+//! one who interrupts twice asks, saying what it cut short: the day's
+//! write, or once the run has returned, the followers' end. A hangup during
+//! a stop is the same stop, though: a terminal closing sends one from its
 //! shell and another from the kernel, and a session's scope stopped sends
 //! one just after its stop. The first stop's `WRITES_WITHIN` bounds it all
 //! the same, counted from the catch, whether or not the followers end, so
@@ -34,7 +33,7 @@ use std::io::{self, PipeReader, Read as _};
 use std::mem;
 use std::os::fd::{AsRawFd as _, IntoRawFd as _, OwnedFd};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -53,36 +52,43 @@ static CAUGHT: AtomicI32 = AtomicI32::new(-1);
 /// Whether a stop has been caught.
 static STOPPED: AtomicBool = AtomicBool::new(false);
 
-/// Whether `until_stopped`'s run has returned, for a catch, which can't
-/// take `RAN`'s lock, to read.
-static RETURNED: AtomicBool = AtomicBool::new(false);
+/// How `until_stopped`'s run has returned, as `CUT_SHORT`'s index, for a
+/// catch, which can't take `RAN`'s lock, to read: not yet, well, or with
+/// an error kept unsaid.
+static RETURNED: AtomicUsize = AtomicUsize::new(0);
 
 /// Whether stderr is the journal's stream, kept before the stops are
-/// caught for a catch to mark its line as `source::fail` marks a failure.
+/// caught, so a catch marks its line as `source` marks every other.
 static JOURNAL: AtomicBool = AtomicBool::new(false);
 
-/// The mark a second stop's line opens with, cut where stderr isn't the
-/// journal, as `source::fail` marks a failure (sd-daemon(3)).
-const MARK: &[u8] = b"<3>";
+/// What a second stop says as it ends health, by `RETURNED`, written
+/// within its catch, where nothing that formats is safe, so whoever
+/// interrupted twice knows what it cost. Each opens with sd-daemon(3)'s
+/// mark, `MARKED` long, cut where stderr isn't the journal: a failure for
+/// a write or an error given up, a warning for followers not waited for.
+const CUT_SHORT: [&[u8]; 3] = [
+    b"<3>health: a second stop ended health at once, not waiting for the day's write\n",
+    b"<4>health: a second stop ended health at once, its run returned but its followers' end \
+      not waited for\n",
+    b"<3>health: a second stop ended health at once, not waiting to say the error its run \
+      returned\n",
+];
+
+/// How long each of `CUT_SHORT`'s marks is.
+const MARKED: usize = 3;
 
 const _: () = assert!(
-    MARK[1] == b'0' + crate::source::ERROR
-        && CUT_SHORT[1] == MARK[1]
-        && CUT_SHORT_RETURNED[1] == MARK[1],
-    "a second stop's line isn't marked as the failure source::fail says"
+    marked(CUT_SHORT[0], crate::source::ERROR)
+        && marked(CUT_SHORT[1], crate::source::WARNING)
+        && marked(CUT_SHORT[2], crate::source::ERROR),
+    "a second stop's line isn't marked whole as source marks its own"
 );
 
-/// What a second stop says as it ends health, written within its catch,
-/// where nothing that formats is safe, so whoever interrupted twice knows
-/// what it cost: the day's write, or once the run has returned, the
-/// followers' end and the saying of any error the run returned.
-const CUT_SHORT: &[u8] =
-    b"<3>health: a second stop ended health at once, not waiting for the day's write\n";
-
-/// What a second stop says once the run has returned (`CUT_SHORT`).
-const CUT_SHORT_RETURNED: &[u8] =
-    b"<3>health: a second stop ended health at once, its run returned, not waiting for its \
-      followers' end nor saying any error the run returned\n";
+/// Whether `line` opens with sd-daemon(3)'s whole mark for `mark`, as
+/// the catch cuts `MARKED` bytes from it where stderr isn't the journal.
+const fn marked(line: &[u8], mark: u8) -> bool {
+    line.len() > MARKED && line[0] == b'<' && line[1] == b'0' + mark && line[2] == b'>'
+}
 
 /// How long a follower that ends waits for health to catch a stop before
 /// it says so: a stop to health's whole group, as a service manager's,
@@ -94,14 +100,14 @@ const CUT_SHORT_RETURNED: &[u8] =
 pub const CAUGHT_WITHIN: Duration = Duration::from_millis(250);
 
 /// How long a stop waits for the followers to end and `run` to return,
-/// so it writes the day, before it ends health all the same: the followers' kill and a write
-/// take milliseconds. A stop gives longer by default, systemd 90
-/// seconds and launchd 20, but a reboot gives the account's services 5 in
-/// all (`modules/systemd/nixos.nix`), counted from before health hears of
-/// it, so this stays well under that, and a write that doesn't make it is
-/// said before the kill. It counts from the stop's catch, the followers
-/// ended beside the run's write, so one that won't end, stuck on a stalled
-/// disk, can't hold the stop.
+/// so it writes the day, before it ends health all the same: the
+/// followers' kill and a write take milliseconds. A stop gives longer by
+/// default, systemd 90 seconds and launchd 20, but a reboot gives the
+/// account's services 5 in all (`modules/systemd/nixos.nix`), counted
+/// from before health hears of it, so this stays well under that, and a
+/// write that doesn't make it is said before the kill. It counts from the
+/// stop's catch, the followers ended beside the run's write, so one that
+/// won't end, stuck on a stalled disk, can't hold the stop.
 pub(crate) const WRITES_WITHIN: Duration = Duration::from_secs(3);
 
 /// Whether `run` has returned, and the stop's thread and `rest` woken as
@@ -120,8 +126,8 @@ static UNSAID: Mutex<Option<String>> = Mutex::new(None);
 
 /// `run`, with health's stops caught: a stop calls `end`, on a thread of
 /// its own, waits up to `WRITES_WITHIN` for it and `run` to return, then
-/// ends health by its signal, and once one is caught, health ends by it alone,
-/// whatever `run` returns, saying the error it returned (`UNSAID`).
+/// ends health by its signal. Once one is caught, health ends by it
+/// alone, whatever `run` returns, saying the error it returned (`UNSAID`).
 ///
 /// # Errors
 ///
@@ -136,7 +142,7 @@ pub fn until_stopped<T>(
     if let Err(error) = &ran {
         *UNSAID.lock().unwrap_or_else(PoisonError::into_inner) = Some(format!("health: {error}"));
     }
-    RETURNED.store(true, Ordering::SeqCst);
+    RETURNED.store(if ran.is_ok() { 1 } else { 2 }, Ordering::SeqCst);
     mark(&RAN);
     await_stop();
     ran
@@ -303,16 +309,12 @@ extern "C" fn heard(signal: c_int) {
             unsafe { *errno() = kept };
             return;
         }
-        let said = if RETURNED.load(Ordering::SeqCst) {
-            CUT_SHORT_RETURNED
-        } else {
-            CUT_SHORT
-        };
-        // Marked as a failure only where the journal reads the mark.
+        let said = CUT_SHORT[RETURNED.load(Ordering::SeqCst)];
+        // Marked only where the journal reads the mark.
         let said = &said[if JOURNAL.load(Ordering::SeqCst) {
             0
         } else {
-            MARK.len()
+            MARKED
         }..];
         // SAFETY: all three are safe within a catch; the signal's own
         // action restored and raised ends the process once the catch
