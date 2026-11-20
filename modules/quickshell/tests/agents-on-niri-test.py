@@ -2323,13 +2323,14 @@ def test_a_links_new_work_says_whom_it_names_while_joel_checks_its_words(shell: 
     shell.send_key("ret")
     time.sleep(LINK_QUIET)
     shown = shell.showing()
-    assert shown["asking"] and shown["typed"] == "x" + offered, shown
+    assert shown["asking"], shown
+    assert shown["typed"] == "x" + offered, shown
     shell.close_launcher()
     # A line reached later at the same depth is no page's, so its foot says nothing of one
     # (council F37).
-    shell.ipc("talkTo", "LISTEN")
+    talked = followed(shell, "talkTo", "LISTEN")
+    assert talked["done"], talked
     shell.launcher_until(lambda shown: shown["open"] and shown["asking"])
-    time.sleep(LINK_QUIET)
     assert not told(shell.showing()), shell.showing()
     shell.close_launcher()
 
