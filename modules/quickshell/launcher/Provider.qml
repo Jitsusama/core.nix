@@ -61,20 +61,27 @@ Scope {
     property real weight: 1
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
-    // Its own work as the launcher opens or shuts, run and felt by its
-    // name, so an opening's longest stall says which source held it
-    // (Launcher.qml's feltSpan). Joel's openings into Now spent 30 and 44
-    // ms of their longest stalls in "opening", the turn of the launcher's
-    // open, against 14 the fill's own laps named (2026-11-20). A launcher
-    // that feels nothing, as a test's stand-in, just has it run.
+    // Its own work as the launcher opens or shuts, run and felt as
+    // "<its name> opening" or "shutting", so an opening's longest stall
+    // says which source held it (Launcher.qml's feltSpan). Joel's openings
+    // into Now spent 30 and 44 ms of their longest stalls in "opening",
+    // the turn of the launcher's open, against 14 the fill's own laps
+    // named (2026-11-20). What a binding on the launcher's open does in
+    // that turn stays the launcher's "opening".
     function feltOpening(work) {
-        const felt = provider.launcher?.spansHeard === true;
-        const from = felt ? KeyTimes.now() : 0;
+        return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
+    }
+    // Work run and felt as "<its name> <what>", giving what it gives and
+    // throwing what it throws. A launcher that feels nothing, as a test's
+    // stand-in, just has it run.
+    function felt(what, work) {
+        const heard = provider.launcher?.spansHeard === true;
+        const from = heard ? KeyTimes.now() : 0;
         try {
-            work();
+            return work();
         } finally {
-            if (felt)
-                provider.launcher.feltSpan(`${provider.settings.name} opening`, from);
+            if (heard)
+                provider.launcher.feltSpan(`${provider.settings.name} ${what}`, from);
         }
     }
     // Whether what it shows is still being read for the first time, as
