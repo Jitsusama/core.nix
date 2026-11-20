@@ -241,10 +241,8 @@ fn decoded(value: &str) -> Result<String, String> {
         bytes.push(match byte {
             b'+' => b' ',
             b'%' => {
-                let digit = |next: Option<u8>| next.and_then(|at| char::from(at).to_digit(16));
-                match (digit(said.next()), digit(said.next())) {
-                    (Some(high), Some(low)) => u8::try_from(high * 16 + low)
-                        .map_err(|_| "its words hold a misshaped escape".to_owned())?,
+                match (said.next().and_then(hex), said.next().and_then(hex)) {
+                    (Some(high), Some(low)) => high * 16 + low,
                     _ => return Err("its words hold a misshaped escape".to_owned()),
                 }
             }
@@ -252,6 +250,16 @@ fn decoded(value: &str) -> Result<String, String> {
         });
     }
     String::from_utf8(bytes).map_err(|_| "its words aren't text".to_owned())
+}
+
+/// What one hex digit counts, or nothing where `byte` is none.
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// `words` as one plain line: each run of spaces, tabs and line ends one
