@@ -171,6 +171,20 @@ function machines(config, hosts) {
     return own.concat(others);
 }
 
+// The machines as `machines` gives them, kept with the two files they were
+// read from (`kept`, null at first): the same kept answer while neither
+// file changed, else a new one. Working them out took 9 to 17 ms on
+// Joel's 34 hosts in Qt's engine, asked twice by every kitty drawer, its
+// acts and its facts (2026-11-20). They're handed out frozen, since each
+// answer is shared by every caller until a file changes.
+function machinesKept(kept, config, hosts) {
+    if (kept && kept.config === config && kept.hosts === hosts) {
+        return kept;
+    }
+    const all = machines(config, hosts).map(one => Object.freeze(one));
+    return { config, hosts, all: Object.freeze(all) };
+}
+
 // The command that opens ssh to a machine, through kitty's ssh kitten, by
 // the name it's listed by, and its port where known_hosts gave one.
 function sshing(kitten, one) {
