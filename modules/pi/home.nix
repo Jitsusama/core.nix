@@ -221,7 +221,9 @@ in
       Settings merged into the harness's own config file at every switch, as
       `jitsusama.pi.settings` is into pi's: each wins over what the harness
       or a person wrote there, and every other key is kept. Nothing is
-      written while none is declared.
+      written while none is declared, and a setting taken out of here stays
+      in the file until it is taken out there too. The values sit in the
+      store, readable by every account, so none may be a secret.
     '';
   };
 
@@ -634,13 +636,10 @@ in
           } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
         '';
 
-    # pi writes its session logs readable by anyone on the machine, and a
-    # tool's output in them can hold a token: on 7 November 84 of 625 logs
-    # did. pi's own folder is kept to its account alone, which closes every
-    # file under it whatever mode pi writes it with; a umask for pi would
-    # also make every file an agent writes private, which this doesn't.
     # The harness keeps its config beside pi's and writes it itself, as
     # its settings change, so it is merged as pi's is rather than linked.
+    # A person edits that file by hand, so one left not JSON is said and
+    # skipped rather than stopping the rest of the switch.
     home.activation.piHarnessTakesItsSettings = lib.mkIf (config.jitsusama.pi.harness.settings != { }) (
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         run ${
@@ -650,10 +649,15 @@ in
               inherit (config.jitsusama.pi.harness) settings;
             }
           )
-        } ${lib.escapeShellArg "${config.xdg.configHome}/pi/agentic-harness.pi/config.json"}
+        } ${lib.escapeShellArg "${config.xdg.configHome}/pi/agentic-harness.pi/config.json"} || :
       ''
     );
 
+    # pi writes its session logs readable by anyone on the machine, and a
+    # tool's output in them can hold a token: on 7 November 84 of 625 logs
+    # did. pi's own folder is kept to its account alone, which closes every
+    # file under it whatever mode pi writes it with; a umask for pi would
+    # also make every file an agent writes private, which this doesn't.
     home.activation.piKeepsItsFolderPrivate = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       run mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/sessions"}
       run chmod 0700 ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent"} \

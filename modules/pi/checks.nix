@@ -2,6 +2,7 @@
 # its opening comment says what each kind of check proves.
 args@{
   account,
+  bareDarwin,
   bareNixos,
   holds,
   lib,
@@ -460,11 +461,22 @@ import ./host-checks.nix args
         }
       );
       script = home.home.activation.piHarnessTakesItsSettings.data or "";
+      # A Mac builds its own program, so only the file it names is held.
+      mac = account (bareDarwin [
+        self.darwinModules.workstation
+        { home-manager.users.someone.jitsusama.pi.harness = { inherit settings; }; }
+      ]);
+      macScript = mac.home.activation.piHarnessTakesItsSettings.data or "";
+      file = "/.config/pi/agentic-harness.pi/config.json";
     in
     assert lib.assertMsg (
-      lib.hasInfix (builtins.unsafeDiscardStringContext activated) script
-      && lib.hasInfix "/.config/pi/agentic-harness.pi/config.json" script
+      lib.hasInfix (builtins.unsafeDiscardStringContext activated) script && lib.hasInfix file script
     ) "The harness's activation doesn't run the settings program over its config file.";
+    assert lib.assertMsg (
+      lib.hasInfix "pi-settings" macScript && lib.hasInfix "/Users/someone${file}" macScript
+    ) "A Mac's activation doesn't run the settings program over the harness's config file.";
+    assert lib.assertMsg (lib.hasInfix "|| :" script)
+      "A harness config left not JSON would stop the rest of the switch.";
     assert lib.assertMsg (
       !(account workstation).home.activation ? piHarnessTakesItsSettings
     ) "A machine declaring no harness settings still has its config written.";
