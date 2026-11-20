@@ -272,6 +272,20 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi keeps a copy of each patch it applied, every one of the
+  # folder's and only those, since a running host's copies are what cadence
+  # reads before it tells a patch's miss fixed.
+  pi-hosted-keeps-the-patches-it-applied =
+    pkgs.runCommandLocal "pi-hosted-keeps-the-patches-it-applied" { }
+      ''
+        kept=${hostedPi}/share/pi-host/patches
+        for patch in ${./host-patches}/*.patch; do
+          cmp "$patch" "$kept/$(basename "$patch")"
+        done
+        test "$(ls "$kept" | wc -l)" = "$(ls ${./host-patches}/*.patch | wc -l)"
+        touch $out
+      '';
+
   # A run a hosted pi's agent starts itself, carrying a conversation on with
   # no starting message, is prepared by extensions and settled by pi as a
   # prompt's run is, so a carried turn keeps every section they add. The

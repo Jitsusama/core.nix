@@ -2824,6 +2824,11 @@
     in it without putting any of its objects in a weak set, where unpatched every object went into one
     set for the process's life
   '';
+  pi-hosted-keeps-the-patches-it-applied = ''
+    pi built with the host's patches keeps a copy of every patch in host-patches under
+    share/pi-host/patches, by its name and reading as the patch does, and nothing else, so
+    cadence can tell from a running host's runtime which patches it loads
+  '';
   pi-hosted-runs-its-own-turns-through-pi = ''
     pi built with the host's patches, applied exactly, runs work the host's agent starts itself as
     one of its own runs: busy from its start, before_agent_start told it carries on, the same prompt

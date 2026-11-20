@@ -20,7 +20,7 @@ mod held;
 mod running;
 
 pub use held::{BLIND, HELD, held};
-pub use running::{Pin, UNRUN, UNSEEN};
+pub use running::{UNRUN, UNSEEN};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -179,7 +179,7 @@ fn main_of(path: &str) -> &'static str {
 /// The misses in `text`, each closed once its check merged on a main
 /// cadence reads, core's and the harness's, as `folder` and pi-packages
 /// keep them, and each of `checkouts`, as `NAME=PATH`, and runs here, as
-/// the last of `switches` and the hosts' runtime `pin` say. The changes
+/// the last of `switches` and the pi hosts' runtimes say. The changes
 /// found merged are kept in `folder`, so a main is never read again for
 /// them, and so are those seen running, so a closed miss stays closed.
 pub fn checked(
@@ -187,7 +187,6 @@ pub fn checked(
     folder: &Path,
     checkouts: &[String],
     switches: &str,
-    pin: Option<Pin<'_>>,
 ) -> io::Result<Measure> {
     let mut repos = Checkouts::from([
         ("core".to_owned(), folder.join("core.git")),
@@ -208,7 +207,7 @@ pub fn checked(
         write_whole(&kept_at, &serde_json::to_string(&found)?)?;
     }
     let wanted = wanted_merged(text, &repos, &found);
-    let unrun = running::unrun(&wanted, &repos, switches, pin, folder);
+    let unrun = running::unrun(&wanted, &repos, switches, folder);
     let here = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
     let judged = Judged {
         merged: &found,
