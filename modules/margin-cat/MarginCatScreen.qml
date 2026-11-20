@@ -1045,7 +1045,8 @@ PanelWindow {
     }
 
     // Sets `clock`, the walker, the mover or the yarn's fading, going
-    // from its start, and asks niri of its frames; held at once while the
+    // from its start, and for a walk or a move asks niri of its frames;
+    // held at once while the
     // launcher's card is up, asking nothing. It reads the card itself
     // rather than `stilled`, which another handler of the same change may
     // run before.

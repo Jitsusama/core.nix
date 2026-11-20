@@ -14,6 +14,9 @@
 // shared or in the overview, since a play there wakes for no one; and while
 // the launcher's card is up (`launched`), since his keys are there, and a
 // frame drawn for the cat then is one the shell isn't drawing for them.
+// Each card, like any change of level, draws a fresh rest once it goes, so a
+// launcher opened often while he types makes its plays rarer still: it's
+// as much his engagement as a key that changes the level.
 function level(heard) {
     if (heard.quiet || heard.onCamera || heard.locked || heard.unseen || heard.launched) {
         return "still";

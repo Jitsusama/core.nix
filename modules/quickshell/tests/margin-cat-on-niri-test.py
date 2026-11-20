@@ -436,9 +436,12 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     ready = time.monotonic() - keyed
     shell.as_account(f"{counting(shell)} start")
     early = steps(shell, since)
+    # A step it says it took held is the cat's fault; one before the card is the case's timing.
+    held_steps = [step for step in early if step.get("stilled")]
+    assert not held_steps, f"the cat stepped while held under the launcher: {held_steps[:3]}"
     assert not early, (
-        f"the launcher was ready {ready:.2f} s after the keys, its rest of {RESTS} s run out "
-        f"before the card rose, the case's timing and not the cat's: {early[:3]}"
+        f"the launcher was ready {ready:.2f} s after the keys were sent, its rest of {RESTS} s "
+        f"run out before the card rose, the case's timing and not the cat's: {early[:3]}"
     )
     time.sleep(RESTS + HELD)
     drew, drawn = cat_frames(shell)
@@ -476,6 +479,11 @@ def held_once(told: Json) -> None:
     """Check a walk told of was held once, with the hold left out of its frames and gaps."""
     assert told["held"] == 1, f"the cat said its walk was held {told['held']} times: {told}"
     answered = told["frames"] + told["unseen"]
+    # Every frame it presented was begun, bar the one on its way as the card rose, whose
+    # beginning falls in the hold, so a walk that left out more than its hold says fewer.
+    assert told["frames"] <= told["begun"] + 1, (
+        f"the walk presented {told['frames']} frames, but said it began {told['begun']}: {told}"
+    )
     assert answered >= told["begun"], (
         f"niri was asked of {answered} of the {told['begun']} frames it drew: {told}"
     )
