@@ -138,7 +138,13 @@ Provider {
         run: () => provider.pauseEveryAgent()
     })
 
+    // Whether a pause is asked and not yet answered, so a Return while it is
+    // asks nothing more.
+    property bool pausing: false
+
     function pauseEveryAgent() {
+        if (pausing)
+            return;
         // Never sent is told from sent and lost: only the first is sure to
         // have stopped nothing.
         if (daemon.wire === null) {
@@ -147,33 +153,46 @@ Provider {
         }
         provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
             Words.of("agents:pause-all").said?.pausing ?? "", Theme.strong]]);
-        daemon.ask({ ask: "pause", scope: "all" }, answer => provider.paused(answer));
+        pausing = true;
+        daemon.ask({ ask: "pause", scope: "all" }, answer => {
+            pausing = false;
+            provider.paused(answer);
+        });
     }
+
+    // The refusals serve gives before it stops anything (OX4WFV, 2026-11-19
+    // [05cd8c54]), said as didn't take. Any other end, a failure, a code
+    // these words don't know or an answer lost, may come after some
+    // stopped, so it says so and points at For You.
+    readonly property var stoppedNothing: ["not-joel", "no-peer", "bad-scope", "no-plan",
+        "paused-already"]
 
     things: [pauseAll]
 
     // Says in the foot what the daemon answered Pause All Agents: what it
-    // stopped, in its own line, or why it stopped nothing. No answer at all
-    // (null) means the connection went after the ask was sent, so it may
-    // have stopped them, and Joel is pointed at For You rather than told
-    // it didn't. A code these words don't know, as a serve too old to take
-    // a pause answers, says it couldn't be asked here.
+    // stopped, in its own line; why it stopped nothing, for a refusal
+    // before any stop, or a serve too old to take a pause (unknown-ask);
+    // else that it may not have stopped them all, in no alert's colour,
+    // since some may have stopped. No answer at all (null) means the
+    // connection went after the ask was sent.
     function paused(answer) {
-        if (answer === null) {
-            provider.refused({ key: "agents:pause-all" }, { code: "lost" });
+        const code = answer?.error?.code ?? "";
+        if (code === "unknown-ask") {
+            provider.refused({ key: "agents:pause-all" }, { code: "unoffered" });
             return;
         }
-        if (answer.error) {
-            const told = Words.of("for-you:source:pineapple").said ?? {};
-            const known = told[`refused:${answer.error.code}`] !== undefined;
-            provider.refused({ key: "agents:pause-all" },
-                known ? answer.error : { code: "unoffered", message: answer.error.message });
+        if (stoppedNothing.includes(code)) {
+            provider.refused({ key: "agents:pause-all" }, answer.error);
             return;
         }
-        const said = typeof answer.said === "string" && answer.said !== "" ? answer.said
-            : Words.of("agents:pause-all").said?.pausing ?? "";
+        const words = Words.of("agents:pause-all").said ?? {};
+        const said = answer !== null && !answer.error && typeof answer.said === "string"
+            ? answer.said : "";
+        if (said === "")
+            console.warn(`pineapple: pause all ended unsure: ${JSON.stringify(answer)}`);
         provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
-            said, Theme.success]]);
+            said === "" ? words.unsure ?? "" : said,
+            said === "" ? Theme.strong : Theme.success]]);
     }
 
     // What For You is given (ForYou.js's given): each row a thing to do now,

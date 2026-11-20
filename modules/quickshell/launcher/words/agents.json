@@ -418,7 +418,8 @@
       "asked": "Pause Every Agent",
       "said": {
         "arms": "pauses every agent",
-        "pausing": "pausing every agent"
+        "pausing": "pausing every agent",
+        "unsure": "some may not have stopped: For You says which did"
       }
     },
     {

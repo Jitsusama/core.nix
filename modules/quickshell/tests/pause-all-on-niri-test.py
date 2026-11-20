@@ -36,6 +36,9 @@ ASKED_WITHIN = 10.0
 ASKED_AGAIN = 1.0
 # Past the key timing's wait, 300 ms in modules/keys/language.toml, in seconds.
 BOUNCE = 0.5
+# How long the stand-in takes to answer a pause, in seconds, as serve's stop takes 1 to 6.
+LATE = 2.0
+PAUSING = "pausing every agent"
 
 
 class StandIn:
@@ -52,6 +55,8 @@ class StandIn:
         # Every line it was told, so a case that hears no pause says what it heard instead.
         self.heard: list[Json] = []
         self.answer: Json = {"said": STOPPED}
+        # How long a pause's answer waits, in seconds, as a stop takes a few.
+        self.late = 0.0
         threading.Thread(target=self.serve, daemon=True).start()
 
     def serve(self) -> None:
@@ -70,6 +75,8 @@ class StandIn:
                 # ended mid-stop.
                 if answer.get("drop"):
                     return
+                if said.get("ask") == "pause":
+                    time.sleep(self.late)
                 lines.write(json.dumps(answer) + "\n")
                 lines.flush()
 
@@ -137,11 +144,19 @@ def test_pause_all_agents_asks_once_on_a_second_return_and_says_what_stopped(
     """
     stand_in.asked.clear()
     stand_in.answer = {"said": STOPPED}
-    pressed_twice(shell, stand_in)
-    shell.launcher_until(lambda shown: STOPPED in foot(shown))
-    # Read again a while after, so a second ask still on its way is counted too.
-    time.sleep(ASKED_AGAIN)
-    assert stand_in.asked == [{"ask": "pause", "scope": "all"}], stand_in.asked
+    stand_in.late = LATE
+    try:
+        pressed_twice(shell, stand_in)
+        # Said at once, while serve stops them; a Return then asks nothing more.
+        shell.launcher_until(lambda shown: PAUSING in foot(shown))
+        time.sleep(BOUNCE)
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: STOPPED in foot(shown))
+        # Read again a while after, so a second ask still on its way is counted too.
+        time.sleep(ASKED_AGAIN)
+        assert stand_in.asked == [{"ask": "pause", "scope": "all"}], stand_in.asked
+    finally:
+        stand_in.late = 0.0
     shell.close_launcher()
 
 
@@ -178,8 +193,9 @@ def test_pause_all_agents_lost_answer_points_at_for_you(shell: Shell, stand_in: 
     stand_in.answer = {"drop": True}
     pressed_twice(shell, stand_in)
     shell.launcher_until(
-        lambda shown: "its answer was lost, so For You says whether they stopped" in foot(shown)
+        lambda shown: "some may not have stopped: For You says which did" in foot(shown)
     )
+    assert "didn't take" not in foot(shell.showing()), shell.showing()
     stand_in.answer = {"said": STOPPED}
     shell.close_launcher()
 
