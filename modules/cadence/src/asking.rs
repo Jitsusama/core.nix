@@ -373,9 +373,11 @@ mod tests {
 
     #[test]
     fn each_is_asked_where_it_answers_and_only_one_named_is_asked_by_name() {
+        fn at(to: To, s: &Snapshot) -> (&str, Option<&str>) {
+            to.addressed(s, "WATCH", "@ORCH")
+        }
         let mut s = crate::watch::held::tests::held_for(31, &[]);
         s.switcher = Some("SWITCH".into());
-        let at = |to: To, s: &Snapshot| to.addressed(s, "WATCH", "@ORCH");
         assert_eq!(
             at(To::Holder, &s),
             ("P9R1KI", Some("P9R1KI")),
