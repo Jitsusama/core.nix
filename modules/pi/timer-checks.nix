@@ -134,11 +134,20 @@ onLinux {
         }
       ]);
       givenSweep = given.systemd.user.services.pi-sweep.Service;
+      givenHost = given.systemd.user.services.pi-host-one-background.Service;
+      # The agents' SSH proxy, which the sweep gets where its realm's host
+      # does, and where it doesn't, no agent at all.
+      proxy = ''"SSH_AUTH_SOCK=%t/pi-agent.sock"'';
+      hostProxied = lib.elem proxy (lib.toList givenHost.Environment);
+      proxied =
+        account:
+        account.jitsusama.pi.agentProxy.machines != [ ]
+        || account.jitsusama.pi.agentProxy.builderKey != null;
       givenProfile = "${given.home.profileDirectory}/bin";
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, leaves an SSH agent or a variable that loads code that a pi host's unit clears, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
@@ -158,17 +167,16 @@ onLinux {
           lib.toList service.Service.Environment == [
             ''"PATH=${git}:${profile}:/run/current-system/sw/bin"''
           ]
+          ++ lib.optional (proxied home) proxy
         &&
           lib.toList givenSweep.Environment == [
             ''"PATH=${pkgs.gitMinimal}/bin:/tools/bin:/100%% sure/bin:/odd\"dir\\bin:${givenProfile}:/run/current-system/sw/bin"''
             ''"PI_SWEEP_PROVIDERS=/one/providers.ts:/two/providers.ts"''
           ]
+          ++ lib.optional hostProxied proxy
         &&
-          cleared givenSweep == lib.sort lib.lessThan (
-            lib.unique (
-              [ "SSH_AUTH_SOCK" ] ++ cleared given.systemd.user.services.pi-host-one-background.Service
-            )
-          )
+          cleared givenSweep
+          == lib.sort lib.lessThan (cleared givenHost ++ lib.optional (!hostProxied) "SSH_AUTH_SOCK")
         && !(mac.systemd.user.timers ? pi-sweep)
         && !(mac.systemd.user.services ? pi-sweep)
       );

@@ -21,8 +21,12 @@ let
   windowsElsewhere = "${scripts}/windows-elsewhere.ts";
   sweepScript = "${scripts}/pi-sweep.ts";
   sweepProviders = config.jitsusama.pi.sweep.providerModules;
-  # The account's own git, as the hosts find it, so the sweep judges and
-  # removes trees with the git that made them.
+  # Whether pi's SSH agent proxy runs here, as home.nix and host.nix decide
+  # it, so the sweep is pointed at its socket only where there is one.
+  agentProxied =
+    config.jitsusama.pi.agentProxy.machines != [ ] || config.jitsusama.pi.agentProxy.builderKey != null;
+  # The account's own git first, so the sweep judges and removes trees
+  # with the git that made them, whatever its providers' folders hold.
   sweepPath = [
     (lib.makeBinPath [ config.programs.git.package ])
   ]
@@ -169,22 +173,22 @@ in
         # providers run, then the account's, for whatever a repository's
         # filters run. Quoted, as systemd splits an unquoted entry at its
         # spaces, with each % doubled so systemd reads none as a specifier.
+        # Then the agents' SSH proxy, as a host gives its conversations, so
+        # a provider that reaches a remote asks through the same gate; with
+        # no proxy, no agent at all, rather than whichever the manager holds.
         Environment =
-          map (entry: ''"${lib.replaceStrings [ "%" ] [ "%%" ] (lib.escape [ "\\" "\"" ] entry)}"'')
-            (
-              [ "PATH=${lib.concatStringsSep ":" sweepPath}" ]
-              ++ lib.optional (
-                sweepProviders != [ ]
-              ) "PI_SWEEP_PROVIDERS=${lib.concatStringsSep ":" sweepProviders}"
-            );
+          map (entry: ''"${lib.replaceStrings [ "%" ] [ "%%" ] (lib.escape [ "\\" "\"" ] entry)}"'') (
+            [ "PATH=${lib.concatStringsSep ":" sweepPath}" ]
+            ++ lib.optional (
+              sweepProviders != [ ]
+            ) "PI_SWEEP_PROVIDERS=${lib.concatStringsSep ":" sweepProviders}"
+          )
+          ++ lib.optional agentProxied ''"SSH_AUTH_SOCK=%t/pi-agent.sock"'';
         # What would have node run code nobody gave it, as a pi host's unit
         # clears (host.nix's loadsCode), since this sweep runs git in every
-        # session's trees as a host's would.
-        # Nor either SSH agent, which a host hides from its conversations
-        # too: the sweep signs in nowhere, and a command an agent's tree
-        # names would otherwise reach Joel's keys past nothing but a gate.
+        # session's trees as a host's would, and the TPM agent's socket, which
+        # a host hides from its conversations too.
         UnsetEnvironment = [
-          "SSH_AUTH_SOCK"
           "SSH_TPM_AUTH_SOCK"
           "NODE_OPTIONS"
           "NODE_PATH"
@@ -194,7 +198,8 @@ in
           "LD_LIBRARY_PATH"
           "OPENSSL_CONF"
           "OPENSSL_MODULES"
-        ];
+        ]
+        ++ lib.optional (!agentProxied) "SSH_AUTH_SOCK";
         # A sweep still going after two hours is wedged. The hosts' sweeps
         # wait on the same lock meanwhile, so none sweeps beside it, and its
         # lock goes stale an hour after it stops, for the next sweep to take.
