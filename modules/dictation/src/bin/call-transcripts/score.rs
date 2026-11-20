@@ -99,7 +99,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                 scored.alone[index(side)] += Errors::count(&said(&line.text), &words(&text));
             }
         }
-        let written = transcript::read(&markdown(&lines, "Me"));
+        let written = transcript::read(&markdown(&lines, "Me", None, None), "Me");
         for side in [Side::Mine, Side::Theirs] {
             let spoken: Vec<String> = reference
                 .iter()
