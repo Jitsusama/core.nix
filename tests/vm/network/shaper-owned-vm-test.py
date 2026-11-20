@@ -52,8 +52,11 @@ UNSHAPED_SHARE = 0.2
 # to take the queue back from the router once the jobs fill it.
 COMING_UP = dt.timedelta(seconds=30)
 TAKING = dt.timedelta(seconds=90)
-# How long the router must drop nothing to count as having let its queue
-# go: 32 uploads backing off after a drop fill it again far sooner.
+# How long the router must shed nothing, while the shaper holds the queue
+# as its own, for the queue to count as taken back. A router still holding
+# it under 32 uploads sheds each time codel's 100 ms interval passes with
+# its queue over the 5 ms target, and a stray drop as the controller climbs
+# only starts the count again.
 HELD = dt.timedelta(seconds=5)
 SENDING = dt.timedelta(seconds=60)
 
@@ -110,10 +113,16 @@ class Rig:
         status = self.client.succeed("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
 
-    def router_drops(self) -> int:
-        """Give the packets the router's fq_codel has dropped, which only a queue there drops."""
+    def router_shed(self) -> int:
+        """Give the packets the router's fq_codel dropped or marked, as only a queue there sheds.
+
+        Marks count beside drops, since a flow that asks for ECN is marked where another would
+        be dropped.
+        """
         qdiscs: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth2"))
-        return sum(int(q.get("drops") or 0) for q in qdiscs if q.get("kind") == "fq_codel")
+        codels = [q for q in qdiscs if q.get("kind") == "fq_codel"]
+        assert codels, f"no fq_codel on the router's eth2: {qdiscs}"
+        return sum(int(q.get("drops") or 0) + int(q.get("ecn_mark") or 0) for q in codels)
 
     def taken(self) -> dict[int, int]:
         """Give the bytes the server has taken on each port."""
@@ -209,29 +218,36 @@ def loaded(rig: Rig) -> Rig:
     """Give the rig with the jobs' uploads filling the router, the shaper holding under it.
 
     The shaper starts above the line, so the router's queue is the one that fills, and
-    drops what it can't hold; only taking it back brings the shaper under what the router
-    lets through, and the router then drops nothing. Its drops are read, not the shaper's
-    rate against 8 Mbit/s: HTB let about 8.5 through as the client counts, and on
-    19 November a shaper holding at 8099 kbit/s, with the queue its own, failed that bar.
+    sheds what it can't hold. Taken back, the queue stands in the shaper's CAKE, which
+    says so, and the router sheds nothing; jobs that stopped sending would leave both
+    empty. The router's shedding is read, not the shaper's rate against 8 Mbit/s: HTB let
+    about 8.5 through as the client counts, and on 19 November a shaper holding at
+    8099 kbit/s, with the queue its own, failed that bar.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
-    # When the router's drops last moved, and to what.
-    moved: list[tuple[float, int]] = []
+    # Since when the router has shed nothing more while the shaper held the queue, and what
+    # it had shed by then.
+    since, shed_then = time.monotonic(), -1
 
     def taken_back(last_try: bool) -> bool:
-        drops = rig.router_drops()
-        if not moved or moved[0][1] != drops:
-            moved[:] = [(time.monotonic(), drops)]
-        held = drops > 0 and time.monotonic() - moved[0][0] >= HELD.total_seconds()
+        nonlocal since, shed_then
+        shed = rig.router_shed()
+        link = rig.link()
+        up = int(link.get("up") or 0)
+        ours = bool(((link.get("heard") or {}).get("ours") or {}).get("queued"))
+        if shed != shed_then or not ours:
+            since, shed_then = time.monotonic(), shed
+        held = shed > 0 and time.monotonic() - since >= HELD.total_seconds()
         if last_try and not held:
-            why = (
-                "the router never dropped, so the jobs never filled it"
-                if drops == 0
-                else f"the router kept dropping, at {drops}, with the shaper at {rig.up()} kbit/s"
-            )
+            if shed == 0:
+                why = "the router shed nothing, so the jobs never filled it"
+            elif not ours:
+                why = f"the shaper held no queue of its own, at {up} kbit/s, the router at {shed}"
+            else:
+                why = f"the router kept shedding, at {shed}, with the shaper at {up} kbit/s"
             print(f"{why}:\n{rig.trace()}")
         if held:
-            print(f"the router let its queue go, at {drops} dropped, with the shaper at {rig.up()}")
+            print(f"the router let its queue go, at {shed} shed, with the shaper at {up} kbit/s")
         return held
 
     retry(taken_back, timeout=TAKING)
