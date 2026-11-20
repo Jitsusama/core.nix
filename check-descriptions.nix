@@ -4683,10 +4683,11 @@
     among the machine's own udev rules, udev reads the MX Brio's, read after every rule tagging
     cameras for the seat and before the handing, keeping the Brio from the seat, marking it
     relayed and starting its relay on the capture node; the relay is bound to that node, takes
-    its loopback under the Brio's name and reads its NV12 at 1080p and 30 frames a second, its
-    MJPEG only where NV12 can't be had; the loopback's holders file is named as the Brio is and
-    removed when the Brio goes, and the Brio's own watch writes in the hidden folder, never
-    beside it
+    its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
+    1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
+    loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
+    lists the Brio only while that file is there, and the Brio's own watch writes in the hidden
+    folder, never beside it
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the

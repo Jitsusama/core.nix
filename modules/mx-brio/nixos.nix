@@ -44,9 +44,11 @@ let
   # so the Brio, hidden from everything else, never leaves Joel with no
   # camera. A leaky queue drops a stale frame rather than delaying the next.
   caps = "video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1";
+  # Either picture is a choice of two caps, which GStreamer reads only as
+  # a quoted value; bare, its parser takes the first for an element.
   input = lib.concatStringsSep " ! " [
     "v4l2src device=/dev/mx-brio"
-    "${caps};image/jpeg,width=1920,height=1080,framerate=30/1"
+    ''capsfilter caps="${caps};image/jpeg,width=1920,height=1080,framerate=30/1"''
     "decodebin3"
     "videoconvert"
     caps
@@ -80,6 +82,23 @@ in
   # stays as it was, the seat's to open directly, one program at a time.
   config = lib.mkIf (lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.v4l2-relayd) {
     services.udev.packages = [ rules ];
+
+    # Hiding the Brio rests on its users not being in the video group, so a
+    # machine that puts one there is told, rather than finding a program
+    # holding the Brio itself and the loopback left dark.
+    warnings =
+      let
+        inVideo = lib.attrNames (
+          lib.filterAttrs (
+            name: user:
+            lib.elem "video" user.extraGroups || lib.elem name (config.users.groups.video.members or [ ])
+          ) (lib.filterAttrs (_: user: user.isNormalUser) config.users.users)
+        );
+      in
+      lib.optional (inVideo != [ ]) (
+        "The MX Brio is kept from the seat, but ${lib.concatStringsSep ", " inVideo} can still open it"
+        + " through the video group, beside its loopback."
+      );
 
     # Who's on camera, from the loopback, under the Brio's own name.
     jitsusama.v4l2loopback.holders.mx-brio = {
@@ -119,7 +138,7 @@ in
       # added beside (../v4l2loopback/loopback.sh says why).
       preStart = "${lib.getExe takeLoopback} ${lib.escapeShellArg card} ${device} -b 4 -x 1";
       script = ''
-        exec ${lib.getExe relay} -i "${input}" -o "${output}"
+        exec ${lib.getExe relay} -i ${lib.escapeShellArg input} -o "${output}"
       '';
       postStop = ''${lib.getExe' ctl "v4l2loopback-ctl"} delete "$(cat ${device})" || true'';
     };
