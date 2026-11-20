@@ -314,7 +314,9 @@ let
   # config's IdentityAgent wins over SSH_AUTH_SOCK, so on 2026-11-20 the
   # node asked Joel's own agent, whose gate refuses agents' work, and the
   # work realm lost its Mac. IdentitiesOnly=no lets it offer what that
-  # agent holds rather than only the config's IdentityFile. A node with no
+  # agent holds rather than only the config's IdentityFile. ForwardAgent=no
+  # keeps that key, which asks nothing, from being lent to the machine it
+  # dials, whatever the config says for it. A node with no
   # key, and a Mac's, which is given its own options, is given neither.
   ownAgent =
     key:
@@ -327,6 +329,7 @@ let
         [
           "IdentityAgent=SSH_AUTH_SOCK"
           "IdentitiesOnly=no"
+          "ForwardAgent=no"
         ]
     );
   linuxNode = description: words: key: realm: {

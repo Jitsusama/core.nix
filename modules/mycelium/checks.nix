@@ -46,6 +46,8 @@ let
     "IdentityAgent=SSH_AUTH_SOCK"
     "--ssh-option"
     "IdentitiesOnly=no"
+    "--ssh-option"
+    "ForwardAgent=no"
   ];
   # The home realm's node of a machine naming sources in its table.
   stimulatingNode =
@@ -414,7 +416,7 @@ in
   # Enclave, through that key's own library and no agent, since the login
   # session's one may ask for an approval nobody is there to give; one
   # without that key's module passes no such options, and Linux's node is
-  # given only the two that send it to its own agent.
+  # given none of them.
   mycelium-signs-a-macs-links-with-the-enclave =
     holds "mycelium-signs-a-macs-links-with-the-enclave"
       "A Mac's node signs its links in through whatever agent the login holds, or not with the agents' key from the Secure Enclave, a Mac without that key's module is given options for it, or Linux's node is given a Mac's options."
@@ -436,7 +438,9 @@ in
         && lib.elem "IdentityAgent=none" words
         && lib.elem "IdentitiesOnly=yes" words
         && lib.elem "--ssh-option" words
-        && lib.length (lib.splitString "--ssh-option" linuxNode) == 3
+        && !(lib.hasInfix "IdentityAgent=none" linuxNode)
+        && !(lib.hasInfix "IdentitiesOnly=yes" linuxNode)
+        && !(lib.hasInfix "SecurityKeyProvider=" linuxNode)
       );
 
   # A machine joining a further realm runs a node of its own for it, apart
