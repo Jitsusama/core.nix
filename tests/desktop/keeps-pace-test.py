@@ -129,16 +129,16 @@ def test_a_turn_that_never_finished_keeps_what_follows_in_neither() -> None:
     assert ledger.turns[True] == (10, 100), f"under load the ledger kept {ledger.turns[True]}"
     every = every_tick(stat(10, 100)) - every_tick(stat(0, 0))
     assert ledger.ticked[True] == every, f"under load the ledger kept {ledger.ticked[True]} ticks"
+    ledger.turned()
+    ledger.count(stat(45, 450), turn=False)
+    assert not ledger.between, "a finished turn left the ledger between turns"
+    assert ledger.turns[False] == (5, 50), f"frozen the ledger kept {ledger.turns[False]}"
 
 
 def test_a_thread_the_kernel_refuses_to_hold_is_told_by_its_flags() -> None:
     """PF_NO_SETAFFINITY in its flags, read past a name holding parentheses, marks it unholdable."""
     assert not holdable(REFUSED), f"{REFUSED!r} read as a thread the kernel lets be held"
     assert holdable(ALLOWED), f"{ALLOWED!r} read as a thread the kernel refuses to hold"
-    ledger.turned()
-    ledger.count(stat(45, 450), turn=False)
-    assert not ledger.between, "a finished turn left the ledger between turns"
-    assert ledger.turns[False] == (5, 50), f"frozen the ledger kept {ledger.turns[False]}"
 
 
 def test_the_ledger_says_each_turns_ticks_and_the_share() -> None:

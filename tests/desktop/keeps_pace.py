@@ -29,6 +29,8 @@ from __future__ import annotations
 # splitting what it has between them can stretch one; more would be the builder's own load
 # changing between the turns, which the load's can't be told from.
 PROCESSORS = 4
+# PF_NO_SETAFFINITY, the flag on a thread whose processors the kernel lets no one set.
+UNHOLDABLE = 0x04000000
 
 
 def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float | None:
@@ -74,9 +76,13 @@ def every_tick(stat: str) -> int:
 
 
 def holdable(stat: str) -> bool:
-    """Say from a thread's /proc stat line whether the kernel lets it be held to processors."""
-    del stat
-    return True
+    """Say from a thread's /proc stat line whether the kernel lets it be held to processors.
+
+    Its flags are the seventh field after its name, which may hold spaces and parentheses, so
+    the fields are read past the last parenthesis.
+    """
+    flags = int(stat.rsplit(")", 1)[1].split()[6])
+    return not flags & UNHOLDABLE
 
 
 class Ledger:
