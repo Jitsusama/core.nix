@@ -205,6 +205,7 @@
           script "camera-loopback" ../../hardware/dell-xps-14-da14260/camera/loopback.sh
             { };
         cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };
+        chrome-maps-in-memory = script "chrome-maps-in-memory" ../../modules/chrome/maps-in-memory.sh { };
         chrony-network-servers =
           script "chrony-network-servers" ../../modules/chrony/network-servers.sh
             { };

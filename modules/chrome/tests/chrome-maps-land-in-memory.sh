@@ -26,6 +26,7 @@ profile=$home/.config/google-chrome
 command=${command//%h/$home}
 command=${command//%t/$runtime}
 folders=(BrowserMetrics Default/GPUCache Default/DawnWebGPUCache Default/DawnGraphiteCache)
+here=$(uname -n)
 
 fill() {
   rm -rf "$home" "$runtime"
@@ -70,7 +71,8 @@ in_memory() {
     echo "$1, Chrome's old files are still there: $left"
     exit 1
   fi
-  if [ "$(cat "$profile/Default/History")" != kept ]; then
+  history=$(cat "$profile/Default/History")
+  if [ "$history" != kept ]; then
     echo "$1, the profile's history changed, which isn't the command's"
     exit 1
   fi
@@ -80,7 +82,8 @@ in_memory() {
 # made all the same.
 untouched() {
   for folder in "${folders[@]}"; do
-    if [ -L "$profile/$folder" ] || [ "$(cat "$profile/$folder/index")" != old ]; then
+    index=$(cat "$profile/$folder/index" 2>/dev/null) || index=
+    if [ -L "$profile/$folder" ] || [ "$index" != old ]; then
       echo "$1, the command swapped $folder out from under it"
       exit 1
     fi
@@ -117,7 +120,7 @@ fill
 true &
 gone=$!
 wait "$gone"
-ln -s "$(uname -n)-$gone" "$profile/SingletonLock"
+ln -s "$here-$gone" "$profile/SingletonLock"
 run "stale lock's"
 in_memory "with a lock whose Chrome is gone"
 
@@ -125,7 +128,7 @@ in_memory "with a lock whose Chrome is gone"
 fill
 sleep 60 &
 other=$!
-ln -s "$(uname -n)-$other" "$profile/SingletonLock"
+ln -s "$here-$other" "$profile/SingletonLock"
 run "reused lock's"
 kill "$other"
 in_memory "with a lock whose process is now another program"
@@ -137,7 +140,7 @@ printf '#!%s\nwhile :; do sleep 1; done\n' "$BASH" >chrome
 chmod +x chrome
 ./chrome &
 chrome=$!
-ln -s "$(uname -n)-$chrome" "$profile/SingletonLock"
+ln -s "$here-$chrome" "$profile/SingletonLock"
 run "running Chrome's"
 kill "$chrome"
 untouched "with Chrome running"

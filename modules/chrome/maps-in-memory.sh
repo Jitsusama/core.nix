@@ -20,25 +20,54 @@
 # runtime folder is empty after each boot and the links from the boot
 # before would otherwise point at nothing. A link that does is no harm:
 # Chrome removes it and makes the cache on the disk again, as it would
-# without this.
-#
-# Usage: chrome-maps-in-memory PROFILE MEMORY FOLDER...
+# without this. Its help takes the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case ${1:-} in
+-h | --help)
+  cat << 'EOF'
+chrome-maps-in-memory  keep Chrome's mapped folders in memory
+
+EXAMPLES
+  chrome-maps-in-memory ~/.config/google-chrome \
+      /run/user/1000/chrome BrowserMetrics
+      link the profile's BrowserMetrics into memory,
+      unless a Chrome holds the profile
+
+EXIT
+  0   linked, or left alone while a Chrome runs
+  1   a folder couldn't be moved or linked
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
 set -euo pipefail
 
+if [ $# -lt 3 ]; then
+  echo "✕ chrome-maps-in-memory needs a profile, a folder in memory and a folder" >&2
+  echo "  try  chrome-maps-in-memory --help" >&2
+  exit 64
+fi
 profile=$1 memory=$2
 shift 2
+here=$(uname -n)
 
-# Says which Chrome holds the profile, failing when none does.
+# Says which Chrome holds the profile, or nothing when none does.
 holder() {
-  local lock host pid
-  lock=$(readlink "$profile/SingletonLock" 2>/dev/null) || return 1
+  local lock host pid comm
+  lock=$(readlink "$profile/SingletonLock" 2>/dev/null) || return 0
   host=${lock%-*} pid=${lock##*-}
-  if [ "$host" != "$(uname -n)" ]; then
+  if [ "$host" != "$here" ]; then
     echo "Chrome on $host"
     return 0
   fi
-  [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = chrome ] || return 1
-  echo "Chrome, as process $pid,"
+  comm=$(cat "/proc/$pid/comm" 2>/dev/null) || return 0
+  if [ "$comm" = chrome ]; then
+    echo "Chrome, as process $pid,"
+  fi
 }
 
 for folder in "$@"; do
@@ -46,10 +75,12 @@ for folder in "$@"; do
 done
 
 for folder in "$@"; do
-  if [ "$(readlink "$profile/$folder" 2>/dev/null)" = "$memory/$folder" ]; then
+  link=$(readlink "$profile/$folder" 2>/dev/null) || link=
+  if [ "$link" = "$memory/$folder" ]; then
     continue
   fi
-  if chrome=$(holder); then
+  chrome=$(holder)
+  if [ -n "$chrome" ]; then
     echo "$chrome holds the profile, so $folder and those after it stay on the disk"
     echo "until this runs again, at the account manager's next start"
     exit 0
@@ -57,7 +88,8 @@ for folder in "$@"; do
   # What was there is a cache Chrome fills again, or its histograms, which
   # feed only its usage reports to Google.
   rm -rf "${profile:?}/$folder"
-  mkdir -p "$(dirname "$profile/$folder")"
+  parent=$(dirname "$profile/$folder")
+  mkdir -p "$parent"
   ln -s "$memory/$folder" "$profile/$folder"
   echo "$folder is in memory now"
 done
