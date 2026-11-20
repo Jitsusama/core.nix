@@ -46,6 +46,9 @@ const OFFERED_MOST = 1000;
 // Any control character, which a line of words never needs.
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
 
+// A character written as a pair of UTF-16 halves, as an emoji is.
+const PAIRED = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
+
 // The shape of a mesh address, as mycelium-link's `addressed` reads one.
 const ADDRESS = /^[A-Z0-9]{1,12}$/;
 
@@ -66,7 +69,9 @@ function offered(words, from, nameOf) {
         .map(word => word.replace(CONTROLS, ""))
         .filter(word => word !== "")
         .join(" ");
-    if (plain === "" || Array.from(plain).length > OFFERED_MOST) {
+    // Counted by characters, as mycelium-link's chars() counts them: QML's
+    // engine counts a string's halves, so a pair of them is one here.
+    if (plain === "" || plain.replace(PAIRED, "_").length > OFFERED_MOST) {
         return null;
     }
     const cell = String(from ?? "");

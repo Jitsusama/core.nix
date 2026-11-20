@@ -65,6 +65,8 @@ QtObject {
         Expect.same("the longest words are offered whole",
             Sprouting.offered(`words:${"\u{1F331}".repeat(1000)}`, "from:", sessionNamed)?.words,
             "\u{1F331}".repeat(1000));
+        Expect.same("words past the longest offer nothing, counted by characters",
+            Sprouting.offered(`words:${"\u{1F331}".repeat(1001)}`, "from:", sessionNamed), null);
         for (const words of ["tidy", "words:", "words: \t\n", `words:${"a".repeat(1001)}`])
             Expect.same(`no plain words offer nothing: ${words.slice(0, 12)}`,
                 Sprouting.offered(words, "from:TERN02", sessionNamed), null);
