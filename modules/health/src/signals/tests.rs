@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 use super::*;
-use crate::source::Followers;
+use crate::source::{Followers, History};
 
 /// Where the copy of these tests that's stopped says its follower, set
 /// only for that copy.
@@ -14,6 +14,20 @@ const TOLD_IN: &str = "HEALTH_STOPPED_TELLS_IN";
 
 /// Set only for a copy whose run never returns once its follower ends.
 const HANGS: &str = "HEALTH_STOPPED_HANGS";
+
+/// Set only for a copy that replays a history too, as health replays the
+/// day, its run waiting on that history's end.
+const REPLAYS: &str = "HEALTH_STOPPED_REPLAYS";
+
+/// Set only for a copy whose run's error is kept before it's stopped, as
+/// a run's is that returns just before a stop.
+const FAILS_FIRST: &str = "HEALTH_STOPPED_FAILS_FIRST";
+
+/// The error the copy's run returns once stopped.
+const FAILS_ENDING: &str = "health: the copy's run failed as it ended";
+
+/// The error the copy's run returns before it's stopped, if it fails first.
+const FAILS_BEFORE: &str = "health: the copy's run failed before the stop";
 
 /// How long the stopped copy's run takes to write once its follower
 /// ends, so a stop that didn't wait for it would end health first.
@@ -89,17 +103,17 @@ struct Stopped {
 impl Stopped {
     /// The copy started, once it has said its follower.
     fn start() -> Self {
-        Self::starting(false)
+        Self::starting(None)
     }
 
-    /// The copy started, its run never returning once its follower ends
-    /// if it `hangs`, once it has said its follower.
-    fn starting(hangs: bool) -> Self {
+    /// The copy started with `asked` set, if any (`HANGS`, `REPLAYS` or
+    /// `FAILS_FIRST`), once it has said its follower.
+    fn starting(asked: Option<&str>) -> Self {
         let folder = tempfile::tempdir().expect("a folder");
         let health = Command::new(std::env::current_exe().expect("this test"))
             .args([STOPPED_TEST, "--exact", "--ignored", "--quiet"])
             .env(TOLD_IN, folder.path().join("follower"))
-            .envs(hangs.then_some((HANGS, "")))
+            .envs(asked.map(|name| (name, "")))
             .process_group(0)
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(folder.path().join("stderr")).expect("its stderr"))
@@ -124,6 +138,14 @@ impl Stopped {
     /// What the follower said of its end, if it said anything.
     fn said(&self) -> Option<String> {
         std::fs::read_to_string(self.told_in().with_extension("said")).ok()
+    }
+
+    /// The history the copy replays, if `REPLAYS`.
+    fn history(&self) -> libc::pid_t {
+        let said = std::fs::read_to_string(self.told_in().with_extension("history"));
+        said.ok()
+            .and_then(|id| id.parse().ok())
+            .expect("the copy said its history")
     }
 
     /// What the copy said on its stderr.
@@ -235,8 +257,9 @@ impl Drop for Stopped {
 /// where to say its follower: started as under `nohup`, it catches
 /// health's stops, starts a follower, `rest`s until a stop wakes it, as
 /// health rests between its looks, and once its follower ends, writes a
-/// little later, as health writes the day, and leaves, or never returns
-/// if it hangs.
+/// little later, as health writes the day, and leaves with an error, or
+/// never returns if it hangs. Asked, it replays a history too, its run
+/// waiting on that history's end, or keeps its error before the stop.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
 fn a_health_to_stop() {
@@ -273,6 +296,18 @@ fn a_health_to_stop() {
                 .map_or(String::new(), |(blocked, ignored)| {
                     format!(" {blocked} {ignored}")
                 });
+            let replaying = std::env::var_os(REPLAYS).is_some().then(|| {
+                let mut sleep = Command::new("sleep");
+                sleep.arg("600");
+                let mut history = History::of(sleep).expect("the history starts");
+                let id = history.child.id().to_string();
+                std::fs::write(told.with_extension("history"), id).expect("said");
+                thread::spawn(move || history.ended())
+            });
+            let fails_first = std::env::var_os(FAILS_FIRST).is_some();
+            if fails_first {
+                unsaid(FAILS_BEFORE.to_owned());
+            }
             let saying = told.with_extension("saying");
             std::fs::write(&saying, format!("{follower}{masks}")).expect("said");
             std::fs::rename(&saying, told).expect("said");
@@ -283,8 +318,14 @@ fn a_health_to_stop() {
                     thread::park();
                 }
             }
+            if let Some(replaying) = replaying {
+                replaying.join().expect("the history waited on");
+            }
             thread::sleep(WRITES_LATE);
             std::fs::write(told.with_extension("written"), "").expect("its write");
+            if !fails_first {
+                unsaid(FAILS_ENDING.to_owned());
+            }
             Err::<(), _>(io::Error::other("the follower ended"))
         },
     );
@@ -315,8 +356,11 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
          didn't wait for health's run to write the day"
     );
     assert!(
-        took < ENDS_LATE + WRITES_WITHIN && !stopped.failed().contains(UNWRITTEN),
-        "a stop waited {took:?} though health's run had returned, or said it hadn't: {}",
+        took < ENDS_LATE + WRITES_WITHIN
+            && !stopped.failed().contains(UNWRITTEN)
+            && stopped.failed().contains(FAILS_ENDING),
+        "a stop waited {took:?} though health's run had returned, said it hadn't, or left \
+         its error unsaid: {}",
         stopped.failed()
     );
     // Were the stops blocked rather than caught, every follower would block
@@ -366,7 +410,7 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
 fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
     // `ending` fails past `WAITS`, well past the `ENDS_LATE` and
     // `WRITES_WITHIN` this stop takes, so a stop that waited for good fails.
-    let mut stopped = Stopped::starting(true);
+    let mut stopped = Stopped::starting(Some(HANGS));
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
     let ended = stopped.ending();
@@ -399,6 +443,37 @@ fn a_follower_that_ends_just_before_health_is_stopped_says_nothing() {
         (ended.signal(), stopped.said()),
         (Some(libc::SIGTERM), None),
         "a follower that ended just before health's stop said its end ({ended})"
+    );
+}
+
+#[test]
+fn a_replay_that_ends_just_before_health_is_stopped_says_nothing() {
+    // As a stop to the whole group may reach the day's replay and end it
+    // before health's catch runs, as it may a follower.
+    let mut stopped = Stopped::starting(Some(REPLAYS));
+    // SAFETY: the copy's history, which it waits on only once it ends.
+    unsafe { libc::kill(stopped.history(), libc::SIGTERM) };
+    thread::sleep(ENDED_BEFORE);
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    assert!(
+        ended.signal() == Some(libc::SIGTERM) && !stopped.failed().contains("ended early"),
+        "a replay that ended just before health's stop said so ({ended}): {}",
+        stopped.failed()
+    );
+}
+
+#[test]
+fn a_stop_says_the_error_a_run_returned_just_before_it() {
+    // The run's error is left for `main`, which a stop's end of health
+    // never lets run.
+    let mut stopped = Stopped::starting(Some(FAILS_FIRST));
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    assert!(
+        ended.signal() == Some(libc::SIGTERM) && stopped.failed().contains(FAILS_BEFORE),
+        "a stop ended health ({ended}) without saying the error its run returned first: {}",
+        stopped.failed()
     );
 }
 

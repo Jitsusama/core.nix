@@ -409,8 +409,8 @@ fn named(command: &Command) -> String {
 }
 
 /// A command's output read line by line until it ends, for the replay.
-struct History {
-    child: Child,
+pub(crate) struct History {
+    pub(crate) child: Child,
     out: BufReader<ChildStdout>,
     /// How many lines it has given.
     read: usize,
@@ -422,7 +422,7 @@ struct History {
 
 impl History {
     /// Start `command`, its output to be read.
-    fn of(mut command: Command) -> io::Result<Self> {
+    pub(crate) fn of(mut command: Command) -> io::Result<Self> {
         let greps = command
             .get_args()
             .any(|arg| arg.to_string_lossy().starts_with("--grep="));
@@ -448,7 +448,7 @@ impl History {
     /// group, waited for as a follower's end waits (`CAUGHT_WITHIN`): its follower still follows
     /// on from its last line, but the rest of its day comes at that follower's pace rather than
     /// in the order it was written. Says whether it was whole.
-    fn ended(&mut self) -> bool {
+    pub(crate) fn ended(&mut self) -> bool {
         match self.child.wait() {
             Ok(status) if whole(status.success(), status.code(), self.read, self.greps) => true,
             Ok(status) => {
