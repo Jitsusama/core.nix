@@ -303,10 +303,22 @@ impl Chooser {
         // twice, idle at 10 to 24 Mbit/s, on a tail of 34.3 and 51.6 ms
         // with none lost, for 2.4 GHz's 11.8 ms at that hour. Once a
         // download came, 2.4 GHz carried 183 and 101 ms, and a call begun
-        // there would have kept it there.
+        // there would have kept it there. Its middle echo held at 4.3 to
+        // 5.8 ms then. Moving less than `LEAST`, a wider band whose middle
+        // is past `STEADY`, or whose own channel is past `BUSIEST`, is slow
+        // for its air and may yield, as 2.4 GHz has room enough for it: on
+        // 19 Nov 2026 from 21:00 the card on 5745 MHz moving 11 to 22
+        // Mbit/s read a middle of 11 to 24 ms and a p95 up to 274.7 ms, its
+        // channel 54% busy, and downloads stalled there ten times in 12
+        // minutes. On its access point's 2.4 GHz radio from 21:20 it read 5
+        // ms and 8 to 16 ms. Moving more, it holds, since 2.4 GHz brought
+        // the 17 Nov downloads down to 54 to 76% of what they had moved.
+        let slow_air = measured.p50.is_none_or(|p50| p50 > STEADY)
+            || crowding((point, frequency), others).is_some();
         let holds_wide = wide(frequency)
             && measured.echoes >= ECHOED
             && measured.lost <= LOSSY
+            && (loaded(measured) || !slow_air)
             && heard(measured, signal) >= i32::from(FAINTEST);
         let judging = (failing, queued_lately, holds_wide);
         if let Some(judged) = self.judge(now, (point, measured), judging) {
@@ -1095,6 +1107,132 @@ pub(crate) mod tests {
             Some("6c:ae:f6:ba:85:87".to_owned()),
             "the hold is said"
         );
+    }
+
+    /// What the card carried on 5745 MHz on the evening of 19 Nov 2026,
+    /// moving 11 to 22 Mbit/s with none lost.
+    fn on_5745(p50: Duration, p95: u64, moving: u32) -> Measured {
+        Measured {
+            echoes: 121,
+            p50: Some(p50),
+            p95: Some(Duration::from_millis(p95)),
+            lost: 0.0,
+            retried: 0.0,
+            failed: 0.0,
+            signal: Some(-46),
+            moving: Some(moving),
+            room: Some(1200),
+        }
+    }
+
+    /// The hall's access point as the card heard it then, on 5745 MHz,
+    /// saying how busy its channel was, and its own 2.4 GHz radio, with what
+    /// that had carried at that hour before.
+    fn the_hall_then(busy: Option<u8>) -> [Other; 2] {
+        let itself = Other {
+            point: HALL.into(),
+            signal: -46,
+            busy,
+            frequency: CH149,
+            measured: None,
+        };
+        let narrower = Other {
+            point: "6c:ae:f6:c1:84:27".into(),
+            signal: -45,
+            busy: Some(13),
+            frequency: CH6,
+            measured: Some(idle_on_ch52(17, 10)),
+        };
+        [itself, narrower]
+    }
+
+    #[test]
+    fn a_wider_band_slow_in_its_middle_yields_to_a_narrower_one_known_quicker() {
+        // 21:10 on 19 Nov 2026: a middle of 24.4 ms and 274.7 ms at p95.
+        let mut chooser = after_a_bad_minute(HALL);
+        let slow = on_5745(Duration::from_micros(24_400), 275, 22);
+
+        let choice = chooser.choose(
+            Instant::now(),
+            (HALL, &slow, -44, CH149),
+            &the_hall_then(None),
+            false,
+        );
+
+        assert_eq!(
+            choice,
+            Choice::Try("6c:ae:f6:c1:84:27".into()),
+            "a middle past 12 ms is the air's, which 2.4 GHz may beat"
+        );
+        assert_eq!(chooser.began_keeping_wide(), None, "nothing is held");
+    }
+
+    #[test]
+    fn a_wider_band_on_a_busy_channel_yields_to_a_narrower_one_known_quicker() {
+        // 21:20 on 19 Nov 2026: a middle of 11.9 ms, 46.4 ms at p95 over the
+        // span, the channel 54% busy.
+        let mut chooser = after_a_bad_minute(HALL);
+        let slow = on_5745(Duration::from_micros(11_900), 46, 11);
+
+        let choice = chooser.choose(
+            Instant::now(),
+            (HALL, &slow, -47, CH149),
+            &the_hall_then(Some(54)),
+            false,
+        );
+
+        assert_eq!(
+            choice,
+            Choice::Try("6c:ae:f6:c1:84:27".into()),
+            "a channel 54% busy is the air's, which 2.4 GHz may beat"
+        );
+        let downloading = on_5745(Duration::from_micros(11_900), 46, 30);
+        let held = after_a_bad_minute(HALL).choose(
+            Instant::now(),
+            (HALL, &downloading, -47, CH149),
+            &the_hall_then(Some(54)),
+            false,
+        );
+        assert_ne!(
+            held,
+            Choice::Try("6c:ae:f6:c1:84:27".into()),
+            "moving 30 Mbit/s, 2.4 GHz would bring the download down slower"
+        );
+    }
+
+    #[test]
+    fn a_wider_band_holds_at_the_edges_of_steady_busiest_and_least() {
+        let cases = [
+            ("a 12 ms middle", Duration::from_millis(12), 11, None),
+            (
+                "a channel 40% busy",
+                Duration::from_micros(11_900),
+                11,
+                Some(40),
+            ),
+            (
+                "a 24.4 ms middle moving 25",
+                Duration::from_micros(24_400),
+                25,
+                None,
+            ),
+        ];
+
+        for (case, p50, moving, busy) in cases {
+            let mut chooser = after_a_bad_minute(HALL);
+            let measured = on_5745(p50, 46, moving);
+            let choice = chooser.choose(
+                Instant::now(),
+                (HALL, &measured, -47, CH149),
+                &the_hall_then(busy),
+                false,
+            );
+            assert_ne!(
+                choice,
+                Choice::Try("6c:ae:f6:c1:84:27".into()),
+                "{case} keeps to 5 GHz"
+            );
+        }
     }
 
     #[test]
