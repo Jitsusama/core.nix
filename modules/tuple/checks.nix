@@ -121,9 +121,8 @@ onLinux {
       named = service.SyslogIdentifier or "";
       declared = ''^pub const READY_FOLLOWED: &str = r"(.*)";$'';
       lines = lib.splitString "\n" (builtins.readFile ../health/src/launches.rs);
-      found = lib.findFirst (
-        line: builtins.match declared line != null
-      ) (throw "modules/health/src/launches.rs no longer declares READY_FOLLOWED as a raw string") lines;
+      lost = "tuple-says-when-ready reads READY_FOLLOWED off one line of launches.rs, a raw string";
+      found = lib.findFirst (line: builtins.match declared line != null) (throw lost) lines;
       ready = lib.head (builtins.match declared found);
     in
     pkgs.runCommandLocal "tuple-says-when-ready" { } ''

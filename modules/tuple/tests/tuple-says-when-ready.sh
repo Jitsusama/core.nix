@@ -16,8 +16,7 @@
 # does when the start forked no daemon.
 #
 # Given the ExecStartPost's program, the systemctl and log it names, and what
-# modules/health takes for a ready line (launches.rs's READY_FOLLOWED), which
-# journalctl matches whatever its case, as it's written in lower case.
+# modules/health takes for a ready line (launches.rs's READY_FOLLOWED).
 set -euo pipefail
 
 post=$1
@@ -25,6 +24,11 @@ systemctl=$2
 log=$3
 ready=$4
 here=$PWD
+
+# journalctl matches health's pattern as PCRE2, as grep -P does, and whatever
+# its case only while it holds no capital letter.
+fold=--ignore-case
+if [[ ${ready} =~ [[:upper:]] ]]; then fold=--no-ignore-case; fi
 
 mkdir -p bin
 # Answers the one ask the post makes, the unit active only once the case
@@ -89,9 +93,34 @@ quiet() {
   fi
 }
 
+# Sets `taken` to whether health would read what the post said as a ready
+# line. A pattern grep can't read ends the run, rather than reading as none.
+taken() {
+  local found=0
+  grep --quiet --perl-regexp "${fold}" -- "${ready}" said || found=$?
+  case ${found} in
+  0) taken=yes ;;
+  1) taken=no ;;
+  *)
+    echo "grep couldn't read what the post said with health's ready line, ${ready}"
+    exit 1
+    ;;
+  esac
+}
+
+# Fails the case `what` when health wouldn't read what the post said as ready.
+readable() {
+  taken
+  if [[ ${taken} == no ]]; then
+    echo "$1: health wouldn't read it as ready"
+    failed=1
+  fi
+}
+
 # Fails the case `what` when health would read what the post said as ready.
 unready() {
-  if grep -qiE "${ready}" said; then
+  taken
+  if [[ ${taken} == yes ]]; then
     echo "$1: health would read it as ready"
     failed=1
   fi
@@ -233,6 +262,7 @@ looked 4 "a start"
 quiet "a start" "before the unit was active"
 touch up
 says_only "a start" "tuple: ready in 1200 ms"
+readable "a start"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -246,6 +276,7 @@ asked 1 "an active unit"
 echo '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >>log.txt
 says_only "an active unit" "tuple: ready in 250 ms"
+readable "an active unit"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -254,9 +285,11 @@ printf '%s\n' \
   >log.txt
 starts up hangs
 says_only "an ask systemd doesn't answer" "tuple: ready in 250 ms"
+readable "an ask systemd doesn't answer"
 
 starts up many
 says_only "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
+readable "daemons systemd couldn't choose between"
 
 # The log already says the signaller connected, so only leaving at once
 # keeps it from saying it's ready.
