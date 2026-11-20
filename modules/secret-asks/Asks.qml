@@ -321,9 +321,12 @@ Provider {
     // so the daemon must never serve one on an ask: row.rs serves none.
     // Its state, hue and attention go too, since row.rs serves each
     // differently for a waiting ask and an answered one, and one watching
-    // a share would tell the hidden rows apart. How many wait still shows,
-    // in For You, the tray and Asks' own count, since an agent blocked on
-    // one needs Joel; which is which never does.
+    // a share would tell the hidden rows apart. Two things read from them
+    // stay on the row on purpose (made): whether it waits and when it was
+    // asked, which For You orders by, and neither is a name, words or a
+    // source. How many wait still shows, in For You, the tray and Asks'
+    // own count, since an agent blocked on one needs Joel; which is which
+    // never does.
     readonly property var hiddenKeeps: ["key", "thing", "place", "kind", "glyph", "order"]
 
     // Why a hidden ask does nothing: the screen is shared, or it isn't yet
