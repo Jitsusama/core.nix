@@ -295,8 +295,10 @@ body {
 
 /* ---- The line over the map: where the keys are, read from the machine
    down, in quiet italic place words, and the map's own words at its end.
-   Find takes the trail's place while it's open, so the line never grows
-   a second row of controls. Its rule is the map's top edge. ---- */
+   Find and new work each take the trail's place while open, so the line
+   never grows a second row of controls. The trail keeps its room unseen
+   under them, so opening either moves nothing round it. Its rule is the
+   map's top edge. ---- */
 
 .headline {
   display: flex;
@@ -308,9 +310,20 @@ body {
   background: var(--background);
 }
 
-.trail {
+.lines {
   flex: 1 1 auto;
   min-inline-size: 0;
+  display: grid;
+  align-items: center;
+}
+
+.lines > * {
+  grid-area: 1 / 1;
+  min-inline-size: 0;
+}
+
+.trail[inert] {
+  visibility: hidden;
 }
 
 .trail ol {
@@ -440,9 +453,7 @@ body {
     row-gap: 0;
   }
 
-  .trail,
-  .find,
-  .sprout {
+  .lines {
     flex-basis: 100%;
     order: 2;
   }
@@ -1213,8 +1224,6 @@ body {
 }
 
 .find {
-  flex: 1 1 auto;
-  min-inline-size: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -1223,8 +1232,7 @@ body {
 
 .find[hidden],
 .sprout[hidden],
-.sprout-from[hidden],
-.trail[hidden] {
+.sprout-from[hidden] {
   display: none;
 }
 
@@ -1232,8 +1240,6 @@ body {
    then the cell it starts from, then the hand-off in full ink, so the
    one act on the line reads as the one to press. */
 .sprout {
-  flex: 1 1 auto;
-  min-inline-size: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

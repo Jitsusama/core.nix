@@ -4,13 +4,21 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { handedWords, sproutLink, sproutWords } from "../sprout.ts";
+import { handedWords, isAddress, sproutLink, sproutWords } from "../sprout.ts";
 
 it("reads the typed words as one line", () => {
   assert.equal(
     sproutWords("  tidy\tthe\n rows  "),
     "tidy the rows",
     "spaces, tabs and line breaks should each read as one space, none at the ends",
+  );
+});
+
+it("encodes a lone half of a UTF-16 pair rather than throwing", () => {
+  assert.equal(
+    sproutLink("tidy \uD800 rows", null),
+    "mycelium:sprout?words=tidy%20%EF%BF%BD%20rows",
+    "a lone half should read as the replacement character",
   );
 });
 
@@ -43,7 +51,10 @@ it("says the cell it comes from only when that is an address", () => {
     "mycelium:sprout?words=tidy%20the%20rows&from=TERN02",
     "an open cell's address should go with the words",
   );
-  for (const from of ["tern02", "TERN-02", "", "ABCDEFGHIJKLM", "X&words=Y"]) {
+  assert.equal(isAddress("TERN02"), true, "an address should be one");
+  assert.equal(isAddress(null), false, "no cell should be no address");
+  for (const from of ["tern02", "TERN-02", "", "ABCDEFGHIJKLM", "X&words=Y", "calls@kestrel"]) {
+    assert.equal(isAddress(from), false, `${JSON.stringify(from)} should be no address`);
     assert.equal(
       sproutLink("tidy the rows", from),
       "mycelium:sprout?words=tidy%20the%20rows",

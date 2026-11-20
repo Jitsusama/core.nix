@@ -111,6 +111,7 @@ const LETTERS: Readonly<Record<string, PageAct>> = {
   ".": "now",
   a: "needs-you",
   t: "talk",
+  s: "sprout",
   m: "machines",
   "0": "fit",
   "+": "zoom-in",
@@ -167,9 +168,9 @@ export const treeKey = (pressed: Pressed): TreeAct | null => {
 
 /**
  * What one of the page's letters asks, from where the page stands. The
- * keys dialog, find and new work answer anywhere but a field; the rest
- * answer only on the map or its panel, so no stray key acts from elsewhere
- * (WCAG 2.1.4). Escape closes what a mode opened, the find or new work's
+ * keys dialog and find answer anywhere but a field; the rest, new work
+ * among them, answer only on the map or its panel, so no stray key acts
+ * from elsewhere (WCAG 2.1.4). Escape closes what a mode opened, the find or new work's
  * line first, then what's chosen, then the now.
  */
 export const pageKey = (pressed: Pressed, at: Standing): PageAct | null => {
@@ -185,9 +186,6 @@ export const pageKey = (pressed: Pressed, at: Standing): PageAct | null => {
   }
   if (key === "/") {
     return "find";
-  }
-  if (key === "s") {
-    return "sprout";
   }
   if (!at.onMap) {
     return null;
