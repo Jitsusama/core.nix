@@ -1701,6 +1701,77 @@ async fn standing_down_it_tries_its_path_and_takes_requests_again_once_it_answer
     says_each_trial(&said);
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn the_counts_say_its_trials_apart_from_connections_for_requests() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &[
+            "--idle-exit",
+            "6",
+            "--stand-down-for",
+            "26",
+            "--try-path-every",
+            "1",
+        ],
+    );
+
+    // Standing down, it tries its path, which answers, so it takes
+    // requests again. Mended, it holds on until it's asked, and then,
+    // idle, leaves, saying its counts.
+    fail_past_its_share(&relay.socket, &host).await;
+    let stood_down = Instant::now();
+    while ask(&relay.socket, request(&host, "/echo", b"hi"))
+        .await
+        .status
+        != StatusCode::CREATED
+    {
+        assert!(
+            stood_down.elapsed() < Duration::from_secs(10),
+            "it stood down on, 10 s after its path answered again"
+        );
+        tokio::time::sleep(ASK_EVERY).await;
+    }
+    assert!(
+        relay.left_within(Duration::from_secs(20)).is_some(),
+        "the relay didn't leave once idle after its path answered"
+    );
+    counts_trials_apart(&relay.said());
+}
+
+/// The counts said as it left give its trials a figure of their own, one
+/// for each trial connection it said, and count as opened only the
+/// connections for requests.
+fn counts_trials_apart(said: &str) {
+    let counts = said
+        .lines()
+        .rfind(|line| line.contains(" trials of its path"))
+        .unwrap_or_else(|| panic!("no counts said its trials: {said}"));
+    let figure = |of: &str| -> usize {
+        counts
+            .split("; ")
+            .find(|part| part.contains(of))
+            .and_then(|part| part.split(' ').next())
+            .and_then(|number| number.parse().ok())
+            .unwrap_or_else(|| panic!("the counts don't say {of}: {counts}"))
+    };
+    let said_opened = |by: &str| {
+        said.lines()
+            .filter(|line| line.starts_with(by) && line.contains(" opened"))
+            .count()
+    };
+    let trials = said_opened("model-relay: trial connection ");
+    assert!(trials > 0, "no trial connection was said: {said}");
+    assert_eq!(
+        (figure(" trials of its path"), figure(" connections opened")),
+        (trials, said_opened("model-relay: connection ")),
+        "the counts didn't say trials apart from connections for requests: {counts}"
+    );
+}
+
 /// Failing again soon after it took requests again, a relay trying its
 /// path each second stands down doubled, for twenty minutes, and waits
 /// twice as long for its first trial: four periods, so none by three
