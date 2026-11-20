@@ -164,8 +164,9 @@ pub fn git_in(tree: &std::path::Path, args: &[&str]) {
 /// read cut short so the pipe stays as `cat` expects it; `COPIER_SILENT`
 /// has it never say it's ready, leaving a child of its own behind that
 /// holds its standard error; `COPIER_REFUSES` has it refuse the copy for
-/// that reason, as Passwords' wl-copy refuses one it can't hold whole; and
-/// `COPIER_UNHELD` has it read the copy and never say it holds it.
+/// that reason, as Passwords' wl-copy refuses one it can't hold whole;
+/// `COPIER_UNHELD` has it read the copy and never say it holds it; and
+/// `COPIER_DEAF` has it say it's ready and never read at all.
 const COPIER: &str = r#"
 if [ -n "$COPIER_WAITS" ]; then
   sleep 1
@@ -175,6 +176,9 @@ if [ -n "$COPIER_SILENT" ]; then
   sleep 60 &
 else
   echo ready
+fi
+if [ -n "$COPIER_DEAF" ]; then
+  while :; do sleep 1; done
 fi
 cat > "$COPIED"
 printf '%s\n' "$*" > "$COPIED.flags"
