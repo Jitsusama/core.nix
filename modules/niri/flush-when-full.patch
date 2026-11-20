@@ -1,0 +1,58 @@
+Waits for the compositor when its socket is full, rather than panicking.
+
+xwayland-satellite flushes its requests to the compositor straight after
+a client destroys a shm pool, and straight after asking for a selection's
+data, unwrapping the result. When the compositor falls behind, as under a
+storm of X11 windows on a loaded machine, the socket is full, the flush
+fails with WouldBlock, and satellite panics, taking every X11 window with
+it. The main loop's own flush already waits up to 50 ms for room and then
+leaves the rest queued for later, but its retry after that wait unwraps
+too. All three now share one flush that waits for room, 50 ms at most
+each time but forever for a selection, whose data is read at once, and
+logs rather than panics when the wait runs out.
+
+diff --git a/src/server/tests.rs b/src/server/tests.rs
+index fa70c7d..b8bdcca 100644
+--- a/src/server/tests.rs
++++ b/src/server/tests.rs
+@@ -3343,3 +3343,40 @@ fn decorations_max_height_int_max() {
+ /// See Pointer::handle_event for an explanation.
+ #[test]
+ fn popup_pointer_motion_workaround() {}
++
++// A client destroying a shm pool while satellite's socket to the compositor is full, as a storm
++// of X11 windows can leave it, slows satellite rather than killing it, and what it sends later
++// still arrives.
++#[test]
++fn shm_pool_destroy_with_full_socket() {
++    let (mut f, compositor) = TestFixture::new_with_compositor();
++    let fd = unsafe { BorrowedFd::borrow_raw(0) };
++    let pool = TestObject::<WlShmPool>::from_request(
++        &compositor.shm.obj,
++        Req::<WlShm>::CreatePool { fd, size: 1024 },
++    );
++    f.run();
++
++    // Fill satellite's socket to the compositor by not letting testwl read it.
++    loop {
++        for _ in 0..100 {
++            pool.send_request(Req::<WlShmPool>::Resize { size: 1024 })
++                .unwrap();
++        }
++        f.xwls_connection.flush().unwrap();
++        f.xwls_display.dispatch_clients(&mut *f.satellite).unwrap();
++        match f.satellite.queue.flush() {
++            Ok(()) => {}
++            Err(WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => break,
++            Err(e) => panic!("Failed to flush: {e:?}"),
++        }
++    }
++
++    pool.send_request(Req::<WlShmPool>::Destroy).unwrap();
++    f.run();
++
++    // Requests sent after the backlog still arrive once testwl reads again.
++    let _surface = compositor.create_surface();
++    f.run();
++    assert_eq!(f.testwl.created_surfaces().len(), 1);
++}
