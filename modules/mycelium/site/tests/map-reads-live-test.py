@@ -1201,8 +1201,9 @@ def test_each_kind_of_cell_is_painted_apart(
     quiet = marks_of(page, SENSOR)
     assert gold not in paints(quiet), f"a quiet receptor was painted in a session's ink: {quiet}"
     mycelium_node.tell("cell", changed=[{"key": f"cell:{FED_RECEPTOR}", "state": "reading"}])
+    # Waited on by the quiet dot going, whatever the reading one is drawn as.
     page.wait_for_function(
-        f"{MARKS.format(SENSOR)}.some((mark) => mark.cls === 'm-sensing')", timeout=PACE_MS
+        f"!{MARKS.format(SENSOR)}.some((mark) => mark.cls === 'm-sensed')", timeout=PACE_MS
     )
     reading = marks_of(page, SENSOR)
     assert gold not in paints(reading), (
