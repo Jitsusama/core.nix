@@ -35,6 +35,7 @@ mod cli;
 mod detail;
 mod echo;
 mod face;
+mod fading;
 mod frequencies;
 mod learn;
 mod link;

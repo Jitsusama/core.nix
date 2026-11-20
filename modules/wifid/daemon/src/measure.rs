@@ -12,7 +12,8 @@
 //! asks the card's chooser whether another of the network's access points
 //! would carry better and moves the card there. What each carried is
 //! learned by the hour too (learn.rs), for those the card hasn't been on
-//! in the span.
+//! in the span. During a call it's asked each second too whether the
+//! card's link is fading, and moves.rs has it give way at once.
 //!
 //! Each second's echo goes twice, once unmarked and once in Wi-Fi's video
 //! queue (echo.rs), and the chooser and the hours are handed the worse of
@@ -218,6 +219,22 @@ impl Measures {
         forget_before(&mut kept.counts, at);
     }
 
+    /// How many best-effort echoes through the access point were lost within `within`
+    /// of now, and its signal as the kernel last said it, for whether a
+    /// call's link is fading (fading.rs).
+    pub fn lately(&self, point: &str, now: Instant, within: Duration) -> (usize, Option<i32>) {
+        let Some(kept) = self.points.get(point) else {
+            return (0, None);
+        };
+        let lost = kept
+            .echoes
+            .iter()
+            .filter(|(at, echo)| now.duration_since(*at) <= within && *echo == Echo::Lost)
+            .count();
+        let signal = kept.counts.back().and_then(|(_, counts)| counts.signal);
+        (lost, signal)
+    }
+
     /// The access point's figures over the span up to now, each the worse
     /// class's, if anything was measured of it in it.
     pub fn of(&self, point: &str, now: Instant) -> Option<Measured> {
@@ -316,6 +333,14 @@ pub async fn follow(
                 let joined = state.borrow().joined();
                 echoers.retain(|card, _| joined.iter().any(|on| on.card == *card));
                 measure(&joined, &mut echoers, &mut kernel, &mut measures).await;
+                let now = Instant::now();
+                if calling.borrow().on(now) {
+                    for on in &joined {
+                        let around = state.borrow().around(&on.card);
+                        let chooser = choosers.entry(on.card.clone()).or_default();
+                        moves::give_way(chooser, now, on, &around, &measures, (&asks, &state));
+                    }
+                }
             }
             _ = told.tick() => {
                 let (now, hour) = (Instant::now(), learn::hour_here());
@@ -852,6 +877,33 @@ pub(crate) mod tests {
         seconds
             .map(|second| (second, bytes + (second - first) * 12_500_000))
             .collect()
+    }
+
+    #[test]
+    fn lately_counts_the_echoes_lost_within_its_window_and_the_last_signal() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        let lost_at = [0, 5, 12, 14];
+        for second in 0..=15 {
+            let echo = if lost_at.contains(&second) {
+                Echo::Lost
+            } else {
+                Echo::Answered(Duration::from_millis(5))
+            };
+            kept.echoed(DESK, start + Duration::from_secs(second), echo);
+        }
+        kept.counted(DESK, start + Duration::from_secs(15), counts(10, 0, 0));
+        let now = start + Duration::from_secs(15);
+
+        let lately = kept.lately(DESK, now, Duration::from_secs(10));
+        let unmeasured = kept.lately("6c:ae:f6:ba:85:86", now, Duration::from_secs(10));
+
+        assert_eq!(
+            lately,
+            (3, Some(-47)),
+            "those from 5 s on, and the kernel's signal"
+        );
+        assert_eq!(unmeasured, (0, None), "nothing of a point not measured");
     }
 
     #[test]
