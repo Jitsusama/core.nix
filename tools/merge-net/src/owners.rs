@@ -22,32 +22,42 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
     let read = |file: &str| fs::read_to_string(root.join(file)).ok();
     let tests: Vec<(String, Vec<String>)> = every_vm_test(&checks, read)
         .into_iter()
-        .map(|(name, file)| {
+        .map(|test| {
             // A file it can't read still owns itself.
-            let text = fs::read_to_string(root.join(&file)).unwrap_or_default();
-            let paths = owned(&file, &text, &folders, read);
-            (name, paths)
+            let text = fs::read_to_string(root.join(&test.file)).unwrap_or_default();
+            let paths = owned(&test.file, &text, &test.given, &folders, read);
+            (test.name, paths)
         })
         .collect();
     Some(owners(&tests, files))
+}
+
+/// A VM test a `checks.nix` names: its name, the file it imports for it,
+/// and each string the import gives that file by name, `area = "captures";`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct VmTest {
+    pub name: String,
+    pub file: String,
+    pub given: BTreeMap<String, String>,
 }
 
 /// Each VM test the root `checks.nix`, holding `checks`, names, and each
 /// the folders' `checks.nix` it gathers name, with the file it imports for
 /// it from the repository's root. Only a folder's file the root names is
 /// read, through `read`, so one nothing gathers names no test, as in Nix.
-pub fn every_vm_test(checks: &str, read: impl Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+pub fn every_vm_test(checks: &str, read: impl Fn(&str) -> Option<String>) -> Vec<VmTest> {
     let mut found = vm_tests(checks);
     for gathered in gathered(checks) {
         let Some(text) = read(&gathered) else {
             continue;
         };
         let here = gathered.rsplit_once('/').map_or("", |(folder, _)| folder);
-        found.extend(
-            vm_tests(&text)
-                .into_iter()
-                .filter_map(|(name, file)| Some((name, joined(here, &file)?))),
-        );
+        found.extend(vm_tests(&text).into_iter().filter_map(|test| {
+            Some(VmTest {
+                file: joined(here, &test.file)?,
+                ..test
+            })
+        }));
     }
     found
 }
@@ -64,19 +74,64 @@ fn gathered(checks: &str) -> Vec<String> {
 }
 
 /// Each VM test one `checks.nix` names, with the file it imports for it
-/// from that file's folder.
-pub fn vm_tests(checks: &str) -> Vec<(String, String)> {
-    checks
-        .lines()
-        .filter_map(|line| {
-            let (name, rest) = line.trim().split_once(" = import ./")?;
-            let file = rest.split_whitespace().next()?;
-            let nix = Path::new(file)
-                .extension()
-                .is_some_and(|extension| extension == "nix");
-            (name.starts_with("vm-") && nix).then(|| (name.to_owned(), file.to_owned()))
-        })
-        .collect()
+/// from that file's folder and the strings the import gives it, read from
+/// its own line or, when that opens the call, each line to the call's end.
+pub fn vm_tests(checks: &str) -> Vec<VmTest> {
+    let mut found = Vec::new();
+    let mut lines = checks.lines().map(str::trim);
+    while let Some(line) = lines.next() {
+        let Some((name, rest)) = line.split_once(" = import ./") else {
+            continue;
+        };
+        let Some(file) = rest.split_whitespace().next() else {
+            continue;
+        };
+        let nix = Path::new(file)
+            .extension()
+            .is_some_and(|extension| extension == "nix");
+        if !name.starts_with("vm-") || !nix {
+            continue;
+        }
+        let mut given = BTreeMap::new();
+        strings_given(rest, &mut given);
+        if rest.ends_with('{') {
+            for line in lines.by_ref() {
+                if line.starts_with('}') {
+                    break;
+                }
+                strings_given(line, &mut given);
+            }
+        }
+        found.push(VmTest {
+            name: name.to_owned(),
+            file: file.to_owned(),
+            given,
+        });
+    }
+    found
+}
+
+/// Into `given`, each `name = "value";` in `text` whose value is a plain
+/// string, built from no other value.
+fn strings_given(text: &str, given: &mut BTreeMap<String, String>) {
+    let is_name = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+    for part in text.split(';') {
+        let Some((name, value)) = part.split_once('=') else {
+            continue;
+        };
+        let name = name.rsplit('{').next().unwrap_or_default().trim();
+        let value = value.trim();
+        let plain = value
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .filter(|value| !value.contains(['"', '$', '\\']));
+        if let Some(value) = plain
+            && !name.is_empty()
+            && name.chars().all(is_name)
+        {
+            given.insert(name.to_owned(), value.to_owned());
+        }
+    }
 }
 
 /// The folder each module, role or hardware lives in, by its module
@@ -110,16 +165,18 @@ pub fn folders(flake: &str) -> BTreeMap<String, String> {
 }
 
 /// The paths a test whose file is `file`, holding `text`, owns, as the
-/// patterns `rules::matches` reads.
+/// patterns `rules::matches` reads. A value its import gives it, in
+/// `given`, is read as itself where `text` builds a path from it.
 /// A file among them is read with `read`, by its path from the root.
 pub fn owned(
     file: &str,
     text: &str,
+    given: &BTreeMap<String, String>,
     folders: &BTreeMap<String, String>,
     read: impl Fn(&str) -> Option<String>,
 ) -> Vec<String> {
     let mut paths = vec![file.to_owned()];
-    named(file, text, &read, &mut paths);
+    named(file, text, given, &read, &mut paths);
     let imported: Vec<&String> = names(text)
         .iter()
         .filter_map(|name| folders.get(name))
@@ -159,9 +216,21 @@ pub fn owners(tests: &[(String, Vec<String>)], files: &[String]) -> Vec<String> 
 /// file that builds a crate, naming its Cargo.lock, passes nothing on: the
 /// crate's own checks cover its code, and the net its VM tests after the
 /// merge, where owning it would put every desktop test before each merge.
-fn named(file: &str, text: &str, read: &impl Fn(&str) -> Option<String>, found: &mut Vec<String>) {
+/// Only the test's own file is given values; a file it names is not.
+fn named(
+    file: &str,
+    text: &str,
+    given: &BTreeMap<String, String>,
+    read: &impl Fn(&str) -> Option<String>,
+    found: &mut Vec<String>,
+) {
     let here = file.rsplit_once('/').map_or("", |(folder, _)| folder);
-    for path in beside(text).iter().filter_map(|path| joined(here, path)) {
+    let paths: Vec<String> = beside(text, given)
+        .into_iter()
+        .filter_map(|path| joined(here, &path))
+        .chain(rooted(text))
+        .collect();
+    for path in paths {
         if found.contains(&path) {
             continue;
         }
@@ -171,37 +240,65 @@ fn named(file: &str, text: &str, read: &impl Fn(&str) -> Option<String>, found: 
             .is_some_and(|extension| extension.eq_ignore_ascii_case("nix"));
         let more = nix.then(|| read(&path)).flatten();
         if let Some(more) = more.filter(|more| !more.contains("Cargo.lock")) {
-            named(&path, &more, read, found);
+            named(&path, &more, &BTreeMap::new(), read, found);
         }
     }
 }
 
-/// The relative paths `text` names, `./x` and `../x`.
-fn beside(text: &str) -> Vec<String> {
+/// The relative paths `text` names, `./x` and `../x`, with each value in
+/// `given` read as itself where one builds a path. A path copied whole
+/// into a string, `"${../modules/warp/contract}"`, whose last part has no
+/// extension is a folder, so it owns each file in it too: until 20
+/// November the warp contract's fixtures named no desktop test.
+fn beside(text: &str, given: &BTreeMap<String, String>) -> Vec<String> {
     let mut found = Vec::new();
     let mut rest = text;
     while let Some(at) = rest.find("./") {
         let start = rest[..at].rfind(|c: char| !is_path(c)).map_or(0, |i| i + 1);
-        let (tail, length) = path_at(&rest[at..]);
+        let (tail, length, within) = path_at(&rest[at..], given);
         let path = format!("{}{tail}", &rest[start..at]);
         if path.starts_with("./") || path.starts_with("../") {
-            found.push(path.trim_end_matches('.').to_owned());
+            let path = path.trim_end_matches('.');
+            let last = path.rsplit('/').next().unwrap_or_default();
+            let folder =
+                rest[..start].ends_with("${") && !last.is_empty() && !last.contains(['.', '*']);
+            if folder {
+                found.push(format!("{path}/*"));
+            }
+            found.push(path.to_owned());
         }
+        found.extend(within);
         rest = &rest[(at + length).max(at + 2)..];
     }
     found
+}
+
+/// The paths `text` names from the flake's root, `"${self}/x"`, by their
+/// paths from the root: until 20 November three sound VM tests that import
+/// the pipewire module that way named none of its files.
+fn rooted(text: &str) -> Vec<String> {
+    text.match_indices("${self}/")
+        .filter_map(|(at, root)| {
+            let (path, _, _) = path_at(&text[at + root.len()..], &BTreeMap::new());
+            joined("", path.trim_end_matches('.')).filter(|path| !path.is_empty())
+        })
+        .collect()
 }
 
 fn is_path(c: char) -> bool {
     c.is_ascii_alphanumeric() || "._/-".contains(c)
 }
 
-/// The path `text` begins with, and how far into `text` it runs. A value
-/// built into it, `${area}`, reads as `*`, a glob owning each file it could
-/// name: read as the path's end, `./screens-${area}-vm-test.py` owned no
-/// file of the screens VM test's cases until 20 November.
-fn path_at(text: &str) -> (String, usize) {
+/// The path `text` begins with, how far into `text` it runs, and the
+/// paths named inside the values built into it. A value built into it,
+/// `${area}`, reads as what `given` says it is, or else as `*`, a glob
+/// owning each file it could name: read as the path's end,
+/// `./screens-${area}-vm-test.py` owned no file of the screens VM test's
+/// cases until 20 November. The glob is as wide as `*` is, and only
+/// changed-checks narrows it to the tests that moved.
+fn path_at(text: &str, given: &BTreeMap<String, String>) -> (String, usize, Vec<String>) {
     let mut path = String::new();
+    let mut within = Vec::new();
     let mut at = 0;
     while let Some(c) = text[at..].chars().next() {
         if is_path(c) {
@@ -212,13 +309,18 @@ fn path_at(text: &str) -> (String, usize) {
             .then(|| built(&text[at..]))
             .flatten()
         {
-            path.push('*');
+            let value = &text[at + 2..at + length - 1];
+            match given.get(value.trim()) {
+                Some(given) => path.push_str(given),
+                None => path.push('*'),
+            }
+            within.extend(beside(value, &BTreeMap::new()));
             at += length;
         } else {
             break;
         }
     }
-    (path, at)
+    (path, at, within)
 }
 
 /// How long the `${...}` `text` begins with is, to its own closing brace,
@@ -229,7 +331,8 @@ fn built(text: &str) -> Option<usize> {
         match c {
             '{' => depth += 1,
             '}' => {
-                depth = depth.checked_sub(1)?;
+                // It begins with `${`, so a `}` always has a `{` to close.
+                depth -= 1;
                 if depth == 0 {
                     return Some(at + 1);
                 }
@@ -372,32 +475,53 @@ mod tests {
         let folders = folders(FLAKE);
         vm_tests(CHECKS)
             .into_iter()
-            .map(|(name, file)| {
-                let text = if file == "tests/slices.nix" {
+            .map(|test| {
+                let text = if test.file == "tests/slices.nix" {
                     SLICES
                 } else {
                     DESKTOP
                 };
-                let paths = owned(&file, text, &folders, read_named);
-                (name, paths)
+                let paths = owned(&test.file, text, &test.given, &folders, read_named);
+                (test.name, paths)
             })
             .collect()
     }
 
+    fn test(name: &str, file: &str, given: &[(&str, &str)]) -> VmTest {
+        VmTest {
+            name: name.to_owned(),
+            file: file.to_owned(),
+            given: given
+                .iter()
+                .map(|&(name, value)| (name.to_owned(), value.to_owned()))
+                .collect(),
+        }
+    }
+
     #[test]
-    fn checks_name_each_vm_test_with_its_file() {
+    fn checks_name_each_vm_test_with_its_file_and_what_it_is_given() {
         assert_eq!(
             vm_tests(CHECKS),
             vec![
-                (
-                    "vm-apps-come-first".to_owned(),
-                    "tests/slices.nix".to_owned()
-                ),
-                (
-                    "vm-desktop-captures".to_owned(),
-                    "tests/desktop.nix".to_owned()
+                test("vm-apps-come-first", "tests/slices.nix", &[]),
+                test(
+                    "vm-desktop-captures",
+                    "tests/desktop.nix",
+                    &[("area", "captures")]
                 ),
             ]
+        );
+        assert_eq!(
+            vm_tests(
+                "vm-a = import ./a.nix { inherit pkgs; area = \"x\"; n = \"${y}\"; };\n\
+                 vm-b = import ./b.nix {\n  inherit pkgs;\n  side = \"left\";\n};\n\
+                 side = \"right\";"
+            ),
+            vec![
+                test("vm-a", "a.nix", &[("area", "x")]),
+                test("vm-b", "b.nix", &[("side", "left")]),
+            ],
+            "a string built from a value, or one given past the call's end, is no value"
         );
     }
 
@@ -406,14 +530,8 @@ mod tests {
         assert_eq!(
             every_vm_test(GATHERING, read_area),
             vec![
-                (
-                    "vm-apps-come-first".to_owned(),
-                    "tests/slices.nix".to_owned()
-                ),
-                (
-                    "vm-commits-are-signed".to_owned(),
-                    "tests/vm/keys/signing.nix".to_owned()
-                ),
+                test("vm-apps-come-first", "tests/slices.nix", &[]),
+                test("vm-commits-are-signed", "tests/vm/keys/signing.nix", &[]),
             ],
             "tests/vm/loose/checks.nix is gathered by nothing, so names nothing"
         );
@@ -424,14 +542,14 @@ mod tests {
         let folders = folders(FLAKE);
         let tests: Vec<(String, Vec<String>)> = every_vm_test(GATHERING, read_area)
             .into_iter()
-            .map(|(name, file)| {
-                let text = if file == "tests/slices.nix" {
+            .map(|test| {
+                let text = if test.file == "tests/slices.nix" {
                     SLICES
                 } else {
                     SIGNING
                 };
-                let paths = owned(&file, text, &folders, read_named);
-                (name, paths)
+                let paths = owned(&test.file, text, &test.given, &folders, read_named);
+                (test.name, paths)
             })
             .collect();
         assert_eq!(
@@ -456,7 +574,13 @@ mod tests {
 
     #[test]
     fn a_test_owns_its_files_and_the_modules_it_imports() {
-        let paths = owned("tests/slices.nix", SLICES, &folders(FLAKE), read_named);
+        let paths = owned(
+            "tests/slices.nix",
+            SLICES,
+            &BTreeMap::new(),
+            &folders(FLAKE),
+            read_named,
+        );
         assert_eq!(
             paths,
             words(
@@ -468,9 +592,13 @@ mod tests {
 
     #[test]
     fn a_test_of_a_role_owns_the_role_not_its_modules() {
-        let paths = owned("tests/desktop.nix", DESKTOP, &folders(FLAKE), |_: &str| {
-            None
-        });
+        let paths = owned(
+            "tests/desktop.nix",
+            DESKTOP,
+            &BTreeMap::new(),
+            &folders(FLAKE),
+            |_: &str| None,
+        );
         assert_eq!(
             paths,
             words(
@@ -532,9 +660,14 @@ mod tests {
             Some("tests/vm/b.py".to_owned())
         );
         assert_eq!(
-            beside("a ./x.py, \"${../y/z.sh}\" and 1.5./"),
+            beside("a ./x.py, \"${../y/z.sh}\" and 1.5./", &BTreeMap::new()),
             words("./x.py ../y/z.sh")
         );
+    }
+
+    fn owned_by(file: &str, text: &str, given: &[(&str, &str)]) -> Vec<String> {
+        let given = test("vm-x", file, given).given;
+        owned(file, text, &given, &folders(FLAKE), |_: &str| None)
     }
 
     #[test]
@@ -542,24 +675,91 @@ mod tests {
         // 20 November: `tests = ./screens-${area}-vm-test.py;` owned only
         // `tests/vm/screens/screens-`, so a change to a screens case named
         // no VM test to run before it merged.
+        let none = BTreeMap::new();
         assert_eq!(
-            beside("tests = ./screens-${area}-vm-test.py; f ../theme/${t}.toml;"),
+            beside(
+                "tests = ./screens-${area}-vm-test.py; f ../theme/${t}.toml;",
+                &none
+            ),
             words("./screens-*-vm-test.py ../theme/*.toml")
         );
         assert_eq!(
-            beside("readFile ./ir-camera/${name}.py) ${./a.sh}"),
+            beside("readFile ./ir-camera/${name}.py) ${./a.sh}", &none),
             words("./ir-camera/*.py ./a.sh")
+        );
+        assert_eq!(
+            beside("./a-${ { b = 1; }.b }.py ./c-${unclosed", &none),
+            words("./a-*.py ./c-"),
+            "a value's own braces end it at its own closing brace, and one never closed ends it"
         );
         let tests = [(
             "vm-screens".to_owned(),
-            vec!["tests/vm/screens/screens-*-vm-test.py".to_owned()],
+            owned_by(
+                "tests/vm/screens/screens.nix",
+                "tests = ./screens-${area}-vm-test.py;",
+                &[],
+            ),
         )];
         assert_eq!(
             owners(
                 &tests,
-                &["tests/vm/screens/screens-launcher-vm-test.py".to_owned()]
+                &words("tests/vm/screens/screens-launcher-vm-test.py tests/vm/other.py")
             ),
             words("vm-screens")
+        );
+    }
+
+    #[test]
+    fn a_value_the_import_gives_owns_only_the_file_it_names() {
+        let desktop = "tests = ./desktop/desktop-${area}-vm-test.py;";
+        let tests = [
+            (
+                "vm-desktop-captures".to_owned(),
+                owned_by("tests/desktop.nix", desktop, &[("area", "captures")]),
+            ),
+            (
+                "vm-desktop-looks".to_owned(),
+                owned_by("tests/desktop.nix", desktop, &[("area", "looks")]),
+            ),
+        ];
+        assert_eq!(
+            owners(&tests, &words("tests/desktop/desktop-captures-vm-test.py")),
+            words("vm-desktop-captures"),
+            "one area's cases put every desktop test before its merge"
+        );
+    }
+
+    #[test]
+    fn a_path_inside_a_value_or_from_the_root_or_a_folder_is_owned() {
+        assert_eq!(
+            owned_by("tests/a.nix", "t = ./a-${import ./b.nix}.py;", &[]),
+            words("tests/a-*.py tests/a.nix tests/b.nix"),
+            "a path named inside a value built into another is its own"
+        );
+        assert_eq!(
+            owned_by(
+                "tests/vm/sound/noise.nix",
+                "imports = [ \"${self}/modules/pipewire/nixos.nix\" ];",
+                &[],
+            ),
+            words("modules/pipewire/nixos.nix tests/vm/sound/noise.nix")
+        );
+        let tests = [(
+            "vm-desktop-looks".to_owned(),
+            owned_by(
+                "tests/desktop.nix",
+                "warp_contract = \"${../modules/warp/contract}\"; b = \"${../x.json}\";",
+                &[],
+            ),
+        )];
+        assert_eq!(
+            owners(&tests, &words("modules/warp/contract/status.json")),
+            words("vm-desktop-looks")
+        );
+        assert_eq!(
+            owners(&tests, &words("x.json/y")),
+            Vec::<String>::new(),
+            "a file is no folder"
         );
     }
 }

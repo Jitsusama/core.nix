@@ -193,7 +193,6 @@ fn an_excused_failure_is_kept_apart_from_a_pass() {
         vec![Ran::Passed],
         "blame still takes it as passed"
     );
-    fs::remove_dir_all(&state.root).unwrap();
 }
 
 #[test]
@@ -215,7 +214,16 @@ fn a_run_is_kept_by_its_commit_and_check() {
         .unwrap();
     assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
     assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
-    fs::remove_dir_all(&state.root).unwrap();
+}
+
+#[test]
+fn a_tests_state_is_gone_once_it_passes() {
+    let root = {
+        let state = state("gone");
+        assert!(state.root.exists(), "a test's state has a folder");
+        state.root.clone()
+    };
+    assert!(!root.exists(), "{} outlasted its test", root.display());
 }
 
 #[test]
@@ -238,7 +246,6 @@ fn runs_ending_together_are_each_kept_whole() {
     for check in checks {
         assert_eq!(state.runs("aaaa", check).len(), 200, "{check}'s runs");
     }
-    fs::remove_dir_all(&state.root).unwrap();
 }
 
 #[test]
@@ -268,7 +275,6 @@ fn the_heads_and_the_hold_outlast_the_program() {
     state.clear_hold().unwrap();
     assert!(state.hold().is_none(), "a cleared hold still stands");
     state.clear_hold().unwrap();
-    fs::remove_dir_all(&state.root).unwrap();
 }
 
 // cadence reads `since` to say when a hold has stopped the net for half an
