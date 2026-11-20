@@ -12,6 +12,7 @@ use tokio::time::Instant;
 use crate::acts;
 use crate::air::Heard;
 use crate::choose::{self, Choice, Chooser, Other};
+use crate::fading::{self, Giving, Way, Why};
 use crate::learn::Learned;
 use crate::measure::{self, Measured, Measures};
 use crate::service::Ask;
@@ -108,6 +109,110 @@ pub fn choose(
     }
 }
 
+/// Has a card on a call give way at once to another access point of its
+/// network, where its link is fading (fading.rs), or look for one where
+/// it hears none, and says why.
+pub fn give_way(
+    chooser: &mut Chooser,
+    now: Instant,
+    on: &Joined,
+    around: &[Heard],
+    lately: &Measures,
+    (asks, air, looked): (
+        &mpsc::Sender<Ask>,
+        &watch::Receiver<State>,
+        &mpsc::Sender<String>,
+    ),
+) {
+    let measured = lately.lately(&on.point, now, fading::WINDOW);
+    match given(chooser, now, on, around, measured) {
+        Some(Next::Move(to)) => {
+            tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
+        }
+        Some(Next::Look) => {
+            let card = on.card.clone();
+            tokio::spawn(look(asks.clone(), air.clone(), card, looked.clone()));
+        }
+        None => {}
+    }
+}
+
+/// Where a card on a call goes next from a link fading as `measured` says
+/// (echoes lost lately, and its signal), and says why: to another access
+/// point it gives way to, or a look where it hears none worth it, once
+/// each `fading::LOOKS`. Its last give-way is followed first, so one never
+/// reached is kept off and said.
+fn given(
+    chooser: &mut Chooser,
+    now: Instant,
+    on: &Joined,
+    around: &[Heard],
+    measured: (usize, Option<i32>),
+) -> Option<Next> {
+    chooser.followed(now, &on.point);
+    if let Some(unreached) = chooser.unreached() {
+        println!("<6>{}", kept_off(on, &unreached));
+    }
+    if !chooser.may_give_way(now) {
+        return None;
+    }
+    let kept_off = |point: &str| chooser.keeps_off(point, now);
+    match fading::giving_way(&on.point, measured, around, kept_off) {
+        Way::Holds => {
+            chooser.stranded(false);
+            None
+        }
+        Way::To(giving) => {
+            println!("<6>{}", gave_way(on, &giving));
+            chooser.gave_way(now, &on.point, &giving.to);
+            chooser.stranded(false);
+            Some(Next::Move(giving.to))
+        }
+        Way::Nowhere(why) => {
+            if chooser.looks_in_call(now) {
+                println!(
+                    "<6>{} looks for an access point to give way to, as {}",
+                    on.card,
+                    fading_as(on, &why)
+                );
+                chooser.stranded(true);
+                return Some(Next::Look);
+            }
+            if chooser.stranded(true) {
+                println!(
+                    "<6>{} is fading during a call, as {}, and hears nowhere to give way to",
+                    on.card,
+                    fading_as(on, &why)
+                );
+            }
+            None
+        }
+    }
+}
+
+/// Why a card on a call gives way to another access point.
+fn gave_way(on: &Joined, giving: &Giving) -> String {
+    format!(
+        "{} gives way to {}, heard at {} dBm, during a call, as {}",
+        on.card,
+        giving.to,
+        giving.heard,
+        fading_as(on, &giving.why)
+    )
+}
+
+/// How a card's link is fading, said after "as".
+fn fading_as(on: &Joined, why: &Why) -> String {
+    match why {
+        Why::Lossy(lost) => format!(
+            "{} lost {lost} echoes in {} s",
+            on.point,
+            fading::WINDOW.as_secs()
+        ),
+        Why::Faint(signal) => format!("{} has faded to {signal} dBm", on.point),
+    }
+}
+
 /// What a card does next, where it doesn't stay as it is.
 #[derive(Debug, PartialEq)]
 enum Next {
@@ -150,6 +255,7 @@ fn chosen(
     let card = (&*on.point, measured, here.signal, here.frequency);
     let busy = here.radio.load.map(|load| load.busy);
     let from = (measured, here.frequency, busy);
+    chooser.followed(now, &on.point);
     let choice = chooser.choose(now, card, &others, call);
     if let Some(unreached) = chooser.unreached() {
         println!("<6>{}", kept_off(on, &unreached));
@@ -531,6 +637,7 @@ mod tests {
                 retries: 0,
                 failed: 0,
                 signal: Some(-50),
+                average: None,
                 moved: Some(second * 12_500_000),
                 link: None,
             };
@@ -695,6 +802,81 @@ mod tests {
         assert!(
             loaded.ends_with(queued),
             "says it left mid-download: {loaded}"
+        );
+    }
+
+    /// Two echoes lost in the window, with no signal of the kernel's.
+    const LOSING: (usize, Option<i32>) = (2, None);
+
+    #[test]
+    fn a_losing_call_gives_way_once_and_not_again_while_it_moves() {
+        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on = joined(DESK);
+
+        let first = given(&mut chooser, start, &on, &around, LOSING);
+        let soon = start + Duration::from_secs(5);
+        let again = given(&mut chooser, soon, &on, &around, LOSING);
+
+        assert_eq!(
+            first,
+            Some(Next::Move(HALL.into())),
+            "it gives way to the hall"
+        );
+        assert_eq!(again, None, "not again while the move may be under way");
+    }
+
+    #[test]
+    fn a_losing_call_hearing_nowhere_looks_once_a_while() {
+        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let around = [heard(DESK, -50)];
+        let on = joined(DESK);
+
+        let first = given(&mut chooser, start, &on, &around, LOSING);
+        let soon = start + Duration::from_secs(60);
+        let again = given(&mut chooser, soon, &on, &around, LOSING);
+        let later = start + fading::LOOKS;
+        let after = given(&mut chooser, later, &on, &around, LOSING);
+
+        assert_eq!(first, Some(Next::Look), "it looks for somewhere");
+        assert_eq!(again, None, "not within two minutes of its last look");
+        assert_eq!(after, Some(Next::Look), "and again once they're past");
+    }
+
+    #[test]
+    fn a_give_way_never_reached_is_kept_off_and_the_card_looks() {
+        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let around = [heard(DESK, -50), heard(HALL, -50)];
+        let on = joined(DESK);
+        given(&mut chooser, start, &on, &around, LOSING);
+
+        let later = start + fading::BETWEEN;
+        let next = given(&mut chooser, later, &on, &around, LOSING);
+
+        assert!(
+            chooser.keeps_off(HALL, later),
+            "still on the desk, the hall was never reached"
+        );
+        assert_eq!(next, Some(Next::Look), "with nowhere else, it looks");
+    }
+
+    #[test]
+    fn a_give_way_says_where_to_and_why() {
+        let giving = Giving {
+            to: HALL.into(),
+            heard: -50,
+            why: Why::Lossy(2),
+        };
+
+        let why = gave_way(&joined(DESK), &giving);
+
+        assert_eq!(
+            why,
+            format!(
+                "wlan2 gives way to {HALL}, heard at -50 dBm, during a call, as {DESK} lost 2 \
+                 echoes in 10 s"
+            ),
+            "a give-way says where, how loud, and what faded"
         );
     }
 

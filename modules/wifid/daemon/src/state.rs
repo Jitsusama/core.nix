@@ -38,6 +38,11 @@ pub struct State {
     /// The cards, by name, that have looked for networks since wifid was
     /// given them.
     looked: BTreeSet<String>,
+    /// Whether each card, by name, is looking for networks now, and how
+    /// many looks it has begun. A look takes the card off its channel, so
+    /// a call's echoes lost meanwhile aren't its link fading (fading.rs),
+    /// and one begun and ended between two reads still shows in the count.
+    scanning: BTreeMap<String, Looking>,
     /// How many looks the cards have finished, as the shell is told.
     looks: u32,
     /// What each card's driver last read of its link, by the card's name,
@@ -83,6 +88,20 @@ pub struct Described {
     /// asked for one knows when it's done: what a look hears is described
     /// before it, and one that hears nothing changes nothing else.
     pub looks: u32,
+}
+
+/// Whether a card is looking for networks, and how many looks it's begun.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Looking {
+    pub now: bool,
+    pub begun: u32,
+}
+
+impl Looking {
+    /// Whether the card looked at all between this read and that later one.
+    pub fn looked_until(self, later: Looking) -> bool {
+        self.now || later.now || self.begun != later.begun
+    }
 }
 
 /// A Wi-Fi card.
@@ -224,6 +243,7 @@ impl State {
         self.gateways.retain(|index, _| indexes.contains(index));
         let names: Vec<&String> = self.cards.values().map(|card| &card.name).collect();
         self.looked.retain(|card| names.contains(&card));
+        self.scanning.retain(|card, _| names.contains(&card));
         // Only a card that goes takes its access point, since wifid hands
         // cards over, and asks where each is, before it follows any.
         self.at.retain(|card, _| !gone.contains(card));
@@ -369,6 +389,22 @@ impl State {
     pub fn looked(&mut self, card: &str) {
         self.looked.insert(card.to_string());
         self.look_ended();
+    }
+
+    /// Takes in whether the card is looking for networks now, as
+    /// wpa_supplicant says.
+    pub fn scanning(&mut self, card: &str, scanning: bool) {
+        let looking = self.scanning.entry(card.to_owned()).or_default();
+        if scanning && !looking.now {
+            looking.begun = looking.begun.wrapping_add(1);
+        }
+        looking.now = scanning;
+    }
+
+    /// Whether the card is looking for networks now, and how many looks
+    /// it has begun.
+    pub fn looking(&self, card: &str) -> Looking {
+        self.scanning.get(card).copied().unwrap_or_default()
     }
 
     /// Takes in that a card's look ended, heard or failed: one that failed
@@ -1065,6 +1101,20 @@ mod tests {
 
         assert_eq!(state.described().looks, 1);
         assert!(!state.settled());
+    }
+
+    #[test]
+    fn a_look_begun_and_ended_between_two_reads_still_shows() {
+        let mut state = State::default();
+        let before = state.looking("wlan0");
+
+        state.scanning("wlan0", true);
+        state.scanning("wlan0", false);
+        let after = state.looking("wlan0");
+        let later = state.looking("wlan0");
+
+        assert!(before.looked_until(after), "a look came between");
+        assert!(!after.looked_until(later), "none came after");
     }
 
     #[test]
