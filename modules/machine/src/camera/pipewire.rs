@@ -89,7 +89,8 @@ impl Global {
 /// in a property of its own can write lines that read as more. The
 /// server's own properties, its `pipewire.sec.pid` among them, are listed
 /// before any a client sets, so the first a key is said is the one kept.
-/// pw-cli lists the objects by their ids, rising, so one said under an id
+/// pw-cli keeps the objects at their ids and lists them in that order
+/// (`pw_map_for_each` over its globals), rising, so one said under an id
 /// no higher than the last was written into a property, to stand for an
 /// object listed before it or after: the listing is refused, rather than
 /// read with a reader shadowed or renamed. What's left to a client is an
@@ -106,7 +107,13 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
             if let Some(last) = globals.last()
                 && id <= last.id
             {
-                return Err(format!("id {id} was listed after id {}", last.id));
+                // Said the same each time, whatever ids a client picks, so
+                // it's said once.
+                return Err(
+                    "pw-cli's listing was refused, as its ids fall back where a \
+                            client's property holds a line break"
+                        .to_owned(),
+                );
             }
             let kind = kind.strip_prefix("PipeWire:Interface:").unwrap_or(kind);
             let kind = kind.split_once('/').map_or(kind, |(kind, _)| kind);
@@ -153,7 +160,7 @@ pub(super) struct State {
     listed_at: Option<Instant>,
     /// Why the last listing failed, said once until one succeeds or
     /// `PipeWire` lets go.
-    failing: Option<String>,
+    pub(super) failing: Option<String>,
     /// The cameras `PipeWire` holds that the last listing showed nothing
     /// of, said once until it shows them.
     pub(super) unfound: HashSet<String>,
@@ -215,8 +222,9 @@ impl PipeWire {
             Err(why) => {
                 if state.failing.as_deref() != Some(why.as_str()) {
                     eprintln!(
-                        "<4>PipeWire's registry couldn't be listed, so a camera it holds is \
-                         said held by it once the last listing is {KEPT_FOR:?} old: {why}"
+                        "<4>PipeWire's registry gave no listing to go by, so a camera it \
+                         holds is said held by it once the last listing is {KEPT_FOR:?} old: \
+                         {why}"
                     );
                 }
                 state.failing = Some(why);
@@ -292,9 +300,11 @@ pub(super) fn through_pipewire(programs: &[String]) -> bool {
 /// Who reads a camera through `PipeWire`, as its registry shows them, to
 /// stand in `PipeWire`'s place among its holders: the camera's device, by
 /// its node or failing that by its name where no other camera has it,
-/// then its nodes, then whoever's linked to them, passing through any
-/// node `PipeWire`'s own programs run, as a converter of theirs is, to
-/// the program it serves. They're sorted, and `PipeWire` is kept after
+/// then its nodes that `PipeWire`'s own programs made, since any client
+/// can say a device of its node, then whoever's linked to them, passing
+/// through any node `PipeWire`'s own programs run, as a converter of
+/// theirs is, to the program it serves. They're sorted, and `PipeWire` is
+/// kept after
 /// them wherever a reader can't be named (a node with no client, a client
 /// with no process, or a node of `PipeWire`'s with nobody after it), and
 /// alone where nobody is, so a camera it holds never reads as off. None
@@ -354,6 +364,7 @@ pub fn readers(
             global
                 .number("device.id")
                 .is_some_and(|id| devices.contains(&id))
+                && process(global.id).is_some_and(|name| PIPEWIRE.contains(&name.as_str()))
         })
         .map(|global| global.id)
         .collect();
@@ -500,12 +511,16 @@ pub(crate) mod tests {
     }
 
     /// Lists the registry until a listing comes whole, as one forking a
-    /// shell on a starved builder may miss `LIST_WAIT` a time or two.
-    pub(crate) fn listed_whole(pipewire: &PipeWire) {
-        for _ in 0..5 {
+    /// shell on a starved builder may miss `LIST_WAIT` a time or two, and
+    /// says how many tries it took.
+    pub(crate) fn listed_whole(pipewire: &PipeWire) -> usize {
+        for tries in 1..=5 {
             pipewire.refresh();
-            if pipewire.state().listed_at.is_some() {
-                return;
+            // A failed listing leaves the last good one's time as it was,
+            // so it's the failure that's looked for.
+            let state = pipewire.state();
+            if state.listed_at.is_some() && state.failing.is_none() {
+                return tries;
             }
         }
         panic!("no listing came whole in five tries");
@@ -657,8 +672,9 @@ pub(crate) mod tests {
         let cli = pw_cli(
             &root,
             &format!(
-                "[ -e '{}' ] && exit 1; cat '{}'",
+                "[ -e '{}' ] && cat '{}'; cat '{}'",
                 failing.display(),
+                listed.display(),
                 listed.display()
             ),
         );
@@ -668,8 +684,22 @@ pub(crate) mod tests {
         let readers = serde_json::json!(["chrome", "tuple"]);
         assert_eq!(programs(), readers, "listed");
         fs::write(&failing, "").unwrap();
-        pipewire.refresh();
-        assert_eq!(programs(), readers, "kept through one that fails");
+        // Tried until one comes, as a starved builder may miss the wait.
+        let refused = || {
+            pipewire
+                .state()
+                .failing
+                .as_deref()
+                .is_some_and(|why| why.contains("refused"))
+        };
+        for _ in 0..5 {
+            pipewire.refresh();
+            if refused() {
+                break;
+            }
+        }
+        assert!(refused(), "a listing whose ids fall back read as one");
+        assert_eq!(programs(), readers, "kept through one a client wrote into");
         pipewire.state().listed_at = Some(
             Instant::now()
                 .checked_sub(KEPT_FOR)
@@ -722,6 +752,22 @@ pub(crate) mod tests {
             None
         );
         assert_eq!(readers(&[], Some("/dev/video32"), "camera", &root), None);
+    }
+
+    #[test]
+    fn a_reader_saying_its_node_is_the_cameras_is_named_all_the_same() {
+        let root = machine("claimed");
+        let mut graph = graph(&root, "Built-in Camera", "/dev/video32");
+        // Firefox's node, as its client may say of it.
+        for global in &mut graph {
+            if global.id == 14 {
+                global.props.insert("device.id".to_owned(), "10".to_owned());
+            }
+        }
+        assert_eq!(
+            readers(&graph, Some("/dev/video32"), "camera", &root),
+            named(&["chrome", "tuple"])
+        );
     }
 
     #[test]
