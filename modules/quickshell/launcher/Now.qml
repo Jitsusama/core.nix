@@ -2235,6 +2235,10 @@ Provider {
 
     // Whether one of Lately's rows stands in For You: Desktop only while
     // it holds a critical notice unread, which is one to do (toDoCount).
+    // It asks Desktop's own notices as it holds them, by the tray's rule
+    // (Holding.js's held), so one read while Joel looks keeps Desktop where
+    // he found it until the launcher closes, and a critical one Slack's row
+    // holds leaves Desktop where it is.
     // Mail, Slack and Desktop otherwise ask nothing of Joel, so they stand
     // in Now's own rows, after the moment's, and leave For You to what
     // needs him (Joel, 2026-11-19: "I almost never know what I am supposed
@@ -2242,8 +2246,12 @@ Provider {
     // and its filter is a pass of all of Lately's rows, so each keeps
     // every row (latelyKept) whichever it shows.
     function latelyInForYou(row) {
-        return row.forYou?.source === "desktop" && criticalNotices.length > 0;
+        return row.forYou?.source === "desktop" && desktopCritical;
     }
+    readonly property bool desktopCritical: Holding.held({
+        notices: noticesOf.desktop ?? [],
+        onScreen: Object.keys(Notices.live).filter(id => !(id in Notices.resting))
+    }).notices.length > 0
 
     // What came for Joel, Lately, in Now's own rows after the moment's, or
     // For You's (latelyInForYou; Joel: "a notice stays until read or
