@@ -17,8 +17,8 @@
 # process tree apart, so a daemon an agent starts must ask Joel itself. A
 # secret goes from its manager only to the ask for it, or to the clipboard
 # through a wl-copy that holds it in its own memory alone, marked
-# sensitive, which niri keeps from every fenced agent, over Wayland and
-# over X11 alike. An audit, only when Joel asks,
+# sensitive, which niri keeps from every fenced agent's Wayland client.
+# An audit, only when Joel asks,
 # reads every password to find those reused and those breached, hashing
 # each in the daemon's memory and sending Have I Been Pwned the first five
 # characters of a hash alone. What the last check found, each troubled entry's two counts

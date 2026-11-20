@@ -198,8 +198,7 @@ onLinux {
       );
   # With `off = true` set, as a machine may still set it, the shell's own
   # config names no passwords daemon, so an unfenced process that rewrites
-  # the off setting finds nothing for the shell to run, and turning the
-  # place off takes the daemon out of the session altogether.
+  # the off setting finds nothing for the shell to run.
   the-passwords-place-off-gives-the-shell-no-daemon =
     let
       turnedOff = graphical.extendModules {
