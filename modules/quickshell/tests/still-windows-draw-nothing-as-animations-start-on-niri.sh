@@ -34,19 +34,26 @@ if [ "$ran" -ne 0 ]; then
   grep -v 'qt.scenegraph.renderloop' "$said" >&2
   exit 1
 fi
-grep 'drew' "$said"
-# Qt's own lines on its timer, which say how many windows it found shown.
-grep 'animation timer' "$said" | sed 's/.*\*\*\* //' | sort | uniq -c
+# What each window drew, and Qt's own lines on its timer, which say how
+# many windows it found shown, said before the verdicts below so a
+# failure reads beside them; neither ends the script when it's missing.
+grep 'drew' "$said" || true
+grep 'animation timer' "$said" | sed 's/.*\*\*\* //' | sort | uniq -c || true
 
-# Without both, the case is another loop's, or fewer windows', which it
-# says nothing about. The second is Qt's own wording, which a Qt bump may
-# change.
+# Without these, the case is another loop's, or fewer windows', or starts
+# that never reached the patched branch, which it says nothing about: Qt
+# goes there only as its animations start again after stopping, so each
+# of the ten starts must have started its timer with all three windows
+# shown. The timer's line is Qt's own wording, which a Qt bump may change.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
 fi
-if ! grep -q 'Starting system (not vsync-based) animation timer (exposedWindows=3 ' "$said"; then
-  echo "Qt never said it started its animation timer with all three windows shown:" \
-    "'Starting system (not vsync-based) animation timer (exposedWindows=3 ...)'." >&2
+timed=$(grep -c 'Starting system (not vsync-based) animation timer (exposedWindows=3 ' "$said" \
+  || true)
+if [ "$timed" -lt 10 ]; then
+  echo "Qt started its animation timer with all three windows shown $timed times, not at" \
+    "each of the ten starts: 'Starting system (not vsync-based) animation timer" \
+    "(exposedWindows=3 ...)'." >&2
   exit 1
 fi
