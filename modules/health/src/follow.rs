@@ -723,22 +723,20 @@ fn run(
         let at = now();
         let ran = at.saturating_duration_since(started);
         if spell.gave_up(at) && ran >= SETTLED {
-            spell.last_try(follower, at, say, notice)?;
+            let wall = Timestamp::now().as_microsecond();
+            spell.last_try(follower, at, wall, say, notice)?;
         }
         if ended && !spell.is_on() && ran >= SETTLED {
             break;
         }
         let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
+        let mut refused = None;
         if hearing {
             match read.recv_timeout(left) {
-                Ok(Some(line)) => {
-                    // Only a new day's line writes, and only a write that
-                    // failed says so, so a line taken without one leaves
-                    // the spell as it was.
-                    if let Err(error) = follower.take(&line) {
-                        spell.tried(Some(&error), at, &follower.into, say, notice);
-                    }
-                }
+                // Only a new day's line writes, and only a write that
+                // failed says so, so a line taken without one leaves the
+                // spell as it was.
+                Ok(Some(line)) => refused = follower.take(&line).err(),
                 Ok(None) => ended = true,
                 Err(RecvTimeoutError::Timeout) => {}
                 // Every sender is gone, so nothing more can be heard.
@@ -758,10 +756,14 @@ fn run(
                 left.min(settles)
             });
         }
+        // Dated once the line is taken, as the wait for it may be long.
         let at = now();
+        let wall = Timestamp::now().as_microsecond();
+        if let Some(error) = refused {
+            spell.tried(Some(&error), at, wall, &follower.into, say, notice);
+        }
         if at.saturating_duration_since(ticked) >= EVERY {
             ticked = at;
-            let wall = Timestamp::now().as_microsecond();
             follower.look_at_lid(look(), wall);
             follower.mind(wall);
             follower.count_the_dead(wall);
@@ -773,8 +775,8 @@ fn run(
             follower.time_typing();
             follower.pool_keys();
             follower.hear(SESSIONS_A_TICK);
-            let written = follower.write();
-            spell.tried(written.err().as_ref(), at, &follower.into, say, notice);
+            let failed = follower.write().err();
+            spell.tried(failed.as_ref(), at, wall, &follower.into, say, notice);
         }
     }
     let written = follower.write();
