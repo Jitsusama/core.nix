@@ -9,8 +9,8 @@
 //! and none too long for Parakeet's window: a second reading, with no
 //! cutting, sifting or echo filter but no context either. It's no floor
 //! for the model alone, since a clip also hears whoever talks over its
-//! speaker; the gap between the two readings says
-//! what context and the cutting are worth, a side at a time.
+//! speaker; the gap between the two readings says what context and the
+//! cutting are worth, a side at a time.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -68,12 +68,15 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     // bad one is refused at once rather than after the meetings before it
     // are heard.
     let sides = read(&set.join("sides"))?;
-    let mut meetings = Vec::new();
+    let mut meetings: Vec<(&str, &str, Vec<Said>, [Vec<f32>; 2])> = Vec::new();
     for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
         let mut fields = entry.split_whitespace();
         let (Some(name), Some(mine), None) = (fields.next(), fields.next(), fields.next()) else {
             return Err(format!("sides: {entry:?} isn't a meeting and a speaker"));
         };
+        if meetings.iter().any(|meeting| meeting.0 == name) {
+            return Err(format!("sides: {name} is named twice"));
+        }
         let file = format!("{name}.ref");
         let lines = reference(&read(&set.join(&file))?).map_err(|e| format!("{file}: {e}"))?;
         if !lines.iter().any(|line| line.speaker == mine) {
@@ -81,22 +84,32 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                 "{file}: {mine} never speaks, so can't be Joel's side"
             ));
         }
+        let last = lines.iter().map(|line| line.end).fold(0.0, f64::max);
+        let mut sounds = [Vec::new(), Vec::new()];
         for side in [Side::Mine, Side::Theirs] {
-            sound(&set.join(format!("{name}.{}.wav", label(side))))?;
+            let file = set.join(format!("{name}.{}.wav", label(side)));
+            let sound = sound(&file)?;
+            if sound.len() < samples(last) {
+                return Err(format!(
+                    "{} ends before its reference's last line, at {last} s",
+                    file.display()
+                ));
+            }
+            sounds[index(side)] = sound;
         }
-        meetings.push((name, mine, lines));
+        meetings.push((name, mine, lines, sounds));
     }
     if meetings.is_empty() {
         return Err(format!("{} has no meetings to hear", set.display()));
     }
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut all = Scored::default();
-    for (name, mine, reference) in meetings {
+    for (name, mine, reference, sounds) in meetings {
         let mut scored = Scored::default();
         let mut lines = Vec::new();
         for side in [Side::Mine, Side::Theirs] {
-            let sound = sound(&set.join(format!("{name}.{}.wav", label(side))))?;
-            for take in takes(&sound) {
+            let sound = &sounds[index(side)];
+            for take in takes(sound) {
                 let (text, _) = speech.transcribe(&take.samples)?;
                 if let Some(text) = said::spoken(&text) {
                     lines.push(Line {
@@ -366,12 +379,7 @@ mod tests {
         refused("isn't a meeting and a speaker");
         // A whole first meeting, so only reading every reference and
         // recording before the model loads can refuse the second's.
-        let silence = [
-            b"RIFF\x24\0\0\0WAVEfmt \x10\0\0\0".as_slice(),
-            b"\x01\0\x01\0\x80\x3e\0\0\0\x7d\0\0\x02\0\x10\0data\0\0\0\0",
-        ]
-        .concat();
-        let blank = |file: &str| std::fs::write(set.path().join(file), &silence).unwrap();
+        let blank = |file: &str| std::fs::write(set.path().join(file), silence(2)).unwrap();
         write("M.ref", "0.50 1.00 A Okay\n");
         blank("M.mine.wav");
         blank("M.theirs.wav");
@@ -387,8 +395,36 @@ mod tests {
         ));
         write("N.mine.wav", "");
         refused("N.mine.wav: not a RIFF WAV");
+        std::fs::write(set.path().join("N.mine.wav"), silence(0)).unwrap();
+        refused("N.mine.wav ends before its reference's last line");
         blank("N.mine.wav");
         refused("N.theirs.wav");
+        blank("N.theirs.wav");
+        write("sides", "M A\nN A\nM A\n");
+        refused("M is named twice");
+    }
+
+    /// A WAV of `seconds` of silence, in the one format `wav` reads: PCM,
+    /// mono, 16 kHz, 16-bit.
+    fn silence(seconds: u32) -> Vec<u8> {
+        let data = seconds * 16_000 * 2;
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&(36 + data).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16_u32.to_le_bytes());
+        for word in [1_u16, 1] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        for long in [16_000_u32, 32_000] {
+            bytes.extend_from_slice(&long.to_le_bytes());
+        }
+        for word in [2_u16, 16] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data.to_le_bytes());
+        bytes.resize(bytes.len() + usize::try_from(data).unwrap(), 0);
+        bytes
     }
 
     #[test]
