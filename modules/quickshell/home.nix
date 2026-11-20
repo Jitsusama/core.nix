@@ -837,14 +837,17 @@ let
 
   # Every file the shell reads, by its store path, and the list of them its
   # start links, so a switch that changes any is told from one that doesn't.
-  # The list names the command the shell runs and its environment too: a
-  # switch bringing a new Quickshell with the same files left the shell on
-  # the old build, since only its files were compared (2026-11-14, 04:23).
+  # The list names the command the shell runs and its environment too, the
+  # names it unsets included: a switch bringing a new Quickshell with the
+  # same files left the shell on the old build, since only its files were
+  # compared (2026-11-14, 04:23).
   shellFiles = lib.mapAttrsToList (_: file: "${file.source}") (
     lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
   );
   shellFilesList = pkgs.writeText "quickshell-files" (
-    lib.concatLines (shellFiles ++ [ shellCommand ] ++ shellEnvironment)
+    lib.concatLines (
+      shellFiles ++ [ shellCommand ] ++ shellEnvironment ++ map (name: "-${name}") shellUnsets
+    )
   );
 
   # Compiles the shell's files before the shell restarts onto them (./starts-warm.sh).
@@ -868,11 +871,16 @@ let
     "QT_WAYLAND_DISABLE_WINDOWDECORATION=1"
     "MALLOC_CONF=narenas:1"
     "QS_DISABLE_FILE_WATCHER=1"
-    "QV4_PROFILE_WRITE_PERF_MAP=1"
     # What polkit's prompt asks of the process asking for Joel's password:
     # the quest it says it runs under, read by its name alone, so the shell
     # never holds the secrets beside it (asker-says/src/main.rs).
     "POLKIT_ASKER_SAYS=${lib.getExe (pkgs.callPackage ./asker-says/package.nix { })}"
+  ];
+  # What the shell's environment never holds, whatever sets it, each name's
+  # reason given where the unit takes them (UnsetEnvironment, below).
+  shellUnsets = [
+    "QT_QPA_PLATFORMTHEME"
+    "QV4_PROFILE_WRITE_PERF_MAP"
   ];
 in
 {
@@ -2762,8 +2770,11 @@ in
         NotifyAccess = "all";
         # GTK's platform theme, which other Qt programs take, changes the
         # shell's default font and slows its start, and it draws from the
-        # theme itself.
-        UnsetEnvironment = [ "QT_QPA_PLATFORMTHEME" ];
+        # theme itself. Qt's perf map is unset too (Environment, below):
+        # systemd unsets a name last, over the unit's own settings and the
+        # login's environment alike, so one exported for a profile never
+        # reaches Joel's shell.
+        UnsetEnvironment = shellUnsets;
         # niri calls back a surface it isn't drawing, as behind the lock or on
         # a dark screen, only once a second. Qt took a callback 100 ms late for
         # a window gone out of sight and drew it whole when it came, asking for
@@ -2805,16 +2816,19 @@ in
         # below), so the watch is turned off. shell-preview and the nested
         # niri checks run the working copy outside this unit, and keep it.
         #
-        # The shell's JavaScript is compiled to machine code once a function
-        # has run a few times, and a profile of Joel's shell named none of
-        # it, so what his openings spend past the parts the launcher names,
-        # 15 to 50 ms of each fill (2026-11-14), showed only as addresses.
-        # With the map, Qt writes each compiled function's name and address
-        # to /tmp/perf-<pid>.map as it compiles it, and perf reads it. Qt's
-        # profiler would name them too, but only through a debugging port
-        # any local process could drive. In the lab a shell wrote 3,032
-        # functions, 111 KB, and its openings took as long as without it;
-        # /tmp ages a map out after ten days.
+        # Qt writes no perf map of the JavaScript it compiles here: with
+        # QV4_PROFILE_WRITE_PERF_MAP set it names each function to perf in
+        # /tmp/perf-<pid>.map, written from the shell's own thread as it
+        # compiles, and /tmp is on the root's btrfs. Joel's shell stood
+        # 958 ms waiting on btrfs to reserve room as Super+N opened the
+        # launcher, and 873 ms half an hour on, and the map was the one
+        # file on that disk it held open to write when looked at after
+        # (2026-11-19); which of its writes waited isn't yet shown. A lab
+        # on a quiet disk had found the map cost nothing. A profile sets
+        # it in the environment shell-preview starts from, which hands it
+        # to its own shell; the unit unsets it on his. Qt's profiler would name the
+        # functions too, but only through a debugging port any local
+        # process could drive, in the shell that asks for his password.
         Environment = shellEnvironment;
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at

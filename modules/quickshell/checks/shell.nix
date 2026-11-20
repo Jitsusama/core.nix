@@ -167,16 +167,19 @@
 
   # The companion takes a switch whose shell differs from the one running by
   # the list each start links, so a new Quickshell or a new setting in its
-  # environment has to change the list too: a switch bringing a new
-  # Quickshell with the same files left the shell on the old build
-  # (2026-11-14, 04:23).
+  # environment, or a name it unsets, has to change the list too: a switch
+  # bringing a new Quickshell with the same files left the shell on the old
+  # build (2026-11-14, 04:23). The list names an unset as -NAME.
   the-shells-list-names-what-it-runs =
     let
       services = (account graphical).systemd.user.services;
       companion = lib.toList (services.quickshell-takes-new-files.Service.ExecStart or [ ]);
       list = lib.last (lib.splitString " " (lib.concatStringsSep " " companion));
       shell = services.quickshell.Service;
-      runs = lib.toList (shell.ExecStart or [ ]) ++ lib.toList (shell.Environment or [ ]);
+      runs =
+        lib.toList (shell.ExecStart or [ ])
+        ++ lib.toList (shell.Environment or [ ])
+        ++ map (name: "-${name}") (lib.toList (shell.UnsetEnvironment or [ ]));
     in
     # Kept in Nix because the lines it looks for are the unit's own, which only
     # Nix holds, and a script beside it would take them all as arguments anyway.
@@ -267,6 +270,26 @@
       holds "quickshell-draws-each-window-on-one-context"
         "Quickshell's unit leaves Qt making a decorations context beside each window's own."
         false;
+
+  # Qt names the JavaScript it compiles to perf only by writing a map from
+  # the shell's own thread, to /tmp on the root's disk, so it's set for a
+  # profile of a shell of its own and never left on Joel's (the unit's
+  # Environment says why). It came on once for a profile and stayed, so
+  # its coming back is held here. The unit unsetting it is what keeps it
+  # off, since systemd unsets a name over every setting of it; the unit
+  # setting none keeps the shell's environment, which the companion's list
+  # names, saying what the shell runs with.
+  quickshell-writes-no-perf-map =
+    let
+      service = (account graphical).systemd.user.services.quickshell.Service;
+      named = lib.hasInfix "QV4_PROFILE_WRITE_PERF_MAP=";
+    in
+    holds "quickshell-writes-no-perf-map"
+      "Quickshell's unit sets Qt's perf map, or leaves one the login gives it set."
+      (
+        lib.elem "QV4_PROFILE_WRITE_PERF_MAP" (lib.toList (service.UnsetEnvironment or [ ]))
+        && !lib.any named (lib.toList (service.Environment or [ ]))
+      );
 
   # Qt's own compiler takes every file of the shell as the account gets it,
   # the greeter's included, on the Qt the shell runs on
