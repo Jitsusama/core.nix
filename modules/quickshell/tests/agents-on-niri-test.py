@@ -2639,6 +2639,34 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     shell.launcher_until(lambda shown: "Arrived" in shown["rows"])
 
 
+def test_a_step_into_agents_from_home_makes_its_rows_once(shell: Shell) -> None:
+    """A step into Agents by arrow, a session moved since it was last shown, makes its rows once.
+
+    Home makes none of Agents' rows with nothing typed, since Agents says what it holds itself,
+    so the step makes them before it's held. Held, Agents found them moved from what it said
+    when last wanted, and the launcher made them again before the step's frame: each of Joel's
+    steps into Agents by \u2193 and Return waited 16 to 25 ms for its frame, where other steps
+    as long waited a median 2 (his journal, 2026-11-19 and 20).
+    """
+    shell.launcher_closed()
+    arrived_shut(shell, lambda: lay("STEPIN", "Stepped Into Quest", {"state": "listening"}))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.down_to("Agents")
+    # Return comes once the arrow's frames are drawn, as Joel's hand comes after his arrow.
+    shell.held_still()
+    since = shell.mark()
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Stepped Into Quest" in shown["rows"])
+    # The step's frame and any made after it are drawn before what they said is read.
+    shell.held_still()
+    said, _ = shell.said_since(since)
+    again = [line for line in said if line.startswith("act moved in agents")]
+    assert not again, f"the step into Agents made its rows again: {again}"
+    # Agents did say its rows moved, so the case stands where Joel's steps did.
+    assert "agents said only what its step read" in said, f"Agents said no change: {said}"
+
+
 def arrived_shut(shell: Shell, arrive: Callable[[], None]) -> None:
     """Have a session arrive with the launcher shut, and wait until the shell has heard all of it.
 

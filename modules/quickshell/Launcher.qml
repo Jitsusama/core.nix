@@ -5434,8 +5434,13 @@ Scope {
         // folder it came from, though it was stepped into without being
         // selected, as the file picker holds each folder on the way to
         // where it opens; Return steps into the selection, so it's the same.
+        // A source no step held before is wanted from here, and what it says
+        // changed as it is, it said of the rows just read (Wanted.readByStep).
+        newlyHeld = row.from && !held.some(step => step.row?.from === row.from)
+            ? row.from : null;
         held = held.concat([Object.assign(here(), walk?.stood ?? {}, { key: steadyId(row),
             row: row, rows: into ?? [], learned: meant })]);
+        newlyHeld = null;
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -5620,6 +5625,10 @@ Scope {
     // before the rows read from them (choices, partsOfRows) have heard;
     // each source heard is made again once, in the order heard.
     property var refreshing: []
+    // The source a step is holding while its step is put in `held`, when
+    // no step held it before, whose change then is only what the step read
+    // of it a moment before (Wanted.readByStep, Agents.qml's everything).
+    property var newlyHeld: null
     // A change told from a daemon's line is timed from it, on the
     // monotonic clock, to the frame niri presents with it (Hearing.js).
     // It's heard when the launcher takes the change its line is timed
@@ -5651,6 +5660,10 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
+        if (Wanted.readByStep(source, newlyHeld, refreshedFor)) {
+            Report.say(`${source.settings.name} said only what its step read`);
+            return;
+        }
         // Only a key that acted owns a change beside it, to a place on
         // screen (Pacing.keyed), timed from when its work was done
         // (Pacing.sinceKey). What's on screen is read only beside such a
