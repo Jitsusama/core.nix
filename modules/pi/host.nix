@@ -100,6 +100,19 @@ let
     "OPENSSL_MODULES"
   ];
 
+  # What a host's own restart waits out (the harness's host/service/quiet.ts),
+  # as the JSON its unit names: each probe's words and its command, which
+  # exits 0 while its reason holds and 1 while it doesn't. A % is doubled,
+  # so systemd reads none in a probe's path as a specifier.
+  restartWaitsOn = lib.replaceStrings [ "%" ] [ "%%" ] (
+    builtins.toJSON (
+      map (probe: {
+        "while" = probe.why;
+        run = probe.command;
+      }) config.jitsusama.pi.hostRestartWaitsWhile
+    )
+  );
+
   kinds = {
     attended = "the pi conversations Joel watches";
     background = "the pi conversations that run in the background";
@@ -213,6 +226,12 @@ let
             PI_HOST_PROOF = "${host.proof}";
             # The stop limit below, which the host parks within.
             PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
+            # A host restarts itself onto a new pi or harness once it's
+            # installed, or for its heap. At 16:38 on 19 November the
+            # attended host did so mid-call as its install moved, and every
+            # window on it went with it, so it waits until no call is on and
+            # nothing a machine adds holds.
+            PI_HOST_RESTART_WAITS_ON = restartWaitsOn;
           }
           // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
         );
@@ -410,6 +429,47 @@ in
       with an attended and a background host started with the account's session.
     '';
   };
+
+  options.jitsusama.pi.hostRestartWaitsWhile = lib.mkOption {
+    type = lib.types.listOf (
+      lib.types.submodule {
+        options = {
+          command = lib.mkOption {
+            # A bare name would be looked up on the host's PATH, which a
+            # realm's own folders lead.
+            type = lib.types.addCheck (lib.types.nonEmptyListOf lib.types.str) (
+              command: lib.hasPrefix "/" (lib.head command)
+            );
+            description = ''
+              A command, its program named by an absolute path, that exits 0
+              while a host mustn't restart itself and 1 while it may. Any
+              other exit, or none within 15 s, holds the restart too, since it
+              couldn't tell.
+            '';
+          };
+          why = lib.mkOption {
+            type = lib.types.str;
+            description = "Why it holds, as the host's journal says it, such as \"a meeting is near\".";
+          };
+        };
+      }
+    );
+    default = [ ];
+    description = ''
+      What else a pi host's own restart, onto a new pi or harness or for
+      its heap, waits out, beside a call being on here or on another of the
+      person's machines, which comes first. The host looks again each
+      minute and says why it waits. Only a heap that has nearly run out
+      restarts anyway, and a restart asked of systemd by hand never waits.
+    '';
+  };
+
+  config.jitsusama.pi.hostRestartWaitsWhile = lib.mkBefore [
+    {
+      command = [ (lib.getExe (pkgs.callPackage ../calls/package.nix { })) ];
+      why = "a call is on";
+    }
+  ];
 
   config.assertions =
     lib.mapAttrsToList (

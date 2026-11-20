@@ -17,6 +17,8 @@
     "jitsusama.keys.google-drive" = "Google Drive's keys, as Google names its file store, not a disk";
     "jitsusama.nix-offload.lines" =
       "a line is a builder's entry in Nix's machines files, not a connection";
+    "jitsusama.pi.hostRestartWaitsWhile" =
+      "a pi host's process restarts as systemd restarts it; the machine isn't rebooted";
     "jitsusama.pi.hosts" =
       "a pi host is the harness's process holding many pi conversations, not a machine";
     "jitsusama.theme.icons" = "the icon theme is GTK's, named as it names it";
@@ -34,6 +36,7 @@
     pi-hosts-ignore-sigusr1 = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-refuse-an-unproven-runtime = "a pi host is the harness's process holding many pi conversations, not a machine";
     pi-hosts-refuse-code-loading-variables = "a pi host is the harness's process holding many pi conversations, not a machine";
+    pi-hosts-restart-waits-on-calls = "a pi host's process restarts as systemd restarts it; the machine isn't rebooted";
     pi-hosts-start-with-the-session = "a pi host is the harness's process holding many pi conversations, not a machine";
     platform-profiles-reach-the-legacy-file = "the kernel's platform_profile file, by its name";
     quickshell-restarts-with-its-files = "a program restarts; the machine isn't rebooted";

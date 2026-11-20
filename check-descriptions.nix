@@ -2897,6 +2897,10 @@
     pi host's unit gives it, outlive SIGUSR1 with their inspectors shut, beside a node without it
     whose inspector the same signal opens
   '';
+  pi-hosts-restart-waits-on-calls = ''
+    a pi host's unit names the probes its own restart waits out, as JSON the host reads: a call
+    being on, always first, then what the machine adds, each with its words and its command
+  '';
   pi-hosts-refuse-an-unproven-runtime = ''
     a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime
     it is in; a proof of another runtime, or one that isn't a proof, fails evaluation, naming the
