@@ -395,6 +395,13 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     drew, drawn = cat_frames(shell)
     under, _ = shell.said_since(held)
     before = steps(shell, since)
+    said, _ = shell.said_since(since)
+    sat_last = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)][-1:]
+    # A walk done before the card rose has nothing to go on with, so the case says so here
+    # rather than as a sit never seen once the launcher closes.
+    assert not sat_last or (sat_last[0] or {}).get("walk"), (
+        f"the walk was done before the launcher opened, the case's timing: {sat_last}"
+    )
     shell.close_launcher()
     shell.launcher_closed()
     sits_over(shell, first, held)

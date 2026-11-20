@@ -202,16 +202,20 @@ PanelWindow {
     // frames its own surface began meanwhile, none of them steps of its
     // walk, left out of the walk's count; where the hold began; and each
     // frame in `shown` that came first after one, so the journal leaves
-    // the hold out of its gaps.
+    // the hold out of its gaps. `heldAt` is -1 while no hold is open.
     property int heldBegun: 0
-    property int heldAt: 0
+    property int heldAt: -1
     property var resumedAt: []
     function unheld(): void {
         heldBegun = 0;
+        heldAt = -1;
         resumedAt = [];
-        if (Launched.up)
-            heldAt = window.FramePresentation.framesBegun;
     }
+    // Whether what it plays was set off by Joel's hand: a drop, a fetch or
+    // a chase, or the yarn fading as it's picked up. His hand is the input
+    // then, and the card covers none of it, so it's never held, lest it
+    // hang where he let it go till the card goes.
+    property bool byHand: false
     // How often this screen draws, in ms, as its last walk showed.
     property real frameMs: 1000 / 60
     // The workspace this screen shows, its id and index, so a move
@@ -477,6 +481,7 @@ PanelWindow {
             steps = 0;
             begunAt = window.FramePresentation.framesBegun;
         }
+        byHand = false;
         going = plan;
         goes(walker);
     }
@@ -500,6 +505,7 @@ PanelWindow {
         unheld();
         steps = 0;
         begunAt = window.FramePresentation.framesBegun;
+        byHand = false;
         goes(mover);
     }
 
@@ -634,8 +640,9 @@ PanelWindow {
         tellsAt = window.FramePresentation.framesBegun;
         // A hold still open as it ends is left out as well as those past,
         // and counted with them.
-        tellsBegun = Shown.begun(tellsAt, begunAt, heldBegun, Launched.up ? heldAt : null);
-        if (Launched.up)
+        const open = Launched.up && heldAt >= 0 ? heldAt : null;
+        tellsBegun = Shown.begun(tellsAt, begunAt, heldBegun, open);
+        if (open !== null)
             resumedAt = resumedAt.concat([shown.length]);
         tellsStepped = steps;
         answering.restart();
@@ -718,6 +725,9 @@ PanelWindow {
     function halt(): void {
         walker.stop();
         going = null;
+        // After `going`, whose handler fades the yarn as the play that
+        // ends was set off.
+        byHand = false;
         stepped = null;
         pose = "";
     }
@@ -818,7 +828,7 @@ PanelWindow {
             return;
         window.scene.strollTaken = true;
         handsBack = true;
-        plays(playing);
+        plays(playing, false);
     }
 
     // Its yarn by Joel's click on it (VKCF3Z 73c59942; Joel, 2026-11-12:
@@ -829,7 +839,7 @@ PanelWindow {
         if (!still || yarnAt !== null || window.scene.asleep || place === null || column === null
             || resting.running || wanted !== sat)
             return;
-        plays(Games.fetch(playsFrom(0)));
+        plays(Games.fetch(playsFrom(0)), true);
     }
 
     // A click on its yarn lying by it, on the yarn's `side` (-1 its left,
@@ -844,7 +854,7 @@ PanelWindow {
         if (playing === null)
             return;
         yarnKept = false;
-        plays(playing);
+        plays(playing, true);
     }
 
     // Picked up by Joel's hand (VKCF3Z 9ead6710; Joel, 2026-11-12: "i want
@@ -871,6 +881,7 @@ PanelWindow {
         unpetted();
         landedOn = null;
         holding = true;
+        byHand = true;
         if (yarnAt !== null && !yarnFades.running)
             goes(yarnFades);
     }
@@ -906,7 +917,7 @@ PanelWindow {
         const tiles = tilesOf(space?.id);
         const playing = Games.drop(Object.assign(playsFrom(0), { air: cell }),
             Paths.columns(tiles, 0), Floats.of(tiles, 0));
-        plays(playing);
+        plays(playing, true);
         strolled = playing.to;
         landedOn = playing.landsOn ?? { floats: false };
     }
@@ -929,8 +940,9 @@ PanelWindow {
         };
     }
 
-    // A play, `playing`, run on the walker as a walk is.
-    function plays(playing: var): void {
+    // A play, `playing`, run on the walker as a walk is, set off by Joel's
+    // `hand` or not.
+    function plays(playing: var, hand: bool): void {
         if (playing === null)
             return;
         closedOn = null;
@@ -945,6 +957,7 @@ PanelWindow {
         begunAt = window.FramePresentation.framesBegun;
         goingTo = wanted;
         under = column;
+        byHand = hand;
         going = playing;
         goes(walker);
         // Set once it's going, so the seat moving under it is its
@@ -1027,7 +1040,7 @@ PanelWindow {
     readonly property bool stilled: Launched.up
     onStilledChanged: {
         for (const clock of [walker, mover, yarnFades]) {
-            if (stilled && clock.running)
+            if (stilled && clock.running && !byHand)
                 clock.pause();
             else if (!stilled)
                 clock.resume();
@@ -1035,10 +1048,16 @@ PanelWindow {
         if (going === null && moving === null)
             return;
         if (stilled) {
-            heldAt = window.FramePresentation.framesBegun;
+            if (!byHand)
+                heldAt = window.FramePresentation.framesBegun;
             return;
         }
+        // None open, as for what his hand set off, or a walk set off by
+        // another handler of this change once the card had gone.
+        if (heldAt < 0)
+            return;
         heldBegun += window.FramePresentation.framesBegun - heldAt;
+        heldAt = -1;
         resumedAt = resumedAt.concat([shown.length]);
         if (window.FramePresentation.available)
             window.FramePresentation.ask();
@@ -1046,14 +1065,16 @@ PanelWindow {
 
     // Sets `clock`, the walker, the mover or the yarn's fading, going
     // from its start, and for a walk or a move asks niri of its frames;
-    // held at once while the
-    // launcher's card is up, asking nothing. It reads the card itself
-    // rather than `stilled`, which another handler of the same change may
-    // run before.
+    // held at once while the launcher's card is up, asking nothing, but
+    // for what Joel's hand set off. It reads the card itself rather than
+    // `stilled`, which another handler of the same change may run before.
     function goes(clock: var): void {
         clock.restart();
-        if (Launched.up)
+        if (Launched.up && !byHand) {
             clock.pause();
+            if (clock !== yarnFades && heldAt < 0)
+                heldAt = window.FramePresentation.framesBegun;
+        }
         else if (clock !== yarnFades && window.FramePresentation.available)
             window.FramePresentation.ask();
     }
