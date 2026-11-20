@@ -2794,9 +2794,11 @@
     where the harness isn't installed, and never on a Mac
   '';
   pi-sweeps-work-trees-in-a-unit-of-its-own = ''
-    ended pi sessions' work trees are swept by a unit of their own an hour after each sweep ends,
-    in jobs.slice with the store's node and no module-type warning, rather than on a pi host's
-    thread, skipped where the harness isn't installed, and never on a Mac
+    ended pi sessions' work trees are swept by a unit of their own at the top of each hour and
+    once on waking from a sleep that took one, in jobs.slice with the store's node and git, no
+    module-type warning and none of the variables that load code, rather than on a pi host's
+    thread, left running through a switch for up to two hours, skipped where the harness isn't
+    installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which

@@ -3,7 +3,8 @@
 # list of sessions a boot's end took away, the windows joined to sessions
 # elsewhere, and the sweep of ended sessions' work trees. Each is skipped,
 # not failed, on a machine without the harness or before its first
-# install, and a Mac, with no systemd, gets none.
+# install, and a Mac, with no systemd, gets none. The sweep's one setting,
+# the modules it loads providers from, is declared here beside it.
 {
   config,
   lib,
@@ -18,8 +19,42 @@ let
   restoreFile = "${scripts}/restore-file.ts";
   windowsElsewhere = "${scripts}/windows-elsewhere.ts";
   sweepScript = "${scripts}/pi-sweep.ts";
+  sweepProviders = config.jitsusama.pi.sweep.providerModules;
+  sweepPath = [
+    (lib.makeBinPath [ pkgs.git ])
+  ]
+  ++ config.jitsusama.pi.sweep.path
+  ++ [
+    "${config.home.profileDirectory}/bin"
+    "/run/current-system/sw/bin"
+  ];
 in
 {
+  options.jitsusama.pi.sweep.providerModules = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    example = [ "/path/to/a/package/sweep-providers.ts" ];
+    description = ''
+      Modules the sweep of ended sessions' work trees loads its providers
+      other than git's from, each one's default export a function giving
+      them, as the hosts load them from their own packages. The sweep
+      judges the trees of each provider it loads, and the hosts stand
+      their own sweeps down only for trees it judged.
+    '';
+  };
+
+  options.jitsusama.pi.sweep.path = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    example = [ "/path/to/a/toolchain/bin" ];
+    description = ''
+      Folders the sweep of ended sessions' work trees finds what its
+      providers run in, after the store's git and before the account's
+      own: a provider that removes its trees with a program of its own
+      finds it where a pi host would.
+    '';
+  };
+
   config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
     # The harness's measure: its cost audit of the last day against the day
     # before, and its learning sensor over the last seven days day by day,
@@ -101,20 +136,46 @@ in
     # The sweep of ended sessions' work trees, in a process of its own
     # rather than on a pi host's one thread, where its git calls and folder
     # listings held every conversation in the host for up to 262 s on 19
-    # November. It stamps as it starts and as it ends, and while that stamp
-    # is under two hours old the hosts' own sweeps stand down, so stopping
-    # this timer hands sweeping back to them. It runs in jobs.slice, beneath
-    # everything Joel uses, an hour after each sweep ends, however long
-    # that sweep took.
+    # November. Each sweep that runs to its end leaves a stamp naming the
+    # providers whose trees it judged, and while that stamp is under two
+    # hours old a host whose providers it names stands its own sweeps
+    # down, so stopping this timer, or a sweep that keeps failing, hands
+    # sweeping back to the hosts. It runs in jobs.slice, beneath everything
+    # Joel uses, at the top of each hour by the wall clock the stamp is
+    # dated by, and once on waking if a sleep took the hour.
     systemd.user.services.pi-sweep = {
       Unit = {
         Description = "Sweeps ended pi sessions' work trees";
         ConditionPathExists = sweepScript;
+        # A switch would otherwise stop a sweep partway through its trees.
+        X-RestartIfChanged = false;
       };
       Service = {
         Type = "oneshot";
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         Slice = "jobs.slice";
+        # Git from the store first, for the sweep's own calls, then what
+        # its providers run, then the account's, for whatever a
+        # repository's filters run.
+        Environment = [
+          "PATH=${lib.concatStringsSep ":" sweepPath}"
+        ]
+        ++ lib.optional (
+          sweepProviders != [ ]
+        ) "PI_SWEEP_PROVIDERS=${lib.concatStringsSep ":" sweepProviders}";
+        # What would have node run code nobody gave it, as a pi host's unit
+        # clears (host.nix's loadsCode), since this sweep runs git in every
+        # session's trees as a host's would.
+        UnsetEnvironment = [
+          "NODE_OPTIONS"
+          "NODE_PATH"
+          "NODE_COMPILE_CACHE"
+          "LD_PRELOAD"
+          "LD_AUDIT"
+          "LD_LIBRARY_PATH"
+          "OPENSSL_CONF"
+          "OPENSSL_MODULES"
+        ];
         # A sweep still going after two hours is wedged. Its lock goes stale
         # an hour after it stops, for the next sweep to take.
         TimeoutStartSec = "2h";
@@ -123,8 +184,9 @@ in
     systemd.user.timers.pi-sweep = {
       Unit.Description = "Sweeps ended pi sessions' work trees every hour";
       Timer = {
-        OnActiveSec = "5min";
-        OnUnitInactiveSec = "1h";
+        OnCalendar = "hourly";
+        # An hour slept through runs once the machine wakes.
+        Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
     };
