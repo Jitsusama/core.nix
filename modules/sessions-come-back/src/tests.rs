@@ -8,6 +8,7 @@
 use super::*;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Instant;
 
@@ -49,6 +50,7 @@ fn now(sessions: &[Session]) -> Held {
         machine: Some("mac".into()),
         sessions: sessions.to_vec(),
         passed: Vec::new(),
+        live: sessions.iter().map(|session| session.id.clone()).collect(),
     }
 }
 
@@ -71,6 +73,7 @@ fn the_pi_sessions_held_here_are_found_by_their_holds() {
                 },
             ],
             passed: vec![],
+            live: ["01a1-a", "01a1-b", "01a1-f"].map(String::from).to_vec(),
         }),
         "a pi held by name or path, or as pi-claude, is found by its hold and kept as the \
          program it ran as; a sprout's wrapper and a hold the node names no session for are not"
@@ -385,8 +388,17 @@ fn a_session_held_again_no_longer_waits() {
         ],
         ..holding(&[])
     });
-    let after = next(kept, "one", &now(&[session("a", "/f")]), AT);
+    let after = next(kept.clone(), "one", &now(&[session("a", "/f")]), AT);
     assert_eq!(after.waiting, waits(&[session("b", "/g")]));
+    let holds = r#"{"id":"11111111","command":["pi"],"folder":"src","pid":1}"#;
+    let sessions = r#"{"Ok":{"Sessions":[{"id":"a","machine":"mac","held":"11111111"}]}}"#;
+    let passed_over = held(holds, sessions, running).expect("the listing reads");
+    let after = next(kept, "one", &passed_over, AT);
+    assert_eq!(
+        after.waiting,
+        waits(&[session("b", "/g")]),
+        "one held again in a hold that's passed over would be started a second time"
+    );
 }
 
 #[test]
@@ -534,7 +546,7 @@ fn an_unanswered_start_waits_from_when_it_was_asked_and_says_so_once() {
         said,
         ["a", "b"].map(|id| format!(
             "{id} wasn't started again (no answer within 30 s, so it may yet start); \
-             asking again in 5 min"
+             asking again once 5 min have passed"
         )),
         "an unanswered start says when it's asked again, and only that"
     );
@@ -728,6 +740,7 @@ fn a_macs_era_is_its_boot_and_its_console_login() {
 
 #[test]
 fn a_command_that_hangs_is_stopped_at_its_limit() {
+    let _turn = one_at_a_time();
     let begun = Instant::now();
     let said = within(Command::new("sleep").arg("30"), Duration::from_secs(1));
     assert_eq!(said, Err(Unheard::Late(Duration::from_secs(1))));
@@ -739,6 +752,7 @@ fn a_command_that_hangs_is_stopped_at_its_limit() {
 
 #[test]
 fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
+    let _turn = one_at_a_time();
     let begun = Instant::now();
     let folder = folder("held-open");
     fs::create_dir_all(&folder).expect("a folder is made");
@@ -772,6 +786,7 @@ fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
 
 #[test]
 fn a_command_that_answers_in_time_is_read_and_one_that_fails_says_why() {
+    let _turn = one_at_a_time();
     assert_eq!(
         within(Command::new("echo").arg("held"), Duration::from_secs(10)),
         Ok("held\n".into())
@@ -806,6 +821,15 @@ fn folder(name: &str) -> PathBuf {
     let folder = env::temp_dir().join(format!("scb-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&folder);
     folder
+}
+
+/// Held by a test while it starts a process or runs a realm. A process
+/// forked in another test shares a realm's lock until it execs, and a run
+/// then would read the realm as kept by another and do nothing; in use,
+/// one run is one process.
+fn one_at_a_time() -> MutexGuard<'static, ()> {
+    static TURN: Mutex<()> = Mutex::new(());
+    TURN.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// A realm's run against a node that answers `holds` and `sessions` as
@@ -848,6 +872,7 @@ impl Node {
             }
         };
         let say = |line: &str| self.said.borrow_mut().push(line.into());
+        let _turn = one_at_a_time();
         run_realm(
             "work",
             era,
@@ -992,6 +1017,17 @@ fn a_start_the_node_refused_is_tried_next_run_and_one_unheard_waits() {
                 .collect::<Vec<_>>(),
             vec![("a", 1, unanswered)],
             "{case} keeps it waiting"
+        );
+        let back = Node::new(ONE_HOLD, ONE_SESSION);
+        back.run("two", &folder, AT + 120, &|_| {})
+            .expect("the run that finds it held keeps");
+        assert!(
+            back.said
+                .borrow()
+                .iter()
+                .any(|line| line.contains("a is held again, so it waits no more")),
+            "after {case}, one found held again is said to be back: {:?}",
+            back.said.borrow()
         );
     }
 }

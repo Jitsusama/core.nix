@@ -31,6 +31,10 @@
 //!
 //! It takes the shape every command of ours does (docs/commands.md): its
 //! help, and a failure that says what to try.
+//!
+//! Long because what a run looks at, keeps, starts and says is one
+//! decision about one record, which reads truest in one place; what asks
+//! the machine itself is in `machine`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -134,12 +138,15 @@ struct Kept {
 }
 
 /// What the node holds here now: the machine's name and its pi sessions,
-/// and what in its answer was passed over, and why.
+/// and what in its answer was passed over, and why; and the id of every
+/// live session a running pi hold names, kept or passed over, since one
+/// held again in a hold it passes over mustn't be started a second time.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Held {
     machine: Option<String>,
     sessions: Vec<Session>,
     passed: Vec<String>,
+    live: Vec<String>,
 }
 
 /// A line of `mycelium holds`: a program a holder keeps on this machine,
@@ -266,6 +273,10 @@ fn held(holds: &str, sessions: &str, runs: impl Fn(u32) -> bool) -> Result<Held,
         if !holds_its_pi(&hold, &runs) {
             continue;
         }
+        let names_it = |listed: &&&Listed| listed.held.as_deref() == Some(hold.id.as_str());
+        found
+            .live
+            .extend(live.iter().filter(names_it).map(|listed| listed.id.clone()));
         if hold.folder.is_empty() {
             found
                 .passed
@@ -385,7 +396,7 @@ fn next(kept: Option<Kept>, era: &str, now: &Held, at: u64) -> Kept {
             }
         }
     }
-    waiting.retain(|w| !held_now(&w.session.id));
+    waiting.retain(|w| !held_now(&w.session.id) && !now.live.contains(&w.session.id));
     Kept {
         era: era.into(),
         looked: at,
@@ -474,7 +485,7 @@ fn bring_back(
                 waiting.unanswered = Some(at + began.elapsed().as_secs());
                 (
                     format!("{why}, so it may yet start"),
-                    format!("asking again in {} min", QUIET / 60),
+                    format!("asking again once {} min have passed", QUIET / 60),
                 )
             }
         };
@@ -704,6 +715,15 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
              what it held",
             at.saturating_sub(before.looked) / 3600
         ));
+    }
+    let waited: Vec<String> = before
+        .iter()
+        .flat_map(|before| &before.waiting)
+        .map(|waiting| waiting.session.id.clone())
+        .filter(|id| now.live.contains(id))
+        .collect();
+    for id in &waited {
+        (world.say)(&format!("{id} is held again, so it waits no more"));
     }
     let mut kept = next(before, era, &now, at);
     keep(&file, &kept).map_err(|f| f.because(format!("in the {realm} realm")))?;
