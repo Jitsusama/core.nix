@@ -26,8 +26,7 @@ type Json = dict[str, Any]
 
 BIN = "/run/current-system/sw/bin"
 FAR = "203.0.113.3"
-# The connection, in kbit/s, and the jobs' uploads beside the app's one.
-LINE = 8000
+# The jobs' uploads beside the app's one.
 JOBS = 32
 JOBS_PORT = 5201
 APP_PORT = 5202
@@ -53,17 +52,18 @@ UNSHAPED_SHARE = 0.2
 # to take the queue back from the router once the jobs fill it.
 COMING_UP = dt.timedelta(seconds=30)
 TAKING = dt.timedelta(seconds=90)
-# How long the shaper's rate must stay under the line to count as held
-# there: a moment under it, as a cut for delay makes, holds nothing.
-HELD = dt.timedelta(seconds=3)
+# How long the router must drop nothing to count as having let its queue
+# go: 32 uploads backing off after a drop fill it again far sooner.
+HELD = dt.timedelta(seconds=5)
 SENDING = dt.timedelta(seconds=60)
 
 
 @dataclass
 class Rig:
-    """The client, and the server past the router that counts what reaches it."""
+    """The client, the router that is its connection, and the server that counts what reaches it."""
 
     client: BaseMachine
+    router: BaseMachine
     server: BaseMachine
 
     def link(self) -> Json:
@@ -109,6 +109,11 @@ class Rig:
         said = self.client.succeed("journalctl -u shaper -o cat --no-pager")
         status = self.client.succeed("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
+
+    def router_drops(self) -> int:
+        """Give the packets the router's fq_codel has dropped, which only a queue there drops."""
+        qdiscs: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth2"))
+        return sum(int(q.get("drops") or 0) for q in qdiscs if q.get("kind") == "fq_codel")
 
     def taken(self) -> dict[int, int]:
         """Give the bytes the server has taken on each port."""
@@ -196,28 +201,37 @@ def rig(machines: dict[str, BaseMachine]) -> Rig:
     router.wait_for_unit("connection.service")
     client.wait_for_unit("user@1000.service")
     client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=COMING_UP)
-    return Rig(client=client, server=server)
+    return Rig(client=client, router=router, server=server)
 
 
 @pytest.fixture(scope="module")
 def loaded(rig: Rig) -> Rig:
     """Give the rig with the jobs' uploads filling the router, the shaper holding under it.
 
-    The shaper starts above the line, so the router's queue is the one that fills;
-    only taking it back brings the shaper's rate under the line, and keeps it there.
+    The shaper starts above the line, so the router's queue is the one that fills, and
+    drops what it can't hold; only taking it back brings the shaper under what the router
+    lets through, and the router then drops nothing. Its drops are read, not the shaper's
+    rate against 8 Mbit/s: HTB let about 8.5 through as the client counts, and on
+    19 November a shaper holding at 8099 kbit/s, with the queue its own, failed that bar.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
-    under_since: list[float] = []
+    # When the router's drops last moved, and to what.
+    moved: list[tuple[float, int]] = []
 
     def taken_back(last_try: bool) -> bool:
-        up = rig.up()
-        if not 0 < up < LINE:
-            under_since.clear()
-        elif not under_since:
-            under_since.append(time.monotonic())
-        held = bool(under_since) and time.monotonic() - under_since[0] >= HELD.total_seconds()
+        drops = rig.router_drops()
+        if not moved or moved[0][1] != drops:
+            moved[:] = [(time.monotonic(), drops)]
+        held = drops > 0 and time.monotonic() - moved[0][0] >= HELD.total_seconds()
         if last_try and not held:
-            print(f"never held under the line, at {up} kbit/s:\n{rig.trace()}")
+            why = (
+                "the router never dropped, so the jobs never filled it"
+                if drops == 0
+                else f"the router kept dropping, at {drops}, with the shaper at {rig.up()} kbit/s"
+            )
+            print(f"{why}:\n{rig.trace()}")
+        if held:
+            print(f"the router let its queue go, at {drops} dropped, with the shaper at {rig.up()}")
         return held
 
     retry(taken_back, timeout=TAKING)
