@@ -69,11 +69,6 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_ACCOUNT")
 
 
-def lately_rows(desktop: Desktop) -> None:
-    """Open the launcher on Now, whose own rows hold Mail and Slack, since they ask nothing."""
-    now_rows(desktop)
-
-
 def for_you_rows(desktop: Desktop) -> None:
     """Open the launcher on Now and step into For You, whose History holds what was read."""
     now_rows(desktop)
@@ -125,7 +120,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
             and drawer.get("body") == lunch["body"]
         )
 
-    lately_rows(desktop)
+    now_rows(desktop)
     desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
     desktop.down_to("Mail")
     desktop.launcher_until(
@@ -165,7 +160,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Show the Mail, after the mail, goes to Mail in Programs.
-    lately_rows(desktop)
+    now_rows(desktop)
     desktop.down_to("Mail")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: "Show the Mail" in shown["rows"])
@@ -246,7 +241,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     ]
     said: Json = {"state": "ok", "conversations": conversations, "recent": []}
     slack_tells(desktop, said | {"messages": held})
-    lately_rows(desktop)
+    now_rows(desktop)
     # Its side counts what it lists: Ada's two, Grace's and Threads' three
     # replies, never the conversations the messages are in.
     desktop.down_to("Slack")
@@ -263,7 +258,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
             and re.fullmatch(r"\d+\smin\sago", shown["selected"]["side"]) is not None
         )
     )
-    desktop.shoot("launcher-for-you-slack-messages")
+    desktop.shoot("launcher-now-slack-messages")
     # Its acts lie on its row, which holds nothing to step into, as a
     # conversation's do.
     acts = slack_row_does(desktop, "Ada Lovelace")
@@ -286,7 +281,7 @@ def slack_holds_each_message(desktop: Desktop, conversations: list[Json]) -> Non
     # Read in Slack, Grace's message leaves Now by itself, for For You's History.
     done = {"how": "readInSlack", "minutes": 0}
     slack_tells(desktop, said | {"messages": [*held[:2], grace | {"done": done}]})
-    lately_rows(desktop)
+    now_rows(desktop)
     desktop.down_to("Slack")
     machine.send_key("ret")
     desktop.launcher_until(
@@ -314,7 +309,7 @@ def slack_goes(desktop: Desktop) -> None:
 
 def slack_is_not_in_now(desktop: Desktop) -> None:
     """Open Now, wait until it holds no Slack row, and close the launcher."""
-    lately_rows(desktop)
+    now_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_until(lambda shown: not shown["open"])
@@ -378,7 +373,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
     ]
     slack_says(desktop, "ok", conversations)
     try:
-        lately_rows(desktop)
+        now_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
         # Nothing follows its name, and its side is how many alone, as a
@@ -390,7 +385,7 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
                 and shown["selected"]["note"] == ""
             )
         )
-        desktop.shoot("launcher-for-you-slack")
+        desktop.shoot("launcher-now-slack")
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
@@ -436,13 +431,13 @@ def test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count(
         # What wants Joel again, and then the daemon gone, as when
         # slack-unreads stops: what it held goes with it.
         slack_says(desktop, "ok", conversations)
-        lately_rows(desktop)
+        now_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.as_account("qs ipc call launcher toggle")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
         slack_goes(desktop)
-    lately_rows(desktop)
+    now_rows(desktop)
     desktop.launcher_until(lambda shown: "Slack" not in shown["rows"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -510,7 +505,7 @@ def test_slacks_program_holds_its_unread_then_its_recent_and_now_only_what_wants
     slack_says(desktop, "ok", unread, recent=recent)
     try:
         # Now's Slack counts and lists only what wants Joel.
-        lately_rows(desktop)
+        now_rows(desktop)
         desktop.launcher_until(lambda shown: "Slack" in shown["rows"])
         desktop.down_to("Slack")
         desktop.launcher_until(
