@@ -85,9 +85,10 @@ impl Voices {
             return Ok(None);
         };
         let frames = i64::try_from(frames).map_err(|_| "a take too long to embed".to_owned())?;
+        let bands = i64::try_from(BANDS).expect("80 bands fit in an i64");
         let (_, embedding) = self.request.run(
             &[
-                Input::F32("audio_signal", &[1, BANDS as i64, frames], &features),
+                Input::F32("audio_signal", &[1, bands, frames], &features),
                 Input::I64("length", &[1], &[frames]),
             ],
             "embs",
@@ -130,7 +131,8 @@ impl Bands {
         let mut frame = vec![(0.0, 0.0); POINTS];
         let mut spectrum = vec![(0.0, 0.0); POINTS];
         let mut power = [0.0; BINS];
-        for (t, row) in out.chunks_exact_mut(BANDS).enumerate() {
+        let (rows, _) = out.as_chunks_mut::<BANDS>();
+        for (t, row) in rows.iter_mut().enumerate() {
             let window = &samples[t * SHIFT..t * SHIFT + LENGTH];
             // Each sample less most of the one before, the first less most
             // of itself, as Kaldi pre-emphasises.
@@ -217,8 +219,11 @@ pub struct Heard {
 /// linkage on cosine distance until the nearest two groups are further
 /// than `APART`; a group is a voice when it holds at least `LEAST_SHARE`
 /// of the samples, and when `people` says how many others were on the
-/// call, only that many of the largest are. One voice alone is none, since
-/// it tells nothing apart. `heard` is in the order it was said.
+/// call, only that many of the largest are. One voice is named only when
+/// at least `LEAST_SHARE` of the speech is left outside it, so there's
+/// someone else to tell it apart from; a far end of one person whose odd
+/// takes fall outside its voice stays Others. `heard` is in the order it
+/// was said.
 #[must_use]
 pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
     let unit: Vec<Vec<f32>> = heard.iter().map(|h| unit(&h.embedding)).collect();
@@ -231,11 +236,15 @@ pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
         // Average linkage: the merged group is as far from each other as
         // its takes are on average, each part weighed by its size.
         let (na, nb) = (as_f32(groups[a].len()), as_f32(groups[b].len()));
-        for k in 0..apart.len() {
-            let merged = (na * apart[a][k] + nb * apart[b][k]) / (na + nb);
-            apart[a][k] = merged;
-            apart[k][a] = merged;
+        let merged: Vec<f32> = apart[a]
+            .iter()
+            .zip(&apart[b])
+            .map(|(from_a, from_b)| (na * from_a + nb * from_b) / (na + nb))
+            .collect();
+        for (row, &distance) in apart.iter_mut().zip(&merged) {
+            row[a] = distance;
         }
+        apart[a] = merged;
         apart.remove(b);
         for row in &mut apart {
             row.remove(b);
@@ -252,8 +261,11 @@ pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
         .take(people.unwrap_or(usize::MAX))
         .collect();
     let mut out = vec![None; heard.len()];
-    if voices.len() < 2 {
-        return out;
+    let alone = |voice: &[usize]| as_f64(all - spoken(voice)) < LEAST_SHARE * as_f64(all);
+    match voices.as_slice() {
+        [] => return out,
+        [voice] if alone(voice) => return out,
+        _ => {}
     }
     voices.sort_by_key(|g| g.iter().min().copied());
     for (voice, group) in voices.iter().enumerate() {
@@ -440,11 +452,30 @@ mod tests {
 
     #[test]
     fn one_voice_alone_is_none() {
-        let takes = [heard(&[1.0, 0.0, 0.0], 10), heard(&[0.9, 0.1, 0.0], 10)];
+        let takes = [
+            heard(&[1.0, 0.0, 0.0], 10),
+            heard(&[0.9, 0.1, 0.0], 10),
+            heard(&[0.0, 0.0, 1.0], 1),
+        ];
         assert_eq!(
             group(&takes, None),
-            [None, None],
-            "a far end of one voice was split off as Voice 1, which tells nothing apart"
+            [None, None, None],
+            "a far end of one voice and a stray take was split off as Voice 1"
+        );
+    }
+
+    #[test]
+    fn one_voice_beside_enough_that_isnt_it_is_named() {
+        let takes = [
+            heard(&[1.0, 0.0, 0.0, 0.0], 16),
+            heard(&[0.0, 1.0, 0.0, 0.0], 1),
+            heard(&[0.0, 0.0, 1.0, 0.0], 1),
+            heard(&[0.0, 0.0, 0.0, 1.0], 1),
+        ];
+        assert_eq!(
+            group(&takes, None),
+            [Some(0), None, None, None],
+            "a voice with most of the speech wasn't told from the scattered rest"
         );
     }
 

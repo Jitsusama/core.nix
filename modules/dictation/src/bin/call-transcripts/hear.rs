@@ -118,20 +118,7 @@ pub fn hear(
                 let writing = calls
                     .entry(key.clone())
                     .or_insert_with(|| resumed(book, &key, me));
-                if speech.is_none() {
-                    match settings.load() {
-                        Ok(loaded) => speech = Some(loaded),
-                        Err(why) => {
-                            eprintln!("call-transcripts: Parakeet didn't load: {why}");
-                            if told.insert(key.clone()) {
-                                let title = title_of(book, &key);
-                                let why = format!("The speech model didn't load: {why}");
-                                notices::show(&notices::not_transcribed(&title, &why), |_| {});
-                            }
-                        }
-                    }
-                }
-                let Some(parakeet) = &mut speech else {
+                let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
                 let text = match parakeet.transcribe(&samples) {
@@ -199,6 +186,31 @@ fn compile_ahead(settings: &Settings) {
         Ok(_) => eprintln!("call-transcripts: Parakeet compiled ahead of a call, and let go"),
         Err(why) => eprintln!("call-transcripts: Parakeet didn't compile ahead: {why}"),
     }
+}
+
+/// Parakeet, loaded first if it isn't; none when it won't load, which a
+/// notice says once a call, `told` holding the calls already told.
+fn loaded<'a>(
+    settings: &Settings,
+    speech: &'a mut Option<Parakeet>,
+    book: &Shared,
+    key: &str,
+    told: &mut HashSet<String>,
+) -> Option<&'a mut Parakeet> {
+    if speech.is_none() {
+        match settings.load() {
+            Ok(parakeet) => *speech = Some(parakeet),
+            Err(why) => {
+                eprintln!("call-transcripts: Parakeet didn't load: {why}");
+                if told.insert(key.to_owned()) {
+                    let title = title_of(book, key);
+                    let why = format!("The speech model didn't load: {why}");
+                    notices::show(&notices::not_transcribed(&title, &why), |_| {});
+                }
+            }
+        }
+    }
+    speech.as_mut()
 }
 
 /// How a take of theirs sounds, from the speaker model, loaded first if
