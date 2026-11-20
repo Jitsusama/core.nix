@@ -543,8 +543,9 @@
     they spoke, each turn with its speaker and its time in the call
   '';
   call-transcripts-writes-only-what-was-said = ''
-    a call writes down only what was said: a loud noise with no speech in it and a silent far end
-    give no turn and no bracketed sound
+    a call writes down only what was said: a loud noise with no speech in it, and a far end that
+    only clicks, breathes, coughs, rings, chimes, plays a chord and hums, give no turn and no
+    bracketed sound
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine
