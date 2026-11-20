@@ -56,6 +56,9 @@ let
   output = lib.concatStringsSep " ! " [
     "appsrc name=appsrc caps=${caps}"
     "queue leaky=downstream max-size-buffers=3"
+    # As the built-in camera's relay has it, so the loopback's sink can
+    # meet the picture however it asks; NV12 already, it passes untouched.
+    "videoconvert"
     "v4l2sink name=v4l2sink device=$(cat ${device}) sync=false"
   ];
 
