@@ -523,11 +523,34 @@ impl Drop for History {
 /// and the others, following a journal no line comes to, would otherwise
 /// wait for their next line, outliving it where no service manager ends
 /// them with it, as when `health follow` is run by hand. A signal that
-/// ends health unwinds nothing, so it ends none of them: a service
-/// manager's stop does, ending health's whole group.
+/// ends health unwinds nothing, so a signal that asks health to stop is
+/// caught and ends them first (`ender`, `signals.rs`).
 #[derive(Default)]
 pub struct Followers {
     children: Children,
+}
+
+impl Followers {
+    /// What ends every follower still running, and starts none after, from
+    /// another thread, as the one waiting for a signal that ends health.
+    pub fn ender(&self) -> impl FnOnce() + Send + 'static {
+        let children = self.children.clone();
+        move || children.end()
+    }
+
+    /// A follower started on `command`, which says its end through `say`,
+    /// for a test: its process's id, and what it sends.
+    #[cfg(test)]
+    pub(crate) fn following(
+        &self,
+        command: Command,
+        say: impl Fn(&str) + Send + 'static,
+    ) -> (u32, std::sync::mpsc::Receiver<Option<String>>) {
+        let (lines, read) = std::sync::mpsc::channel();
+        let started = spawn_saying(command, lines, true, say, &self.children);
+        let id = started.expect("the follower starts");
+        (id.expect("the followers not ended"), read)
+    }
 }
 
 impl Drop for Followers {
@@ -600,24 +623,25 @@ impl Children {
 /// (`follower_ended`).
 fn spawn(command: Command, lines: Sender<Option<String>>, children: &Children) -> io::Result<()> {
     let following = follows(&command);
-    spawn_saying(command, lines, following, warn, children)
+    spawn_saying(command, lines, following, warn, children).map(drop)
 }
 
 /// `spawn`, with what it says of its end said through `say`, before its
 /// `None`, sent if it `follows` for as long as health runs, or if it
 /// didn't end whole, so health starts again and reads it again. One that
 /// `children` ended, as health ends, says nothing and sends nothing, and
-/// one asked once they're ended isn't started.
+/// one asked once they're ended isn't started: the id of the process
+/// started, if one is.
 fn spawn_saying(
     mut command: Command,
     lines: Sender<Option<String>>,
     follows: bool,
     say: impl Fn(&str) + Send + 'static,
     children: &Children,
-) -> io::Result<()> {
+) -> io::Result<Option<u32>> {
     let name = named(&command);
     let Some((id, out)) = children.start(&mut command)? else {
-        return Ok(());
+        return Ok(None);
     };
     let children = children.clone();
     thread::spawn(move || {
@@ -638,6 +662,12 @@ fn spawn_saying(
             return;
         };
         let waited = child.wait();
+        // One the stop that ends health ended too says nothing either,
+        // given the moment health may take to catch it.
+        thread::sleep(crate::signals::CAUGHT_WITHIN);
+        if crate::signals::stopping() {
+            return;
+        }
         let whole = matches!(&waited, Ok(status) if status.success());
         if let Some(said) = follower_ended(&name, waited, follows) {
             say(&said);
@@ -646,7 +676,7 @@ fn spawn_saying(
             let _ = lines.send(None);
         }
     });
-    Ok(())
+    Ok(Some(id))
 }
 
 /// Whether `command` follows for as long as health runs: every follower,

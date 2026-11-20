@@ -27,6 +27,7 @@ use crate::lid::{self, Looked};
 use crate::memory;
 use crate::reports;
 use crate::sessions;
+use crate::signals;
 use crate::source::{Followers, Source};
 use crate::trials;
 use crate::typing;
@@ -639,18 +640,21 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let (lines, read) = mpsc::channel();
     // Dropped however this returns, ending every follower still running.
     let followers = Followers::default();
-    let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
-    drop(lines);
-    run(
-        &mut follower,
-        &read,
-        Instant::now,
-        thread::sleep,
-        lid::look,
-        &FAILS,
-        &NOTICES,
-    )?;
-    Err(ended)
+    // A stop ends the followers first, then health (`signals.rs`).
+    signals::until_stopped(followers.ender(), || {
+        let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
+        drop(lines);
+        run(
+            &mut follower,
+            &read,
+            Instant::now,
+            thread::sleep,
+            lid::look,
+            &FAILS,
+            &NOTICES,
+        )?;
+        Err(ended)
+    })
 }
 
 /// What health ends on once `run` returns, given how its followers
