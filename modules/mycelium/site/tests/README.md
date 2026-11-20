@@ -10,7 +10,9 @@ network and machine is in words, `when.test.ts` how the drawer says a time
 against the reading's own, `health.test.ts` how each cell and machine stands
 and why, `doing.test.ts` what each is doing and how much of the talk asked
 something, `spend.test.ts` what each spent today and how the drawer lists it,
-and `waits.test.ts` what waits on each cell and what holds stand; all thirteen
+`waits.test.ts` what waits on each cell and what holds stand, `lines.test.ts`
+how wide the map draws a line as it steps in and out, and `sprout.test.ts`
+the link new work hands the Launcher; all fifteen
 run as the site builds
 (`mycelium-site-holds`). `map-reads-live-test.py` proves the built page reads
 live through the sites' server in Chromium, from the realm in `node.json`, with

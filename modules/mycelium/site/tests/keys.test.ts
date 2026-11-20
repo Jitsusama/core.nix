@@ -185,12 +185,11 @@ it("answers only ? while the keys dialog is open, so it can close", () => {
   }
 });
 
-it("answers find, new work and the keys anywhere, and the map's own letters only on the map", () => {
+it("answers find and the keys anywhere, and the map's own letters only on the map", () => {
   const away = standing({ onMap: false });
   assert.equal(pageKey(press("/"), away), "find", "find didn't open from off the map");
-  assert.equal(pageKey(press("s"), away), "sprout", "new work didn't open from off the map");
   assert.equal(pageKey(press("?"), away), "keys", "the keys didn't open from off the map");
-  for (const key of ["m", ".", "0", "-", "Escape"]) {
+  for (const key of ["m", "s", ".", "0", "-", "Escape"]) {
     assert.equal(pageKey(press(key), away), null, `${key} acted from off the map`);
   }
 });

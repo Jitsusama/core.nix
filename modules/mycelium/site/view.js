@@ -44,7 +44,7 @@ import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, parts
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
-import { handedWords, NO_WORDS, sproutLink } from "./sprout.js";
+import { handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -138,6 +138,7 @@ import {
   const sproutControl = document.getElementById("sprout-control");
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
+  let sproutOpener = null;
   const trail = document.getElementById("trail");
   const trailSteps = document.getElementById("trail-steps");
   // What the find line matched, in the order n steps through them, and
@@ -3658,49 +3659,75 @@ import {
   const openFind = () => {
     findVisited = false;
     closeSprout({ said: false });
-    trail.hidden = true;
+    trail.inert = true;
     findLine.hidden = false;
     find.focus();
     find.select();
   };
-  const closeFind = () => {
+  const closeFind = ({ said = true } = {}) => {
     if (findLine.hidden) return;
     const inFind = findLine.contains(document.activeElement);
     find.value = "";
     findLine.hidden = true;
-    trail.hidden = false;
+    trail.inert = false;
     refind();
     if (inFind) view.focus({ preventScroll: true });
-    if (view.contains(document.activeElement)) where.textContent = "Find closed; the whole map is back in its full ink.";
+    if (said && view.contains(document.activeElement)) where.textContent = "Find closed; the whole map is back in its full ink.";
   };
   // ---- New work: words handed to the Launcher's Start New Work. ----
 
   // The line takes the trail's place as find's does, and the two never
-  // stand together. It hands the words on as a link the desktop gives the
-  // Launcher (sprout.ts says why), from the cell open as it opened, which
-  // a tick lets go of; a receptor is never one, as it is never talked to.
-  const sproutableFrom = (address) => !!address && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
+  // stand together; the trail keeps its room, unseen, so nothing round it
+  // moves. It hands the words on as a link the desktop gives the Launcher
+  // (sprout.ts says why), from the cell open as it opened, which a tick
+  // lets go of; a receptor is never one, as it is never talked to, and an
+  // address the link would leave out is never offered.
+  sproutInput.maxLength = LONGEST_WORDS;
+  const sproutableFrom = (address) =>
+    isAddress(address) && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
   const openSprout = (from) => {
-    closeFind();
+    // Asked again while open, it only takes the keys back, so a cleared
+    // tick stays cleared and the cell it starts from stays the same.
+    if (!sproutLine.hidden) {
+      sproutInput.focus();
+      return;
+    }
+    sproutOpener = document.activeElement;
+    closeFind({ said: false });
     sproutFrom = sproutableFrom(from) ? from : null;
     sproutFromLine.hidden = sproutFrom === null;
     sproutFromBox.checked = true;
     sproutFromWords.textContent = sproutFrom ? `From ${current?.byAddress.get(sproutFrom)?.short || sproutFrom}` : "";
-    trail.hidden = true;
+    trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
     sproutInput.focus();
+    // Words last handed on come back chosen, so if the Launcher didn't
+    // open, Return hands them again, and typing replaces them.
+    sproutInput.select();
   };
-  function closeSprout({ said = true } = {}) {
+  // Focus goes back to what opened the line, the drawer's button or the
+  // control, while it still stands, or the button the drawer drew again in
+  // its place; else to the map.
+  const sproutBack = () => {
+    const address = sproutOpener?.dataset?.sproutFrom;
+    const again = address ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`) : null;
+    const stands = sproutOpener?.isConnected && sproutOpener !== document.body;
+    (stands ? sproutOpener : again || view).focus({ preventScroll: true });
+  };
+  // Words handed on are kept for the line's next opening; a line let go
+  // of keeps none.
+  function closeSprout({ said = true, keep = false } = {}) {
     if (sproutLine.hidden) return;
     const inLine = sproutLine.contains(document.activeElement);
-    sproutInput.value = "";
+    if (!keep) sproutInput.value = "";
     sproutInput.setCustomValidity("");
     sproutLine.hidden = true;
-    trail.hidden = false;
+    trail.inert = false;
     sproutFrom = null;
     sproutControl.setAttribute("aria-expanded", "false");
-    if (inLine) view.focus({ preventScroll: true });
+    if (inLine) sproutBack();
+    sproutOpener = null;
     if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
   }
   const toggleSprout = () => (sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null) : closeSprout());
@@ -3719,15 +3746,17 @@ import {
     sproutGo.href = link;
     sproutGo.click();
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
-    closeSprout({ said: false });
+    closeSprout({ said: false, keep: true });
     where.textContent = handedWords(short);
   });
   sproutInput.addEventListener("input", () => sproutInput.setCustomValidity(""));
   // Escape closes the line from anywhere in it, its tick and button too,
-  // which the page's own keys leave alone as fields.
+  // which the page's own keys leave alone as fields; it goes no further,
+  // so the same press never lets go of the open cell or closes Now.
   sproutLine.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
+    e.stopPropagation();
     closeSprout();
   });
 
