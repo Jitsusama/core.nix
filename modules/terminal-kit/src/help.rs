@@ -50,6 +50,10 @@ pub struct Help {
     /// Whether it can end done; one kept only to refuse can't, so its
     /// help lists no 0.
     pub ends_done: bool,
+    /// Whether a word left over after it is named in the refusal; one
+    /// given words that may be private, as a secret's name or a reason,
+    /// refuses without saying it.
+    pub says_words: bool,
 }
 
 /// The widest a name's column grows before a long name's words go on the
@@ -88,6 +92,7 @@ impl Help {
             listed: true,
             passes: None,
             ends_done: true,
+            says_words: true,
         }
     }
 
@@ -137,6 +142,15 @@ impl Help {
     #[must_use]
     pub fn never_done(mut self) -> Self {
         self.ends_done = false;
+        self
+    }
+
+    /// The same, never saying back a word left over after it: a word of a
+    /// reason or a secret's name left unquoted is refused unsaid, where
+    /// an error would show it to a terminal, a journal or a model.
+    #[must_use]
+    pub fn words_unsaid(mut self) -> Self {
+        self.says_words = false;
         self
     }
 
