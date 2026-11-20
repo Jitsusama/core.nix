@@ -642,9 +642,10 @@ pub fn now() -> u64 {
         .map_or(0, |since| since.as_secs())
 }
 
-/// A state of a test's own, in a folder taken away when the test ends. A
-/// run of the tests made over a hundred and kept them all: by 20 November
-/// one temporary folder held 3,800 of them.
+/// A state of a test's own, in a folder taken away when the test passes.
+/// A run of the tests made over a hundred and kept them all: by 20
+/// November one temporary folder held 3,800 of them. A failing test keeps
+/// its folder and says where, so what it wrote can be read.
 #[cfg(test)]
 pub struct Scratch(State);
 
@@ -677,7 +678,14 @@ impl std::ops::Deref for Scratch {
 #[cfg(test)]
 impl Drop for Scratch {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0.root);
+        if std::thread::panicking() {
+            eprintln!(
+                "the failing test's state is kept in {}",
+                self.0.root.display()
+            );
+        } else {
+            let _ = fs::remove_dir_all(&self.0.root);
+        }
     }
 }
 

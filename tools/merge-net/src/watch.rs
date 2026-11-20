@@ -2871,9 +2871,7 @@ mod tests {
         }
     }
 
-    /// A state of the test's own. The tests run side by side, so a number
-    /// counted for each keeps two that chose the same name from emptying
-    /// each other's folder.
+    /// A state of the test's own, gone when the test passes.
     fn state(name: &str) -> Scratch {
         Scratch::named(&format!("watch-{name}"))
     }
