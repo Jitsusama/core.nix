@@ -1185,8 +1185,8 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
         };
         (buses, trees)
     };
-    // The registry's listing counts in the read's time, so health says
-    // when a slow PipeWire is where a read's time went.
+    // The registry's listing counts in the read's whole time, though in
+    // none of its kinds', so a slow PipeWire still shows as a slow read.
     let started = Instant::now();
     if kinds.contains("camera") {
         shared.pipewire.refresh();
