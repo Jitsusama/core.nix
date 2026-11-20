@@ -72,7 +72,18 @@ impl Context {
         args: Vec<String>,
         forms: &[&str],
     ) -> Result<Self, Failure> {
-        let (shared, args) = flags::take(args, forms)?;
+        Self::saying(environment, args, forms, true)
+    }
+
+    /// As `new`, saying a shared flag's wrong value only where `says` is
+    /// set, as a command whose words may be private doesn't.
+    fn saying(
+        environment: Environment,
+        args: Vec<String>,
+        forms: &[&str],
+        says: bool,
+    ) -> Result<Self, Failure> {
+        let (shared, args) = flags::take_saying(args, forms, says)?;
         let theme = ink::theme(&environment);
         let out = Pen::new(
             Ink::decide(environment.stdout, shared.colour, &environment),
@@ -222,7 +233,7 @@ pub fn run_question(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
-    let mut context = match Context::new(environment.clone(), args, &forms) {
+    let mut context = match Context::saying(environment.clone(), args, &forms, help.says_words) {
         Ok(context) => context,
         Err(failure) => return unread(environment, &failure),
     };
@@ -367,20 +378,25 @@ pub fn run_os(
     args: Vec<OsString>,
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> Ending {
-    match texts(args) {
+    match texts(args, help.says_words) {
         Ok(args) => run(help, version, environment, args, body),
         Err(failure) => unread(environment, &failure),
     }
 }
 
-/// The arguments as text, or the failure of one that isn't.
-fn texts(args: Vec<OsString>) -> Result<Vec<String>, Failure> {
+/// The arguments as text, or the failure of one that isn't, saying it
+/// only where `says` is set.
+fn texts(args: Vec<OsString>, says: bool) -> Result<Vec<String>, Failure> {
     args.into_iter()
         .map(OsString::into_string)
         .collect::<Result<_, _>>()
         .map_err(|word| {
-            Failure::new(Exit::Usage, "an argument isn't UTF-8 text")
-                .because(format!("{} can't be read as text", word.to_string_lossy()))
+            let failure = Failure::new(Exit::Usage, "an argument isn't UTF-8 text");
+            if says {
+                failure.because(format!("{} can't be read as text", word.to_string_lossy()))
+            } else {
+                failure.because("it isn't said here, since it may be private")
+            }
         })
 }
 
@@ -455,7 +471,7 @@ pub fn ask(
     body: impl FnOnce(&Context) -> Result<bool, Failure>,
 ) -> ExitCode {
     let environment = Environment::here();
-    let ending = match texts(std::env::args_os().skip(1).collect()) {
+    let ending = match texts(std::env::args_os().skip(1).collect(), help.says_words) {
         Ok(args) => run_question(help, version, &environment, args, body),
         Err(failure) => unread(&environment, &failure),
     };
@@ -599,6 +615,38 @@ mod tests {
         );
         assert_eq!(ending.exit, Exit::Usage);
         assert!(ending.stderr.contains("a\u{fffd}"), "{}", ending.stderr);
+    }
+
+    #[test]
+    fn a_command_whose_words_are_unsaid_never_says_a_shared_flag_or_a_byte_back() {
+        use std::os::unix::ffi::OsStringExt;
+        let unsaid = help().words_unsaid();
+        let environment = Environment::of([false; 3], &[]);
+        for line in ["go --format lighthouse", "go --color=lighthouse"] {
+            let args = line.split_whitespace().map(str::to_owned).collect();
+            let ending = run(&unsaid, "1.0", &environment, args, |_| Ok(()));
+            assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
+            assert!(
+                !ending.stderr.contains("lighthouse"),
+                "{line}'s refusal said its value: {}",
+                ending.stderr
+            );
+        }
+        let args = vec![
+            OsString::from("go"),
+            OsString::from_vec(b"light\xffhouse".to_vec()),
+        ];
+        let ending = run_os(&unsaid, "1.0", &environment, args, |_| Ok(()));
+        assert_eq!(
+            ending.exit,
+            Exit::Usage,
+            "a byte that isn't text wasn't refused"
+        );
+        assert!(
+            !ending.stderr.contains("light"),
+            "the refusal said the argument: {}",
+            ending.stderr
+        );
     }
 
     #[test]

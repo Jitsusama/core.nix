@@ -221,14 +221,20 @@ pub fn walk<'a>(root: &'a Help, args: &[String]) -> Result<Walked<'a>, Failure> 
                 .iter()
                 .flat_map(|entry| flag_names(&entry.name))
                 .collect();
-            flags::unknown("option", flag, &names)
-        } else if !here.says_words {
+            if here.says_words {
+                flags::unknown("option", flag, &names)
+            } else {
+                flags::unknown_unsaid("option", flag, &names)
+            }
+        } else if here.subs.is_empty() && !here.says_words {
             Failure::new(Exit::Usage, format!("{path} takes no more words")).because(
                 "a word was left over, not said here, since it may be a reason or a secret's name",
             )
         } else if here.subs.is_empty() {
             Failure::new(Exit::Usage, format!("{path} takes no more words"))
                 .because(format!("{word} is one too many"))
+        } else if !here.says_words {
+            flags::unknown_unsaid("command", word, &here.command_names())
         } else {
             flags::unknown("command", word, &here.command_names())
         };
@@ -377,8 +383,14 @@ mod tests {
                 Help::new("show", "shows one")
                     .argument("<item>", "the item")
                     .words_unsaid(),
-            );
-        for line in ["ask --why To lighthouse", "show Hidden lighthouse"] {
+            )
+            .words_unsaid();
+        for line in [
+            "ask --why To lighthouse",
+            "show Hidden lighthouse",
+            "ask --why To --lighthouse Hidden",
+            "lighthouse",
+        ] {
             let failure = walk(&help, &words(line)).expect_err("a word was left over");
             assert_eq!(
                 failure.exit,
