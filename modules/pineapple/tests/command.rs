@@ -86,11 +86,12 @@ fn it_refuses_a_resume_where_pi_says_it_runs() {
 #[test]
 fn it_resumes_what_a_scope_names_out_of_pis_reach() {
     let state = scratch("resumed");
-    let under_pi = std::env::var_os("PI_SESSION_ID").is_some();
+    let under_pi = std::env::var_os("PI_SESSION_ID").is_some() || in_agents_cgroup();
     let missed = pineapple(&state, &["resume", "pr:example/other#1"], false);
     let said = pineapple(&state, &["resume", "pr:example/shop#12"], false);
     if under_pi {
-        // An agent running this case is under pi, whatever it clears.
+        // An agent running this case is under pi, or where only agents
+        // and services run, whatever it clears.
         assert!(!said.status.success(), "refused under pi: {said:?}");
         assert_eq!(
             record(&state)["resumed"],
@@ -167,6 +168,31 @@ fn stop_all(state: &Path, args: &[&str], pi_says: bool) -> Output {
     command.output().expect("pineapple runs")
 }
 
+/// Whether this process runs where the command refuses, as it says: in
+/// the user's manager, in agents' slices or a service of its own, but not
+/// the awaited part of the jobs slice, which holds Joel's terminal work.
+fn in_agents_cgroup() -> bool {
+    let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let path = cgroup
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap_or_default()
+        .trim();
+    let Some((_, inside)) = path.split_once(".service/").filter(|(manager, _)| {
+        manager
+            .rsplit('/')
+            .next()
+            .is_some_and(|unit| unit.starts_with("user@"))
+    }) else {
+        return false;
+    };
+    !inside.starts_with("jobs.slice/jobs-awaited.slice/")
+        && (["agents.slice/", "jobs.slice/", "offload.slice/"]
+            .iter()
+            .any(|slice| inside.starts_with(slice))
+            || inside.ends_with(".service"))
+}
+
 fn everything_stops(state: &Path) -> Vec<Value> {
     fs::read_dir(state.join("pineapple/stops"))
         .expect("the stops")
@@ -194,9 +220,11 @@ fn it_refuses_to_stop_all_where_pi_says_it_runs() {
 fn it_stops_all_and_resuming_undoes_it_out_of_pis_reach() {
     let state = scratch("stop-all");
     let said = stop_all(&state, &["stop", "all"], false);
-    if std::env::var_os("PI_SESSION_ID").is_some() {
-        // An agent running this case is under pi, whatever it clears.
-        assert_eq!(said.status.code(), Some(77), "refused under pi: {said:?}");
+    if std::env::var_os("PI_SESSION_ID").is_some() || in_agents_cgroup() {
+        // An agent running this case is under pi, or in a part of the
+        // user's manager only agents and services run in, whatever it
+        // clears; run it in a scope of its own beyond pi to see the rest.
+        assert_eq!(said.status.code(), Some(77), "refused for agents: {said:?}");
         return;
     }
     let out = String::from_utf8_lossy(&said.stdout);
@@ -204,6 +232,10 @@ fn it_stops_all_and_resuming_undoes_it_out_of_pis_reach() {
     assert!(
         out.starts_with("stopping 0 sessions on "),
         "says so in one line: {out}"
+    );
+    assert!(
+        out.contains("0 parked here; nothing starts"),
+        "says how many parked here: {out}"
     );
     assert!(
         out.contains("nothing starts until pineapple resume all"),

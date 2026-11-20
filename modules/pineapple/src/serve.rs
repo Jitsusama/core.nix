@@ -172,21 +172,19 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
 /// once it's resumed, undoes what it paused. Each is journalled.
 fn hold_paused(plan: &pause::Plan, state: &Path, host: &str) {
     let mut runs = pause::System { limit: STEP };
-    if pause::stands(state).is_some() {
-        match pause::hold(plan, state, &mut runs) {
-            Ok(froze) if !froze.is_empty() => {
-                eprintln!("froze agents' work started since: {}", froze.join(", "));
+    match pause::tend(plan, state, host, now_ms(), &mut runs) {
+        Ok(tended) => {
+            if !tended.froze.is_empty() {
+                eprintln!(
+                    "paused agents' work started since: {}",
+                    tended.froze.join(", ")
+                );
             }
-            Ok(_) => {}
-            Err(error) => eprintln!("<4>couldn't hold agents' work frozen: {error}"),
+            if !tended.took.is_empty() {
+                eprintln!("{}", pause::said("resuming", &tended.took, None));
+            }
         }
-    }
-    match pause::settle(plan, state, host, now_ms(), &mut runs) {
-        Ok(took) if !took.is_empty() => {
-            eprintln!("{}", pause::said("resuming", &took, None));
-        }
-        Ok(_) => {}
-        Err(error) => eprintln!("<4>couldn't undo what a stop paused: {error}"),
+        Err(error) => eprintln!("<4>couldn't tend what a stop paused: {error}"),
     }
 }
 
@@ -222,7 +220,7 @@ fn paused(
     let mut runs = pause::System { limit: STEP };
     match pause::stop(plan, state, &pause::id(at), host, at, &mut runs) {
         Ok(took) => {
-            let sessions = pause::sessions(plan, &took, &mut runs);
+            let sessions = pause::sessions(plan, &pause::recorded(&took), &mut runs);
             let line = pause::said("stopping", &took, sessions);
             eprintln!("Joel paused all agents: {line}");
             json!({"said": line})

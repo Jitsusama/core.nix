@@ -197,6 +197,12 @@ fn plan() -> Result<pause::Plan, Failure> {
     std::fs::read_to_string(&path)
         .map_err(|error| error.to_string())
         .and_then(|text| pause::Plan::from_json(&text))
+        .map(|mut plan| {
+            // A mycelium the config names but the machine lacks is none,
+            // so a stop says plainly that it reached no other machine.
+            plan.mycelium = plan.mycelium.filter(|path| path.exists());
+            plan
+        })
         .map_err(|why| {
             Failure::new(Exit::Config, "this machine has no pause plan")
                 .because(format!("{}: {why}", path.to_string_lossy()))
@@ -242,18 +248,26 @@ fn stop_all(context: &terminal_kit::Context) -> Result<(), Failure> {
     let took = pause::stop(&plan, &state(), &id, &host(), at, &mut runs).map_err(|error| {
         Failure::new(Exit::Failed, "couldn't write the stop").because(error.to_string())
     })?;
-    let sessions = pause::sessions(&plan, &took, &mut runs);
+    let sessions = pause::sessions(&plan, &pause::recorded(&took), &mut runs);
     context
         .say(&format!("{}\n", pause::said("stopping", &took, sessions)))
         .map_err(|error| couldnt_write(&error))?;
-    let parked = watch_parking(context, &id, sessions);
-    let left = sessions.map_or(0, |count| count.saturating_sub(parked));
+    // Only this machine's parking is written here; another's parks there.
+    let host = host();
+    let here = pause::sessions(&plan, &[host.as_str()], &mut runs);
+    let parked = watch_parking(context, &id, here);
+    let left = here.map_or(0, |count| count.saturating_sub(parked));
+    let there = if took.iter().any(|one| one.recorded && one.machine != host) {
+        ", the other machines' park there"
+    } else {
+        ""
+    };
     let last = if left == 0 {
-        format!("{parked} parked; nothing starts until pineapple resume all\n")
+        format!("{parked} parked here{there}; nothing starts until pineapple resume all\n")
     } else {
         format!(
-            "{parked} parked, {left} still mid-turn after a minute, its writes refused; \
-             nothing starts until pineapple resume all\n"
+            "{parked} parked here, {left} still mid-turn after a minute, its writes refused\
+             {there}; nothing starts until pineapple resume all\n"
         )
     };
     context.say(&last).map_err(|error| couldnt_write(&error))
@@ -276,9 +290,12 @@ fn watch_parking(context: &terminal_kit::Context, id: &str, sessions: Option<usi
             };
             if line["stop"] == id && !named.iter().any(|one| one == session) {
                 named.push(session.to_owned());
+                // A session's name is whatever it was given, so what would
+                // move Joel's terminal is left out of it.
+                let shown: String = session.chars().filter(|c| !c.is_control()).collect();
                 // A line not written to a closed terminal is no reason to
                 // stop watching; the stop stands either way.
-                let _ = context.say(&format!("  parked {session}\n"));
+                let _ = context.say(&format!("  parked {shown}\n"));
             }
         }
         if sessions.is_some_and(|count| named.len() >= count) || began.elapsed() >= PARKING {
@@ -403,22 +420,29 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
             .because(why)
             .try_this("run it at a terminal of your own"));
     }
+    // The plan is read first: a stop on everything whose pause couldn't be
+    // undone is left standing whole, rather than resumed with its agents'
+    // work still frozen.
+    let plan = match plan() {
+        Ok(plan) => Some(plan),
+        Err(failure) if pause::stands(&state()).is_some() => return Err(failure),
+        Err(_) => None,
+    };
     let at = now();
     let resumed = resume::resume(&folder(), scope, at, "joel").map_err(|error| {
         Failure::new(Exit::Failed, "couldn't mark a stop resumed").because(error.to_string())
     })?;
     // Undone after the records, so what a stop paused is undone even when
     // its record was resumed some other way and its pause left standing.
-    let undone = match plan() {
-        Ok(plan) => {
+    let undone = match plan {
+        Some(plan) => {
             let mut runs = pause::System { limit: STEP };
             pause::settle(&plan, &state(), &host(), at, &mut runs).map_err(|error| {
                 Failure::new(Exit::Failed, "couldn't undo what a stop paused")
                     .because(error.to_string())
             })?
         }
-        Err(failure) if pause::stands(&state()).is_some() => return Err(failure),
-        Err(_) => Vec::new(),
+        None => Vec::new(),
     };
     if resumed.is_empty() && undone.is_empty() {
         return Err(Failure::new(
@@ -451,11 +475,17 @@ fn couldnt_write(error: &std::io::Error) -> Failure {
 }
 
 /// Why this runs under pi, or none when it doesn't: what pi sets in the
-/// shells it starts, or pi itself among this process's parents, which a
-/// shell can't hide.
+/// shells it starts, the agents' own part of the user's manager, or pi
+/// itself among this process's parents, which a shell can't hide.
 fn under_pi() -> Option<String> {
     if let Some(var) = PI_SAYS.iter().find(|var| std::env::var_os(var).is_some()) {
         return Some(format!("{var} is set, as pi sets it in its shells"));
+    }
+    if let Some(why) = std::fs::read_to_string("/proc/self/cgroup")
+        .ok()
+        .and_then(|cgroup| agents_cgroup(&cgroup))
+    {
+        return Some(why);
     }
     let mut pid = parent_of("self")?;
     for _ in 0..DEEPEST {
@@ -466,6 +496,40 @@ fn under_pi() -> Option<String> {
             return Some(format!("process {pid}, a parent of this one, is pi"));
         }
         pid = parent_of(&pid.to_string())?;
+    }
+    None
+}
+
+/// Why the cgroup `cgroup` names is agents', or none when it may be
+/// Joel's: a service the user's manager runs is started for something,
+/// not typed, and agents' work and their shells run in slices of their
+/// own; only the awaited part of the jobs slice holds Joel's own terminal
+/// work. Outside the user's manager, as in a build's sandbox, it says
+/// nothing.
+fn agents_cgroup(cgroup: &str) -> Option<String> {
+    let path = cgroup
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))?
+        .trim();
+    let (_, inside) = path.split_once(".service/").filter(|(manager, _)| {
+        manager
+            .rsplit('/')
+            .next()
+            .is_some_and(|unit| unit.starts_with("user@"))
+    })?;
+    if inside.starts_with("jobs.slice/jobs-awaited.slice/") {
+        return None;
+    }
+    let agents = ["agents.slice/", "jobs.slice/", "offload.slice/"];
+    if agents.iter().any(|slice| inside.starts_with(slice))
+        || inside
+            .rsplit('/')
+            .find(|part| !part.is_empty())
+            .is_some_and(|leaf| leaf.ends_with(".service"))
+    {
+        return Some(format!(
+            "it runs in {inside}, which the user's manager started for agents or a service"
+        ));
     }
     None
 }

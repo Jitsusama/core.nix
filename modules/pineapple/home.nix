@@ -97,13 +97,17 @@ in
     };
     keep = lib.mkOption {
       description = ''
-        The units in the jobs slice it never freezes, as names or patterns
-        with `*`: the compile cache Joel's own builds read, and anything
-        started for a demo itself.
+        The units of agents' work it never freezes, as names or patterns
+        with `*`: the compile cache Joel's own builds read, the checks a
+        merge to main runs, which the stop holds no merge for and which a
+        freeze would time out into a revert, and anything started for a
+        demo itself.
       '';
       type = lib.types.listOf lib.types.str;
       default = [
         "sccache.service"
+        "merge-net.service"
+        "changed-checks-keeps-main.service"
         "*demo*"
       ];
     };
