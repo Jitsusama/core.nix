@@ -60,6 +60,7 @@ THREE_LOOKS=0.3
 # and the asks a case waits on before it lets the unit be active, time to
 # spare on a loaded machine.
 gave_up="tuple: its signaller hadn't connected 5 s after it started"
+untimed="tuple: its signaller connected, but not within 5 s by its log's clock"
 # What modules/health takes for a ready line (launches.rs's READY_FOLLOWED),
 # which journalctl matches whatever its case, as it's written in lower case.
 ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
@@ -70,6 +71,14 @@ quiet() {
     local got
     got=$(cat said)
     echo "$1: said it $2: ${got}"
+    failed=1
+  fi
+}
+
+# Fails the case `what` when health would read what the post said as ready.
+unready() {
+  if grep -qiE "${ready}" said; then
+    echo "$1: health would read it as ready"
     failed=1
   fi
 }
@@ -121,7 +130,7 @@ asked() {
 }
 
 # Sets `running` when the process at `proc` runs with this case's log among
-# its words, as the post, its waiter and the waiter's asks of systemd do. It
+# its words, as the post, its waiter and the waiter's greps of it do. It
 # forks nothing, so a look over every process ends while the waiter waits.
 runs() {
   local words word
@@ -134,7 +143,7 @@ runs() {
 
 # Sets `waiters` to the post's waiters, once the post has returned: each
 # process running with the case's log whose parent doesn't, as the waiter's
-# own asks do.
+# own greps of the log do.
 waiter() {
   local proc parent
   waiters=()
@@ -160,12 +169,18 @@ gone() {
   failed=1
 }
 
-# Waits until the case's waiters have ended, so whatever they'd say is said,
-# for ten seconds at most: past the five they wait and the two their last ask
-# of systemd may take.
+# Waits until the case's waiter has ended, so whatever it'd say is said, for
+# ten seconds at most: past the five it waits and the two its last ask of
+# systemd may take. It fails the case `what` on more than one waiter, or on
+# none when `least` is 1, as a case that must find it still waiting is, so it
+# can't pass before the waiter has looked.
 ended() {
-  local what=$1 pid
+  local what=$1 least=$2 pid
   waiter
+  if ((${#waiters[@]} < least || ${#waiters[@]} > 1)); then
+    echo "${what}: found ${#waiters[@]} waiters"
+    failed=1
+  fi
   for pid in "${waiters[@]}"; do gone "${pid}" "${what}" 200; done
 }
 
@@ -237,7 +252,7 @@ fi
 quiet "a start that forked no daemon" "as the unit's main process"
 
 starts
-ended "a unit never active"
+ended "a unit never active" 1
 quiet "a unit never active" "at all"
 
 printf '%s\n' \
@@ -246,19 +261,22 @@ printf '%s\n' \
   '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up
-ended "a clock stepped back"
-quiet "a clock stepped back" "at all"
+says "a clock stepped back" "${untimed}"
+ended "a clock stepped back" 0
+unready "a clock stepped back"
 
 # Beside the clock stepped back, which the wrap past midnight turns into most
-# of a day, this is what holds the bound to the wait, not to a day.
+# of a day, a second past the wait is what holds the bound to the wait, not
+# to a day or the thirty seconds Tuple waits.
 printf '%s\n' \
   'launching from pid 1...' \
   '10:00:00.000|1|1|info|closing fd 0' \
-  '11:00:00.000|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
+  '10:00:06.000|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up
-ended "a clock stepped forward"
-quiet "a clock stepped forward" "at all"
+says "a clock stepped forward" "${untimed}"
+ended "a clock stepped forward" 0
+unready "a clock stepped forward"
 
 # What a caller would name themselves to pose as the line, on a line with a
 # place and one without.
@@ -271,11 +289,8 @@ printf '%s\n' \
   "10:00:00.200|1|9|info|incoming call: x|${posing}" \
   >log.txt
 starts up
-ended "a caller named like the line"
+ended "a caller named like the line" 1
 says "a caller named like the line" "${gave_up}"
-if grep -qiE "${ready}" said; then
-  echo "a caller named like the line: health would read its giving up as ready"
-  failed=1
-fi
+unready "a caller named like the line"
 
 exit "${failed}"

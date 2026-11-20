@@ -9,10 +9,11 @@
 # daemon beginning, to that one, both on the log's own clock. The log opens
 # with "launching from pid", which has no time, and is new each start, the
 # last kept as log.1.txt before it (home.nix's keepsLogs). A time past the
-# wait, as a clock stepped back gives, says nothing rather than a wrong
-# figure. A wait that runs out once the unit is active says so, in words
-# health doesn't read as a ready line, so a Tuple whose log stops saying it
-# the same way shows in the journal rather than only going quiet.
+# wait, as a clock stepped either way gives, says the signaller connected
+# rather than a wrong figure. A wait that runs out once the unit is active
+# says so. Both are in words health doesn't read as a ready line, so a Tuple
+# whose log stops saying it the same way shows in the journal rather than
+# only going quiet.
 #
 # It runs as the unit's ExecStartPost, which systemd finishes before it
 # writes "Started", and health takes a ready line only after that line. So
@@ -79,7 +80,12 @@ waits() {
       took=$((ended - began))
       # A start that ran past midnight reads its end on the next day.
       ((took < 0)) && took=$((took + 86400000))
-      ((took <= wait * 1000)) || return 0
+      # The wait runs from after `tuple start`, so a start slower than that
+      # can connect within the wait and still read past it.
+      if ((took > wait * 1000)); then
+        echo "tuple: its signaller connected, but not within ${wait} s by its log's clock"
+        return 0
+      fi
       echo "tuple: ready in ${took} ms"
       return 0
     fi
@@ -93,9 +99,9 @@ waits() {
   return 0
 }
 
-# However waits returns, the waiter ends well: as the unit's main process,
-# how it ends is how the unit does.
+# However waits ends, even on a fault set -u stops it for, the waiter ends
+# well: as the unit's main process, how it ends is how the unit does.
 {
+  trap 'exit 0' EXIT
   waits
-  exit 0
 } </dev/null 2>/dev/null &
