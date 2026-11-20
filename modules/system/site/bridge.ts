@@ -15,9 +15,8 @@
 // it is drawn in, since every word in it is said by the sections below.
 
 import { escaped, MACHINES_DRAWN } from "./draw.ts";
-import { standing } from "./machine.ts";
+import { placeWords, standing } from "./machine.ts";
 import type { Thing } from "./model.ts";
-import type { Place } from "./ties.ts";
 
 /** One way of drawing the bridge: how wide, how many piers, how many dots. */
 interface Variant {
@@ -164,12 +163,6 @@ function waterOf(width: number): string {
   const line = (y: number, offset: number): string =>
     `<path d="M${offset - WAVE} ${y} q ${WAVE / 2} -6 ${WAVE} 0${" t 40 0".repeat(waves)}"/>`;
   return `<g class="water">${WATER.map((y, at) => line(y, at * (WAVE / 2))).join("")}</g>`;
-}
-
-/** Where one place meets the network, in a few words. */
-function placeWords(place: Place): string {
-  const point = place.point ?? "a point";
-  return place.by === undefined ? point : `${point}, ${place.by}`;
 }
 
 /** Where a machine meets the network, a line each, or why it isn't said. */

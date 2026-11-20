@@ -213,7 +213,7 @@ function cellsSaid(ties: Ties): Said {
  * when it `leads`; Wi-Fi is a name, so it keeps its own either way.
  */
 function meets(place: Place, leads: boolean): string {
-  const point = place.point === undefined ? "an unnamed point" : `the ${place.point} point`;
+  const point = pointSaid(place);
   if (place.by === "wired") {
     return `${leads ? "Wired" : "wired"} to ${point}`;
   }
@@ -245,11 +245,32 @@ function reach(place: Place): string | undefined {
   return said;
 }
 
+/** A place's point, by its name, or unnamed where its path names none. */
+function pointSaid(place: Place): string {
+  return place.point === undefined ? "an unnamed point" : `the ${place.point} point`;
+}
+
+/**
+ * Where one place meets the network, leading its figures as a sentence
+ * of their own: its point as the said line names it, then its band or wire.
+ */
+function placeLeads(place: Place): string {
+  const point = pointSaid(place);
+  return place.by === undefined ? `At ${point}` : `At ${point}, ${place.by}`;
+}
+
+/** Where one place meets the network, in a few words, as the bridge labels it. */
+function placeWords(place: Place): string {
+  const point = place.point ?? "a point";
+  return place.by === undefined ? point : `${point}, ${place.by}`;
+}
+
 /**
  * Where a machine meets the network, a clause for each place in the order
  * its record lists them, and how well each reaches, in the same order,
- * so no place's figure is said as another's. Its device is the first
- * place's, to go to.
+ * so no place's figure is said as another's. Two places or more each lead
+ * their figures with their name, since two alike read as one said twice.
+ * Its device is the first place's, to go to.
  */
 function networkSaid(ties: Ties): Said & { readonly device: string | undefined } {
   const places = ties.network;
@@ -267,9 +288,13 @@ function networkSaid(ties: Ties): Said & { readonly device: string | undefined }
   // A place not measured keeps its turn among those that are, so each
   // figure stays beside the place it was said after.
   const reaches = places.map(reach);
+  const byPlace = places.map((place, at) => {
+    const reached = reaches[at] ?? "not measured";
+    return places.length === 1 ? reached : `${placeLeads(place)}: ${reached}`;
+  });
   const aside = reaches.every((reached) => reached === undefined)
     ? "How much room it has isn't measured."
-    : stopped(capital(reaches.map((reached) => reached ?? "not measured").join("; ")));
+    : stopped(capital(byPlace.join(". ")));
   return { said, aside, device: places[0]?.device };
 }
 
@@ -417,6 +442,7 @@ export {
   machineHeadline,
   machineLede,
   networkSaid,
+  placeWords,
   standing,
   whenSaid,
 };

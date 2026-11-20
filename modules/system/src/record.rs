@@ -309,15 +309,15 @@ mod tests {
     fn a_machine_record_carries_its_side() {
         let mut machines = part("machines", Health::Watch);
         let mut studio = machine("studio", Health::Watch);
-        studio.side = vec!["filling disk, 40 GB free".to_owned()];
+        studio.side = vec!["code wants a look".to_owned()];
         machines.things = vec![studio, machine("laptop", Health::Good)];
         let system = system(vec![machines]);
         let records = system.records();
-        assert_eq!(records[2]["side"], json!(["filling disk, 40 GB free"]));
+        assert_eq!(records[2]["side"], json!(["code wants a look"]));
         assert_eq!(records[3]["side"], json!([]), "a ready machine's is empty");
         assert_eq!(
             system.json()["parts"][0]["things"][0]["side"],
-            json!(["filling disk, 40 GB free"])
+            json!(["code wants a look"])
         );
     }
 

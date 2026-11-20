@@ -32,7 +32,7 @@ HERE = Path(__file__).parent
 PACE_MS = 6000
 # The feed waits up to 30 seconds between tries once the daemon has been gone a while.
 RETRY_MS = 35000
-# What system.json comes to: two machines, each with a filling disk.
+# What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json.
 BUDGET = Budget(files=24, kilobytes=470, elements=370)

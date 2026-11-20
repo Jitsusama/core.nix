@@ -115,7 +115,7 @@ it("says a ready machine with nothing to tell is well", () => {
   );
 });
 
-it("tends a machine that isn't ready, runs short or is nearly out of charge", () => {
+it("tends a machine that isn't ready, runs short, is nearly out of charge or disk", () => {
   const said = [
     machineHealth(machine({ state: "lost" }), AT),
     machineHealth(machine({ over: ["memory", "disk"] }), AT),
@@ -125,6 +125,11 @@ it("tends a machine that isn't ready, runs short or is nearly out of charge", ()
     machineHealth(machine({ power: { on_battery: true, charge: 0 } }), AT),
     machineHealth(machine({ power: { on_battery: true, charge: 19 } }), AT),
     machineHealth(machine({ power: { on_battery: true, charge: 20 } }), AT),
+    machineHealth(machine({ disk: 100 * GIB, disk_free: 9 * GIB, disk_band: "nearly-full" }), AT),
+    machineHealth(
+      machine({ disk: 100 * GIB, disk_free: 2 * GIB, disk_band: "critically-full" }),
+      AT,
+    ),
   ];
   assert.deepEqual(
     said,
@@ -137,12 +142,14 @@ it("tends a machine that isn't ready, runs short or is nearly out of charge", ()
       { v: 2, words: "on battery, 0%" },
       { v: 2, words: "on battery, 19%" },
       { v: 0, words: "on battery, 20%" },
+      { v: 2, words: "9 GiB of 100 GiB disk free, nearly full" },
+      { v: 2, words: "2 GiB of 100 GiB disk free, critically full" },
     ],
     "a machine on the mains should say nothing of its charge, and under 20% on battery tend",
   );
 });
 
-it("watches a machine under pressure, filling its disk or near its lease's end", () => {
+it("watches a machine under pressure or near its lease's end, and says a filling disk", () => {
   const said = [
     machineHealth(machine({ pressure: { cpu: 90.4, memory: 10, io: 0.2 } }), AT),
     machineHealth(machine({ pressure: { cpu: 10, memory: 85, io: 3 } }), AT),
@@ -158,14 +165,14 @@ it("watches a machine under pressure, filling its disk or near its lease's end",
     [
       { v: 1, words: "cpu 90%, memory 10%, io 0%" },
       { v: 1, words: "cpu 10%, memory 85%, io 3%" },
-      { v: 1, words: "50 GiB of 100 GiB disk free, filling" },
+      { v: 0, words: "50 GiB of 100 GiB disk free, filling" },
       { v: 1, words: "20 min left, until 10:20" },
       { v: 0, words: "2 h left, until 12:00" },
       { v: 1, words: "29 min left, until 10:29" },
       { v: 0, words: "30 min left, until 10:30" },
       { v: 1, words: "its time is up" },
     ],
-    "a lease with half an hour or more left should be well, and one past watched",
+    "a filling disk or a lease with half an hour or more left should be well, one past watched",
   );
 });
 

@@ -196,15 +196,28 @@ const leaseShort = (x: MachineFacts, at: string): boolean => {
   return end !== null && Date.parse(end) - Date.parse(at) < LEASE_WATCH_MS;
 };
 
+/** The disk guard's bands past filling, each said after a machine's free disk. */
+const FULL: Readonly<Record<string, string>> = {
+  "nearly-full": ", nearly full",
+  "critically-full": ", critically full",
+};
+
+/** Every band the disk guard says that a machine's free disk is said with. */
+const BAND_WORDS: Readonly<Record<string, string>> = { filling: ", filling", ...FULL };
+
 const machineVerdict = (x: MachineFacts, at: string): Verdict => {
   const p = pressureOf(x);
   const charge = x.power?.on_battery ? x.power.charge : null;
   const low = charge !== null && charge !== undefined && charge < CHARGE_TEND;
-  if (x.state !== "ready" || overOf(x).length > 0 || low) {
+  const full = typeof x.disk_band === "string" && Object.hasOwn(FULL, x.disk_band);
+  if (x.state !== "ready" || overOf(x).length > 0 || low || full) {
     return 2;
   }
   const pressed = p && (p.cpu >= PRESSURE_WATCH || p.memory >= PRESSURE_WATCH);
-  return pressed || x.disk_band === "filling" || leaseShort(x, at) ? 1 : 0;
+  // A filling disk is said but never watched, as the system page has it: the
+  // disk guard calls a disk filling under a quarter free and takes back what
+  // regenerates by itself, so only a nearly full one wants the reader.
+  return pressed || leaseShort(x, at) ? 1 : 0;
 };
 
 /**
@@ -221,8 +234,11 @@ export const machineHealth = (
   const over = overOf(x);
   const charge = x.power?.on_battery ? x.power.charge : null;
   const end = leavesAt(x);
-  const filling = x.disk_band === "filling" ? ", filling" : "";
-  const disk = x.disk ? `${gib(x.disk_free)} of ${gib(x.disk)} disk free${filling}` : "";
+  const band =
+    typeof x.disk_band === "string" && Object.hasOwn(BAND_WORDS, x.disk_band)
+      ? BAND_WORDS[x.disk_band]
+      : "";
+  const disk = x.disk ? `${gib(x.disk_free)} of ${gib(x.disk)} disk free${band}` : "";
   const bits = [
     ...lead,
     x.state === "ready" ? "" : (x.state ?? ""),

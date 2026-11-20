@@ -4,6 +4,7 @@
 //! each follows its label.
 
 use serde_json::Value;
+use system::words::grouped;
 use terminal_kit::time::span;
 
 /// A gigabyte and a terabyte, as a node counts bytes.
@@ -79,17 +80,46 @@ pub fn network(ties: &Value) -> Said {
     let said = places.iter().map(meets).collect::<Vec<_>>().join(", and ");
     let reaches: Vec<Option<String>> = places.iter().map(reach).collect();
     // A place not measured keeps its turn among those that are, so each
-    // figure stays beside the place it was said after.
+    // figure stays beside the place it was said after. Two places or more
+    // each lead their figures with their name, since two alike read as one
+    // said twice.
     let aside = if reaches.iter().all(Option::is_none) {
         "how much room it has isn't measured".to_owned()
     } else {
-        reaches
-            .into_iter()
-            .map(|reach| reach.unwrap_or_else(|| "not measured".to_owned()))
+        let named = places.len() > 1;
+        places
+            .iter()
+            .zip(reaches)
+            .map(|(place, reach)| {
+                let reach = reach.unwrap_or_else(|| "not measured".to_owned());
+                if named {
+                    format!("{}: {reach}", place_words(place))
+                } else {
+                    reach
+                }
+            })
             .collect::<Vec<_>>()
             .join("; ")
     };
     Said::new(said, aside)
+}
+
+/// Where one place meets the network, leading its figures: its point as
+/// the said line names it, then its band or wire.
+fn place_words(place: &Value) -> String {
+    let point = point_said(place);
+    match place.get("by").and_then(Value::as_str) {
+        Some(by) => format!("at {point}, {by}"),
+        None => format!("at {point}"),
+    }
+}
+
+/// A place's point, by its name, or unnamed where its path names none.
+fn point_said(place: &Value) -> String {
+    place.get("point").and_then(Value::as_str).map_or_else(
+        || "an unnamed point".to_owned(),
+        |point| format!("the {point} point"),
+    )
 }
 
 /// How well one place reaches, as far as it's measured: a radio's signal,
@@ -112,10 +142,7 @@ fn reach(place: &Value) -> Option<String> {
 /// Where one place meets the network, as a clause. Wi-Fi is a name, so it
 /// keeps its capitals.
 fn meets(place: &Value) -> String {
-    let point = place.get("point").and_then(Value::as_str).map_or_else(
-        || "an unnamed point".to_owned(),
-        |point| format!("the {point} point"),
-    );
+    let point = point_said(place);
     match place.get("by").and_then(Value::as_str) {
         Some("wired") => format!("wired to {point}"),
         Some(band) => format!("Wi-Fi to {point}, on {band}"),
@@ -266,19 +293,6 @@ fn many(count: u64, one: &str, more: &str) -> String {
     }
 }
 
-/// A count with its thousands set apart by commas, as Canada writes one.
-fn grouped(count: u64) -> String {
-    let digits = count.to_string();
-    let mut out = String::new();
-    for (at, digit) in digits.chars().enumerate() {
-        if at > 0 && (digits.len() - at).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
-}
-
 /// A size in bytes, in gigabytes, or terabytes to a tenth from a thousand
 /// of them.
 fn size(bytes: f64) -> String {
@@ -365,9 +379,17 @@ mod tests {
             at(json!([wired, wifi.clone()])),
             said(
                 "wired to the Den point, and Wi-Fi to the Hall point, on 5 GHz",
-                "941 Mb/s of room; a strong signal, with 183 Mb/s of room"
+                "at the Den point, wired: 941 Mb/s of room; \
+                 at the Hall point, 5 GHz: a strong signal, with 183 Mb/s of room"
             ),
-            "each place's figures stay with it, in the order the places are said"
+            "each place's figures stay with it, named, in the order the places are said"
+        );
+        let unnamed = json!({"by": "wired", "point": null, "bars": null, "room_mbps": 941});
+        assert_eq!(
+            at(json!([wifi.clone(), unnamed])).aside,
+            "at the Hall point, 5 GHz: a strong signal, with 183 Mb/s of room; \
+             at an unnamed point, wired: 941 Mb/s of room",
+            "a place with no point is named as the said line names it"
         );
         assert_eq!(
             at(json!([wifi])),
@@ -386,7 +408,7 @@ mod tests {
             at(json!([unknown.clone(), wired.clone()])),
             said(
                 "on the Hall point, and wired to the Den point",
-                "not measured; 941 Mb/s of room"
+                "at the Hall point: not measured; at the Den point, wired: 941 Mb/s of room"
             ),
             "a place not measured keeps its turn, so the next one's figure stays its own"
         );

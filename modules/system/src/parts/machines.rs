@@ -13,6 +13,7 @@ use serde_json::Value;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Part, Thing};
+use crate::words::grouped;
 
 /// A gigabyte, as a disk's free room is said.
 const GIGABYTE: f64 = 1e9;
@@ -209,6 +210,11 @@ impl Said {
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
 /// memory waits for a day measured to tell a held shortage from a spike.
+/// A filling disk is said but never worth a look either: the disk guard
+/// calls a disk filling under a quarter free and takes back what
+/// regenerates by itself, so only one it couldn't keep from nearly full
+/// is the reader's to act on. Two machines each with hundreds of
+/// gigabytes free were once headlined both worth a look for it.
 fn machine(
     said: &Value,
     sessions: Option<&Value>,
@@ -245,13 +251,13 @@ fn machine(
             format!("{band} disk, {free}")
         })
     };
-    let band = match said.get("disk_band").and_then(Value::as_str) {
-        Some("filling") => Some((Health::Watch, disk("filling"))),
-        Some("nearly-full" | "critically-full") => Some((Health::Bad, disk("nearly full"))),
-        _ => None,
-    };
-    if let Some((health, side)) = band {
-        words.look(health, format!("has a {side}"), side);
+    match said.get("disk_band").and_then(Value::as_str) {
+        Some("filling") => words.say(format!("has a {}", disk("filling"))),
+        Some("nearly-full" | "critically-full") => {
+            let side = disk("nearly full");
+            words.look(Health::Bad, format!("has a {side}"), side);
+        }
+        _ => {}
     }
     let on_battery = said.pointer("/power/on_battery").and_then(Value::as_bool) == Some(true);
     if let Some(charge) = said.pointer("/power/charge").and_then(Value::as_u64)
@@ -388,7 +394,7 @@ fn sessions_said(sessions: &Value) -> String {
         (0, 0) => "no session".to_owned(),
         (busy, 0) => format!("{} busy", count(busy, "session", "sessions")),
         (0, idle) => format!("{} idle", count(idle, "session", "sessions")),
-        (busy, idle) => format!("{busy} busy and {idle} idle sessions"),
+        (busy, idle) => format!("{} busy and {} idle sessions", grouped(busy), grouped(idle)),
     }
 }
 
@@ -559,7 +565,7 @@ mod tests {
         let spare = json!({"name": "spare", "state": "ready", "disk_band": "healthy",
                            "room": {"over": []}});
         let part = machines(
-            &Ok(realm(&[studio, laptop(&[], "filling"), spare])),
+            &Ok(realm(&[studio, laptop(&[], "nearly-full"), spare])),
             &Ok(said_health()),
             Some(&net),
             Some(&repos),
@@ -601,12 +607,9 @@ mod tests {
     fn a_machine_short_of_room_leads_with_what_it_lacks() {
         let studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy",
                             "room": {"over": []}});
-        let part = machines(
-            &Ok(realm(&[studio, laptop(&["memory", "cpu"], "filling")])),
-            &Ok(said_health()),
-            None,
-            None,
-        );
+        let mut low = laptop(&["memory", "cpu"], "filling");
+        low["power"] = json!({"on_battery": true, "charge": 12});
+        let part = machines(&Ok(realm(&[studio, low])), &Ok(said_health()), None, None);
         assert_eq!(part.health, Health::Watch);
         assert_eq!(
             part.things[0].name, "laptop",
@@ -615,7 +618,7 @@ mod tests {
         assert_eq!(
             part.things[0].says,
             "is short of memory and processor, has a filling disk, 279 GB free, \
-             runs 55 busy and 33 idle sessions"
+             is on battery at 12%, runs 55 busy and 33 idle sessions"
         );
         assert_eq!(
             part.things[1].says,
@@ -628,15 +631,26 @@ mod tests {
         );
         assert_eq!(
             part.side,
-            ["laptop has a filling disk, 279 GB free"],
-            "a side leaves out what the machine runs and what it's short of"
+            ["laptop is on battery at 12%"],
+            "a side leaves out what the machine runs, what it's short of and its filling disk"
         );
         assert_eq!(
             part.things[0].side,
-            ["filling disk, 279 GB free"],
+            ["on battery at 12%"],
             "a machine's own side is worded for a row's side"
         );
         assert!(part.things[1].side.is_empty(), "a ready machine has none");
+    }
+
+    #[test]
+    fn a_machine_s_sessions_past_a_thousand_are_grouped() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 1_200, "idle": 3_400, "ended": 0});
+        let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is ready, runs 1,200 busy and 3,400 idle sessions",
+            "a machine's session count is grouped, as the part's line says it"
+        );
     }
 
     #[test]
@@ -716,6 +730,28 @@ mod tests {
             part.things[0].says, "is ready",
             "with no health, sessions go unsaid"
         );
+    }
+
+    #[test]
+    fn a_filling_disk_is_said_and_left_to_the_guard() {
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "filling")])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        assert_eq!(
+            part.health,
+            Health::Good,
+            "the disk guard takes back what regenerates once a disk is filling"
+        );
+        assert_eq!(part.says, "1 machine ready");
+        assert_eq!(part.side, NO_LOOK);
+        assert_eq!(
+            part.things[0].says, "has a filling disk, 279 GB free",
+            "a filling disk is still said"
+        );
+        assert!(part.things[0].side.is_empty(), "{:?}", part.things[0].side);
     }
 
     #[test]

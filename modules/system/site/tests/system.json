@@ -10,8 +10,8 @@
         "read_at": "2026-11-16T16:34:36Z",
         "parts": ["machines", "mycelium", "network", "code"],
         "side": [
-          "kestrel is short of processor, has a filling disk, 135 GB free",
-          "osprey has a filling disk, 178 GB free",
+          "kestrel booted 3 hours ago after a firmware error",
+          "osprey says its code wants a look",
           "4 sessions say they run with their processes gone",
           "the attic's radio is busy 53% of the time",
           "and 3 more worth a look"
@@ -25,10 +25,10 @@
         "part": "machines",
         "health": "watch",
         "holds": "2 machines",
-        "says": "kestrel is short of processor, has a filling disk, 135 GB free; osprey has a filling disk, 178 GB free",
+        "says": "kestrel is short of processor, booted 3 hours ago after a firmware error; osprey says its code wants a look",
         "side": [
-          "kestrel is short of processor, has a filling disk, 135 GB free",
-          "osprey has a filling disk, 178 GB free"
+          "kestrel booted 3 hours ago after a firmware error",
+          "osprey says its code wants a look"
         ],
         "things": ["machine:kestrel", "machine:osprey"],
         "deeper": { "command": "mycelium machines", "launcher": "Agents", "site": "mycelium/" }
@@ -75,8 +75,8 @@
         "name": "kestrel",
         "health": "watch",
         "address": null,
-        "says": "is short of processor, has a filling disk, 135 GB free, runs 4 busy and 5 idle sessions",
-        "side": ["filling disk, 135 GB free"],
+        "says": "is short of processor, has a filling disk, 135 GB free, booted 3 hours ago after a firmware error, runs 4 busy and 5 idle sessions",
+        "side": ["booted 3 hours ago after a firmware error"],
         "ties": {
           "cells": { "busy": 4, "idle": 5, "ended": 2 },
           "network": [
@@ -109,8 +109,8 @@
         "name": "osprey",
         "health": "watch",
         "address": null,
-        "says": "has a filling disk, 178 GB free, runs 2 busy and 4 idle sessions",
-        "side": ["filling disk, 178 GB free"],
+        "says": "says its code wants a look, runs 2 busy and 4 idle sessions",
+        "side": ["code wants a look"],
         "ties": {
           "cells": { "busy": 2, "idle": 4, "ended": 0 },
           "network": [{ "device": "mac:0b", "by": "wired", "point": "Den", "room_mbps": 900 }],
