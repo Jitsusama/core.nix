@@ -409,6 +409,37 @@ fn an_app_s_drawing_waits_are_its_own_and_its_hidden_tabs_counted() {
 }
 
 #[test]
+fn a_tab_shown_in_a_window_is_counted_from_where_it_rested_hidden() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    // Hidden at the window's start, so resting; shown by its end.
+    ran(&mut then, "chrome-ui", "Compositor", 1_000_000, 5);
+    let rested = then.threads.pop_first().unwrap();
+    then.resting.insert(rested.0, rested.1);
+    ran(&mut now, "chrome-ui", "Compositor", 9_000_000, 9);
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    // 8 ms over four runs since it rested: 2 ms a run.
+    let chrome = &w.waits["chrome-ui"];
+    assert!((chrome.worst_us - 2_000.0).abs() < 1e-9, "{chrome:?}");
+}
+
+#[test]
+fn an_app_s_processes_that_go_unwatched_are_counted_in_the_window() {
+    let then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    now.unwatched.insert("chrome-ui".into(), 2);
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    assert_eq!(w.unwatched, BTreeMap::from([("chrome-ui".to_string(), 2)]));
+    let line = serde_json::to_string(&w).unwrap();
+    let back: Window = serde_json::from_str(&line).unwrap();
+    assert_eq!(back.unwatched, w.unwatched);
+    // None unwatched writes no count, and an older window reads as none.
+    now.unwatched.clear();
+    let line = serde_json::to_string(&between(&then, &now, quiet_niri(), 0, "gen")).unwrap();
+    assert!(!line.contains("unwatched"), "{line}");
+}
+
+#[test]
 fn answers_give_their_quantiles() {
     let a = Answers::of(&[3.0, 1.0, 2.0], 0);
     assert_eq!((a.p50_ms, a.max_ms, a.asked), (2.0, 3.0, 3));

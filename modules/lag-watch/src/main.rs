@@ -185,9 +185,15 @@ fn manager(cgroup: &str) -> Option<&str> {
     Some(&path[..end + ".service".len()])
 }
 
-fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snapshot {
+fn snapshot(
+    cgroups: &Path,
+    account: &Path,
+    threads: &[kernel::Thread],
+    unwatched: BTreeMap<String, usize>,
+) -> Snapshot {
     let mut s = Snapshot {
         at: started().elapsed().as_secs_f64(),
+        unwatched,
         ..Snapshot::default()
     };
     for (name, dir) in [
@@ -217,25 +223,33 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snaps
     // A process its app lowered, a hidden tab, is nobody's wait: counted,
     // not read. The app lowers only the tab's main thread, so that one's
     // nice, in the process's own stat, leaves out its compositor with it.
-    // It's read each window, since a tab shown again is raised again.
+    // It's read each window, since a tab shown again is raised again, and
+    // its threads' schedstat is kept as where the next window starts, so a
+    // tab shown in a window is counted for all of it. One hidden in a
+    // window is left out of all of it, as its nice at the end says.
     let mut lowered: BTreeMap<&Path, Option<&str>> = BTreeMap::new();
     for thread in threads {
+        let mut hidden = false;
         if apps::is_app(thread)
             && let Some(process) = apps::process(thread)
         {
-            let hidden = lowered.entry(process).or_insert_with(|| {
-                let stat = fs::read_to_string(process.join("stat")).unwrap_or_default();
-                kernel::nice(&stat)
-                    .is_some_and(|n| n > 0)
-                    .then_some(thread.label)
-            });
-            if hidden.is_some() {
-                continue;
-            }
+            hidden = lowered
+                .entry(process)
+                .or_insert_with(|| {
+                    let stat = fs::read_to_string(process.join("stat")).unwrap_or_default();
+                    kernel::nice(&stat)
+                        .is_some_and(|n| n > 0)
+                        .then_some(thread.label)
+                })
+                .is_some();
         }
         let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
-            s.threads.insert(thread.clone(), sched);
+            if hidden {
+                s.resting.insert(thread.clone(), sched);
+            } else {
+                s.threads.insert(thread.clone(), sched);
+            }
         }
     }
     for label in lowered.into_values().flatten() {
@@ -441,7 +455,7 @@ fn run() -> Result<(), Failure> {
     started();
     let mut apps = apps::Apps::of_account(manager);
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
-    let mut then = snapshot(&cgroups, &account, &threads);
+    let mut then = snapshot(&cgroups, &account, &threads, apps.unwatched());
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
     let mut tick = 0u32;
@@ -458,7 +472,7 @@ fn run() -> Result<(), Failure> {
             continue;
         }
         tick = 0;
-        let now = snapshot(&cgroups, &account, &threads);
+        let now = snapshot(&cgroups, &account, &threads, apps.unwatched());
         let mut w = window::between(
             &then,
             &now,
@@ -476,7 +490,7 @@ fn run() -> Result<(), Failure> {
         // minute, with the snapshot taken again so no window spans two.
         if windows.is_multiple_of(6) {
             threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
-            then = snapshot(&cgroups, &account, &threads);
+            then = snapshot(&cgroups, &account, &threads, apps.unwatched());
         } else {
             then = now;
         }
@@ -522,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_its_app_lowered_is_counted_and_none_of_its_threads_read() {
+    fn a_tab_its_app_lowered_is_counted_and_kept_only_as_where_the_next_window_starts() {
         let dir = std::env::temp_dir().join(format!("lag-watch-lowered-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let thread = |label: &'static str, pid: &str, tid: &str, nice: i64| {
@@ -557,15 +571,18 @@ mod tests {
             // The compositor first, so its own nice is never what's asked.
             &[
                 hidden_drawing.clone(),
-                hidden,
+                hidden.clone(),
                 shown.clone(),
                 shown_drawing.clone(),
                 ending.clone(),
                 niri.clone(),
             ],
+            BTreeMap::new(),
         );
         let read: Vec<&kernel::Thread> = s.threads.keys().collect();
         assert_eq!(read, [&shown, &shown_drawing, &niri, &ending]);
+        let resting: Vec<&kernel::Thread> = s.resting.keys().collect();
+        assert_eq!(resting, [&hidden, &hidden_drawing], "the hidden tab rests");
         assert_eq!(
             s.lowered,
             BTreeMap::from([("chrome-ui".to_string(), 1)]),
@@ -574,9 +591,15 @@ mod tests {
         // Shown again, the app raises the tab, and the next window reads it.
         let stat = "72 (chrome) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0\n";
         fs::write(dir.join("72/stat"), stat).unwrap();
-        let s = snapshot(&dir, &dir, std::slice::from_ref(&hidden_drawing));
+        let s = snapshot(
+            &dir,
+            &dir,
+            std::slice::from_ref(&hidden_drawing),
+            BTreeMap::new(),
+        );
         assert_eq!(s.threads.keys().collect::<Vec<_>>(), [&hidden_drawing]);
         assert!(s.lowered.is_empty(), "{:?}", s.lowered);
+        assert!(s.resting.is_empty(), "{:?}", s.resting);
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -602,7 +625,7 @@ mod tests {
         let mut apps = apps::Apps::of_account(ACCOUNT);
         let threads = kernel::threads(&proc, None, &proc.join("tuple.service"), &mut apps);
         assert_eq!(threads.len(), 2, "the renderer's two threads: {threads:?}");
-        let s = snapshot(&proc, &proc, &threads);
+        let s = snapshot(&proc, &proc, &threads, apps.unwatched());
         assert!(
             s.threads.is_empty(),
             "a hidden tab was read: {:?}",
