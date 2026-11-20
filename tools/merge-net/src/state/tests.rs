@@ -294,14 +294,20 @@ fn a_hold_keeps_when_it_began_while_it_stands() {
         "a stop seen a minute on, by this hold or its rewording, began when it was first seen"
     );
     assert_eq!(
-        held_since(Some(&still), 1_060 + HELD_GAP_S),
+        held_since(Some(&still), 1_060 + HELD_GAP_S - 1),
         1_000,
-        "a hold seen again at the longest gap the net leaves began when first seen"
+        "a hold seen again inside the longest gap the net leaves began when first seen"
     );
     assert_eq!(
-        held_since(Some(&still), 1_060 + HELD_GAP_S + 1),
-        1_060 + HELD_GAP_S + 1,
-        "a hold seen again after a gap begins again"
+        held_since(Some(&still), 1_060 + HELD_GAP_S),
+        1_060 + HELD_GAP_S,
+        "a hold seen again once cadence reads the net as free begins again"
+    );
+    let ahead = json!({ "at": 1_060, "why": "a reboot", "since": 1_100 });
+    assert_eq!(
+        held_since(Some(&ahead), 1_080),
+        1_080,
+        "a stop said to begin after now was carried"
     );
     assert_eq!(
         held_since(Some(&still), 1_030),

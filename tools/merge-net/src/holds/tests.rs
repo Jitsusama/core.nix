@@ -263,6 +263,15 @@ fn a_hold_on_one_session_leaves_the_net_alone() {
 }
 
 #[test]
+fn a_hold_with_no_sender_names_no_one() {
+    assert_eq!(
+        held_by(&[hold("h", "", "#machine")]).map(|held| held.from),
+        Some(None),
+        "a hold from an empty sender was named as from someone"
+    );
+}
+
+#[test]
 fn only_holds_sent_since_the_boot_are_read() {
     let folder = std::env::temp_dir().join(format!("merge-net-holds-{}", std::process::id()));
     let _ = fs::remove_dir_all(&folder);
