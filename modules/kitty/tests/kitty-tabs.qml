@@ -316,6 +316,23 @@ QtObject {
         check("known_hosts alone", Opens.machines("", "[::1]:22 ssh-ed25519 AAAA")
             .map(one => [one.name, one.port]), [["::1", ""]]);
 
+        // Kept, the machines are worked out once while neither file
+        // changes, the same answer handed back, and again when one does;
+        // frozen, since every caller shares them.
+        const kept = Opens.machinesKept(null, config, hosts);
+        check("kept, the same machines", kept.all.map(one => [one.name, one.port, one.from]),
+            machines.map(one => [one.name, one.port, one.from]));
+        check("kept while neither file changes",
+            Opens.machinesKept(kept, config, hosts) === kept, true);
+        check("the config changing works them out again",
+            Opens.machinesKept(kept, "Host other", hosts).all.map(one => one.name),
+            ["other", "10.0.0.5", "10.0.0.5", "quoted", "nas", "nas", "lower"]);
+        check("known_hosts changing works them out again",
+            Opens.machinesKept(kept, config, "").all.map(one => one.name),
+            ["devbox", "build", "quoted", "lower"]);
+        check("handed out frozen", Object.isFrozen(kept.all) && kept.all.every(Object.isFrozen),
+            true);
+
         // ssh is told the port known_hosts gave, and a config's machine by
         // its name alone, its block saying the rest.
         check("ssh to a machine", Opens.sshing("kitten", machines[0]),
