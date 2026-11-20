@@ -5,7 +5,9 @@
 > session as a cell round its hub, redrawn as the node says it changes.
 
 - [The page](index.html): the map, walked by keyboard or pointer, with
-  each thing's details and the whole network as a tree beside it.
+  each thing's details and the whole network as a tree beside it. New
+  work typed there is handed to the Launcher's Start New Work as a
+  `mycelium:sprout` link, and starts only on Joel's Return there.
 - [The page as text](index.md): how to read the map, its keys, and what
   the data holds.
 - The data: the machine's mycelium node, watched live through the sites'
