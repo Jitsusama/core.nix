@@ -191,9 +191,10 @@
   # end's is silence with a click, a breath, a cough, a ringtone, a chime,
   # a chord and a mains hum, all but the click loud and long enough to be
   # takes by loudness alone; Parakeet writes "Yeah." for the breath, and
-  # the last four repeat as a voice does. One turn, Joel's question, with
-  # no "[static]" for the noise, proves none of the sounds gave one,
-  # though a take of filler alone is kept.
+  # the last four repeat as a voice does, so they may reach Parakeet. One
+  # turn, Joel's question, with no "[static]" for the noise, proves none
+  # of the sounds gave one, whether the voice test or Parakeet stopped
+  # it, though a take of filler alone is kept.
   call-transcripts-writes-only-what-was-said =
     let
       dictation = pkgs.callPackage ./package.nix { };

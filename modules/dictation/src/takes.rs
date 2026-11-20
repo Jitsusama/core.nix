@@ -48,14 +48,24 @@ const FLOOR_FRAMES: usize = 10 * 50;
 const ABOVE_FLOOR_DB: f32 = 12.0;
 /// Quieter than this is never speech, however quiet the floor.
 const QUIETEST_SPEECH_DB: f32 = -55.0;
-/// Fewer voiced frames than this, 60 ms, and a take has no voice in it:
-/// the vowel of a lone "Yeah." holds several times as many. Five, with a
-/// likeness of 0.5, left out 13 of the meetings' words more.
+/// Fewer voiced frames than this and a take has no voice in it. Each is
+/// read with the one before, so three take 80 ms of voice: the vowel of a
+/// lone "Yeah." holds several times as much. Five, with a likeness of
+/// 0.5, left out 13 of the meetings' words more.
 const LEAST_VOICED_FRAMES: usize = 3;
-/// The shortest and longest periods of a voice's pitch, in samples: 400
-/// Hz down to 60 Hz.
+/// The shortest and longest lags a repeat is looked for at, in samples: a
+/// period of 400 Hz down to 60 Hz. A higher pitch repeats at a multiple
+/// of its period too, so it's voiced, while a hum below about 50 Hz
+/// repeats only past the longest, so it isn't.
 const SHORTEST_PERIOD: usize = RATE / 400;
 const LONGEST_PERIOD: usize = RATE / 60;
+/// Each sample is compared less the one this far before it, 6 samples at
+/// 16 kHz. That takes out an offset and a breath's slow drift, and its
+/// gain peaks near 1.3 kHz, among a low voice's strong harmonics, so a
+/// line's hiss gains little on the voice. Less the very next sample, hiss
+/// gains about 20 dB on an 85 Hz voice, and one with hiss 10 dB under it
+/// has no voiced frame.
+const APART: usize = RATE * 3 / 8000;
 /// How alike sound one period apart must be for a frame to be voiced. A
 /// voice's vowels are near 1; noise, its slope taken out, is near 0.
 const VOICED_LIKENESS: f32 = 0.4;
@@ -202,9 +212,9 @@ impl Cutter {
 }
 
 /// Whether a frame, read with the one before it so a low voice's period
-/// fits twice, repeats at a voice's pitch. Each sample less the one before
-/// it is what's compared, so an offset, or the drift of a breath's or a
-/// rumble's low noise, doesn't read as a repeat. A repeat only counts past
+/// fits twice, repeats at a voice's pitch. Each sample less the one
+/// `APART` before it is what's compared, so an offset, or the drift of a
+/// breath's low noise, doesn't read as a repeat. A repeat only counts past
 /// where the sound is first unlike itself, so a hum below a voice's pitch,
 /// alike to itself at every short lag, isn't one either.
 fn voiced(before: &[f32], frame: &[f32]) -> bool {
@@ -213,8 +223,8 @@ fn voiced(before: &[f32], frame: &[f32]) -> bool {
         .chain(frame)
         .copied()
         .collect::<Vec<_>>()
-        .windows(2)
-        .map(|pair| pair[1] - pair[0])
+        .windows(APART + 1)
+        .map(|run| run[APART] - run[0])
         .collect();
     let mut energy = vec![0.0_f32; sound.len() + 1];
     for (i, sample) in sound.iter().enumerate() {
@@ -301,6 +311,21 @@ mod tests {
             .collect();
         let rms = (raw.iter().map(|s| s * s).sum::<f32>() / count as f32).sqrt();
         raw.iter().map(|s| s * level / rms).collect()
+    }
+
+    /// `seconds` of a breath at about `level`: white noise softened as a
+    /// breath's is, its high hiss falling away.
+    fn breath(seconds: f32, level: f32) -> Vec<f32> {
+        let mut soft = 0.0;
+        let raw: Vec<f32> = noise(seconds, 1.0, false)
+            .into_iter()
+            .map(|white| {
+                soft = 0.98 * soft + white;
+                soft
+            })
+            .collect();
+        let loudest = raw.iter().fold(0.0_f32, |most, s| most.max(s.abs()));
+        raw.iter().map(|s| s * level / loudest).collect()
     }
 
     /// `seconds` of a voice at about -27 dBFS: a pitch and its first twelve
@@ -394,15 +419,20 @@ mod tests {
 
     #[test]
     fn loud_noise_with_no_voice_in_it_makes_no_take() {
-        for brown in [false, true] {
-            let sound = [quiet(2.0), noise(1.0, 0.1, brown), quiet(2.0)].concat();
-            assert_eq!(cut(&sound), Vec::new(), "brown: {brown}");
+        let sounds = [
+            ("white", noise(1.0, 0.1, false)),
+            ("brown", noise(1.0, 0.1, true)),
+            ("a breath", breath(1.0, 0.1)),
+        ];
+        for (name, loud) in sounds {
+            let sound = [quiet(2.0), loud, quiet(2.0)].concat();
+            assert_eq!(cut(&sound), Vec::new(), "{name}");
         }
     }
 
     #[test]
     fn a_low_voice_and_a_high_one_are_each_a_take() {
-        for pitch in [85.0, 300.0] {
+        for pitch in [65.0, 380.0] {
             let sound = [quiet(2.0), voice(0.4, pitch), quiet(2.0)].concat();
             assert_eq!(cut(&sound).len(), 1, "pitch: {pitch}");
         }
@@ -423,7 +453,7 @@ mod tests {
 
     #[test]
     fn a_rumble_below_a_voice_makes_no_take() {
-        let step = std::f32::consts::TAU * 40.0 / 16_000.0;
+        let step = std::f32::consts::TAU * 45.0 / 16_000.0;
         let sound = [quiet(2.0), tone(1.0, 0.1, step), quiet(2.0)].concat();
         assert_eq!(cut(&sound), Vec::new());
     }
