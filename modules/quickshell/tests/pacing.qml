@@ -383,17 +383,23 @@ QtObject {
         // before, so it isn't made again: Joel's steps into Agents waited 16
         // to 25 ms for it (his journal, 2026-11-19 and 20).
         const afresh = { readsAfreshUnwanted: true };
+        const alsoAfresh = { readsAfreshUnwanted: true };
         const keeps = { readsAfreshUnwanted: false };
+        check(failures, "a step holds anew a source that laid its rows out afresh",
+            Wanted.heldAnew(afresh, []), afresh);
+        check(failures, "but not one that kept them unwanted, which says those made at last",
+            Wanted.heldAnew(keeps, []), null);
+        check(failures, "nor one a step already holds",
+            Wanted.heldAnew(afresh, [{ row: { from: afresh } }]), null);
+        check(failures, "nor a row from no source", Wanted.heldAnew(undefined, []), null);
         check(failures, "the source a step holds anew said only what the step read",
             Wanted.readByStep(afresh, afresh, undefined), true);
         check(failures, "another source's change as it's held is its own",
-            Wanted.readByStep(keeps, afresh, undefined), false);
+            Wanted.readByStep(alsoAfresh, afresh, undefined), false);
         check(failures, "as is the held source's refresh the launcher asks for",
             Wanted.readByStep(afresh, afresh, "a row agreed"), false);
         check(failures, "and any change with no step holding a source anew",
             Wanted.readByStep(afresh, null, undefined), false);
-        check(failures, "one that kept its rows unwanted says those it made at last",
-            Wanted.readByStep(keeps, keeps, undefined), false);
         check(failures, "nor opening into another place before its step is held",
             read({ entering: people }), false);
         check(failures, "though opening into one that reads them they are",

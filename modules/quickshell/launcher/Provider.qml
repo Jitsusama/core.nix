@@ -374,12 +374,13 @@ Scope {
     // launcher to ask, as a check's, always is.
     readonly property bool wanted: typeof launcher?.wants !== "function"
         || launcher.wants(provider)
-    // Whether its rows, asked while it isn't wanted, are laid out afresh,
-    // as Agents' are, rather than kept from when it was last wanted, as
-    // whileWanted keeps them and Windows keeps its own until it's wanted.
-    // Only then is what it says changed as a step into it is held what the
-    // step just read (Wanted.js's readByStep); a source that keeps them
-    // says the rows it made at last, which the step must show.
+    // Whether its rows, asked now while it isn't wanted, are laid out as
+    // they stand, as Agents' are while its own rows are read, rather than
+    // kept from when it was last wanted, as whileWanted keeps them and
+    // Windows keeps its own until it's wanted. Only then is what it says
+    // changed as a step into it is held what the step just read, asked
+    // before the step is held (Wanted.js's heldAnew); a source that keeps
+    // them says the rows it made at last, which the step must show.
     property bool readsAfreshUnwanted: false
 
     // Rows a binding makes, by name: made by `make` while wanted, and while not, what it made

@@ -5437,9 +5437,9 @@ Scope {
         //
         // A source no step held before becomes wanted as its step is held,
         // and says its rows changed, which may be only the rows just read
-        // for the step (Wanted.readByStep, which refreshed() asks).
-        newlyHeld = row.from && !held.some(step => step.row?.from === row.from)
-            ? row.from : null;
+        // for the step (Wanted.readByStep, which refreshed() asks). Whether
+        // they were read as they stand is asked now, before it's wanted.
+        newlyHeld = Wanted.heldAnew(row.from ?? null, held);
         try {
             held = held.concat([Object.assign(here(), walk?.stood ?? {}, {
                 key: steadyId(row), row: row, rows: into ?? [], learned: meant })]);
