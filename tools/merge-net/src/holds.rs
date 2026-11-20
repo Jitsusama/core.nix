@@ -56,6 +56,14 @@ const TERMS: [&str; 7] = [
     "this ends when",
 ];
 
+/// Words that, in a sentence saying when its hold ends, say it holds
+/// something too, as "it stays until 22:00: start no builds" does. Words
+/// of time, as "after" is, are no such word there.
+const TERM_HOLDS: [&str; 12] = [
+    "no", "nothing", "not", "never", "don", "won", "hold", "stop", "wait", "avoid", "leave",
+    "pause",
+];
+
 /// The net's own names, which hold it in a sentence freeing nothing and
 /// are neutral in one freeing something, since a hold names the net there
 /// only to say it carries on.
@@ -110,7 +118,9 @@ const AFTER_ENDS: [&str; 6] = [", and ", " and ", ", so ", ", but ", ", while ",
 const FEW: usize = 3;
 
 /// Words opening a clause rather than an item of a list, after its first:
-/// "Slack, the laptop reboots" frees only Slack.
+/// "Slack, the laptop reboots" frees only Slack. An item of more than one
+/// word naming the net's work is a clause too, as "the Mac reboots" is
+/// with no article.
 const CLAUSE_OPENS: [&str; 7] = ["the", "a", "an", "my", "our", "its", "this"];
 
 /// The most words before "is fine" it frees, as "concluding or retiring a
@@ -143,6 +153,7 @@ fn held_part(
     sentence: &str,
     holding: impl Fn(&str) -> bool,
     event: impl Fn(&str) -> bool,
+    work: impl Fn(&str) -> bool,
 ) -> String {
     let mut found: Vec<(usize, usize, bool)> = FREES_AFTER
         .iter()
@@ -186,17 +197,19 @@ fn held_part(
             let mut to = phrase.min(clause);
             let mut item = end;
             while item < to {
-                let next = [", ", " or "]
+                let (stops, next) = [", ", " or "]
                     .iter()
                     .filter_map(|split| sentence[item..to].find(split).map(|at| (at, split.len())))
                     .min()
-                    .map_or(to, |(at, len)| item + at + len);
-                let part = &sentence[item..next];
+                    .map_or((to, to), |(at, len)| (item + at, item + at + len));
+                // The item without the word or comma that splits it off.
+                let part = &sentence[item..stops];
                 let opens = part
                     .split(|c: char| !c.is_ascii_alphanumeric())
                     .find(|word| !word.is_empty())
                     .is_some_and(|word| CLAUSE_OPENS.contains(&word));
-                if count(part) > FEW || (item > end && opens) {
+                let clause = count(part) > 1 && work(part);
+                if count(part) > FEW || (item > end && opens) || clause {
                     to = item;
                 }
                 item = next;
@@ -253,31 +266,37 @@ fn about_the_net(text: &str) -> bool {
             .iter()
             .any(|word| EVENTS.iter().any(|start| word.starts_with(start)))
     };
-    // A colon splits no sentence, since it splits a time in two too.
-    let holds_its_work = lower
-        .split(['.', ';', '!', '?'])
-        .filter(|sentence| {
-            !TERMS
-                .iter()
-                .any(|term| sentence.trim_start().starts_with(term))
-        })
-        .any(|sentence| {
-            // The net's name holds it in a sentence freeing nothing, and is
-            // neutral in one freeing something, as "so merge-net and the
-            // trains carry on" is.
-            let frees = FREES_AFTER
-                .iter()
-                .chain(&FREES_BEFORE)
-                .any(|p| sentence.contains(p));
-            if !frees && NETS_NAMES.iter().any(|name| sentence.contains(name)) {
-                return true;
-            }
-            let mut unnamed = sentence.to_owned();
-            for name in NETS_NAMES {
-                unnamed = unnamed.replace(name, "it");
-            }
-            nets_work(&held_part(&unnamed, |rest| names(rest, &HOLDING), event))
-        });
+    // A colon splits no sentence, since it splits a time in two too. A
+    // sentence saying when its hold ends is read only for a word that holds
+    // something beside the net's work, since its end is often a switch.
+    let holds_its_work = lower.split(['.', ';', '!', '?']).any(|sentence| {
+        if TERMS
+            .iter()
+            .any(|term| sentence.trim_start().starts_with(term))
+        {
+            return names(sentence, &TERM_HOLDS) && nets_work(sentence);
+        }
+        // The net's name holds it in a sentence freeing nothing, and is
+        // neutral in one freeing something, as "so merge-net and the
+        // trains carry on" is.
+        let frees = FREES_AFTER
+            .iter()
+            .chain(&FREES_BEFORE)
+            .any(|p| sentence.contains(p));
+        if !frees && NETS_NAMES.iter().any(|name| sentence.contains(name)) {
+            return true;
+        }
+        let mut unnamed = sentence.to_owned();
+        for name in NETS_NAMES {
+            unnamed = unnamed.replace(name, "it");
+        }
+        let held = held_part(&unnamed, |rest| names(rest, &HOLDING), event, nets_work);
+        // Kept whole, the sentence holds something too, and its name for
+        // the net is what it holds, as "Slack is fine, but hold merge-net
+        // until 22:00" does.
+        (held == unnamed && NETS_NAMES.iter().any(|name| sentence.contains(name)))
+            || nets_work(&held)
+    });
     holds_its_work || !names(&lower, &ELSEWHERE)
 }
 
@@ -519,6 +538,16 @@ mod tests {
             "It doesn't hold Slack, the laptop's builds go elsewhere tonight.",
             "It doesn't hold Slack, the laptop reboots.",
             "It doesn't hold merges, the Mac restarts.",
+            "It doesn't hold Slack, laptop reboots tonight.",
+            "It doesn't hold Slack, Mac restarts.",
+            // A sentence saying when the hold ends still holds what it
+            // says to stop.
+            "It stays until 22:00: start no builds.",
+            "It stays until the Mac is back, and don't merge till then.",
+            // A sentence freeing something that holds something as well
+            // holds the net by name.
+            "Slack is fine, but hold merge-net until 22:00.",
+            "Slack is fine, but leave merge-net alone until 22:00.",
             // A hold naming the net, in a sentence freeing nothing, holds it
             // whatever its verb.
             "Hold merge-net till 22:00.",
