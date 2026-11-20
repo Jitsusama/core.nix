@@ -1230,16 +1230,21 @@ Floating {
         // or shows what's under it, shows the parts laid quietly or lays a
         // part more, and moves again, so it never lands on what follows the
         // run while the run's rest is still to come (DrawerPage.runReach).
+        // One that still needs more once a part is laid, as G landing on
+        // the end of what's laid does each time, lays the rest whole, read
+        // once, rather than a part at a time, each read as it's laid.
+        let parts = 0;
         for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
             const reach = Page.runReach(moved, end,
                 { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top });
-            if (reach === "whole")
+            if (reach === "whole" || (reach === "more" && parts > 0))
                 layWhole();
             else if (reach === "more" && runQuiet)
                 runShow();
-            else if (reach === "more")
+            else if (reach === "more") {
                 layPart(runPart, true);
-            else
+                parts += 1;
+            } else
                 break;
             moved = movedBy(act, count);
         }

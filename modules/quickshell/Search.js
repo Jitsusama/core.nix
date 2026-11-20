@@ -30,9 +30,11 @@ const unseen = /[\u2060\u200b]/;
 // searched as they are, with nothing to map, since a search reads every
 // line of a drawer on each key typed.
 function seen(text, byCase) {
-    const lowered = byCase ? text : text.toLowerCase();
-    if (lowered.length === text.length && !unseen.test(text)) {
-        return { letters: lowered, starts: null, ends: null };
+    if (!unseen.test(text)) {
+        const lowered = byCase ? text : text.toLowerCase();
+        if (lowered.length === text.length) {
+            return { letters: lowered, starts: null, ends: null };
+        }
     }
     let letters = "";
     const starts = [];
@@ -77,10 +79,14 @@ function found(pattern, text) {
     while (from >= 0) {
         // Its end is where its last letter ends, so a joiner after the
         // place found isn't taken into it.
+        // One that begins inside a letter the last place took, as two
+        // can where a letter lowers longer, is no place of its own.
         const last = from + sought.length - 1;
-        spans.push(plain.starts === null
-            ? [from, last + 1]
-            : [plain.starts[from], plain.ends[last]]);
+        const span = plain.starts === null ? [from, last + 1]
+            : [plain.starts[from], plain.ends[last]];
+        if (spans.length === 0 || span[0] >= spans[spans.length - 1][1]) {
+            spans.push(span);
+        }
         from = looked.indexOf(sought, from + sought.length);
     }
     return spans;
