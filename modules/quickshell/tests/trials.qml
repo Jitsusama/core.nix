@@ -375,7 +375,7 @@ QtObject {
             Trials.keptPart({ fresh: 0, laying: 0, split: unstepped }, ", 5 weighing") === ""
                 && Trials.keptPart(null) === "", "shown");
         expect("a showing says how long rows spent reading what they hold, within its parts",
-            Trials.readingSaid(12.6) === ", 13 of those reading what they hold"
+            Trials.readingSaid(12.6) === ", 13 of the showing reading what they hold"
                 && Trials.readingSaid(0.4) === "" && Trials.readingSaid(undefined) === "",
             Trials.readingSaid(12.6));
         // A showing's own parts, as Launcher.qml's compose and search time
@@ -388,6 +388,15 @@ QtObject {
                 + " 3 selecting and scrolling to it; 3 rows new, 3 laying them out:"
                 + " 3 rows built, 0 taken back, 5 weighing their keys)",
             Trials.showingSaid(showingParts, ", 5 weighing their keys"));
+        // The reading comes after the weighing, as composed joins them, and is said of
+        // the whole showing, so it never reads as a share of the weighing before it.
+        expect("a showing's reading is said of the whole showing, after its weighing or alone",
+            Trials.showingSaid(showingParts, Trials.weighingSaid(5) + Trials.readingSaid(13))
+                .endsWith(", 5 weighing their keys, 13 of the showing reading what they hold)")
+                && Trials.showingSaid({ kept: { fresh: 0, laying: 0, split: unstepped } },
+                    Trials.readingSaid(1))
+                    === " (1 of the showing reading what they hold)",
+            Trials.showingSaid(showingParts, Trials.weighingSaid(5) + Trials.readingSaid(13)));
         const keptShowing = Object.assign({}, showingParts, { kept: splitting });
         expect("a showing's keeping still ends on where a step back came to",
             Trials.showingSaid(keptShowing).startsWith(" (6 listing them, 10 putting them in")

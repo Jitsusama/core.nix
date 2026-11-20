@@ -119,11 +119,11 @@ function landedSaid({ back = -1, from = 0, took = 0, whole = false, stepping = f
 }
 
 // How long a showing's rows spent reading what each program holds, as
-// their counts and notes are listed, drawn and weighed, so within those parts
-// and not beside them: Programs showed 20 new rows in 132 ms under load, 54
-// weighing and 20 laying out, the rest untold (2026-11-14). None under 1 ms.
+// their counts and notes are listed, drawn and weighed, so said of the whole
+// showing, within its parts and not beside them: Programs showed 20 new rows
+// in 132 ms, 54 weighing and 20 laying out, the rest untold (2026-11-14).
 function readingSaid(ms) {
-    return ms >= 0.5 ? `, ${Math.round(ms)} of those reading what they hold` : "";
+    return ms >= 0.5 ? `, ${Math.round(ms)} of the showing reading what they hold` : "";
 }
 
 // How long weighing the keys of a showing's rows took, said as the reading.
