@@ -2455,8 +2455,10 @@ Provider {
         });
         const running = new Set(Sessions.running);
         const windowedNow = one => {
-            const session = (one.session.id !== "" ? byId.get(one.session.id) : undefined)
-                ?? byAddress.get(one.session.address) ?? null;
+            // By its address only for a landing that names no id, as
+            // landerOf, so Go To shows only where its Return goes.
+            const session = (one.session.id !== "" ? byId.get(one.session.id)
+                : byAddress.get(one.session.address)) ?? null;
             return session !== null && running.has(session) && provider.windowedOf(session);
         };
         const toChange = one => () => Niri.spawn(["xdg-open", one.url]);
