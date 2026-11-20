@@ -3,11 +3,12 @@
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "due": "2026-11-21",
-    "due_why": "The time here failed 2 of the 25 net runs to 20 Nov, racing the rows of Now as it steps in, so a rerun alone wouldn't take it off. Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00, moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. The other three subtests once listed beside it, which with it failed 9 of 40 net runs from 15 Nov to 18 Nov 05:30 UTC, are excused no longer: firmware failed because the test stepped out past where the launcher had already stepped back by itself, which the wait it now has fixes, and the other two failed in none of the 25",
+    "due_why": "The time here failed 2 of the 25 net runs to 20 Nov, racing the rows of Now as it steps in, so a rerun alone wouldn't take it off. Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00, moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. Firmware failed because the test stepped out past where the launcher had already stepped back by itself; the wait it now has passed 10 runs on the builders, but its Escape for a late line likely ran in none, so it stays listed until the net's runs after the fix pass, and the time here's fix takes it off. The other two once listed, which with these failed 9 of 40 net runs from 15 Nov to 18 Nov 05:30 UTC, failed in none of the 25 and are excused no longer",
     "owner_pr": 3304,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
+      "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
       "test_the_time_here_says_how_the_clock_is_kept"
     ],
     "test": "vm-desktop-launcher-answers"

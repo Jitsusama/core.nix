@@ -1445,8 +1445,9 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
             )
 
         # Nothing says when the shell took the third Return, so its line may show before the
-        # step back or after it. Each one heard is let go with Escape, which only lets a line
-        # go, and the wait goes on, so a late line is neither passed over nor a timeout.
+        # step back is read. Each one heard is let go with Escape, which only lets a line go,
+        # and the wait goes on once the line has gone, so a second Escape never follows one
+        # line. A Return taken only after the step back is read, over 3 s late, isn't seen.
         for _ in range(3):
             desktop.launcher_until(
                 lambda shown: shown["command"] is not None or stepped_back(shown)
@@ -1454,6 +1455,7 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
             if desktop.showing()["command"] is None:
                 break
             machine.send_key("esc")
+            desktop.launcher_until(lambda shown: shown["command"] is None)
         desktop.launcher_until(stepped_back)
         desktop.shoot("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()

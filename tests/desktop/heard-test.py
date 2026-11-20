@@ -16,15 +16,17 @@ if TYPE_CHECKING:
 
 
 def test_a_wait_never_passed_says_the_last_state_it_heard() -> None:
+    # The launcher's reads join their parts with a middle dot, which the message keeps as it
+    # is rather than as an escape.
     def hear(passes: Callable[[str], object]) -> None:
-        for said in ('{"rows": ["Firmware"]}', '{"rows": ["Install 1.13.0"]}'):
+        for said in ('{"rows": ["Firmware"]}', '{"rows": ["Install 1.13.0 \\u00b7 ready"]}'):
             assert not passes(said), f"{said} passed a test it fails"
         message = "never heard rows of Restart"
         raise AssertionError(message)
 
     with pytest.raises(AssertionError) as never:
         until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
-    wanted = 'never heard rows of Restart; it, last heard: {"rows": ["Install 1.13.0"]}'
+    wanted = 'never heard rows of Restart; it, last heard: {"rows": ["Install 1.13.0 \u00b7 ready"]}'
     assert str(never.value) == wanted, f"the wait that never passed said: {never.value}"
 
 
@@ -39,7 +41,9 @@ def test_a_wait_that_hears_nothing_says_the_state_it_first_read() -> None:
     assert str(never.value) == wanted, f"the wait that heard nothing said: {never.value}"
 
 
-def test_a_change_that_passes_ends_the_wait() -> None:
+def test_a_change_that_passes_is_told_so() -> None:
+    # What hears stops at the first change the wait says passed, as reported does, so this
+    # holds that the wait says so of the change that passes and of no other.
     heard: list[str] = []
     said_in_turn = ('{"rows": ["Install"]}', '{"rows": ["Restart"]}', '{"rows": []}')
 
