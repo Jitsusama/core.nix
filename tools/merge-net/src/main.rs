@@ -686,7 +686,8 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
     let mut id = Command::new("git")
         .arg("-C")
         .arg(repo)
-        .args(["patch-id", "--stable", "--verbatim"])
+        // Verbatim ids are stable ones too; git takes only one of the two.
+        .args(["patch-id", "--verbatim"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
