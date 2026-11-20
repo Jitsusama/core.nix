@@ -653,6 +653,22 @@ Singleton {
     readonly property var arrangement: arrangementRead.boots ?? {}
     readonly property var arrangedOthers: arrangementRead.others
         && typeof arrangementRead.others === "object" ? arrangementRead.others : {}
+    // What a reopen puts the sessions by, each boot's places by session id
+    // and the boot being restored, said for the test as it changes, since a
+    // reopen asked before both are heard puts every session nowhere (at
+    // 9bceeeda and a9f253f9, by 2026-11-19). Nothing while reports are off.
+    readonly property string placesHeard: {
+        if (!Options.reports)
+            return "";
+        const kept = Object.keys(arrangement).sort()
+            .map(boot => `${boot}: ${Object.keys(arrangement[boot] ?? {}).sort().join(" ")}`)
+            .join(", ");
+        return `heard places kept for ${kept || "no boot"}, restoring ${restoring.boot || "no boot"}`;
+    }
+    onPlacesHeardChanged: {
+        if (placesHeard !== "")
+            Report.say(placesHeard);
+    }
     // The boot kept beside this one, as the daemon keeps it: the boot being
     // restored when its places are kept, else the other kept.
     function arrangedBefore() {

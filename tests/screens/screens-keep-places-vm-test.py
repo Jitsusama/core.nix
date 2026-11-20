@@ -296,16 +296,20 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
             and left[0] == "Virtual-2"
             and left[2] < right[2]
             and up[:2] == ("Virtual-2", left[1] + 1)
-            and lantern() not in {left[:2], up[:2]}
+            and (joels := lantern()) is not None
+            and joels not in {left[:2], up[:2]}
         )
 
-    def lantern() -> tuple[str, int]:
-        """Give the screen and workspace Joel's own window is on."""
-        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
-        [space] = [spaces[one["workspace_id"]] for one in windows if one["title"] == "Lantern"]
-        return space["output"], space["idx"]
+    def lantern() -> tuple[str, int] | None:
+        """Give the screen and workspace Joel's own window is on, or none while it's moving."""
+        return next(
+            (
+                (space["output"], space["idx"])
+                for one, space in booted.windows_placed()
+                if one["title"] == "Lantern"
+            ),
+            None,
+        )
 
     def windows() -> list[dict[str, Any]]:
         """Give every window niri lays out."""
@@ -331,6 +335,7 @@ def test_reopen_them_all_after_a_reboot_reopens_what_the_boot_left_where_each_sa
         )
         # A shell starting after the reboot reopens nothing of it by itself.
         machine.succeed(booted.in_niri(restart), timeout=dt.timedelta(seconds=90))
+        booted.heard_handed_over(where)
         assert counted() == {}, counted()
         # Joel is typing in his own window as he asks.
         [joels] = [one["id"] for one in windows() if one["title"] == "Lantern"]
@@ -381,15 +386,9 @@ def test_a_screen_coming_back_takes_back_its_workspaces_though_one_took_a_window
 
     def where() -> dict[str, tuple[str, int]]:
         """Give each window opened here's screen and workspace, by its title."""
-        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
         return {
-            window["title"]: (
-                spaces[window["workspace_id"]]["output"],
-                spaces[window["workspace_id"]]["idx"],
-            )
-            for window in windows
+            window["title"]: (space["output"], space["idx"])
+            for window, space in booted.windows_placed()
             if window["title"] in opened
         }
 
@@ -450,15 +449,12 @@ def test_workspaces_moved_from_a_screen_turned_off_stay_where_joel_puts_them(
 
     def order() -> list[str]:
         """Give the windows opened here by their workspaces' order on the first screen."""
-        listed = json.loads(machine.succeed(booted.in_niri("niri msg --json workspaces")))
-        spaces = {one["id"]: one for one in listed}
-        windows = json.loads(machine.succeed(booted.in_niri("niri msg --json windows")))
-        mine = [window for window in windows if window["title"] in opened]
-        on = [window for window in mine if spaces[window["workspace_id"]]["output"] == "Virtual-1"]
-        return [
-            window["title"]
-            for window in sorted(on, key=lambda window: spaces[window["workspace_id"]]["idx"])
+        on = [
+            (window, space)
+            for window, space in booted.windows_placed()
+            if window["title"] in opened and space["output"] == "Virtual-1"
         ]
+        return [window["title"] for window, space in sorted(on, key=lambda one: one[1]["idx"])]
 
     try:
         machine.succeed(booted.in_niri("niri msg action focus-monitor Virtual-2"))
@@ -520,11 +516,10 @@ def on_its_own_workspace(booted: Screens, screen: str, title: str) -> int:
 
 def in_order_on(booted: Screens, screen: str, titles: list[str]) -> list[str]:
     """Give these windows by their workspaces' order on the screen, those on it alone."""
-    spaces = {one["id"]: one for one in niri_json(booted, "workspaces")}
     there = [
-        (spaces[w["workspace_id"]]["idx"], w["title"])
-        for w in niri_json(booted, "windows")
-        if w["title"] in titles and spaces[w["workspace_id"]]["output"] == screen
+        (space["idx"], window["title"])
+        for window, space in booted.windows_placed()
+        if window["title"] in titles and space["output"] == screen
     ]
     return [title for _, title in sorted(there)]
 
@@ -572,12 +567,9 @@ def test_workspaces_go_back_in_the_order_joel_set_as_screens_come_and_go(
             next(w["id"] for w in niri_json(booted, "windows") if w["title"] == title)
             for title in ("Gull", "Kelp", "Reed", "Sand")
         )
-        spaces = {w["id"]: w["workspace_id"] for w in niri_json(booted, "windows")}
-        index = {one["id"]: one["idx"] for one in niri_json(booted, "workspaces")}
+        [kelps] = [space["idx"] for one, space in booted.windows_placed() if one["id"] == kelp]
         machine.succeed(booted.in_niri(f"niri msg action focus-window --id {gull}"))
-        machine.succeed(
-            booted.in_niri(f"niri msg action move-workspace-to-index {index[spaces[kelp]]}")
-        )
+        machine.succeed(booted.in_niri(f"niri msg action move-workspace-to-index {kelps}"))
         machine.succeed(booted.in_niri(f"niri msg action focus-window --id {reed}"))
         machine.succeed(booted.in_niri("niri msg action move-workspace-to-index 1"))
         machine.succeed(booted.in_niri(f"niri msg action focus-window --id {sand}"))
