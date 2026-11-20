@@ -26,8 +26,7 @@ type Json = dict[str, Any]
 
 BIN = "/run/current-system/sw/bin"
 FAR = "203.0.113.3"
-# The connection, in kbit/s, and the jobs' uploads beside the app's one.
-LINE = 8000
+# The jobs' uploads beside the app's one.
 JOBS = 32
 JOBS_PORT = 5201
 APP_PORT = 5202
@@ -53,17 +52,21 @@ UNSHAPED_SHARE = 0.2
 # to take the queue back from the router once the jobs fill it.
 COMING_UP = dt.timedelta(seconds=30)
 TAKING = dt.timedelta(seconds=90)
-# How long the shaper's rate must stay under the line to count as held
-# there: a moment under it, as a cut for delay makes, holds nothing.
-HELD = dt.timedelta(seconds=3)
+# How long the router must shed nothing, while the shaper holds the queue
+# as its own, for the queue to count as taken back. A router still holding
+# it under 32 uploads sheds each time codel's 100 ms interval passes with
+# its queue over the 5 ms target, and a stray drop as the controller climbs
+# only starts the count again.
+HELD = dt.timedelta(seconds=5)
 SENDING = dt.timedelta(seconds=60)
 
 
 @dataclass
 class Rig:
-    """The client, and the server past the router that counts what reaches it."""
+    """The client, the router that is its connection, and the server that counts what reaches it."""
 
     client: BaseMachine
+    router: BaseMachine
     server: BaseMachine
 
     def link(self) -> Json:
@@ -110,6 +113,17 @@ class Rig:
         status = self.client.succeed("cat /run/shaper/status.json")
         return "\n".join([*rows, said, status])
 
+    def router_shed(self) -> int:
+        """Give the packets the router's fq_codel dropped or marked, as only a queue there sheds.
+
+        Marks count beside drops, since a flow that asks for ECN is marked where another would
+        be dropped.
+        """
+        qdiscs: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth2"))
+        codels = [q for q in qdiscs if q.get("kind") == "fq_codel"]
+        assert codels, f"no fq_codel on the router's eth2: {qdiscs}"
+        return sum(int(q.get("drops") or 0) + int(q.get("ecn_mark") or 0) for q in codels)
+
     def taken(self) -> dict[int, int]:
         """Give the bytes the server has taken on each port."""
         rules: Json = json.loads(self.server.succeed("nft -j list chain inet seen input"))
@@ -137,6 +151,9 @@ class Rig:
         While `shaped`, the share is read once the shaper gives Joel's lane, which the upload
         rides, more than SHAPED_SHARE of its rate: on 19 November one read soon after the
         upload began gave 0.47, where reads once the lane had grown gave 0.71 and over.
+        The lane outlasts the upload before, so the upload starts only once it has fallen back
+        under SHAPED_SHARE: a put-first read begun 0.3 s after another's stop passed the wait
+        on that one's lane, and read 0.39 as the lane fell back to what it carried.
         The upload is stopped however this ends, so a failure leaves the next test the line,
         and a stop that fails after a good read fails here rather than in the next test.
         """
@@ -151,6 +168,18 @@ class Rig:
                 )
             return share > SHAPED_SHARE
 
+        def fallen(last_try: bool) -> bool:
+            link = self.link()
+            share = self.joel_share(link)
+            if last_try and share > SHAPED_SHARE:
+                print(
+                    f"Joel's lane never fell back under {SHAPED_SHARE} of the rate, at {share:.2f}"
+                    f" with the lanes {link.get('lanes')}:\n{self.trace()}"
+                )
+            return share <= SHAPED_SHARE
+
+        if shaped:
+            retry(fallen, timeout=SENDING)
         stop = "systemctl -M alice@ --user stop app-upload.service"
         self.uploads("app-upload", slice_name, 1, APP_PORT)
         try:
@@ -196,28 +225,51 @@ def rig(machines: dict[str, BaseMachine]) -> Rig:
     router.wait_for_unit("connection.service")
     client.wait_for_unit("user@1000.service")
     client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=COMING_UP)
-    return Rig(client=client, server=server)
+    return Rig(client=client, router=router, server=server)
 
 
 @pytest.fixture(scope="module")
 def loaded(rig: Rig) -> Rig:
     """Give the rig with the jobs' uploads filling the router, the shaper holding under it.
 
-    The shaper starts above the line, so the router's queue is the one that fills;
-    only taking it back brings the shaper's rate under the line, and keeps it there.
+    The shaper starts above the line, so the router's queue is the one that fills, and
+    sheds what it can't hold. Taken back, the queue stands in the shaper's CAKE, which
+    says so, and the router sheds nothing; jobs that stopped sending would leave both
+    empty. The router's shedding is read, not the shaper's rate against 8 Mbit/s: HTB let
+    about 8.5 through as the client counts, and on 19 November a shaper holding at
+    8099 kbit/s, with the queue its own, failed that bar.
     """
     rig.uploads("uploads", "jobs.slice", JOBS, JOBS_PORT)
-    under_since: list[float] = []
+    # Since when the router has shed nothing more while the shaper held the queue, what it
+    # had shed by then, and why the count last started over.
+    since, shed_then, why = time.monotonic(), -1, ""
 
     def taken_back(last_try: bool) -> bool:
-        up = rig.up()
-        if not 0 < up < LINE:
-            under_since.clear()
-        elif not under_since:
-            under_since.append(time.monotonic())
-        held = bool(under_since) and time.monotonic() - under_since[0] >= HELD.total_seconds()
+        nonlocal since, shed_then, why
+        shed = rig.router_shed()
+        link = rig.link()
+        up = int(link.get("up") or 0)
+        heard = link.get("heard")
+        ours = bool(((heard or {}).get("ours") or {}).get("queued"))
+        shed_more = shed != shed_then
+        if shed_more or not ours:
+            since, shed_then = time.monotonic(), shed
+            if shed == 0:
+                why = (
+                    "the router shed nothing, so the jobs never filled it, or the shaper"
+                    " started under it"
+                )
+            elif shed_more:
+                why = f"the router kept shedding, at {shed}, with the shaper at {up} kbit/s"
+            elif not (heard or {}).get("ours"):
+                why = f"the shaper said nothing of its queue, at {up} kbit/s"
+            else:
+                why = f"the shaper held no queue of its own, at {up} kbit/s"
+        held = shed > 0 and time.monotonic() - since >= HELD.total_seconds()
         if last_try and not held:
-            print(f"never held under the line, at {up} kbit/s:\n{rig.trace()}")
+            print(f"{why}, the last time the count started over:\n{rig.trace()}")
+        if held:
+            print(f"the router let its queue go, at {shed} shed, with the shaper at {up} kbit/s")
         return held
 
     retry(taken_back, timeout=TAKING)
