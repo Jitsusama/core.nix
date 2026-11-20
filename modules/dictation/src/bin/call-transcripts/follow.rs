@@ -227,12 +227,7 @@ pub fn follow(
         if let (Some(recording), Some(app)) = (&mut recording, graph.call()) {
             link(&graph, recording, app);
         }
-        if let Some(recording) = &recording
-            && looked.elapsed() >= LOOK_AGAIN
-        {
-            looked = Instant::now();
-            look_again(book, &runtime, &recording.key);
-        }
+        look_again(book, &runtime, recording.as_ref(), &mut looked);
     }
     let _ = dump.wait();
     Err("pw-dump ended".to_owned())
@@ -358,8 +353,16 @@ impl Recording {
 
 /// Adds to a Tuple call's record whoever Tuple says is on it now, since
 /// people join and leave as it goes. Only a Tuple call is asked again:
-/// who a meeting invited doesn't change with who comes.
-fn look_again(book: &Shared, runtime: &Path, key: &str) {
+/// who a meeting invited doesn't change with who comes. It's asked every
+/// `LOOK_AGAIN`, since it was last `looked`, while a call is recorded.
+fn look_again(book: &Shared, runtime: &Path, recording: Option<&Recording>, looked: &mut Instant) {
+    let Some(key) = recording
+        .map(|recording| recording.key.as_str())
+        .filter(|_| looked.elapsed() >= LOOK_AGAIN)
+    else {
+        return;
+    };
+    *looked = Instant::now();
     let tuple = book
         .lock()
         .record(key)
