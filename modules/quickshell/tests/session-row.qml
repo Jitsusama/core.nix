@@ -197,17 +197,19 @@ QtObject {
         if (bare.eyebrow !== "8IDU4E")
             failures.push(`a bare drawer's eyebrow: "${bare.eyebrow}"`);
         // One paused, parked or closed never looks live: its glyph is muted,
-        // every other a program's, as the live rows' are.
+        // one waiting on Joel the alert's, and every other a program's, as
+        // the daemon's rows are (modules/agents/src/standing.rs's hue).
         const hues = ["needs", "working", "inLine", "listening", "paused", "parked", "off"]
             .map(state => `${state}:${SessionRow.hue(state)}`).join(" ");
-        if (hues !== "needs:program working:program inLine:program listening:program"
+        if (hues !== "needs:alert working:program inLine:program listening:program"
             + " paused:muted parked:muted off:muted")
             failures.push(`the glyphs' roles by state: "${hues}"`);
         // A live one with a tier 2 figure takes the warning's hue; one paused
-        // stays muted, since it isn't live.
-        const warned = ["working", "listening", "paused", "off"]
+        // stays muted, since it isn't live, and one waiting on Joel keeps the
+        // alert's.
+        const warned = ["needs", "working", "listening", "paused", "off"]
             .map(state => `${state}:${SessionRow.hue(state, true)}`).join(" ");
-        if (warned !== "working:warning listening:warning paused:muted off:muted")
+        if (warned !== "needs:alert working:warning listening:warning paused:muted off:muted")
             failures.push(`the glyphs' roles warned: "${warned}"`);
 
         // Past 80% of its window its row says how full, in whole percent,

@@ -100,8 +100,13 @@ function offered(rowActs, returns, fallback) {
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name
-// stays in text and the far-end word says how it stands.
+// stays in text and the far-end word says how it stands. One waiting on
+// Joel is in the alert's, ahead of a nearing limit, as the agents daemon
+// serves its row (modules/agents/src/standing.rs's hue; Joel, 2026-11-20).
 function hue(stands, warns) {
+    if (stands === "needs") {
+        return "alert";
+    }
     if (["paused", "parked", "off"].includes(stands)) {
         return "muted";
     }

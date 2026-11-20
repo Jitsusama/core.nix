@@ -140,13 +140,29 @@ pub fn returns(stands: Stands, windowed: bool) -> &'static str {
 /// The theme's role its glyph is drawn in: a program's, as a live one
 /// is, and muted for one paused, parked or closed, which never looks live
 /// (#2052; VKCF3Z, 2026-11-07). A live one with a tier 2 figure is nearing
-/// a limit, in the warning's role, as a budget near its allowance is.
+/// a limit, in the warning's role, as a budget near its allowance is. One
+/// waiting on Joel is in the alert's, "something that needs Joel", ahead
+/// of a nearing limit, since how it stands is why he'd look at it now.
 pub fn hue(stands: Stands, warns: bool) -> &'static str {
     match stands {
+        Stands::Needs => "alert",
         Stands::Paused | Stands::Parked | Stands::Off => "muted",
         _ if warns => "warning",
         _ => "program",
     }
+}
+
+/// The mark its row wears: the agent's, or the shape an orchestrator's
+/// network is drawn by (`shape`), and for one waiting on Joel his own,
+/// the person with a clock that For You's to-dos wear, over either. The
+/// word at a row's right is the first thing a narrow row cuts, so the
+/// mark alone has to say it waits on him (Joel, 2026-11-20: "no clue how
+/// to see from that view that a thing is waiting").
+pub fn glyph(stands: Stands, shape: Option<&'static str>) -> &'static str {
+    if stands == Stands::Needs {
+        return "waitsOnJoel";
+    }
+    shape.unwrap_or("agent")
 }
 
 /// What Close's ask says stays, so ending a session never reads as losing
@@ -361,10 +377,11 @@ mod tests {
             .chain([Stands::Off].iter())
             .map(|stands| format!("{}:{}", stands.id(), hue(*stands, false)))
             .collect();
-        let want = "needs:program working:program inLine:program listening:program \
+        let want = "needs:alert working:program inLine:program listening:program \
                     paused:muted parked:muted off:muted";
         assert_eq!(hues.join(" "), want);
         let warned: Vec<_> = [
+            Stands::Needs,
             Stands::Working,
             Stands::Listening,
             Stands::Paused,
@@ -373,11 +390,11 @@ mod tests {
         .iter()
         .map(|stands| format!("{}:{}", stands.id(), hue(*stands, true)))
         .collect();
-        let want = "working:warning listening:warning paused:muted off:muted";
+        let want = "needs:alert working:warning listening:warning paused:muted off:muted";
         assert_eq!(
             warned.join(" "),
             want,
-            "a tier 2 figure warns only on one live"
+            "a tier 2 figure warns only on one live and not waiting on Joel"
         );
     }
 

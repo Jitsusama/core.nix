@@ -321,12 +321,15 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
     let items = figures::side(&doing_said, &figure, &full);
     let windowed = (known.windowed)(session);
     // An orchestrator's row wears the shape its network is drawn by in
-    // place of the agent's mark, so the row and the map agree.
-    let glyph = place
-        .orchestrates
-        .then(|| (known.shape)(session.id()))
-        .flatten()
-        .unwrap_or("agent");
+    // place of the agent's mark, so the row and the map agree, until it
+    // waits on Joel (standing::glyph).
+    let glyph = standing::glyph(
+        stands,
+        place
+            .orchestrates
+            .then(|| (known.shape)(session.id()))
+            .flatten(),
+    );
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
         keep: 1,
@@ -624,6 +627,35 @@ mod tests {
             ["shapeSquare", "agent", "agent"],
             "its team's shape as it orchestrates; the agent's mark once it doesn't, or for one \
              leading no team"
+        );
+    }
+
+    #[test]
+    fn a_session_waiting_on_joel_is_told_from_one_working_by_its_mark_alone() {
+        let asking = json!({"presence": {"addresses": ["P"], "session": "s-lead",
+            "busy": true, "wants": {"kind": "approval", "said": "May I push?"},
+            "usage": {"context": {"used": 90, "limit": 100}}}});
+        let orchestrating = Place {
+            depth: 0,
+            orchestrates: true,
+        };
+        let marks = |record: &Value, place: Place| {
+            let row = made(record, place, &given());
+            format!("{}:{}:{}", row.state, row.glyph, row.hue)
+        };
+        assert_eq!(
+            [
+                marks(&asking, Place::default()),
+                marks(&asking, orchestrating),
+                marks(&working(), Place::default()),
+            ],
+            [
+                "needs:waitsOnJoel:alert",
+                "needs:waitsOnJoel:alert",
+                "working:agent:program",
+            ],
+            "one waiting on Joel wears his mark in the alert's hue, over a team's shape and a \
+             nearing limit, so a row cut narrow still says it waits on him (Joel, 2026-11-20)"
         );
     }
 
