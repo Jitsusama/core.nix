@@ -21,6 +21,7 @@ use repos::upstreams::Counted;
 use repos::when::Clock;
 
 mod trees;
+mod waiting;
 
 pub(crate) use trees::change_at;
 pub use trees::trees;
@@ -210,24 +211,38 @@ fn whole(columns: &[(&str, Align)], rows: &[Vec<String>], room: Room) -> bool {
     })
 }
 
+/// Words muted, wrapped at whole words to the room, so a line too long
+/// for a narrow terminal goes on to the next rather than past its edge.
+fn muted(words: &str, pen: &Pen, room: Room) -> Vec<String> {
+    layout::paragraph(words, 0, room)
+        .iter()
+        .map(|line| pen.role("muted", line))
+        .collect()
+}
+
 /// The collection's head: how many, on which machine, read from where,
-/// and when GitHub was last asked, where it has been.
-fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen) -> Vec<String> {
+/// and when GitHub was last asked, where it has been. Where its first line
+/// doesn't fit the room, what follows the title goes under it, wrapped.
+fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen, room: Room) -> Vec<String> {
     let roots: Vec<String> = record.roots.iter().map(|root| shown(root, home)).collect();
     let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
-    let mut lines = vec![format!(
-        "{}{}",
-        pen.title("repositories"),
-        pen.role(
-            "muted",
-            &format!(
-                "{ITEMS}{} on {}{ITEMS}under {}",
-                record.repositories.len(),
-                record.machine,
-                flags::and(&roots)
-            )
-        )
-    )];
+    let title = "repositories";
+    let said = format!(
+        "{} on {}{ITEMS}under {}",
+        record.repositories.len(),
+        record.machine,
+        flags::and(&roots)
+    );
+    let whole = layout::width(title) + layout::width(ITEMS) + layout::width(&said);
+    let mut lines = if room.cells().is_none_or(|cells| whole <= cells) {
+        vec![format!(
+            "{}{}",
+            pen.title(title),
+            pen.role("muted", &format!("{ITEMS}{said}"))
+        )]
+    } else {
+        [vec![pen.title(title)], muted(&said, pen, room)].concat()
+    };
     for github in record
         .sources
         .iter()
@@ -241,7 +256,7 @@ fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen) -> Vec<S
             0 => String::new(),
             unread => format!("{ITEMS}{unread} it couldn't read"),
         };
-        lines.push(pen.role("muted", &(read + &unread)));
+        lines.extend(muted(&(read + &unread), pen, room));
     }
     lines
 }
@@ -281,12 +296,14 @@ fn changes_cell(record: &Record, repository: &Repository) -> String {
     }
 }
 
-/// `repos`: every repository as one line of a table, the one written to
-/// last first, and the commands that go further.
+/// `repos`: what waits on `login`, where the machine declares one and
+/// anything does, then every repository as one line of a table, the one
+/// written to last first, and the commands that go further.
 pub fn repositories(
     record: &Record,
     clock: &Clock,
     home: Option<&Path>,
+    login: Option<&str>,
     pen: &Pen,
     room: Room,
 ) -> String {
@@ -336,7 +353,8 @@ pub fn repositories(
     ]
     .map(|(command, shows)| vec![command.to_owned(), shows.to_owned()]);
     layout::joined(vec![
-        head(record, clock, home, pen),
+        head(record, clock, home, pen, room),
+        waiting::waiting(record, login, pen, room),
         table,
         layout::table_in(
             &[("further", Align::Left), ("shows", Align::Left)],

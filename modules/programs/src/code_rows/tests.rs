@@ -102,6 +102,7 @@ fn change(title: &str) -> Change {
         },
         review: Review::Waiting,
         review_asked_of: Vec::new(),
+        asks_your_review: false,
         github: None,
     }
 }

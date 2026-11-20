@@ -7,7 +7,7 @@ use repos::model::{Checkout, Checks, GitHubChange, Head, Remote, SCHEMA, Source,
 
 /// 2033-05-18 03:33:20 UTC.
 pub(super) const NOW: u64 = 2_000_000_000;
-const HOME: &str = "/home/someone";
+pub(super) const HOME: &str = "/home/someone";
 pub(super) const HELD: &str = ".local/state/pi/agentic-harness.pi/work/trees";
 
 pub(super) const ROOMS: [Room; 4] = [
@@ -19,6 +19,18 @@ pub(super) const ROOMS: [Room; 4] = [
 
 pub(super) fn home() -> &'static Path {
     Path::new(HOME)
+}
+
+/// The collection as a machine declaring no login draws it, as most of
+/// these tests ask of it; those of what waits on someone name theirs.
+fn repositories(
+    record: &Record,
+    clock: &Clock,
+    home: Option<&Path>,
+    pen: &Pen,
+    room: Room,
+) -> String {
+    super::repositories(record, clock, home, None, pen, room)
 }
 
 pub(super) fn clock() -> Clock {
@@ -151,7 +163,13 @@ pub(super) fn record() -> Record {
     }
 }
 
-fn change(number: u64, branch: &str, state: ChecksState, review: Review, ago: u64) -> Change {
+pub(super) fn change(
+    number: u64,
+    branch: &str,
+    state: ChecksState,
+    review: Review,
+    ago: u64,
+) -> Change {
     let failed = match state {
         ChecksState::Failing => vec!["build".to_owned()],
         _ => Vec::new(),
@@ -180,13 +198,14 @@ fn change(number: u64, branch: &str, state: ChecksState, review: Review, ago: u6
             url: format!("https://github.com/Jitsusama/core.nix/pull/{number}"),
         }),
         review_asked_of: Vec::new(),
+        asks_your_review: false,
     }
 }
 
 /// The record after a refresh: seven changes open on core.nix, the one
 /// updated last first, one at a tree's branch; and one repository GitHub
 /// couldn't read.
-fn refreshed() -> Record {
+pub(super) fn refreshed() -> Record {
     let mut record = record();
     record.sources.push(Source {
         name: "github".to_owned(),

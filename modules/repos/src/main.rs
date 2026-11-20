@@ -22,7 +22,11 @@
 //! far each head is behind or ahead of its branch is kept beside it by
 //! `repos count`, on a timer of its own, with the `git` at `REPOS_GIT`
 //! (the crate's upstreams.rs). `repos serve` writes Code's homes to the
-//! file `REPOS_HOMES` names, where the local sites set it (homes.rs).
+//! file `REPOS_HOMES` names, where the local sites set it (homes.rs). The
+//! collection leads with what waits on the GitHub login `REPOS_LOGIN`
+//! names, from `jitsusama.repos.receptorLogin`, and with nothing where
+//! it names none; a refresh keeps whether each change asks that login's
+//! review, never the login.
 
 mod commands;
 // The daemon hears the disk through inotify, so it's Linux's alone.
@@ -82,7 +86,15 @@ fn run(context: &Context) -> Result<(), Failure> {
         [] => {
             let record = record(home, now)?;
             show(context, &views::repositories_json(&record), || {
-                views::repositories(&record, &clock, home, &context.out, context.room)
+                let login = login();
+                views::repositories(
+                    &record,
+                    &clock,
+                    home,
+                    login.as_deref(),
+                    &context.out,
+                    context.room,
+                )
             })
         }
         [name] => {
@@ -281,7 +293,7 @@ fn refresh(home: Option<&Path>, now: u64) -> Result<Seen, Failure> {
         |token, query| github::post(github::GRAPHQL, token, query),
     ));
     let file = seen_file(home)?;
-    github::keep(&file, &seen).map_err(|why| {
+    github::keep_marked(&file, &mut seen, login().as_deref()).map_err(|why| {
         Failure::new(Exit::Failed, "repos couldn't keep what GitHub holds")
             .because(format!("{}: {why}", file.display()))
     })?;
@@ -308,6 +320,14 @@ fn say_the_receptor(seen: &Seen, now: u64) {
     if let Err(why) = receptor.say(seen, now, pid) {
         eprintln!("repos couldn't say its receptor: {why}");
     }
+}
+
+/// The GitHub login whose waiting changes lead the collection, the one the
+/// machine declares in `REPOS_LOGIN`; none where it's unset or empty.
+fn login() -> Option<String> {
+    std::env::var("REPOS_LOGIN")
+        .ok()
+        .filter(|login| !login.is_empty())
 }
 
 /// The repositories a machine lists to be read through gh's sign-in, by

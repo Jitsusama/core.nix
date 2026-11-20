@@ -225,6 +225,7 @@ fn change(node: &Value) -> Option<Change> {
             url: node["url"].as_str()?.to_owned(),
         }),
         review_asked_of: asked_of(&node["reviewRequests"]),
+        asks_your_review: false,
     })
 }
 
@@ -413,6 +414,18 @@ fn data(answer: Value) -> Result<Value, String> {
 }
 
 impl Seen {
+    /// Says of each change whether it asks the review of `login`, as
+    /// GitHub matches logins, ASCII case aside, so what's kept says so
+    /// without holding a login (model.rs).
+    pub fn mark_asked(&mut self, login: &str) {
+        for change in self.changes.values_mut().flatten() {
+            change.asks_your_review = change
+                .review_asked_of
+                .iter()
+                .any(|one| one.eq_ignore_ascii_case(login));
+        }
+    }
+
     /// Nothing seen yet, by a refresh asking at `now`.
     pub fn new(now: u64) -> Self {
         Self {
@@ -530,6 +543,17 @@ pub fn post(endpoint: &str, token: &Token, query: &str) -> Result<Value, Failed>
     }
     reads_only(query).map_err(Failed::refused)?;
     send(endpoint, token, query)
+}
+
+/// Keeps what a refresh saw, as `keep` does, each change first marked by
+/// whether it asks the review of `login`, the one the machine declares, so
+/// the collection can lead with the reviews asked of him once the refresh
+/// has gone. With no login, nothing is marked.
+pub fn keep_marked(file: &Path, seen: &mut Seen, login: Option<&str>) -> io::Result<()> {
+    if let Some(login) = login {
+        seen.mark_asked(login);
+    }
+    keep(file, seen)
 }
 
 /// The keeping of what a refresh saw at `file`, written whole through a

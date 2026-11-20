@@ -28,8 +28,10 @@
   # whitespace, so owners joined by spaces lost a realm's list, and an
   # owner shared with it then counted in the other realm
   # (src/receptor.rs). So the check reads the unit of a machine declaring
-  # two realms, one owner listed in both;
-  # tests/repos-is-told-every-realms-owners.sh reads it.
+  # two realms, one owner listed in both. The unit's program must also set
+  # the declared login outright: a refresh keeps whose review each change
+  # asks against it, and nothing else would show those reviews went
+  # unmarked. tests/repos-is-told-every-realms-owners.sh reads both.
   repos-is-told-every-realms-owners =
     let
       home = account (bareNixos [
@@ -53,10 +55,11 @@
       ]);
       unit = home.xdg.configFile."systemd/user/repos-refresh.service".source;
       owners = "Environment=REPOS_RECEPTOR_OWNERS=personal=jsama,shared;work=kestrel-co,shared";
+      login = "export REPOS_LOGIN='jsama'";
     in
     pkgs.runCommandLocal "repos-is-told-every-realms-owners" { } ''
       ${lib.getExe pkgs.bash} ${./tests/repos-is-told-every-realms-owners.sh} \
-        ${unit} ${lib.escapeShellArg owners}
+        ${unit} ${lib.escapeShellArg owners} ${lib.escapeShellArg login}
       touch $out
     '';
 }

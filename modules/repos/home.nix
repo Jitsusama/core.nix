@@ -63,6 +63,15 @@ let
     REPOS_THROUGH_GH = lib.concatStringsSep " " throughGh;
     REPOS_GH = lib.getExe config.programs.gh.package;
   };
+  # The login whose review the receptor counts is the one the collection
+  # leads with what waits on, and whose asked reviews a refresh keeps. It's
+  # set, not a default, and unset where none is declared, so what leads is
+  # what the machine declares and never what a caller's environment says.
+  login =
+    if receptorLogin != null then
+      "--set REPOS_LOGIN ${lib.escapeShellArg receptorLogin}"
+    else
+      "--unset REPOS_LOGIN";
   wrapped = pkgs.symlinkJoin {
     name = "repos-${repos.version}";
     paths = [ repos ];
@@ -72,7 +81,7 @@ let
         lib.concatStringsSep " " (
           lib.mapAttrsToList (name: value: "--set-default ${name} ${lib.escapeShellArg value}") settings
         )
-      }
+      } ${login}
     '';
     inherit (repos) meta;
   };
@@ -107,8 +116,9 @@ in
     example = "someone";
     description = ''
       The GitHub login whose asked reviews the GitHub receptor counts and
-      names to mycelium, as GitHub matches logins, case aside. None by default, and with none the
-      receptor is never said.
+      names to mycelium, as GitHub matches logins, case aside, and whose
+      waiting changes `repos` leads with. None by default, and with none
+      the receptor is never said and `repos` leads with nothing.
     '';
   };
 
