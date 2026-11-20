@@ -6,8 +6,10 @@ in a session of its own, as Nix starts ssh to a builder. The sorter moves the co
 jobs, where the kernel ends it first when memory runs out, while the host stays in its unit and a
 stand-in session beside it, in agents.slice, keeps waking on time. Through a call, which the sorter
 hears in the account's PipeWire, builds and jobs are held to a quarter of the processors, held
-again when something clears that mid-call, and let go once it ends. The programs the units run are
-hosts.nix's, given as the `values` fixture.
+again when something clears that mid-call, and let go once it ends. On a second machine, whose
+second core is named its efficient one, agents' work and builds run on that core alone, while
+Joel's own terminal work runs on either. The programs the units run are hosts.nix's, given as
+the `values` fixture.
 """
 
 from __future__ import annotations
@@ -227,3 +229,46 @@ def test_a_call_keeps_builds_and_jobs_braked_till_it_ends(
         up.execute(user("stop call.service"))
         up.execute("systemctl stop a-build.service")
         up.execute(user("stop a-job.service"))
+
+
+# The cores the pinned machine names as its efficient ones, as hosts.nix gives them, and all of
+# its cores.
+EFFICIENT = "1"
+EVERY = "0-1"
+# Alice's manager's cgroup.
+MANAGER = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
+
+
+def allowed(machine: BaseMachine, unit: str, user_unit: bool) -> str:
+    """Give the cores the kernel lets the unit's process run on."""
+    shown = user(f"show -P MainPID {unit}") if user_unit else f"systemctl show -P MainPID {unit}"
+    pid = machine.succeed(shown).strip()
+    return machine.succeed(f"awk '/^Cpus_allowed_list:/ {{print $2}}' /proc/{pid}/status").strip()
+
+
+def test_agents_work_and_builds_run_on_the_efficient_cores_alone(
+    machines: dict[str, BaseMachine], values: dict[str, Any]
+) -> None:
+    """Agents' work and builds run on the efficient cores alone, Joel's terminal work on any."""
+    pinned = machines["pinned"]
+    sleep = values["sleep"]
+    pinned.wait_for_unit("user@1000.service")
+    controllers = read(pinned, f"{MANAGER}/cgroup.controllers")
+    assert "cpuset" in controllers.split(), f"alice's manager wasn't given cpuset: {controllers}"
+    pinned.succeed(f"systemd-run --slice=build.slice --unit=a-build {sleep} 1044")
+    for unit, slice_ in (("an-agents", "jobs-work.slice"), ("joels", "jobs-awaited.slice")):
+        pinned.succeed(f"systemd-run -M alice@ --user --slice={slice_} --unit={unit} {sleep} 1045")
+    pinned.wait_until_succeeds(user("is-active jobs.service"), timeout=APPEARING)
+    found = {
+        "a build": allowed(pinned, "a-build.service", user_unit=False),
+        "pi's holder": allowed(pinned, "jobs.service", user_unit=True),
+        "an agent's work": allowed(pinned, "an-agents.service", user_unit=True),
+        "Joel's terminal work": allowed(pinned, "joels.service", user_unit=True),
+    }
+    want = {
+        "a build": EFFICIENT,
+        "pi's holder": EFFICIENT,
+        "an agent's work": EFFICIENT,
+        "Joel's terminal work": EVERY,
+    }
+    assert found == want, f"the work ran on cores {found}, not {want}"
