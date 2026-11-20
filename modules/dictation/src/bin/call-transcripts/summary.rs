@@ -34,6 +34,8 @@
 
 use std::fmt::Write as _;
 
+use dictation::transcript::OTHERS;
+
 /// The most of a call's words one pick is asked over, in characters:
 /// about a thousand tokens, which Gemma read whole and picked well from.
 const PART_CHARS: usize = 4000;
@@ -90,9 +92,6 @@ const PICK_TOKENS: usize = 80;
 const QUOTE_TOKENS: usize = 70;
 const VERDICT_TOKENS: usize = 3;
 
-/// What the others on a call are called in its transcript.
-const OTHERS: &str = "Others";
-
 /// What the summary says of itself, so nobody reads a quote as more
 /// than it is.
 pub const HOW_MADE: &str = "These are the lines a language model on this laptop picked as \
@@ -130,6 +129,16 @@ pub fn lines(transcript: &str) -> Vec<Said> {
         .collect()
 }
 
+/// What a transcript says first of who the others were, as transcript.rs
+/// writes it: the paragraph after its heading, when it's no line said.
+fn note(transcript: &str) -> Option<&str> {
+    transcript
+        .split("\n\n")
+        .map(str::trim)
+        .find(|paragraph| !paragraph.is_empty() && !paragraph.starts_with('#'))
+        .filter(|paragraph| !paragraph.starts_with("**"))
+}
+
 /// The summary of the call `transcript` writes down, titled `title`,
 /// asking `ask` each question with the most tokens its answer may take.
 /// The others on it are called `them` where the call knows who they are,
@@ -146,10 +155,12 @@ pub fn summarize(
     transcript: &str,
 ) -> Result<String, String> {
     let mut said = lines(transcript);
+    // Joel is whoever isn't them, by name or as Others, since a
+    // transcript naming them can open with their line.
     let me = said
         .iter()
         .map(|line| line.who.as_str())
-        .find(|who| *who != OTHERS)
+        .find(|who| *who != OTHERS && Some(*who) != them)
         .unwrap_or("Me")
         .to_owned();
     if let Some(them) = them {
@@ -195,6 +206,11 @@ pub fn summarize(
         let _ = write!(summary, "# {title}\n\n");
     }
     let _ = write!(summary, "{HOW_MADE}\n\n");
+    // Their name is only as sure as where it came from, so the summary
+    // says so as the transcript does.
+    if let Some(note) = note(transcript) {
+        let _ = write!(summary, "{note}\n\n");
+    }
     if kept.is_empty() {
         summary.push_str(NONE_KEPT);
     } else {

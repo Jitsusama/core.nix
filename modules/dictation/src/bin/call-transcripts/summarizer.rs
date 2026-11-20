@@ -57,6 +57,9 @@ pub struct Summarizer {
     pub calling: Arc<AtomicBool>,
     /// Where power supplies are, `/sys/class/power_supply`.
     pub power: PathBuf,
+    /// What Joel is called in a transcript, so the others are never
+    /// called the same.
+    pub me: String,
 }
 
 /// Why a summary was stopped before it was done.
@@ -161,7 +164,8 @@ fn sum_up(
             }
         }
         eprintln!("call-transcripts: summing up {}", record.key);
-        match summarizer.try_once(program, &record.title, them(record), text) {
+        let them = record.them(&summarizer.me);
+        match summarizer.try_once(program, &record.title, them.as_deref(), text) {
             Tried::Summed(written) => {
                 keep(book, record, &written, again);
                 return;
@@ -236,15 +240,6 @@ impl Summarizer {
             (Err(why), _) => Tried::Failed(why),
         }
     }
-}
-
-/// Who the others on a call are, where the call knows: a Tuple call with
-/// one person is titled by their name (meeting.rs); one with more, titled
-/// "Ada and 2 more", and a meeting, whose title names no one for certain,
-/// leave them as the transcript has them.
-fn them(record: &Record) -> Option<&str> {
-    record.person.as_ref()?;
-    (!record.title.ends_with(" more")).then_some(record.title.as_str())
 }
 
 /// Whether the laptop runs from the wall: a supply in `power` says it's

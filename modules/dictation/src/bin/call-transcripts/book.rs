@@ -23,6 +23,7 @@ use std::time::UNIX_EPOCH;
 pub use dictation::daemon::now;
 use dictation::daemon::{self, Answers, VERSION, Watches, error};
 
+use crate::meeting::{self, Known};
 use crate::private::make_folder;
 pub use crate::private::write_whole;
 use serde_json::{Value, json};
@@ -58,13 +59,14 @@ pub const SUMMARY: &str = "summary.md";
 const OPENING_PARAGRAPHS: usize = 4;
 const OPENING_CHARACTERS: usize = 400;
 
-/// How a transcript opens: its first few paragraphs after its heading, as
-/// markdown, cut at a word once it's long; none while nothing's said.
+/// How a transcript opens: its first few paragraphs of what was said, as
+/// markdown, cut at a word once it's long; none while nothing's said. Its
+/// heading and its note of who was on the call aren't what was said.
 pub fn opening(transcript: &str) -> Option<String> {
     let said: Vec<&str> = transcript
         .split("\n\n")
         .map(str::trim)
-        .filter(|paragraph| !paragraph.is_empty() && !paragraph.starts_with('#'))
+        .filter(|paragraph| paragraph.starts_with("**"))
         .take(OPENING_PARAGRAPHS)
         .collect();
     if said.is_empty() {
@@ -98,6 +100,10 @@ pub struct Record {
     /// never served it. It's read back as written: Joel's own files hold
     /// no secret from what runs as him, which could run mycelium itself.
     pub account: Option<String>,
+    /// The others on it, by name, and how they're known (meeting.rs);
+    /// none for a call nothing said who was on, or kept before this was.
+    pub people: Vec<String>,
+    pub known: Option<Known>,
     pub folder: PathBuf,
     pub transcript: Option<PathBuf>,
     pub opening: Option<String>,
@@ -129,7 +135,47 @@ impl Record {
         json!({
             "key": self.key, "title": self.title, "started": self.started,
             "ended": self.ended, "event": self.event, "person": self.person,
-            "account": self.account,
+            "account": self.account, "people": self.people,
+            "known": self.known.map(Known::as_str),
+        })
+    }
+
+    /// What the others on the call are called in its transcript and
+    /// summary, where that's certain: the one other person on it, as long
+    /// as they aren't called what Joel, `me`, is. A call kept before its
+    /// people were falls back on a Tuple call with one person, titled by
+    /// their name. With several, or none known, they're Others.
+    pub fn them(&self, me: &str) -> Option<String> {
+        let one = match (self.people.as_slice(), self.known) {
+            ([one], Some(_)) => Some(one.clone()),
+            ([], None) => self
+                .person
+                .as_ref()
+                .filter(|_| !self.title.ends_with(" more"))
+                .and_then(|_| meeting::speaker(&self.title)),
+            _ => None,
+        };
+        one.filter(|name| !name.is_empty() && name != me)
+    }
+
+    /// What the transcript says first of who the others were: where the
+    /// name their side is under came from, or who was invited or on the
+    /// Tuple call when their side stays Others; none when nobody's known.
+    pub fn note(&self, me: &str) -> Option<String> {
+        let known = self.known?;
+        if let Some(them) = self.them(me).filter(|_| self.people.len() == 1) {
+            let whose = match known {
+                Known::Tuple => "on the Tuple call",
+                Known::Invitation => "invited",
+            };
+            return Some(format!(
+                "Their side is {them}, the one other person {whose}."
+            ));
+        }
+        let listed = listing(&self.people)?;
+        Some(match known {
+            Known::Tuple => format!("On the Tuple call: {listed}."),
+            Known::Invitation => format!("Invited: {listed}."),
         })
     }
 
@@ -192,6 +238,13 @@ impl Record {
             event: meta["event"].as_str().map(str::to_owned),
             person: meta["person"].as_str().map(str::to_owned),
             account: meta["account"].as_str().map(str::to_owned),
+            people: meta["people"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|name| name.as_str().map(str::to_owned))
+                .collect(),
+            known: meta["known"].as_str().and_then(Known::read),
             folder: folder.to_owned(),
             transcript: transcript.exists().then_some(transcript),
             opening,
@@ -199,6 +252,29 @@ impl Record {
             transcribing: false,
         }))
     }
+}
+
+/// The most people a note names before it says how many more there are.
+const LISTED: usize = 8;
+
+/// People as a sentence lists them, "Ada, Bo and Cy", the first few of
+/// many and how many more; or none for nobody.
+fn listing(people: &[String]) -> Option<String> {
+    let (named, more) = if people.len() > LISTED {
+        (&people[..LISTED], people.len() - LISTED)
+    } else {
+        (people, 0)
+    };
+    let mut listed = named.to_vec();
+    if more > 0 {
+        listed.push(format!("{more} more"));
+    }
+    let last = listed.pop()?;
+    Some(if listed.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", listed.join(", "))
+    })
 }
 
 /// Every call, newest first, and who watches them.
@@ -371,6 +447,8 @@ mod tests {
             event: Some("e1".to_owned()),
             person: None,
             account: None,
+            people: Vec::new(),
+            known: None,
             folder: folder.join(key),
             transcript: None,
             opening: None,
@@ -431,6 +509,95 @@ mod tests {
     }
 
     #[test]
+    fn the_one_other_person_names_their_side_and_the_note_says_how_they_re_known() {
+        let folder = tempfile::tempdir().unwrap();
+        let invited = Record {
+            people: vec!["Ada Lovelace".to_owned()],
+            known: Some(Known::Invitation),
+            ..call(folder.path(), "call:e1", 10)
+        };
+        assert_eq!(invited.them("Joel").as_deref(), Some("Ada Lovelace"));
+        assert_eq!(
+            invited.note("Joel").as_deref(),
+            Some("Their side is Ada Lovelace, the one other person invited.")
+        );
+        let tuple = Record {
+            known: Some(Known::Tuple),
+            ..invited.clone()
+        };
+        assert_eq!(
+            tuple.note("Joel").as_deref(),
+            Some("Their side is Ada Lovelace, the one other person on the Tuple call.")
+        );
+        let mut book = Book::default();
+        book.put(invited.clone());
+        let back = Book::read(folder.path());
+        let back = back.record("call:e1").unwrap();
+        assert_eq!(back.people, invited.people, "its people are kept beside it");
+        assert_eq!(back.known, Some(Known::Invitation));
+    }
+
+    #[test]
+    fn several_others_name_no_side_and_the_note_lists_them() {
+        let folder = tempfile::tempdir().unwrap();
+        let names = |count: usize| (1..=count).map(|n| format!("P{n}")).collect::<Vec<_>>();
+        let two = Record {
+            people: vec!["Ada".to_owned(), "Bo".to_owned()],
+            known: Some(Known::Invitation),
+            ..call(folder.path(), "call:e1", 10)
+        };
+        assert_eq!(two.them("Joel"), None);
+        assert_eq!(two.note("Joel").as_deref(), Some("Invited: Ada and Bo."));
+        let many = Record {
+            people: names(11),
+            known: Some(Known::Tuple),
+            ..two.clone()
+        };
+        assert_eq!(
+            many.note("Joel").as_deref(),
+            Some("On the Tuple call: P1, P2, P3, P4, P5, P6, P7, P8 and 3 more.")
+        );
+        let namesake = Record {
+            people: vec!["Joel".to_owned()],
+            ..two.clone()
+        };
+        assert_eq!(
+            namesake.them("Joel"),
+            None,
+            "called what Joel is, so Others"
+        );
+        assert_eq!(namesake.note("Joel").as_deref(), Some("Invited: Joel."));
+        let nobody = call(folder.path(), "call:e2", 20);
+        assert_eq!((nobody.them("Joel"), nobody.note("Joel")), (None, None));
+    }
+
+    #[test]
+    fn a_tuple_call_kept_before_its_people_were_is_named_by_its_title_when_that_is_one() {
+        let folder = tempfile::tempdir().unwrap();
+        let before = Record {
+            title: "Ada *Love*\nlace".to_owned(),
+            person: Some("ada@example.com".to_owned()),
+            ..call(folder.path(), "call:person:ada@example.com:10", 10)
+        };
+        assert_eq!(
+            before.them("Joel").as_deref(),
+            Some("Ada Love lace"),
+            "named by its title, cleaned as a speaker"
+        );
+        assert_eq!(before.note("Joel"), None, "how they're known wasn't kept");
+        let several = Record {
+            title: "Ada and 1 more".to_owned(),
+            ..before.clone()
+        };
+        assert_eq!(several.them("Joel"), None, "several, so Others");
+        let known = Record {
+            known: Some(Known::Tuple),
+            ..before.clone()
+        };
+        assert_eq!(known.them("Joel"), None, "kept since, its people say who");
+    }
+
+    #[test]
     fn a_call_s_account_is_kept_beside_it_and_never_served() {
         let folder = tempfile::tempdir().unwrap();
         let mut book = Book::default();
@@ -460,7 +627,7 @@ mod tests {
     #[test]
     fn an_opening_is_the_first_paragraphs_cut_at_a_word() {
         assert_eq!(opening("# Transcript\n"), None);
-        let said = "# Transcript\n\n**Joel**, 0:00: Hi.\n\n**Others**, 0:02: Hello.\n";
+        let said = "# Transcript\n\nInvited: Ada and Bo.\n\n**Joel**, 0:00: Hi.\n\n**Others**, 0:02: Hello.\n";
         assert_eq!(
             opening(said).as_deref(),
             Some("**Joel**, 0:00: Hi.\n\n**Others**, 0:02: Hello.")

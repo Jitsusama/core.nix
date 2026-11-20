@@ -103,7 +103,7 @@ pub fn hear(
             } => {
                 let writing = calls
                     .entry(key.clone())
-                    .or_insert_with(|| resumed(book, &key));
+                    .or_insert_with(|| resumed(book, &key, me));
                 if speech.is_none() {
                     match settings.load() {
                         Ok(loaded) => speech = Some(loaded),
@@ -144,7 +144,7 @@ pub fn hear(
             Job::Done { key, side } => {
                 let writing = calls
                     .entry(key.clone())
-                    .or_insert_with(|| resumed(book, &key));
+                    .or_insert_with(|| resumed(book, &key, me));
                 writing.done.insert(side);
                 if writing.done.len() == 2 {
                     write(book, &key, &writing.lines, me, false);
@@ -185,14 +185,15 @@ fn title_of(book: &Shared, key: &str) -> String {
 }
 
 /// What a call already says, taken up again: what the transcript of a
-/// call rejoined, or recorded before the daemon restarted, holds.
-fn resumed(book: &Shared, key: &str) -> Writing {
+/// call rejoined, or recorded before the daemon restarted, holds, a line
+/// Joel's only when it's under his name, `me`.
+fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
     let lines = book
         .lock()
         .record(key)
         .and_then(|record| record.transcript.clone())
         .and_then(|file| std::fs::read_to_string(file).ok())
-        .map(|text| transcript::read(&text))
+        .map(|text| transcript::read(&text, me))
         .unwrap_or_default();
     Writing {
         lines,
@@ -200,7 +201,8 @@ fn resumed(book: &Shared, key: &str) -> Writing {
     }
 }
 
-/// Writes a call's transcript whole, and says in its record where it is,
+/// Writes a call's transcript whole, their side under their name where
+/// the record knows it for certain, and says in its record where it is,
 /// how it opens and whether it's still being written.
 fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool) {
     let mut book = book.lock();
@@ -210,7 +212,9 @@ fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool)
     let file = record.folder.join(TRANSCRIPT);
     let mut opening = record.opening.clone();
     if !lines.is_empty() {
-        let written = markdown(lines, me);
+        let them = record.them(me);
+        let note = record.note(me);
+        let written = markdown(lines, me, them.as_deref(), note.as_deref());
         if let Err(why) = write_whole(&file, &written) {
             eprintln!("call-transcripts: writing {}: {why}", file.display());
             return;

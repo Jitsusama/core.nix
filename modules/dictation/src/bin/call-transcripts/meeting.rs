@@ -32,15 +32,45 @@ pub struct Meeting {
     /// after listing its meetings, so the meeting is known to be that
     /// account's; none otherwise, and for a Tuple call.
     pub account: Option<String>,
+    /// The others on it, by name, Joel left out, as `known` says they're
+    /// known; none when nothing says who they are.
+    pub people: Vec<String>,
+    pub known: Option<Known>,
+}
+
+/// How the others on a call are known: from the Tuple call itself, so
+/// they're on it, or from the meeting's invitation, so they were asked,
+/// which is less.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Known {
+    Tuple,
+    Invitation,
+}
+
+impl Known {
+    /// What a call's record says it as.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tuple => "tuple",
+            Self::Invitation => "invitation",
+        }
+    }
+
+    /// What a call's record said, or none for a record from before it
+    /// was kept, or one that says something else.
+    pub fn read(said: &str) -> Option<Self> {
+        match said {
+            "tuple" => Some(Self::Tuple),
+            "invitation" => Some(Self::Invitation),
+            _ => None,
+        }
+    }
 }
 
 /// The call on at `now`, from what's in `runtime`; a Tuple call first,
 /// since it has people only while one is on, and a meeting otherwise.
 pub fn on(runtime: &Path, now: u64) -> Meeting {
-    if let Some(call) = tuple_call(&runtime.join("daemons/tuple-call.sock"))
-        .as_ref()
-        .and_then(tuple)
-    {
+    if let Some(call) = on_tuple(runtime) {
         return call;
     }
     let before = signed_in(runtime);
@@ -53,6 +83,13 @@ pub fn on(runtime: &Path, now: u64) -> Meeting {
             ..on
         })
         .unwrap_or_default()
+}
+
+/// The Tuple call on, from tuple-call in `runtime`, or none.
+pub fn on_tuple(runtime: &Path) -> Option<Meeting> {
+    tuple_call(&runtime.join("daemons/tuple-call.sock"))
+        .as_ref()
+        .and_then(tuple)
 }
 
 /// The address of the Google account the meetings are from, as the google
@@ -113,11 +150,23 @@ fn tuple(call: &Value) -> Option<Meeting> {
     if with.len() > 1 {
         title = format!("{title} and {} more", with.len() - 1);
     }
+    // Everyone on it counts, named or not, so a call with someone Tuple
+    // hasn't named yet is never taken for a call with one other person.
+    let people: Vec<String> = with
+        .iter()
+        .map(|person| {
+            named(person, "name")
+                .or_else(|| named(person, "email"))
+                .unwrap_or_else(|| UNNAMED.to_owned())
+        })
+        .collect();
     Some(Meeting {
         title,
         event: None,
         person: first["email"].as_str().map(str::to_lowercase),
         account: None,
+        known: (!people.is_empty()).then_some(Known::Tuple),
+        people,
     })
 }
 
@@ -133,12 +182,94 @@ fn meeting(meetings: &[Value], now: u64) -> Option<Meeting> {
             start <= now + EARLY_MS && now <= end
         })
         .max_by_key(|meeting| meeting["start"].as_u64())
-        .map(|meeting| Meeting {
-            title: meeting["title"].as_str().unwrap_or_default().to_owned(),
-            event: meeting["id"].as_str().map(str::to_owned),
-            person: None,
-            account: None,
+        .map(|meeting| {
+            let people = invited(meeting);
+            Meeting {
+                title: meeting["title"].as_str().unwrap_or_default().to_owned(),
+                event: meeting["id"].as_str().map(str::to_owned),
+                person: None,
+                account: None,
+                known: (!people.is_empty()).then_some(Known::Invitation),
+                people,
+            }
         })
+}
+
+/// What someone on a Tuple call it hasn't named yet is listed as.
+const UNNAMED: &str = "someone Tuple hasn't named";
+
+/// The domains of Google's calendars that are no one: a shared or team
+/// calendar holding a meeting, and a room or a thing booked for it.
+const CALENDARS: [&str; 2] = [
+    "@group.calendar.google.com",
+    "@resource.calendar.google.com",
+];
+
+/// Who else a meeting asked, as the google daemon lists it: who holds it,
+/// when that isn't Joel, then its guests, who are never Joel or a room,
+/// leaving out those who said no and calendars, which are no one.
+fn invited(meeting: &Value) -> Vec<String> {
+    let guests = meeting["guests"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|guest| guest["answer"] != "no");
+    // Someone listed twice, as organizer and guest or under two names, is
+    // one person, known by their address, or by their name with none.
+    let mut seen = std::collections::HashSet::new();
+    std::iter::once(&meeting["organizer"])
+        .chain(guests)
+        .filter(|someone| {
+            let email = someone["email"].as_str().unwrap_or_default().to_lowercase();
+            !CALENDARS.iter().any(|calendar| email.ends_with(calendar))
+        })
+        .filter_map(|someone| {
+            let name = named(someone, "name").or_else(|| named(someone, "email"))?;
+            let email = someone["email"].as_str().unwrap_or_default().to_lowercase();
+            let known_by = if email.is_empty() {
+                name.clone()
+            } else {
+                email
+            };
+            seen.insert(known_by).then_some(name)
+        })
+        .collect()
+}
+
+/// Who's been on a call, as it's `kept` and joined by those on it `now`:
+/// everyone ever on it, in the order they came, since someone who joins
+/// late or leaves early still spoke on it.
+pub fn joined(mut kept: Vec<String>, now: &[String]) -> Vec<String> {
+    for (at, someone) in now.iter().enumerate() {
+        // Those Tuple hasn't named can't be told apart, so each one more
+        // on it now than were kept is someone new.
+        let on = now[..=at].iter().filter(|other| *other == someone).count();
+        let had = kept.iter().filter(|other| *other == someone).count();
+        if on > had {
+            kept.push(someone.clone());
+        }
+    }
+    kept
+}
+
+/// Someone's `field`, as a name a transcript can write a speaker under:
+/// on one line, with none of the asterisks that would end the speaker's
+/// bold early; or none when that leaves nothing.
+fn named(someone: &Value, field: &str) -> Option<String> {
+    speaker(someone[field].as_str()?)
+}
+
+/// `name` as a transcript can write a speaker under, as `named` says.
+pub fn speaker(name: &str) -> Option<String> {
+    let name = name
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .filter(|c| *c != '*')
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!name.is_empty()).then_some(name)
 }
 
 /// A call's folder's name: its start in local time, then what it was,
@@ -200,6 +331,83 @@ mod tests {
             "joined a few minutes early"
         );
         assert_eq!(meeting(&[], NOW), None);
+        assert_eq!(
+            on.people,
+            Vec::<String>::new(),
+            "a meeting asking nobody else"
+        );
+        assert_eq!(on.known, None);
+    }
+
+    #[test]
+    fn a_meeting_knows_who_else_it_asked_but_not_who_said_no() {
+        let planning = json!({"id": "e1", "title": "Planning",
+        "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE,
+        "organizer": {"name": "Grace *Hopper*", "email": "grace@example.com"},
+        "guests": [
+            {"name": "Ada\nLovelace", "email": "ada@example.com", "answer": "yes"},
+            {"name": "", "email": "bo@example.com", "answer": "waiting"},
+            {"name": "Cy", "email": "cy@example.com", "answer": "no"},
+        ]});
+        let on = meeting(&[planning], NOW).unwrap();
+        assert_eq!(
+            on.people,
+            ["Grace Hopper", "Ada Lovelace", "bo@example.com"]
+        );
+        assert_eq!(on.known, Some(Known::Invitation));
+    }
+
+    #[test]
+    fn a_calendar_holding_or_asked_to_a_meeting_is_no_one() {
+        let standup = json!({"id": "e2", "title": "Standup",
+        "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE,
+        "organizer": {"name": "Team", "email": "c0ffee@group.calendar.google.com"},
+        "guests": [
+            {"name": "Ada", "email": "ada@example.com", "answer": "yes"},
+            {"name": "Big Room", "email": "R1@Resource.Calendar.Google.com", "answer": "yes"},
+        ]});
+        let on = meeting(&[standup], NOW).unwrap();
+        assert_eq!(on.people, ["Ada"], "only Ada is someone");
+    }
+
+    #[test]
+    fn someone_invited_twice_is_one_person() {
+        let review = json!({"id": "e3", "title": "Review",
+        "start": NOW - 5 * MINUTE, "end": NOW + 25 * MINUTE,
+        "organizer": {"name": "Ada", "email": "Ada@Example.com"},
+        "guests": [
+            {"name": "Ada L.", "email": "ada@example.com", "answer": "yes"},
+            {"name": "Bo", "answer": "yes"},
+            {"name": "Bo", "answer": "maybe"},
+        ]});
+        let on = meeting(&[review], NOW).unwrap();
+        assert_eq!(on.people, ["Ada", "Bo"], "each is counted once");
+    }
+
+    #[test]
+    fn someone_tuple_has_not_named_still_counts_as_someone_on_the_call() {
+        let call = json!({"key": "call:current", "state": "connected", "since": NOW, "people": [
+            {"id": "7", "name": "Ada", "email": "ada@example.com"},
+            {"id": "8", "name": "", "email": ""},
+            {"id": "9", "name": "", "email": "cy@example.com"},
+        ]});
+        let on = tuple(&call).unwrap();
+        assert_eq!(on.people, ["Ada", UNNAMED, "cy@example.com"]);
+    }
+
+    #[test]
+    fn everyone_ever_on_a_call_is_kept_in_the_order_they_came() {
+        let people = |names: &[&str]| names.iter().map(|&name| name.to_owned()).collect();
+        let kept = joined(people(&["Ada"]), &people(&["Ada", UNNAMED]));
+        assert_eq!(kept, ["Ada", UNNAMED], "someone joined after Ada");
+        let kept = joined(kept, &people(&[UNNAMED, UNNAMED]));
+        assert_eq!(
+            kept,
+            ["Ada", UNNAMED, UNNAMED],
+            "a second unnamed joined as Ada left"
+        );
+        let kept = joined(kept, &[]);
+        assert_eq!(kept.len(), 3, "those who left are still kept");
     }
 
     #[test]
@@ -211,6 +419,8 @@ mod tests {
         let on = tuple(&call).unwrap();
         assert_eq!(on.title, "Ada Lovelace and 1 more");
         assert_eq!(on.person.as_deref(), Some("ada@example.com"));
+        assert_eq!(on.people, ["Ada Lovelace", "Grace Hopper"]);
+        assert_eq!(on.known, Some(Known::Tuple));
         let none = json!({"key": "call:current", "state": "ringing", "since": null, "people": []});
         assert_eq!(tuple(&none), None);
     }
