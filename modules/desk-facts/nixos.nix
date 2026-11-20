@@ -31,8 +31,10 @@ let
   loopbacks = pkgs.writeText "desk-facts-loopbacks" (
     lib.concatStrings (
       lib.mapAttrsToList (
-        name: camera:
-        lib.optionalString (camera.card != null) "${name}\t${camera.card}\t${toString camera.sensor}\n"
+        _: camera:
+        lib.optionalString (
+          camera.card != null
+        ) "${camera.file}\t${camera.card}\t${toString camera.sensor}\n"
       ) holders
     )
   );

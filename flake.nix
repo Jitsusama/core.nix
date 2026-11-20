@@ -405,6 +405,7 @@
         memory-modules = ./modules/memory-modules/nixos.nix;
         mic-mute-light = ./modules/mic-mute-light/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
+        mx-brio = ./modules/mx-brio/nixos.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
         sd-switch = ./modules/sd-switch/nixos.nix;

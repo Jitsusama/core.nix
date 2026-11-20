@@ -50,6 +50,7 @@
     nixosModules.litra
     nixosModules.memory-modules
     nixosModules.mpv
+    nixosModules.mx-brio
     nixosModules.niri
     nixosModules.niri-off-cpu
     nixosModules.onepassword

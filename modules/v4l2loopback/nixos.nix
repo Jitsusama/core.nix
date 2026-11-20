@@ -6,9 +6,9 @@
 # Nothing says which program has a loopback camera open: a relay hears only
 # that a reader came or went. So for each camera in holders, a service
 # watches its node, and on every open and close writes the programs holding
-# it to /run/camera-holders/<name> for a shell to watch, one name a line and
+# it to /run/camera-holders/<file> for a shell to watch, one name a line and
 # empty while none does or the camera is down, and the node it is to
-# .devices/<name> beside it. A camera PipeWire offers is held by PipeWire
+# .devices/<file> beside it. A camera PipeWire offers is held by PipeWire
 # for whoever reads it there, so the machine daemon finds those in
 # PipeWire's registry by that node. The folder lasts the boot, since a shell's
 # watch on it would be lost with it.
@@ -39,46 +39,75 @@ in
     };
     holders = lib.mkOption {
       type = lib.types.attrsOf (
-        lib.types.submodule {
-          options = {
-            device = lib.mkOption {
-              type = lib.types.str;
-              description = "The camera's node, or a file naming it.";
+        lib.types.submodule (
+          { name, ... }:
+          {
+            options = {
+              file = lib.mkOption {
+                # One plain name, never a path, and never hidden, since the
+                # shell and the light skip a dotted one.
+                type = lib.types.strMatching "[^./][^/]*";
+                default = name;
+                defaultText = lib.literalMD "the camera's name in `holders`";
+                example = "MX Brio 705 for Business";
+                description = ''
+                  The holders file's name in /run/camera-holders, which the
+                  shell, the desk light and desk-facts know the camera by:
+                  a USB camera's own name, where its loopback stands in for
+                  it, so it reads as it did before it was shared.
+                '';
+              };
+              device = lib.mkOption {
+                type = lib.types.str;
+                description = "The camera's node, or a file naming it.";
+              };
+              comesAndGoes = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = ''
+                  Whether the camera is there only while something is
+                  plugged in, as a USB camera's loopback is. Its file is
+                  then removed as its service stops, rather than emptied,
+                  and the shell lists it only while the file is there, as
+                  it does a USB camera's; otherwise the shell lists it
+                  always.
+                '';
+              };
+              unit = lib.mkOption {
+                type = lib.types.str;
+                description = "The service that makes the camera, whose life this one shares.";
+              };
+              card = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = ''
+                  The loopback's name, so a node number another camera has
+                  been given since isn't taken for this one. Null for any.
+                '';
+              };
+              sensor = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                example = "i2c-OVTI08F4:00";
+                description = ''
+                  The I2C device of the sensor the camera is relayed from, as
+                  /sys/bus/i2c/devices names it, for desk-facts to say what it
+                  is, which way it faces and whether it's powered, which it
+                  reads without opening the camera. Null where there's none.
+                '';
+              };
+              ignoreUnits = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                description = ''
+                  Units whose processes are left out, such as the relay's that
+                  fills the camera. By unit rather than by name, since a
+                  program can take any name but can't join a unit.
+                '';
+              };
             };
-            unit = lib.mkOption {
-              type = lib.types.str;
-              description = "The service that makes the camera, whose life this one shares.";
-            };
-            card = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              description = ''
-                The loopback's name, so a node number another camera has
-                been given since isn't taken for this one. Null for any.
-              '';
-            };
-            sensor = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              example = "i2c-OVTI08F4:00";
-              description = ''
-                The I2C device of the sensor the camera is relayed from, as
-                /sys/bus/i2c/devices names it, for desk-facts to say what it
-                is, which way it faces and whether it's powered, which it
-                reads without opening the camera. Null where there's none.
-              '';
-            };
-            ignoreUnits = lib.mkOption {
-              type = lib.types.listOf lib.types.str;
-              default = [ ];
-              description = ''
-                Units whose processes are left out, such as the relay's that
-                fills the camera. By unit rather than by name, since a
-                program can take any name but can't join a unit.
-              '';
-            };
-          };
-        }
+          }
+        )
       );
       default = { };
       example = lib.literalExpression ''
@@ -93,15 +122,17 @@ in
       '';
       description = ''
         Loopback cameras to say the holders of, each in
-        /run/camera-holders/<name>.
+        /run/camera-holders/<file>.
       '';
     };
   };
 
   config = {
-    boot.extraModulePackages = [ cfg.package ];
+    # Only where a camera is relayed, since a module that relays a camera
+    # only on some machines still imports this on all of them.
+    boot.extraModulePackages = lib.mkIf (cfg.holders != { }) [ cfg.package ];
     # Each relay makes the loopback it needs, so the module makes none.
-    boot.extraModprobeConfig = ''
+    boot.extraModprobeConfig = lib.mkIf (cfg.holders != { }) ''
       options v4l2loopback devices=0
     '';
 
@@ -120,7 +151,7 @@ in
     systemd.services = lib.mapAttrs' (
       name: camera:
       let
-        output = "${holdersDir}/${name}";
+        output = "${holdersDir}/${camera.file}";
       in
       lib.nameValuePair "${name}-holders" {
         description = "Says which programs have ${name} open";
@@ -146,18 +177,28 @@ in
             ]
           );
           # Stopped with its camera, or killed, it may not get to say nobody
-          # itself, nor take back the node it said the camera was.
+          # itself, nor take back the node it said the camera was; for a
+          # camera that comes and goes, its file goes too, to say it's gone.
           ExecStopPost = [
-            (lib.escapeShellArgs [
-              "${pkgs.coreutils}/bin/truncate"
-              "-s"
-              "0"
-              output
-            ])
+            (lib.escapeShellArgs (
+              if camera.comesAndGoes then
+                [
+                  "${pkgs.coreutils}/bin/rm"
+                  "-f"
+                  output
+                ]
+              else
+                [
+                  "${pkgs.coreutils}/bin/truncate"
+                  "-s"
+                  "0"
+                  output
+                ]
+            ))
             (lib.escapeShellArgs [
               "${pkgs.coreutils}/bin/rm"
               "-f"
-              "${holdersDir}/.devices/${name}"
+              "${holdersDir}/.devices/${camera.file}"
             ])
           ];
           Restart = "on-failure";

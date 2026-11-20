@@ -645,7 +645,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-light { })
         (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-lid { })
         (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-monitor { })
-        config.boot.kernelPackages.v4l2loopback
+        # The one the role's cameras relay through, so the two never meet.
+        config.jitsusama.v4l2loopback.package
       ];
       boot.kernelModules = [
         "stand-in-backlight"
@@ -773,12 +774,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         };
       };
       boot.extraModprobeConfig = ''
-        options v4l2loopback video_nr=9 exclusive_caps=1 card_label=Camera
         options mac80211_hwsim radios=3
       '';
       systemd.services.stand-in-camera = {
         wantedBy = [ "multi-user.target" ];
         after = [ "systemd-modules-load.service" ];
+        # Made here, as the laptop's relay makes its own, since the role's
+        # loopback module makes none as it loads.
+        serviceConfig.ExecStartPre = lib.concatStringsSep " " [
+          "${config.jitsusama.v4l2loopback.package.bin}/bin/v4l2loopback-ctl"
+          "add -n Camera -x 1 /dev/video9"
+        ];
         serviceConfig.ExecStart = lib.concatStringsSep " " [
           "${lib.getExe pkgs.ffmpeg-headless} -loglevel error -re"
           "-f lavfi -i testsrc2=size=640x480:rate=15 -pix_fmt yuyv422 -f v4l2 /dev/video9"

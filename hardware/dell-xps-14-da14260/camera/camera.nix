@@ -28,12 +28,8 @@ let
   });
   icamerasrc = pkgs.gst_all_1.icamerasrc-ipu75xa.override { ipu7x-camera-hal = hal; };
 
-  # The relay, patched to start the camera again when a client waits with
-  # no frame, which a slow setup under pressure left it doing until it was
-  # restarted by hand.
-  relay = pkgs.v4l2-relayd.overrideAttrs (old: {
-    patches = old.patches or [ ] ++ [ ./v4l2-relayd-restarts-a-stalled-camera.patch ];
-  });
+  # The relay, patched as every shared camera's is (relay.nix says why).
+  relay = pkgs.callPackage ../../../modules/v4l2loopback/relay.nix { };
 
   # The HAL's configuration with Dell's tuning for the laptop's camera board
   # in place of Intel's, from Dell's driver pack, which can't be shared, so
@@ -144,7 +140,9 @@ let
     icamerasrc
   ];
   loopback = lib.getExe' config.jitsusama.v4l2loopback.package.bin "v4l2loopback-ctl";
-  takeLoopback = pkgs.callPackage ./loopback.nix { ctl = config.jitsusama.v4l2loopback.package.bin; };
+  takeLoopback = pkgs.callPackage ../../../modules/v4l2loopback/loopback.nix {
+    ctl = config.jitsusama.v4l2loopback.package.bin;
+  };
   device = "/run/camera/device";
 
   # Dell's tuning has the image processor send full-range video, Y from 0 to
@@ -377,7 +375,7 @@ in
     # Four buffers keep the frame rate up, and exclusive capture lets Chrome
     # list it as a camera. A loopback left from before, which a program
     # still held as the last stop tried to delete it, is taken rather than
-    # added beside (loopback.sh says why).
+    # added beside (modules/v4l2loopback/loopback.sh says why).
     preStart = "${lib.getExe takeLoopback} 'Built-in Camera' ${device} -b 4 -x 1";
     # The HAL writes its log through stdio, which held lines back in batches
     # and lost them at a restart, so it goes out a line at a time.

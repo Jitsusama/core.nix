@@ -3,7 +3,8 @@
 What the laptop's colour and IR cameras need beyond core's camera
 modules: Intel's camera HAL with Dell's tuning, the IPU7's out-of-tree
 driver, and the IR sensor's capture pipeline. [docs/hardware.md][hardware]
-says why each piece is there.
+says why each piece is there. The relay and the loopback it plays into,
+which the MX Brio shares, are in [`modules/v4l2loopback`][v4l2loopback].
 
 | File                           | Holds                                                    |
 | ------------------------------ | -------------------------------------------------------- |
@@ -13,7 +14,6 @@ says why each piece is there.
 | `camera-cvs.patch`             | the HAL, made to route this sensor through the CVS bridge |
 | `cvs-privacy-led.patch`        | the CVS bridge's driver, made to leave the privacy light to the bridge's firmware, so it lights while the camera streams |
 | `ipu7-psys-*.patch`            | the out-of-tree IPU7 driver, as its processing module needs it |
-| `v4l2-relayd-restarts-a-stalled-camera.patch` | the relay, made to start the camera again when a client gets no frames |
 
 The camera's kernel patches live with the laptop's other kernel
 patches in [`../kernel/local/`][local], since they're made against the
@@ -28,3 +28,4 @@ store path now that the list turns fetches away.
 
 [hardware]: ../../../docs/hardware.md
 [local]: ../kernel/local/
+[v4l2loopback]: ../../../modules/v4l2loopback/
