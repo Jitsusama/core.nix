@@ -157,16 +157,19 @@ what net says of the day.
   paired device, and pairing waits on Joel's yes, so none is asked.
 - A Samsung TV: each device eero lists with Samsung as its maker and
   generic or media streamer as its kind, at the address eero gives, so
-  no phone, tablet or computer is asked. It asks `:8001/api/v2/` once,
-  two seconds at most, following no redirect: what the TV says of itself
-  to anyone, as JSON. Only an answer saying `Samsung SmartTV` counts.
-  `src/sources/samsung.rs` makes eero's device for it a television,
-  with its model, whether it's on or in standby, and the name it was
-  given on its own screen, which stands for eero's unless Joel nicknamed
-  it there. A TV switched off at the wall doesn't answer. The answer
-  stays as `detail.samsung`, but for its ids and the addresses eero
-  gives. Sending it a key waits on Joel pressing Allow on the TV, so
-  none is sent.
+  a box eero places as a phone, tablet or computer isn't asked. It asks
+  `:8001/api/v2/` once, two seconds and 64 KB at most, following no
+  redirect: what the TV says of itself to anyone, as JSON. Only an
+  answer saying `Samsung SmartTV` counts; any other box says nothing,
+  answering or not. `src/sources/samsung.rs` makes eero's device for it
+  a television, with its model, whether it's on or in standby, and the
+  name it was given on its own screen, which stands for eero's unless
+  Joel nicknamed it there. A TV heard once is remembered while the
+  daemon runs: a minute it's silent keeps its name, role and model, says
+  it isn't answering, and makes the source unreachable while no TV
+  answers. The answer stays as `detail.samsung`, but for its ids and the
+  addresses eero gives. Sending it a key waits on Joel pressing Allow on
+  the TV, so none is sent.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
@@ -218,7 +221,8 @@ words is `said.rs`, and what the line carried over the last day is
 - `net devices NAME` (`device` too): one device in layers. What any
   device can say, its ports and radios, the links it's on, a modem's
   channels and log, a receiver's volume and what it's doing, a
-  printer's ink, what it's doing and the pages it has printed, then what
+  printer's ink, what it's doing and the pages it has printed, a
+  television's power, or that it isn't answering, then what
   each source says that those didn't, in the source's words. A list of
   records or a series of readings is left to `--json`, which keeps every
   source's detail whole, but for a printer's statuses, read field by

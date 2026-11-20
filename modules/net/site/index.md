@@ -72,8 +72,8 @@ floor, g and G go to the first and last, and Return opens a device.
 
 The page watches net's daemon at /feed/net, one kind of record at a
 time: each source and whether it answered (eero, the modem's status
-pages, the switch's own reader, Sony's receivers, HP's printers and the
-Apple TVs), every device with its roles, maker, model, addresses, ports,
+pages, the switch's own reader, Sony's receivers, HP's printers, the
+Apple TVs and the Samsung TVs), every device with its roles, maker, model, addresses, ports,
 radios and speed, and its path to the modem with its narrowest hop each
 way, every link between two devices with its medium, speed and signal,
 the internet's provider and speeds, and the concerns worth a look, each

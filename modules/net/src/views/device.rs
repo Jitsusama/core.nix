@@ -89,7 +89,14 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         blocks.push(block);
     }
     if let Some(television) = &device.television {
-        let facts = [("power", television.power.as_deref())];
+        // A TV heard before but silent this minute keeps its block, saying
+        // so rather than an old answer's power.
+        let power = if television.answering {
+            television.power.as_deref()
+        } else {
+            Some("not answering")
+        };
+        let facts = [("power", power)];
         let mut block = vec![pen.label("television")];
         block.extend(known_facts(&facts, pen, room));
         blocks.push(block);
@@ -648,9 +655,32 @@ mod tests {
             );
             assert!(words.contains("power on"), "its power isn't shown: {text}");
             assert!(
-                text.contains("QN55Q70CAFXZC"),
-                "its model isn't shown: {text}"
+                words.contains("model QN55Q70CAFXZC"),
+                "its model isn't shown among what every device says: {text}"
             );
         }
+    }
+
+    #[test]
+    fn a_silent_television_says_its_not_answering() {
+        let mut network = network();
+        let Some(tv) = network
+            .devices
+            .iter_mut()
+            .find(|device| device.name == "Living Room")
+        else {
+            panic!("the record has no television");
+        };
+        tv.television = Some(crate::model::Television {
+            power: None,
+            answering: false,
+        });
+        let tv = find(&network, "Living Room").expect("the television");
+        let text = device(&network, tv, now(), &Pen::plain(), ROOMS[0]);
+        let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            words.contains("power not answering"),
+            "its silence isn't said: {text}"
+        );
     }
 }
