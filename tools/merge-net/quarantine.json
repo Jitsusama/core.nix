@@ -51,5 +51,37 @@
       "test_finds_the_connection"
     ],
     "test": "vm-the-connection-stays-quick"
+  },
+  {
+    "at": 1795133552,
+    "commit": "466be02ff97baa92e6ad082218d50bf6fda5ba4d",
+    "due": "2026-11-21",
+    "due_why": "Its owner, the launcher's, fixes the first failure's cause within 2026-11-21 UTC: on 19 Nov at 9bceeeda and 466be02f, a session handed over while Joel typed failed its command, and the six subtests after it failed with it, each passing on the next run at the same commit",
+    "owner_pr": 5795,
+    "owner_session": "Y2YBTS",
+    "reason": "failed, then passed, at 466be02ff97b",
+    "subtests": [
+      "test_a_session_another_starts_leaves_every_key_where_joel_types",
+      "test_a_session_opens_in_the_agents_slice",
+      "test_agents_puts_back_the_windows_that_reopen_themselves",
+      "test_agents_reopens_each_session_where_it_sat",
+      "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal",
+      "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile",
+      "test_sessions_handed_over_while_locked_open_behind_the_lock_and_go_to_their_place_after"
+    ],
+    "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1795133552,
+    "commit": "d0331e72f4bad377394dbfb986f7b500ef700ed1",
+    "due": "2026-11-21",
+    "due_why": "Its owner, the launcher's, fixes it within 2026-11-21 UTC: on 18 and 19 Nov at d030f483 and d0331e72, the launcher's home never reported showing its categories, each passing on the next run at the same commit",
+    "owner_pr": 5795,
+    "owner_session": "Y2YBTS",
+    "reason": "failed, then passed, at d0331e72f4ba",
+    "subtests": [
+      "test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds"
+    ],
+    "test": "vm-desktop-launcher-goes-places"
   }
 ]
