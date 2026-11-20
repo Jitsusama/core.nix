@@ -659,9 +659,11 @@ QtObject {
         // A refresh due while home was still to be found waits for the find,
         // not the pace, so a change held there says its hold apart, and one
         // of the same place not held says it held for none (H6EDLC, Super+N,
-        // 2026-11-19).
+        // 2026-11-19). Each place is said its own way, so a place with none
+        // held beside it says no hold.
         const heldApart = Presented.changesSaid([
             { place: "machine", from: 0, heard: 5, held: 10, refreshed: 40, begun: 48, at: 70 },
+            { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
             { place: "machine", from: 100, heard: 102, held: 110, refreshed: 122, begun: 130,
                 at: 190 },
             { place: "machine", from: 200, heard: 204, refreshed: 214, begun: 220, at: 250 }
@@ -671,15 +673,21 @@ QtObject {
             "launcher: 3 changes in machine presented a median 70 ms from the line, "
             + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms: a median 4 ms before the "
             + "shell heard it, 8 waiting on the pace, 12 held while home was found, 8 in the "
-            + "shell and 30 from its frame's start");
-        const unheldToo = Presented.changesSaid([
-            { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 }
-        ]);
-        check(failures, "a place with none held says no hold", unheldToo.join("\n"),
-            "launcher: 1 change in windows presented a median 70 ms from the line, "
+            + "shell and 30 from its frame's start\n"
+            + "launcher: 1 change in windows presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 5 ms before the "
             + "shell heard it, 35 waiting on the pace, 8 in the shell and 22 from its frame's "
             + "start");
+        // Held from when a refresh was first due while home was still to be
+        // found, a change heard then held from when it was heard, and a place
+        // heard of nothing held for nothing (Launcher.qml's refreshDue).
+        const firstHeld = Presented.heldFrom({}, { machine: 5, windows: 8 },
+            ["machine", "quests"], 10);
+        const heldAgain = Presented.heldFrom(firstHeld, { machine: 5, windows: 8 },
+            ["machine", "windows"], 30);
+        check(failures, "a hold holds those heard from when it was first due",
+            `${JSON.stringify(firstHeld)} ${JSON.stringify(heldAgain)}`,
+            '{"machine":10} {"machine":10,"windows":30}');
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many

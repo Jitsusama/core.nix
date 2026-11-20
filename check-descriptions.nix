@@ -4166,7 +4166,7 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes, but an
     answer given only while nothing else was goes once something comes; and the card's list is
-    sized by one rule wherever it's sized, a gap counted only for a row it shows
+    sized from its rows, a gap counted once and only for a row it shows
   '';
   the-launcher-joins-only-what-changed = ''
     joining the launcher's rows again makes ready only the rows of sources whose things or
@@ -4258,7 +4258,7 @@
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is, a refresh
-    held for home's find said apart from the pace; and y's
+    held for home's find said apart from the pace and held from when it was first due; and y's
     flash starts its time a turn after the frame that draws it, and only for the newest yank;
     and a chord into a kept place draws the rows it kept only once niri has said nothing casts
     the screen, unless its source, a mark or what it's led to lists them afresh, and a share

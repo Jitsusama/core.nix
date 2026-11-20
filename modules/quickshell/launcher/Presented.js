@@ -309,9 +309,24 @@ function changesParted(its) {
     if (!its.some(one => one.held !== undefined)) {
         return partsSwapped(its, changeParts);
     }
-    const filled = its.map(one => one.held !== undefined || one.refreshed === undefined
-        ? one : Object.assign({}, one, { held: one.refreshed }));
+    const filled = its.map(one => one.held === undefined
+        ? Object.assign({}, one, { held: one.refreshed }) : one);
     return partsSwapped(filled, heldParts);
+}
+
+// When each place's waiting change was first held for home's find, `held`
+// by place, once `places` are held at `at`: one of them whose change was
+// heard (`heardOf`, when by place) is held from then, and one held already
+// keeps its time, as it's held from when it was first due; one heard of
+// none has nothing held.
+function heldFrom(held, heardOf, places, at) {
+    const next = Object.assign({}, held);
+    for (const place of places) {
+        if (heardOf[place] !== undefined && next[place] === undefined) {
+            next[place] = at;
+        }
+    }
+    return next;
 }
 
 // What the journal says of the changes presented, each `{place, from,

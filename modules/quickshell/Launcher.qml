@@ -5628,16 +5628,19 @@ Scope {
         if (updatesWaiting[place] !== was) {
             updatesHeard[place] = KeyTimes.now();
             updatesBy[place] = Hearing.heardBy();
-            // Taken while a refresh is held for home's find, it waits on
-            // the find, which makes it in the slice after, not on the pace.
-            if (refreshHeld)
-                updatesHeld[place] = updatesHeard[place];
         }
     }
     // `refreshedFor`, when the launcher refreshes a source itself, says
     // what for.
     function refreshed(source, refreshedFor) {
         updatedFrom(source);
+        // Heard while a refresh is held for home's find, it waits on the
+        // find, which makes it in the slice after, not on the pace. Only
+        // till home's found: one after waits on the pace again, and one
+        // asked again (reanswer) waits on nothing.
+        if (fillFinding && refreshHeld)
+            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, [source.settings.name],
+                KeyTimes.now());
         // A collection's note is read as the corpus is joined, so a source
         // saying it changed marks it stale even when its things are the
         // same.
@@ -5877,13 +5880,8 @@ Scope {
         // nothing's held, so a shut stopped short leaves no source waiting.
         if (fillFinding && open) {
             refreshHeld = true;
-            // Only the first hold counts, as it's held from when it was due.
-            const heldAt = KeyTimes.now();
-            for (const source of refreshing) {
-                const place = source.settings.name;
-                if (updatesHeard[place] !== undefined && updatesHeld[place] === undefined)
-                    updatesHeld[place] = heldAt;
-            }
+            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard,
+                refreshing.map(source => source.settings.name), KeyTimes.now());
             return;
         }
         // Any refresh made takes those held with it, so the slice after the
@@ -9680,9 +9678,10 @@ Scope {
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
-    // as Network's does; home has none; the list and the rows' lines read it, so the plate's
-    // lines can't drift from the list's, and the card's height the same beat (Steady.tallFor).
-    readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
+    // as Network's does; home has none; the card's height (Steady.tallFor), the list and the
+    // rows' lines all read groupGap, so the plate's lines can't drift from the list's.
+    readonly property real groupGap: Theme.space.beat
+    readonly property real apart: matches.some(row => row.gap) ? groupGap : 0
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
         return length === null || length === undefined ? null : Math.round(length * 100) / 100;
@@ -10460,7 +10459,7 @@ Scope {
             prompt.text = "";
             matches = listed;
             current = 0;
-            tall = Steady.tallFor(matches, rows, rowTall, Theme.space.beat);
+            tall = Steady.tallFor(matches, rows, rowTall, groupGap);
         } finally {
             keeping = false;
         }
@@ -10960,8 +10959,7 @@ Scope {
             // Always the same height, eight rows, kept until it closes, so
             // the card is the same shape however much home holds and its
             // rows fill it to the foot, none held under the last.
-            tall = Steady.tallFor(homeFound ? matches : homeKept, rows, rowTall,
-                Theme.space.beat);
+            tall = Steady.tallFor(homeFound ? matches : homeKept, rows, rowTall, groupGap);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
             lap("keys");
@@ -12001,7 +11999,7 @@ Scope {
                 fillFoundHome = true;
                 // The card's height is home's as found, as the open
                 // handler sized it from before home was found after it.
-                tall = Steady.tallFor(matches, rows, rowTall, Theme.space.beat);
+                tall = Steady.tallFor(matches, rows, rowTall, groupGap);
             }
             heldAgreed(sources);
         } catch (error) {
@@ -12166,7 +12164,7 @@ Scope {
             prompt.text = "";
             matches = home;
             current = 0;
-            tall = Steady.tallFor(matches, rows, rowTall, Theme.space.beat);
+            tall = Steady.tallFor(matches, rows, rowTall, groupGap);
         } finally {
             keeping = false;
         }
@@ -12641,7 +12639,7 @@ Scope {
     readonly property var updatesBy: ({})
     // When each place's waiting change was first held for home's find
     // (refreshDue), by place, so its line says the hold apart from the pace.
-    readonly property var updatesHeld: ({})
+    property var updatesHeld: ({})
     property var updatesPresented: []
     // Each drawer a key brought since the launcher opened, from that key to
     // when niri presented it, said by place as it closes (drawerMade).
