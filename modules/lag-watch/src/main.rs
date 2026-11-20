@@ -588,7 +588,6 @@ mod tests {
         // A renderer whose main thread Chrome lowered, as it does a hidden
         // tab's, found as the watch finds it, not as a test builds it.
         opened(&proc, "72", "chrome");
-        write(&proc.join("72/cmdline"), "chrome\0--type=renderer\0");
         write(
             &proc.join("72/stat"),
             "72 (chrome) S 1 1 1 0 -1 0 1 0 0 0 5 6 0 0 25 5 30 0 99\n",
