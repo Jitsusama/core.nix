@@ -687,8 +687,16 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
 
 
 # Node.json's cells that need the reader, as Now lists them: the one asking
-# something, then the one stuck.
+# something, then the one stuck. Node.json lists them in that order too, so
+# waits.test.ts is what proves the order; this proves the page follows it.
 NEEDING = ("TERN02", "HERON1")
+NEEDING_SAID = ("One needs you:", "One is stuck:")
+# The first line after Now's heading, and the next line over a list.
+NOW_LEADS = """(() => {
+  const first = document.getElementById("panel-title").nextElementSibling;
+  const next = first.nextElementSibling.nextElementSibling;
+  return [first.textContent, next.textContent];
+})()"""
 # Holds a click on a link to the Launcher, saying where it went, since a
 # test browser has nothing to open it with.
 TALK_HELD = """document.addEventListener("click", (event) => {
@@ -703,24 +711,36 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     page.locator("#map-view").focus()
     page.keyboard.press(".")
     body = page.locator("#panel-body")
-    expect(body, "Now never said who needs you").to_contain_text("need you:")
-    lines = [line for line in body.inner_text().splitlines() if line.strip()]
-    led = lines[lines.index("Now") + 1 :][:1]
-    assert led == [f"{len(NEEDING)} need you:"], f"Now didn't lead with who needs you: {led}"
-    rows = body.locator("ul.rows").first.locator("[data-go]")
-    expect(rows, "Now listed others than those who need you").to_have_count(len(NEEDING))
-    listed = [rows.nth(n).get_attribute("data-go") for n in range(len(NEEDING))]
-    assert listed == [f"cell={each}" for each in NEEDING], (
-        f"Now should list the cell asking, then the one stuck: {listed}"
-    )
-    # a steps through them in that order, then round to the first.
-    for each in (*NEEDING, NEEDING[0]):
+    expect(body, "Now never said who needs you").to_contain_text(NEEDING_SAID[0])
+    led = page.evaluate(NOW_LEADS)
+    assert led == list(NEEDING_SAID), f"Now didn't lead with who needs you: {led}"
+    for n, each in enumerate(NEEDING):
+        rows = body.locator("ul.rows").nth(n).locator("[data-go]")
+        expect(rows, f"Now's list under {NEEDING_SAID[n]} misread").to_have_count(1)
+        expect(rows, f"Now's list under {NEEDING_SAID[n]} misread").to_have_attribute(
+            "data-go", f"cell={each}"
+        )
+    # a steps through them in Now's order; t talks to the one open, which
+    # by then is no longer the first, and a goes round to the first again.
+    for each in NEEDING:
         page.keyboard.press("a")
         expect(page, f"a didn't open {each}").to_have_url(re.compile(rf"#cell={each}$"))
     page.evaluate(TALK_HELD)
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
-    assert talked == f"mycelium:cell/{NEEDING[0]}", f"t talked to {talked}, not the open cell"
+    assert talked == f"mycelium:cell/{NEEDING[-1]}", f"t talked to {talked}, not the open cell"
+    page.keyboard.press("a")
+    expect(page, "a didn't go round to the first").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
+    # A receptor is a cell the Launcher can't talk to, and t says so.
+    page.evaluate(f"location.hash = '#cell={FED_RECEPTOR}'")
+    expect(page.locator("#panel-title"), "the receptor's drawer never opened").to_contain_text(
+        FED_RECEPTOR_TITLE
+    )
+    page.locator("#map-view").focus()
+    page.keyboard.press("t")
+    expect(page.locator("#where"), "t on a receptor didn't say it can't talk").to_contain_text(
+        "The Launcher can't talk to"
+    )
     page.keyboard.press("Escape")
     expect(page, "Escape didn't let the cell go").not_to_have_url(re.compile("#cell="))
     page.keyboard.press("t")
@@ -1079,6 +1099,8 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         reach = [f"{HELD_WORDS} since {day_clock(held['since'], at)}" for at in ends]
         until = [f"until {day_clock(held['until'], at)} at most" for at in ends]
         first = lines.index("Questions Waiting") if "Questions Waiting" in lines else len(lines)
+        glance = next(n for n, line in enumerate(lines) if line.startswith("Your whole network"))
+        assert first < glance, f"Now should say what holds the flow before the glance: {lines}"
         said = lines[first : first + 6]
         assert said[:2] == ["Questions Waiting", WAITED_SHORT], f"Now misread who waits: {said}"
         assert said[2:3] in [[ASKED_WORDS.format(age)] for age in ages], (

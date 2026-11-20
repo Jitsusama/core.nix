@@ -3150,10 +3150,30 @@ import {
       (more > 0 ? `<p class="hint">${esc(`and ${NUMBER.format(more)} more`)}</p>` : "")
     );
   };
+  // A list of cells under its line, the first FAULT_ROWS by name and the
+  // rest counted, so a burst of them never pushes the rest of Now away.
+  const rowsUnder = (line, cells) =>
+    `<p class="asks-line">${esc(line)}</p>` +
+    `<ul class="rows">${cells.slice(0, FAULT_ROWS).map(cellRow).join("")}</ul>` +
+    (cells.length > FAULT_ROWS ? `<p class="hint">${esc(`and ${NUMBER.format(cells.length - FAULT_ROWS)} more`)}</p>` : "");
+  // Who needs him, said as the status line says it: those asking need
+  // him, and those stuck are stuck, so the two never count differently.
+  const howMany = (cells, one, many) =>
+    cells.length === 1 ? one : `${NUMBER.format(cells.length)} ${many}`;
+  const needsLines = (cells) => {
+    const needing = needsFirst(cells);
+    if (!needing.length) return `<p class="asks-line quiet">Nobody needs you right now.</p>`;
+    const asks = needing.filter((s) => s.standing === "asks");
+    const stuck = needing.filter((s) => s.standing === "stuck");
+    return (
+      (asks.length ? rowsUnder(`${howMany(asks, "One needs", "need")} you:`, asks) : "") +
+      (stuck.length ? rowsUnder(`${howMany(stuck, "One is", "are")} stuck:`, stuck) : "") +
+      `<p class="hint"><kbd>a</kbd> opens each in turn; once one is open, <kbd>t</kbd> talks to it in the Launcher.</p>`
+    );
+  };
   const overview = () => {
     const m = current;
     const used = new Set(m.cells.map((s) => s.host));
-    const needing = needsFirst(m.cells);
     const tops = [...m.hubs.values()].filter((h) => !h.within && !h.alone && !h.edge);
     const sensing = m.hubs.get(OUTSIDE)?.cells.length || 0;
     const levels = m.machines.filter((x) => cellsOn(x.name).length).map((x) => healthRow(x.name, cellsOn(x.name), `machine=${x.name}`));
@@ -3161,10 +3181,7 @@ import {
     // opens to act starts with what only he can do.
     return (
       `<h2 id="panel-title">Now</h2>` +
-      (needing.length
-        ? `<p class="asks-line">${needing.length === 1 ? "One needs" : `${NUMBER.format(needing.length)} need`} you:</p><ul class="rows">${needing.map(cellRow).join("")}</ul>` +
-          `<p class="hint"><kbd>a</kbd> opens each in turn, and <kbd>t</kbd> talks to the one open in the Launcher.</p>`
-        : `<p class="asks-line quiet">Nobody needs you right now.</p>`) +
+      needsLines(m.cells) +
       heldUp(m.cells) +
       `<p class="carries">${esc(`Your whole network: ${plural(m.cells.length - sensing, "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(everyMachine().length, "machine")}.`)}</p>` +
       glance(
@@ -4570,24 +4587,40 @@ import {
     }
   };
   // The next cell that needs him, after the one open, in Now's order.
+  // Steps replace one another while he stays on the cell the last one
+  // opened, as find's do, so back leaves the round rather than replaying it.
+  let needsStepped = null;
   const nextNeedingYou = () => {
-    const next = current && nextNeeding(current.cells, chosen?.kind === "cell" ? chosen.id : null);
+    if (!current) {
+      where.textContent = "The map hasn't heard from the node yet, so it can't say who needs you.";
+      return;
+    }
+    const open = chosen?.kind === "cell" ? chosen.id : null;
+    const next = nextNeeding(current.cells, open);
     if (!next) {
       where.textContent = "Nobody needs you right now.";
       return;
     }
     const c = { kind: "cell", id: next };
-    visit(c);
+    visit(c, { replace: open !== null && open === needsStepped });
+    needsStepped = next;
     where.textContent = `Opened ${openedWords(c)}; a opens the next that needs you.`;
   };
   // Talk goes the way its drawer's link does, so the key and the link
   // never disagree about which cells the Launcher can reach.
   const talkToChosen = () => {
-    const link = chosen?.kind === "cell"
-      ? panelBody.querySelector('a[href^="mycelium:cell/"]')
-      : null;
-    if (link) link.click();
-    else where.textContent = "No cell is open to talk to; a opens the next that needs you.";
+    if (chosen?.kind !== "cell") {
+      where.textContent = "No cell is open to talk to; a opens the next that needs you.";
+      return;
+    }
+    const link = panelBody.querySelector(`a[href="mycelium:cell/${CSS.escape(chosen.id)}"]`);
+    const c = { kind: "cell", id: chosen.id };
+    if (!link) {
+      where.textContent = `The Launcher can't talk to ${openedWords(c)}.`;
+      return;
+    }
+    link.click();
+    where.textContent = `Talking to ${openedWords(c)} in the Launcher.`;
   };
   // What each of the page's letters does, once keys.ts has said which.
   const PAGE_DOES = {
@@ -4619,6 +4652,8 @@ import {
     });
     if (!asked) return;
     e.preventDefault();
+    // A held key opens the Launcher or steps the round once, not per repeat.
+    if (e.repeat && (asked === "talk" || asked === "needs-you")) return;
     PAGE_DOES[asked]();
   });
   // keys.ts lists every act a page key can ask, and outline.ts every step
