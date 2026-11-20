@@ -314,6 +314,8 @@ function run(failures) {
         talkTo(["KELP", "REEF", "TERN"], ranked), "REEF");
     machine("one the daemon hasn't ranked goes after one it has",
         talkTo(["SKUA", "KELP"], ranked), "KELP");
+    machine("one ranked null goes after one ranked too",
+        talkTo(["SKUA", "KELP"], named => ranked(named) ?? null), "KELP");
     machine("none ranked, the first listed",
         talkTo(["SKUA", "GULL"], () => undefined), "SKUA");
     machine("none running, none to talk to", talkTo([], () => 0), null);

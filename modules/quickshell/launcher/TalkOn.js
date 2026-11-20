@@ -13,7 +13,8 @@
 // has, never ahead of one needing Joel. Null with none running.
 function firstToTalk(running, rankOf) {
     const ranked = (running ?? []).map(each => {
-        const rank = Number(rankOf(each.session));
+        // Only a number is a rank: Number(null) would be 0, the first place.
+        const rank = rankOf(each.session);
         return Object.assign({ rank: Number.isFinite(rank) ? rank : Number.MAX_SAFE_INTEGER },
             each);
     });
