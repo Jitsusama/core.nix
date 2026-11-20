@@ -48,6 +48,14 @@ pub const UNSENT: i32 = 75;
 /// What `nix-offload` ends with when no builder for the system answers.
 pub const UNREACHED: i32 = 69;
 
+/// What a Mac's comparison is read as when it compared nothing though it
+/// was sent: it never started, was stopped before a builder took it, or
+/// failed on the network alone (`world.rs`'s `mac_ending`). Unlike
+/// `UNSENT`, which is refused at once and sent again in the same round,
+/// it may have taken minutes, so it waits for the next round. No process
+/// exits with a negative code, so none is mistaken for it.
+pub const UNCOMPARED: i32 = -75;
+
 /// Whether a run that exited `code` was one no builder or evaluator took,
 /// so it checked nothing.
 pub fn untaken(code: Option<i32>) -> bool {
@@ -409,6 +417,13 @@ fn run_once(
         // A run stopped because nothing needs it now is no outcome, and no
         // stall: the test ran fine as far as it went.
         if world.dropped(commit, check) {
+            return None;
+        }
+        if code == Some(UNCOMPARED) {
+            state.say(&format!(
+                "{check} at {} compared nothing: it's tried again next round",
+                short(commit)
+            ));
             return None;
         }
         if code != Some(UNSENT) {
@@ -3002,8 +3017,8 @@ mod tests {
 
     #[test]
     fn a_mac_comparison_that_stalled_twice_is_told_to_its_owner() {
-        // On 17 November 65 merges' comparisons stalled twice and were let
-        // go as if they had passed, unchecked and unsaid.
+        // A comparison a builder took that stalled twice compared nothing,
+        // and was let go as if it had passed, unchecked and unsaid.
         let state = state("mac-stalled");
         let check = crate::macs::check("s");
         let world = Stand {
@@ -3023,6 +3038,55 @@ mod tests {
             told.iter()
                 .any(|finding| finding["commit"] == "m1" && finding["owner_pr"] == 2),
             "a Mac's comparison that stalled twice wasn't told to its owner: {told:?}"
+        );
+        assert_eq!(
+            told.len(),
+            1,
+            "a stalled Mac comparison was told more than once"
+        );
+        assert!(
+            state.settling().is_empty(),
+            "a Mac's comparison told as stalled was still kept to try again"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a merge was reverted for a comparison that compared nothing"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_that_compared_nothing_waits_for_the_next_round() {
+        // On 17 November a hold on the Mac's load stopped 135 comparisons
+        // before a builder took them, and 65 merges were let go unchecked.
+        let state = state("mac-uncompared");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[UNCOMPARED]);
+        round(&world, &state, "s").unwrap();
+        let sent = world
+            .built()
+            .iter()
+            .filter(|(commit, built)| commit == "m1" && *built == check)
+            .count();
+        assert_eq!(
+            sent, 1,
+            "a comparison that compared nothing was sent again in the same round"
+        );
+        let kept: Vec<Value> = state.settling();
+        assert!(
+            kept.iter()
+                .any(|job| job["kind"] == "mac" && job["merge"] == "m1"),
+            "a comparison that compared nothing wasn't kept for the next round: {kept:?}"
+        );
+        assert!(
+            findings(&state).is_empty(),
+            "a comparison that compared nothing was told as a finding at once"
         );
         assert!(
             world.reverted.lock().unwrap().is_empty(),

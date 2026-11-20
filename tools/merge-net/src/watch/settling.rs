@@ -563,16 +563,17 @@ impl<'a> Settler<'a> {
     }
 
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
-    /// if they fail twice there. One no Mac took is kept, and the next
-    /// round takes it up again, until it was handed `UNRUN` ago: then it's
-    /// told as a finding naming its PR, and let go. One a builder took
-    /// that stalled twice is told as a stall naming its PR, and let go.
+    /// if they fail twice there. One no Mac took, or that compared nothing
+    /// (`UNCOMPARED`), is kept, and the next round takes it up again, until
+    /// it was handed `UNRUN` ago: then it's told as a finding naming its
+    /// PR, and let go. One a builder took that stalled twice is told as a
+    /// stall naming its PR, and let go.
     fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
         match attempt(world, state, merge, check) {
             Outcome::Unsent if now().saturating_sub(since) >= UNRUN => {
                 state.say(&format!(
-                    "no Mac took {check} at {} in a day: told, and let go",
+                    "no Mac compared {check} at {} in a day: told, and let go",
                     short(merge)
                 ));
                 let unrun = json!({
@@ -583,7 +584,7 @@ impl<'a> Settler<'a> {
             }
             Outcome::Unsent => {
                 state.say(&format!(
-                    "no Mac took {check} at {}: it's tried again next round",
+                    "no Mac compared {check} at {}: it's tried again next round",
                     short(merge)
                 ));
                 Ok(())
@@ -601,8 +602,7 @@ impl<'a> Settler<'a> {
             }
             // One a builder took that stalled twice compared nothing, so
             // it's told to its owner rather than let go as if it had
-            // passed: on 17 November 65 merges' comparisons were let go
-            // that way, unchecked and unsaid.
+            // passed, unchecked and unsaid.
             Outcome::Stalled => {
                 let owner = pr_of(&world.subject(merge));
                 self.end(check, || stalled(state, merge, check, owner))
