@@ -35,6 +35,7 @@ stat_program=$(command -v stat)
 id_program=$(command -v id)
 mv_program=$(command -v mv)
 mkdir_program=$(command -v mkdir)
+rm_program=$(command -v rm)
 date_program=$(command -v date)
 sed_program=$(command -v sed)
 tail_program=$(command -v tail)
@@ -55,10 +56,12 @@ cat >"${stand}/id" <<EOF
 printf '%s\n' "\${GIVEN_UID:-\$(${id_program} -u)}"
 EOF
 
-# Says it slept rather than sleeping.
+# Says it slept rather than sleeping, and removes the file RELEASE names,
+# as the person would while the start waits.
 cat >"${stand}/sleep" <<EOF
 #!${BASH}
 printf '%s\n' "\$*" >>"${work}/slept"
+if [ -n "\${RELEASE:-}" ]; then ${rm_program} -f "\${RELEASE}"; fi
 EOF
 
 # The host's node: writes down its pid, its words and its environment, and
@@ -122,9 +125,14 @@ expect_like() {
 }
 
 # How long the start slept, or nothing when it didn't.
+# The seconds the start slept in all, or nothing when it never slept.
 slept() {
+  local total=0 seconds
   if [[ -e "${work}/slept" ]]; then
-    cat "${work}/slept"
+    while read -r seconds; do
+      total=$((total + seconds))
+    done <"${work}/slept"
+    printf '%s\n' "${total}"
   fi
 }
 
@@ -264,8 +272,8 @@ for shell in "$@"; do
   [[ ${slept} == 600 ]] || fail "under ${name} slept '${slept}', not ten minutes, after three quick starts"
   grep -q "started three times in ten minutes" "${log}" ||
     fail "under ${name} didn't say why it waited"
-  grep -qF "removing ${log}.starts lets the next start go at once" "${log}" ||
-    fail "under ${name} didn't say how to start at once"
+  grep -qF "removing ${log}.starts ends the wait" "${log}" ||
+    fail "under ${name} didn't say how to end the wait"
   [[ -e "${work}/words" ]] || fail "under ${name} never started after waiting"
   starts=$(wc -l <"${log}.starts")
   [[ ${starts} == 3 ]] || fail "under ${name} kept ${starts} starts, not 3"
@@ -277,6 +285,17 @@ for shell in "$@"; do
   printf '%s\n' $((now - 3600)) $((now - 3500)) $((now - 100)) >"${log}.starts"
   run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after one recent start"
   [[ ! -e "${work}/slept" ]] || fail "under ${name} waited after one recent start of three"
+  # The oldest of the three is the first line, not the middle one.
+  printf '%s\n' $((now - 700)) $((now - 100)) $((now - 50)) >"${log}.starts"
+  run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after an old start and two recent"
+  [[ ! -e "${work}/slept" ]] || fail "under ${name} counted the middle of three starts as the oldest"
+  # Removing the record of starts while the start waits ends its wait.
+  printf '%s\n' $((now - 300)) $((now - 200)) $((now - 100)) >"${log}.starts"
+  run GIVEN_TEMPORARY="${given}" RELEASE="${log}.starts" ||
+    fail "under ${name} failed after its wait was ended"
+  slept=$(slept)
+  [[ ${slept} == 10 ]] || fail "under ${name} slept '${slept}' after its record of starts was removed"
+  [[ -e "${work}/words" ]] || fail "under ${name} never started after its wait was ended"
   # Two quick starts aren't three.
   printf '%s\n' $((now - 200)) $((now - 100)) >"${log}.starts"
   run GIVEN_TEMPORARY="${given}" || fail "under ${name} failed after two quick starts"

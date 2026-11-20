@@ -4788,9 +4788,10 @@
   '';
   the-mac-pi-host-starts-as-its-account = ''
     a Mac's pi host start, run under dash and bash with the Mac's programs stood in for, passes
-    shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes
-    and not after two or one recent start of three, saying how to start at once, says why and
-    fails on a missing harness or a temporary folder that isn't there, is a link,
+    shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes,
+    counting from the oldest of three, and not after two or one recent start of three, saying
+    that removing its record of starts ends the wait, which then ends within ten seconds,
+    says why and fails on a missing harness or a temporary folder that isn't there, is a link,
     is another's or others may read, and otherwise becomes the realm's node in its own place
     with its words, its output in its log, every environment value whole, the realm's LANG and
     no LC_ALL to outrank it, the account's home realm, TMPDIR and XDG_RUNTIME_DIR the account's
