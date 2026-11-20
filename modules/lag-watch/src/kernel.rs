@@ -58,6 +58,11 @@ pub fn started(text: &str) -> Option<u64> {
     stat_field(text, 22)?.parse().ok()
 }
 
+/// A process's parent's pid, from its `stat`: field 4.
+pub fn parent(text: &str) -> Option<&str> {
+    stat_field(text, 4)
+}
+
 /// Field `n` of a `stat`, counted from 1, past the name, which is in
 /// brackets and may hold spaces and brackets of its own.
 fn stat_field(text: &str, n: usize) -> Option<&str> {
@@ -262,7 +267,9 @@ pub fn threads(
     let Ok(entries) = fs::read_dir(proc) else {
         return found;
     };
-    let mut running = std::collections::BTreeSet::new();
+    // The apps' processes looked into this pass: one whose pid now names
+    // another program is let go at once.
+    let mut looked = std::collections::BTreeSet::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if !name.bytes().all(|b| b.is_ascii_digit()) {
@@ -270,17 +277,17 @@ pub fn threads(
         }
         let comm = text(&entry.path().join("comm"));
         let mut joels = false;
-        if let Some((_, label)) = APPS.iter().find(|(app, _)| *app == comm.trim())
-            && let Some(drawing) = apps.of(&name, &entry.path(), label)
-        {
-            joels = true;
-            found.extend(drawing);
+        if let Some((_, label)) = APPS.iter().find(|(app, _)| *app == comm.trim()) {
+            looked.insert(name.clone());
+            if let Some(drawing) = apps.of(&name, &entry.path(), label) {
+                joels = true;
+                found.extend(drawing);
+            }
         }
-        running.insert(name.clone());
         if comm.trim() == "chrome" {
             // A Chrome Joel didn't start, an agent's or a test's with a fake
             // microphone, carries no call of his.
-            if !joels && !apps.may_call(&text(&entry.path().join("cgroup"))) {
+            if !joels && !apps.may_call(&text(&entry.path().join("cgroup")), proc) {
                 continue;
             }
             chrome.extend(
@@ -325,7 +332,7 @@ pub fn threads(
     if chrome.iter().any(|t| t.call) {
         found.extend(chrome);
     }
-    apps.keep_only(&running);
+    apps.keep_only(&looked);
     found.sort();
     found
 }
