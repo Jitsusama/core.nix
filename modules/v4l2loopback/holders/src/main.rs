@@ -213,7 +213,10 @@ fn forget_node(folder: &Path, own: &Path, said: &str) {
             continue;
         }
         // Its holders file first, so a camera is never left said held with
-        // no node file to say who reads it.
+        // no node file to say who reads it. Read and removed apart, so a
+        // camera whose own run rewrites them between, as two cameras
+        // swapping nodes as a hub comes back might, reads unplugged until
+        // it streams: a run killed and a swap at once, which is accepted.
         let holders = folder.parent().map(|above| above.join(entry.file_name()));
         for gone in holders.iter().chain([&path]) {
             if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
