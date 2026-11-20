@@ -54,10 +54,14 @@ let
   ];
   # The command's settings, as defaults a caller may still set for one
   # run. gh is named only where a machine lists repositories for it, so
-  # it's never asked elsewhere.
+  # it's never asked elsewhere. The login whose review the receptor counts
+  # is the one the collection leads with what waits on.
   settings = {
     REPOS_ROOTS = lib.concatStringsSep ":" roots;
     REPOS_GIT = lib.getExe config.programs.git.package;
+  }
+  // lib.optionalAttrs (receptorLogin != null) {
+    REPOS_LOGIN = receptorLogin;
   }
   // lib.optionalAttrs (throughGh != [ ]) {
     REPOS_THROUGH_GH = lib.concatStringsSep " " throughGh;
@@ -107,8 +111,9 @@ in
     example = "someone";
     description = ''
       The GitHub login whose asked reviews the GitHub receptor counts and
-      names to mycelium, as GitHub matches logins, case aside. None by default, and with none the
-      receptor is never said.
+      names to mycelium, as GitHub matches logins, case aside, and whose
+      waiting changes `repos` leads with. None by default, and with none
+      the receptor is never said and `repos` leads with nothing.
     '';
   };
 

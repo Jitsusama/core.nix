@@ -535,7 +535,10 @@ fn what_waits_on_the_login_leads_the_collection() {
                 .unwrap_or_else(|| panic!("{change} has no row: {text}"))
         };
         assert!(row("core.nix#4795 ").starts_with("your review "), "{text}");
-        assert!(row("core.nix#4792 ").starts_with("changes asked "), "{text}");
+        assert!(
+            row("core.nix#4792 ").starts_with("changes asked "),
+            "{text}"
+        );
         assert!(
             row("core.nix#4793 ").starts_with("failing · changes asked "),
             "{text}"

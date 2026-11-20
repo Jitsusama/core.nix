@@ -210,24 +210,38 @@ fn whole(columns: &[(&str, Align)], rows: &[Vec<String>], room: Room) -> bool {
     })
 }
 
+/// Words muted, wrapped at whole words to the room, so a line too long
+/// for a narrow terminal goes on to the next rather than past its edge.
+fn muted(words: &str, pen: &Pen, room: Room) -> Vec<String> {
+    layout::paragraph(words, 0, room)
+        .iter()
+        .map(|line| pen.role("muted", line))
+        .collect()
+}
+
 /// The collection's head: how many, on which machine, read from where,
-/// and when GitHub was last asked, where it has been.
-fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen) -> Vec<String> {
+/// and when GitHub was last asked, where it has been. Where its first line
+/// doesn't fit the room, what follows the title goes under it, wrapped.
+fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen, room: Room) -> Vec<String> {
     let roots: Vec<String> = record.roots.iter().map(|root| shown(root, home)).collect();
     let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
-    let mut lines = vec![format!(
-        "{}{}",
-        pen.title("repositories"),
-        pen.role(
-            "muted",
-            &format!(
-                "{ITEMS}{} on {}{ITEMS}under {}",
-                record.repositories.len(),
-                record.machine,
-                flags::and(&roots)
-            )
-        )
-    )];
+    let title = "repositories";
+    let said = format!(
+        "{} on {}{ITEMS}under {}",
+        record.repositories.len(),
+        record.machine,
+        flags::and(&roots)
+    );
+    let whole = layout::width(title) + layout::width(ITEMS) + layout::width(&said);
+    let mut lines = if room.cells().is_none_or(|cells| whole <= cells) {
+        vec![format!(
+            "{}{}",
+            pen.title(title),
+            pen.role("muted", &format!("{ITEMS}{said}"))
+        )]
+    } else {
+        [vec![pen.title(title)], muted(&said, pen, room)].concat()
+    };
     for github in record
         .sources
         .iter()
@@ -241,9 +255,63 @@ fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen) -> Vec<S
             0 => String::new(),
             unread => format!("{ITEMS}{unread} it couldn't read"),
         };
-        lines.push(pen.role("muted", &(read + &unread)));
+        lines.extend(muted(&(read + &unread), pen, room));
     }
     lines
+}
+
+/// What waits on someone, as the collection leads with it: why, the
+/// change, and its title, last, so a long one is cut, and where even that
+/// leaves no room, it goes.
+const FOR_YOU: [(&str, Align); 3] = [
+    ("for you", Align::Left),
+    ("change", Align::Left),
+    ("title", Align::Left),
+];
+const FOR_YOU_GIVES_WAY: [usize; 1] = [2];
+
+/// The open changes waiting on the person GitHub knows as `login`: each
+/// asking their review, then each of their own failing its checks or with
+/// changes asked, each kind the one updated last first. The login is the
+/// one the machine declares, matched as GitHub matches one, ASCII case
+/// aside, against GitHub's own fields for who asked and who wrote, never
+/// anything a change says of itself.
+fn for_you(record: &Record, login: &str) -> Vec<Vec<String>> {
+    let is = |one: &str| one.eq_ignore_ascii_case(login);
+    let mut waiting: Vec<(bool, u64, Vec<String>)> = Vec::new();
+    for repository in &record.repositories {
+        let name = named(record, repository);
+        for change in &repository.changes {
+            let asked = change.review_asked_of.iter().any(|one| is(one));
+            let why = if asked {
+                "your review".to_owned()
+            } else if change.author.as_deref().is_some_and(is) {
+                let failing = change.checks.state == ChecksState::Failing;
+                let changes_asked = change.review == Review::ChangesAsked;
+                let why: Vec<&str> = [(failing, "failing"), (changes_asked, "changes asked")]
+                    .into_iter()
+                    .filter_map(|(holds, why)| holds.then_some(why))
+                    .collect();
+                if why.is_empty() {
+                    continue;
+                }
+                why.join(ITEMS)
+            } else {
+                continue;
+            };
+            let change_named = match &change.github {
+                Some(github) => format!("{name}#{}", github.number),
+                None => format!("{name} {}", change.branch),
+            };
+            waiting.push((
+                asked,
+                change.updated_at,
+                vec![why, change_named, change.title.clone()],
+            ));
+        }
+    }
+    waiting.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+    waiting.into_iter().map(|(_, _, row)| row).collect()
 }
 
 /// The collection's columns. The key goes first where they don't fit,
@@ -281,13 +349,14 @@ fn changes_cell(record: &Record, repository: &Repository) -> String {
     }
 }
 
-/// `repos`: every repository as one line of a table, the one written to
-/// last first, and the commands that go further.
+/// `repos`: what waits on `login`, where the machine declares one and
+/// anything does, then every repository as one line of a table, the one
+/// written to last first, and the commands that go further.
 pub fn repositories(
     record: &Record,
     clock: &Clock,
     home: Option<&Path>,
-    _login: Option<&str>,
+    login: Option<&str>,
     pen: &Pen,
     room: Room,
 ) -> String {
@@ -336,8 +405,14 @@ pub fn repositories(
         ),
     ]
     .map(|(command, shows)| vec![command.to_owned(), shows.to_owned()]);
+    let waiting = login.map_or_else(Vec::new, |login| for_you(record, login));
     layout::joined(vec![
-        head(record, clock, home, pen),
+        head(record, clock, home, pen, room),
+        if waiting.is_empty() {
+            Vec::new()
+        } else {
+            self::table(&FOR_YOU, waiting, &FOR_YOU_GIVES_WAY, pen, room)
+        },
         table,
         layout::table_in(
             &[("further", Align::Left), ("shows", Align::Left)],

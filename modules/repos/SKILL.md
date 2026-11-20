@@ -58,6 +58,11 @@ repos core.nix trees --json  # its trees, repos.trees/1
 repos core.nix changes --json  # its open changes, repos.changes/1
 ```
 
+Where the machine declares Joel's GitHub login, `repos` opens with what
+waits on him: each change asking his review, then each of his own failing
+its checks or with changes asked, newest first. The record holds no more
+for it: that's each change's `review_asked_of` and `author`.
+
 A name two repositories share is refused with exit 64 and each one's key, so
 ask again by `owner/name` or key. An unknown name exits 66 and names the
 nearest. `repos --help` lists both.
