@@ -1430,25 +1430,31 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["footer"] == "installing")
         machine.send_key("ret")
-        desktop.held_still(dt.timedelta(seconds=2))
-        if desktop.showing()["command"] is not None:
-            machine.send_key("esc")
-            desktop.launcher_until(lambda shown: shown["command"] is None)
+
         # Once in, Install offers nothing more, so the launcher leaves the asking by itself, as
         # a held step whose row offers nothing now is left (launcher/Held.js), back to the
-        # device's step: Install waits for the restart there, dimmed in place. Nothing is
-        # pressed, since a minus would leave the device's step too once the asking was left,
-        # so only the launcher can bring Install back. The third Return's line has landed by
-        # the time the shell holds still, so the Escape above let it go, and the wait asks
-        # that none shows rather than passing over one.
-        desktop.launcher_until(
-            lambda shown: (
+        # device's step: Install waits for the restart there, dimmed in place. Nothing but
+        # Escape is pressed, since a minus would leave the device's step too once the asking
+        # was left, so only the launcher can bring Install back.
+        def stepped_back(shown: Json) -> bool:
+            return (
                 shown["rows"][:1] == ["Install 1.13.0"]
                 and shown["things"][0]["gone"] is True
                 and shown["footer"] == "restart to finish"
                 and shown["command"] is None
             )
-        )
+
+        # Nothing says when the shell took the third Return, so its line may show before the
+        # step back or after it. Each one heard is let go with Escape, which only lets a line
+        # go, and the wait goes on, so a late line is neither passed over nor a timeout.
+        for _ in range(3):
+            desktop.launcher_until(
+                lambda shown: shown["command"] is not None or stepped_back(shown)
+            )
+            if desktop.showing()["command"] is None:
+                break
+            machine.send_key("esc")
+        desktop.launcher_until(stepped_back)
         desktop.shoot("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()
         assert ran == ["update bios --assume-yes --no-reboot-check"], ran
