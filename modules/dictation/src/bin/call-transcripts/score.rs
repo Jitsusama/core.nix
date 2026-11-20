@@ -53,6 +53,15 @@ struct Said {
     text: String,
 }
 
+/// A meeting of the set, read: its name, the speaker on Joel's side, its
+/// reference, and each side's sound.
+struct Meeting<'a> {
+    name: &'a str,
+    mine: &'a str,
+    reference: Vec<Said>,
+    sounds: [Vec<f32>; 2],
+}
+
 /// A meeting's errors: each side's as written down, and as heard alone.
 #[derive(Default)]
 struct Scored {
@@ -68,13 +77,13 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     // bad one is refused at once rather than after the meetings before it
     // are heard.
     let sides = read(&set.join("sides"))?;
-    let mut meetings: Vec<(&str, &str, Vec<Said>, [Vec<f32>; 2])> = Vec::new();
+    let mut meetings: Vec<Meeting> = Vec::new();
     for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
         let mut fields = entry.split_whitespace();
         let (Some(name), Some(mine), None) = (fields.next(), fields.next(), fields.next()) else {
             return Err(format!("sides: {entry:?} isn't a meeting and a speaker"));
         };
-        if meetings.iter().any(|meeting| meeting.0 == name) {
+        if meetings.iter().any(|meeting| meeting.name == name) {
             return Err(format!("sides: {name} is named twice"));
         }
         let file = format!("{name}.ref");
@@ -97,14 +106,25 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
             }
             sounds[index(side)] = sound;
         }
-        meetings.push((name, mine, lines, sounds));
+        meetings.push(Meeting {
+            name,
+            mine,
+            reference: lines,
+            sounds,
+        });
     }
     if meetings.is_empty() {
         return Err(format!("{} has no meetings to hear", set.display()));
     }
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut all = Scored::default();
-    for (name, mine, reference, sounds) in meetings {
+    for Meeting {
+        name,
+        mine,
+        reference,
+        sounds,
+    } in meetings
+    {
         let mut scored = Scored::default();
         let mut lines = Vec::new();
         for side in [Side::Mine, Side::Theirs] {
