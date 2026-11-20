@@ -1076,11 +1076,16 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
     finally:
         # A case that fails mid-way leaves nothing typing into the next: the
         # typer is let finish its ten words, so no key is left held, and is
-        # ended only if it outstays a minute.
+        # ended only if it outstays a minute. The wait is a call of its own,
+        # naming the typer only by pattern: a command line holding the file's
+        # whole name would match it, and end itself.
+        desktop.as_account("touch ~/typing-done")
         desktop.as_account(
-            "touch ~/typing-done; for _ in $(seq 60); do pgrep -f 'typing-don[e]' > /dev/null"
-            " || break; sleep 1; done; pkill -f 'typing-don[e]';"
-            " pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
+            "for _ in $(seq 60); do pgrep -f 'typing-don[e]' > /dev/null || break; sleep 1;"
+            " done; pkill -f 'typing-don[e]'; true"
+        )
+        desktop.as_account(
+            "pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
             f" pkill -f 'sleep 60[0]'; niri msg action close-window --id {notes['id']};"
             f" rm -f {PI_PRESENCE}/asideqa.json {owner}; pkill -x stress-ng;"
             " pkill -INT -x wf-recorder; true"
