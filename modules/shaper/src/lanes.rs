@@ -58,7 +58,9 @@
 //! once only what Joel carries straight now and what agents straight are
 //! owed, and a move under a twentieth isn't made at all. It's held as a
 //! share, so a rate the controller cuts cuts V with it at once, and a rate
-//! moved between seconds gives it back when it returns. room.rs, which did
+//! moved and moved back between seconds leaves it as it was; a cut lasting
+//! past a second caps it at that rate, and it falls from there. room.rs,
+//! which did
 //! this for the two bulk tins alone, flipped its two lines about 2,200
 //! times in two days.
 //!
@@ -294,9 +296,11 @@ impl Lanes {
             .min(rate - straight_now - straight_floor);
         // What the cap left is what the VPN has, so it falls from there: held
         // above it, it would climb back the next second into the room held
-        // for Joel, where its own CAKE would leave it unused. A new rate
-        // between seconds caps at that rate alone, and stored, a moment's cut
-        // would end the VPN's slow fall, the only hold Joel's part in it gets.
+        // for Joel, where its own CAKE would leave it unused. Only a real
+        // second is stored: a new rate between seconds asks for more or caps
+        // at that rate alone, and kept, a moment's cut would end the VPN's
+        // slow fall, the only hold Joel's part in it gets, or come back with
+        // the rate into the room held for him straight.
         if dt > 0.0 {
             self.share = Some(vpn / rate);
         }
@@ -332,7 +336,8 @@ impl Lanes {
     /// The VPN's rate, moving towards `wanted` kbit/s: at once when it
     /// rises past a twentieth or Joel's own part, `joel`, passes what's
     /// held; by at most a fifth a second when it falls past a twentieth.
-    fn hold(&mut self, wanted: f64, joel: f64, rate: f64, dt: f64) -> f64 {
+    /// What it keeps is split's to store, after the cap.
+    fn hold(&self, wanted: f64, joel: f64, rate: f64, dt: f64) -> f64 {
         let wanted = wanted / rate;
         let share = match self.share {
             Some(held) if joel / rate <= held => {
@@ -346,7 +351,6 @@ impl Lanes {
             }
             _ => wanted,
         };
-        self.share = Some(share);
         share * rate
     }
 }
@@ -1043,6 +1047,11 @@ mod tests {
             "the VPN's agents got {} of their {half} from a capped share",
             both.vpn - joel_vpn
         );
+        assert!(
+            both.agents >= half - 1.0,
+            "agents straight got {} of their {half} beside a capped share",
+            both.agents
+        );
     }
 
     // The controller moves its rate between seconds, and the cap at that
@@ -1061,6 +1070,31 @@ mod tests {
             "a cut between seconds left the VPN {} of the {} it held",
             back.vpn,
             held.vpn
+        );
+    }
+
+    // Joel's part inside the VPN is a larger share of a smaller rate, so a
+    // cut between seconds asks the VPN for more; kept, it would come back
+    // with the rate and take the room held for him straight.
+    #[test]
+    fn a_cut_between_seconds_gives_back_what_it_raised() {
+        let straight = (waiting(32), Agents::default());
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 0.0), straight), 1.0);
+        let held = lanes.split(&seen((200.0, 0.0), straight), 1.0);
+        lanes.at(RATE * 0.3);
+        let back = lanes.at(RATE);
+        assert!(
+            near(back.vpn, held.vpn),
+            "a cut between seconds came back with the VPN at {}, not {}",
+            back.vpn,
+            held.vpn
+        );
+        assert!(
+            near(back.joel, held.joel),
+            "a cut between seconds came back with Joel at {}, not {}",
+            back.joel,
+            held.joel
         );
     }
 
