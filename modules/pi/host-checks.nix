@@ -7,6 +7,7 @@
   bareNixos,
   holds,
   lib,
+  macWorkstation,
   onLinux,
   pkgs,
   self,
@@ -32,8 +33,8 @@ let
       )
     );
   # What would run code as a host as its node starts, which its unit clears
-  # and a realm may not give: written out rather than read from host.nix's
-  # list, and the unit must clear just these beside the TPM agent's
+  # and a realm may not give: written out rather than read from
+  # host-launch.nix's list, and the unit must clear just these beside the TPM agent's
   # variable, so a change to either list alone fails here.
   loadsCode = [
     "NODE_OPTIONS"
@@ -45,6 +46,32 @@ let
     "OPENSSL_CONF"
     "OPENSSL_MODULES"
   ];
+
+  # A Mac naming one realm, whose environment holds a value the shell would
+  # read as more than a word, and the harness's entry on it, for the two
+  # checks of a Mac's hosts.
+  macRuntime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}";
+  macProof = proofOf { runtime = macRuntime; };
+  macNaming = bareDarwin [
+    self.darwinModules.workstation
+    {
+      home-manager.users.someone.jitsusama.pi.hosts.one = {
+        pi = "${macRuntime}/pi";
+        node = "${macRuntime}/node";
+        proof = macProof;
+        path = [ "/first/bin" ];
+        environment = {
+          PROXY_ORIGIN = "https://proxy.example.com";
+          GREETING = "it's $HOME, `here`";
+          # The realm's own, which replaces the account's.
+          LANG = "C.UTF-8";
+        };
+      };
+    }
+  ];
+  macEntry =
+    (import ./host-launch.nix { inherit lib; }).entry
+      macNaming.config.home-manager.users.someone;
 in
 {
   # A host's own restart waits out a call, always, and what a machine adds,
@@ -260,6 +287,149 @@ in
         && names "both" "LD_PRELOAD and OPENSSL_CONF"
         && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"
       );
+
+  # A Mac's hosts are launchd daemons run as its primary account, not agents,
+  # since launchd ends an account's agents with its login session and every
+  # conversation a host holds with them. Each starts at boot, again after it
+  # fails and not after a clean stop, once the store is mounted, has the
+  # 150 s it parks within and the files it holds open, and names no store
+  # path, so a switch that brings a new pi doesn't restart it. Its start is
+  # a file a switch changes, which the-mac-pi-host-starts-as-its-account
+  # runs. The machine evaluates whole,
+  # so a plist or file nix-darwin can't render fails here.
+  the-mac-pi-host-outlives-a-log-out =
+    let
+      mac = macNaming;
+      hostsIn =
+        machine: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames machine.config.launchd.daemons);
+      # nix-darwin gives a key left unset as null, a set's keys too.
+      set = attrs: lib.filterAttrs (_: value: value != null) (if attrs == null then { } else attrs);
+      outlives =
+        kind:
+        let
+          daemon = mac.config.launchd.daemons."pi-host-one-${kind}".serviceConfig or { };
+          start = mac.config.environment.etc."pi-host/one-${kind}".text or "";
+          # The program the start becomes, last on its last line.
+          last = lib.findFirst (lib.hasPrefix "  /nix/store/") "" (lib.splitString "\n" start);
+          program = lib.head (lib.splitString " " (lib.removePrefix "  " last));
+        in
+        daemon.Label or null == "org.jitsusama.pi-host-one-${kind}"
+        && daemon.UserName or null == "someone"
+        && daemon.RunAtLoad or false
+        # nix-darwin gives every key of KeepAlive, those unset as null.
+        &&
+          set (daemon.KeepAlive or { }) == {
+            SuccessfulExit = false;
+          }
+        && daemon.ExitTimeOut or null == 150
+        &&
+          set (daemon.SoftResourceLimits or { }) == {
+            NumberOfFiles = 8192;
+          }
+        &&
+          daemon.ProgramArguments or [ ] == [
+            "/bin/sh"
+            "-c"
+            "/bin/wait4path /nix/store && exec /bin/sh /etc/pi-host/one-${kind}"
+          ]
+        # nix-darwin restarts a daemon whose plist changed.
+        && !lib.hasInfix "/nix/store/" (builtins.toJSON (set daemon))
+        # launchd opens these as root, who would follow a link left there;
+        # the start opens its log as the account.
+        && !(set daemon ? StandardOutPath)
+        && !(set daemon ? StandardErrorPath)
+        # The realm's node, as a file named pi-host, since a Mac's ps names a
+        # process by its program's file, and mycelium tells a forebear so
+        # named as an agent's: launchd is the host's parent, and with no
+        # pi above them its conversations' commands would be told as the
+        # person's.
+        && lib.hasSuffix "-pi-host/bin/pi-host" program;
+    in
+    holds "the-mac-pi-host-outlives-a-log-out"
+      "A Mac's pi host isn't a launchd daemon run as its primary account, so a log-out ends it, or it isn't started at boot once the store is mounted, is restarted after a clean stop or not after a failure, has less than the 150 s it parks within or launchd's 256 open files, names a store path a switch would restart it for, has launchd open its log as root, runs node under a name mycelium doesn't tell as an agent's, the machine doesn't evaluate whole, or a Mac naming no realm gets one."
+      (
+        builtins.seq mac.config.system.build.toplevel.drvPath true
+        && outlives "attended"
+        && outlives "background"
+        &&
+          hostsIn mac == [
+            "pi-host-one-attended"
+            "pi-host-one-background"
+          ]
+        && hostsIn macWorkstation == [ ]
+        && lib.all (check: check.assertion) mac.config.assertions
+      );
+
+  # A Mac's host's start, run on Linux with the Mac's programs stood in for:
+  # it passes shellcheck, moves only a log past 10 MB aside, waits before a
+  # fourth start in ten minutes, says and fails on a missing harness or a
+  # temporary folder that isn't the account's alone, and otherwise becomes
+  # the realm's node in its own place, with its words, every value of its
+  # environment as one word whatever it holds, TMPDIR and XDG_RUNTIME_DIR
+  # the folder the system gave, the call probe its own restart waits on,
+  # and none of loadsCode though each was set.
+  the-mac-pi-host-starts-as-its-account =
+    let
+      start = builtins.unsafeDiscardStringContext (
+        macNaming.config.environment.etc."pi-host/one-attended".text or ""
+      );
+    in
+    pkgs.runCommandLocal "the-mac-pi-host-starts-as-its-account"
+      {
+        nativeBuildInputs = [ pkgs.shellcheck ];
+        inherit start;
+        passAsFile = [ "start" ];
+        entry = macEntry;
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/the-mac-pi-host-starts-as-its-account.sh} \
+          "$startPath" "$entry" ${lib.getExe pkgs.dash} ${lib.getExe pkgs.bash}
+        touch $out
+      '';
+
+  # A Mac's hosts are launchd daemons run as its primary account, so another
+  # account naming a realm is refused by name rather than given hosts
+  # nothing starts, and a Mac naming no primary account refuses them all
+  # with a message rather than failing to evaluate.
+  a-mac-refuses-another-accounts-pi-hosts =
+    let
+      runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}";
+      realm = {
+        pi = "${runtime}/pi";
+        node = "${runtime}/node";
+        proof = proofOf { inherit runtime; };
+      };
+      mac = bareDarwin [
+        self.darwinModules.workstation
+        {
+          users.users.other.home = "/Users/other";
+          home-manager.users.other = {
+            home.stateVersion = "26.05";
+            jitsusama.pi.hosts.one = realm;
+          };
+        }
+      ];
+      unowned = bareDarwin [
+        self.darwinModules.workstation
+        {
+          system.primaryUser = lib.mkForce null;
+          home-manager.users.someone.jitsusama.pi.hosts.one = realm;
+        }
+      ];
+      refusalsOf =
+        machine:
+        map (check: check.message) (lib.filter (check: !check.assertion) machine.config.assertions);
+      daemonsOf =
+        machine: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames machine.config.launchd.daemons);
+    in
+    holds "a-mac-refuses-another-accounts-pi-hosts"
+      "A Mac gives an account other than its primary one pi hosts, gives them on a Mac naming no primary account, or names no account when it refuses them."
+      (
+        lib.any (lib.hasPrefix "home-manager.users.other.jitsusama.pi.hosts names a realm") (refusalsOf mac)
+        && daemonsOf mac == [ ]
+        && lib.any (lib.hasInfix "system.primaryUser names none") (refusalsOf unowned)
+        && daemonsOf unowned == [ ]
+      );
 }
 # The hosts run as Linux's systemd user units, in slices a Mac has none of.
 // onLinux {
@@ -384,7 +554,8 @@ in
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
   # sessions, left running through a switch, and said to be down when left
-  # down, never at a restart; a machine that names none, and a Mac, get no host.
+  # down, never at a restart; a machine that names none gets no host, and a
+  # Mac no systemd unit, since its hosts are launchd's.
   pi-hosts-start-with-the-session =
     let
       pi = "${pkgs.emptyDirectory}/pi";
@@ -546,7 +717,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, browses in Google Chrome rather than Chromium, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, browses in Google Chrome rather than Chromium, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm gets one, or a Mac gets a systemd unit."
       (
         readsOptions
         && starts "attended"

@@ -126,6 +126,11 @@
     answering is a thing too, the Adapter's row in Bluetooth, its notice naming bluetooth-again
     for one on PCI and a restart for any other, and saying a device may need pairing again
   '';
+  a-mac-refuses-another-accounts-pi-hosts = ''
+    a Mac refuses an account other than its primary one that names a pi host's realm, by that
+    account's name, and gives it none; a Mac naming no primary account refuses every realm with a
+    message saying so, and gives none
+  '';
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
@@ -3076,7 +3081,7 @@
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
     frame, and pi's SSH agent proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
-    restart, and a machine naming none, or a Mac, gets none
+    restart, a machine naming none gets none, and a Mac gets no systemd unit
   '';
   pi-hosts-ignore-sigusr1 = ''
     node 22, which pi is built with, and this tree's own node, each given the --disable-sigusr1 a
@@ -4771,6 +4776,22 @@
   '';
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run
+  '';
+  the-mac-pi-host-outlives-a-log-out = ''
+    a realm a Mac's primary account names gets two pi hosts as launchd daemons run as that
+    account, started at boot once the store is mounted and again after a failure, given 150 s
+    to park and 8192 open files, naming no store path a switch would restart it for, with no
+    log launchd opens as root, and becoming node under a name mycelium tells as an agent's, on a
+    Mac that evaluates whole; a Mac naming none gets none
+  '';
+  the-mac-pi-host-starts-as-its-account = ''
+    a Mac's pi host start, run under dash and bash with the Mac's programs stood in for, passes
+    shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes,
+    says why and fails on a missing harness or a temporary folder that isn't there, is a link,
+    is another's or others may read, and otherwise becomes the realm's node in its own place
+    with its words, its output in its log, every environment value whole, the account's LANG,
+    TMPDIR and XDG_RUNTIME_DIR the account's temporary folder, the call probe its own restart
+    waits on, and none of the eight variables that would run code as node starts
   '';
   the-macs-faces-are-the-themes = ''
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
