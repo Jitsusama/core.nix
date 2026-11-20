@@ -74,9 +74,11 @@ STEPS_ON = 2
 # How long, in seconds, the launcher is held open over a walk, which steps none of it then.
 HELD = 2.0
 # The farthest, in ms, a held walk's clock may go on between its last step before the launcher
-# and its first after: a frame or so, a loaded builder's nested niri having taken up to 160 ms
-# between two (2026-11-19), where a clock run on under the launcher goes on by all it was held.
-HELD_AHEAD = 250
+# and its first after, or between the launcher's toggle and its last step under the card: half
+# the hold, where a clock run on under the launcher goes on by all of it. A frame or so is what
+# it takes, but a loaded builder's nested niri has taken up to 160 ms between two (2026-11-19),
+# and a few such frames mustn't fail it.
+HELD_AHEAD = HELD * 1000 / 2
 # How long, in seconds, the cat may take to tell of its walk once it sits: it waits up to 2 s
 # for niri's answers on the frames still on their way (MarginCatShown.js's ANSWERS).
 TOLD = 5.0
@@ -375,6 +377,7 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     shell.as_account("niri msg action focus-column-left")
     shell.as_account("niri msg action focus-column-left")
     heard(shell, walking, since)
+    toggled = shell.mark()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     # A step drawn as the card went up may be said a moment after it, as niri answers.
@@ -385,15 +388,25 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     drew, drawn = cat_frames(shell)
     under, _ = shell.said_since(held)
     before = steps(shell, since)
+    late = steps(shell, toggled)
     shell.close_launcher()
     shell.launcher_closed()
     sits_over(shell, first, held)
     after = steps(shell, held)
+    # The walk that brought it to the third column tells of itself before this one's first
+    # step, so this one's telling is read from its walking on.
+    told = walked_report(shell, toggled)
     sat = [report for report in under if report.startswith(SITS)]
     assert not sat, f"the cat walked on under the launcher: {sat[:3]}"
     assert drew == 0, f"the cat drew {drew} frames under the launcher: {drawn}"
-    assert before, "the cat took no step before the launcher opened"
+    assert len(before) > len(late), "the cat took no step before the launcher was toggled"
     last = before[-1]
+    # It's held as the card goes up, not some while after: its clock goes on no further past
+    # the toggle than a held clock goes on past the card.
+    toggled_at = before[len(before) - len(late) - 1]["walk"]["t"]
+    assert last["walk"]["t"] - toggled_at <= HELD_AHEAD, (
+        f"the cat walked on {last['walk']['t'] - toggled_at} ms past the launcher's toggle"
+    )
     assert after, "the cat took no step once the launcher closed, its walk done before it opened"
     # Its walk's clock goes on from where it was held, rather than the walk set off again or
     # its clock run on under the launcher.
@@ -403,6 +416,7 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     )
     gone = math.hypot(after[0]["x"] - last["x"], after[0]["y"] - last["y"])
     assert gone <= STEPS_ON * last["size"], f"the cat went on from {after[0]}, having got to {last}"
+    held_once(told)
 
 
 def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -> None:
@@ -421,16 +435,43 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     time.sleep(RESTS + HELD)
     drew, drawn = cat_frames(shell)
     under = steps(shell, since)
+    # The walk before tells of itself as this one sets off, under the card, so this one's
+    # telling is read from here.
+    closing = shell.mark()
     shell.close_launcher()
     shell.launcher_closed()
     sits_over(shell, first, since)
     after = steps(shell, since)
+    told = walked_report(shell, closing)
     assert not under, f"the cat walked under the launcher: {under[:3]}"
     assert drew == 0, f"the cat drew {drew} frames under the launcher: {drawn}"
     assert after, "the cat took no step once the launcher closed"
     assert after[0]["walk"]["t"] <= HELD_AHEAD, (
         f"the cat's first step came {after[0]['walk']['t']} ms into its walk"
     )
+    # Held once says its walk was set off under the card, not after it went.
+    held_once(told)
+
+
+def walked_report(shell: Shell, since: int) -> Json:
+    """Wait for the cat to tell of a walk since the mark, and give the one it told of."""
+    shell.reported(WALKED, lambda _: True, since, timedelta(seconds=TOLD))
+    said, _ = shell.said_since(since)
+    told: list[Json] = [
+        json.loads(line[len(WALKED) :].split(" ", 1)[1]) for line in said if line.startswith(WALKED)
+    ]
+    assert len(told) == 1, f"the cat told of {len(told)} walks: {told}"
+    return told[0]
+
+
+def held_once(told: Json) -> None:
+    """Check a walk told of was held once, with the hold left out of its frames and gaps."""
+    assert told["held"] == 1, f"the cat said its walk was held {told['held']} times: {told}"
+    answered = told["frames"] + told["unseen"]
+    assert answered >= told["begun"], (
+        f"niri was asked of {answered} of the {told['begun']} frames it drew: {told}"
+    )
+    assert told["slowest"] < HELD_AHEAD, f"the walk's gaps kept the hold in them: {told}"
 
 
 def three_columns(shell: Shell, named: str) -> Json:

@@ -199,16 +199,17 @@ PanelWindow {
     property int tellsBegun: 0
     property int tellsStepped: 0
     // How it was held under the launcher while it went (stilled): the
-    // frames the shell began for others meanwhile, left out of its own,
-    // where the hold began, and each frame in `shown` that came first after
-    // one, so the journal leaves the hold out of its gaps.
+    // frames its own surface began meanwhile, none of them steps of its
+    // walk, left out of the walk's count; where the hold began; and each
+    // frame in `shown` that came first after one, so the journal leaves
+    // the hold out of its gaps.
     property int heldBegun: 0
     property int heldAt: 0
     property var resumedAt: []
     function unheld(): void {
         heldBegun = 0;
         resumedAt = [];
-        if (stilled)
+        if (Launched.up)
             heldAt = window.FramePresentation.framesBegun;
     }
     // How often this screen draws, in ms, as its last walk showed.
@@ -631,7 +632,8 @@ PanelWindow {
         sayWalked();
         telling = what;
         tellsAt = window.FramePresentation.framesBegun;
-        tellsBegun = tellsAt - begunAt - heldBegun;
+        // A hold still open as it ends is left out as well as those past.
+        tellsBegun = tellsAt - begunAt - heldBegun - (Launched.up ? tellsAt - heldAt : 0);
         tellsStepped = steps;
         answering.restart();
     }
@@ -700,7 +702,7 @@ PanelWindow {
     function answered(heard: var): void {
         if (heard.ends)
             sayWalked();
-        else if (telling === "" && !stilled)
+        else if (telling === "" && !Launched.up)
             window.FramePresentation.ask();
     }
     // The longest a walk done waits to hear of its last frames.
@@ -867,7 +869,7 @@ PanelWindow {
         landedOn = null;
         holding = true;
         if (yarnAt !== null && !yarnFades.running)
-            yarnFades.restart();
+            goes(yarnFades);
     }
 
     // Held with Joel's hand at `hand`, in the screen's logical pixels.
@@ -1041,10 +1043,12 @@ PanelWindow {
 
     // Sets `clock`, the walker, the mover or the yarn's fading, going
     // from its start, and asks niri of its frames; held at once while the
-    // launcher's card is up, asking nothing.
+    // launcher's card is up, asking nothing. It reads the card itself
+    // rather than `stilled`, which another handler of the same change may
+    // run before.
     function goes(clock: var): void {
         clock.restart();
-        if (stilled)
+        if (Launched.up)
             clock.pause();
         else if (clock !== yarnFades && window.FramePresentation.available)
             window.FramePresentation.ask();
@@ -1332,7 +1336,7 @@ PanelWindow {
         if (asleep)
             unpetted();
         if (asleep && yarnLies)
-            yarnFades.restart();
+            goes(yarnFades);
         say();
     }
     readonly property bool stretching: window.scene.stretching
