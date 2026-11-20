@@ -5,29 +5,44 @@ a client destroys a shm pool, and straight after asking for a selection's
 data, unwrapping the result. When the compositor falls behind, as under a
 storm of X11 windows on a loaded machine, the socket is full, the flush
 fails with WouldBlock, and satellite panics, taking every X11 window with
-it. The main loop's own flush already waits up to 50 ms for room and then
-leaves the rest queued for later, but its retry after that wait unwraps
-too. All three now share one flush that waits for room, 50 ms at most
-each time but forever for a selection, whose data is read at once, and
-logs rather than panics when the wait runs out.
+it. The main loop's own flush waits up to 50 ms for room, but its retry
+after that wait unwraps too. All three now share one flush. The main
+loop's waits 50 ms in all, then logs and leaves the rest queued. A shm
+pool's Destroy leaves a full socket to that flush, which ends the same
+turn, so a burst of destroys waits once rather than once each. A
+selection's waits as long as it takes, since its data is read at once
+and the compositor writes it only once it has the request. What is left
+queued waits safely only from wayland-backend 0.3.12, which buffers
+without bound, so newer-backend.patch takes 0.3.17, as upstream has.
 
 diff --git a/src/server/dispatch.rs b/src/server/dispatch.rs
-index 3815022..103414c 100644
+index 3815022..e997d41 100644
 --- a/src/server/dispatch.rs
 +++ b/src/server/dispatch.rs
-@@ -310,7 +310,7 @@ impl<S: X11Selection> Dispatch<WlShmPool, client::wl_shm_pool::WlShmPool> for In
+@@ -310,7 +310,9 @@ impl<S: X11Selection> Dispatch<WlShmPool, client::wl_shm_pool::WlShmPool> for In
              }
              Request::<WlShmPool>::Destroy => {
                  c_pool.destroy();
 -                state.queue.flush().unwrap();
-+                state.flush_queue(Some(std::time::Duration::from_millis(50)));
++                // A full socket is left to the main loop, whose flush ends this same turn, so a
++                // burst of destroys waits once rather than once each.
++                state.flush_queue(Some(std::time::Duration::ZERO));
              }
              other => warn!("unhandled shmpool request: {other:?}"),
          }
 diff --git a/src/server/mod.rs b/src/server/mod.rs
-index a436331..bb8c10a 100644
+index a436331..4fad185 100644
 --- a/src/server/mod.rs
 +++ b/src/server/mod.rs
+@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
+ use std::ops::{Deref, DerefMut};
+ use std::os::fd::{AsFd, BorrowedFd};
+ use std::os::unix::net::UnixStream;
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+ use wayland_client::{
+     Connection, EventQueue, Proxy, QueueHandle,
 @@ -770,39 +770,7 @@ impl<C: XConnection> ServerState<C> {
  
          self.handle_selection_events();
@@ -69,44 +84,53 @@ index a436331..bb8c10a 100644
      }
  
      fn close_x_window(&mut self, window: x::Window) {
-@@ -817,6 +785,45 @@ impl<C: XConnection> ServerState<C> {
+@@ -817,6 +785,54 @@ impl<C: XConnection> ServerState<C> {
      }
  }
  
 +impl<S: X11Selection> InnerServerState<S> {
-+    /// Flush requests to the compositor, waiting up to `patience` (forever for none) each time
-+    /// its socket is full. What isn't written stays queued and goes out with the next flush, so
-+    /// a compositor falling behind slows satellite rather than killing it and every X11 window
-+    /// with it.
++    /// Flush requests to the compositor, waiting while its socket is full for `patience` in all,
++    /// or for as long as it takes with none. What isn't written stays queued for the next flush,
++    /// which wayland-backend buffers without bound from 0.3.12, so a compositor falling behind
++    /// slows satellite rather than killing it and every X11 window with it. A patience of zero
++    /// leaves a full socket to the main loop's flush, which comes at the end of the same turn,
++    /// and says nothing, since a burst of requests would otherwise say it once each.
 +    pub(crate) fn flush_queue(&self, patience: Option<Duration>) {
-+        let timeout = patience.map(|patience| Timespec {
-+            tv_sec: patience.as_secs() as _,
-+            tv_nsec: patience.subsec_nanos() as _,
-+        });
++        let deadline = patience.map(|patience| Instant::now() + patience);
++        let mut waited = false;
 +        loop {
 +            match self.queue.flush() {
 +                Ok(()) => return,
 +                Err(wayland_client::backend::WaylandError::Io(error))
-+                    if error.kind() == std::io::ErrorKind::WouldBlock =>
-+                {
-+                    let fd = PollFd::new(&self.queue, PollFlags::OUT);
-+                    match poll(&mut [fd], timeout.as_ref()) {
-+                        Ok(0) => {
-+                            error!(
-+                                "Failed to flush clientside events (timeout)! Will try again later."
-+                            );
-+                            return;
-+                        }
-+                        Ok(_) | Err(rustix::io::Errno::INTR) => {}
-+                        Err(e) => {
-+                            error!(
-+                                "Failed to flush clientside events ({e})! Will try again later."
-+                            );
-+                            return;
-+                        }
-+                    }
-+                }
++                    if error.kind() == std::io::ErrorKind::WouldBlock => {}
 +                Err(other) => panic!("Failed flushing clientside events: {other:#?}"),
++            }
++            let left = deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
++            if left == Some(Duration::ZERO) {
++                if patience != Some(Duration::ZERO) {
++                    error!("Failed to flush clientside events (timeout)! Will try again later.");
++                }
++                return;
++            }
++            // An endless wait freezes every X11 window, so it says why once.
++            if left.is_none() && !waited {
++                warn!("The compositor's socket is full; waiting for it to read.");
++            }
++            waited = true;
++            let timeout = left.map(|left| Timespec {
++                tv_sec: left.as_secs() as _,
++                tv_nsec: left.subsec_nanos() as _,
++            });
++            let fd = PollFd::new(&self.queue, PollFlags::OUT);
++            match poll(&mut [fd], timeout.as_ref()) {
++                Ok(_) | Err(rustix::io::Errno::INTR) => {}
++                // With no patience the caller waits on the compositor's answer next, which never
++                // comes for a request left unsent, so it can't return and try again later.
++                Err(e) if left.is_none() => panic!("Failed waiting to flush: {e}"),
++                Err(e) => {
++                    error!("Failed to flush clientside events ({e})! Will try again later.");
++                    return;
++                }
 +            }
 +        }
 +    }
@@ -131,10 +155,10 @@ index bd32aaa..d502e9d 100644
          pipe.read_to_end(&mut data).unwrap();
          data
 diff --git a/src/server/tests.rs b/src/server/tests.rs
-index fa70c7d..b8bdcca 100644
+index fa70c7d..21d2c08 100644
 --- a/src/server/tests.rs
 +++ b/src/server/tests.rs
-@@ -3343,3 +3343,40 @@ fn decorations_max_height_int_max() {
+@@ -3343,3 +3343,70 @@ fn decorations_max_height_int_max() {
  /// See Pointer::handle_event for an explanation.
  #[test]
  fn popup_pointer_motion_workaround() {}
@@ -150,28 +174,58 @@ index fa70c7d..b8bdcca 100644
 +        &compositor.shm.obj,
 +        Req::<WlShm>::CreatePool { fd, size: 1024 },
 +    );
++    let backlog = TestObject::<WlShmPool>::from_request(
++        &compositor.shm.obj,
++        Req::<WlShm>::CreatePool { fd, size: 1024 },
++    );
 +    f.run();
-+
-+    // Fill satellite's socket to the compositor by not letting testwl read it.
-+    loop {
++    let resize = |pool: &TestObject<WlShmPool>, f: &mut TestFixture<_>| {
 +        for _ in 0..100 {
 +            pool.send_request(Req::<WlShmPool>::Resize { size: 1024 })
 +                .unwrap();
 +        }
 +        f.xwls_connection.flush().unwrap();
 +        f.xwls_display.dispatch_clients(&mut *f.satellite).unwrap();
++    };
++
++    // Fill satellite's socket to the compositor by not letting testwl read it. A default unix
++    // socket takes a few hundred rounds, so a thousand that never fill it fail rather than hang.
++    let mut filled = false;
++    for _ in 0..1000 {
++        resize(&pool, &mut f);
 +        match f.satellite.queue.flush() {
 +            Ok(()) => {}
-+            Err(WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => break,
++            Err(WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
++                filled = true;
++                break;
++            }
 +            Err(e) => panic!("Failed to flush: {e:?}"),
 +        }
 +    }
++    assert!(filled, "satellite's socket to the compositor never filled");
 +
++    // Destroy the pool into the full socket, and let the main loop's flush give up on it too,
++    // with testwl still not reading.
 +    pool.send_request(Req::<WlShmPool>::Destroy).unwrap();
-+    f.run();
++    f.xwls_connection.flush().unwrap();
++    f.xwls_display.dispatch_clients(&mut *f.satellite).unwrap();
++    f.satellite.run();
 +
-+    // Requests sent after the backlog still arrive once testwl reads again.
++    // Requests go on coming while the compositor is behind, far past the 4 KB wayland-backend
++    // buffered before 0.3.12, which then lost the connection.
++    for _ in 0..10 {
++        resize(&backlog, &mut f);
++    }
++    f.satellite.run();
++
++    // The stream is ordered and losing a request ends it, so a surface asked for after the
++    // backlog arriving means all of it did. Each run lets testwl read a socketful.
 +    let _surface = compositor.create_surface();
-+    f.run();
++    for _ in 0..20 {
++        f.run();
++        if !f.testwl.created_surfaces().is_empty() {
++            break;
++        }
++    }
 +    assert_eq!(f.testwl.created_surfaces().len(), 1);
 +}

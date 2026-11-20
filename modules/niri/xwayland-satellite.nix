@@ -6,11 +6,14 @@
 # Xwayland of their own, run as it builds. It panics when the compositor
 # falls behind enough to fill its socket, as under a storm of windows, so
 # the second patch (flush-when-full.patch) waits for room instead, its test
-# filling the socket against a stand-in compositor. The script in front of it
+# filling the socket against a stand-in compositor, and the third
+# (newer-backend.patch) takes the wayland-backend whose buffer grows while
+# it waits, so its vendored crates are fetched again. The script in front of it
 # (xwayland-satellite.sh) gives Xwayland a cookie, so only Joel's programs
 # connect. nixos.nix installs it, and checks.nix starts it on a nested niri.
 {
   coreutils,
+  rustPlatform,
   writeShellApplication,
   xauth,
   xwayland,
@@ -20,8 +23,14 @@ let
   satellite = xwayland-satellite.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       ./untitled-instance.patch
+      ./newer-backend.patch
       ./flush-when-full.patch
     ];
+    cargoDeps = rustPlatform.fetchCargoVendor {
+      inherit (old) pname src version;
+      patches = [ ./newer-backend.patch ];
+      hash = "sha256-WgaUvUmbuDm0cFbqXdHQNpD299YoJo2yymI2HT6ItFY=";
+    };
     doCheck = true;
     nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ xwayland ];
     cargoTestFlags = [
@@ -29,12 +38,15 @@ let
       "integration"
       "--lib"
     ];
-    # Each runs the tests whose names hold it, in the library too.
+    # Each runs the tests whose names hold it. Every test in server::tests
+    # runs satellite's main loop and its flush against a stand-in compositor,
+    # with no Xwayland, so they all run; the integration tests start an
+    # Xwayland each, so only those of the first patch.
     checkFlags = [
       "title"
       "instance"
       "class_alone"
-      "shm_pool_destroy_with_full_socket"
+      "server::tests::"
     ];
     preCheck = ''
       export XDG_RUNTIME_DIR=$(mktemp -d)
