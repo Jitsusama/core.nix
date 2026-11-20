@@ -46,9 +46,10 @@ fi
 # goes there only as its animations start again after stopping, so its
 # timer must have started with all three windows shown at least as often
 # as the case starts them. Counted over the whole run, which starts it
-# beyond the ten as well, so one start missing it can pass; that start's
-# still window would then draw for the patch's undoing anyway. The
-# timer's line is Qt's own wording, which a Qt bump may change.
+# beyond the ten as well, so one start whose timer never stopped after
+# the start before can pass, saying nothing of the patch; the other
+# starts still do. The timer's line is Qt's own wording, which a Qt bump
+# may change.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
