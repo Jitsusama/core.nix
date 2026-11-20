@@ -2,10 +2,13 @@
 //! each unit that failed, a step in from the edge, with what it said
 //! under it, or why its journal couldn't say, at most four of them so
 //! the screen holds them above the shell's own words, which of its files
-//! the journal skipped, and the way out last.
+//! the journal skipped, and the way out last, fitted to the console's
+//! height (fit.rs).
 
 use terminal_kit::Pen;
 use terminal_kit::layout::{self, Room};
+
+use crate::fit::{Line, Screen, Skipped, Told};
 
 /// How many units are shown, so the summary fits a screen a person can
 /// read before the shell's own words.
@@ -15,7 +18,7 @@ pub const SHOWN: usize = 4;
 const MARGIN: &str = "  ";
 
 /// What a unit said, set under its name, past its mark.
-const UNDER: &str = "     ";
+pub const UNDER: &str = "     ";
 
 /// A unit that failed, as systemd tells of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,59 +37,42 @@ pub struct Failed {
 
 /// The summary: the first `SHOWN` of `failed`, how many more there are
 /// of `all`, the files journalctl said it `skipped`, and the way out,
-/// for a room `room` wide. Nothing failed says nothing.
-pub fn text(failed: &[Failed], all: usize, skipped: &[String], pen: &Pen, room: Room) -> String {
+/// for a room `room` wide, fitted to a console `rows` high where its
+/// height is known. Nothing failed says nothing.
+pub fn text(
+    failed: &[Failed],
+    all: usize,
+    skipped: &[String],
+    pen: &Pen,
+    room: Room,
+    rows: Option<usize>,
+) -> String {
     if all == 0 {
         return String::new();
     }
-    let mut out = String::new();
-    for unit in failed.iter().take(SHOWN) {
-        out.push('\n');
-        out.push_str(&heading(unit, pen, room));
-        out.push('\n');
-        for line in &unit.said {
-            for part in under(line, room) {
-                out.push_str(UNDER);
-                out.push_str(&pen.role("muted", &part));
-                out.push('\n');
-            }
-        }
-        if let Some(why) = &unit.unread {
-            for part in under(&format!("its journal couldn't be read: {why}"), room) {
-                out.push_str(UNDER);
-                out.push_str(&pen.role("muted", &part));
-                out.push('\n');
-            }
-        }
+    let units = failed.iter().take(SHOWN).map(|unit| Told {
+        heading: heading(unit, pen, room),
+        lines: unit
+            .said
+            .iter()
+            .cloned()
+            .chain((unit.unread.iter()).map(|why| format!("its journal couldn't be read: {why}")))
+            .map(Line::whole)
+            .collect(),
+    });
+    let mut screen = Screen {
+        units: units.collect(),
+        all,
+        skipped: skipped.first().map(|first| Skipped {
+            several: skipped.len() > 1,
+            first: first.clone(),
+            example: true,
+        }),
+    };
+    if let Some(rows) = rows {
+        screen.fit(rows, pen, room);
     }
-    let shown = failed.len().min(SHOWN);
-    if all > shown {
-        out.push('\n');
-        out.push_str(UNDER);
-        out.push_str(&pen.role("muted", &format!("and {} more", all - shown)));
-        out.push('\n');
-    }
-    // A file the journal skipped may hold any unit's lines, or only an
-    // earlier boot's, so it's said once, for them all, rather than under
-    // a unit as its reason. The first says what kind of trouble it is. A
-    // flaky disk can word one file two ways, so they're never counted.
-    if let Some(first) = skipped.first() {
-        let told = match skipped.len() {
-            1 => "journalctl skipped a journal file, so lines may be missing:",
-            _ => "journalctl skipped journal files, so lines may be missing, such as:",
-        };
-        out.push('\n');
-        for part in [told, first].into_iter().flat_map(|line| under(line, room)) {
-            out.push_str(UNDER);
-            out.push_str(&pen.role("muted", &part));
-            out.push('\n');
-        }
-    }
-    out.push('\n');
-    out.push_str(UNDER);
-    out.push_str(&way_out(pen));
-    out.push_str("\n\n");
-    out
+    screen.drawn(pen, room)
 }
 
 /// A unit's line: its mark in the alert colour, its name, and its
@@ -127,7 +113,7 @@ fn heading(unit: &Failed, pen: &Pen, room: Room) -> String {
 /// Hangul filler's among them, and loses the words that draw nothing,
 /// so no row it wraps to shows nothing. Into a pipe it stays one line.
 /// A blank line says nothing, so it's left out.
-fn under(said: &str, room: Room) -> Vec<String> {
+pub fn under(said: &str, room: Room) -> Vec<String> {
     let said = clean(said);
     let said = said.trim_end();
     if blank(said) {
@@ -174,7 +160,7 @@ fn broken(word: &str, measure: usize) -> Vec<&str> {
 }
 
 /// The keys out of a failed boot, as the console's greeting draws keys.
-fn way_out(pen: &Pen) -> String {
+pub fn way_out(pen: &Pen) -> String {
     format!(
         "{} {} {} {}",
         pen.role("strong", "Ctrl+Alt+Delete"),
@@ -265,7 +251,7 @@ pub fn last_shown(lines: Vec<String>, count: usize) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use terminal_kit::Ink;
 
@@ -415,10 +401,12 @@ mod tests {
 
     /// The summary with no file skipped, as most of these tests want it.
     fn text(failed: &[Failed], all: usize, pen: &Pen, room: Room) -> String {
-        super::text(failed, all, &[], pen, room)
+        super::text(failed, all, &[], pen, room, None)
     }
 
-    fn console() -> Pen {
+    /// A pen as the console inks, with its marks: fit.rs's tests draw
+    /// with it too.
+    pub(crate) fn console() -> Pen {
         Pen::new(
             Ink {
                 console: true,
@@ -491,7 +479,7 @@ mod tests {
             "Journal file /j/user-1000.journal corrupted, ignoring file.".to_owned(),
         ];
         assert_eq!(
-            super::text(&failed, 1, &skipped, &console(), Room::Cells(100)),
+            super::text(&failed, 1, &skipped, &console(), Room::Cells(100), None),
             "\n  x  home.mount  Mount /home\n     wrong fs type\n\n     journalctl skipped \
              journal files, so lines may be missing, such as:\n     Journal file \
              /j/system@a.journal~ is truncated, ignoring file.\n\n     Ctrl+Alt+Delete \
@@ -499,7 +487,14 @@ mod tests {
             "the skipped files weren't said once, cleaned, above the way out"
         );
         says(
-            &super::text(&failed, 1, &skipped[..1], &console(), Room::Cells(100)),
+            &super::text(
+                &failed,
+                1,
+                &skipped[..1],
+                &console(),
+                Room::Cells(100),
+                None,
+            ),
             "     journalctl skipped a journal file, so lines may be missing:",
         );
     }

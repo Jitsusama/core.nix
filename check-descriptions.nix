@@ -20,8 +20,9 @@
     a chord two layers claim, or one claims twice, is refused
   '';
   a-failed-boot-says-what-stopped-it = ''
-    a failed boot's shell names up to four failed units and their last lines, in the account's
-    theme with the console's marks, and the way out, in time when the journal stalls, why a
+    a failed boot's shell names up to four failed units and their last lines, fitted to a
+    terminal's rows with eight left for the shell, in the account's theme with the console's
+    marks, and the way out, in time when the journal stalls, why a
     unit's journal gave nothing when it couldn't be read, once which file the journal skipped,
     and nothing when none failed
   '';

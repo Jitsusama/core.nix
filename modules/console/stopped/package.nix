@@ -15,9 +15,9 @@
   rustPlatform,
   terminalKit ? fetchgit {
     url = "https://github.com/Jitsusama/core.nix";
-    rev = "3840777a489b0aae5a59f407aa1f91731d455fc9";
+    rev = "27b363f374a744affb81482ddb12b0714ca91c51";
     rootDir = "modules/terminal-kit";
-    hash = "sha256-aSKWzdIyfw2kZkTqIpMZAiEW2GvO807VHokspsCu2Zo=";
+    hash = "sha256-GAI4bFBFWw+5EGZcyYRyrjipUuBkC2FRo4aa6fH8Ru0=";
   },
 }:
 rustPlatform.buildRustPackage rec {

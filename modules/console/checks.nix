@@ -124,10 +124,15 @@ in
           signingIn.config.systemd.services.emergency.serviceConfig.ExecStartPre
       );
     in
-    pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/boot-stopped.sh} ${stopped}
-      touch $out
-    '';
+    pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it"
+      {
+        # script gives the summary a terminal, to show it fits the rows.
+        nativeBuildInputs = [ pkgs.util-linux ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/boot-stopped.sh} ${stopped}
+        touch $out
+      '';
 
   # The journalctl the summary runs still words a skipped journal file as
   # the summary reads it, as tests/journal-words-skips.sh says. The
