@@ -657,10 +657,10 @@ QtObject {
             + "launcher: 1 change in quests presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms");
         // A refresh due while home was still to be found waits for the find,
-        // not the pace, so a change held there says its hold apart, and one
-        // of the same place not held says it held for none (H6EDLC, Super+N,
-        // 2026-11-19). Each place is said its own way, so a place with none
-        // held beside it says no hold.
+        // not the pace, so a place's line counts its changes held and says the
+        // longest hold apart, one of them not held waiting on the pace to its
+        // refresh (H6EDLC, Super+N, 2026-11-19). Each place is said its own
+        // way, so a place with none held beside it says no hold.
         const heldApart = Presented.changesSaid([
             { place: "machine", from: 0, heard: 5, held: 10, refreshed: 40, begun: 48, at: 70 },
             { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
@@ -672,8 +672,8 @@ QtObject {
             heldApart.join("\n"),
             "launcher: 3 changes in machine presented a median 70 ms from the line, "
             + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms: a median 4 ms before the "
-            + "shell heard it, 8 waiting on the pace, 12 held while home was found, 8 in the "
-            + "shell and 30 from its frame's start\n"
+            + "shell heard it, 8 waiting on the pace, 8 in the shell and 30 from its frame's "
+            + "start; 2 held while home was found, the longest 30 ms\n"
             + "launcher: 1 change in windows presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 5 ms before the "
             + "shell heard it, 35 waiting on the pace, 8 in the shell and 22 from its frame's "
@@ -701,8 +701,8 @@ QtObject {
             heardLate.join("\n"),
             "launcher: 1 change in machine presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 20 ms before the "
-            + "shell heard it, 0 waiting on the pace, 20 held while home was found, 8 in the "
-            + "shell and 22 from its frame's start");
+            + "shell heard it, 0 waiting on the pace, 8 in the shell and 22 from its frame's "
+            + "start; 1 held while home was found, the longest 20 ms");
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many

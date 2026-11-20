@@ -298,10 +298,12 @@ const changeParts = [["from", "heard", "before the shell heard it"],
 // A refresh due while home was still to be found is held until it's found
 // (Launcher.qml's refreshDue and refreshed, through heldFrom), which isn't
 // the pace: where one of a place's changes was held, `held` being when, its
-// line says the hold apart (heldOf).
-const heldParts = [["from", "heard", "before the shell heard it"],
-    ["heard", "held", "waiting on the pace"],
-    ["held", "refreshed", "held while home was found"], ["refreshed", "begun", "in the shell"],
+// line says the hold apart (heldOf), its wait on the pace ending as the hold
+// began, and how many were held and the longest hold after the medians.
+// One opening holds about one change a place, so a median of holds over
+// all of them would read 0 beside a hold of 150 ms.
+const pacedParts = [["from", "heard", "before the shell heard it"],
+    ["heard", "held", "waiting on the pace"], ["refreshed", "begun", "in the shell"],
     ["begun", "at", "from its frame's start"]];
 
 // A place's changes, `its`, with the parts their line says.
@@ -310,7 +312,14 @@ function changesParted(its) {
         return partsSwapped(its, changeParts);
     }
     const filled = its.map(one => Object.assign({}, one, { held: heldOf(one) }));
-    return partsSwapped(filled, heldParts);
+    const holds = its.filter(one => one.held !== undefined && one.refreshed !== undefined)
+        .map(one => Math.round(one.refreshed - heldOf(one)));
+    const said = partsSwapped(filled, pacedParts);
+    if (said === "" || holds.length === 0) {
+        return said;
+    }
+    return `${said}; ${holds.length} held while home was found, the longest `
+        + `${Math.max(...holds)} ms`;
 }
 
 // When a change was held from: one not held is held for none, and one
