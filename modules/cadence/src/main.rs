@@ -318,19 +318,14 @@ fn run(args: &Args) -> io::Result<()> {
         snapshot.answered_by.insert(by, answers);
     }
     for question in asking::tick(&snapshot, &mut state) {
-        let to = match question.to {
-            To::Watcher => watcher.as_str(),
-            To::Switcher => snapshot.switcher.as_deref().unwrap_or(watcher),
-            To::Orchestrator => orchestrator.as_str(),
-        };
+        let (to, by) = question.to.addressed(&snapshot, watcher, orchestrator);
         let text = match question.to {
-            To::Watcher | To::Switcher => asked_to_answer(&question.text),
+            To::Watcher | To::Switcher | To::Holder => asked_to_answer(&question.text),
             To::Orchestrator => question.text.clone(),
         };
         let message = message(to, question.to.intent(), text);
         mesh.send(&message)?;
         if let Some(key) = &question.key {
-            let by = (question.to == To::Switcher).then_some(to);
             state.asked_as(key, &message.id, now, &question.text, by);
         }
     }
@@ -565,6 +560,7 @@ fn gather(
     let landings = core.landings(now - DAY, &follower)?;
     let net = state_home.join("net");
     let round = core.round(&fs::read_to_string(net.join("state.json")).unwrap_or_default());
+    let held = fs::read_to_string(net.join("held.json")).unwrap_or_default();
     let (available_gib, swap_gib) =
         records::memory(&fs::read_to_string("/proc/meminfo").unwrap_or_default());
     let kernel = journal(&[
@@ -607,7 +603,8 @@ fn gather(
         watched: args.watcher.is_some(),
         round,
         net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
-        net_held: records::net_held(&fs::read_to_string(net.join("held.json")).unwrap_or_default()),
+        net_held: records::net_held(&held),
+        net_held_since: watch::held::read(&held),
         net_hung: crate::net::hung(&net.join("findings"), now - 3600),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
             Path::new(&format!("/proc/{pid}")).exists()
