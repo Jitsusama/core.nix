@@ -866,6 +866,8 @@ mod tests {
         let moved = commit(&repo, "a\nB\nc\nd\ne\n");
         let rebased = commit(&repo, "a\nB\nC\nd\ne\n");
         let other = commit(&repo, "a\nB\nc\nD\ne\n");
+        git_in(&repo, &["checkout", "-q", &moved]);
+        let spaced = commit(&repo, "a\nB\n  C\nd\ne\n");
         assert_eq!(
             patch_id(&repo, &base, &change),
             patch_id(&repo, &moved, &rebased),
@@ -875,6 +877,13 @@ mod tests {
             patch_id(&repo, &base, &change),
             patch_id(&repo, &rebased, &other),
             "a change of other lines is another change"
+        );
+        // Whitespace is code in some languages, so a read commit's review
+        // goes to no edit of its whitespace.
+        assert_ne!(
+            patch_id(&repo, &base, &change),
+            patch_id(&repo, &moved, &spaced),
+            "a change to whitespace alone is another change"
         );
         fs::remove_dir_all(&repo).unwrap();
     }
