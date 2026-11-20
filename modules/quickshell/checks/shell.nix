@@ -268,6 +268,20 @@
         "Quickshell's unit leaves Qt making a decorations context beside each window's own."
         false;
 
+  # Qt names the JavaScript it compiles to perf only by writing a map from
+  # the shell's own thread, to /tmp on the root's disk, so it's set for a
+  # profile of a shell of its own and never left on Joel's (the unit's
+  # Environment says what it cost). It came on once for a profile and
+  # stayed, so its coming back is held here.
+  quickshell-writes-no-perf-map =
+    let
+      home = account graphical;
+      environment = home.systemd.user.services.quickshell.Service.Environment or [ ];
+    in
+    holds "quickshell-writes-no-perf-map"
+      "Quickshell's unit has Qt write a perf map from the shell's thread to the root's disk."
+      (!lib.any (lib.hasPrefix "QV4_PROFILE_WRITE_PERF_MAP=") (lib.toList environment));
+
   # Qt's own compiler takes every file of the shell as the account gets it,
   # the greeter's included, on the Qt the shell runs on
   # (modules/quickshell/tests/qml-compiles.sh).

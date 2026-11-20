@@ -3053,6 +3053,9 @@
   quickshell-takes-its-shape-from-the-theme = ''
     every corner and border in the shell and in each module's surface is the theme's
   '';
+  quickshell-writes-no-perf-map = ''
+    the account's Quickshell unit leaves Qt writing no perf map of the JavaScript it compiles
+  '';
   reader-builds-again-only-for-the-pages-keys = ''
     a new act in the key language for lists leaves the reader's build as it was, and one for pages
     changes it

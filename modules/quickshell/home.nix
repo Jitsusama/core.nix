@@ -2807,12 +2807,16 @@ in
         # Qt writes nothing of the JavaScript it compiles here: with
         # QV4_PROFILE_WRITE_PERF_MAP set it names each function to perf in
         # /tmp/perf-<pid>.map, written from the shell's own thread as it
-        # compiles, and /tmp is on the root's btrfs. Under a loaded disk a
-        # write there waits for btrfs to reserve room: Joel's shell stood
-        # 958 ms in that wait as Super+N opened the launcher, and 873 ms
-        # half an hour on, with the map the one file on that disk it held
-        # open to write (2026-11-19). A profile sets it on a shell of its
-        # own, as shell-preview runs, never on his.
+        # compiles, and /tmp is on the root's btrfs. Joel's shell stood
+        # 958 ms waiting on btrfs to reserve room as Super+N opened the
+        # launcher, and 873 ms half an hour on, and the map was the one
+        # file on that disk it held open to write when looked at after
+        # (2026-11-19); which of its writes waited isn't yet shown. A lab
+        # on a quiet disk had found the map cost nothing. A profile sets
+        # it in the environment shell-preview starts from, which hands it
+        # to its own shell, never on his. Qt's profiler would name the
+        # functions too, but only through a debugging port any local
+        # process could drive, in the shell that asks for his password.
         Environment = shellEnvironment;
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
