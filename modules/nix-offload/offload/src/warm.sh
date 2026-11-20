@@ -75,6 +75,8 @@ else
 					"beside its workspace build at a new path" >&2
 			fi
 			;;
+		# A folder whose name only begins as the copy's does, as tree2, is no copy.
+		*) ;;
 		esac
 		export CARGO_TARGET_DIR="$root/$slot/target" CARGO_BUILD_BUILD_DIR="$root/$slot/build"
 		echo "nix-offload: cargo builds in warm target $slot of $key there" >&2
