@@ -447,7 +447,7 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
 # How many lines going into a drawer's page laid for its frame, as the shell says once niri
 # presents it (launcher/Presented.js's intoSaid), with the page it named.
 LAID_GOING_IN = re.compile(
-    r'launcher: into the drawer for "(?:[^"\\]|\\.)*" on ("(?:[^"\\]|\\.)*") presented .* '
+    r'launcher: into the drawer for "(?:[^"\\]|\\.)*"(?: on ("(?:[^"\\]|\\.)*"))? presented .* '
     r"(\d+) lines? laid first"
 )
 
@@ -463,8 +463,9 @@ def laid_going_in(shell: Shell, mark: int, page: str) -> int:
         with shell.log.open("rb") as log:
             log.seek(mark)
             written = log.read().decode(errors="replace")
+        # An untitled page's line names none, so it's never the page waited for.
         for found in LAID_GOING_IN.finditer(written):
-            if json.loads(found.group(1)) == page:
+            if found.group(1) is not None and json.loads(found.group(1)) == page:
                 return int(found.group(2))
         # The line is written once niri presents the frame, so it's read again a poll apart.
         time.sleep(launcher_on_niri.POLL)

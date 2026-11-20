@@ -1068,6 +1068,13 @@ QtObject {
             Search.found("ab", "a\u200bb"), [[0, 3]]);
         holds("and a joiner pasted in a pattern finds a plain hyphen",
             Search.found("t-\u2060shirt", "T-shirt"), [[0, 7]]);
+        holds("a place found ends at its last letter, not the joiner after",
+            Search.found("wi-", "wi-\u2060fi"), [[0, 3]]);
+        // Lower case can be longer than its letter, as an I with a dot
+        // above lowers to an i and a dot, and a place found after one
+        // still stands on the text's own letters.
+        holds("a letter that lowers longer leaves what follows in its place",
+            Search.found("x", "\u0130x"), [[1, 2]]);
     }
 
     function drawerSearch(holds) {
@@ -2001,6 +2008,8 @@ QtObject {
         const edge = { off: 5, height: 300, top: 900 };
         holds("a move past a run's laid end lays its rest whole",
             Page.runReach({ line: 41, top: 0 }, 40, edge), "whole");
+        holds("one landing on that line lays more, not the rest",
+            Page.runReach({ line: 40, top: 0 }, 40, edge), "more");
         holds("one within scrolloff of it lays more",
             Page.runReach({ line: 35, top: 0 }, 40, edge), "more");
         holds("as does one whose view reaches past it",
