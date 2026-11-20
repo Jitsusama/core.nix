@@ -990,7 +990,7 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
                 each[loaded].append(opening)
         # A storm that fell over partway, as xwayland-satellite's windows do when it does,
         # would leave the openings after it timed against a calm desktop.
-        stormy = "niri msg --json windows | grep -o '\"title\":\"storm ' | wc -l"
+        stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
         listed = int(desktop.as_account(stormy))
         assert listed == STORMING, (
             f"the storm's windows fell to {listed} of {STORMING} before its openings were timed"
