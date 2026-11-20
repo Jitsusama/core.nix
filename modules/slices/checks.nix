@@ -235,6 +235,14 @@
         && !(agents ? MemoryMax)
       );
 
+  # The account's daemons share eight processors' time at most, declared,
+  # since a quota set only at runtime is lost at the next boot, as one was
+  # on 20 November, and nothing says so.
+  background-work-keeps-to-eight-processors =
+    holds "background-work-keeps-to-eight-processors"
+      "background.slice declares no quota of eight processors' time, so the account's daemons can take every idle core after a boot."
+      ((graphical.config.systemd.user.slices.background.sliceConfig.CPUQuota or null) == "800%");
+
   # Work yields to what the user works in only while jobs is idle beside
   # app.slice, the sorter runs outside both, pi is told where jobs is, jobs
   # comes back after systemd-oomd ends it, and a window's own scope, where
