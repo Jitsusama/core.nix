@@ -427,15 +427,8 @@ Singleton {
     // decider kept out of a host starts told why, so its pi says so rather
     // than asking again (decided below).
     function reopened(one, cwd, told, into) {
+        const { env, pi } = resumeWords(one);
         const fresh = one.fresh === true;
-        const quest = fresh && typeof one.quest === "string" && one.quest !== ""
-            ? [`QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
-        const stayed = typeof one.stayed === "string"
-            ? [`QUEST_WORKFLOW_SPAWN_STAYED=${one.stayed}`] : [];
-        const assigned = quest.concat(root.startedWith(one), stayed);
-        const env = assigned.length > 0 ? ["env"].concat(assigned) : [];
-        const model = one.model ? ` --model ${one.model}` : "";
-        const pi = (fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`) + model;
         const telling = typeof told === "string" && told !== "";
         // Classed as a session's either way, so a window Joel opens
         // meanwhile isn't taken for it; one another session started opens
@@ -445,6 +438,33 @@ Singleton {
             ["zsh", "-lic", held(telling ? `${pi} -- "$0"` : pi)], telling ? [told] : []), into);
         Report.say(`${fresh ? "started unsaved" : "resumed"} session ${one.id}`);
         return classed;
+    }
+    // The words that start `one` again where it left off, as reopened and
+    // reopenedHeld run them: `env`, what it's started with, and `pi`.
+    function resumeWords(one) {
+        const fresh = one.fresh === true;
+        const quest = fresh && typeof one.quest === "string" && one.quest !== ""
+            ? [`QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
+        const stayed = typeof one.stayed === "string"
+            ? [`QUEST_WORKFLOW_SPAWN_STAYED=${one.stayed}`] : [];
+        const assigned = quest.concat(root.startedWith(one), stayed);
+        const model = one.model ? ` --model ${one.model}` : "";
+        return { env: assigned.length > 0 ? ["env"].concat(assigned) : [],
+            pi: (fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`) + model };
+    }
+    // Starts `one` again where it left off, held as every start is but
+    // detached, so no window opens for it and Go To joins it: Reopen Them
+    // All brings back so one that had no window as the boot ended
+    // (Reopening.broughtBack). Its folder goes as the shell's own `$1`, so
+    // nothing in it is read as the shell's words, and `told` as `$0`, as
+    // reopened sends it.
+    function reopenedHeld(one, cwd, told) {
+        const { env, pi } = resumeWords(one);
+        const telling = typeof told === "string" && told !== "";
+        Niri.spawn(env.concat(["zsh", "-lic", `exec mycelium --realm ${realm} holds add `
+            + `--detached --folder "$1" -- ${telling ? `${pi} -- "$0"` : pi}`,
+            telling ? told : "zsh", cwd]));
+        Report.say(`resumed session ${one.id} without a window`);
     }
 
     // What a session was started with that it's started with again, from
@@ -1461,9 +1481,14 @@ Singleton {
         // alike screens were two (Places.js's twinsOf).
         const moments = { now: arrangedOthers[bootId], restored: arrangedOthers[restoring.boot] };
         const momentOf = id => keptAt ? [] : moments[Places.keptFrom(id, boots)];
+        // Whether the boot being restored kept its places at all, so one
+        // kept nowhere had no window rather than went unrecorded
+        // (Reopening.broughtBack).
+        const arranged = keptAt !== undefined
+            || Object.keys(boots.restored ?? {}).length > 0;
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
-        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf));
+        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf, arranged));
     }
     // What Reopen Them All tells each session it reopens, so a boot never
     // leaves them waiting to be poked one by one (P9R1KI, 2026-11-02
@@ -1475,14 +1500,18 @@ Singleton {
         + "left off: your plan's next open item."
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
-    function reopenHere(here, gone, kept, told, momentOf) {
+    function reopenHere(here, gone, kept, told, momentOf, arranged) {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
         const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
+        // Only Reopen Them All tells each to carry on, which marks its walk.
+        const walk = told === root.carryOn;
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
-            kept: keptPlaces[at], gone, told })).sort(order));
+            kept: keptPlaces[at], gone, told,
+            back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true) }))
+            .sort(order));
         if (reopening !== null) {
             reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
             // Settled again once these are placed too, beside the rest.
@@ -1793,6 +1822,21 @@ Singleton {
                 root.reopenAfresh(next);
                 return;
             }
+            // One that had no window as the boot ended comes back without
+            // one, held, and the next is begun at the pace; with no realm
+            // to hold it in, it opens as any other.
+            if (next.back?.window === false && root.holds) {
+                const waits = next.told === root.carryOn
+                    && !root.carryOnNow(next.one, next.kept);
+                console.info(`sessions: reopening ${next.one.id} without a window, `
+                    + "since the boot kept none for it");
+                root.reopenedHeld(next.one, next.one.cwd, waits ? "" : next.told);
+                if (waits)
+                    root.carryOnLater(next.one, next.kept);
+                paceFromNow(next.one.id);
+                root.reopenSoon();
+                return;
+            }
             // Placed by its connector and the number it's given now, so it
             // goes beside those given the same screen, a gone one's too.
             const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
@@ -1802,8 +1846,10 @@ Singleton {
             // itself, handed over to be focused with no home and no place.
             // Only with no workspace to open on is where it goes focused
             // first, so it opens there and is seldom seen to move.
+            // Reopen Them All puts one back at its kept place, ahead of
+            // its orchestrator's workspace (Reopening.broughtBack).
             const quiet = next.one.quiet === true;
-            const home = Places.homeOf(next.one, next.kept);
+            const home = next.back?.home === false ? "" : Places.homeOf(next.one, next.kept);
             const asked = next.one.focused === true && at === null && home === "";
             const into = asked ? null
                 : root.opensOn(next.one, at, root.besideOf(reopening.placed), home);
@@ -1868,8 +1914,8 @@ Singleton {
         const session = root.hostedHere(id);
         const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
             column: next.at.column, tile: next.at.tile ?? 1 } : null;
-        const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed))
-            : null;
+        const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
+            next.back?.home === false ? "" : undefined) : null;
         if (session?.window || into === null) {
             console.info(`sessions: ${id}'s viewer not opened, since `
                 + (session?.window ? "it is open" : `none was kept at ${root.keptSaid(at)}`));
@@ -1914,7 +1960,8 @@ Singleton {
             column: next.at.column, tile: next.at.tile ?? 1 } : null;
         const slept = keptPlaces[id]?.slept === true ? keptPlaces[id] : null;
         const into = slept ? null
-            : root.opensOn(next.one, at, root.besideOf(reopening.placed));
+            : root.opensOn(next.one, at, root.besideOf(reopening.placed),
+                next.back?.home === false ? "" : undefined);
         if (slept)
             keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign({}, slept,
                 { at: Date.now(), asleep: true, asked: true }) }));

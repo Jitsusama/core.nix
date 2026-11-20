@@ -83,6 +83,28 @@ function mayBegin(text, now) {
     return (machine.over ?? []).length === 0 && (machine.pressure?.io ?? 0) < ioStalls;
 }
 
+// How Reopen Them All brings back a session the boot took (Joel,
+// 2026-11-20 13:24, after optimus's reset at 13:15: crash-taken windows
+// come back where they were, unfocused, and windowless sessions come back
+// windowless). One kept somewhere had a window as the boot ended, so it
+// opens there (`window`), at its kept place rather than its
+// orchestrator's workspace (`home` false), which moved one kept on the
+// second workspace to its orchestrator's third. One kept nowhere had no
+// window, as one an orchestrator started in the background has none, so
+// it comes back held without one, for Go To to join. That holds only
+// within the walk (`walk`), whose places are the boot's own, and only
+// while the boot's places are known (`arranged`): with none, as when the
+// agents daemon kept nothing, every session reads as kept nowhere, so
+// each opens as before. Anything else, handed over or started alone,
+// opens as it always did, going home first.
+function broughtBack(walk, kept, arranged) {
+    if (!walk)
+        return { window: true, home: true };
+    if (kept !== null && kept !== undefined)
+        return { window: true, home: false };
+    return arranged ? { window: false, home: false } : { window: true, home: true };
+}
+
 // Reopen Them All's queue, `{ one, kept }` each, with those whose kept
 // place says it `leads` (it orchestrated others as it was kept) first,
 // each part in the order it came, so the sessions an orchestrator leads
