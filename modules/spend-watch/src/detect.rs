@@ -555,9 +555,10 @@ fn ending_finding(
             if known { "is ending" } else { "may be ending" }
         ),
         format!(
-            "The {} override ends {day}{}. At this pace, a {} chance the spend \
+            "The {} override ends {day}{}. At {}'s pace, a {} chance the spend \
              is over the {} that follows the moment it does.",
             whole(allowance),
+            paced(picture),
             if known { "" } else { ", by the feed's guess" },
             percent(after),
             whole(fallback)
@@ -1584,18 +1585,22 @@ pub fn unbilled(
     // behind another is, and however another holds back. It's told in
     // place of any budget, as a warehouse that stopped settling is.
     let now = crate::time::hour_of(picture.now);
-    if let Some((most, feed)) = settled.most.filter(|(most, _)| *most > now) {
-        return Ok(vec![unsettled_finding(picture, &feed, most)]);
+    // Every held feed is told beside a wrong row, so another feed's row
+    // can't clear a held note and start its count again.
+    let held = held_findings(picture, history, &settled.held)?;
+    let wrong = settled.most.filter(|(most, _)| *most > now).or_else(|| {
+        settled
+            .least
+            .clone()
+            .filter(|(least, _)| *least < now - UNBILLED_STALE_HOURS)
+    });
+    if let Some((through, feed)) = wrong {
+        let mut told = vec![unsettled_finding(picture, &feed, through)];
+        told.extend(held);
+        return Ok(told);
     }
-    if let Some((least, feed)) = settled
-        .least
-        .clone()
-        .filter(|(least, _)| *least < now - UNBILLED_STALE_HOURS)
-    {
-        return Ok(vec![unsettled_finding(picture, &feed, least)]);
-    }
-    if !settled.held.is_empty() {
-        return held_findings(picture, history, &settled.held);
+    if !held.is_empty() {
+        return Ok(held);
     }
     let Some((through, _)) = settled.least else {
         return Ok(Vec::new());
@@ -1724,10 +1729,10 @@ fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Settled,
 }
 
 /// What's told of each `held` feed: its note, and beside it a warning once
-/// the note has stood longer than a settled hour may lag. That's how long
-/// the note has stood, not how old the feed's bills are, so a feed whose
-/// settled row was just deleted, or one sending old bills for the first
-/// time, is given its while.
+/// the note has stood longer than a settled hour may lag, counted in
+/// whole hours. That's how long the note has stood, not how old the
+/// feed's bills are, so a feed whose settled row was just deleted, or one
+/// sending old bills for the first time, is given its while.
 fn held_findings(
     picture: &Picture,
     history: &History,
@@ -1736,9 +1741,9 @@ fn held_findings(
     let mut told = Vec::new();
     for feed in held {
         let note = held_finding(feed);
-        let stood = crate::findings::started(history, &note.key)?.is_some_and(|started| {
-            picture.now - started > crate::time::hour_start(UNBILLED_STALE_HOURS)
-        });
+        let now = crate::time::hour_of(picture.now);
+        let stood = crate::findings::started(history, &note.key)?
+            .is_some_and(|started| now - crate::time::hour_of(started) > UNBILLED_STALE_HOURS);
         told.push(note);
         if stood {
             told.push(not_settling_finding(feed));
@@ -1777,7 +1782,10 @@ fn not_settling_finding(feed: &str) -> Finding {
         format!("{UNBILLED_NOT_SETTLING}:{feed}"),
         "unbilled",
         Severity::Warning,
-        format!("the {feed} feed hasn't settled pi's bill in {UNBILLED_STALE_HOURS} hours"),
+        format!(
+            "the {feed} feed hasn't said how far pi's bill is settled in \
+             {UNBILLED_STALE_HOURS} hours"
+        ),
         format!(
             "For more than {UNBILLED_STALE_HOURS} hours the {feed} feed has billed pi from \
              the warehouse without saying how far its bill is settled, so no budget's bill \
@@ -2307,7 +2315,10 @@ mod tests {
         if let Some(ends) = ends {
             line["ends"] = ends.into();
         }
-        line["endsKnown"] = known.into();
+        // Left out when false, as a feed that can't know the end may.
+        if known {
+            line["endsKnown"] = true.into();
+        }
         let record = crate::feed::parse(&line.to_string()).unwrap();
         crate::feed::store(&history, "proxy", &record, NOW - 60.0).unwrap();
         Picture::read(&history, &config(), NOW).unwrap()
@@ -2510,9 +2521,9 @@ mod tests {
         );
         let near = &said.iter().find(|(key, _)| key == "near").unwrap().1;
         assert!(!near.contains("pace it's reached"), "{near}");
-        let before = ending_in("2026-10-15", true, NOW + 30.0 * HOUR);
+        let before = ending_in("2026-10-15", true, NOW + 30.5 * HOUR);
         let near = &before.iter().find(|(key, _)| key == "near").unwrap().1;
-        assert!(near.ends_with(" by Thu 15 Oct 20:30."), "{near}");
+        assert!(near.ends_with(" by Thu 15 Oct 21:00."), "{near}");
     }
 
     // A fall is told once it has stood, and only while the cap stays down:
@@ -3353,7 +3364,8 @@ mod tests {
     }
 
     // A feed that holds back hides nothing, so a wrong row beside it is
-    // still told, as a warning: past now, or stopped settling.
+    // still told, as a warning: past now, or stopped settling. Nor does
+    // the row hide the held feed, whose note would clear and count again.
     #[test]
     fn a_held_feed_hides_no_wrong_row() {
         let wrong = |through: &str| {
@@ -3377,11 +3389,18 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let told = |title: &str| {
-            vec![(
-                "unbilled-unsettled:third".to_owned(),
-                Severity::Warning,
-                title.to_owned(),
-            )]
+            vec![
+                (
+                    "unbilled-unsettled:third".to_owned(),
+                    Severity::Warning,
+                    title.to_owned(),
+                ),
+                (
+                    "unbilled-held:second".to_owned(),
+                    Severity::Note,
+                    "the second feed hasn't said how far pi's bill is settled".to_owned(),
+                ),
+            ]
         };
         assert_eq!(
             wrong("2026-10-15T00:00:00Z"),
@@ -3444,23 +3463,55 @@ mod tests {
         let warning = (
             "unbilled-not-settling:proxy".to_owned(),
             Severity::Warning,
-            "the proxy feed hasn't settled pi's bill in 48 hours".to_owned(),
+            "the proxy feed hasn't said how far pi's bill is settled in 48 hours".to_owned(),
         );
         assert_eq!(told(0.0), std::slice::from_ref(&note), "just told");
         assert_eq!(
-            told(48.0 * HOUR),
+            told(48.0 * HOUR + 29.0 * 60.0),
             std::slice::from_ref(&note),
-            "two days to the second"
+            "told in the hour two days back"
         );
         assert_eq!(
-            told(48.0 * HOUR + 60.0),
+            told(48.5 * HOUR + 60.0),
             [note, warning],
-            "a minute past two days"
+            "told in the hour before that"
+        );
+    }
+
+    // Once the feed says how far it has settled, neither the note nor the
+    // warning is raised, so both clear as any finding no pass raises does.
+    #[test]
+    fn a_held_feed_that_settles_is_told_no_more() {
+        let history = History::memory();
+        billed_on(
+            &history,
+            "proxy",
+            "2026-10-07T12:00:00Z",
+            "pi",
+            "teal",
+            10.0,
+        );
+        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
+        let picture = Picture::read(&history, &fed_config(), NOW).unwrap();
+        let first = unbilled(&picture, &history, &fed_config()).unwrap();
+        crate::findings::settle(&history, &first, NOW - 49.0 * HOUR).unwrap();
+        settled_to(&history, "proxy", SETTLED);
+        let picture = Picture::read(&history, &fed_config(), NOW).unwrap();
+        let keys: Vec<String> = unbilled(&picture, &history, &fed_config())
+            .unwrap()
+            .into_iter()
+            .map(|f| f.key)
+            .collect();
+        assert!(
+            keys.iter()
+                .all(|key| !key.starts_with("unbilled-held") && !key.starts_with("unbilled-not")),
+            "{keys:?}"
         );
     }
 
     // Every feed that holds back is told, by name, whichever billed first,
-    // so a fresh feed's note can't hide one that has stopped settling.
+    // so a fresh feed's note can't hide one that has stopped settling:
+    // second's note is fresh and third's has stood two days.
     #[test]
     fn every_held_feed_is_told_by_name() {
         let history = History::memory();
@@ -3476,9 +3527,22 @@ mod tests {
         );
         let all = config_running(&["proxy", "second", "third"]);
         let picture = Picture::read(&history, &all, NOW).unwrap();
+        let first = unbilled(&picture, &history, &all).unwrap();
+        let third: Vec<_> = first
+            .into_iter()
+            .filter(|f| f.key == "unbilled-held:third")
+            .collect();
+        crate::findings::settle(&history, &third, NOW - 49.0 * HOUR).unwrap();
         let found = unbilled(&picture, &history, &all).unwrap();
         let keys: Vec<_> = found.iter().map(|f| f.key.as_str()).collect();
-        assert_eq!(keys, ["unbilled-held:second", "unbilled-held:third"]);
+        assert_eq!(
+            keys,
+            [
+                "unbilled-held:second",
+                "unbilled-held:third",
+                "unbilled-not-settling:third"
+            ]
+        );
     }
 
     // One feed that stopped settling is told however fresh another is, so

@@ -676,25 +676,26 @@ mod tests {
     }
 
     // The paths run to the end of their last day, not a week from now: at
-    // 14:00 a week of paths covers 154 hours, and an end in the 160th
-    // can't be judged, since the hours past the paths would read as
-    // spending nothing.
+    // 14:00 a week of paths covers 154 hours, so an end in the 154th is
+    // judged and one in the 155th can't be, since the hours past the
+    // paths would read as spending nothing.
     #[test]
     fn an_end_past_the_paths_last_day_is_not_judged() {
         let now = 1_791_936_000.0 + 14.0 * HOUR;
         let paths = vec![vec![2400.0; 7]; 10];
-        let past = reaching_until(&paths, Some(now + 160.0 * HOUR), now);
+        let past = reaching_until(&paths, Some(now + 155.0 * HOUR), now);
         assert_eq!(past.cap_before_end, None, "{past:?}");
-        let within = reaching_until(&paths, Some(now + 150.0 * HOUR), now);
+        let within = reaching_until(&paths, Some(now + 154.0 * HOUR), now);
         assert_eq!(within.cap_before_end, Some(1.0), "{within:?}");
     }
 
     // The paths are hourly, so the reach is the end of its hour on the
-    // clock, not now's minute carried along: from 00:30, ten hours of
-    // $100 reach the $1,000 left by 11:00.
+    // clock, not now's minute carried along: from 00:10, ten hours of
+    // $100 reach the $1,000 left by 11:00, the end of the hour, where
+    // the nearest hour would be 10:00.
     #[test]
     fn a_reach_is_said_by_the_hour() {
-        let now = 1_791_936_000.0 + 30.0 * 60.0;
+        let now = 1_791_936_000.0 + 10.0 * 60.0;
         let paths = vec![vec![2400.0; 7]; 10];
         assert_eq!(
             reaching(&paths, now).reaches_at,

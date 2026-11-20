@@ -144,8 +144,7 @@ feed speaks.
   own, after any wrong row, since it hides none. Every such feed is
   told, by name, and once its note has stood for more than 48 hours a
   warning under a key of its own stands beside it, so marking the note
-  expected leaves the warning. A budget a
-  session asked for in the last
+  expected leaves the warning. A budget a session asked for in the last
   day and the harness couldn't draw on, as its budget entry says, is
   told with how many sessions missed it, the day they start rather
   than a day later. Cadence counts both kinds of finding each hour
