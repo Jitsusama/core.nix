@@ -34,7 +34,11 @@ fn scratch(name: &str) -> PathBuf {
 
 fn pineapple(state: &Path, args: &[&str], pi_says: bool) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_pineapple"));
-    command.args(args).env("XDG_STATE_HOME", state);
+    command
+        .args(args)
+        .env("XDG_STATE_HOME", state)
+        // Never the machine's own plan, which pauses its real agents.
+        .env("PINEAPPLE_PAUSE", state.join("no-plan.json"));
     for var in ["PI_SESSION_ID", "PI_BASH_CALL", "PI_HOST_CONVERSATION"] {
         command.env_remove(var);
     }

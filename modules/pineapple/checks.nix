@@ -185,5 +185,7 @@ onLinux {
         && lib.hasSuffix "/bin/mycelium" pause.mycelium
         && lib.elem "cadence*.timer" pause.timers
         && lib.elem "sccache.service" pause.keep
+        && lib.elem "merge-net.service" pause.keep
+        && builtins.isList pause.realms
       );
 }

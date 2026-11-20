@@ -22,6 +22,7 @@
 //! stands, [`tend`] freezes agents' work started since, as `pineapple
 //! serve` asks it to each time it looks.
 
+mod reach;
 mod system;
 mod units;
 
@@ -31,7 +32,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+pub use reach::{script, sessions};
 pub use system::{Runs, System};
+
+use reach::Reached;
 
 use crate::record;
 use crate::resume;
@@ -54,6 +58,9 @@ pub struct Plan {
     /// Other machines that stop with this one, by mycelium's names, beside
     /// each it lists a session on.
     pub machines: Vec<String>,
+    /// The realms this machine's mycelium joins, each with agents of its
+    /// own; none, mycelium's default alone.
+    pub realms: Vec<String>,
     /// The units never frozen, as names or patterns (`*demo*`).
     pub keep: Vec<String>,
 }
@@ -78,6 +85,7 @@ impl Plan {
                 .map(PathBuf::from),
             timers: names(&value, "timers"),
             machines: names(&value, "machines"),
+            realms: names(&value, "realms"),
             keep: names(&value, "keep"),
         })
     }
@@ -153,17 +161,13 @@ pub fn stop(
         "timers": [],
         "froze": [],
         "machines": [],
-        "starts": false,
+        "starts": [],
         "undone": Value::Null,
         "retry_at": Value::Null,
     });
     // Written at once, so a second stop finds this one standing.
     write_paused(state, id, &paused)?;
     let mut failed = Vec::new();
-    let starts = plan
-        .mycelium
-        .as_ref()
-        .is_some_and(|mycelium| !starts_stopped(runs, mycelium));
     let timers = units::active_timers(plan, runs).unwrap_or_else(|why| {
         failed.push(couldnt("list agents' timers", &why));
         Vec::new()
@@ -175,16 +179,13 @@ pub fn stop(
         },
         |work| work.into_iter().map(|unit| unit.id).collect(),
     );
-    let machines = others(plan, host, runs, &mut failed);
+    let machines = reach::others(plan, host, runs, &mut failed);
     paused["timers"] = json!(timers);
     paused["froze"] = json!(work);
-    paused["machines"] = json!(machines);
-    paused["starts"] = json!(starts);
+    paused["machines"] = json!(machines.iter().map(Reached::kept).collect::<Vec<_>>());
     write_paused(state, id, &paused)?;
-    if let (true, Some(mycelium)) = (starts, &plan.mycelium) {
-        let asked = ["starts".to_owned(), "stop".to_owned()];
-        step(runs, mycelium, &asked, "refuse agents' starts", &mut failed);
-    }
+    paused["starts"] = json!(reach::stop_starts(plan, runs, &mut failed));
+    write_paused(state, id, &paused)?;
     if !timers.is_empty() {
         let asked = units::user(&["stop"], &timers);
         step(
@@ -205,52 +206,9 @@ pub fn stop(
         recorded: true,
     }];
     for machine in &machines {
-        took.push(elsewhere(plan, runs, machine, &said, "stop"));
+        took.push(reach::elsewhere(plan, runs, machine, &said, "stop"));
     }
     Ok(took)
-}
-
-/// Whether agents' starts here are refused already, as Joel may have
-/// refused them himself; when mycelium can't say, they aren't.
-fn starts_stopped(runs: &mut dyn Runs, mycelium: &Path) -> bool {
-    runs.run(mycelium, &["starts".to_owned(), "list".to_owned()])
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|value| value.pointer("/Ok/Starts/stopped").and_then(Value::as_bool))
-        .unwrap_or(false)
-}
-
-/// The other machines a stop reaches: those the plan names, and each one
-/// mycelium lists a session on, since a machine running a session runs
-/// agents; so no machine's name need be written down for it to stop.
-fn others(plan: &Plan, host: &str, runs: &mut dyn Runs, failed: &mut Vec<String>) -> Vec<String> {
-    let mut machines = plan.machines.clone();
-    let Some(mycelium) = &plan.mycelium else {
-        return machines;
-    };
-    let listed = runs
-        .run(mycelium, &["sessions".to_owned()])
-        .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|error| error.to_string()));
-    let sessions = match &listed {
-        Ok(value) => value.pointer("/Ok/Sessions").and_then(Value::as_array),
-        Err(why) => {
-            failed.push(format!(
-                "{}, so only the machines the plan names stop",
-                couldnt("list the machines running sessions", why)
-            ));
-            None
-        }
-    };
-    for machine in sessions
-        .into_iter()
-        .flatten()
-        .filter_map(|one| one["machine"].as_str())
-    {
-        if machine != host && !machines.iter().any(|named| named == machine) {
-            machines.push(machine.to_owned());
-        }
-    }
-    machines
 }
 
 /// Undoes what the stop `id` paused here and on each machine it reached,
@@ -265,11 +223,17 @@ fn undo(
     runs: &mut dyn Runs,
 ) -> io::Result<Vec<Took>> {
     let id = paused["id"].as_str().unwrap_or_default().to_owned();
-    let (froze, timers, machines) = (
+    let (froze, timers, starts) = (
         names(paused, "froze"),
         names(paused, "timers"),
-        names(paused, "machines"),
+        names(paused, "starts"),
     );
+    let machines: Vec<Reached> = paused["machines"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Reached::from_kept)
+        .collect();
     let mut failed = Vec::new();
     let frozen = units::settle(plan, runs, "thaw", &froze);
     if !frozen.is_empty() {
@@ -284,11 +248,7 @@ fn undo(
             "start agents' timers",
             &mut failed,
         );
-    let mut starts_left = false;
-    if let (Some(true), Some(mycelium)) = (paused["starts"].as_bool(), &plan.mycelium) {
-        let asked = ["starts".to_owned(), "resume".to_owned()];
-        starts_left = !step(runs, mycelium, &asked, "let agents start", &mut failed);
-    }
+    let starts_left = reach::resume_starts(plan, runs, &starts, &mut failed);
     let mut took = vec![Took {
         machine: host.to_owned(),
         failed,
@@ -300,15 +260,15 @@ fn undo(
     let mut machines_left = Vec::new();
     for machine in &machines {
         let one = match &said {
-            Some(said) => elsewhere(plan, runs, machine, said, "resume"),
+            Some(said) => reach::elsewhere(plan, runs, machine, said, "resume"),
             None => Took {
-                machine: machine.clone(),
+                machine: machine.machine.clone(),
                 failed: vec!["its stop's record here can't be read".to_owned()],
                 recorded: false,
             },
         };
         if !one.failed.is_empty() {
-            machines_left.push(machine.clone());
+            machines_left.push(machine.kept());
         }
         took.push(one);
     }
@@ -324,65 +284,6 @@ fn undo(
     }
     write_paused(state, &id, paused)?;
     Ok(took)
-}
-
-/// The script a machine runs for `act`, stop or resume, of the stop
-/// `said`: its record written whole into that machine's stops, then its
-/// starts refused or let go again, leaving them refused on the resume
-/// when they were refused before the stop.
-#[must_use]
-pub fn script(said: &Value, act: &str) -> String {
-    let id = said.get("id").and_then(Value::as_str).unwrap_or_default();
-    let starts = if act == "resume" {
-        "if [ -e \"$kept\" ]; then rm -f \"$kept\"; else \"$m\" starts resume >/dev/null; fi\n"
-    } else {
-        "if \"$m\" starts list | grep -q '\"stopped\":true'; then : > \"$kept\"; \
-         else \"$m\" starts stop >/dev/null; fi\n"
-    };
-    format!(
-        "set -e\n\
-         d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
-         mkdir -p \"$d\"\n\
-         printf '%s\\n' {record} > \"$d/{file}.new\"\n\
-         mv \"$d/{file}.new\" \"$d/{file}.json\"\n\
-         kept=\"$d/{file}.starts-kept\"\n\
-         m=\n\
-         for c in \"$(command -v mycelium || true)\" \"/etc/profiles/per-user/$(id -un)/bin/mycelium\" \
-         \"$HOME/.nix-profile/bin/mycelium\"; do\n\
-         if [ -n \"$c\" ] && [ -x \"$c\" ]; then m=$c; break; fi\n\
-         done\n\
-         [ -n \"$m\" ] || {{ echo 'no mycelium here' >&2; exit 127; }}\n\
-         {starts}",
-        record = quoted(&said.to_string()),
-        file = file_of(id),
-    )
-}
-
-/// The stop `said` asked of `machine` through mycelium, for `act`.
-fn elsewhere(plan: &Plan, runs: &mut dyn Runs, machine: &str, said: &Value, act: &str) -> Took {
-    let Some(mycelium) = &plan.mycelium else {
-        return Took {
-            machine: machine.to_owned(),
-            failed: vec!["this machine names no mycelium to reach it".to_owned()],
-            recorded: false,
-        };
-    };
-    let args = [
-        "run".to_owned(),
-        "--need".to_owned(),
-        format!("machine={machine}"),
-        "--".to_owned(),
-        "sh".to_owned(),
-        "-c".to_owned(),
-        script(said, act),
-    ];
-    let mut failed = Vec::new();
-    let done = step(runs, mycelium, &args, &format!("{act} there"), &mut failed);
-    Took {
-        machine: machine.to_owned(),
-        failed,
-        recorded: done,
-    }
 }
 
 /// What `pineapple serve` does each time it looks, unless a stop or a
@@ -488,28 +389,16 @@ pub fn settle(
     Ok(took)
 }
 
-/// How many sessions mycelium lists on `machines`, or none when it can't
-/// say.
-pub fn sessions(plan: &Plan, machines: &[&str], runs: &mut dyn Runs) -> Option<usize> {
-    let mycelium = plan.mycelium.as_ref()?;
-    let listed = runs.run(mycelium, &["sessions".to_owned()]).ok()?;
-    let value: Value = serde_json::from_str(&listed).ok()?;
-    let sessions = value.pointer("/Ok/Sessions")?.as_array()?;
-    Some(
-        sessions
-            .iter()
-            .filter(|one| machines.contains(&one["machine"].as_str().unwrap_or_default()))
-            .count(),
-    )
-}
-
-/// The machines whose sessions park for a stop that `took`.
+/// The machines whose sessions park for a stop that `took`, each once.
 #[must_use]
 pub fn recorded(took: &[Took]) -> Vec<&str> {
-    took.iter()
-        .filter(|one| one.recorded)
-        .map(|one| one.machine.as_str())
-        .collect()
+    let mut machines: Vec<&str> = Vec::new();
+    for one in took.iter().filter(|one| one.recorded) {
+        if !machines.contains(&one.machine.as_str()) {
+            machines.push(&one.machine);
+        }
+    }
+    machines
 }
 
 /// The one line Joel is told of a stop or its resume, `act` as

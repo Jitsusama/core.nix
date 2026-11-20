@@ -63,7 +63,9 @@ fn live_rows_are_served_shadow_ones_written_down_and_a_stranger_refused() {
         .arg("--vocabulary")
         .arg(dir.join("words.json"))
         .args(["--every", "50"])
-        .env("XDG_STATE_HOME", &dir);
+        .env("XDG_STATE_HOME", &dir)
+        // Never the machine's own plan, which pauses its real agents.
+        .env("PINEAPPLE_PAUSE", dir.join("no-plan.json"));
     let daemon = Daemon::start(&mut command, socket, dir.clone());
     let mut client = daemon.client();
     let would_tell = dir.join("pineapple/would-tell.jsonl");
@@ -91,6 +93,16 @@ fn live_rows_are_served_shadow_ones_written_down_and_a_stranger_refused() {
     )
     .expect("json");
     assert!(record["resumed"].is_null(), "and the stop still stands");
+    let paused = client.ask(&json!({"id": 3, "ask": "pause", "scope": "all"}));
+    let code = paused["error"]["code"].as_str().unwrap_or_default();
+    assert!(
+        code == "not-joel" || code == "no-peer",
+        "nor is its Pause All Agents: {paused}"
+    );
+    assert!(
+        !dir.join("pineapple/paused").exists(),
+        "and nothing was paused"
+    );
     drop(daemon);
 }
 
@@ -143,7 +155,8 @@ fn knocked(case: &str) -> (Daemon, PathBuf, PathBuf, PathBuf) {
         .arg("--busctl")
         .arg(busctl(&dir, &server, &closed))
         .args(["--every", "50"])
-        .env("XDG_STATE_HOME", &dir);
+        .env("XDG_STATE_HOME", &dir)
+        .env("PINEAPPLE_PAUSE", dir.join("no-plan.json"));
     let daemon = Daemon::start(&mut command, socket, dir.clone());
     until("the live stop never knocked", || {
         fs::read_to_string(&notified).is_ok_and(|text| text.contains("Someone stopped agents"))

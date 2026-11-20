@@ -12,11 +12,18 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
 let
   pineapple = pkgs.callPackage ./package.nix { };
+  # The realms this machine's mycelium nodes keep, as cadence reads them,
+  # since each realm's agents start and run apart from the others'.
+  realms = lib.optionals (options.jitsusama ? mycelium) (
+    lib.optional (config.jitsusama.mycelium.realm != null) config.jitsusama.mycelium.realm
+    ++ lib.attrNames config.jitsusama.mycelium.alsoJoins
+  );
   # Prints pi's Slack sign-in from the desktop's keyring, or says the
   # keyring is locked, as slack-unreads reads it (../slack/keyring.nix).
   keyring = pkgs.callPackage ../slack/keyring.nix { };
@@ -195,6 +202,7 @@ in
         # mycelium as the machine installs it, which isn't this module's.
         mycelium = "${config.home.profileDirectory}/bin/mycelium";
         inherit (config.jitsusama.pineapple.pause) timers keep machines;
+        inherit realms;
       };
 
       # Its rows in For You (SafeWord.qml), read from `pineapple serve` below;

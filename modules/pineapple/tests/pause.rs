@@ -101,10 +101,17 @@ impl Runs for Machine {
                 }
                 String::new()
             }
-            ["sessions"] => r#"{"Ok":{"Sessions":[
-                {"machine":"here"},{"machine":"here"},{"machine":"mac"}]}}"#
+            ["sessions", "--realm", "personal"] => r#"{"Ok":{"Sessions":[
+                {"id":"p1","machine":"builder","state":"idle"},
+                {"id":"p2","machine":"here","state":"ended"}]}}"#
                 .to_owned(),
-            ["starts", "list"] => format!(
+            ["sessions", ..] => r#"{"Ok":{"Sessions":[
+                {"id":"a","machine":"here","state":"busy"},
+                {"id":"b","machine":"here","state":"idle"},
+                {"id":"c","machine":"here","state":"ended"},
+                {"id":"d","machine":"mac","state":"idle"}]}}"#
+                .to_owned(),
+            ["starts", "list", ..] => format!(
                 r#"{{"Ok":{{"Starts":{{"stopped":{},"newest":[]}}}}}}"#,
                 self.starts_stopped
             ),
@@ -119,6 +126,7 @@ fn plan() -> Plan {
         mycelium: Some(PathBuf::from("mycelium")),
         timers: vec!["cadence*.timer".to_owned(), "pain-hear.timer".to_owned()],
         machines: vec!["mac".to_owned()],
+        realms: vec![],
         keep: vec![
             "sccache.service".to_owned(),
             "merge-net.service".to_owned(),
@@ -146,7 +154,7 @@ fn machine() -> Machine {
             running("timed.service", "jobs-timed.slice"),
             running("merge-net.service", "jobs-timed.slice"),
             running("work-1-2.scope", "jobs-work-unranked.slice"),
-            running("aquifer-demo-3.service", "jobs-work-unranked.slice"),
+            running("show-demo-3.service", "jobs-work-unranked.slice"),
             running("awaited.service", "jobs-awaited.slice"),
             running("work-3-4.scope", "jobs-awaited.slice"),
             running("kitty-5-6.scope", "app.slice"),
@@ -448,6 +456,55 @@ fn a_machine_running_sessions_stops_though_no_plan_names_it() {
 }
 
 #[test]
+fn a_stop_reaches_every_realm_this_machine_joins() {
+    let state = scratch("realms");
+    let mut here = machine();
+    let realms = Plan {
+        machines: vec![],
+        realms: vec!["work".to_owned(), "personal".to_owned()],
+        ..plan()
+    };
+    let took = pause::stop(&realms, &state, "stop-all-1", "here", 1, &mut here).expect("stops");
+    assert_eq!(
+        asked_with(&here, "mycelium starts stop"),
+        vec![
+            "mycelium starts stop --realm work".to_owned(),
+            "mycelium starts stop --realm personal".to_owned()
+        ],
+        "each realm's starts are refused: {:?}",
+        here.asked
+    );
+    let builder = asked_with(
+        &here,
+        "mycelium run --realm personal --need machine=builder",
+    );
+    assert!(
+        builder.len() == 1 && builder[0].contains("starts stop --realm 'personal'"),
+        "a machine running a session in the other realm is asked there: {:?}",
+        here.asked
+    );
+    let sessions = pause::sessions(&realms, &pause::recorded(&took), &mut here);
+    assert_eq!(
+        pause::said("stopping", &took, sessions),
+        "stopping 4 sessions on here, mac and builder",
+        "sessions are counted in each realm, once, and never ended ones"
+    );
+    resumed(&state, 2);
+    here.asked.clear();
+    pause::settle(&realms, &state, "here", 2, &mut here).expect("settles");
+    assert_eq!(
+        asked_with(&here, "mycelium starts resume"),
+        vec![
+            "mycelium starts resume --realm work".to_owned(),
+            "mycelium starts resume --realm personal".to_owned()
+        ],
+        "and let go in each: {:?}",
+        here.asked
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
 fn a_machine_that_refuses_is_named_with_why() {
     let state = scratch("refused");
     let mut here = Machine {
@@ -512,7 +569,7 @@ fn script_run(home: &Path, said: &Value, act: &str, refused: bool) -> String {
         .expect("chmod runs");
     let ran = std::process::Command::new("sh")
         .arg("-c")
-        .arg(pause::script(said, act))
+        .arg(pause::script(said, act, None))
         .env("HOME", home)
         .env_remove("XDG_STATE_HOME")
         .env(
