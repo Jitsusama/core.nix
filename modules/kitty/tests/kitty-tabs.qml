@@ -324,9 +324,11 @@ QtObject {
             machines.map(one => [one.name, one.port, one.from]));
         check("kept while neither file changes",
             Opens.machinesKept(kept, config, hosts) === kept, true);
-        check("the config changing works them out again",
-            Opens.machinesKept(kept, "Host other", hosts).all.map(one => one.name),
+        const changed = Opens.machinesKept(kept, "Host other", hosts);
+        check("the config changing works them out again", changed.all.map(one => one.name),
             ["other", "10.0.0.5", "10.0.0.5", "quoted", "nas", "nas", "lower"]);
+        check("and keeps the new ones in turn",
+            Opens.machinesKept(changed, "Host other", hosts) === changed, true);
         check("known_hosts changing works them out again",
             Opens.machinesKept(kept, config, "").all.map(one => one.name),
             ["devbox", "build", "quoted", "lower"]);
@@ -420,6 +422,13 @@ QtObject {
                 { label: "<keys>", value: "ssh-ed25519" }] });
         check("its other names", Opens.machineDrawer(machines[4], state, named).facts
             .filter(fact => fact.label === "<also>"), [{ label: "<also>", value: "192.168.1.9" }]);
+        // Every caller says the same of the kept machines, frozen, as of
+        // machines worked out afresh, so none leans on changing them.
+        const callersSay = all => all.map(one => [Opens.sshing("kitten", one),
+            Opens.machineSide(one, state, now), Opens.machineDrawer(one, state, named)])
+            .concat([Opens.machinesInOrder(all, reached).map(one => `${one.name}${one.port}`)]);
+        check("each caller says the same of the kept machines", callersSay(kept.all),
+            callersSay(Opens.machines(config, hosts)));
 
         // The repositories under ~/src: those zoxide knows first, a visit
         // inside one counting, then the rest by path.

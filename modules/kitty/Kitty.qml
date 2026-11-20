@@ -57,8 +57,9 @@ Provider {
     property string config: ""
     property string hosts: ""
     // The machines worked out from config and hosts, until either changes
-    // (KittyOpens.js's machinesKept). A field, not a property, so keeping
-    // them as a drawer is made tells no binding anything changed. They're
+    // (KittyOpens.js's machinesKept). Kept in a field of this object, which
+    // is never itself replaced, so keeping them as a drawer is made tells no
+    // binding anything changed. They're
     // worked out again just after a file changes, once for both, so the
     // next drawer doesn't pay for it in the frame of Joel's key.
     readonly property var kept: ({ machines: null })
