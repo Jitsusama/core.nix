@@ -1019,6 +1019,14 @@ import {
     cellWidest,
     cellWidestCarried,
   });
+  // What one cell's marks are painted in, by its key, for the page's
+  // checks: which kind of cell it reads as is in these inks and widths,
+  // which a cell keeps at every zoom.
+  groundEl.marksOf = (key) =>
+    cellLayer.filter((p) => p.key === key).map((p) => {
+      const ink = inkOf(p.tag, p.cls, p.parent);
+      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width };
+    });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
     const box = groundEl.getBoundingClientRect();
@@ -1152,6 +1160,9 @@ import {
   };
   // What a cell paints, innermost last: what changed, what waits on it,
   // its membrane and what it is doing.
+  // A cell that leads a network draws its membrane in its dot's ink, so
+  // the one holding a network reads apart from those working in it.
+  const leadsClass = (s) => (s.leads.length ? " m-leads" : "");
   const cellShapes = (s, at) => {
     const key = `c:${s.address}`;
     const parent = cellClasses(s);
@@ -1163,7 +1174,7 @@ import {
     if (s.kind === "receptor") {
       const [x, y] = at;
       parts.push({ tag: "path", cls: "m-receptor", line: [[x - R, y - R * DISH_LIP], [x, y + R * DISH_DEPTH], [x + R, y - R * DISH_LIP]], key, parent });
-      disc(s.standing === "moving" ? "m-nucleus" : "m-quiet", QUIET_DOT);
+      disc(s.standing === "moving" ? "m-sensing" : "m-sensed", QUIET_DOT);
       return parts;
     }
     // A ring round what holds others up: dashed, since it waits rather than
@@ -1181,7 +1192,7 @@ import {
     if (s.standing === "dormant") disc("m-dormant", R);
     else {
       const ring = s.standing === "asks" ? " m-asks" : s.standing === "stuck" ? " m-stuck" : "";
-      disc(`m-membrane${ring}`, R);
+      disc(`m-membrane${leadsClass(s)}${ring}`, R);
       if (s.standing === "moving" || ring) disc("m-nucleus", NUCLEUS);
       else disc("m-quiet", QUIET_DOT);
     }
@@ -2963,7 +2974,7 @@ import {
     const inner =
       s.standing === "dormant"
         ? `<circle class="m-dormant" r="9"/>`
-        : `<circle class="m-membrane${ring}" r="9"/>${s.standing === "quiet" ? '<circle class="m-quiet" r="4.5"/>' : '<circle class="m-nucleus" r="5.2"/>'}`;
+        : `<circle class="m-membrane${leadsClass(s)}${ring}" r="9"/>${s.standing === "quiet" ? '<circle class="m-quiet" r="4.5"/>' : '<circle class="m-nucleus" r="5.2"/>'}`;
     return `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true">${inner}</svg>`;
   };
 
@@ -3204,7 +3215,8 @@ import {
       `<dl>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
-      `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot filled while it is reading</dd></div>` +
+      `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot in the dish's own ink, never a session's, and filled while it is reading</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-leads" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell that leads a network: its edge drawn heavier, in its dot's ink, unless it needs you, is stuck or is dormant, which its edge says first</dd></div>` +
       (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dot-and-dash arc from a receptor to the one cell it fed something from outside, such as a review asked of you or a call's summary, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
@@ -3859,7 +3871,7 @@ import {
   // A machine's mark in small: its box, a cord leaving each side.
   const MACHINE_GLYPH = `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-cord" d="M-12,0H-7M7,0H12" style="--w:1.5px"/><rect class="m-box" x="-7" y="-5" width="14" height="10"/></svg>`;
   const RECEPTOR_GLYPH = (hearing) =>
-    `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-receptor" d="M-9,-5.4Q0,14.4 9,-5.4"/>${hearing ? '<circle class="m-nucleus" r="4.5"/>' : '<circle class="m-quiet" r="4"/>'}</svg>`;
+    `<svg class="glyph" viewBox="-12 -12 24 24" aria-hidden="true"><path class="m-receptor" d="M-9,-5.4Q0,14.4 9,-5.4"/>${hearing ? '<circle class="m-sensing" r="4.5"/>' : '<circle class="m-sensed" r="4"/>'}</svg>`;
   const TWISTY = `<svg class="twisty" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5L3 8.5"/></svg>`;
   const treeRow = perReading((key) => {
     const { name, fact, mono } = rowWords(current, key);
@@ -4347,7 +4359,11 @@ import {
       const key = `c:${s.address}`;
       const to = spots.get(key);
       const from = spots.get(homeKey(s.hub?.key, s.machine));
-      if (to && from && lives.length < MAX_LIVES) lives.push({ birth: true, key, from, to, start });
+      // A receptor is born in its dish's ink, never a session's.
+      const ink = s.kind === "receptor" ? "birth sensor" : "birth";
+      if (to && from && lives.length < MAX_LIVES) {
+        lives.push({ birth: true, key, from, to, start, ink });
+      }
     }
     for (const c of gone) {
       const at = was.get(`c:${c.address}`);
@@ -4358,7 +4374,6 @@ import {
   // One frame of whatever is being born or ending, over the flights.
   const lifeFrame = (now) => {
     if (!lives.length) return;
-    const birthInk = inkOf("path", "birth");
     const ghostInk = inkOf("circle", "ghost");
     for (let i = lives.length - 1; i >= 0; i--) {
       const v = lives[i];
@@ -4376,6 +4391,7 @@ import {
         const reach = Math.max(0, d - HUB_R - R);
         const e = 1 - (1 - Math.min(t, 1)) ** 3;
         const [sx, sy] = [v.from[0] + ux * HUB_R, v.from[1] + uy * HUB_R];
+        const birthInk = inkOf("path", v.ink);
         air.globalAlpha = (t >= 1 ? 1 - Math.min((t - 1) / landing, 1) : 1) * birthInk.alpha;
         air.strokeStyle = birthInk.stroke;
         air.lineWidth = drawnWidth(birthInk.width, k);
