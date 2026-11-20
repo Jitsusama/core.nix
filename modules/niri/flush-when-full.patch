@@ -11,6 +11,125 @@ too. All three now share one flush that waits for room, 50 ms at most
 each time but forever for a selection, whose data is read at once, and
 logs rather than panics when the wait runs out.
 
+diff --git a/src/server/dispatch.rs b/src/server/dispatch.rs
+index 3815022..103414c 100644
+--- a/src/server/dispatch.rs
++++ b/src/server/dispatch.rs
+@@ -310,7 +310,7 @@ impl<S: X11Selection> Dispatch<WlShmPool, client::wl_shm_pool::WlShmPool> for In
+             }
+             Request::<WlShmPool>::Destroy => {
+                 c_pool.destroy();
+-                state.queue.flush().unwrap();
++                state.flush_queue(Some(std::time::Duration::from_millis(50)));
+             }
+             other => warn!("unhandled shmpool request: {other:?}"),
+         }
+diff --git a/src/server/mod.rs b/src/server/mod.rs
+index a436331..bb8c10a 100644
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -770,39 +770,7 @@ impl<C: XConnection> ServerState<C> {
+ 
+         self.handle_selection_events();
+         self.handle_activations();
+-        if let Err(e) = self.queue.flush() {
+-            match e {
+-                wayland_client::backend::WaylandError::Io(error)
+-                    if error.kind() == std::io::ErrorKind::WouldBlock =>
+-                {
+-                    let fd = PollFd::new(&self.queue, PollFlags::OUT);
+-                    match poll(
+-                        &mut [fd],
+-                        Some(&Timespec {
+-                            tv_sec: 0,
+-                            tv_nsec: Duration::from_millis(50).as_nanos() as _,
+-                        }),
+-                    ) {
+-                        Ok(0) => {
+-                            error!(
+-                                "Failed to flush clientside events (timeout)! Will try again later."
+-                            );
+-                        }
+-                        Ok(_) => {
+-                            self.queue.flush().unwrap();
+-                        }
+-                        Err(e) => {
+-                            error!(
+-                                "Failed to flush clientside events ({e})! Will try again later."
+-                            );
+-                        }
+-                    }
+-                }
+-                other => {
+-                    panic!("Failed flushing clientside events: {other:#?}");
+-                }
+-            }
+-        }
++        self.flush_queue(Some(Duration::from_millis(50)));
+     }
+ 
+     fn close_x_window(&mut self, window: x::Window) {
+@@ -817,6 +785,45 @@ impl<C: XConnection> ServerState<C> {
+     }
+ }
+ 
++impl<S: X11Selection> InnerServerState<S> {
++    /// Flush requests to the compositor, waiting up to `patience` (forever for none) each time
++    /// its socket is full. What isn't written stays queued and goes out with the next flush, so
++    /// a compositor falling behind slows satellite rather than killing it and every X11 window
++    /// with it.
++    pub(crate) fn flush_queue(&self, patience: Option<Duration>) {
++        let timeout = patience.map(|patience| Timespec {
++            tv_sec: patience.as_secs() as _,
++            tv_nsec: patience.subsec_nanos() as _,
++        });
++        loop {
++            match self.queue.flush() {
++                Ok(()) => return,
++                Err(wayland_client::backend::WaylandError::Io(error))
++                    if error.kind() == std::io::ErrorKind::WouldBlock =>
++                {
++                    let fd = PollFd::new(&self.queue, PollFlags::OUT);
++                    match poll(&mut [fd], timeout.as_ref()) {
++                        Ok(0) => {
++                            error!(
++                                "Failed to flush clientside events (timeout)! Will try again later."
++                            );
++                            return;
++                        }
++                        Ok(_) | Err(rustix::io::Errno::INTR) => {}
++                        Err(e) => {
++                            error!(
++                                "Failed to flush clientside events ({e})! Will try again later."
++                            );
++                            return;
++                        }
++                    }
++                }
++                Err(other) => panic!("Failed flushing clientside events: {other:#?}"),
++            }
++        }
++    }
++}
++
+ impl<S: X11Selection + 'static> InnerServerState<S> {
+     pub fn clientside_fd(&self) -> BorrowedFd<'_> {
+         self.queue.as_fd()
+diff --git a/src/server/selection.rs b/src/server/selection.rs
+index bd32aaa..d502e9d 100644
+--- a/src/server/selection.rs
++++ b/src/server/selection.rs
+@@ -159,7 +159,9 @@ impl<T: SelectionType> ForeignSelection<T> {
+         state: &ServerState<impl XConnection>,
+     ) -> Vec<u8> {
+         let mut pipe = T::receive_offer(&self.inner, mime_type).unwrap();
+-        state.queue.flush().unwrap();
++        // The pipe is read at once, and the compositor writes it only once it has the request,
++        // so this waits for a full socket however long it takes.
++        state.flush_queue(None);
+         let mut data = Vec::new();
+         pipe.read_to_end(&mut data).unwrap();
+         data
 diff --git a/src/server/tests.rs b/src/server/tests.rs
 index fa70c7d..b8bdcca 100644
 --- a/src/server/tests.rs
