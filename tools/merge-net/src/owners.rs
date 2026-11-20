@@ -16,15 +16,32 @@ use crate::rules::matches;
 
 mod given;
 
-use given::{called, given_by};
+use given::{called, given_by, importing};
+
+/// What owns a change's files: the VM tests that do, and those of them
+/// the reading couldn't find in the tree, named for any change.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Owning {
+    pub tests: Vec<String>,
+    pub unread: Vec<String>,
+}
 
 /// The VM tests that own one of `files`, read from the checkout at `root`,
-/// or nothing when its `checks.nix` or `flake.nix` can't be read.
-pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
+/// or nothing when its `checks.nix` or `flake.nix` can't be read. A test
+/// bound to an import in a `checks.nix` that the reading didn't find owns
+/// every file, so a shape it can't read runs a test too often rather than
+/// never.
+pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
     let checks = fs::read_to_string(root.join("checks.nix")).ok()?;
     let folders = folders(&fs::read_to_string(root.join("flake.nix")).ok()?);
     let read = |file: &str| fs::read_to_string(root.join(file)).ok();
-    let tests: Vec<(String, Vec<String>)> = every_vm_test(&checks, read)
+    let known: Vec<String> = gathered(&checks)
+        .iter()
+        .filter_map(|file| read(file))
+        .chain([checks.clone()])
+        .flat_map(|text| importing(&text))
+        .collect();
+    let mut tests: Vec<(String, Vec<String>)> = every_vm_test(&checks, read)
         .into_iter()
         .map(|test| {
             // A file it can't read still owns itself.
@@ -33,7 +50,22 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Vec<String>> {
             (test.name, paths)
         })
         .collect();
-    Some(owners(&tests, files))
+    let unread: Vec<String> = known
+        .iter()
+        .filter(|name| !tests.iter().any(|(found, _)| found == *name))
+        .cloned()
+        .collect();
+    tests.extend(
+        unread
+            .iter()
+            .map(|name| (name.clone(), vec!["*".to_owned()])),
+    );
+    let tests = owners(&tests, files);
+    let unread = unread
+        .into_iter()
+        .filter(|name| tests.contains(name))
+        .collect();
+    Some(Owning { tests, unread })
 }
 
 /// A VM test a `checks.nix` names: its name, the file it imports for it,
@@ -199,11 +231,19 @@ pub fn owned(
 
 /// Whether `text` may bind `name` again, so a `${name}` in it may not be
 /// the value the import gave: `name = ...;` anywhere, a function's
-/// `name:`, an `inherit (from)` naming it, or a second argument set naming
-/// it beyond the file's own. A plain `inherit name;` passes the same value
-/// on. It errs towards yes, which costs only the narrowing.
+/// `name:`, an `inherit (from)` naming it, or an argument set naming it
+/// other than once, the file's own. A plain `inherit name;` passes the
+/// same value on. A line that is all comment is read as none, so one above
+/// a formal hides it from nothing. It errs towards yes, which costs only
+/// the narrowing.
 fn rebinds(text: &str, name: &str) -> bool {
     let is_name = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+    let text: String = text
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = text.as_str();
     let mut formals = 0;
     for (at, _) in text.match_indices(name) {
         let before = &text[..at];
@@ -217,7 +257,9 @@ fn rebinds(text: &str, name: &str) -> bool {
         }
         let next = after.trim_start();
         let bound = next.starts_with('=') && !next.starts_with("==");
-        let statement = before.rsplit([';', '{']).next().unwrap_or_default();
+        // Cut only at `;`, since a `{` may open the `${` an inherit's
+        // source is built with.
+        let statement = before.rsplit(';').next().unwrap_or_default();
         let inherited = statement
             .rsplit_once("inherit")
             .is_some_and(|(_, from)| from.trim_start().starts_with('('));
@@ -230,7 +272,7 @@ fn rebinds(text: &str, name: &str) -> bool {
             formals += 1;
         }
     }
-    formals > 1
+    formals != 1
 }
 
 /// The VM tests, of `tests` with what each owns, that own one of `files`.

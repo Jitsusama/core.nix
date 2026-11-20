@@ -64,7 +64,7 @@ fn a_path_built_from_a_value_owns_each_file_it_could_name() {
 
 #[test]
 fn a_value_the_import_gives_owns_only_the_file_it_names() {
-    let desktop = "tests = ./desktop/desktop-${area}-vm-test.py;";
+    let desktop = "{ area, ... }: { tests = ./desktop/desktop-${area}-vm-test.py; }";
     let tests = [
         (
             "vm-desktop-captures".to_owned(),
@@ -256,6 +256,9 @@ fn a_value_the_file_binds_again_owns_each_file_it_could_name() {
         "{ area, ... }: let inherit (other)\n  area\n  ;\nin ./d-${area}.py",
         "{ area, ... }: map ({ area, ... }: ./d-${area}.py) areas",
         "{ area, ... }: let area = \"looks\"; in ./d-${area}.py",
+        "{\n  # the area\n  area,\n}: map ({ area, ... }: ./d-${area}.py) areas",
+        "{ area, ... }: let inherit (a.${b}) area; in ./d-${area}.py",
+        "{ ... }: with other; ./d-${area}.py",
     ] {
         assert_eq!(
             owns(text),
@@ -369,13 +372,95 @@ fn a_value_checks_gives_reaches_what_the_tree_names() {
         "tests/desktop.nix",
         "{ area, ... }: { tests = ./desktop/desktop-${area}-vm-test.py; }",
     );
+    let tests = |files: &str| in_tree(&tree.0, &words(files)).map(|owning| owning.tests);
     assert_eq!(
-        in_tree(&tree.0, &words("tests/desktop/desktop-captures-vm-test.py")),
+        tests("tests/desktop/desktop-captures-vm-test.py"),
         Some(words("vm-desktop-captures")),
         "one area's cases put every desktop test before its merge"
     );
     assert_eq!(
-        in_tree(&tree.0, &words("tests/desktop.nix")),
+        tests("tests/desktop.nix"),
         Some(words("vm-desktop-captures vm-desktop-looks"))
     );
+}
+
+#[test]
+fn a_vm_test_the_reading_cant_find_is_named_for_any_change() {
+    let tree = Tree::new("unread");
+    tree.file("flake.nix", "checks = import ./checks.nix;");
+    tree.file(
+        "checks.nix",
+        "vm-a = import ./tests/a.nix { };\n\
+         vm-odd =\n  builtins.seq x (import ./tests/odd.nix { });\n\
+         vm-built = pkgs.callPackage ./built.nix { };",
+    );
+    tree.file("tests/a.nix", "{ }");
+    assert_eq!(
+        in_tree(&tree.0, &words("modules/zsh/home.nix")),
+        Some(Owning {
+            tests: words("vm-odd"),
+            unread: words("vm-odd"),
+        }),
+        "a test the reading drops would go unnamed and fail on main only"
+    );
+    assert_eq!(
+        in_tree(&tree.0, &[]),
+        Some(Owning {
+            tests: Vec::new(),
+            unread: Vec::new(),
+        }),
+        "a change touching nothing names nothing"
+    );
+}
+
+#[test]
+fn a_bracket_in_a_comment_or_string_or_a_nested_let_hides_no_test() {
+    let checks = "
+      vm-a = import ./a.nix {
+        # the screens (left and right
+        name = \"a { b\";
+        area = \"captures\";
+      };
+      vm-b =
+        let
+          made =
+            let
+              x = 1;
+            in
+            x;
+        in
+        import ./b.nix { };
+      vm-c = import ./c.nix { };
+    ";
+    let tests = vm_tests(checks);
+    assert_eq!(
+        files(&tests),
+        vec![("vm-a", "a.nix"), ("vm-b", "b.nix"), ("vm-c", "c.nix")],
+        "an unclosed bracket in a comment once hid every test after it"
+    );
+    assert_eq!(
+        tests[0].given.get("area").map(String::as_str),
+        Some("captures")
+    );
+    assert_eq!(
+        given::nesting("[ ( { ${x} ] \"(\" # ["),
+        2,
+        "lists and brackets count"
+    );
+}
+
+#[test]
+fn a_call_holding_a_let_or_an_indented_string_or_merged_onto_gives_nothing() {
+    for checks in [
+        "vm-a = import ./a.nix {\n  area = let\n    area = \"left\";\n  in area;\n};",
+        "vm-a = import ./a.nix {\n  script = ''\n    area = \"left\";\n  '';\n};",
+        "vm-a = import ./a.nix {\n  area = \"left\";\n} // { area = \"right\"; };",
+        "vm-a = import ./a.nix {\n  area = \"left\";\n}\n// { area = \"right\"; };",
+    ] {
+        assert_eq!(
+            vm_tests(checks).first().map(|test| test.given.len()),
+            Some(0),
+            "{checks} may give another area than it reads as"
+        );
+    }
 }
