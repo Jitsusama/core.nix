@@ -306,8 +306,8 @@ or a copy, can be opened, copied or forgotten.
 | window | a program's rectangle on the screen | | |
 | This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
-| notice | what a program said, on the arrival line as it comes and in Now's Desktop after | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
-| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own for what For You lists (a Needs You item's and a pi session's want), those unread inside it and those read in its History; never home's Desktop, the place for the screens and windows | | `Lately.js`'s `desktop` |
+| notice | what a program said, on the arrival line as it comes and after in Now's row for where it came from (Now's Desktop, else Slack) | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
+| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's, the shell's own for a Needs You item and pi's, those unread inside it and those read in its History; never home's Desktop, the place for the screens and windows | | `Lately.js`'s `desktop` |
 | arrival line | one line at the top of the screen, where the launcher stands, showing the notice that waits on Joel as it comes, without taking the keys | | `NoticeLine.qml` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on, and on by itself while the screen may be shared | dnd, quiet | `session:quiet` |
@@ -350,7 +350,7 @@ or a copy, can be opened, copied or forgotten.
 | to look at | a look For You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it, or a day from when it landed | | |
 | to read | a look that asks nothing of Joel, only to be seen, kept in For You's last row 24 hours and then put in History as expired | | `for-you:kind:read` |
-| Lately | what came for Joel that asks nothing of him, one row for each place it came from, among Now's own rows after the moment's; a row stands in For You while one of its own notices is critical and unread, and none leaves it while the launcher is open | | |
+| Lately | what came for Joel that asks nothing of him, one row for each place it came from, among Now's own rows after the moment's; a row stands in For You while one of its own notices is critical, unread and off the screen, so Mail's never does, and stays there until the launcher next opens unless it comes to hold nothing | | |
 | clipboard | what was copied last, and what was copied before it | | |
 | selected text | what Joel has selected in any window, Wayland's primary selection, read only when asked and never kept | | `selection:primary` |
 | On the Selection | the place on Super+X: the selected text at its head, and what an agent can do with it as pi-verbs serves them, Ask last | | `OnSelection.qml`, `pi-verbs` |
