@@ -18,6 +18,10 @@
 //! help, usage that says what to try, and failures with named exits. What
 //! it prints for a pipe is as it was, since the daemon reads the checker's
 //! lines, and no help or error says an item, its vault or a reason.
+//!
+//! Long because its tests try each way a word given could be said back,
+//! into each of the four places a refusal lands, beside the line reading
+//! they guard.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -388,25 +392,27 @@ fn lengths(counted: &[(String, usize)]) -> String {
         })
 }
 
+/// What the checker says of its variables as JSON: a list, in the order
+/// it was given them, of each one's name and length.
+fn lengths_json(counted: &[(String, usize)]) -> serde_json::Value {
+    let received: Vec<serde_json::Value> = counted
+        .iter()
+        .map(|(name, length)| serde_json::json!({ "name": name, "characters": length }))
+        .collect();
+    serde_json::json!({ "schema": "secret-asks.received/1", "received": received })
+}
+
 /// The checker, saying its variables' lengths and never what they hold.
 fn received(context: &Context, args: &[String]) -> Result<(), Failure> {
     if let Some(word) = args.first() {
         return Err(unread("received", word, &[]));
     }
     let counted = counted(std::env::vars_os());
-    let lengths_by_name: serde_json::Map<String, serde_json::Value> = counted
-        .iter()
-        .map(|(name, length)| (name.clone(), (*length).into()))
-        .collect();
-    let json = serde_json::json!({
-        "schema": "secret-asks.received/1",
-        "received": lengths_by_name,
-    });
     answered(
         context,
         &mut std::io::stdout().lock(),
         &lengths(&counted),
-        &json,
+        &lengths_json(&counted),
     )
     .map_err(|why| Failure::new(Exit::Failed, "it couldn't print").because(why.to_string()))
 }
@@ -497,6 +503,8 @@ mod tests {
             // A reason's word read as a shared flag's value.
             &["ask", "--why", "To", "--format", "lighthouse"],
             &["ask", "--why", "To", "--color=lighthouse"],
+            // A word left over after `--`, which the body reads past.
+            &["ask", "--", "--why", "lighthouse", "Hidden"],
         ] {
             for (place, ending) in refused_everywhere(line) {
                 assert_eq!(
@@ -755,6 +763,29 @@ mod tests {
             "received nothing\n",
             "the checker given nothing didn't say so"
         );
+        assert_eq!(
+            lengths_json(&[("RELEASED".to_owned(), 7)]),
+            serde_json::json!({
+                "schema": "secret-asks.received/1",
+                "received": [{ "name": "RELEASED", "characters": 7 }],
+            }),
+            "the checker's JSON isn't a list of names and lengths"
+        );
+    }
+
+    #[test]
+    fn each_command_reads_the_flags_its_help_names() {
+        for (help, flags) in [
+            (serve_help(), &SERVE_FLAGS[..]),
+            (ask_help(), &ASK_FLAGS[..]),
+        ] {
+            let named: Vec<&str> = help
+                .options
+                .iter()
+                .filter_map(|option| option.name.split_whitespace().next())
+                .collect();
+            assert_eq!(named, flags, "{}'s help and its flags disagree", help.name);
+        }
     }
 
     #[test]
