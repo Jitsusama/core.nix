@@ -57,6 +57,25 @@ else
 					"of $key begins afresh" >&2
 			fi
 		fi
+		# A copy's folder is new each run, so cargo keyed each crate outside
+		# the run's workspace, as a kit beside it, by a new path and left its
+		# last build behind. Moved to a folder each run of this target uses,
+		# each build replaces the last; the copy's own cleanup then finds an
+		# empty folder. A run outside such a copy stays where it is.
+		rest=${PWD#*/nix-offload-changed-*/tree}
+		case $rest in
+		"$PWD") ;;
+		"" | /*)
+			top=${PWD%"$rest"}
+			rm -rf "${root:?}/$slot/src"
+			if mv "$top" "$root/$slot/src" 2>/dev/null && cd "$root/$slot/src$rest"; then
+				echo "nix-offload: the copy runs from warm target $slot's own folder" >&2
+			else
+				echo "nix-offload: the copy can't move into warm target $slot, so crates" \
+					"beside its workspace build at a new path" >&2
+			fi
+			;;
+		esac
 		export CARGO_TARGET_DIR="$root/$slot/target" CARGO_BUILD_BUILD_DIR="$root/$slot/build"
 		echo "nix-offload: cargo builds in warm target $slot of $key there" >&2
 	fi

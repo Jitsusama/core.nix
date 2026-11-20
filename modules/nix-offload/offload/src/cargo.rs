@@ -280,16 +280,18 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
 /// Each run there is of a fresh copy, so its target was a folder gone when
 /// it ended, and every suite compiled each crate it reads afresh: 658 for a
 /// large repository's zone on 19 November. A target kept for each
-/// repository finds its dependencies built by the run before; cargo keys
-/// a path's packages by where they sit in their workspace, not by its
-/// folder, so a copy in another folder reuses them too, and only what
-/// changed builds again.
+/// repository finds the crates it fetches from a registry or git built by
+/// the run before. The repository's own crates build again each run, since
+/// every file of a fresh copy is new and cargo goes by their times.
 ///
-/// A crate outside the run's workspace, such as a kit a path dependency
-/// names in a folder beside it, is the exception: cargo keys it by its
-/// whole path, which is new in each copy, so it and what reads it build
-/// again each run, and their earlier builds stay in the target until the
-/// room rule below clears it.
+/// A copy's folder is new each run too, and cargo keys a crate outside the
+/// run's workspace, such as a kit a path dependency names beside it, by
+/// its whole path, so each run left a build of it the next never read.
+/// The copy is moved into a folder of its target's own (`src`), so each
+/// build of it replaces the last; a copy that can't move runs where it is,
+/// saying so.
+///
+/// Its pass is kept for no gate ([`runs_warm`]).
 ///
 /// Up to four targets are kept for a key, each held with `flock` while a
 /// run builds in it, and by whatever it starts, since two runs in one
@@ -382,6 +384,15 @@ pub fn sent_there(key: &str, sent: &[String]) -> Vec<String> {
     .map(str::to_owned)
     .chain(sent.iter().cloned())
     .collect()
+}
+
+/// Whether `words`, as `there --run` was given them, run a suite in a
+/// warm target. Its pass is kept for no gate: any earlier run there could
+/// have written that target, and cargo never reads a dependency it built
+/// against its sources again, so such a pass proves nothing of the commit
+/// alone.
+pub fn runs_warm(words: &[String]) -> bool {
+    matches!(words, [shell, flag, script, ..] if shell == "sh" && flag == "-c" && script == WARM)
 }
 
 /// The key [`warm_key`] gives the folder here.

@@ -1532,8 +1532,12 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     );
     // What ran at the commit sent, kept by nix-offload alone, so a gate
     // (the harness's host tests) can take a pass from a fenced session,
-    // which can ask for a run but can't reach the keeper.
-    if let Some(at) = &at {
+    // which can ask for a run but can't reach the keeper. A suite in a warm
+    // target keeps none, since any run before it could write what it reads
+    // (`cargo::runs_warm`).
+    if let Some(at) = &at
+        && !cargo::runs_warm(&asked.words)
+    {
         passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
     match status {

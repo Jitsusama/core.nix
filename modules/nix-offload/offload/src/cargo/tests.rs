@@ -280,6 +280,18 @@ fn a_suite_goes_there_through_its_warm_target() {
         ]
         .map(str::to_owned),
     );
+    assert!(
+        runs_warm(&sent_there("k", &words("test"))),
+        "a suite in a warm target isn't known as one"
+    );
+    assert!(
+        !runs_warm(&words("nix develop -c cargo test")),
+        "a suite built cold reads as warm"
+    );
+    assert!(
+        !runs_warm(&words("sh -c true nix-offload-warm k cargo test")),
+        "another script reads as the warm one"
+    );
 }
 
 /// The shells a builder's might be: dash, as most are, which the package
@@ -378,6 +390,44 @@ fn a_run_builds_in_its_repositorys_warm_target_and_the_next_finds_it() {
             format!("{at}/target {at}/build\nkept\n"),
             "{shell}: the next run didn't find what the first left"
         );
+    }
+}
+
+// A copy's folder was new each run, so cargo keyed a kit beside the
+// workspace by a new path each time and every run left a dead build of it
+// in the target. The copy now runs from a folder its target keeps, and the
+// next copy replaces it there.
+#[test]
+fn a_copy_runs_from_its_targets_own_folder() {
+    for shell in SHELLS {
+        let home = tempfile::tempdir().unwrap();
+        let at = slot(home.path(), 0);
+        for run in ["first", "second"] {
+            let copy = home
+                .path()
+                .join(format!("t/nix-offload-changed-{run}/tree"));
+            fs::create_dir_all(copy.join("zone")).unwrap();
+            fs::write(copy.join("zone").join(run), "").unwrap();
+            let mut warm = warmed(shell, home.path(), "pwd; ls", &[]);
+            warm.current_dir(copy.join("zone"));
+            let (ran, told) = said(warm);
+            assert_eq!(ran, format!("{at}/src/zone\n{run}\n"), "{shell}: {told}");
+            assert!(!copy.exists(), "{shell}: the copy stayed where it was");
+        }
+    }
+}
+
+// A run in no copy, as a test of the script's own is, stays where it is.
+#[test]
+fn a_run_in_no_copy_stays_where_it_is() {
+    for shell in SHELLS {
+        let home = tempfile::tempdir().unwrap();
+        let here = home.path().join("here");
+        fs::create_dir_all(&here).unwrap();
+        let mut warm = warmed(shell, home.path(), "pwd", &[]);
+        warm.current_dir(&here);
+        let (ran, _) = said(warm);
+        assert_eq!(ran, format!("{}\n", here.display()), "{shell}");
     }
 }
 
