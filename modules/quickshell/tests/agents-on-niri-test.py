@@ -152,11 +152,16 @@ LANDINGS = [
     },
 ]
 # Landed holds hundreds on Joel's shell, so a run of older ones, past To Try's day and today's
-# count, each going nowhere but read, as the first two do: rows saying the same keys.
+# count, each going nowhere but read, as the first two do: rows saying the same keys. They
+# run back from noon two days before, so they land on one day whatever the hour: run back
+# from the minute the walk began, a walk soon after midnight split them over two days.
 EARLIER = 40
+EARLIER_FROM = (
+    (LANDED - timedelta(days=2)).astimezone().replace(hour=12, minute=0, second=0, microsecond=0)
+)
 LANDINGS += [
     {
-        "at": (LANDED - timedelta(days=2, minutes=at)).isoformat(),
+        "at": (EARLIER_FROM - timedelta(minutes=at)).isoformat(),
         "ref": f"core.nix#{1000 + at}",
         "what": f"Earlier change {at}.",
     }
@@ -3926,9 +3931,14 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
         time.sleep(0.1)
     launcher_on_niri.weighed_held_still(shell)
     # Each keeping looks at every landing and through the sessions once, where looking for
-    # each landing's own looked through them all again; the row selected looks its own up
-    # live a few times besides, as its verbs are read.
+    # each landing's own looked through them all again, once a landing at least. The row
+    # selected looks its own up live a few times besides, as its verbs are read: 4 times
+    # once, when a walk soon after midnight left 7 landings in the day (2026-11-19). The day
+    # holds all of EARLIER now, so half of them leaves room both ways.
     looked = landings_looked(shell) - looked
     sought = sessions_sought(shell) - sought
     times = sought / len(held_by_node())
-    assert times < looked / 2, f"keeping {looked} landings looked through the sessions {times}x"
+    assert looked >= EARLIER, f"reading a landing kept {looked} landings, not its day's"
+    assert times < looked / 2, (
+        f"keeping {looked} landings looked through the sessions {times}x, not under half"
+    )
