@@ -116,10 +116,13 @@ Provider {
     // of the daemon on this socket, which takes it only from this shell's
     // own process (src/serve.rs's paused). Costly, it arms on its first
     // Return, saying what a second does, as Reboot's does, and the : line
-    // and a terminal's `launcher do` ask once, as they ask Reboot. It stays while
-    // the daemon stops them, a few seconds, then says in the foot what
-    // stopped, or why nothing did, in the vocabulary's words for its code;
-    // the stop's own row in For You, with Resume, follows as any stop's.
+    // asks once, as it asks Reboot. Found only by what's typed, it's in no
+    // place a walk from outside goes, so a terminal's `launcher do` never
+    // finds it, which matters since serve can tell only that this shell
+    // asked. It stays while the daemon stops them, a few seconds, saying so
+    // at once, then says in the foot what stopped, or why nothing did, in
+    // the vocabulary's words for its code; the stop's own row in For You,
+    // with Resume, follows as any stop's.
     readonly property var pauseAll: thing({
         key: "agents:pause-all",
         name: Words.name("agents:pause-all"),
@@ -132,22 +135,43 @@ Provider {
         confirm: true,
         asked: () => Words.of("agents:pause-all").asked ?? "",
         stays: true,
-        now: true,
-        run: () => daemon.ask({ ask: "pause", scope: "all" }, answer => provider.paused(answer))
+        run: () => provider.pauseEveryAgent()
     })
+
+    function pauseEveryAgent() {
+        // Never sent is told from sent and lost: only the first is sure to
+        // have stopped nothing.
+        if (daemon.wire === null) {
+            provider.refused({ key: "agents:pause-all" }, { code: "unreached" });
+            return;
+        }
+        provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
+            Words.of("agents:pause-all").said?.pausing ?? "", Theme.strong]]);
+        daemon.ask({ ask: "pause", scope: "all" }, answer => provider.paused(answer));
+    }
 
     things: [pauseAll]
 
     // Says in the foot what the daemon answered Pause All Agents: what it
-    // stopped, in its own line, or why it stopped nothing, a daemon that
-    // isn't there to ask (null) among them.
+    // stopped, in its own line, or why it stopped nothing. No answer at all
+    // (null) means the connection went after the ask was sent, so it may
+    // have stopped them, and Joel is pointed at For You rather than told
+    // it didn't. A code these words don't know, as a serve too old to take
+    // a pause answers, says it couldn't be asked here.
     function paused(answer) {
-        const said = typeof answer?.said === "string" ? answer.said : "";
-        if (answer?.error || said === "") {
-            provider.refused({ key: "agents:pause-all" },
-                answer?.error ?? { code: answer === null ? "unreached" : "failed" });
+        if (answer === null) {
+            provider.refused({ key: "agents:pause-all" }, { code: "lost" });
             return;
         }
+        if (answer.error) {
+            const told = Words.of("for-you:source:pineapple").said ?? {};
+            const known = told[`refused:${answer.error.code}`] !== undefined;
+            provider.refused({ key: "agents:pause-all" },
+                known ? answer.error : { code: "unoffered", message: answer.error.message });
+            return;
+        }
+        const said = typeof answer.said === "string" && answer.said !== "" ? answer.said
+            : Words.of("agents:pause-all").said?.pausing ?? "";
         provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
             said, Theme.success]]);
     }

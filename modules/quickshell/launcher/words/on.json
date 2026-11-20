@@ -654,6 +654,8 @@
         "refused:no-peer": "it couldn't tell this was your launcher",
         "refused:failed": "its record couldn't be written",
         "refused:unreached": "nothing answered on this machine",
+        "refused:lost": "its answer was lost, so For You says whether they stopped",
+        "refused:unoffered": "this machine can't do that yet",
         "you": "you",
         "someone": "someone",
         "stopped": "{who} stopped your agents on {reach}",

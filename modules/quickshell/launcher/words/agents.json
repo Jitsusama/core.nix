@@ -417,7 +417,8 @@
       "words": ["stop every agent", "freeze the agents"],
       "asked": "Pause Every Agent",
       "said": {
-        "arms": "pauses every agent"
+        "arms": "pauses every agent",
+        "pausing": "pausing every agent"
       }
     },
     {
