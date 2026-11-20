@@ -39,7 +39,8 @@ let
   # home-manager keeps ExecStart as a list of its lines.
   linuxNode = toString (linux links).systemd.user.services.mycelium.Service.ExecStart;
   linuxAgent = (linux links).systemd.user.services.mycelium.Service.Environment;
-  # What sends a Linux node's ssh to its realm's key's agent alone.
+  # What sends a Linux node's ssh to its realm's key's agent, rather than
+  # one the account's SSH config names.
   ownAgent = lib.escapeShellArgs [
     "--ssh-option"
     "IdentityAgent=SSH_AUTH_SOCK"
@@ -274,8 +275,8 @@ in
   # and starts what others ask of it, and one in no realm has neither a
   # realm nor a node. On Linux the node signs in with the agents' key,
   # which asks nothing, unless its realm names a key of its own, and asks
-  # that key's agent alone, whatever agent the account's SSH config names
-  # for the machine it dials; one with no key is given no agent; on a Mac
+  # that key's agent, rather than one the account's SSH config names for
+  # the machine it dials; one with no key is given neither option; on a Mac
   # what it starts signs commits with that key, since nobody at another
   # machine can touch this one's sensor. A Mac's node finds the system's
   # ssh first and the account's programs after it, among them the
@@ -321,8 +322,8 @@ in
         &&
           (linux (links // { signsInWith = "personal-link"; }))
           .systemd.user.services.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/personal-link.sock" ]
-        && lib.hasSuffix ownAgent linuxNode
-        && lib.hasSuffix ownAgent otherNode
+        && lib.hasInfix "${ownAgent} --kit " linuxNode
+        && lib.hasInfix "${ownAgent} --kit " otherNode
         && !(lib.hasInfix "--ssh-option" (
           toString (linux (links // { signsInWith = null; })).systemd.user.services.mycelium.Service.ExecStart
         ))
@@ -413,7 +414,7 @@ in
   # Enclave, through that key's own library and no agent, since the login
   # session's one may ask for an approval nobody is there to give; one
   # without that key's module passes no such options, and Linux's node is
-  # given none of them.
+  # given only the two that send it to its own agent.
   mycelium-signs-a-macs-links-with-the-enclave =
     holds "mycelium-signs-a-macs-links-with-the-enclave"
       "A Mac's node signs its links in through whatever agent the login holds, or not with the agents' key from the Secure Enclave, a Mac without that key's module is given options for it, or Linux's node is given a Mac's options."
@@ -435,8 +436,7 @@ in
         && lib.elem "IdentityAgent=none" words
         && lib.elem "IdentitiesOnly=yes" words
         && lib.elem "--ssh-option" words
-        && !(lib.hasInfix "IdentityFile=" linuxNode)
-        && !(lib.hasInfix "SecurityKeyProvider=" linuxNode)
+        && lib.length (lib.splitString "--ssh-option" linuxNode) == 3
       );
 
   # A machine joining a further realm runs a node of its own for it, apart

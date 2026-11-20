@@ -1984,7 +1984,7 @@
     a workstation in a realm runs mycelium's node there, dialling each machine it names, over SSH
     or through a provider's program, and asking each provider's program it names what it could
     make, as a user service on Linux signing in with the agents' key,
-    or the key its realm names, through that key's agent alone whatever the account's SSH config
+    or the key its realm names, through that key's agent rather than one the account's SSH config
     names, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the home realm's node writes how it
     would ease the machine, and a further realm's doesn't; one naming none runs it dialling

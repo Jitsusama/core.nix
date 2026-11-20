@@ -292,6 +292,7 @@ let
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
     ++ lib.optionals isLinux builders
+    ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
@@ -304,24 +305,30 @@ let
   ];
   furtherNodes = lib.mapAttrs (
     realm: joined:
-    nodeIn realm joined.links joined.vias joined.providers (apartIn realm) ++ kitArgs realm joined.kit
+    nodeIn realm joined.links joined.vias joined.providers (apartIn realm)
+    ++ ownAgent joined.signsInWith
+    ++ kitArgs realm joined.kit
   ) cfg.alsoJoins;
-  # A Linux node's ssh asks only the agent at SSH_AUTH_SOCK, its realm's
-  # key, whatever the account's SSH config names for the machine: that
+  # A Linux node's ssh asks the agent at SSH_AUTH_SOCK, its realm's key,
+  # rather than one the account's SSH config names for the machine: that
   # config's IdentityAgent wins over SSH_AUTH_SOCK, so on 2026-11-20 the
   # node asked Joel's own agent, whose gate refuses agents' work, and the
   # work realm lost its Mac. IdentitiesOnly=no lets it offer what that
-  # agent holds rather than only the config's IdentityFile.
+  # agent holds rather than only the config's IdentityFile. A node with no
+  # key, and a Mac's, which is given its own options, is given neither.
   ownAgent =
-    lib.concatMap
-      (option: [
-        "--ssh-option"
-        option
-      ])
-      [
-        "IdentityAgent=SSH_AUTH_SOCK"
-        "IdentitiesOnly=no"
-      ];
+    key:
+    lib.optionals (isLinux && key != null) (
+      lib.concatMap
+        (option: [
+          "--ssh-option"
+          option
+        ])
+        [
+          "IdentityAgent=SSH_AUTH_SOCK"
+          "IdentitiesOnly=no"
+        ]
+    );
   linuxNode = description: words: key: realm: {
     Unit = {
       Description = description;
@@ -333,7 +340,7 @@ let
       X-Restart-Triggers = [ (builtins.hashString "sha256" (builtins.toJSON (servesIn realm))) ];
     };
     Service = {
-      ExecStart = lib.escapeShellArgs (words ++ lib.optionals (key != null) ownAgent);
+      ExecStart = lib.escapeShellArgs words;
       Environment = lib.optional (key != null) "SSH_AUTH_SOCK=%t/${key}.sock";
       # The node lets go of the sessions it carried when told to stop,
       # and redials a dropped link itself. It is started again however it
