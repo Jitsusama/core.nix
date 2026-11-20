@@ -9475,15 +9475,16 @@ Scope {
         // a command row no source, so they're named by their name and the
         // place held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
+        // A window's title kept out of every line this says, as a key's
+        // is, unless reports are on; the report itself keeps the key whole.
+        const said = Presented.keyShown(key, Options.reports);
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested, drawerAfterLetter);
         drawerRested = 0;
         drawerAfterLetter = false;
         const split = drawerSplit;
         drawerSplit = null;
-        // A window's title kept out of the line, as a key's is.
-        const presenting = drawerKeyAt > 0 ? { key: Presented.keyShown(key, Options.reports),
-            from: drawerKeyAt, followed: began,
+        const presenting = drawerKeyAt > 0 ? { key: said, from: drawerKeyAt, followed: began,
             place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
             came } : null;
         drawerKeyAt = 0;
@@ -9512,7 +9513,7 @@ Scope {
                 key, took, making, waiting, drawing, came,
                 count: root.drawerTimedLast.count + 1
             };
-            trials.drawerTimed(key, took, { making, split, waiting, drawing, came });
+            trials.drawerTimed(said, took, { making, split, waiting, drawing, came });
         });
     }
     property bool drawerOut: false
@@ -12739,12 +12740,13 @@ Scope {
     // nothing timed it. A key a program typed has no press, so it's timed
     // from when it was heard, which a key queued behind that lay is only
     // after it; the time from going in says it whole (Presented.keyInSaid),
-    // where it came soon after or reports are on (Presented.intoKept).
+    // where it came soon after or reports are on (Presented.intoKept):
+    // soon after from its press, as going in is timed, so a key queued
+    // behind the lay keeps it.
     function keyInComing() {
         const pressed = KeyTimes.pressed();
-        const heard = KeyTimes.now();
-        return { from: pressed > 0 ? pressed : heard,
-            into: Presented.intoKept(heard, intoFrom, Options.reports) };
+        const from = pressed > 0 ? pressed : KeyTimes.now();
+        return { from, into: Presented.intoKept(from, intoFrom, Options.reports) };
     }
     function keyInTimed(one, act) {
         if (!open || !drawerCard.keys)

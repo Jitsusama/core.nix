@@ -261,7 +261,7 @@ function keyInSaid(one) {
 // How long after going in a key in a drawer still says its time from it.
 const intoSoon = 1000;
 
-// When a key heard at `keyAt` says its time from going in at `into`, both
+// When a key pressed at `keyAt` says its time from going in at `into`, both
 // on KeyTimes's clock: always where `whole`, as while reports are on and
 // the drawer lab reads it for every key, however long the lay held it;
 // otherwise only within a second of going in, which is what that time is

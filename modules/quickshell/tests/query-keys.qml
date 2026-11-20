@@ -1075,6 +1075,12 @@ QtObject {
         // still stands on the text's own letters.
         holds("a letter that lowers longer leaves what follows in its place",
             Search.found("x", "\u0130x"), [[1, 2]]);
+        holds("and two places never share one such letter",
+            Search.found("\u0307xi", "\u0130x\u0130x\u0130"), [[0, 3]]);
+        // A pattern of what's passed over alone is nothing to find, and
+        // looking for nothing would find it in place for ever.
+        holds("a pattern of joiners alone finds nothing",
+            Search.found("\u2060\u200b", "a-\u2060b"), []);
     }
 
     function drawerSearch(holds) {
