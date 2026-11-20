@@ -573,7 +573,8 @@ mod tests {
 
     #[test]
     fn a_short_answer_in_a_long_loud_take_is_a_take() {
-        // 0.3 s of voice in 4 s of loud noise is one frame in sixteen.
+        // 0.3 s of voice in 4 s of loud noise is one loud frame in
+        // fourteen.
         let sound = [
             quiet(2.0),
             noise(2.0, 0.05, false),
