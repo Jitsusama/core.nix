@@ -85,7 +85,9 @@ impl Watch {
         fs::create_dir_all(&devices).unwrap();
         let real = fs::canonicalize(&node).unwrap();
         fs::write(devices.join("Unplugged"), format!("{}\n", real.display())).unwrap();
+        fs::write(folder.join("Unplugged"), "pipewire\n").unwrap();
         fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
+        fs::write(folder.join("Another"), "obs\n").unwrap();
         // And one another camera's run is writing, saying this node too.
         fs::write(devices.join("Plugged.123"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
@@ -193,6 +195,16 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     assert!(
         !devices.join("Unplugged").exists(),
         "a killed run's file saying this camera's node was left"
+    );
+    let folder = devices.parent().unwrap();
+    assert!(
+        !folder.join("Unplugged").exists(),
+        "the camera that killed run watched is still said held"
+    );
+    assert_eq!(
+        fs::read_to_string(folder.join("Another")).unwrap(),
+        "obs\n",
+        "another camera's holders were touched"
     );
     assert_eq!(
         fs::read_to_string(devices.join("Another")).unwrap(),

@@ -240,10 +240,11 @@ mod tests {
         );
         let pipewire = PipeWire::new(&root, Some(cli));
         let tries = listed_whole(&pipewire);
-        assert_eq!(
-            fs::read_to_string(&runs).unwrap(),
-            "\n".repeat(tries),
-            "pw-cli is run once a listing"
+        // A try killed before its shell could say so leaves no line.
+        let ran = fs::read_to_string(&runs).unwrap().lines().count();
+        assert!(
+            (1..=tries).contains(&ran),
+            "pw-cli is run once a listing: {ran} runs in {tries} tries"
         );
         assert_eq!(
             cameras(&root, &pipewire)[0]["programs"],
@@ -288,15 +289,6 @@ mod tests {
             !unseen(&mut pipewire.state(), "camera", false),
             "said only once"
         );
-        write(&root, "other", "pipewire\n");
-        write(&root, "camera", "");
-        programs();
-        assert!(
-            !pipewire.state().unfound.contains("camera"),
-            "to be said again once it's let go"
-        );
-        write(&root, "other", "");
-        write(&root, "camera", "pipewire\n");
         fs::write(&listed, listing("camera", "/dev/video40", 0)).unwrap();
         listed_whole(&pipewire);
         assert_eq!(
@@ -304,7 +296,21 @@ mod tests {
             json!(["chrome", "tuple"]),
             "found by its name once it's shown"
         );
-        assert!(pipewire.state().unfound.is_empty(), "to be said again");
+        assert!(
+            pipewire.state().unfound.is_empty(),
+            "to be said again once it's shown"
+        );
+        fs::write(&listed, listing("Built-in Camera", "/dev/video40", 0)).unwrap();
+        listed_whole(&pipewire);
+        programs();
+        assert!(pipewire.state().unfound.contains("camera"), "said again");
+        write(&root, "other", "pipewire\n");
+        write(&root, "camera", "");
+        programs();
+        assert!(
+            !pipewire.state().unfound.contains("camera"),
+            "to be said again once it's let go"
+        );
     }
 
     #[test]
@@ -331,6 +337,22 @@ mod tests {
             assert!(took < LIST_WAIT * 2, "{why}: waited out");
             if why == "one that hangs" {
                 assert!(took >= LIST_WAIT, "{why}: waited for, not failed at once");
+            }
+            // A shell forked on a starved builder may miss the wait, so the
+            // two that answer are asked again until they have.
+            let answered = || {
+                let failing = pipewire.state().failing.clone();
+                match why {
+                    "one that says too much" => failing.is_some_and(|why| why.contains("more")),
+                    "one that says nothing it can read" => failing.is_none(),
+                    _ => true,
+                }
+            };
+            for _ in 0..4 {
+                if answered() {
+                    break;
+                }
+                pipewire.refresh();
             }
             if why == "one that says too much" {
                 // Its cap says so, where a wait run out would say that.
