@@ -3926,9 +3926,11 @@ def test_a_landing_read_finds_each_landings_session_in_one_look(shell: Shell) ->
         time.sleep(0.1)
     launcher_on_niri.weighed_held_still(shell)
     # Each keeping looks at every landing and through the sessions once, where looking for
-    # each landing's own looked through them all again; the row selected looks its own up
-    # live a few times besides, as its verbs are read.
+    # each landing's own looked through them all again, once a landing at least. The row
+    # selected looks its own up live a few times besides, as its verbs are read, and how many
+    # turns on how loaded the builder is: 4 times for 7 landings once (2026-11-19), past half
+    # of them. So it's held under once a landing, which only the old way reaches.
     looked = landings_looked(shell) - looked
     sought = sessions_sought(shell) - sought
     times = sought / len(held_by_node())
-    assert times < looked / 2, f"keeping {looked} landings looked through the sessions {times}x"
+    assert times < looked, f"keeping {looked} landings looked through the sessions {times}x"
