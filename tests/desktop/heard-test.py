@@ -26,7 +26,9 @@ def test_a_wait_never_passed_says_the_last_state_it_heard() -> None:
 
     with pytest.raises(AssertionError) as never:
         until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
-    wanted = 'never heard rows of Restart; it, last heard: {"rows": ["Install 1.13.0 \u00b7 ready"]}'
+    wanted = (
+        'never heard rows of Restart; it, last heard: {"rows": ["Install 1.13.0 \u00b7 ready"]}'
+    )
     assert str(never.value) == wanted, f"the wait that never passed said: {never.value}"
 
 
