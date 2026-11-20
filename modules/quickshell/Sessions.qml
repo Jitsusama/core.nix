@@ -361,7 +361,7 @@ Singleton {
         }
         lookFor([cwd, asked.folder], there => {
             if (there[0]) {
-                reopened({ id: asked.id }, cwd);
+                reopened({ id: asked.id, env: asked.kept?.env ?? null }, cwd);
                 asked.kept?.done?.(cwd);
                 return;
             }
@@ -3149,12 +3149,19 @@ Singleton {
     function reopensUnwoken(session, answer) {
         const id = String(session?.presence?.session ?? "");
         const why = String(answer?.error?.message ?? "");
-        // Only one its presence says runs unfenced, since a reopen can't
-        // know a fence to put back (startedWith), and a fenced session must
-        // never come back unfenced; and only an id that's a plain word, as
-        // handedOver holds it, since it's said in a shell's words.
+        // Only one whose presence names its fence: "none" reopens as it
+        // is, and "fence" or "strict" with that word as its PI_SANDBOX, in
+        // the reopened pi's own environment alone, so it never comes back
+        // looser than it ran; a stage's listing by id keeps it fenced too
+        // (the harness's fence-stage.ts). The word is the session's own, so
+        // it only ever tightens; any other is refused, said as the node
+        // said it (ISXEG8, 20 Nov [0d92dfe3]). And only an id that's a
+        // plain word, as handedOver holds it, since it's said in a shell's
+        // words.
+        const fence = session.presence?.fence;
+        const fenced = fence === "fence" || fence === "strict";
         if (!/^[A-Za-z0-9._-]+$/.test(id) || session.here === false
-            || session.presence?.fence !== "none" || !why.endsWith(unheld))
+            || (fence !== "none" && !fenced) || !why.endsWith(unheld))
             return false;
         const upper = String(session.address).toUpperCase();
         if (running.some(one => one.here && one.presence?.session === id)) {
@@ -3176,7 +3183,8 @@ Singleton {
             unwokenReopening = left;
             Report.say(`couldn't reopen ${upper}: no session file or folder of its own`);
             unsteered(session, why);
-        }, { done: cwd => Report.say(`reopened ${upper}, which nothing held, in ${cwd}`) });
+        }, { done: cwd => Report.say(`reopened ${upper}, which nothing held, in ${cwd}`),
+            env: fenced ? { PI_SANDBOX: fence } : null });
         return true;
     }
     // Go To on `session`, waking `resting` first, its parked record, when

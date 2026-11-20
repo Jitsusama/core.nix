@@ -25,8 +25,18 @@ printf '{"type":"session","id":"s-gone","cwd":"%s"}\n' "$state/trees/given-back"
 # One parked whose holder died, which the node can't wake, so Wake reopens it.
 printf '{"type":"session","id":"s-orphan","cwd":"%s"}\n' "$state/trees/karst" \
   >"$sessions/2026-11-17T21-02-11-301Z_s-orphan.jsonl"
+# And one fenced strict, which Wake reopens by its id under its own fence.
+printf '{"type":"session","id":"s-warded","cwd":"%s"}\n' "$state/trees/karst" \
+  >"$sessions/2026-11-17T21-03-40-118Z_s-warded.jsonl"
+# And one fenced by the fence's own word, reopened under it, and one whose
+# presence names no fence, which keeps its file and is still refused.
+printf '{"type":"session","id":"s-hedged","cwd":"%s"}\n' "$state/trees/karst" \
+  >"$sessions/2026-11-17T21-03-41-118Z_s-hedged.jsonl"
+printf '{"type":"session","id":"s-unsaid","cwd":"%s"}\n' "$state/trees/karst" \
+  >"$sessions/2026-11-17T21-03-42-118Z_s-unsaid.jsonl"
 # And three Wake must never reopen, though each has its file: one parked
-# elsewhere, one fenced, and one running here already.
+# elsewhere, one fenced by a word no fence goes by, and one running here
+# already.
 for id in s-stray s-fenced s-LIVE01; do
   printf '{"type":"session","id":"%s","cwd":"%s"}\n' "$id" "$state/trees/karst" \
     >"$sessions/2026-11-17T21-02-12-000Z_$id.jsonl"
