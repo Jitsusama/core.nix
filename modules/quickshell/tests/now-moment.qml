@@ -2060,14 +2060,40 @@ ShellRoot {
             JSON.stringify(keysOf(inForYou())));
         theLauncher.held = [nowStep];
         expect("stepped back out onto Now's rows, Desktop still stands where he left it",
-            !keysOf(inForYou()).includes("on:waiting:desktop")
-                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(now.everything())));
+        // The launcher asks a step's rows before it holds the step, so For
+        // You lists Desktop on the first asking, not a refresh later.
+        expect("and For You, asked as he steps into it, lists Desktop at once",
+            keysOf(inForYou()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
-        theLauncher.held = [nowStep, { row: { key: "on:waitingOnYou" } }];
+        // One step down another of Now's rows, - climbs back to Now's rows,
+        // so Desktop stays there too.
+        theLauncher.held = [nowStep, { row: { key: "on:mail", forYou: { source: "mail" } } }];
+        expect("inside Mail, Desktop still stands in the Now rows - climbs back to",
+            keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(now.everything())));
+        const forYouStep = { row: { key: "on:waitingOnYou" } };
+        theLauncher.held = [nowStep, forYouStep];
         expect("and once he steps into For You, Desktop is there, which counts it",
             keysOf(inForYou()).includes("on:waiting:desktop")
                 && !keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
+        // Read inside Desktop before he steps into For You, the tray no
+        // longer counts it, so nothing comes into For You for it.
+        now.openedAt = Number.POSITIVE_INFINITY;
+        Notices.live = { "1": {} };
+        now.openedAt = Date.now() - 1000;
+        theLauncher.held = [nowStep,
+            { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
+        Notices.live = {};
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now(), readHow: "read" }].concat(told);
+        theLauncher.held = [nowStep, forYouStep];
+        expect("a critical notice read inside Desktop brings nothing into For You",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify([keysOf(inForYou()), keysOf(now.everything())]));
         theLauncher.held = wasHeld;
         now.openedAt = Number.POSITIVE_INFINITY;
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
