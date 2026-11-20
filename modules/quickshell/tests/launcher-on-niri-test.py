@@ -4282,26 +4282,33 @@ def none_drawn_cut(shell: Shell, where: str) -> None:
     """Fail, naming them, where a box cuts a row's words, or the selected row's ground, down.
 
     Read from where each text's line is drawn and what clips it (Launcher.qml's drawnTexts),
-    and the selected row's ground from where it's laid (groundCut), not from the rule's own
+    and the selection's ground from where it's drawn (groundCut), not from the rule's own
     extents, so a row the rule took for whole and drew cut is caught. Where the view rests is
     `restsOnARow`'s, from the rows' tops. A row's name reading on is clipped across, never
     down, so it's no cut.
     """
     cut = rows_drawn_cut(shell)
     assert cut == [], f"{where}: drawn cut: {cut}"
-    assert not shell.showing()["groundCut"], f"{where}: the selected row's ground is cut"
+    shown = shell.showing()
+    assert not shown["groundCut"], (
+        f"{where}: the selected row's ground is cut",
+        shown["current"],
+        shown["scrolled"],
+    )
 
 
 def rows_drawn_cut(shell: Shell) -> list[str]:
     """Give the words of the card's rows that a box cuts at their top or foot.
 
-    Read until two reads agree on where each stands down the card, since Qt lays a row out
-    again only before its next frame, so words read between a change and that frame stand
-    where they were. Across is left out, as a long name reads on.
+    Qt lays a row out again only before its next frame, and a loaded builder can be slow to
+    draw one, so words read between a change and that frame stand where they were: each read
+    comes after two frames asked for, and two reads must agree on where each stands down the
+    card. Across is left out, as a long name reads on.
     """
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 10
     last = None
     while True:
+        two_frames_drawn(shell, deadline)
         card = json.loads(shell.as_account(shell.ipc("drawnTexts")))[0]
         listed = [text for text in card if "/QQuickListView" in text["from"]]
         standing = [(text["said"], text["ink"]["y"], text["cutDown"]) for text in listed]
@@ -4309,9 +4316,21 @@ def rows_drawn_cut(shell: Shell) -> list[str]:
             break
         assert time.monotonic() < deadline, f"the rows' words never stood still: {standing}"
         last = standing
-        time.sleep(0.1)
     assert listed, f"no row's words were drawn: {card}"
     return [text["said"] for text in listed if text["cutDown"]]
+
+
+def two_frames_drawn(shell: Shell, deadline: float) -> None:
+    """Ask the launcher for a frame twice, each once the last is drawn.
+
+    The first may have been under way before it was asked for, so only the second is sure to
+    lay out what changed before the ask (as agents-on-niri-test.py's framed).
+    """
+    for _ in range(2):
+        asked = int(shell.as_account(shell.ipc("drawAFrame")))
+        while shell.frames() <= asked:
+            assert time.monotonic() < deadline, "no frame drawn when asked for"
+            time.sleep(launcher_on_niri.POLL)
 
 
 def home_network_in_normal(shell: Shell) -> None:
@@ -4327,7 +4346,8 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     """The wheel leaves the Home Network's list on a row's top, no row drawn cut at its foot.
 
     The wheel moves the view by pixels, so it can stop inside a row; once it stops, the list
-    rests on the nearest row's top (Launcher.qml's onMovementEnded, Headings.rested).
+    rests on the top of the first row at or below where it stopped (Launcher.qml's
+    onMovementEnded, Headings.rested).
     """
     home_network_in_normal(shell)
     card = shell.showing()["card"]
