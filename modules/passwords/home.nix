@@ -16,8 +16,9 @@
 # "we can't have a password backdoor here"); 1Password lets in each
 # process tree apart, so a daemon an agent starts must ask Joel itself. A
 # secret goes from its manager only to the ask for it, or to the clipboard
-# through wl-copy, marked sensitive, which niri keeps from every fenced
-# agent, over Wayland and over X11 alike. An audit, only when Joel asks,
+# through a wl-copy that holds it in its own memory alone, marked
+# sensitive, which niri keeps from every fenced agent, over Wayland and
+# over X11 alike. An audit, only when Joel asks,
 # reads every password to find those reused and those breached, hashing
 # each in the daemon's memory and sending Have I Been Pwned the first five
 # characters of a hash alone. What the last check found, each troubled entry's two counts
@@ -253,9 +254,10 @@ in
       # Wayland. A machine's `off = true` takes it back off there, reaching
       # no daemon. Taking it off everywhere reverts the change that turned
       # it on, since passwords-runs-each-password-manager holds it on here.
-      # Copies go through wl-copy, by its full path, as a sensitive offer
-      # niri hands no fenced agent.
-      copier = lib.getExe' pkgs.wl-clipboard "wl-copy";
+      # Copies go through Passwords' own wl-copy, by its full path, as a
+      # sensitive offer niri hands no fenced agent, held in its memory
+      # alone rather than in a temp file (copier.nix).
+      copier = lib.getExe' (pkgs.callPackage ./copier.nix { }) "wl-copy";
       managers = map (manager: {
         inherit (manager)
           name
