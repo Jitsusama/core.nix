@@ -3,7 +3,8 @@
 // Off in place, its row reading armed and the foot saying what a second
 // does, and a second Return with no other key between does it. Any other
 // key lets it go, with no time limit, as a landing lasts until the next
-// key (Launcher.qml's landedOn). Apart from the launcher, so
+// key (Launcher.qml's landedOn); so does the launcher shutting, and a
+// share beginning (untold) or ending (shareTurns). Apart from the launcher, so
 // tests/arming.qml holds it in Qt's own engine.
 //
 // Each press is read against the keys the line has taken (Prompt.qml's
@@ -60,6 +61,18 @@ function letsHeldGo(saying, heldSaying) {
     return saying.length > 0 && JSON.stringify(saying) === JSON.stringify(heldSaying);
 }
 
+// What a share ending leaves (Launcher.qml's unheld), or niri saying its
+// casts during one: whether the foot goes `quiet`, letting go of its word
+// for a held Return (letsHeldGo), and nothing `armed`. Every arm goes, as
+// one does as a share begins (untold), not only an ask's: one made on an
+// ask's row in the paced refresh after a share began, before the row was
+// hidden, would otherwise let the first Return after the share, no key
+// between, release on a line read before it. A Reboot armed meanwhile
+// takes one Return more, which errs safe.
+function shareTurns(saying, heldSaying) {
+    return { quiet: letsHeldGo(saying, heldSaying), armed: rest() };
+}
+
 // What Return does on the selected row, from what `how` says of it: an
 // answer being given is given, a Return doubling a landing does nothing
 // more, and a held row is held before anything else, as every other
@@ -91,9 +104,10 @@ function returnAct(how) {
 
 // Whether the place a source `source` lists may be kept, to draw at once
 // at the next opening (Launcher.qml's keepPlace): never one that says its
-// rows are never kept, as Asks does, since a share starting while the
-// launcher is shut would leave the kept copy drawing its first frame as
-// it was before the share, naming what the share hides.
+// rows are never kept, as Asks does. A kept place's rows aren't drawn
+// under a share (Wanted.keptPlaceListed), but its steps are (intoKept),
+// and a share starting while the launcher is shut would leave a step
+// held in an ask naming it.
 function keepsPlace(source) {
     return source?.keptNever !== true;
 }

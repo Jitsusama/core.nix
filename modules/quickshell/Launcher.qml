@@ -3408,16 +3408,16 @@ Scope {
     // Lets go of the foot's word for a Return held still (run), once what
     // held it may no longer, as a share ending lets an ask arm. Only while
     // the foot still says it (Arming.letsHeldGo): what else it says, or
-    // waits to say as the launcher next opens, stays. Any arm goes too: one
-    // made on an ask's row in the paced refresh after a share began, before
-    // the row was hidden, would otherwise let the first Return after the
-    // share release on a line he read before it.
+    // waits to say as the launcher next opens, stays. Any arm goes too
+    // (Arming.shareTurns says why). Closing lets go of the arm on its own
+    // (Y2YBTS's reboot), so that holds whatever this does.
     property var heldSaying: []
     function unheld() {
-        if (Arming.letsHeldGo(saying, heldSaying))
+        const left = Arming.shareTurns(saying, heldSaying);
+        if (left.quiet)
             say([]);
         heldSaying = [];
-        armed = Arming.rest();
+        armed = left.armed;
     }
     function tellOnOpen(told, loose) {
         if (open) {
