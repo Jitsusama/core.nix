@@ -9,13 +9,17 @@ a blur let go and takes it back for the next of its size (blur-kept-for-its-size
 The stand-in is an overlay layer surface named as the launcher is, which the account's layer rule
 blurs. It opens with a blur region over all of it, shuts by an empty one, opens again, grows,
 goes back to its first size and draws once more as it is, each step waiting for niri to draw it.
-Then it nearly fills the screen at fourteen sizes in turn, more than the pool's 64 MB keeps, going
-back to the second after five and to the first at the end. niri says at debug what each blur's
+It takes the grown size's width at another height, then its area turned on its side, while the
+grown set is kept, so a pool matching on width or on bytes alone would hand that set out, and
+takes the grown size back to show that set was kept. Then it
+nearly fills the screen at fourteen sizes in turn, more than the pool's 64 MiB keeps, going back
+to the second after five and to the first at the end. niri says at debug what each blur's
 textures came from, and each step is judged by what niri said after it alone: the first opening
 makes its set, shutting and a frame that changes nothing make none, opening again takes the whole
-set back, growing gives the set up for the next blur of its size, which going back takes, the
-walk's second set is still kept after three newer sizes, and its first has been let go by the
-time the walk comes back to it.
+set back, growing gives the set up for the next blur of its size, which going back takes, a size
+sharing only a width or an area with a kept set makes its own, the walk's second set is still
+kept after three newer sizes, and its first has been let go by the time the walk comes back to
+it.
 
 usage: keeps-a-blur-ready.py <niri's log>
 """
@@ -34,14 +38,19 @@ from wayland_wire import string
 # nowhere, so niri centres it. Both sizes fit the stand-in's pool.
 FIRST = (400, 300)
 GROWN = (480, 300)
+# The grown size's width at another height, as the launcher's card and drawer are, and its area
+# turned on its side: neither may take the grown set.
+TALLER = (480, 360)
+TURNED = (300, 480)
 # Sizes inside the nested screen, which sway's frame leaves 1276x773 of, so niri cuts none to fit.
-# Each set, a framebuffer and a blur's textures from its full size down to an eighth, is 7 to 8
-# MB: the thirteen the walk gives up before it comes back hold over 90 MB, so the pool has let
-# all of the first go, not just some of it.
+# Each set, a framebuffer and a blur's textures from its full size down to an eighth, is 6.7 to
+# 7.5 MiB, in the pool's own unit: the twelve kept after the first hold about 85 MiB, and the pool
+# lets go a texture at a time, oldest first, so under a cap of about 85 MiB it has let all of the
+# first go, and over it keeps some of the first and fails the last step.
 FILLING = [(1200 - 10 * step, 700) for step in range(14)]
 # After the walk's fifth size it goes back to its second, which the third, fourth and fifth
-# followed: taking it back needs a pool of about 23 MB, so one too small for the launcher's 21 MB
-# set on Joel's screen has let it go.
+# followed: taking it back needs a pool of about 22 MiB, so one too small for the launcher's 21
+# MiB set on Joel's screen has let it go.
 RECALLED_AFTER = 5
 OVERLAY = 3
 # The wl_shm format with alpha, as the launcher draws: smithay skips drawing whatever an opaque
@@ -217,6 +226,8 @@ def main() -> None:
     if steps.after("drawing again", FIRST, says=False) != (0, 0):
         sys.exit("a frame that changed nothing made or took textures: the blur remakes its set")
 
+    alike(launcher, steps, whole)
+
     for size in FILLING[:RECALLED_AFTER]:
         fill(launcher, steps, size, expect=(whole, 0), why="a size the pool had never seen")
     fill(
@@ -233,8 +244,36 @@ def main() -> None:
         steps,
         FILLING[0],
         expect=(whole, 0),
-        why="the pool kept the walk's first set past its 64 MB",
+        why="the pool kept some of the walk's first set past its 64 MiB",
     )
+
+
+def alike(launcher: Launcher, steps: Steps, whole: int) -> None:
+    """Fail unless sizes sharing only a width or an area with the kept grown set make their own.
+
+    Taking the grown size back afterwards shows its set was kept all along, so the two before it
+    were offered it and refused it.
+    """
+    for name, size, like in (
+        ("taking another height", TALLER, "its width at another height"),
+        ("turning on its side", TURNED, "its area on its side"),
+    ):
+        launcher.resize(size)
+        launcher.blur(over=True)
+        made, kept = steps.after(name, size, says=True)
+        if (made, kept) != (whole, 0):
+            sys.exit(
+                f"{name} made {made} textures and took {kept} kept, not a new set of {whole}: "
+                f"the pool handed out a set of {like}"
+            )
+    launcher.resize(GROWN)
+    launcher.blur(over=True)
+    made, kept = steps.after("growing again", GROWN, says=True)
+    if (made, kept) != (0, whole):
+        sys.exit(
+            f"growing again made {made} textures and took {kept} kept, not {whole} kept: the "
+            "pool let the grown set go, so the two sizes before it were never offered it"
+        )
 
 
 def fill(
