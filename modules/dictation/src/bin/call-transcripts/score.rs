@@ -98,7 +98,8 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
             let file = set.join(format!("{name}.{}.wav", label(side)));
             let sound = wav::samples(
                 &std::fs::read(&file).map_err(|e| format!("reading {}: {e}", file.display()))?,
-            )?;
+            )
+            .map_err(|e| format!("{}: {e}", file.display()))?;
             for take in takes(&sound) {
                 let (text, _) = speech.transcribe(&take.samples)?;
                 if let Some(text) = said::spoken(&text) {
@@ -150,8 +151,9 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
 }
 
 /// The ceiling given as `text`, in tenths of a percent, when it's a
-/// percentage below 100 to one place at most: one such as "nan" or "100"
-/// would pass every score, and one with two places would print as another.
+/// percentage below 100 to one place at most: one such as "nan" would pass
+/// every score, one of 100 would pass a model that heard nothing at all,
+/// and one with two places would print as another.
 pub fn ceiling(text: &str) -> Option<usize> {
     let (whole, tenth) = text.split_once('.').unwrap_or((text, "0"));
     let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
@@ -356,13 +358,22 @@ mod tests {
         };
         write("sides", "\n");
         refused("no meetings");
-        write("sides", "M A\n");
-        write("M.ref", "1.00 0.50 A Okay\n");
-        refused("M.ref: a reference line");
-        write("M.ref", "0.50 1.00 B Okay\n");
-        refused("M.ref: A never speaks");
+        write("sides", "M\n");
+        refused("isn't a meeting and a speaker");
+        // A whole first meeting, so only reading every reference before
+        // the model loads can refuse the second's.
         write("M.ref", "0.50 1.00 A Okay\n");
-        refused("M.mine.wav isn't there");
+        write("M.mine.wav", "");
+        write("M.theirs.wav", "");
+        write("sides", "M A\nN A\n");
+        write("N.ref", "1.00 0.50 A Okay\n");
+        refused("N.ref: a reference line");
+        write("N.ref", "0.50 1.00 B Okay\n");
+        refused("N.ref: A never speaks");
+        write("N.ref", "0.50 1.00 A Okay\n");
+        refused("N.mine.wav isn't there");
+        write("N.mine.wav", "");
+        refused("N.theirs.wav isn't there");
     }
 
     #[test]
