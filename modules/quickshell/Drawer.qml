@@ -1060,8 +1060,7 @@ Floating {
             const pieces = laidPieces.of.get(text);
             if (!pieces)
                 return null;
-            kept.set(text, pieces.map(piece => Object.assign({}, piece,
-                { x: piece.x + dx, top: piece.top + dy, base: piece.base + dy })));
+            kept.set(text, Page.shifted(pieces, dx, dy));
         }
         return kept;
     }
@@ -1167,6 +1166,8 @@ Floating {
         }
         return -1;
     }
+    // Whether a page shown anew waits on its deferred lay (anew).
+    property bool anewWaits: false
     // Another page shown while it holds the keys, as its list of keys is:
     // read from its top once Qt has laid it out, as a window opened on it,
     // and timed as going in is. A run is laid as going into it lays it.
@@ -1175,11 +1176,19 @@ Floating {
             // At once, so the new page's first frame draws none of it.
             unflash();
             runCut();
+            // A second page shown before the first is laid is laid in its
+            // place, by the going-in the first began: both deferred lays
+            // would lay the page shown last, and the launcher keeps one
+            // going-in at a time, so a second would take the first's.
+            if (anewWaits)
+                return;
+            anewWaits = true;
             // Said now, while the key that asked it is still held, so the
             // launcher times it from that key rather than from this turn's
             // end, which would leave out the new page's own lay.
             keysComing();
             Qt.callLater(() => {
+                anewWaits = false;
                 // Not once the keys have gone meanwhile, which would
                 // lay the run at rest.
                 if (!keys)
@@ -1229,19 +1238,20 @@ Floating {
         // lays it all first, as G's does, and one that comes near its end,
         // or shows what's under it, shows the parts laid quietly or lays a
         // part more, and moves again, so it never lands on what follows the
-        // run while the run's rest is still to come (DrawerPage.runReach).
-        // One that still needs more once a part is laid, as G landing on
-        // the end of what's laid does each time, lays the rest whole, read
-        // once, rather than a part at a time, each read as it's laid.
+        // run while the run's rest is still to come (DrawerPage.runReach),
+        // and one landing on the end of what's laid again once a part is
+        // laid, as G does each time, lays the rest whole (DrawerPage.runStep).
         let parts = 0;
         for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
             const reach = Page.runReach(moved, end,
                 { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top });
-            if (reach === "whole" || (reach === "more" && parts > 0))
+            const step = Page.runStep(reach,
+                { parts, quiet: runQuiet, onEnd: moved.line >= end });
+            if (step === "whole")
                 layWhole();
-            else if (reach === "more" && runQuiet)
+            else if (step === "show")
                 runShow();
-            else if (reach === "more") {
+            else if (step === "part") {
                 layPart(runPart, true);
                 parts += 1;
             } else

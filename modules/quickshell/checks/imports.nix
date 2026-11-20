@@ -91,6 +91,7 @@
   "TalkThread.js" = [ "TalkLine.js" ];
   "Taken.qml" = [ "Fuzzy.js" ];
   "Trials.qml" = [
+    "launcher/Presented.js"
     "launcher/Stepped.js"
     "launcher/Thread.js"
     "launcher/Trials.js"
