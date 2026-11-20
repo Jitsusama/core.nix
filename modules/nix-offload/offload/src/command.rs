@@ -438,14 +438,15 @@ pub struct Noted<'a> {
 /// as `TOKEN=x` or a whole command line in one word, is kept as `?`. The
 /// line goes in one write, so two runs ending at once don't interleave.
 pub fn note(journal: &Path, noted: &Noted) {
+    // The whole word is judged, not its last part, since an assignment's
+    // value may hold a '/' and its tail would otherwise read as a name.
     let program = noted.asked.words.first().map(|word| {
-        let name = Path::new(word)
-            .file_name()
-            .map_or_else(|| word.clone(), |name| name.to_string_lossy().into_owned());
-        if name.contains(|c: char| c == '=' || c.is_whitespace()) {
+        if word.contains(|c: char| c == '=' || c.is_whitespace()) {
             "?".to_owned()
         } else {
-            name
+            Path::new(word)
+                .file_name()
+                .map_or_else(|| word.clone(), |name| name.to_string_lossy().into_owned())
         }
     });
     // A folder whose path isn't UTF-8 would make serde refuse it, which
@@ -547,7 +548,7 @@ mod tests {
         let asked = Asked {
             copies: Vec::new(),
             longest: 60,
-            words: words("TOKEN=hush pnpm test"),
+            words: words("TOKEN=sec/hush pnpm test"),
         };
         let odd = Path::new(std::ffi::OsStr::from_bytes(b"/home/one/tr\xffee"));
         note(
