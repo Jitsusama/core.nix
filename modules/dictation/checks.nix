@@ -188,11 +188,12 @@
 
   # A call writes down only what was said. Joel's side is a quiet room, a
   # second of loud noise with no speech in it, then his question; the far
-  # end's is silence with a click, a breath and a cough, the last two loud
-  # and long enough to be takes by loudness alone; Parakeet writes "Yeah."
-  # for the breath. One turn, Joel's question, with no "[static]" for the
-  # noise, proves none of the sounds gave one, though a take of filler
-  # alone is kept.
+  # end's is silence with a click, a breath, a cough, a ringtone, a chime,
+  # a chord and a mains hum, all but the click loud and long enough to be
+  # takes by loudness alone; Parakeet writes "Yeah." for the breath, and
+  # the last four repeat as a voice does. One turn, Joel's question, with
+  # no "[static]" for the noise, proves none of the sounds gave one,
+  # though a take of filler alone is kept.
   call-transcripts-writes-only-what-was-said =
     let
       dictation = pkgs.callPackage ./package.nix { };
@@ -215,12 +216,22 @@
         made breath.wav synth 0.7 brownnoise vol 0.3 fade q 0.2 0.7 0.4
         made cough.wav synth 0.6 pinknoise vol 0.6 fade 0 0.6 0.3
         made silence.wav trim 0 5
+        made low.wav synth 2 sine 440 vol 0.1
+        made high.wav synth 2 sine 480 vol 0.1
+        sox -m low.wav high.wav ring.wav
+        made chime.wav synth 1.5 pluck A5 vol 0.3 fade 0 1.5 1.4
+        made c.wav synth 3 pluck C4 vol 0.15
+        made e.wav synth 3 pluck E4 vol 0.15
+        made g.wav synth 3 pluck G4 vol 0.15
+        sox -m c.wav e.wav g.wav chord.wav
+        made hum.wav synth 3 square 60 vol 0.05
         sox room.wav noise.wav room.wav ask.wav room.wav mine.wav
         sox silence.wav click.wav silence.wav breath.wav silence.wav cough.wav silence.wav \
+          ring.wav silence.wav chime.wav silence.wav chord.wav silence.wav hum.wav silence.wav \
           theirs.wav
         DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts \
-          transcribe ${model} mine.wav theirs.wav > transcript.md 2> heard
-        cat heard transcript.md
+          transcribe ${model} mine.wav theirs.wav > transcript.md
+        cat transcript.md
         if grep -qE '[][()]' transcript.md; then
           echo "the transcript says what the noise sounded like, which nobody said"
           exit 1

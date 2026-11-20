@@ -173,11 +173,16 @@ impl Cutter {
             }
         }
         let spoken = ended.iter().filter(|(_, _, speech)| *speech).count();
-        let voiced = ended
-            .windows(2)
-            .filter(|pair| pair[1].2 && voiced(&pair[0].0, &pair[1].0))
-            .count();
-        (spoken >= LEAST_SPEECH_FRAMES && voiced >= LEAST_VOICED_FRAMES).then(|| Take {
+        // Voicing is the dearer test, so it's asked only of a take loud for
+        // long enough, and only until enough frames are voiced.
+        let heard = spoken >= LEAST_SPEECH_FRAMES
+            && ended
+                .windows(2)
+                .filter(|pair| pair[1].2 && voiced(&pair[0].0, &pair[1].0))
+                .take(LEAST_VOICED_FRAMES)
+                .count()
+                == LEAST_VOICED_FRAMES;
+        heard.then(|| Take {
             start,
             samples: ended.into_iter().flat_map(|(frame, _, _)| frame).collect(),
         })
@@ -193,9 +198,11 @@ impl Cutter {
 }
 
 /// Whether a frame, read with the one before it so a low voice's period
-/// fits twice, repeats at a voice's pitch. Each sample less most of the
-/// one before it is what's compared, so the slow drift of a rumble or a
-/// breath's low noise doesn't read as a repeat.
+/// fits twice, repeats at a voice's pitch. Each sample less the one before
+/// it is what's compared, so an offset, or the drift of a breath's or a
+/// rumble's low noise, doesn't read as a repeat. A repeat only counts past
+/// where the sound is first unlike itself, so a hum below a voice's pitch,
+/// alike to itself at every short lag, isn't one either.
 fn voiced(before: &[f32], frame: &[f32]) -> bool {
     let sound: Vec<f32> = before
         .iter()
@@ -203,15 +210,31 @@ fn voiced(before: &[f32], frame: &[f32]) -> bool {
         .copied()
         .collect::<Vec<_>>()
         .windows(2)
-        .map(|pair| pair[1] - 0.97 * pair[0])
+        .map(|pair| pair[1] - pair[0])
         .collect();
-    (SHORTEST_PERIOD..=LONGEST_PERIOD.min(sound.len() / 2)).any(|period| {
-        let (early, late) = (&sound[..sound.len() - period], &sound[period..]);
-        let together: f32 = early.iter().zip(late).map(|(a, b)| a * b).sum();
-        let apart =
-            early.iter().map(|a| a * a).sum::<f32>() * late.iter().map(|b| b * b).sum::<f32>();
-        apart > 0.0 && together / apart.sqrt() > VOICED_LIKENESS
-    })
+    let mut energy = vec![0.0_f32; sound.len() + 1];
+    for (i, sample) in sound.iter().enumerate() {
+        energy[i + 1] = energy[i] + sample * sample;
+    }
+    let likeness = |period: usize| {
+        let overlap = sound.len() - period;
+        let together: f32 = sound[..overlap]
+            .iter()
+            .zip(&sound[period..])
+            .map(|(a, b)| a * b)
+            .sum();
+        let apart = energy[overlap] * (energy[sound.len()] - energy[period]);
+        if apart > 0.0 {
+            together / apart.sqrt()
+        } else {
+            0.0
+        }
+    };
+    let longest = LONGEST_PERIOD.min(sound.len() / 2);
+    let Some(unlike) = (1..=longest).find(|&period| likeness(period) < 0.0) else {
+        return false;
+    };
+    (unlike.max(SHORTEST_PERIOD)..=longest).any(|period| likeness(period) > VOICED_LIKENESS)
 }
 
 /// A frame's loudness in decibels below full scale.
@@ -268,12 +291,36 @@ mod tests {
             .map(|_| {
                 seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                 let white = (seed >> 8) as f32 / (1 << 24) as f32 * 2.0 - 1.0;
-                walk = 0.99 * walk + white;
+                walk += white;
                 if brown { walk } else { white }
             })
             .collect();
         let rms = (raw.iter().map(|s| s * s).sum::<f32>() / count as f32).sqrt();
         raw.iter().map(|s| s * level / rms).collect()
+    }
+
+    /// `seconds` of a voice at about -27 dBFS: a pitch and its first twelve
+    /// harmonics, each fainter, the pitch rising a tenth as a question's
+    /// does.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "a test's few seconds of samples"
+    )]
+    fn voice(seconds: f32, pitch: f32) -> Vec<f32> {
+        let count = (seconds * RATE as f32) as usize;
+        let mut phase = 0.0_f32;
+        (0..count)
+            .map(|i| {
+                let rising = 1.0 + 0.1 * i as f32 / count as f32;
+                phase += std::f32::consts::TAU * pitch * rising / RATE as f32;
+                (1..=12)
+                    .map(|k| (k as f32 * phase).sin() / k as f32)
+                    .sum::<f32>()
+                    * 0.05
+            })
+            .collect()
     }
 
     /// A room's quiet, about -70 dBFS.
@@ -346,6 +393,42 @@ mod tests {
         for brown in [false, true] {
             let sound = [quiet(2.0), noise(1.0, 0.1, brown), quiet(2.0)].concat();
             assert_eq!(cut(&sound), Vec::new(), "brown: {brown}");
+        }
+    }
+
+    #[test]
+    fn a_low_voice_and_a_high_one_are_each_a_take() {
+        for pitch in [85.0, 300.0] {
+            let sound = [quiet(2.0), voice(0.4, pitch), quiet(2.0)].concat();
+            assert_eq!(cut(&sound).len(), 1, "pitch: {pitch}");
+        }
+    }
+
+    #[test]
+    fn a_rumble_below_a_voice_makes_no_take() {
+        let step = std::f32::consts::TAU * 40.0 / 16_000.0;
+        let sound = [quiet(2.0), tone(1.0, 0.1, step), quiet(2.0)].concat();
+        assert_eq!(cut(&sound), Vec::new());
+    }
+
+    #[test]
+    fn noise_takes_three_frames_voiced_with_the_one_before_to_be_heard() {
+        // Each frame is read with the one before it, so 60 ms of voice
+        // after noise holds two voiced frames and 80 ms holds three.
+        for (heard, seconds) in [(false, 0.06), (true, 0.08)] {
+            let sound = [
+                quiet(2.0),
+                noise(0.5, 0.05, false),
+                voice(seconds, 150.0),
+                noise(0.5, 0.05, false),
+                quiet(2.0),
+            ]
+            .concat();
+            assert_eq!(
+                cut(&sound).len(),
+                usize::from(heard),
+                "{seconds} s of voice"
+            );
         }
     }
 
