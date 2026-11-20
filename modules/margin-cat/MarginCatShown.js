@@ -43,7 +43,7 @@ function heard(frame, from, last) {
 // it was held under the launcher, leaves the hold out of its gaps, and the
 // journal says how many times it was held.
 function walked(shown, drawing, unseen, counted) {
-    const begun = counted?.begun ?? 0;
+    const began = counted?.begun ?? 0;
     const resumed = counted?.resumed ?? [];
     const gaps = shown.slice(1).map((at, i) => at - shown[i])
         .filter((_, i) => !resumed.includes(i + 1)).sort((a, b) => a - b);
@@ -57,11 +57,11 @@ function walked(shown, drawing, unseen, counted) {
         typical: tenths(costs[(costs.length - 1) >> 1]),
         drawn: tenths(drawing.reduce((most, ms) => Math.max(most, ms), 0)),
         unseen,
-        begun,
+        begun: began,
         stepped: counted?.stepped ?? 0,
         held: resumed.length
     };
-    const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${begun} frames `
+    const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${began} frames `
         + "a median "        + `${said.median} ms `
         + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn in `
         + `${said.typical} ms typically and within ${said.drawn} ms, ${unseen} never shown, `
