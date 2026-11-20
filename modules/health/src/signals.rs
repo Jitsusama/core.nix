@@ -3,9 +3,11 @@
 //! and a signal that ends health unhandled ends none of them, each living
 //! on until its next line finds no one reading. So the signals that ask
 //! health to stop are caught, and a thread waiting on what the catch writes
-//! ends the followers, then health by the same signal, so whatever started
-//! health sees the stop it asked for. A service manager's stop ends
-//! health's whole group anyway; this covers health run anywhere else.
+//! ends the followers, gives health's run `WRITES_WITHIN` to write the
+//! day and return, then ends health by the same signal, so whatever
+//! started health sees the stop it asked for. A service manager's stop
+//! ends health's whole group anyway, but only this writes what health
+//! held unwritten, as on a restart or a reboot.
 //!
 //! The signals are caught rather than blocked and waited for: a blocked
 //! signal stays blocked in every child, so a follower would sit out a
@@ -25,6 +27,7 @@ use std::mem;
 use std::os::fd::{AsRawFd as _, IntoRawFd as _, OwnedFd};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::{Condvar, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -49,9 +52,20 @@ static STOPPED: AtomicBool = AtomicBool::new(false);
 /// cleanly.
 pub const CAUGHT_WITHIN: Duration = Duration::from_millis(100);
 
+/// How long a stop waits for `run` to return once the followers are
+/// ended, so it writes the day, before it ends health all the same: a
+/// write takes milliseconds, and a service manager waits a minute and a
+/// half before it kills.
+const WRITES_WITHIN: Duration = Duration::from_secs(5);
+
+/// Whether `run` has returned, and the stop's thread and `rest` woken as
+/// it does or as a stop is caught.
+static RAN: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
+
 /// `run`, with health's stops caught: a stop calls `end`, on a thread of
-/// its own, then ends health by its signal, and once one is caught,
-/// health ends by it alone, whatever `run` returns.
+/// its own, waits up to `WRITES_WITHIN` for `run` to return, then ends
+/// health by its signal, and once one is caught, health ends by it alone,
+/// whatever `run` returns.
 ///
 /// # Errors
 ///
@@ -63,23 +77,41 @@ pub fn until_stopped<T>(
 ) -> io::Result<T> {
     ending(end)?;
     let ran = run();
+    let (returned, woken) = &RAN;
+    *returned.lock().unwrap_or_else(PoisonError::into_inner) = true;
+    woken.notify_all();
     await_stop();
     ran
 }
 
 /// From now on, a signal that asks health to stop calls `end`, on a
-/// thread of its own, then ends health by that signal. A second while
-/// the first's `end` runs ends health at once, so a stop can't hang.
+/// thread of its own, wakes a `rest`, waits up to `WRITES_WITHIN` for
+/// `until_stopped`'s run to return, then ends health by that signal. A
+/// second while the first's runs ends health at once, so a stop can't
+/// hang.
 fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
     let mut caught = catch(&STOPPING)?;
     thread::spawn(move || {
         let mut signal = [0];
         if caught.read_exact(&mut signal).is_ok() {
             end();
+            let (returned, woken) = &RAN;
+            let returned = returned.lock().unwrap_or_else(PoisonError::into_inner);
+            woken.notify_all();
+            drop(woken.wait_timeout_while(returned, WRITES_WITHIN, |ran| !*ran));
             die_by(c_int::from(signal[0]));
         }
     });
     Ok(())
+}
+
+/// Wait `time`, or less once a stop is caught, so a run resting between
+/// its looks writes the day and returns within the stop's
+/// `WRITES_WITHIN`.
+pub fn rest(time: Duration) {
+    let (returned, woken) = &RAN;
+    let returned = returned.lock().unwrap_or_else(PoisonError::into_inner);
+    drop(woken.wait_timeout_while(returned, time, |_| !stopping()));
 }
 
 /// Whether a stop has been caught, so health is ending by it.

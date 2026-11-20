@@ -33,9 +33,12 @@ in
       ExecStart = "${lib.getExe package} follow";
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
       # Each time it starts, after a fault or a stop, it reads today's
-      # journals again from the day's start. What it saw itself since its
-      # last write, as the lid and the disk, is lost to a fault or a stop,
-      # as is what it couldn't write of a day before, held to try again.
+      # journals again from the day's start. It writes the day as it ends,
+      # by a follower's end or a stop, so only a kill, a crash or a day it
+      # can't write loses what it saw itself since its last write, as the
+      # lid and the disk, and the days before it held to try again. A stop
+      # just past midnight also loses the old day's journal lines it hadn't
+      # read yet, as a start reads only today's.
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
