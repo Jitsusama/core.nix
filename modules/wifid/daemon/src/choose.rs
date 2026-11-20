@@ -254,6 +254,9 @@ struct Trial {
     from: String,
     to: String,
     before: Measured,
+    /// When the card last moved before this one, which counts again where
+    /// this one never stood.
+    moved_before: Option<Instant>,
     /// Whether the move was for a wider band's room, the card using it,
     /// kept unless it carries badly rather than unless it carries worse
     /// than the narrower one left. One made idle, the wider band known no
@@ -413,11 +416,12 @@ impl Chooser {
         let Some(chosen) = chosen else {
             return self.unchosen(now, on, others, (bad, holds_wide && !queued), crowded);
         };
-        self.moved = Some(now);
+        let moved_before = self.moved.replace(now);
         self.trial = Some(Trial {
             from: point.to_owned(),
             to: chosen.point.clone(),
             before: measured.clone(),
+            moved_before,
             banded: banded.is_some() && used(measured),
             widened: !wide(frequency) && wide(chosen.frequency),
         });
@@ -561,7 +565,13 @@ impl Chooser {
         // found it gone (NotNearby on 15 and 16 Nov 2026), so its figures
         // judge nothing: the tried point is kept off rather than tried again
         // each settle, and the card isn't sent back to where it may be.
+        // Back on the point it left, the card was sent back as the move
+        // didn't get there in time (arrive.rs), so the move never stood and
+        // doesn't hold the card from choosing again for a settle.
         if point != trial.to {
+            if point == trial.from {
+                self.moved = trial.moved_before;
+            }
             self.spurned.insert(trial.to.clone(), now);
             self.unreached = Some(trial.to);
             return None;
@@ -2203,6 +2213,35 @@ pub(crate) mod tests {
         let next = chooser.choose(minute, (DESK, &failing, -50, CH52), &near, false);
 
         assert_eq!(next, Choice::Try(elsewhere().point), "the hall's kept off");
+    }
+
+    #[test]
+    fn a_move_sent_back_where_it_began_never_stood_so_another_is_tried_at_once() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None), elsewhere()];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near[..1], false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let minute = start + Duration::from_secs(60);
+        let next = chooser.choose(minute, (DESK, &badly, -50, CH52), &near, false);
+        let third = elsewhere().point;
+        let mut wandered = after_a_bad_minute(DESK);
+        wandered.choose(start, (DESK, &badly, -50, CH52), &near[..1], false);
+        let on = (third.as_str(), &badly, -55, CH52);
+        let waits = wandered.choose(minute, on, &[hall(-53, Some(20), None)], false);
+
+        assert_eq!(
+            next,
+            Choice::Try(elsewhere().point),
+            "back on the desk, the hall's kept off and no settle waited"
+        );
+        assert_eq!(
+            waits,
+            Choice::Stay,
+            "a card moved on elsewhere still settles"
+        );
     }
 
     #[test]
