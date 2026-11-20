@@ -1,6 +1,7 @@
 //! The misses Joel found himself, and whether the check each one's owner
-//! named has merged: a miss closes on the merge itself, read from the
-//! repository's main, never on the owner's word that a check exists.
+//! named runs here: a miss closes on the merge itself, read from the
+//! repository's main, once this machine runs it, never on the owner's word
+//! that a check exists.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -15,8 +16,10 @@ use super::{Class, DAY, Measure, count, first_owner, lines, seconds};
 use crate::{axes, command, write_whole};
 
 mod held;
+mod running;
 
 pub use held::{BLIND, HELD, held};
+pub use running::{Pin, UNRUN};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -126,16 +129,7 @@ fn merged(
             continue;
         };
         let path = path.to_string_lossy();
-        let main = if command(
-            "git",
-            &["-C", &path, "rev-parse", "-q", "--verify", "origin/main"],
-        )
-        .is_ok()
-        {
-            "origin/main"
-        } else {
-            "main"
-        };
+        let main = main_of(&path);
         let subjects = command(
             "git",
             &[
@@ -167,11 +161,34 @@ fn merged(
     (found, unread)
 }
 
+/// A checkout's main: its `origin/main` where it has one, else its `main`.
+fn main_of(path: &str) -> &'static str {
+    if command(
+        "git",
+        &["-C", path, "rev-parse", "-q", "--verify", "origin/main"],
+    )
+    .is_ok()
+    {
+        "origin/main"
+    } else {
+        "main"
+    }
+}
+
 /// The misses in `text`, each closed once its check merged on a main
-/// cadence reads: core's and the harness's, as `folder` and pi-packages
-/// keep them, and each of `checkouts`, as `NAME=PATH`. The changes found
-/// merged are kept in `folder`, so a main is never read again for them.
-pub fn checked(text: &str, folder: &Path, checkouts: &[String]) -> io::Result<Measure> {
+/// cadence reads, core's and the harness's, as `folder` and pi-packages
+/// keep them, and each of `checkouts`, as `NAME=PATH`, and runs here, as
+/// the last of `switches` and the hosts' runtime `pin` say. The changes
+/// found merged are kept in `folder`, so a main is never read again for
+/// them; whether one runs is read each hour, so a switch rolled back opens
+/// its miss again.
+pub fn checked(
+    text: &str,
+    folder: &Path,
+    checkouts: &[String],
+    switches: &str,
+    pin: Option<Pin<'_>>,
+) -> io::Result<Measure> {
     let mut repos = Checkouts::from([
         ("core".to_owned(), folder.join("core.git")),
         ("harness".to_owned(), axes::landings::harness_mirror()),
@@ -190,7 +207,18 @@ pub fn checked(text: &str, folder: &Path, checkouts: &[String]) -> io::Result<Me
     if found != known {
         write_whole(&kept_at, &serde_json::to_string(&found)?)?;
     }
-    Ok(misses(text, &repos, &found, &unread))
+    let unrun = running::unrun(&wanted_merged(text, &repos, &found), &repos, switches, pin);
+    Ok(open_misses(text, &repos, &found, &unread, &unrun))
+}
+
+/// The changes the misses' checks name now that have merged: only these
+/// are asked whether they run, since `merged` keeps every one ever found.
+fn wanted_merged(text: &str, repos: &Checkouts, merged: &BTreeSet<Named>) -> BTreeSet<Named> {
+    named_in(text, repos)
+        .into_iter()
+        .map(|(change, _)| change)
+        .filter(|change| merged.contains(change))
+        .collect()
 }
 
 /// What each miss in `misses.jsonl` was, in Joel's own words and when he
@@ -286,20 +314,32 @@ pub fn ledger(path: &Path, was_open: &[String]) -> (String, Option<Vec<String>>)
     (text, Some(gone))
 }
 
+#[cfg(test)]
+fn misses(
+    text: &str,
+    repos: &Checkouts,
+    merged: &BTreeSet<Named>,
+    unread: &BTreeSet<String>,
+) -> Measure {
+    open_misses(text, repos, merged, unread, &BTreeMap::new())
+}
+
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
 /// one stays open until its owner names the check that would have caught
-/// it and that check has merged, as `merged` holds them. A check naming no
+/// it and that check has merged, as `merged` holds them, and runs here, as
+/// `unrun` says of those that don't yet, with why. A check naming no
 /// change cadence can see merge, such as a memory, leaves it open, since
 /// its words alone would tell Joel it's fixed before it is. One whose check
 /// is in an `unread` main says so, since the hour, not its owner, is then
 /// what keeps it open: at 12:10 on 15 November the card asked the
 /// orchestrator to steer a miss whose check had merged in a main stock git
 /// couldn't open.
-fn misses(
+fn open_misses(
     text: &str,
     repos: &Checkouts,
     merged: &BTreeSet<Named>,
     unread: &BTreeSet<String>,
+    unrun: &BTreeMap<Named, &'static str>,
 ) -> Measure {
     let changes = |miss: &Value| {
         miss["check"]
@@ -310,11 +350,14 @@ fn misses(
     let open: Vec<(String, String, String)> = lines(text)
         .filter_map(|miss| {
             let changes = changes(&miss);
-            if !changes.is_empty() && changes.iter().all(|change| merged.contains(change)) {
+            let ran = |change: &Named| merged.contains(change) && !unrun.contains_key(change);
+            if !changes.is_empty() && changes.iter().all(ran) {
                 return None;
             }
             let what = named_as(&miss).to_owned();
             let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
+            // A check merged but not yet running is held, as a measure holds
+            // one, so its owner isn't asked again which check would catch it.
             let note = changes
                 .iter()
                 .find(|change| unread.contains(&change.repo))
@@ -323,6 +366,15 @@ fn misses(
                         ", though cadence couldn't read {}'s main to see its check",
                         change.repo
                     )
+                })
+                .or_else(|| {
+                    let (change, why) = changes
+                        .iter()
+                        .find_map(|change| Some((change, unrun.get(change)?)))?;
+                    Some(format!(
+                        "{HELD}{} #{}{UNRUN}{why}",
+                        change.repo, change.number
+                    ))
                 })
                 .unwrap_or_default();
             Some((what, owner, note))
@@ -335,7 +387,7 @@ fn misses(
         .filter(|line| !line.trim().is_empty())
         .all(|line| serde_json::from_str::<Value>(line).is_ok());
     let mut says =
-        "misses Joel found himself, with no merged check yet to catch the next".to_owned();
+        "misses Joel found himself, with no check yet running here to catch the next".to_owned();
     if !whole {
         says.push_str(UNREAD);
     }
@@ -460,6 +512,48 @@ mod tests {
             ["the map had no network · KNURBN"],
             "it says what it was"
         );
+    }
+
+    /// At 21:10 on 19 November the card told Joel his 19:05 miss was fixed on
+    /// core #5800's merge, which neither the last switch nor the pi hosts
+    /// carried yet.
+    #[test]
+    fn a_merged_check_this_machine_doesnt_run_keeps_its_miss_open() {
+        let text = format!(
+            "{}\n{}\n",
+            miss("core #5800's red case"),
+            miss_of("core #4500")
+        );
+        let merged = BTreeSet::from([change("core", 5800), change("core", 4500)]);
+        let unrun = BTreeMap::from([(change("core", 5800), "the pi hosts don't load it yet")]);
+        let m = open_misses(&text, &repos(), &merged, &BTreeSet::new(), &unrun);
+        assert!(
+            (m.now - 1.0).abs() < 0.5,
+            "the unrun one open, got {}",
+            m.now
+        );
+        assert_eq!(
+            m.behind,
+            [format!(
+                "the cat waits · XY9H5C{HELD}core #5800{UNRUN}the pi hosts don't load it yet"
+            )],
+            "it says its check merged and why it doesn't run yet"
+        );
+        assert_eq!(
+            wanted_merged(&text, &repos(), &merged),
+            merged,
+            "a merged check wasn't asked whether it runs"
+        );
+        assert!(
+            wanted_merged(&text, &repos(), &BTreeSet::new()).is_empty(),
+            "a check not merged was asked whether it runs"
+        );
+    }
+
+    fn miss_of(check: &str) -> String {
+        serde_json::json!({"at": AT, "words": "x", "what": "the dock", "owner": "Y2YBTS",
+            "check": check})
+        .to_string()
     }
 
     #[test]

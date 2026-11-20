@@ -33,7 +33,7 @@ pub use broken::{Main, broken, failed_in};
 pub use card::{card_if_fresh, card_median, merge_to_on};
 pub use cells::{Quest, cells, mapped, quest};
 pub use locked::read as unlocked;
-pub use misses::{BLIND, HELD, UNREAD, checked, held, ledger, said};
+pub use misses::{BLIND, HELD, Pin, UNREAD, UNRUN, checked, held, ledger, said};
 pub use pains::{keeper, pains};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 

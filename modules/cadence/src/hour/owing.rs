@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, drag, rounds};
+use super::measures::{BLIND, Class, HELD, Measure, UNRUN, drag, rounds};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -48,7 +48,13 @@ fn filed(m: &Measure) -> Vec<Filed> {
                 } else {
                     format!("hour:miss-held:{what}")
                 };
-                let text = if held.is_empty() {
+                let text = if held.contains(UNRUN) {
+                    format!(
+                        "cadence hour: a miss Joel found himself is yours: {what}. Its check, \
+                         {held}, so it stays open, and Joel isn't told it's fixed, until \
+                         this machine runs it. Please reply with when it will."
+                    )
+                } else if held.is_empty() {
                     format!(
                         "cadence hour: a miss Joel found himself is yours: {what}. Which \
                          check would have caught it? It stays open until that check merges; \
