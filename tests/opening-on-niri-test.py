@@ -225,6 +225,16 @@ def openings(shell: Shell) -> list[Json]:
     return cast("list[Json]", json.loads(shell.as_account(shell.ipc("openings"))))
 
 
+def forget_the_copies() -> None:
+    """Ask the clipboard's history to forget every copy, as Forget the Clipboard does."""
+    with socket.socket(socket.AF_UNIX) as history:
+        history.settimeout(10)
+        history.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"))
+        history.sendall(json.dumps({"id": 1, "ask": "clear"}).encode() + b"\n")
+        answer = history.makefile().readline()
+    assert json.loads(answer or "{}").get("cleared") is True, f"the copies stayed: {answer}"
+
+
 def told(line: str) -> None:
     """Say a line down the launcher's socket from this process, as its chord's launcher-say does.
 
@@ -362,9 +372,13 @@ def casts_stood_in(shell: Shell, *, said: bool) -> Iterator[CastsStandIn]:
         read_shared(shell, shared=not said)
         yield stood
     finally:
-        if stood is not None:
-            stood.close()
-        shell.windows_daemon()
+        # The real daemon comes back even when closing the stand-in throws, or every case after
+        # this would run without one.
+        try:
+            if stood is not None:
+                stood.close()
+        finally:
+            shell.windows_daemon()
 
 
 def windows_socket() -> Path:
@@ -380,6 +394,21 @@ def read_shared(shell: Shell, *, shared: bool) -> None:
             f"the screen never read shared {shared}:\n{shell.tail()}"
         )
         time.sleep(launcher_on_niri.POLL)
+
+
+def drawn_until(shell: Shell, test: Callable[[str], bool], what: str) -> str:
+    """Wait until the JSON of the texts drawn on the card and its drawer passes `test`, and give it.
+
+    Each text is cut to its first 60 characters and escaped as JSON, so `test` looks for words
+    short and plain enough to read the same there.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    drawn = shell.as_account(shell.ipc("drawnTexts"))
+    while not test(drawn):
+        assert time.monotonic() < deadline, f"the card never {what}: {drawn}"
+        time.sleep(launcher_on_niri.POLL)
+        drawn = shell.as_account(shell.ipc("drawnTexts"))
+    return drawn
 
 
 def heard_closing(shell: Shell, since: int, by: float) -> None:
@@ -1027,26 +1056,65 @@ def test_a_share_begun_before_a_kept_opening_is_filled_in_fills_it_at_once(
     it's drawn, so a share begun in between was shown the rows kept from before it, a copy or
     a waiting ask, all that while. Niri is held, so nothing it presents fills it in, and the
     stand-in takes back its word on the casts, as the daemon does when niri's stream drops;
-    left to itself, it fills in as the wait for niri gives up, half a second on.
+    left to itself, it fills in as the wait for niri gives up, half a second on. The clipboard
+    is kept showing a copy, drawn as it opens; once the fill has run, and before niri has
+    presented anything of it, the copy's row says it's hidden and its text is gone. The copy
+    is forgotten after, so the cases after this one find the history as empty as before.
     """
+    copied = "a copy kept before the share"
+    hidden = "Text, Hidden While You Share"
+    with contextlib.ExitStack() as after:
+        after.callback(forget_the_copies)
+        # wl-copy stays behind to serve the copy, so it's given nothing to hold open.
+        with shell.told(f"heard copy {copied}"):
+            shell.as_account(f"printf %s {shlex.quote(copied)} | wl-copy > /dev/null 2>&1")
+        shared_after_a_kept_copy(shell, copied, hidden)
+
+
+def shared_after_a_kept_copy(shell: Shell, copied: str, hidden: str) -> None:
+    """Share as home, On and the clipboard open kept, the clipboard holding `copied`."""
     with casts_stood_in(shell, said=True) as stood:
-        for asked, name in [(("toggle",), "home"), (("collection", "on"), "on")]:
+        # Each place is opened and closed first, so it's kept whatever ran before this case.
+        for place in ("on", "clipboard"):
+            shell.launcher_until(lambda shown: shown.get("kept"))
+            shell.as_account(shell.ipc("collection", place))
+            shell.launcher_ready()
+            if place == "clipboard":
+                drawn_until(shell, lambda texts: copied in texts, "drew the copy unshared")
+            shell.close_launcher()
+        places = [(("toggle",), "home"), (("collection", "on"), "on")]
+        for asked, name in [*places, (("collection", "clipboard"), "clipboard")]:
             shell.launcher_until(lambda shown: shown.get("kept"))
             timed = latest(openings(shell))
             since = shell.mark()
             with launcher_on_niri.niri_held():
                 # Told as the chord's call returns, as the wait for niri gives up half a second
                 # from the kept frame, held or not.
+                chord = time.monotonic()
                 shell.as_account(shell.ipc(*asked))
+                if name == "clipboard":
+                    # One read, as a wait could outlast the half second the share must beat.
+                    kept = shell.as_account(shell.ipc("drawnTexts"))
+                    assert copied in kept, f"the kept clipboard didn't draw the copy: {kept}"
                 stood.say(said=False)
+                # Timed from before the chord to the share told, all the test spends there, so
+                # a builder slow enough to lose that race fails as the test's, not the fill's.
+                telling = round((time.monotonic() - chord) * 1000)
                 read_shared(shell, shared=True)
                 shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
+                # Read as the fill leaves it, before niri has presented anything of it.
+                drawn = shell.as_account(shell.ipc("drawnTexts"))
             opening = filled_after(shell, timed)
             said = shell.log.read_bytes()[since:].decode(errors="replace")
             # Asserted before it's put back, so a failure putting it back hides nothing.
-            assert opening.get("filledBy") == "share", f"{name} waited out the share: {opening}"
+            assert opening.get("filledBy") == "share", (
+                f"{name} waited out the share, told at most {telling} ms after the chord: {opening}"
+            )
             filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
             assert filled in said, f"{name}'s fill wasn't said:\n{said}"
+            if name == "clipboard":
+                assert copied not in drawn, f"the kept copy was drawn under the share: {drawn}"
+                assert hidden in drawn, f"the fill left the copy's row off the card: {drawn}"
             shell.as_account(shell.ipc("toggle"))
             shell.launcher_closed()
             stood.say(said=True)

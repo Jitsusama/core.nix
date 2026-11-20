@@ -4133,8 +4133,9 @@
     and chords said all through a handover are each presented within 2 s, software-rendered,
     with niri never holding both shells' surfaces, the new shell told to systemd as the unit's
     main process and the old one ended; while niri is yet to say its casts, a chord into On and
-    home each open afresh, the journal saying why, and a share begun as home or On is drawn
-    from what was kept fills it in at once
+    home each open afresh, the journal saying why, and a share begun as home, On or the
+    clipboard is drawn from what was kept fills it in at once, the kept copy's text gone from
+    the card
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told

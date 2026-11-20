@@ -11504,10 +11504,9 @@ Scope {
 
     // Whether the opening began from what was kept, and what filled it in:
     // its first frame, or a key, a click or a share begun before that
-    // frame was drawn,
-    // whose fill's record is made once the frame's is, since it's that
-    // opening's; home's, once home is found again after it (fillFound),
-    // though each fill is said as it ends. Its sources'
+    // frame was drawn, whose fill's record is made once the frame's is,
+    // since it's that opening's; home's, once home is found again after
+    // it (fillFound), though each fill is said as it ends. Its sources'
     // waking, done before that frame, waits for the frame's record too.
     property bool openKept: false
     property string openFilledBy: ""
@@ -11698,7 +11697,8 @@ Scope {
     // it reads wakes, home is found again where its rows stand, after its
     // frame (fillFound), and its drawer comes. A key or a click before its
     // first frame is drawn does this first, so it acts on what's there
-    // now, never on what was kept.
+    // now, never on what was kept, and a share begun before then does it
+    // a turn on (sharedMidOpening), so what was kept leaves the screen.
     function filled(by) {
         if (!opening || open)
             return;
@@ -11920,7 +11920,7 @@ Scope {
         fillFoundFrom = began - wakeBegan;
         // A throw is said and goes no further, so the slice still wakes
         // the sources after it, a frame's other callbacks still run, and
-        // the key, click or chord that ran it still acts.
+        // the key, click, chord or share that ran it still acts.
         try {
             freshen();
             if (Wanted.findsAgain(by, { home: fillFindsHome, held: held.length,
@@ -11982,15 +11982,16 @@ Scope {
         const slices = wakeSlices.map(one => Object.assign({ from: Math.round(one.from),
             took: Math.round(one.took), woke: one.woke.map(each => each.name) },
             one.refreshed ? { refreshed: true } : {}));
-        // The fill's finding, run by its own slice, a key, a click or a
-        // chord, is a slice of its own before the sources' (wakeTimes).
+        // The fill's finding, run by its own slice, a key, a click, a chord
+        // or a share, is a slice of its own before the sources' (wakeTimes).
         const found = fillFoundBy === "" ? null : { from: fillFoundFrom, took: fillFoundTook };
         const { longest, waited } = Wanted.wakeTimes(found, wakeSlices);
         const woke = Object.assign({ slices, longestSlice: longest, longestWake: waited,
             foundBy: fillFoundBy }, found ? { foundFrom: Math.round(found.from),
             foundTook: Math.round(found.took), foundJoined: fillFoundJoined } : {},
             // Only a slice's find waits behind a frame; a key's, a click's
-            // or a chord's runs in its event, where this says nothing.
+            // or a chord's runs in its event, and a share's in a turn of
+            // its own, where this says nothing.
             fillFoundBy === "slice"
                 ? { foundAlone: Wanted.foundAlone(fillFoundAfter, wakeSlices) } : {},
             fillFoundThrew ? { foundThrew: true } : {});
