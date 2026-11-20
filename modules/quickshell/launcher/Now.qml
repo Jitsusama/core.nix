@@ -2311,14 +2311,16 @@ Provider {
     }
     // Where Joel stands, for Lately's rows: the sources of the rows he's
     // inside, and whether he's under Now's own rows but not in For You,
-    // which is the step after Now's own (Provider.qml's heldKeys).
+    // which is the step after Now's own (Provider.qml's heldKeys), or Now's
+    // own step itself when he found For You by name from home (round 6,
+    // F75).
     function latelySteps() {
         const steps = launcher?.held ?? [];
         const nowAt = steps.findIndex(step => step.row?.from === provider);
-        const next = nowAt < 0 ? undefined : steps[nowAt + 1]?.row?.key ?? "";
+        const forYou = step => String(step?.row?.key ?? "").startsWith("on:waitingOnYou");
         return {
             inside: steps.map(step => step.row?.forYou?.source),
-            underNow: next !== undefined && !next.startsWith("on:waitingOnYou")
+            underNow: nowAt >= 0 && !forYou(steps[nowAt]) && !forYou(steps[nowAt + 1])
         };
     }
 
