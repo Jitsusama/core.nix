@@ -2,18 +2,17 @@
 //! asks `boarding.rs`'s questions of the real gates, git and the train,
 //! and says what to do when the head stays off.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::{answers, boarding, git, mark_skipped_macs, needs_heard, run_again, train, turn};
 
 /// What to do about `commit`, on main, once it `boarded` the merge train,
 /// which merges it with the others on one run (`train.rs`), or didn't:
-/// wait for the gate holding it, mark its draft ready, or else run it
-/// again alone, as a reader of the kit owed its turn first still has it go
-/// first.
+/// wait for the gate holding it or the kit reader going first, mark its
+/// draft ready, or else run it again alone.
 pub fn ride_or_run_again(commit: &str, boarded: Result<String, boarding::Off>) -> String {
     match boarded {
-        Ok(said) | Err(boarding::Off::Draft(said)) => said,
+        Ok(said) | Err(boarding::Off::Draft(said) | boarding::Off::KitFirst(said)) => said,
         Err(boarding::Off::Held) => {
             "it waits for that gate, so merge again once it ends".to_owned()
         }
@@ -56,17 +55,21 @@ pub fn boards(
 }
 
 /// Whether `commit` conflicts with origin's main at `main`, as merging the
-/// two would. Where git can't say, the train finds out at its own merge.
+/// two would. Where git can't say, the train finds out at its own merge,
+/// and what git printed is kept from the session, which it doesn't help.
 fn conflicts(commit: &str, main: &str) -> bool {
     Command::new("git")
         .args(["merge-tree", "--write-tree", "--quiet", main, commit])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .is_ok_and(|status| status.code() == Some(1))
 }
 
 /// Keep that `commit` runs changed-checks again over `shared`, on the
 /// train or alone, unless a hold, which keeps its own line, or a draft
-/// kept it off the train.
+/// kept it off the train. A head behind main that can't board keeps none,
+/// since the head it rebases to keeps the one line its change counts.
 pub fn keep_regated(commit: &str, boarded: &Result<String, boarding::Off>, shared: &[String]) {
     if !matches!(boarded, Err(boarding::Off::Held | boarding::Off::Draft(_))) {
         answers::keep(

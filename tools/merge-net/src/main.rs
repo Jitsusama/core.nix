@@ -518,7 +518,9 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             // (`boarding.rs`), and one that can't is told why.
             if behind {
                 let boarded = aboard::boards(commit, main, &checked, &files);
-                aboard::keep_regated(commit, &boarded, &shared);
+                if boarded.is_ok() {
+                    aboard::keep_regated(commit, &boarded, &shared);
+                }
                 let said = boarding::behind_said(commit, main, &checked, &shared, &boarded);
                 eprintln!("merge-net: {said}");
                 return Ok(ExitCode::FAILURE);

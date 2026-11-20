@@ -14,7 +14,9 @@
 //! on the merge train, as the train's own record says. Lines kept
 //! before 18 November have no `why`. An answer that turns on no
 //! file, a head off main or one never run, isn't kept, so a change
-//! edited after its pass is never counted here.
+//! edited after its pass is never counted here; nor is a head behind
+//! main, but for one that boards the merge train, which is kept as a
+//! head on main that boards is.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};

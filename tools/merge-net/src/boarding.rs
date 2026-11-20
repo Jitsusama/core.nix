@@ -80,7 +80,9 @@ pub fn boarding(asks: &Asks) -> Result<String, Off> {
 /// since moved `shared` of its files unseen by its run at `checked`, once
 /// it boarded or didn't. A run again at a head behind main would check it
 /// against the same old base, so one that can't board must rebase, unless
-/// what keeps it off is a hold or a draft, which a rebase doesn't end.
+/// what keeps it off is something a rebase doesn't end: a hold, a draft, a
+/// kit reader going first, unheard needs or no branch, each of which says
+/// its own next step and then boards it as it stands.
 pub fn behind_said(
     commit: &str,
     main: &str,
@@ -95,16 +97,25 @@ pub fn behind_said(
         shared.join(", ")
     );
     let why = match boarded {
-        Ok(said) | Err(Off::Draft(said)) => return format!("{moved}; {said}"),
+        Ok(said) | Err(Off::Draft(said) | Off::KitFirst(said)) => {
+            return format!("{moved}; {said}");
+        }
         Err(Off::Held) => {
             return format!("{moved}; it waits for that gate, so merge again once it ends");
         }
-        Err(Off::KitFirst(said)) => said.clone(),
-        Err(Off::Unheard) => "merge-net needs wasn't heard for it, so run it after the \
-                              rebase too"
-            .to_owned(),
+        Err(Off::Unheard) => {
+            return format!(
+                "{moved}; merge-net needs wasn't heard for it, so run merge-net needs and \
+                 merge again"
+            );
+        }
+        Err(Off::NoBranch) => {
+            return format!(
+                "{moved}; ready was asked from no branch, so ask it again from the pull \
+                 request's branch"
+            );
+        }
         Err(Off::Conflicts) => "it conflicts with main".to_owned(),
-        Err(Off::NoBranch) => "ready was asked from no branch".to_owned(),
         Err(Off::Train(Some(fell))) => fell.clone(),
         Err(Off::Train(None)) => "the train wouldn't start".to_owned(),
     };
@@ -118,7 +129,7 @@ pub fn behind_said(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
 
     fn nothing() -> Option<String> {
         None
@@ -168,6 +179,60 @@ mod tests {
         assert!(
             offered.get(),
             "a head kept off by nothing was never offered"
+        );
+    }
+
+    // may_merge asks of a head on main in this order, and a head behind it
+    // is asked the same, so a hold is found before a conflict, and nothing
+    // is offered before every other ask lets it on.
+    #[test]
+    fn every_ask_is_asked_in_may_merges_order() {
+        let asked = RefCell::new(Vec::new());
+        let note = |ask: &'static str| asked.borrow_mut().push(ask);
+        let offer = |_: &str| {
+            note("offer");
+            Some(String::new())
+        };
+        let asks = Asks {
+            kit_first: &|| {
+                note("kit_first");
+                None
+            },
+            heard: &|| {
+                note("heard");
+                true
+            },
+            held: &|| {
+                note("held");
+                false
+            },
+            conflicts: &|| {
+                note("conflicts");
+                false
+            },
+            branch: &|| {
+                note("branch");
+                branch()
+            },
+            drafted: &|_| {
+                note("drafted");
+                None
+            },
+            offer: &offer,
+            fell: &nothing,
+        };
+        assert_eq!(boarding(&asks), Ok(String::new()));
+        assert_eq!(
+            *asked.borrow(),
+            [
+                "kit_first",
+                "heard",
+                "held",
+                "conflicts",
+                "branch",
+                "drafted",
+                "offer"
+            ]
         );
     }
 
@@ -263,9 +328,19 @@ mod tests {
     }
 
     #[test]
-    fn a_head_behind_main_kept_off_by_a_hold_or_a_draft_isnt_told_to_rebase() {
-        for off in [Off::Held, Off::Draft("mark it ready".to_owned())] {
+    fn a_head_behind_main_kept_off_by_what_a_rebase_doesnt_end_is_told_its_own_step() {
+        for (off, step) in [
+            (Off::Held, "merge again once it ends"),
+            (Off::Draft("mark it ready".to_owned()), "mark it ready"),
+            (
+                Off::KitFirst("merge again once it has merged".to_owned()),
+                "merge again once it has merged",
+            ),
+            (Off::Unheard, "run merge-net needs and merge again"),
+            (Off::NoBranch, "from the pull request's branch"),
+        ] {
             let words = said(&Err(off));
+            assert!(words.contains(step), "{words}");
             assert!(!words.contains("rebase"), "{words}");
         }
     }
@@ -273,13 +348,7 @@ mod tests {
     #[test]
     fn a_head_behind_main_that_cant_board_is_told_why_and_to_rebase() {
         for (off, why) in [
-            (
-                Off::KitFirst("a reader goes first".to_owned()),
-                "a reader goes first",
-            ),
-            (Off::Unheard, "merge-net needs wasn't heard"),
             (Off::Conflicts, "it conflicts with main"),
-            (Off::NoBranch, "from no branch"),
             (Off::Train(Some("it fell off".to_owned())), "it fell off"),
             (Off::Train(None), "the train wouldn't start"),
         ] {
