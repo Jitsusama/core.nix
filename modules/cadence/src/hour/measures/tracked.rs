@@ -127,6 +127,34 @@ fn a_date_moved_in_place_after_it_passed_still_slipped() {
     );
 }
 
+/// On 18 November Joel's 16:58 ask carried 21:00 for a step, its account,
+/// which went to the orchestrator at 19:59; re-dated for the fix, the
+/// 21:00 read as a slip.
+#[test]
+fn a_date_met_on_time_isnt_a_slip_however_it_moves_after() {
+    let met = |words: &str, met: i64| {
+        let mut ask: serde_json::Value =
+            serde_json::from_str(&moved(words, &[(3 * 3600, 20 * 3600), (-DAY, 3600)]))
+                .expect("an ask made");
+        ask["promised"][0]["met"] = at(NOW - met).into();
+        ask.to_string()
+    };
+    let text = [
+        // Due 3 h ago, met 4 h ago, then moved: none.
+        met("met early", 4 * 3600),
+        // Met at the very time it was due: none.
+        met("met on time", 3 * 3600),
+        // Met an hour after it was due: still a slip.
+        met("met late", 2 * 3600),
+    ]
+    .join("\n");
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        ["met late · Y2YBTS"],
+        "a date met by its time was counted a slip, or one met after it wasn't"
+    );
+}
+
 #[test]
 fn a_date_promised_has_not_caught_up_with_still_counts() {
     // Its list moved `expected` to 2 h ago without adding it to `promised`,

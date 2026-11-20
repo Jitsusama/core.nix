@@ -8,6 +8,7 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use owner::first_owner;
+use promised::{Promise, promised};
 
 use crate::tracking::{self, Tracking};
 
@@ -20,6 +21,7 @@ mod locked;
 mod misses;
 mod owner;
 mod pains;
+mod promised;
 mod reports;
 pub mod rounds;
 pub mod spent;
@@ -140,8 +142,10 @@ type Slip = (i64, String, String);
 /// the day before `now` without their ask landing by then, of asks of
 /// the kind `which`. Every date an ask was given counts, from its
 /// `promised`, each with when it was given, so a date moved in place
-/// after it passed is still a slip; one moved before it passed isn't. A
-/// line without `promised` gives its `expected` alone.
+/// after it passed is still a slip; one moved before it passed isn't, nor
+/// one whose entry says it was `met` by then, as a step kept before the ask
+/// moves on to the next. A line without `promised` gives its `expected`
+/// alone.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // The list writes an ask again to move its date, or to re-mark, land
@@ -151,11 +155,17 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     for (order, ask) in lines(text).enumerate() {
         let ours = tracking::of(&ask) == Some(which);
         let landed = seconds(&ask["landed"]);
-        for (expected, moved) in promised(&ask) {
+        for Promise {
+            expected,
+            moved,
+            met,
+        } in promised(&ask)
+        {
             let late = ours
                 && expected <= now
                 && expected > now - DAY
                 && landed.is_none_or(|landed| landed > expected)
+                && met.is_none_or(|met| met > expected)
                 && moved.is_none_or(|moved| moved >= expected);
             let key = [
                 ask["at"].to_string(),
@@ -197,28 +207,6 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
             .map(|(_, words, owner)| format!("{} · {owner}", short(words)))
             .collect(),
     }
-}
-
-/// Each date `ask` was given, with when the date after it was given, if
-/// one was: its `promised`, oldest first, then its `expected` where that
-/// isn't the last promised, given at a time unknown.
-fn promised(ask: &Value) -> Vec<(i64, Option<i64>)> {
-    let mut given: Vec<(Option<i64>, Option<i64>)> = ask["promised"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|p| (seconds(&p["expected"]), seconds(&p["given"])))
-        .collect();
-    let current = seconds(&ask["expected"]);
-    if current.is_some() && given.last().map(|(date, _)| *date) != Some(current) {
-        given.push((current, None));
-    }
-    given
-        .iter()
-        .enumerate()
-        .filter_map(|(i, (date, _))| Some(((*date)?, given.get(i + 1)?.1)))
-        .chain(given.last().and_then(|(date, _)| Some(((*date)?, None))))
-        .collect()
 }
 
 /// How long Joel's asks in the orchestrator's `asks.jsonl` took to put a
