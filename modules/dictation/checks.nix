@@ -275,8 +275,10 @@
   # the speech is handled as it should be: given a voice, or left under
   # Others where one talker holds all but a tenth of a far end, as
   # TS3003a's holds 97%. A change that tells them apart better raises the
-  # floors to what it reaches; each sits half a point under what the last
-  # measurement on 2026-11-20 gave, 82.7% and 96.9%.
+  # floors to what it reaches, and one that trades naming for words heard
+  # lowers them, saying so: a second's pause before a take is cut hears
+  # a point more of the words and names the voices worse. Each sits half
+  # a point under what was measured on 2026-11-20, 82.7% and 96.9%.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
