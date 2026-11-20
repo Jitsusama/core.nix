@@ -404,6 +404,20 @@ QtObject {
             read({ entering: people }), false);
         check(failures, "though opening into one that reads them they are",
             read({ entering: now }), true);
+        // As a kept opening fills in, the reader waits its turn to wake, and
+        // reads them then, not in the turn the launcher opened in.
+        const dozing = { saysAtHome: true, asleep: true };
+        const nowDozing = { saysAtHome: false, asleep: true };
+        const readDozing = (fields, readers) => Wanted.readAt(
+            at(Object.assign({ asleep: true }, fields)), readers);
+        check(failures, "at home, a reader not yet woken reads none",
+            readDozing({}, [dozing, nowDozing]), false);
+        check(failures, "unless something's typed",
+            readDozing({ typing: true }, [dozing, nowDozing]), true);
+        check(failures, "or another reader home names has woken",
+            readDozing({}, [dozing, now]), true);
+        check(failures, "and held in it, it reads them though not woken",
+            readDozing({ held: [{ row: { from: dozing } }] }, [dozing, nowDozing]), true);
         const warming = { saysAtHome: false, warming: true };
         check(failures, "shut, one warming for home is", wanted({ open: false }, warming), true);
         check(failures, "and no other", wanted({ open: false }, people), false);

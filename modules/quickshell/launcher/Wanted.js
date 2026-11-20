@@ -62,6 +62,11 @@ function wanted(stands, source) {
 // Opened by a chord straight into another place, as Super+V opens Copies,
 // they aren't, where Agents made its own rows (Sessions to Reopen, Landed,
 // Recent, Start and Budgets) as any opening began (H6EDLC, 2026-11-11).
+// At home, a reader asleep (`stands.asleep`) reads them once it, or another
+// of the readers home names, wakes in its turn, or something's typed: read
+// as the launcher opened, Agents'
+// made about 6 of its 100 ms over twelve of the keys lab's openings, in
+// the turn the launcher opened in (its profile, 2026-11-20).
 function readAt(stands, readers) {
     if (stands.cataloguing) {
         return true;
@@ -70,7 +75,8 @@ function readAt(stands, readers) {
         return false;
     }
     // Opening into a place, nothing is held yet but home isn't shown either.
-    return (stands.held.length === 0 && !stands.entering)
+    const home = stands.held.length === 0 && !stands.entering;
+    return (home && (stands.typing || !stands.asleep))
         || readers.some(one => one !== null && wanted(stands, one));
 }
 
