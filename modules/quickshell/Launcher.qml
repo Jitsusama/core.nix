@@ -134,10 +134,15 @@ Scope {
     // or as many as keep the card inside a small screen, a screen margin
     // above and below it, three at least (VKCF3Z, 2026-11-05: panels
     // never run off the screen). A page's gap is allowed for whether it
-    // shows or not, so what's found never changes how many.
-    readonly property int rows: !screenHere ? 8 : Math.max(3, Math.min(8, Math.floor(
-        (screenHere.height - 2 * Theme.space.rung.screen - cardChrome - groupGap)
-            / rowTall)))
+    // shows or not, so what's found never changes how many; the gaps and
+    // headings past it the card takes only as far as listRoom holds them
+    // (Steady.tallFor).
+    readonly property int rows: !screenHere ? 8
+        : Math.max(3, Math.min(8, Math.floor((listRoom - groupGap) / rowTall)))
+    // How tall the list may stand on this screen: all but its margins
+    // above and below the card and the card's own chrome.
+    readonly property real listRoom: !screenHere ? Infinity
+        : screenHere.height - 2 * Theme.space.rung.screen - cardChrome
     // How tall the card is but for its rows: its frame, the line and its
     // hairline, the ties either side of the rows, and the foot and its
     // hairline, which no screen changes. Summed from its parts rather than
@@ -2723,7 +2728,7 @@ Scope {
     }
 
     // How tall the list is while the launcher's open: always its rows, and
-    // the gap of a page that opens with one.
+    // the gaps and headings among those it opens on (sizedFor).
     // Set as it opens, from the rows the screen gives.
     property int tall: 8 * rowTall
 
@@ -9658,14 +9663,21 @@ Scope {
     // A heading's line, the row's face at the note's size (Choice.qml's
     // heading).
     readonly property real headingTall: Math.ceil(headingFace.height)
-    // How tall a row stands in the list, by Steady.tallOf's rule, which
-    // tests/steady.qml holds beside the card's own (tallFor).
+    // How tall a row stands in the list, by Steady.tallOf's rule, and the
+    // room the card may take for them, which the card's own (tallFor) sums
+    // it within, as tests/steady.qml holds them.
     readonly property var rowSizes: ({
             row: rowTall,
             heading: headingTall,
             gap: groupGap,
-            rung: Theme.space.rung.groups
+            rung: Theme.space.rung.groups,
+            room: listRoom
         })
+    // How tall the card's list stands for `shown`, its last row at its
+    // foot (Steady.tallFor).
+    function sizedFor(shown) {
+        return Steady.tallFor(shown, rows, rowSizes, Headings.isHeading);
+    }
     function tallOf(row, at) {
         return Steady.tallOf(Headings.isHeading(row), row?.gap, at, rowSizes);
     }
@@ -10462,7 +10474,7 @@ Scope {
             prompt.text = "";
             matches = listed;
             current = 0;
-            tall = Steady.tallFor(matches, rows, rowTall, groupGap);
+            tall = sizedFor(matches);
         } finally {
             keeping = false;
         }
@@ -10959,10 +10971,11 @@ Scope {
             drawerResting.stop();
             drawerSettled();
             lap("drawer");
-            // Always the same height, eight rows, kept until it closes, so
-            // the card is the same shape however much home holds and its
-            // rows fill it to the foot, none held under the last.
-            tall = Steady.tallFor(homeFound ? matches : homeKept, rows, rowTall, groupGap);
+            // Always the same height, eight rows and the headings among
+            // them, kept until it closes, so the card is the same shape
+            // however much home holds and its rows fill it to the foot,
+            // none held under the last.
+            tall = sizedFor(homeFound ? matches : homeKept);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
             lap("keys");
@@ -12002,7 +12015,7 @@ Scope {
                 fillFoundHome = true;
                 // The card's height is home's as found, as the open
                 // handler sized it from before home was found after it.
-                tall = Steady.tallFor(matches, rows, rowTall, groupGap);
+                tall = sizedFor(matches);
             }
             heldAgreed(sources);
         } catch (error) {
@@ -12167,7 +12180,7 @@ Scope {
             prompt.text = "";
             matches = home;
             current = 0;
-            tall = Steady.tallFor(matches, rows, rowTall, groupGap);
+            tall = sizedFor(matches);
         } finally {
             keeping = false;
         }
