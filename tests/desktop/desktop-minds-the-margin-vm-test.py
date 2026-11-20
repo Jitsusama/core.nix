@@ -10,7 +10,6 @@ opening comment says what the test proves. Every test asks for the desktop, star
 
 from __future__ import annotations
 
-import contextlib
 import json
 import re
 import shlex
@@ -31,6 +30,8 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from desktop_session import Desktop
 
 
@@ -138,14 +139,27 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
     # Joel keeps it awake to run with no power and the lid shut (2026-11-10).
     desktop.power("off")
 
-    def let_go() -> None:
-        desktop.lid(shut=False)
-        # The stand-in sleep ends once logind sees the lid open, so it settles first.
-        machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
-        machine.succeed("rm -f /run/suspended")
-        desktop.power("on")
-        # The sleep locked the screen first, as it does before every one.
-        desktop.as_account("systemctl --user stop keep-awake.service && qs ipc call lock release")
+    def let_go(*, quietly: bool) -> None:
+        steps: list[Callable[[], object]] = [
+            lambda: desktop.lid(shut=False),
+            # The stand-in sleep ends once logind sees the lid open, so it settles first.
+            lambda: machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1)),
+            lambda: machine.succeed("rm -f /run/suspended"),
+            lambda: desktop.power("on"),
+            lambda: desktop.as_account("systemctl --user stop keep-awake.service"),
+            # The sleep locked the screen first, as it does before every one.
+            lambda: desktop.as_account("qs ipc call lock release"),
+        ]
+        for step in steps:
+            if not quietly:
+                step()
+                continue
+            # After a failure each step is tried on its own and what it raised only logged,
+            # so a sleep that never settled still leaves the power on and the lock let go.
+            try:
+                step()
+            except Exception as missed:  # noqa: BLE001
+                machine.log(f"letting go after a failure: {missed!r}")
 
     try:
         machine.succeed(LID_HELD)
@@ -167,13 +181,12 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         machine.wait_until_succeeds(SETTLED, timeout=timedelta(minutes=1))
         slept = int(machine.succeed("wc -l < /run/suspended"))
         assert slept == 1, f"one shut lid slept {slept} times"
-    except BaseException:
-        # Let go as far as it can without a word, so the failure above is the one told; a
-        # lock still queued may then land on the subtests that follow.
-        with contextlib.suppress(Exception):
-            let_go()
+    except Exception:
+        # Let go without raising, so the failure above is the one told; a lock still queued,
+        # or a sleep that never ended, may then fail the subtests that follow.
+        let_go(quietly=True)
         raise
-    let_go()
+    let_go(quietly=False)
     # Unlocked, it stays so, whether a before-sleep lock lands late or the lid's own hold
     # locks again; relocked, every subtest after failed on it (2026-11-19).
     machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
