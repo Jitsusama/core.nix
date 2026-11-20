@@ -4258,6 +4258,7 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     shell.launcher_until(rested)
     opened = shell.showing()
     assert rested(opened), parts(opened)
+    none_drawn_cut(shell, "opened")
     count = opened["count"]
     assert count > 2 * opened["drawnRows"], parts(opened)
     for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
@@ -4273,6 +4274,158 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
         shell.launcher_until(landed)
         shown = shell.showing()
         assert landed(shown), (key, *parts(shown))
+        none_drawn_cut(shell, key)
+    shell.close_launcher()
+
+
+def none_drawn_cut(shell: Shell, where: str, *, selection_in_view: bool = True) -> None:
+    """Fail, naming them, where a box cuts a row's words or the selection down, or it's off its row.
+
+    Read from where each text's line is drawn and what clips it (Launcher.qml's drawnTexts),
+    and the selection's ground from where it's drawn (groundCut), not from the rule's own
+    extents, so a row the rule took for whole and drew cut is caught; and the selection against
+    where its row's band is drawn (laidOut's selection), so one wholly in view on the wrong row
+    is caught too. A key keeps the selection in view; the wheel moves the view alone, so it
+    may leave the selected row out of it (`selection_in_view`), when only a drawn one is held
+    to its row. Where the view rests is `restsOnARow`'s, from the rows' tops. A row's name
+    reading on is clipped across, never down, so it's no cut.
+    """
+    cut = rows_drawn_cut(shell)
+    assert cut == [], f"{where}: drawn cut: {cut}"
+    shown = shell.showing()
+    assert not shown["groundCut"], (
+        f"{where}: the selected row's ground is cut",
+        shown["current"],
+        shown["scrolled"],
+    )
+    selection = laid_out(shell)["selection"]
+    assert selection is not None or not selection_in_view, f"{where}: the selected row isn't drawn"
+    if selection is not None:
+        assert selection["y"] == selection["row"], (
+            f"{where}: the selection is off its row: {selection}"
+        )
+
+
+def rows_drawn_cut(shell: Shell) -> list[str]:
+    """Give the words of the card's rows that a box cuts at their top or foot.
+
+    Qt lays a row out again only before its next frame, and a loaded builder can be slow to
+    draw one, so words read between a change and that frame stand where they were: each read
+    comes after two frames asked for, and two reads must agree on where each stands down the
+    card. Across is left out, as a long name reads on.
+    """
+    deadline = time.monotonic() + 10
+    last = None
+    while True:
+        two_frames_drawn(shell, deadline)
+        card = json.loads(shell.as_account(shell.ipc("drawnTexts")))[0]
+        listed = [text for text in card if "/QQuickListView" in text["from"]]
+        standing = [(text["said"], text["ink"]["y"], text["cutDown"]) for text in listed]
+        if standing == last:
+            break
+        assert time.monotonic() < deadline, f"the rows' words never stood still: {standing}"
+        last = standing
+    assert listed, f"no row's words were drawn: {card}"
+    return [text["said"] for text in listed if text["cutDown"]]
+
+
+def two_frames_drawn(shell: Shell, deadline: float) -> None:
+    """Ask the launcher for a frame twice, each once the last is drawn.
+
+    The first may have been under way before it was asked for, so only the second is sure to
+    lay out what changed before the ask (as agents-on-niri-test.py's framed).
+    """
+    for _ in range(2):
+        asked = int(shell.as_account(shell.ipc("drawAFrame")))
+        while shell.frames() <= asked:
+            assert time.monotonic() < deadline, "no frame drawn when asked for"
+            time.sleep(launcher_on_niri.POLL)
+
+
+def home_network_in_normal(shell: Shell) -> None:
+    """Open the Home Network's list, a gap above each eero, rested whole, and go to normal."""
+    shell.answer("eero")
+    shell.launcher_until(functools.partial(selecting, "Home Network"))
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Study" in shown["rows"] and shown["restsOnARow"])
+    shell.normal()
+
+
+def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) -> None:
+    """The wheel leaves the Home Network's list on a row's top, no row drawn cut at its foot.
+
+    The wheel moves the view by pixels, so it can stop inside a row; once it stops, the list
+    rests on the top of the first row at or below where it stopped (Launcher.qml's
+    onMovementEnded, Headings.rested). The selection stays on the first row, which the wheel
+    takes wholly out of view and back, so a selected row the wheel leaves across the foot
+    isn't asked here.
+    """
+    home_network_in_normal(shell)
+    card = shell.showing()["card"]
+    wlrctl = os.environ["WLRCTL"]
+    shell.as_account(f"{wlrctl} pointer move -100000 -100000")
+    middle = ((card["left"] + card["right"]) // 2, (card["top"] + card["foot"]) // 2)
+    shell.as_account(f"{wlrctl} pointer move {middle[0]} {middle[1]}")
+    # Down and back up by a turn that isn't a whole number of rows, so the view can stop
+    # inside one.
+    for by in [70, -70]:
+        was = shell.showing()["scrolled"]
+        # Said, so a wait that runs out names which way the wheel went and from where.
+        print(f"the wheel by {by} from {was}")
+        shell.as_account(f"{wlrctl} pointer scroll {by} 0")
+
+        # Once the view has stopped, so one the wheel only passed through doesn't count.
+        def rested(shown: Json, was: int = was, by: int = by) -> bool:
+            return bool(
+                not shown["moving"]
+                and (shown["scrolled"] - was) * by > 0
+                and shown["restsOnARow"]
+                and shown["cut"] == []
+            )
+
+        shell.launcher_until(rested)
+        shown = shell.showing()
+        print(f"the wheel by {by} rested at {shown['scrolled']}")
+        assert rested(shown), (by, shown["scrolled"], shown["restsOnARow"], shown["cut"])
+        none_drawn_cut(shell, f"the wheel by {by}", selection_in_view=False)
+    shell.close_launcher()
+
+
+def test_the_home_network_draws_nothing_cut_once_its_find_is_gone(shell: Shell) -> None:
+    """Once a find in the Home Network is taken away, G lands on its last row with nothing cut.
+
+    A find drops headings and sets its own rows, so the list rests whole only on the place's
+    own list (Headings.restsWhole); once the letters are gone, it's that list again, and G
+    lands on its last row drawn whole. Where G leaves the view's top isn't asked: it was seen
+    resting off a row's top, a fault of its own. Where a find leaves the view as it goes is a
+    case of its own, not this one.
+    """
+    home_network_in_normal(shell)
+    whole = shell.showing()["count"]
+    shell.type_in("st")
+    shell.launcher_until(lambda shown: shown["count"] < whole)
+    for _ in "st":
+        shell.send_key("backspace")
+    shell.launcher_until(
+        lambda shown: shown["typed"] == "" and shown["count"] == whole and shown["restsOnARow"]
+    )
+    shell.normal()
+    shell.send_chars("G")
+
+    # The cursor's number is drawn only beside a row the view draws. Where the view rests isn't
+    # asked: here G was seen to land off a row's top (20 Nov), with no row drawn cut, and why
+    # is the Sat 21 Nov follow-up's.
+    def landed(shown: Json) -> bool:
+        return bool(
+            shown["current"] == whole - 1
+            and shown["gutter"]["cursor"] == str(whole)
+            and shown["cut"] == []
+        )
+
+    shell.launcher_until(landed)
+    shown = shell.showing()
+    assert landed(shown), (shown["current"], shown["gutter"], shown["cut"])
+    none_drawn_cut(shell, "after the find, at the foot")
     shell.close_launcher()
 
 

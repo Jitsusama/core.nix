@@ -8848,7 +8848,12 @@ Scope {
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
                 const id = drawn.length + 1;
+                // `cutDown` where a box it's in cut its letters' top or
+                // foot, as a list's box cuts a row it holds in part, so a
+                // check can say a row was drawn cut from what's drawn
+                // rather than from the rule that placed it.
                 drawn.push({ id, ink, room: own, within, from: here,
+                    cutDown: ink.height < inked.height - 0.5,
                     said: item.text.replace(/\s+/g, " ").slice(0, 60) });
                 holding = within.concat([id]);
             }
@@ -9917,6 +9922,11 @@ Scope {
             cut: list.cut(),
             restsOnARow: list.restsOnARow(),
             drawnRows: list.drawnRows(),
+            // Whether the selected row's ground is cut by the view's edge,
+            // read from where it's laid rather than the rule's extent, and
+            // whether the wheel or a flick still moves the view.
+            groundCut: list.groundCut(),
+            moving: list.moving,
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -10047,7 +10057,7 @@ Scope {
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // And the keys it would say with room for all, before any give way.
             wanted: foot.toldNow.map(key => `${key[0]} ${key[1]}`),
-            // How far the list is scrolled, which only a key changes.
+            // How far the list is scrolled, by a key, the wheel or a flick.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
             // title it draws itself, whether it holds more than fits, and
@@ -14767,6 +14777,13 @@ Scope {
                                 list.pickY = list.fillAt(root.current);
                             }
 
+                            // The selection onto its row, from where Qt has
+                            // just laid it and how tall it's drawn, as its
+                            // words sit on its foot.
+                            function pickOn(entry) {
+                                list.pickY = entry.y + entry.height - root.rowTall;
+                            }
+
                             // Where a row's own place starts and ends in the
                             // list, its gap above it included.
                             function rowTop(at) {
@@ -14933,6 +14950,21 @@ Scope {
                                 return drawn;
                             }
 
+                            // Whether the selection's ground, as drawn
+                            // (picked, which follows no row's opacity), is
+                            // partly outside the list's box, so a check
+                            // sees it cut whatever the rule took its row
+                            // for. One wholly out of view is hidden, not
+                            // cut.
+                            function groundCut() {
+                                if (!picked.visible)
+                                    return false;
+                                const top = picked.mapToItem(listBox, 0, 0).y;
+                                const bottom = top + picked.height;
+                                return bottom > 0.5 && top < listBox.height - 0.5
+                                    && (top < -0.5 || bottom > listBox.height + 0.5);
+                            }
+
                             // Whether the view starts where a row does, with
                             // none cut above it.
                             function restsOnARow() {
@@ -15033,11 +15065,33 @@ Scope {
                                     entry.aside = false;
                                     root.rowsDrawn += 1;
                                     entry.laid(taken, root.feltRow(taken));
+                                    entry.placed();
                                 }
                                 Component.onCompleted: {
                                     root.rowsDrawn += 1;
                                     root.rowsBuilt += 1;
                                     entry.laid(entry.feltBegun, root.feltRow(entry.feltBegun));
+                                    entry.placed();
+                                }
+                                // Where it's laid, told to the selection when
+                                // it's the selected row, since Qt lays a row
+                                // it hadn't drawn only after the key that
+                                // selected it, and pick reads where an undrawn
+                                // row stands from those drawn: gg from the
+                                // Home Network's foot left the selection's
+                                // ground off its row, cut at the list's top
+                                // (2026-11-20).
+                                // A row whose place in the list changes while
+                                // it stays put, as rows come above a scrolled
+                                // list, or which gains a gap above it, is laid
+                                // anew too.
+                                onYChanged: entry.placed()
+                                onHeightChanged: entry.placed()
+                                onIndexChanged: entry.placed()
+                                function placed() {
+                                    if (!entry.aside && entry.index >= 0
+                                        && entry.index === root.current)
+                                        list.pickOn(entry);
                                 }
                                 // What it took, from `from` to `to`, added to
                                 // its kind's while a laying listens, so a
