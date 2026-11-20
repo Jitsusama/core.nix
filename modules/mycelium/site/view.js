@@ -138,8 +138,10 @@ import {
   const sproutControl = document.getElementById("sprout-control");
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
-  // The cell words last handed on went from, kept with them to send again.
-  let sproutKeptFrom = null;
+  // The words last handed on and the cell they went from, kept to send
+  // again, and whether the line offers that cell now.
+  let sproutKept = null;
+  let sproutKeptFromOffered = false;
   let sproutOpener = null;
   let sproutHeld = false;
   const trail = document.getElementById("trail");
@@ -3690,7 +3692,7 @@ import {
   const sproutableFrom = (address) =>
     isAddress(address) && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
   // A cell kept with handed words was offered when they went, so it
-  // stands whatever is open now.
+  // stands whatever drawer is open now.
   const offerFrom = (from, { kept = false } = {}) => {
     sproutFrom = kept || sproutableFrom(from) ? from : null;
     sproutFromLine.hidden = sproutFrom === null;
@@ -3707,19 +3709,23 @@ import {
     // tick stays cleared, unless a drawer's button names another cell,
     // which it then offers, the keys going back to it on close.
     if (!sproutLine.hidden) {
-      if (named && from !== sproutFrom) {
+      if (named) {
         sproutOpener = document.activeElement;
-        offerFrom(from);
-      } else if (named) sproutFromBox.checked = true;
+        sproutKeptFromOffered = false;
+        if (from === sproutFrom) sproutFromBox.checked = true;
+        else offerFrom(from);
+      }
       sproutInput.focus();
       return;
     }
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    // Words kept to send again go from the cell they went from, unless a
-    // drawer's button names its own.
-    const again = sproutInput.value !== "" && !named;
-    offerFrom(again ? sproutKeptFrom : from, { kept: again });
+    // Words kept to send again go from the cell they went from while it
+    // is still on the map, unless a drawer's button names its own.
+    const kept = sproutKept?.from;
+    sproutKeptFromOffered =
+      sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
+    offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3744,8 +3750,9 @@ import {
     const inLine = sproutLine.contains(document.activeElement);
     if (!keep) {
       sproutInput.value = "";
-      sproutKeptFrom = null;
+      sproutKept = null;
     }
+    sproutKeptFromOffered = false;
     sproutInput.setCustomValidity("");
     sproutLine.hidden = true;
     trail.inert = false;
@@ -3770,24 +3777,38 @@ import {
     }
     sproutGo.href = link;
     sproutGo.click();
-    sproutKeptFrom = from;
+    sproutKept = { words: sproutInput.value, from };
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
     where.textContent = handedWords(short);
   });
   // The field leaves off what would take it past the cap by itself, so
   // that is said, only when something was left off.
+  // A paste into a field carries its words in `data` in Chromium; a
+  // composition carries all of itself, so it is left to its end.
   sproutInput.addEventListener("beforeinput", (e) => {
+    if (e.inputType === "insertCompositionText") return;
     const adds = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
-    const chosen = (sproutInput.selectionEnd ?? 0) - (sproutInput.selectionStart ?? 0);
-    if (sproutInput.value.length - chosen + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
+    const replaced = (sproutInput.selectionEnd ?? 0) - (sproutInput.selectionStart ?? 0);
+    if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
-  sproutInput.addEventListener("input", () => sproutInput.setCustomValidity(""));
+  // New words over kept ones are new work, so they go from the cell open
+  // now, as a fresh line's would.
+  sproutInput.addEventListener("input", () => {
+    sproutInput.setCustomValidity("");
+    if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
+      sproutKeptFromOffered = false;
+      offerFrom(chosen?.kind === "cell" ? chosen.id : null);
+    }
+  });
   // A held s opens the line once; its repeats don't type into the field,
-  // until any key comes up wherever it lands.
-  document.addEventListener("keyup", () => {
+  // until any key comes up wherever it lands, a fresh key goes down, or
+  // the page loses the keys, where its key can come up unheard.
+  const sproutLetGo = () => {
     sproutHeld = false;
-  });
+  };
+  document.addEventListener("keyup", sproutLetGo);
+  window.addEventListener("blur", sproutLetGo);
   // Escape closes the line from anywhere in it, its tick and button too,
   // which the page's own keys leave alone as fields; it goes no further,
   // so the same press never lets go of the open cell or closes Now.
@@ -3796,6 +3817,7 @@ import {
       e.preventDefault();
       return;
     }
+    sproutLetGo();
     if (e.key !== "Escape") return;
     e.preventDefault();
     e.stopPropagation();
