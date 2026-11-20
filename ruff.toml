@@ -41,7 +41,7 @@ ignore = [
 # held, and hands the driver's retry a test taking a positional bool, as the driver calls it.
 "tests/desktop/desktop_session.py" = ["FBT001", "S101"]
 # What the looks areas share asserts what a test needs, as the desktop does.
-"tests/desktop/looks_session.py" = ["S101"]
+"tests/desktop/looks/looks_session.py" = ["S101"]
 # The shell on a nested niri asserts what a test needs, as the desktop does.
 "modules/quickshell/tests/launcher_on_niri.py" = ["S101"]
 # What every live page's browser test shares asserts what a page must do, as the desktop does.

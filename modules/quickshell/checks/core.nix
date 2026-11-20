@@ -33,14 +33,14 @@ in
   # account's whole shell on niri, in seconds rather than
   # a machine's minutes (modules/quickshell/tests/launcher-on-niri-test.py). Its
   # meanings come from the meaning daemon's stand-in, which loads no model
-  # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli answering
+  # (tests/desktop/stand-ins/stand-in-meaning.py). WARP stands in as warp-cli answering
   # from the files a test writes, the real warp reading them
   # (tests/stand-ins/warp-cli-stand-in.sh), and warp holds its link on the
   # socket the account's systemd would, as WARP, the shaper's status what a test
   # writes in ~/shaper, and the clipboard's history serves Copies' rows and
   # Emoji's. The home network is the eero daemon's stand-in, holding the
   # contract's network and the rows the daemon serves of it
-  # (tests/desktop/stand-in-eero.py), as EERO.
+  # (tests/desktop/stand-ins/stand-in-eero.py), as EERO.
   the-launcher-answers-whats-typed-on-niri =
     let
       warpCli = pkgs.writeShellScript "warp-cli" ''
@@ -68,12 +68,12 @@ in
         "MEANING=${
           pkgs.writers.writePython3 "stand-in-meaning" {
             doCheck = false;
-          } (builtins.readFile ../../../tests/desktop/stand-in-meaning.py)
+          } (builtins.readFile ../../../tests/desktop/stand-ins/stand-in-meaning.py)
         }"
         "EERO=${
           pkgs.writers.writePython3 "stand-in-eero" {
             doCheck = false;
-          } (builtins.readFile ../../../tests/desktop/stand-in-eero.py)
+          } (builtins.readFile ../../../tests/desktop/stand-ins/stand-in-eero.py)
         }"
         "EERO_NETWORK=${../../eero/home-network.json}"
         "EERO_ROWS=${../../eero/tests/rows.json}"

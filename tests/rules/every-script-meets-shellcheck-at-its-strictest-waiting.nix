@@ -73,9 +73,9 @@
   "modules/zathura/keys-test.sh" = 12;
   "modules/zoom/opens.sh" = 2;
   "modules/zsh/tests/the-shell-starts-nothing.sh" = 3;
-  "tests/desktop/op-stand-in.sh" = 3;
-  "tests/desktop/stand-in-virsh.sh" = 1;
-  "tests/desktop/tuple-stand-in.sh" = 2;
+  "tests/desktop/stand-ins/op-stand-in.sh" = 3;
+  "tests/desktop/stand-ins/stand-in-virsh.sh" = 1;
+  "tests/desktop/stand-ins/tuple-stand-in.sh" = 2;
   "tests/nested-niri.sh" = 1;
   "tests/stand-ins/spotify-recent-stand-in.sh" = 1;
   "tests/vm/guide/asahi-shaped-disk.sh" = 2;

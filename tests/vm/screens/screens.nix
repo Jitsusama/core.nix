@@ -34,11 +34,11 @@ let
   values = pkgs.writeText "screens-values.json" (builtins.toJSON { inherit account; });
 
   # Stands in for dictation's service, which would load Whisper, as the
-  # desktop test's does (tests/desktop/stand-in-dictation.py): it listens from
+  # desktop test's does (tests/desktop/stand-ins/stand-in-dictation.py): it listens from
   # the first press until the next.
   standInDictation = pkgs.writers.writePython3 "stand-in-dictation" {
     doCheck = false;
-  } (builtins.readFile ../../desktop/stand-in-dictation.py);
+  } (builtins.readFile ../../desktop/stand-ins/stand-in-dictation.py);
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "screens-${area}";

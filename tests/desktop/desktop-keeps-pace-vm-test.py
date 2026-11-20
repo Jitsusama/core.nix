@@ -47,7 +47,8 @@ if TYPE_CHECKING:
 
     from desktop_session import Desktop, Json
 
-# Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
+# Where the stand-in keyboard is told what to press, and says when it did
+# (desktop/stand-ins/keyboard.py).
 KEYBOARD = "/run/keyboard"
 SAID = "/run/keyboard.log"
 # Arrows up and down through Programs, gliding the highlight and scrolling the list, then words
