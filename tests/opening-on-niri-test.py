@@ -1174,13 +1174,20 @@ def test_only_a_fill_that_gave_up_before_its_share_could_be_heard_is_tried_again
     The kept-opening share case retries only what this lets through, and its shell rarely gives
     it a late try to judge, so its bounds are held here.
     """
-    assert heard_too_late({"filledBy": "unpresented", "fillFrom": 300}, 900)
-    assert heard_too_late({"filledBy": "unpresented", "fillFrom": 900}, 900)
-    assert not heard_too_late({"filledBy": "unpresented", "fillFrom": 901}, 900)
-    assert not heard_too_late({"filledBy": "unpresented", "fillFrom": -1}, 900)
-    assert not heard_too_late({"filledBy": "unpresented"}, 900)
-    for filler in sorted(FILLERS - {"unpresented"} | {"share"}):
-        assert not heard_too_late({"filledBy": filler, "fillFrom": 300}, 900), filler
+    # Each opening, with a share heard at most 900 ms after the chord, and whether it's retried.
+    wanted: list[tuple[Json, bool]] = [
+        ({"filledBy": "unpresented", "fillFrom": 300}, True),
+        ({"filledBy": "unpresented", "fillFrom": 900}, True),
+        ({"filledBy": "unpresented", "fillFrom": 901}, False),
+        ({"filledBy": "unpresented", "fillFrom": -1}, False),
+        ({"filledBy": "unpresented"}, False),
+        *(
+            ({"filledBy": filler, "fillFrom": 300}, False)
+            for filler in sorted(FILLERS - {"unpresented"} | {"share"})
+        ),
+    ]
+    judged = [(opening, heard_too_late(opening, 900)) for opening, _ in wanted]
+    assert judged == wanted
 
 
 def kept_unshared(shell: Shell, place: str, copied: str) -> None:
