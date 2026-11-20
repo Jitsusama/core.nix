@@ -21,7 +21,9 @@
 //! says nothing of its end, and health's own end waits for the signal's.
 //! A second stop before the first has ended health ends it at once,
 //! leaving any follower not yet ended and the day unwritten, so a stop can
-//! never hang.
+//! never hang; but a hangup heard again is the same stop, as a terminal
+//! closing sends one from its shell and another from the kernel, and the
+//! first stop's `WRITES_WITHIN` still bounds it.
 
 use std::io::{self, PipeReader, Read as _};
 use std::mem;
@@ -213,12 +215,17 @@ fn catch(signals: &[c_int]) -> io::Result<PipeReader> {
 /// The catch: the stop marked and its signal written for the thread
 /// waiting on it, as little else is safe within a catch; or, for a stop
 /// caught while one is under way, health ended by its signal as the catch
-/// returns.
+/// returns, unless it's a hangup heard again, the same stop.
 extern "C" fn heard(signal: c_int) {
     // SAFETY: errno is this thread's, and kept for the code the catch
     // interrupted, which may be about to read it.
     let kept = unsafe { *errno() };
     if STOPPED.swap(true, Ordering::SeqCst) {
+        if signal == libc::SIGHUP {
+            // SAFETY: errno is this thread's, put back as it was.
+            unsafe { *errno() = kept };
+            return;
+        }
         // SAFETY: both are safe within a catch; the signal's own action
         // restored and raised ends the process once the catch returns, as
         // the signal caught waits until then.

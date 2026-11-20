@@ -23,6 +23,10 @@ const REPLAYS: &str = "HEALTH_STOPPED_REPLAYS";
 /// then waiting to be stopped before `main` would say it.
 const FAILS_FIRST: &str = "HEALTH_STOPPED_FAILS_FIRST";
 
+/// Set only for a copy started hearing hangups, as in a terminal, rather
+/// than ignoring them, as under `nohup`.
+const HEARS_HANGUPS: &str = "HEALTH_STOPPED_HEARS_HANGUPS";
+
 /// The error the copy's run returns once its follower ends.
 const FAILS_ENDING: &str = "the follower ended";
 
@@ -106,8 +110,8 @@ impl Stopped {
         Self::starting(None)
     }
 
-    /// The copy started with `asked` set, if any (`HANGS`, `REPLAYS` or
-    /// `FAILS_FIRST`), once it has said its follower.
+    /// The copy started with `asked` set, if any (`HANGS`, `REPLAYS`,
+    /// `FAILS_FIRST` or `HEARS_HANGUPS`), once it has said its follower.
     fn starting(asked: Option<&str>) -> Self {
         let folder = tempfile::tempdir().expect("a folder");
         let health = Command::new(std::env::current_exe().expect("this test"))
@@ -270,7 +274,7 @@ impl Drop for Stopped {
 /// little later, as health writes the day, and leaves with an error, or
 /// never returns if it hangs. Asked, it replays a history too, its run
 /// waiting on that history's end, or returns its error at once and waits
-/// for a stop where `main` would say it.
+/// for a stop where `main` would say it, or hears hangups as in a terminal.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
 fn a_health_to_stop() {
@@ -284,7 +288,12 @@ fn a_health_to_stop() {
     unsafe {
         libc::signal(libc::SIGTERM, libc::SIG_DFL);
         libc::signal(libc::SIGINT, libc::SIG_DFL);
-        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+        let hangups = if std::env::var_os(HEARS_HANGUPS).is_some() {
+            libc::SIG_DFL
+        } else {
+            libc::SIG_IGN
+        };
+        libc::signal(libc::SIGHUP, hangups);
     }
     let followers = Followers::default();
     let ender = followers.ender();
@@ -495,6 +504,36 @@ fn a_stop_says_the_error_a_run_returned_just_before_it() {
                 .contains(&format!("health: {FAILS_BEFORE}")),
         "a stop ended health ({ended}) without saying the error its run returned first: {}",
         stopped.failed()
+    );
+}
+
+#[test]
+fn a_rest_with_no_stop_waits_its_whole_time() {
+    // No stop is ever caught in this process, only in the copies, so a
+    // rest here must wait it out, as a run's rest must, or it would spin.
+    let time = Duration::from_millis(100);
+    let since = Instant::now();
+    rest(time);
+    let took = since.elapsed();
+    assert!(
+        took >= time,
+        "a rest with no stop waited only {took:?} of {time:?}"
+    );
+}
+
+#[test]
+fn a_hangup_heard_again_is_the_same_stop() {
+    // As a terminal closing sends one hangup from its shell and another
+    // from the kernel, so the second mustn't cut off the day's write.
+    let mut stopped = Stopped::starting(Some(HEARS_HANGUPS));
+    stopped.send(libc::SIGHUP, false);
+    stopped.caught();
+    stopped.send(libc::SIGHUP, false);
+    let ended = stopped.ending();
+    assert_eq!(
+        (ended.signal(), gone(stopped.follower), stopped.wrote()),
+        (Some(libc::SIGHUP), true, true),
+        "a second hangup ended health ({ended}) before its follower or the day's write"
     );
 }
 
