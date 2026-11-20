@@ -2305,7 +2305,7 @@ impl Wifid<'_> {
     async fn stranded(&self, card: &str, to: &str, free: bool) {
         println!(
             "<4>{card} didn't get back to {to} within {} ms, so may join any network",
-            arrive::BACK_AFTER.as_millis()
+            arrive::BACK_FOR.as_millis()
         );
         self.together(card, free).await;
         self.let_go(card, free).await;
