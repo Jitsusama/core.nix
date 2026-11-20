@@ -2094,6 +2094,21 @@ ShellRoot {
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify([keysOf(inForYou()), keysOf(now.everything())]));
+        // Found by name from home, For You is the one step held, and it's
+        // Now's own row, so Desktop comes in there and stays once it has.
+        now.openedAt = Number.POSITIVE_INFINITY;
+        now.openedAt = Date.now() - 1000;
+        theLauncher.held = [{ row: { from: now, key: "on:waitingOnYou" } }];
+        Notices.live = { "1": {} };
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }].concat(told);
+        Notices.live = {};
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now(), readHow: "read on the phone" }]
+            .concat(told);
+        expect("in For You found by name, Desktop stays once its notice is read elsewhere",
+            keysOf(inForYou()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
         theLauncher.held = wasHeld;
         now.openedAt = Number.POSITIVE_INFINITY;
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
