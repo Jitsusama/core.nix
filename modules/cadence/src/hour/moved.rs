@@ -48,7 +48,9 @@ pub(super) fn moved(
 /// A rebase leaves the head a round read on no branch, so a clone that
 /// keeps only refs lacks it: what's missing is asked of `origin` by its
 /// name, as GitHub gives a commit it holds, with main beside it so the
-/// clone's own refs keep up.
+/// clone's own refs keep up. Main goes to a ref of cadence's own, as the
+/// tick fetches core's main into the same clone and the two can't then
+/// meet on one lock.
 fn changed_since(
     clone: &Path,
     seed: &str,
@@ -71,7 +73,7 @@ fn changed_since(
         .collect();
     if !lacking.is_empty() {
         let mut args = vec!["fetch", "--quiet", "--no-write-fetch-head", origin];
-        args.push("+refs/heads/main:refs/heads/main");
+        args.push(MAIN);
         args.extend_from_slice(&lacking);
         git(clone, "fetching what a round read", &args)?;
     }
@@ -110,6 +112,9 @@ fn changed_since(
         _ => Err(failed("merging it onto main", &onto)),
     }
 }
+
+/// Where a fetch puts its origin's main in a clone.
+const MAIN: &str = "+refs/heads/main:refs/remotes/cadence/main";
 
 /// Clones `seed` bare into `clone`, by way of a folder beside it, so a
 /// clone killed part way leaves nothing that reads as one, and the next
@@ -397,7 +402,21 @@ mod tests {
         let root = tempfile::tempdir().expect("a scratch folder");
         let (dir, url) = &history(root.path());
         let rebase = || drop(git(dir, &["rebase", "-q", "main"]));
+        // A clone made before the merge lacks it and main as it is now.
+        let early = &root.path().join("early");
+        let at = early.to_string_lossy();
+        git(root.path(), &["clone", "-q", "--bare", url, &at]);
         let (merge, read) = &merged(dir, "re", ("re", "re"), ("main", "re"), &rebase);
+        assert_eq!(
+            moved(early, url, url, merge, read),
+            Some(false),
+            "a merge fetched"
+        );
+        assert_eq!(
+            git(early, &["rev-parse", "refs/remotes/cadence/main"]),
+            *merge,
+            "main wasn't fetched with it"
+        );
         // A clone of main alone lacks the head the rebased change was read
         // at, and one not made yet, or killed part way, lacks everything,
         // until each is fetched.
@@ -417,6 +436,14 @@ mod tests {
             moved(fresh, url, url, merge, read),
             Some(false),
             "a clone made"
+        );
+        // Made from a seed that lacks the witness, it's fetched from origin.
+        let seeded = &root.path().join("seeded");
+        let seed = format!("file://{}", there.display());
+        assert_eq!(
+            moved(seeded, &seed, url, merge, read),
+            Some(false),
+            "a clone made from its seed and fetched from its origin"
         );
         let half = &root.path().join("half");
         let left = half.with_extension("making");

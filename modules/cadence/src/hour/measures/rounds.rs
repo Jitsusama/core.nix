@@ -16,6 +16,10 @@
 //! been made before the merge: it is a follow-up, which
 //! WCJQSG's ruling makes of what a late round needn't raise, so it catches
 //! nothing and is named apart.
+//!
+//! Long because its main test needs six merges' records, one for each way
+//! a late round's fix can be read, and splitting it would hide how they
+//! differ.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -202,6 +206,8 @@ impl Reviewed {
 struct Fix {
     subject: String,
     queued: bool,
+    /// The commit a committed fix names, where it names one.
+    commit: Option<String>,
 }
 
 /// What each council's findings led to, by the council's id: each finding
@@ -241,6 +247,7 @@ fn caught(fixes: &[String], bases: &BTreeMap<&str, &str>) -> BTreeMap<String, Ve
                 caught.entry(run.to_owned()).or_default().push(Fix {
                     subject: subject.to_owned(),
                     queued,
+                    commit: fix["outcome"]["commit"].as_str().map(str::to_owned),
                 });
             }
         }
@@ -272,8 +279,11 @@ impl Late {
     /// or whose commits git can't read, is unread, as unread fixes are, so
     /// it files nothing. A later round's commit changes the change as a fix
     /// made for this round's finding would, so the two aren't told apart,
-    /// as WCJQSG was told on 20 November. Git is asked once a round, and
-    /// only for a round with a queued fix.
+    /// as WCJQSG was told on 20 November. A fix the round committed itself
+    /// changes it too, so a queued one is caught only if the change moved
+    /// after each of the round's own commits as well, and is a follow-up if
+    /// it didn't after one; a commit not named leaves it unread. Git is asked
+    /// once a round and commit, and only for a round with a queued fix.
     fn split(
         merged: &Merged,
         councils: &BTreeSet<(i64, &str)>,
@@ -289,9 +299,19 @@ impl Late {
                 .iter()
                 .any(|fix| fix.queued)
                 .then(|| {
-                    witnesses
-                        .get(id)
-                        .and_then(|read| (merged.moved)(merged.merge, read))
+                    let reads = std::iter::once(witnesses.get(id).copied()).chain(
+                        each.iter()
+                            .filter(|fix| !fix.queued)
+                            .map(|fix| fix.commit.as_deref()),
+                    );
+                    let said: Vec<Option<bool>> = reads
+                        .map(|read| read.and_then(|read| (merged.moved)(merged.merge, read)))
+                        .collect();
+                    if said.contains(&Some(false)) {
+                        Some(false)
+                    } else {
+                        said.iter().all(|s| *s == Some(true)).then_some(true)
+                    }
                 })
                 .flatten();
             for fix in each {
@@ -595,15 +615,21 @@ mod tests {
     }
 
     /// The harness's record of the fixes for findings, each by the council
-    /// that raised it and how it ended, `None` while it is still queued.
+    /// that raised it and how it ended, `None` while it is still queued. An
+    /// ending of two words is its kind and the commit it names.
     fn fixes(each: &[(&str, &str, Option<&str>)]) -> String {
         let fixes: Vec<serde_json::Value> = each
             .iter()
             .map(|(run, subject, outcome)| {
                 let mut fix = serde_json::json!({"subject": {"finding": {"subject": subject,
                     "origin": {"runId": run}}}});
-                if let Some(kind) = outcome {
-                    fix["outcome"] = serde_json::json!({ "kind": kind });
+                if let Some(ending) = outcome {
+                    fix["outcome"] = match ending.split_once(' ') {
+                        Some((kind, commit)) => {
+                            serde_json::json!({ "kind": kind, "commit": commit })
+                        }
+                        None => serde_json::json!({ "kind": ending }),
+                    };
                 }
                 fix
             })
@@ -612,13 +638,13 @@ mod tests {
     }
 
     /// Whether each change changed after a round read the head it names:
-    /// #23 did after its sixth, #24 and #26 merged what their rounds read,
-    /// and git can't read #25. A round that only committed fixes is never
-    /// asked.
+    /// #23 did after its sixth and the fix it made, #24 did after its sixth
+    /// but not after the fix it made, #26 merged what its seventh read, and
+    /// git can't read #25. A round that only committed fixes is never asked.
     fn moved(merge: &str, witness: &str) -> Option<bool> {
         match (merge, witness) {
-            ("cccc", "c-read") => Some(true),
-            ("dddd", "d-merged") | ("ffff", "f-merged") => Some(false),
+            ("cccc", "c-read" | "c-made") | ("dddd", "d-read") => Some(true),
+            ("dddd", "d-made") | ("ffff", "f-merged") => Some(false),
             (_, "f-fixed") => panic!("asked git of a round that queued nothing"),
             _ => None,
         }
@@ -629,7 +655,7 @@ mod tests {
     fn witness(id: &str) -> Option<&'static str> {
         match id {
             "council-c-1" => Some("c-read"),
-            "council-d-1" => Some("d-merged"),
+            "council-d-1" => Some("d-read"),
             "council-e-1" => Some("e-read"),
             "council-f-0" => Some("f-merged"),
             "council-f-1" => Some("f-fixed"),
@@ -689,27 +715,32 @@ mod tests {
             .collect();
         // #21's fifth round fixed one, which isn't past five, and its sixth's
         // fix ended in a way the record doesn't name; #23's seventh caught
-        // two, one through its judge, and its sixth one still queued, made
-        // before the merge since the change moved on, and its seventh one
-        // whose round names no head, unread; #22's sixth was only answered
-        // and its seventh's fix skipped; #24's sixth queued one on the head
-        // that merged, a follow-up; #25's sixth queued two whose merge git
-        // can't read, unread, so it files nothing; #26's sixth fixed one and
-        // its seventh queued a follow-up.
+        // two, one through its judge, and its sixth made one and queued one,
+        // made before the merge since the change moved on after both, and
+        // its seventh one whose round names no head, unread; #22's sixth was
+        // only answered and its seventh's fix skipped; #24's sixth made one
+        // and queued one the change didn't move on from, a follow-up, and its
+        // seventh one unread; #25's sixth queued two whose merge git can't
+        // read, unread, so it files nothing; #26's sixth fixed one and its
+        // seventh queued two follow-ups.
         let fixed = [fixes(&[
             ("council-a-2", "in the fifth", Some("committed")),
             ("judge-c", "a test that never failed", Some("committed")),
             ("council-c-0", "a second", Some("committed")),
             ("council-c-1", "queued", None),
+            ("council-c-1", "made", Some("committed c-made")),
             ("council-b-1", "answered", Some("answered")),
             ("council-b-0", "skipped", Some("skipped")),
             ("council-a-1", "unnamed", Some("dropped")),
             ("council-d-1", "queued alone", None),
+            ("council-d-1", "made first", Some("committed d-made")),
+            ("council-d-0", "unwitnessed too", None),
             ("council-e-1", "one queued", None),
             ("council-e-1", "two queued", None),
             ("council-c-0", "unwitnessed", None),
             ("council-f-1", "fixed", Some("committed")),
             ("council-f-0", "a follow-up", None),
+            ("council-f-0", "a second follow-up", None),
         ])];
         let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
         // Each ask of git may fetch, so #25's sixth, queuing two, asks once.
@@ -735,10 +766,11 @@ mod tests {
             [
                 "core.nix#21: 7 rounds, those past five caught nothing",
                 "core.nix#22: 7 rounds, those past five caught nothing",
-                "core.nix#23: 7 rounds, past five caught queued and 2 more, 1 queued fix unread",
-                "core.nix#24: 7 rounds, those past five caught nothing, 1 queued as a follow-up",
+                "core.nix#23: 7 rounds, past five caught queued and 3 more, 1 queued fix unread",
+                "core.nix#24: 7 rounds, past five caught made first, 1 queued as a follow-up, \
+                 1 queued fix unread",
                 "core.nix#25: 7 rounds, those past five caught nothing, 2 queued fixes unread",
-                "core.nix#26: 7 rounds, past five caught fixed, 1 queued as a follow-up",
+                "core.nix#26: 7 rounds, past five caught fixed, 2 queued as follow-ups",
             ],
             "a fix queued before the merge wasn't counted as caught, or a follow-up, an \
              unread fix or an outcome the record doesn't name was"
@@ -752,7 +784,6 @@ mod tests {
             [
                 ("rounds-past-five-fixed-nothing:core.nix#21", "ORCH", 7.0),
                 ("rounds-past-five-fixed-nothing:core.nix#22", "B8RBNW", 7.0),
-                ("rounds-past-five-fixed-nothing:core.nix#24", "ORCH", 7.0),
             ],
             "a merge whose rounds past five caught nothing goes to who landed it"
         );
