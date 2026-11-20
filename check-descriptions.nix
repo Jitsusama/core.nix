@@ -1897,19 +1897,22 @@
     a request the origin reset before its answer once more on another connection, one already
     open, even beside one kept, or one opened for a burst of them together, whose failure to open
     each hears at once, and sends pi direct with its own 421 when reset again or lost, when its
-    connection was kept with none other open or when none would open, but says a 502 when a
+    connection was kept with none other open, when none would open or when left out by a goodbye
+    saying nothing was wrong, first try or again, but says a 502 when a
     reset, first or again, said to calm down, retiring its connection, sends on no body too large
     or left unfinished, stands down past its share failed with the 421 that sends pi direct,
     staying through its idle time, trying its path as it stands down, kept down by a trial failing
     partway or answered with a 5xx, taking requests again once the path answers three in a row,
-    then trying it no more, and standing down doubled soon after, waiting twice as long for its
-    first trial, or after, on connections opened afresh, over one
-    opened while it stood down, for answers broken off midway as their connection falls or requests
-    sent again once it takes requests again, though never for requests no connection would take,
+    then trying it no more, or after, on connections opened afresh, over one opened while it stood
+    down, standing down doubled soon after, waiting twice as long for its first trial, even one
+    begun while a trial was awaited, for answers broken off midway as their connection falls or
+    requests sent again once it takes requests again, though never for requests no connection
+    would take,
     resets saying to calm down, answers pi gives up on or answers sent before it took requests
     again, says another origin's 421 and the stand-down's once the body is read, even a body too
     large, counts a body pi left as its cancel, never a 421, tells a body past its deadline as
-    late, passes a TE of trailers as h2 sends it, says its counts as it leaves, answers
+    late, passes a TE of trailers as h2 sends it, says its counts as it leaves, its trials apart
+    from its connections, answers
     broken off among them, counts on each connection the requests pi gave up on and no
     answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a

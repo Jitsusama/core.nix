@@ -60,8 +60,8 @@
 //! connections and answers each request with its own 421, forwarding
 //! nothing, so pi sends it direct. After a minute, as many times longer as
 //! the stand-down has doubled, and every half minute after, it tries its
-//! path: it opens a trial connection, counted among those opened but never
-//! taking requests, and asks the origin three times in a row for the head
+//! path: it opens a trial connection, counted with its trials apart from
+//! those opened for requests, and asks the origin three times in a row for the head
 //! of its root. Answered each time with anything but a 5xx, the path
 //! carries requests again, and so does the relay, at once; a trial ends
 //! only the stand-down it was begun in. Otherwise it stands down at most ten minutes, or
@@ -416,7 +416,8 @@ struct Counts {
     /// relay trying its path as it stands down isn't read as one opening
     /// connections for requests it should be sending direct.
     opened: AtomicU64,
-    /// Connections opened to try its path as it stood down.
+    /// Trials of its path as it stood down, each counted as it's begun,
+    /// so one whose connection wouldn't open is counted too.
     tried: AtomicU64,
     open: AtomicUsize,
     /// Requests refused as it stood down, so each went direct, counted
@@ -1393,6 +1394,7 @@ impl Relay {
     /// it, which a trial mustn't take for its path answering.
     async fn path_answers(&self) -> bool {
         let number = self.trials.fetch_add(1, Ordering::Relaxed);
+        self.counts.tried.fetch_add(1, Ordering::Relaxed);
         let Ok(mut sender) = self.connect(Named::Trial(number)).await else {
             eprintln!("model-relay: its path couldn't be tried, so it stands down still");
             return false;
@@ -1659,12 +1661,13 @@ impl Relay {
         // would retry: pi sends a 502's request again whole, so going
         // direct asks the origin nothing more, and asks it now, on a path
         // that answers, where pi's own retry waited up to a minute on
-        // 19 November to fail on this one again. Reset again or said
-        // goodbye to saying to calm down, or with an error of the origin's
-        // own, is the origin's verdict rather than the path's, so it's a
-        // 502, for pi's retry to wait out: the path's failure is judged as
-        // the stand-down judges it.
-        let (answer, then) = if reset_on.is_some() && goes_direct_once_resent(why) {
+        // 19 November to fail on this one again. So does one a drain left
+        // out, first try or again. Reset again or said goodbye to saying to
+        // calm down, or with an error of the origin's own, is the origin's
+        // verdict rather than the path's, so it's a 502, for pi's retry to
+        // wait out: the path's failure is judged as the stand-down judges
+        // it.
+        let (answer, then) = if goes_direct(why, reset_on.is_some()) {
             (goes_directly(), "pi goes directly")
         } else {
             (not_answered(), "pi is answered 502")
@@ -1960,7 +1963,6 @@ impl Relay {
             }
         };
         if let Named::Trial(_) = named {
-            self.counts.tried.fetch_add(1, Ordering::Relaxed);
             eprintln!("model-relay: {named} opened");
             tokio::spawn(async move {
                 // A trial's closes once its sender is dropped, its last
@@ -2043,14 +2045,15 @@ fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
     true
 }
 
-/// Whether a request reset, sent once more and failing with `why`, goes
-/// direct with the relay's own 421 rather than a 502: its path failed
-/// again, or the origin's goodbye left it out saying nothing was wrong,
-/// as a drain before a deploy does. A request a goodbye left out was
-/// never begun, so direct is the safest place for it; the goodbye isn't
-/// judged, since it says nothing of the path.
-fn goes_direct_once_resent(why: &(dyn std::error::Error + 'static)) -> bool {
-    fails_the_path(why) || left_by_a_goodbye(why)
+/// Whether a request failing with `why`, and not sent again, goes direct
+/// with the relay's own 421 rather than a 502: the origin's goodbye left
+/// it out saying nothing was wrong, as a drain before a deploy does, on
+/// its first try or once `resent`; or it was resent and its path failed
+/// again. A request a goodbye left out was never begun, so direct is the
+/// safest place for it, as the drain likely ends every connection; the
+/// goodbye isn't judged, since it says nothing of the path.
+fn goes_direct(why: &(dyn std::error::Error + 'static), resent: bool) -> bool {
+    left_by_a_goodbye(why) || (resent && fails_the_path(why))
 }
 
 /// Whether the origin's goodbye, saying nothing was wrong, left the
@@ -2304,15 +2307,24 @@ mod tests {
     use super::{
         BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
         SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, first_trial_after, goes_again,
-        goes_direct_once_resent, reach, reach_any, read_whole, slept, with_causes,
+        goes_direct, reach, reach_any, read_whole, slept, with_causes,
     };
 
-    /// What hyper raises for a request an origin's goodbye giving
-    /// `reason` left out, over a real HTTP/2 connection. The origin
+    /// How the origin ends a request it hasn't answered.
+    #[derive(Clone, Copy)]
+    enum Ending {
+        /// A goodbye to the connection, having begun no request.
+        Goodbye,
+        /// A reset of the request's own stream.
+        Reset,
+    }
+
+    /// What hyper raises for a request an origin left out with an
+    /// `ending` giving `reason`, over a real HTTP/2 connection. The origin
     /// writes its frames by hand, as h2's own server counts a request it
     /// has read as begun and won't leave it out: it reads the request's
-    /// headers, then says goodbye having begun none.
-    async fn left_out_by_a_goodbye(reason: h2::Reason) -> hyper::Error {
+    /// headers, then ends it.
+    async fn left_out_by(ending: Ending, reason: h2::Reason) -> hyper::Error {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
         /// The bytes a client opens HTTP/2 with, before its first frame.
@@ -2336,9 +2348,14 @@ mod tests {
                         | (usize::from(read[at + 1]) << 8)
                         | usize::from(read[at + 2]);
                     if read[at + 3] == HEADERS {
-                        let mut goodbye = vec![0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                        goodbye.extend_from_slice(&u32::from(reason).to_be_bytes());
-                        far.write_all(&goodbye).await.expect("the origin's goodbye");
+                        // A goodbye names the last stream it began, none;
+                        // a reset names the request's, the client's first.
+                        let mut end = match ending {
+                            Ending::Goodbye => vec![0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            Ending::Reset => vec![0, 0, 4, 3, 0, 0, 0, 0, 1],
+                        };
+                        end.extend_from_slice(&u32::from(reason).to_be_bytes());
+                        far.write_all(&end).await.expect("the origin's ending");
                         // Held open, so the goodbye is read before the end.
                         let mut rest = [0; 64];
                         while far.read(&mut rest).await.is_ok_and(|got| got > 0) {}
@@ -2371,29 +2388,38 @@ mod tests {
         why
     }
 
-    /// A resend that a goodbye saying nothing was wrong left out goes
-    /// direct, though unjudged; one saying to calm down is the origin's
-    /// verdict, a 502; one saying a protocol error is the path's, direct
-    /// and judged.
+    /// A request that a goodbye saying nothing was wrong left out goes
+    /// direct, first try or again, though unjudged; one saying to calm
+    /// down is the origin's verdict, a 502; one saying a protocol error is
+    /// the path's, direct and judged once resent. A reset saying nothing
+    /// was wrong is no drain, so it isn't sent direct.
     #[tokio::test(flavor = "current_thread")]
-    async fn a_resend_a_goodbye_left_out_goes_direct_unless_it_said_to_calm_down() {
-        let drained = left_out_by_a_goodbye(h2::Reason::NO_ERROR).await;
+    async fn a_request_a_drain_left_out_goes_direct_first_or_again_unlike_other_endings() {
+        let drained = left_out_by(Ending::Goodbye, h2::Reason::NO_ERROR).await;
         assert!(
-            goes_direct_once_resent(&drained) && !fails_the_path(&drained),
-            "a resend a drain left out wasn't sent direct unjudged: {}",
+            goes_direct(&drained, false)
+                && goes_direct(&drained, true)
+                && !fails_the_path(&drained),
+            "a request a drain left out wasn't sent direct unjudged, first or again: {}",
             with_causes(&drained)
         );
-        let calm = left_out_by_a_goodbye(h2::Reason::ENHANCE_YOUR_CALM).await;
+        let calm = left_out_by(Ending::Goodbye, h2::Reason::ENHANCE_YOUR_CALM).await;
         assert!(
-            !goes_direct_once_resent(&calm),
-            "a resend told to calm down was sent direct: {}",
+            !goes_direct(&calm, false) && !goes_direct(&calm, true),
+            "a request told to calm down was sent direct: {}",
             with_causes(&calm)
         );
-        let broken = left_out_by_a_goodbye(h2::Reason::PROTOCOL_ERROR).await;
+        let broken = left_out_by(Ending::Goodbye, h2::Reason::PROTOCOL_ERROR).await;
         assert!(
-            goes_direct_once_resent(&broken) && fails_the_path(&broken),
-            "a resend a protocol error's goodbye left out wasn't sent direct and judged: {}",
+            !goes_direct(&broken, false) && goes_direct(&broken, true) && fails_the_path(&broken),
+            "a protocol error's goodbye wasn't sent direct and judged once resent alone: {}",
             with_causes(&broken)
+        );
+        let reset = left_out_by(Ending::Reset, h2::Reason::NO_ERROR).await;
+        assert!(
+            !goes_direct(&reset, false) && !goes_direct(&reset, true),
+            "a reset saying nothing was wrong was sent direct as a drain: {}",
+            with_causes(&reset)
         );
     }
 
