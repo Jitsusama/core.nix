@@ -571,17 +571,39 @@ mod tests {
     fn a_short_answer_after_a_line_sent_nothing_is_a_take() {
         // A call sends nothing while its far end is muted, so the line's
         // hiss comes back only with the answer, and the answer must not
-        // be lost in it.
-        let nothing = vec![0.0; RATE * 3];
-        let sound = [
-            nothing,
-            noise(3.5, 0.005, false),
-            voice(0.3, 150.0),
-            noise(3.5, 0.005, false),
-            quiet(2.0),
-        ]
-        .concat();
-        assert_eq!(cut(&sound).len(), 1, "the answer in the hiss");
+        // be lost in it: whether the call was quieter before the mute, or
+        // the nothing ends a few samples into a frame, so that frame
+        // holds only a little of the hiss.
+        for (before, into_a_frame) in [(0.0, 0), (5.0, 0), (0.0, FRAME - 10)] {
+            let sound = [
+                quiet(before),
+                vec![0.0; RATE * 3 + into_a_frame],
+                noise(3.5, 0.005, false),
+                voice(0.3, 150.0),
+                noise(3.5, 0.005, false),
+                quiet(2.0),
+            ]
+            .concat();
+            assert_eq!(
+                cut(&sound).len(),
+                1,
+                "the answer in the hiss, after {before} s of quiet and \
+                 {into_a_frame} samples of a frame"
+            );
+        }
+    }
+
+    #[test]
+    fn words_with_nothing_between_are_a_take() {
+        // A far end that gates its line sends nothing between words, so
+        // the words alone mustn't set the floor they're heard against.
+        let mut sound = vec![0.0; RATE * 2];
+        for _ in 0..6 {
+            sound.extend(voice(0.25, 150.0));
+            sound.extend(vec![0.0; RATE / 10]);
+        }
+        sound.extend(vec![0.0; RATE * 2]);
+        assert_eq!(cut(&sound).len(), 1, "the words");
     }
 
     #[test]
