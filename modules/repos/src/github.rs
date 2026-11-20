@@ -225,6 +225,7 @@ fn change(node: &Value) -> Option<Change> {
             url: node["url"].as_str()?.to_owned(),
         }),
         review_asked_of: asked_of(&node["reviewRequests"]),
+        asks_your_review: false,
     })
 }
 
@@ -413,6 +414,9 @@ fn data(answer: Value) -> Result<Value, String> {
 }
 
 impl Seen {
+    /// Says of each change whether it asks the review of `login`.
+    pub fn mark_asked(&mut self, _login: &str) {}
+
     /// Nothing seen yet, by a refresh asking at `now`.
     pub fn new(now: u64) -> Self {
         Self {

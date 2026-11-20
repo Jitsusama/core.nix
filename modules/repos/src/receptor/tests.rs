@@ -37,6 +37,7 @@ fn change(title: &str, updated_at: u64, asked_of: &[&str]) -> Change {
         review: Review::Waiting,
         github: None,
         review_asked_of: asked_of.iter().copied().map(str::to_owned).collect(),
+        asks_your_review: false,
     }
 }
 

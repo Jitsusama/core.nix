@@ -94,6 +94,13 @@ pub struct Change {
     /// shown, so no file or answer holds a login it didn't before.
     #[serde(skip)]
     pub review_asked_of: Vec<String>,
+    /// Whether it asks the review of the login the machine declares, as a
+    /// refresh worked it out from `review_asked_of`: kept and shown where
+    /// the logins aren't, so `repos` can lead with it once the refresh has
+    /// gone, and no file or answer holds a login. False where no login is
+    /// declared, and in what a refresh from before it kept.
+    #[serde(default)]
+    pub asks_your_review: bool,
 }
 
 /// Which way a repository's changes were read from GitHub: through the

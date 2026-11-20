@@ -21,6 +21,7 @@ use repos::upstreams::Counted;
 use repos::when::Clock;
 
 mod trees;
+mod waiting;
 
 pub(crate) use trees::change_at;
 pub use trees::trees;
@@ -260,60 +261,6 @@ fn head(record: &Record, clock: &Clock, home: Option<&Path>, pen: &Pen, room: Ro
     lines
 }
 
-/// What waits on someone, as the collection leads with it: why, the
-/// change, and its title, last, so a long one is cut, and where even that
-/// leaves no room, it goes.
-const FOR_YOU: [(&str, Align); 3] = [
-    ("for you", Align::Left),
-    ("change", Align::Left),
-    ("title", Align::Left),
-];
-const FOR_YOU_GIVES_WAY: [usize; 1] = [2];
-
-/// The open changes waiting on the person GitHub knows as `login`: each
-/// asking their review, then each of their own failing its checks or with
-/// changes asked, each kind the one updated last first. The login is the
-/// one the machine declares, matched as GitHub matches one, ASCII case
-/// aside, against GitHub's own fields for who asked and who wrote, never
-/// anything a change says of itself.
-fn for_you(record: &Record, login: &str) -> Vec<Vec<String>> {
-    let is = |one: &str| one.eq_ignore_ascii_case(login);
-    let mut waiting: Vec<(bool, u64, Vec<String>)> = Vec::new();
-    for repository in &record.repositories {
-        let name = named(record, repository);
-        for change in &repository.changes {
-            let asked = change.review_asked_of.iter().any(|one| is(one));
-            let why = if asked {
-                "your review".to_owned()
-            } else if change.author.as_deref().is_some_and(is) {
-                let failing = change.checks.state == ChecksState::Failing;
-                let changes_asked = change.review == Review::ChangesAsked;
-                let why: Vec<&str> = [(failing, "failing"), (changes_asked, "changes asked")]
-                    .into_iter()
-                    .filter_map(|(holds, why)| holds.then_some(why))
-                    .collect();
-                if why.is_empty() {
-                    continue;
-                }
-                why.join(ITEMS)
-            } else {
-                continue;
-            };
-            let change_named = match &change.github {
-                Some(github) => format!("{name}#{}", github.number),
-                None => format!("{name} {}", change.branch),
-            };
-            waiting.push((
-                asked,
-                change.updated_at,
-                vec![why, change_named, change.title.clone()],
-            ));
-        }
-    }
-    waiting.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
-    waiting.into_iter().map(|(_, _, row)| row).collect()
-}
-
 /// The collection's columns. The key goes first where they don't fit,
 /// since the name already says which, and goes whole, since a key cut
 /// short names nothing; then the checkouts, when it was written, and the
@@ -405,14 +352,9 @@ pub fn repositories(
         ),
     ]
     .map(|(command, shows)| vec![command.to_owned(), shows.to_owned()]);
-    let waiting = login.map_or_else(Vec::new, |login| for_you(record, login));
     layout::joined(vec![
         head(record, clock, home, pen, room),
-        if waiting.is_empty() {
-            Vec::new()
-        } else {
-            self::table(&FOR_YOU, waiting, &FOR_YOU_GIVES_WAY, pen, room)
-        },
+        waiting::waiting(record, login, pen, room),
         table,
         layout::table_in(
             &[("further", Align::Left), ("shows", Align::Left)],

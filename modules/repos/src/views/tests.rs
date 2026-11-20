@@ -7,7 +7,7 @@ use repos::model::{Checkout, Checks, GitHubChange, Head, Remote, SCHEMA, Source,
 
 /// 2033-05-18 03:33:20 UTC.
 pub(super) const NOW: u64 = 2_000_000_000;
-const HOME: &str = "/home/someone";
+pub(super) const HOME: &str = "/home/someone";
 pub(super) const HELD: &str = ".local/state/pi/agentic-harness.pi/work/trees";
 
 pub(super) const ROOMS: [Room; 4] = [
@@ -163,7 +163,13 @@ pub(super) fn record() -> Record {
     }
 }
 
-fn change(number: u64, branch: &str, state: ChecksState, review: Review, ago: u64) -> Change {
+pub(super) fn change(
+    number: u64,
+    branch: &str,
+    state: ChecksState,
+    review: Review,
+    ago: u64,
+) -> Change {
     let failed = match state {
         ChecksState::Failing => vec!["build".to_owned()],
         _ => Vec::new(),
@@ -192,13 +198,14 @@ fn change(number: u64, branch: &str, state: ChecksState, review: Review, ago: u6
             url: format!("https://github.com/Jitsusama/core.nix/pull/{number}"),
         }),
         review_asked_of: Vec::new(),
+        asks_your_review: false,
     }
 }
 
 /// The record after a refresh: seven changes open on core.nix, the one
 /// updated last first, one at a tree's branch; and one repository GitHub
 /// couldn't read.
-fn refreshed() -> Record {
+pub(super) fn refreshed() -> Record {
     let mut record = record();
     record.sources.push(Source {
         name: "github".to_owned(),
@@ -446,157 +453,6 @@ fn no_checkout_under_the_roots_says_so() {
         Room::Cells(80),
     );
     assert!(text.contains("no checkout is there"), "{text}");
-}
-
-/// The refreshed record with changes waiting on `joel`: one asking his
-/// review, newer than another that does, his own failing, his own with
-/// changes asked, and someone else's failing, which waits on him not at
-/// all.
-fn waiting_on_joel() -> Record {
-    let mut record = refreshed();
-    let changes = &mut record.repositories[0].changes;
-    let mut asked = change(
-        4795,
-        "someone/asks",
-        ChecksState::Passing,
-        Review::Waiting,
-        5,
-    );
-    asked.review_asked_of = vec!["Joel".to_owned(), "someone".to_owned()];
-    let mut asked_before = change(
-        4794,
-        "someone/asked-before",
-        ChecksState::Pending,
-        Review::Waiting,
-        86_400,
-    );
-    asked_before.review_asked_of = vec!["joel".to_owned()];
-    let mut failing = change(
-        4793,
-        "joel/fails",
-        ChecksState::Failing,
-        Review::ChangesAsked,
-        60,
-    );
-    failing.author = Some("JOEL".to_owned());
-    let mut asked_to_change = change(
-        4792,
-        "joel/changes",
-        ChecksState::Passing,
-        Review::ChangesAsked,
-        30,
-    );
-    asked_to_change.author = Some("joel".to_owned());
-    changes.splice(0..0, [asked, failing, asked_to_change, asked_before]);
-    record
-}
-
-/// The rows of the table the collection leads with, each by its change.
-fn for_you(text: &str) -> Vec<&str> {
-    text.lines()
-        .skip_while(|line| !line.starts_with("FOR YOU"))
-        .skip(1)
-        .take_while(|line| !line.is_empty())
-        .filter_map(|line| line.split_whitespace().find(|word| word.contains('#')))
-        .collect()
-}
-
-#[test]
-fn what_waits_on_the_login_leads_the_collection() {
-    let record = waiting_on_joel();
-    for room in ROOMS {
-        let text = super::repositories(
-            &record,
-            &clock(),
-            Some(home()),
-            Some("joel"),
-            &Pen::plain(),
-            room,
-        );
-        assert_eq!(layout::overrun(&text, room), None, "{text}");
-        assert_eq!(
-            for_you(&text),
-            [
-                "core.nix#4795",
-                "core.nix#4794",
-                "core.nix#4792",
-                "core.nix#4793"
-            ],
-            "reviews asked of him, then his own, each newest first: {text}"
-        );
-        let leads = text.find("FOR YOU").expect("it leads");
-        assert!(
-            leads < text.find("REPOSITORY").expect("the collection follows"),
-            "{text}"
-        );
-        let row = |change: &str| {
-            text.lines()
-                .find(|line| line.contains(change))
-                .unwrap_or_else(|| panic!("{change} has no row: {text}"))
-        };
-        assert!(row("core.nix#4795 ").starts_with("your review "), "{text}");
-        assert!(
-            row("core.nix#4792 ").starts_with("changes asked "),
-            "{text}"
-        );
-        assert!(
-            row("core.nix#4793 ").starts_with("failing · changes asked "),
-            "{text}"
-        );
-    }
-    let text = super::repositories(
-        &record,
-        &clock(),
-        Some(home()),
-        Some("joel"),
-        &Pen::plain(),
-        Room::Unbounded,
-    );
-    assert!(
-        text.contains("Change number 4795, which says what it does at some length"),
-        "into a pipe a title is whole: {text}"
-    );
-    assert!(
-        !for_you(&text).contains(&"core.nix#4791"),
-        "someone else's failing change waits on nobody here: {text}"
-    );
-}
-
-#[test]
-fn nothing_leads_where_nothing_waits_or_no_login_is_declared() {
-    for (record, login) in [
-        (waiting_on_joel(), None),
-        (waiting_on_joel(), Some("someone-else")),
-        (refreshed(), Some("joel")),
-    ] {
-        let text = super::repositories(
-            &record,
-            &clock(),
-            Some(home()),
-            login,
-            &Pen::plain(),
-            Room::Cells(80),
-        );
-        assert!(!text.contains("FOR YOU"), "login {login:?}: {text}");
-    }
-}
-
-#[test]
-fn the_collection_reads_whole_at_forty() {
-    let mut record = waiting_on_joel();
-    record.roots.push(format!("{HOME}/world/trees"));
-    let room = Room::Cells(40);
-    let text = super::repositories(
-        &record,
-        &clock(),
-        Some(home()),
-        Some("joel"),
-        &Pen::plain(),
-        room,
-    );
-    assert_eq!(layout::overrun(&text, room), None, "{text}");
-    assert_eq!(for_you(&text).len(), 4, "{text}");
-    assert!(text.contains("under ~/src and ~/world/trees"), "{text}");
 }
 
 #[test]
