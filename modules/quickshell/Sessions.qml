@@ -3161,7 +3161,7 @@ Singleton {
         const fence = session.presence?.fence;
         const fenced = fence === "fence" || fence === "strict";
         if (!/^[A-Za-z0-9._-]+$/.test(id) || session.here === false
-            || fence !== "none" && !fenced || !why.endsWith(unheld))
+            || (fence !== "none" && !fenced) || !why.endsWith(unheld))
             return false;
         const upper = String(session.address).toUpperCase();
         if (running.some(one => one.here && one.presence?.session === id)) {

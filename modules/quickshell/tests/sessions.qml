@@ -420,6 +420,11 @@ ShellRoot {
                 more) });
         Sessions.wake(like("FENCED", "s-fenced", { fence: "sandbox" }));
         Sessions.wake(like("WARDED", "s-warded", { fence: "strict" }));
+        // And one fenced by the fence's own word, which comes back under it,
+        // never under strict; and one whose presence names no fence, which
+        // says nothing of how it ran, so it stays refused.
+        Sessions.wake(like("HEDGED", "s-hedged", { fence: "fence" }));
+        Sessions.wake(like("UNSAID", "s-unsaid", { fence: undefined }));
         Sessions.wake(like("ALIVE", "s-LIVE01"));
         Sessions.wake(orphan);
         // Woken again before pi is up, it opens no second.
@@ -588,12 +593,14 @@ ShellRoot {
         const kitties = Niri.spawns.map(command => inSessions(command))
             .filter(command => command.startsWith("sessions ") && !command.includes("attach r-far")
                 && !command.includes("attach --host") && !command.includes('attach "$1"'));
-        // Six reopened at once, and the two woken that no holder keeps.
-        if (kitties.length < 8 || unopened.length < 3 || !steered || !talked()
+        // Six reopened at once, and the three woken that no holder keeps.
+        if (kitties.length < 9 || unopened.length < 3 || !steered || !talked()
             || !kitties.some(one => one.endsWith(" pi --session s-orphan"))
             || root.unfiled === "" && !Niri.spawns.some(one => one.includes("QEST-NOFILE"))
             || root.fenced === "" && !Niri.spawns.some(one => one.includes("s-fenced"))
-            || !kitties.some(one => one.endsWith(" pi --session s-warded")))
+            || !kitties.some(one => one.endsWith(" pi --session s-warded"))
+            || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
+            || root.unsaid === "" && !Niri.spawns.some(one => one.includes("s-unsaid")))
             return;
         expect("one parked that no holder keeps is reopened where it left off, once",
             kitties.filter(one => one.startsWith(`${kitty} ${state}/trees/karst zsh -lic `)
@@ -606,10 +613,18 @@ ShellRoot {
             !Niri.spawns.some(one => one.includes("s-stray"))
             && root.strayed === "STRAY isn't parked with a holder to wake it this boot",
             `${root.strayed}: ${Niri.spawns.join("\n")}`);
-        expect("one fenced strict reopens by its id, PI_SANDBOX its own fence, once",
+        expect("one fenced strict reopens by its id, PI_SANDBOX its own fence",
             kitties.filter(one => one.startsWith(
                 `${kitty} ${state}/trees/karst env PI_SANDBOX=strict zsh -lic `)
                 && one.endsWith(" pi --session s-warded")).length === 1, kitties.join("\n"));
+        expect("one fenced by the fence's word reopens by its id under that word",
+            kitties.filter(one => one.startsWith(
+                `${kitty} ${state}/trees/karst env PI_SANDBOX=fence zsh -lic `)
+                && one.endsWith(" pi --session s-hedged")).length === 1, kitties.join("\n"));
+        expect("nor one whose presence names no fence, said as refused",
+            !Niri.spawns.some(one => one.includes("s-unsaid"))
+            && root.unsaid.startsWith("UNSAID isn't parked"),
+            `${root.unsaid}: ${Niri.spawns.join("\n")}`);
         expect("nor one fenced by a word no fence goes by, said as refused",
             !Niri.spawns.some(one => one.includes("s-fenced"))
             && root.fenced.startsWith("FENCED isn't parked"),
@@ -664,7 +679,7 @@ ShellRoot {
         expect("one held elsewhere joined again by its words, in its folder here",
             kitties.includes(`${kitty} /tmp ssh -t lighthouse mycelium attach s-far`),
             kitties.join("\n"));
-        expect("eight opened, none in the home folder nor a gone one", kitties.length === 8
+        expect("nine opened, none in the home folder nor a gone one", kitties.length === 9
             && !kitties.some(one => one.includes(`--directory ${Quickshell.env("HOME")} `)
                 || one.includes("given-back") || one.includes("QEST-NONE")),
             kitties.join("\n"));
@@ -828,6 +843,7 @@ ShellRoot {
     property string strayed: ""
     property string unfiled: ""
     property string fenced: ""
+    property string unsaid: ""
     // Each steer the node was asked, and whether the one parked had been
     // woken by then.
     property var steers: []
@@ -863,6 +879,15 @@ ShellRoot {
                 }
                 if (session.address === "FENCED") {
                     root.fenced = why;
+                    return;
+                }
+                if (session.address === "UNSAID") {
+                    root.unsaid = why;
+                    return;
+                }
+                // One Wake reopens, said as refused, is said as itself.
+                if (["ORPHAN", "WARDED", "HEDGED"].includes(session.address)) {
+                    root.expect(`${session.address} reopens, never said as refused`, false, why);
                     return;
                 }
                 root.expect("a steer elsewhere is refused by the node, saying why",
@@ -935,8 +960,8 @@ ShellRoot {
                         // A wake of one no holder keeps this boot is
                         // refused as the node refuses it.
                         const unheld = ask.steer?.act === "wake"
-                            && ["ORPHAN", "STRAY", "NOFILE", "FENCED", "WARDED", "ALIVE"]
-                                .includes(ask.address);
+                            && ["ORPHAN", "STRAY", "NOFILE", "FENCED", "WARDED", "HEDGED",
+                                "UNSAID", "ALIVE"].includes(ask.address);
                         answer = ask.address === "FARAWY" ? { id: ask.id, error: {
                             code: "refused",
                             message: "lighthouse is out of reach, so FARAWY can't be told now"
