@@ -2262,10 +2262,13 @@ Provider {
     }
     // Where Lately's rows stand. While the launcher is open a row comes
     // into For You when one of its notices turns critical, so what For
-    // You counts it lists, but not while Joel stands inside that row, and
-    // none leaves until the next opening, so a notice read, withdrawn,
-    // woken onto the screen or put away never moves it out from under
-    // him. A row left holding nothing still goes (Lately.js's bands).
+    // You counts it lists, but not while Joel stands inside that row or
+    // in Now's own rows, which list it, so it never leaves the list he's
+    // reading or the one - climbs back to (round 4, F51, F61); it comes in
+    // once he steps elsewhere, For You's own list drawn afresh. None
+    // leaves until the next opening, so a notice read, withdrawn, woken
+    // onto the screen or put away never moves it out from under him. A
+    // row left holding nothing still goes (Lately.js's bands).
     // Never bound, since a binding would follow every notice while open.
     property var latelyPlaced: ({})
     onLatelyCriticalChanged: replaceLately()
@@ -2284,11 +2287,13 @@ Provider {
         if (critical === undefined)
             return;
         const shut = openedAt === Number.POSITIVE_INFINITY;
-        const inside = (launcher?.held ?? []).map(step => step.row?.forYou?.source);
+        const steps = launcher?.held ?? [];
+        const inside = steps.map(step => step.row?.forYou?.source);
+        const inNow = steps.length > 0 && steps[steps.length - 1].row?.from === provider;
         const placed = {};
         for (const source of Lately.SOURCES)
             placed[source] = shut ? critical[source] : latelyPlaced[source] === true
-                || (critical[source] === true && !inside.includes(source));
+                || (critical[source] === true && !inNow && !inside.includes(source));
         if (Lately.SOURCES.some(source => latelyPlaced[source] !== placed[source]))
             latelyPlaced = placed;
     }

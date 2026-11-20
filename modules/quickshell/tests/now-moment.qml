@@ -2042,21 +2042,29 @@ ShellRoot {
         now.openedAt = Number.POSITIVE_INFINITY;
         // Opened with its card up, Desktop stands in Now's rows. Once the
         // card's put away unread it waits, so Desktop comes into For You,
-        // which counts it, but not while Joel stands inside Desktop.
+        // which counts it, but not while Joel stands inside Desktop or in
+        // Now's own rows, where it would leave from under him.
         expect("a critical notice with its card up leaves Desktop in Now's rows",
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
         now.openedAt = Date.now();
         const wasHeld = theLauncher.held;
-        theLauncher.held = [{ row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
+        const nowStep = { row: { from: now, key: "on" } };
+        theLauncher.held = [nowStep,
+            { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
         Notices.live = {};
         expect("a critical card put away while Joel's inside Desktop leaves it in Now's rows",
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
-        theLauncher.held = [];
-        expect("and once he steps out, Desktop comes into For You, which counts it",
+        theLauncher.held = [nowStep];
+        expect("stepped back out onto Now's rows, Desktop still stands where he left it",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        theLauncher.held = [nowStep, { row: { key: "on:waitingOnYou" } }];
+        expect("and once he steps into For You, Desktop is there, which counts it",
             keysOf(inForYou()).includes("on:waiting:desktop")
                 && !keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
