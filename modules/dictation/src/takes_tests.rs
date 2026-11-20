@@ -218,11 +218,14 @@ fn a_pause_shorter_than_a_second_stays_in_one_take() {
 
 #[test]
 fn a_live_take_is_given_once_a_second_of_quiet_follows_it() {
-    // A live line shows only then, so this is how long it waits.
+    // A live line shows only then, so this is how long it waits. The
+    // words end on a whole frame of tone, so the quiet after them is
+    // the pause: 49 frames hold the take, and the 50th gives it.
     let mut cutter = Cutter::new();
-    let spoken_then_waiting = [quiet(2.0), spoken(2.0), quiet(0.9)].concat();
+    let words = &spoken(3.0)[..RATE * 2 + FRAME * 3];
+    let spoken_then_waiting = [&quiet(2.0), words, &quiet(1.0)[..FRAME * 49]].concat();
     assert_eq!(cutter.feed(&spoken_then_waiting), Vec::new());
-    assert_eq!(cutter.feed(&quiet(0.2)).len(), 1);
+    assert_eq!(cutter.feed(&quiet(1.0)[..FRAME]).len(), 1);
 }
 
 #[test]
