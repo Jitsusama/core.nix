@@ -127,6 +127,93 @@ fn a_date_moved_in_place_after_it_passed_still_slipped() {
     );
 }
 
+/// An ask due 3 h ago and given 20 h ago, its first date marked `met`
+/// `met` seconds before `NOW`, then moved to tomorrow an hour ago when
+/// `then` is set, or left its last date when not.
+fn met(words: &str, met: i64, then: bool) -> String {
+    let dates: &[(i64, i64)] = if then {
+        &[(3 * 3600, 20 * 3600), (-DAY, 3600)]
+    } else {
+        &[(3 * 3600, 20 * 3600)]
+    };
+    let mut ask: serde_json::Value =
+        serde_json::from_str(&moved(words, dates)).expect("an ask the tests made");
+    ask["promised"][0]["met"] = at(NOW - met).into();
+    ask.to_string()
+}
+
+/// On 18 November Joel's 16:58 ask carried 21:00 for a step, its account,
+/// which went to the orchestrator at 19:59; re-dated for the fix, the
+/// 21:00 read as a slip.
+#[test]
+fn a_date_met_by_its_time_isnt_a_slip_once_the_ask_moves_on() {
+    let text = [
+        // Met an hour before it was due, then moved: none.
+        met("met early", 4 * 3600, true),
+        // Met at the very time it was due: none.
+        met("met on time", 3 * 3600, true),
+        // Met an hour after it was due: still a slip.
+        met("met late", 2 * 3600, true),
+        // Met before it was ever given: no step kept, a slip.
+        met("met before given", 21 * 3600, true),
+        // Its last date, met but not landed: landing alone keeps it.
+        met("met, never moved", 4 * 3600, false),
+    ]
+    .join("\n");
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        [
+            "met late · Y2YBTS",
+            "met before given · Y2YBTS",
+            "met, never moved · Y2YBTS",
+        ],
+        "only a date met by its time, after it was given, and moved on from, is kept"
+    );
+}
+
+#[test]
+fn a_met_dropped_by_a_later_line_is_a_slip_again() {
+    let dropped: serde_json::Value =
+        serde_json::from_str(&moved("dropped", &[(3 * 3600, 20 * 3600), (-DAY, 3600)]))
+            .expect("an ask the tests made");
+    let kept = met("kept", 4 * 3600, true);
+    let text = [
+        met("dropped", 4 * 3600, true),
+        dropped.to_string(),
+        moved("kept", &[(3 * 3600, 20 * 3600), (-DAY, 3600)]),
+        kept,
+    ]
+    .join("\n");
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        ["dropped · Y2YBTS"],
+        "each date is read from its ask's latest line, met or not"
+    );
+}
+
+/// The keeper's own line for the 18 November ask, words shortened: its
+/// 18:00 was moved at 18:28, a slip; its 21:00 was met at 19:59, none.
+#[test]
+fn the_keepers_met_line_reads_as_written() {
+    let line = r#"{"at":"2026-11-18T16:58:00-05:00","words":"slack and chrome",
+        "owner":"1DZYLJ","expected":"2026-11-21T12:00:00-05:00","landed":null,
+        "first":null,"tracking":null,"promised":[
+        {"expected":"2026-11-19T18:00:00-05:00","given":"2026-11-19T14:25:00-05:00"},
+        {"expected":"2026-11-19T21:00:00-05:00","given":"2026-11-19T18:28:31-05:00",
+        "met":"2026-11-19T19:59:00-05:00"},
+        {"expected":"2026-11-21T12:00:00-05:00","given":"2026-11-19T21:14:45-05:00"}]}"#;
+    let line: serde_json::Value = serde_json::from_str(line).expect("the keeper's line");
+    let now = "2026-11-19T23:00:00-05:00"
+        .parse::<Timestamp>()
+        .expect("a time")
+        .as_second();
+    assert_eq!(
+        slips(&line.to_string(), now, Tracking::His).behind,
+        ["slack and chrome · 1DZYLJ"],
+        "its 18:00 alone slipped"
+    );
+}
+
 #[test]
 fn a_date_promised_has_not_caught_up_with_still_counts() {
     // Its list moved `expected` to 2 h ago without adding it to `promised`,
