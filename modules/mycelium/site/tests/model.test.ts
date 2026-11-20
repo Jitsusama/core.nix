@@ -8,13 +8,14 @@ import { expiryOf, LATEST_MESSAGES, nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-16T07:30:00Z");
 
-/** The four watches, each told its kind's records of `these` whole. */
+/** The watches, each told its kind's records of `these` whole. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
   const heard = {
     network: new Held(),
     cell: new Held(),
     machine: new Held(),
     message: new Held(),
+    builder: new Held(),
   };
   for (const [kind, held] of Object.entries(heard)) {
     held.took({ records: these.filter((record) => record.kind === kind) });

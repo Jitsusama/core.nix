@@ -1,8 +1,8 @@
-// What each thing on the map is, in words: a cell, a network and a machine,
-// as the tree's rows show them under their names and as their labels read
-// them aloud, and the counts and sums those words are made of, which the
-// panel says too. Decided from the reading alone, apart from the drawing
-// (view.js), so each can be tried alone.
+// What each thing on the map is, in words: a cell, a network, a machine and
+// a builder, as the tree's rows show them under their names and as their
+// labels read them aloud, and the counts and sums those words are made of,
+// which the panel says too. Decided from the reading alone, apart from the
+// drawing (view.js), so each can be tried alone.
 
 /** How a cell stands, worst first: the order the map lists and counts them in. */
 export const STANDINGS = ["asks", "stuck", "moving", "quiet", "dormant"] as const;
@@ -85,11 +85,35 @@ export interface Machine {
   readonly members?: readonly Machine[] | null | undefined;
 }
 
+/**
+ * A builder the machine sends Nix builds to. It is no machine of the realm:
+ * nothing runs on it but builds, and no node of its own says how it stands,
+ * so the node says it from what reaching it, or its lender, told.
+ */
+export interface Builder {
+  readonly name: string;
+  /**
+   * How it stood when last heard: `answering` or `not answering` where it
+   * was reached, `running` or `not running` where its lender said, and
+   * `unknown` where nothing could be heard.
+   */
+  readonly state: string;
+  /** The systems it builds for, such as x86_64-linux. */
+  readonly systems: readonly string[];
+  /** How many builds it takes at once. */
+  readonly jobs: number;
+  /** Whether it is lent: made for a while by a lender, and paid for while it runs. */
+  readonly lent: boolean;
+  /** Why it stands as it does, or its lender's word, where either says. */
+  readonly said: string | null;
+}
+
 /** The map's reading, of what the words read. */
 export interface Reading {
   readonly hubs: ReadonlyMap<string, Network>;
   readonly byAddress: ReadonlyMap<string, Cell>;
   readonly machines: readonly Machine[];
+  readonly builders?: readonly Builder[] | undefined;
   readonly cells: readonly Cell[];
 }
 
@@ -260,9 +284,52 @@ export const machineWords = (
   return `${state}, ${plural(cells.length, "cell")}${spentWords(cells)}`;
 };
 
+/** How a builder stands, as the map says it: each as the node says, but one heard by nobody. */
+const BUILDER_STATE_WORD: Readonly<Record<string, string>> = { unknown: "unheard" };
+
+/** Whether a builder takes builds now: reached and answering, or run by its lender. */
+export const builds = (b: Builder): boolean => b.state === "answering" || b.state === "running";
+
+/**
+ * What a builder's mark and row say under its name: lent or not, how it
+ * stands, how much at once.
+ */
+export const builderParts = (b: Builder): readonly string[] =>
+  [
+    b.lent ? "lent" : "",
+    BUILDER_STATE_WORD[b.state] ?? b.state,
+    b.jobs > 0 ? `${plural(b.jobs, "build")} at once` : "",
+  ].filter(Boolean);
+
+/** A builder's parts, as a row's words. */
+export const builderWords = (b: Builder): string => builderParts(b).join(", ");
+
+/**
+ * How a builder stands, as its drawer says it: who said so, and why where
+ * the node gave a reason, since a builder nobody could hear is told apart
+ * from one that didn't answer.
+ */
+export const builderSays = (b: Builder): string => {
+  const why = b.said ? `: ${b.said}` : "";
+  switch (b.state) {
+    case "answering":
+      return "It answered when last reached, so it takes builds.";
+    case "running":
+      return b.said
+        ? `Its lender runs it, so it takes builds; the lender's word for it is ${b.said}.`
+        : "Its lender runs it, so it takes builds.";
+    case "not answering":
+      return `It didn't answer when last reached${why}.`;
+    case "not running":
+      return `Its lender doesn't run it now${why}.`;
+    default:
+      return `Nobody has heard how it stands${why}.`;
+  }
+};
+
 /**
  * What a thing on the map is, in words, by its key (`c:` a cell, `h:` a
- * network, `m:` a machine): the name a tree row goes by, and what the keys
+ * network, `m:` a machine, `b:` a builder): the name a tree row goes by, and what the keys
  * say as they land on it. Its name, then the words its row shows under it,
  * so what's read aloud holds what's seen; a thing the reading no longer
  * holds goes by its id.
@@ -281,6 +348,10 @@ export const described = (reading: Reading, key: string): string => {
     const branches =
       h.children.length > 0 ? ` with ${plural(h.children.length, "branch", "branches")}` : "";
     return `${h.name}, ${hubWords(h)}, a network${branches}`;
+  }
+  if (key[0] === "b") {
+    const b = reading.builders?.find((y) => y.name === id);
+    return b ? `${id}, ${builderWords(b)}, a builder` : id;
   }
   const x = reading.machines.find((y) => y.name === id);
   const what = x?.members ? `a basin of ${plural(x.members.length, "machine")}` : "a machine";

@@ -18,7 +18,7 @@ import {
   upOf,
   walked,
 } from "../outline.ts";
-import type { Cell, Network, Reading } from "../words.ts";
+import type { Builder, Cell, Network, Reading } from "../words.ts";
 
 /** A cell, quiet with nothing waiting, but for what `more` says. */
 const cell = (address: string, more: Partial<Cell> = {}): Cell => ({
@@ -88,6 +88,15 @@ const homes: [Cell, Network][] = [
   [reed, nets],
 ];
 const cells = [tide, gale, eddy, reed, lone];
+/** A lent builder, which hangs from nothing and holds nothing. */
+const heron: Builder = {
+  name: "heron",
+  state: "running",
+  systems: ["x86_64-linux"],
+  jobs: 16,
+  lent: true,
+  said: null,
+};
 const now: Reading = {
   hubs: new Map([harbour, nets, locks, cistern, alone].map((h) => [h.key, h])),
   byAddress: new Map([
@@ -183,6 +192,16 @@ it("tops the tree with the machines while shown, else every network that is no b
     ["h:quest.harbour", "h:quest.weir", "h:#loose"],
     "networks where no machine is known",
   );
+  assert.deepEqual(
+    rootsOf({ ...now, builders: [heron] }, true),
+    ["m:kestrel", "m:osprey", "b:heron"],
+    "the builders after the machines",
+  );
+  assert.deepEqual(
+    rootsOf({ ...now, builders: [heron] }, false),
+    ["h:quest.harbour", "h:quest.weir", "h:#loose"],
+    "and hidden with them",
+  );
 });
 
 it("shows only the rows of open branches, each with its level and place", () => {
@@ -244,6 +263,16 @@ it("shows each row's name and the words under it, a machine's name set apart", (
     rowWords(now, "m:kestrel"),
     { name: "kestrel", fact: "ready, 5 cells, $2.00 today", mono: true },
     "a machine",
+  );
+  assert.deepEqual(
+    rowWords({ ...now, builders: [heron] }, "b:heron"),
+    { name: "heron", fact: "lent, running, 16 builds at once", mono: true },
+    "a builder, its name set apart as a machine's is",
+  );
+  assert.deepEqual(
+    rowWords(now, "b:heron"),
+    { name: "heron", fact: "", mono: true },
+    "a builder the reading no longer holds",
   );
   assert.deepEqual(
     rowWords(now, "c:GONE"),

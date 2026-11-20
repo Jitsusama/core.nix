@@ -1012,6 +1012,13 @@ body {
   stroke-width: 2px;
 }
 
+/* A builder's box has rounded corners, the one mark among the machines
+   that isn't one, so its name reads apart from theirs at any size. */
+.t-builder .t-box,
+.t-builder .t-plate {
+  rx: 7px;
+}
+
 .t-mark.strong .t-box {
   stroke-width: 2px;
 }

@@ -409,7 +409,8 @@ in
       # the node keeps under `source`, never the change itself; `source`
       # passes whole, holding today only that word. Of each murmur the
       # murmurs page reads only what it draws, not the machine it was
-      # said on.
+      # said on. Of each builder the machine sends its builds to, the map
+      # reads how it stands and what it builds, never where it's reached.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
@@ -458,6 +459,14 @@ in
             "settled"
           ];
           balance = { };
+          builder.fields = [
+            "name"
+            "state"
+            "systems"
+            "jobs"
+            "lent"
+            "said"
+          ];
           unanswered.fields = [
             "id"
             "from"

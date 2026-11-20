@@ -7,6 +7,10 @@ import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import {
   allCells,
+  type Builder,
+  builderSays,
+  builderWords,
+  builds,
   type Cell,
   cellsOn,
   cellWords,
@@ -276,4 +280,76 @@ it("labels each thing by its name and then the words its row shows", () => {
   );
   assert.equal(described(now, "c:GONE"), "GONE", "a cell gone by its address");
   assert.equal(described(now, "h:gone"), "gone", "a network gone by its key");
+});
+
+/** A builder on x86_64-linux that answered, but for what `more` says. */
+const builder = (name: string, more: Partial<Builder> = {}): Builder => ({
+  name,
+  state: "answering",
+  systems: ["x86_64-linux"],
+  jobs: 4,
+  lent: false,
+  said: null,
+  ...more,
+});
+
+it("a builder says whether it's lent, how it stands and how much it takes at once", () => {
+  assert.equal(builderWords(builder("heron")), "answering, 4 builds at once", "a standing one");
+  assert.equal(
+    builderWords(builder("tern", { state: "running", jobs: 1, lent: true })),
+    "lent, running, 1 build at once",
+    "a lent one, one build at a time",
+  );
+  assert.equal(
+    builderWords(builder("gull", { state: "unknown", jobs: 0 })),
+    "unheard",
+    "one nobody heard, taking nothing known",
+  );
+  assert.deepEqual(
+    ["answering", "running", "not answering", "not running", "unknown"].map((state) =>
+      builds(builder("heron", { state })),
+    ),
+    [true, true, false, false, false],
+    "only one reached or run by its lender takes builds",
+  );
+});
+
+it("a builder's drawer says how it stands, who said so and why", () => {
+  const says = (more: Partial<Builder>): string => builderSays(builder("heron", more));
+  assert.equal(says({}), "It answered when last reached, so it takes builds.", "answering");
+  assert.equal(
+    says({ state: "running", said: "passing" }),
+    "Its lender runs it, so it takes builds; the lender's word for it is passing.",
+    "running, with its lender's word",
+  );
+  assert.equal(
+    says({ state: "running" }),
+    "Its lender runs it, so it takes builds.",
+    "running, with none",
+  );
+  assert.equal(
+    says({ state: "not answering", said: "refused" }),
+    "It didn't answer when last reached: refused.",
+    "not answering, and why",
+  );
+  assert.equal(
+    says({ state: "not running" }),
+    "Its lender doesn't run it now.",
+    "not running, with no reason",
+  );
+  assert.equal(
+    says({ state: "unknown", said: "it is reached through a jump host, which isn't dialled" }),
+    "Nobody has heard how it stands: it is reached through a jump host, which isn't dialled.",
+    "unheard, and why",
+  );
+});
+
+it("a builder is labelled by its name, its words and what it is", () => {
+  const now: Reading = { ...reading([], [], []), builders: [builder("heron")] };
+  assert.equal(
+    described(now, "b:heron"),
+    "heron, answering, 4 builds at once, a builder",
+    "a builder",
+  );
+  assert.equal(described(now, "b:gone"), "gone", "a builder gone by its name");
 });
