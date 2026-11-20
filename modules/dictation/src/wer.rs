@@ -221,7 +221,11 @@ mod tests {
     fn nothing_heard_deletes_every_word_and_nothing_said_inserts() {
         assert_eq!(errors("move it", "").deleted, 2);
         assert_eq!(errors("", "move it").inserted, 2);
-        assert!(errors("", "move it").rate().abs() < f64::EPSILON);
+        let rate = errors("", "move it").rate();
+        assert!(
+            rate.abs() < f64::EPSILON,
+            "nothing said has a rate of 0, not {rate}"
+        );
     }
 
     #[test]
@@ -230,9 +234,17 @@ mod tests {
             "move the review to thursday",
             "move a review thursday please",
         );
-        assert!((all.rate() - 60.0).abs() < 1e-9);
+        let rate = all.rate();
+        assert!(
+            (rate - 60.0).abs() < 1e-9,
+            "3 errors in 5 words are 60%, not {rate}"
+        );
         all += errors("thank you", "thank you");
         assert_eq!(all.words, 7);
-        assert!((all.rate() - 300.0 / 7.0).abs() < 1e-9);
+        let rate = all.rate();
+        assert!(
+            (rate - 300.0 / 7.0).abs() < 1e-9,
+            "3 errors in 7 words are 42.9%, not {rate}"
+        );
     }
 }

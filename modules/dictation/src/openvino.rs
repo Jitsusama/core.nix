@@ -356,24 +356,18 @@ impl Core {
     }
 }
 
-/// What a compile tells `device`: its `priority`, on the NPU alone, the
-/// one device that takes it; and on the CPU, to work in 32-bit floats,
-/// since it otherwise picks bf16 on a CPU with AMX and f32 on one
-/// without, so a model would hear differently on each builder a check
-/// lands on. None of Joel's machines has AMX, so they work in f32
-/// either way.
+/// What a compile tells `device`: its `priority` on the NPU, the one device that takes it, and
+/// f32 on the CPU, which picks bf16 where it has AMX and so would hear differently per builder.
 fn properties_on(device: &str, priority: Priority) -> Vec<Property> {
-    match device {
-        "NPU" => vec![Property {
-            key: c"MODEL_PRIORITY".as_ptr(),
-            value: priority.name().as_ptr().cast(),
-        }],
-        "CPU" => vec![Property {
-            key: c"INFERENCE_PRECISION_HINT".as_ptr(),
-            value: c"f32".as_ptr().cast(),
-        }],
-        _ => Vec::new(),
-    }
+    let (key, value) = match device {
+        "NPU" => (c"MODEL_PRIORITY", priority.name()),
+        "CPU" => (c"INFERENCE_PRECISION_HINT", c"f32"),
+        _ => return Vec::new(),
+    };
+    vec![Property {
+        key: key.as_ptr(),
+        value: value.as_ptr().cast(),
+    }]
 }
 
 /// A model as read, before it's compiled.

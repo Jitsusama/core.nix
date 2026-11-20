@@ -225,8 +225,16 @@ mod tests {
         let lines =
             reference("# AMI\n54.95 60.85 A Okay everybody ready\n55.70 56.03 D Okay\n").unwrap();
         assert_eq!(lines.len(), 2);
-        assert!((lines[0].start - 54.95).abs() < 1e-9);
-        assert!((lines[1].end - 56.03).abs() < 1e-9);
+        assert!(
+            (lines[0].start - 54.95).abs() < 1e-9,
+            "the first line starts at 54.95, not {}",
+            lines[0].start
+        );
+        assert!(
+            (lines[1].end - 56.03).abs() < 1e-9,
+            "the second line ends at 56.03, not {}",
+            lines[1].end
+        );
         assert_eq!(lines[0].speaker, "A");
         assert_eq!(lines[0].text, "Okay everybody ready");
         assert_eq!(whose(&lines[0], "A"), Side::Mine);
@@ -235,7 +243,10 @@ mod tests {
 
     #[test]
     fn a_reference_line_without_its_times_is_refused() {
-        assert!(reference("A Okay\n").is_err());
+        assert!(
+            reference("A Okay\n").is_err(),
+            "a line with no times was read"
+        );
     }
 
     #[test]
