@@ -5169,7 +5169,11 @@
   tuple-says-when-ready = ''
     Tuple's service returns from starting at once, then, only once it's active and its log says the
     daemon can take a call, says how long that took from the log's first timed line, in the words
-    health reads, and says nothing for a clock stepped back or a caller's name posing as the line
+    health reads, under Tuple's name, and nothing after; past the wait, as a clock stepped either
+    way gives, it says only that the signaller connected and when, and it says it gave up on a
+    unit never active and on a caller's name posing as the line, each in words health doesn't
+    take for ready; it outlasts an ask systemd never answers, serves daemons systemd can't choose
+    between, and says so and leaves at once when systemd takes it for the unit's main process
   '';
   tuple-shares-through-the-portal = ''
     Tuple reads the portal setting where the switch writes it
