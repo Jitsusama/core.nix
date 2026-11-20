@@ -722,28 +722,10 @@ in
       home = account machine;
     in
     pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
-      test ${lib.escapeShellArg home.jitsusama.theme.colours.background} = '#FFFCF0'
-      # rg ends in 2 on any error, a match found or not, and a home links
-      # files outside the sandbox that it can't follow; so what it found is
-      # read from what it printed, and only an error of another kind fails.
-      status=0
-      rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
-        --glob '!**/skills/aesthetic/design.md' \
-        --glob '!**/skills/web-design/examples/**' \
-        --glob '!**/jitsusama/web/theme.css' \
-        ${
-          lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
-        } ${home.home-files}/ ${home.home.sessionVariables.GLAMOUR_STYLE} \
-        > found 2> unread || status=$?
-      if [ -s found ]; then
-        cat found
-        echo "The files above kept Osaka Jade's colours when the theme changed."
-        exit 1
-      fi
-      if [ "$status" != 1 ] && grep -v 'No such file or directory' unread; then
-        echo "rg couldn't read the files above."
-        exit 1
-      fi
+      $BASH ${./a-theme-changes-everything.sh} \
+        ${lib.escapeShellArg home.jitsusama.theme.colours.background} \
+        ${pkgs.writeText "osaka-jade-colours" (lib.concatLines (lib.attrValues osakaJade))} \
+        ${home.home-files}/ ${home.home.sessionVariables.GLAMOUR_STYLE}
       touch $out
     '';
 
