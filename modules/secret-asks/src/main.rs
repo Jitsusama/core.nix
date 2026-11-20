@@ -419,11 +419,9 @@ fn received(
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't print").because(why.to_string()))
 }
 
-/// The command's body, by its first word, answering on stdout. Unlocked,
-/// since serve never returns and a lock held for it would stop any later
-/// write there.
+/// The command's body, by its first word, answering on stdout.
 fn body(context: &Context) -> Result<(), Failure> {
-    body_to(context, &mut std::io::stdout())
+    body_to(context, &mut std::io::stdout().lock())
 }
 
 /// As `body`, answering into `out`, as the tests read what each command
