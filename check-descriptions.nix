@@ -2267,7 +2267,8 @@
     and takes it back whole again once it is the oldest the pool holds whole, so the pool holds
     at least about 63 MiB and an effect takes back the set kept for its size before keeping the
     one it gave up, and the pool never says it keeps more than 64 MiB once it lets go, so it
-    holds less than about 68 MiB
+    holds less than about 68 MiB, and its let-go lines name the walk's first size among those it
+    lets go past its cap, never the second, which it keeps
   '';
   niri-keeps-secret-copies-from-sandboxes = ''
     the session's niri, nested in the sandbox, offers a sandbox's focused window no copy a password
