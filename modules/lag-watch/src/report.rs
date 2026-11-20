@@ -363,6 +363,7 @@ mod tests {
             memory: BTreeMap::new(),
             waits: BTreeMap::new(),
             call: BTreeMap::new(),
+            lowered: BTreeMap::new(),
             niri: Answers {
                 p99_ms: p99,
                 ..Answers::default()

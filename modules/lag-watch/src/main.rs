@@ -8,7 +8,9 @@
 //! memory and the disk; what their memory lost to swap; how long niri's
 //! main thread and PipeWire's data loops waited for a CPU each time they
 //! were ready, and in a call the worst of Tuple's and of Chrome's call
-//! threads, each apart; and, every two seconds, how long niri takes to answer on
+//! threads, each apart; how long Chrome's and Slack's drawing threads
+//! waited, at all times, leaving out those of tabs the app lowered as
+//! hidden; and, every two seconds, how long niri takes to answer on
 //! its socket, which it does from the same loop that reads input and
 //! draws. Each window is tagged with the system generation and how hard
 //! the work behind Joel was working, so like is compared with like.
@@ -206,6 +208,17 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snaps
         }
     }
     for thread in threads {
+        // An app's thread its app lowered, a hidden tab's, is nobody's wait:
+        // counted, not read. Its nice is read each window, since a tab
+        // shown again is raised again.
+        if kernel::is_app(thread) {
+            let stat = thread.schedstat.with_file_name("stat");
+            let nice = kernel::nice(&fs::read_to_string(stat).unwrap_or_default());
+            if nice.is_some_and(|n| n > 0) {
+                *s.lowered.entry(thread.label.to_string()).or_default() += 1;
+                continue;
+            }
+        }
         let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
             s.threads.insert(thread.clone(), sched);
@@ -405,7 +418,8 @@ fn run() -> Result<(), Failure> {
     };
     let proc = PathBuf::from("/proc");
     started();
-    let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account));
+    let mut apps = kernel::Apps::default();
+    let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
@@ -440,7 +454,7 @@ fn run() -> Result<(), Failure> {
         // Threads come and go with their programs: looked for again each
         // minute, with the snapshot taken again so no window spans two.
         if windows.is_multiple_of(6) {
-            threads = kernel::threads(&proc, compositor(), &tuple_unit(&account));
+            threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
             then = snapshot(&cgroups, &account, &threads);
         } else {
             then = now;
@@ -483,6 +497,35 @@ mod tests {
             fs::read_to_string(dir.join("status.json")).unwrap(),
             "{\"a\":1}"
         );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_app_s_thread_it_lowered_is_counted_and_not_read() {
+        let dir = std::env::temp_dir().join(format!("lag-watch-lowered-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let thread = |label: &'static str, tid: &str, nice: i64| {
+            let at = dir.join(format!("72/task/{tid}"));
+            fs::create_dir_all(&at).unwrap();
+            fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
+            let stat = format!("{tid} (chrome) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 {nice} 30 0\n");
+            fs::write(at.join("stat"), stat).unwrap();
+            kernel::Thread {
+                label,
+                name: "chrome".into(),
+                schedstat: at.join("schedstat"),
+                call: false,
+            }
+        };
+        // A hidden tab's main thread, its compositor left at the app's
+        // own nice, and niri, whose nice is never asked.
+        let hidden = thread("chrome-ui", "72", 5);
+        let drawing = thread("chrome-ui", "73", -8);
+        let niri = thread("niri", "74", 5);
+        let s = snapshot(&dir, &dir, &[hidden, drawing.clone(), niri.clone()]);
+        let read: Vec<&kernel::Thread> = s.threads.keys().collect();
+        assert_eq!(read, [&drawing, &niri]);
+        assert_eq!(s.lowered.get("chrome-ui"), Some(&1));
         fs::remove_dir_all(&dir).unwrap();
     }
 
