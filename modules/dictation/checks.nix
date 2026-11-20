@@ -243,8 +243,9 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      # Keeping a lone "Yeah." or "No." took the rate from 19.3% to 18.8%,
-      # so this fails the code from before it.
+      # Keeping a lone "Yeah." or "No.", and cutting takes only where a
+      # voice is, took the rate from 19.3% to 18.7%, so this fails the code
+      # from before it.
       ceiling = "19.0";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''

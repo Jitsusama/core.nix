@@ -44,16 +44,17 @@ const FLOOR_FRAMES: usize = 10 * 50;
 const ABOVE_FLOOR_DB: f32 = 12.0;
 /// Quieter than this is never speech, however quiet the floor.
 const QUIETEST_SPEECH_DB: f32 = -55.0;
-/// Fewer voiced frames than this, 100 ms, and a take has no voice in it:
-/// the vowel of a lone "Yeah." holds several times as many.
-const LEAST_VOICED_FRAMES: usize = 5;
+/// Fewer voiced frames than this, 60 ms, and a take has no voice in it:
+/// the vowel of a lone "Yeah." holds several times as many. Five, with a
+/// likeness of 0.5, left out 13 of the meetings' words more.
+const LEAST_VOICED_FRAMES: usize = 3;
 /// The shortest and longest periods of a voice's pitch, in samples: 400
 /// Hz down to 60 Hz.
 const SHORTEST_PERIOD: usize = RATE / 400;
 const LONGEST_PERIOD: usize = RATE / 60;
 /// How alike sound one period apart must be for a frame to be voiced. A
 /// voice's vowels are near 1; noise, its slope taken out, is near 0.
-const VOICED_LIKENESS: f32 = 0.5;
+const VOICED_LIKENESS: f32 = 0.4;
 
 /// Some speech, and where it starts in the side's sound, in samples.
 #[derive(Debug, PartialEq)]
