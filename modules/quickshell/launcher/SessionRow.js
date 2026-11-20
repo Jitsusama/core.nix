@@ -66,6 +66,27 @@ function asks(presence) {
     return kind === "question" || kind === "approval";
 }
 
+// The acts a session's row offers, by their ids, and `marked`, the one its
+// Return does: those its row serves (`rowActs`), in their order, and its `returns`
+// (modules/agents/src/row.rs), else `fallback`, the shell's own list, with
+// Return on its first, while its row isn't held. An act Return does that
+// the row doesn't list leads it, so nothing marks an act Return won't do.
+// Its drawer and its step in read the same list.
+const AGENT = "verb:agent:";
+function offered(rowActs, returns, fallback) {
+    const served = (Array.isArray(rowActs) ? rowActs : [])
+        .map(one => String(one?.key ?? ""))
+        .filter(key => key.startsWith(AGENT))
+        .map(key => key.slice(AGENT.length));
+    const ids = served.length > 0 ? served : fallback.slice();
+    const said = String(returns ?? "");
+    const returning = said.startsWith(AGENT) ? said.slice(AGENT.length) : "";
+    if (returning !== "" && !ids.includes(returning)) {
+        ids.unshift(returning);
+    }
+    return { ids, marked: returning === "" ? ids[0] ?? "" : returning };
+}
+
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name

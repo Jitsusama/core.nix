@@ -1027,17 +1027,9 @@ Provider {
     function actsNamed(drawer, session) {
         if (drawer === null)
             return null;
-        // The acts its row serves, in their order, Return marked on the one
-        // the daemon says it does (standing.rs's returns), which for one
-        // paused is Resume, not the first; before the row is served, the
-        // shell's own list, Return on its first.
-        const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        const served = (row?.acts ?? []).map(one => String(one.key ?? ""))
-            .filter(key => key.startsWith("verb:agent:"));
-        const ids = served.length > 0 ? served.map(key => key.slice("verb:agent:".length))
-            : SessionRow.acts(stateOf(session), windowedOf(session), session.here);
-        const returning = String(row?.held?.returns ?? "").replace(/^verb:agent:/, "");
-        const marked = ids.includes(returning) ? returning : ids[0];
+        // Return marked on the act it does, which for one paused is Resume,
+        // not the first.
+        const { ids, marked } = offeredOf(session);
         return Object.assign({}, drawer, {
             acts: ids.map(id => ({
                 name: Words.name(`verb:agent:${id}`),
@@ -1281,12 +1273,21 @@ Provider {
         }
     }
 
-    // A session's own acts, in the order SessionRow.js gives them for how
-    // the agents daemon says it stands, each steering it through its inbox but Go To; an
-    // orchestrator's row is its session's, with its talks after them.
+    // The acts a session's row offers and the one its Return does, as the
+    // agents daemon serves its row (SessionRow.offered), so its drawer and
+    // its step in list the same; while its row isn't held, SessionRow.js's
+    // own for how it stands.
+    function offeredOf(session) {
+        const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
+        return SessionRow.offered(row?.acts, row?.held?.returns,
+            SessionRow.acts(stateOf(session), windowedOf(session), session.here));
+    }
+
+    // A session's own acts, in the order its row offers them, each steering
+    // it through its inbox but Go To; an orchestrator's row is its
+    // session's, with its talks after them.
     function sessionActs(session) {
-        return SessionRow.acts(stateOf(session), windowedOf(session), session.here)
-            .map(id => sessionAct(session, id));
+        return offeredOf(session).ids.map(id => sessionAct(session, id));
     }
 
     // What Close leaves of a session, its worktree or folder and its quest's
