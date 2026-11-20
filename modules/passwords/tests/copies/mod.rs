@@ -166,12 +166,15 @@ fn a_copier_that_never_says_it_holds_the_copy_is_refused() {
 const LONG: &str = r#"
 echo '{"state":"answering"}'
 long=$(printf '%131072s' '' | tr ' ' x)
-github='{"id":"gh","title":"GitHub","category":"login","version":1}'
+github='{"id":"gh","title":"GitHub","category":"login","version":1'
+password='{"id":"password","label":"password","type":"hidden","purpose":"password"'
 while read -r line; do
   [[ $line =~ \"id\":([0-9]+) ]] && id=${BASH_REMATCH[1]}
   [[ $line =~ \"ask\":\"([a-z-]+)\" ]] && ask=${BASH_REMATCH[1]}
   case $ask in
-    list) printf '{"id":%s,"entries":[%s]}\n' "$id" "$github" ;;
+    list) printf '{"id":%s,"entries":[%s}]}\n' "$id" "$github" ;;
+    get) printf '{"id":%s,"entry":%s,"details":[%s,"value":"%s"}]}}\n' \
+      "$id" "$github" "$password" "$long" ;;
     reveal) printf '{"id":%s,"value":"%s"}\n' "$id" "$long" ;;
   esac
 done
