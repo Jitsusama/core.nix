@@ -13,7 +13,12 @@
 //! Joel comes first: he gets what he carries on each lane, a fifth more
 //! and a megabit, so his next burst finds room before the next second
 //! moves the rates; a fifth alone would take ten seconds to grow from one
-//! megabit to six. HTB lends Joel's two classes what the others leave
+//! megabit to six. What he needs rises at once and falls by at most a
+//! fifth a second, as the VPN's share does: a second in which something
+//! past the shaper, a router's queue when the controller climbs past the
+//! line, gave his upload little would otherwise leave him little the
+//! next second, and beside agents he'd take seconds to grow back. What
+//! he leaves meanwhile is lent to agents. HTB lends Joel's two classes what the others leave
 //! before it lends agents' any, and every class may borrow up to the whole
 //! rate: the VPN's own CAKE is what holds it near V, and when that runs
 //! ahead of a cut for a moment, its class borrows rather than dropping
@@ -70,7 +75,8 @@ const WAITING_BYTES: u64 = 3_000;
 /// and be starved again; twenty seconds keeps the half through a copy's
 /// quiet stretches, and costs the VPN at most that long after it ends.
 const PRESSED_S: f64 = 20.0;
-/// The most the VPN's share falls in a second, as a share of itself.
+/// The most the VPN's share, or what Joel needs on a lane, falls in a
+/// second, as a share of itself.
 const FALL: f64 = 0.2;
 /// A move of the VPN's share under this share of itself isn't made.
 const STILL: f64 = 0.05;
@@ -156,6 +162,9 @@ pub struct Said {
 #[derive(Clone, Debug, Default)]
 pub struct Lanes {
     share: Option<f64>,
+    /// What Joel needs straight and inside the VPN, in kbit/s, held as it
+    /// falls.
+    joel: (f64, f64),
     last: Seen,
     /// The seconds split over so far.
     clock: f64,
@@ -225,6 +234,9 @@ impl Lanes {
             self.dropped = (straight.dropped, inside.dropped);
         }
         let rate = seen.rate;
+        // Held before the rate is looked at, so a second the line read
+        // nothing doesn't drop what he needs.
+        let wants = self.joel_held((need(seen.joel_straight), need(seen.joel_vpn)), dt);
         if rate <= 0.0 {
             self.share = None;
             return Split::default();
@@ -240,8 +252,6 @@ impl Lanes {
         };
         // Joel's two parts shrink alike when together they'd pass what he
         // may take, so neither of his lanes is starved for the other.
-        let need = |carried: f64| carried * HEADROOM + JOEL_LEAST;
-        let wants = (need(seen.joel_straight), need(seen.joel_vpn));
         let scale = ((rate - floor) / (wants.0 + wants.1)).min(1.0);
         let (joel, joel_vpn) = (wants.0 * scale, wants.1 * scale);
         // What's left is the agents', evenly between the lanes they wait
@@ -261,6 +271,18 @@ impl Lanes {
             vpn,
             agents: rate - joel - vpn,
         }
+    }
+
+    /// What Joel needs on each lane, given what he needed in the last
+    /// second, `needs`: at once when it rises, and by at most a fifth a
+    /// second when it falls.
+    fn joel_held(&mut self, needs: (f64, f64), dt: f64) -> (f64, f64) {
+        let keep = 1.0 - FALL * dt.clamp(0.0, 1.0);
+        self.joel = (
+            needs.0.max(self.joel.0 * keep),
+            needs.1.max(self.joel.1 * keep),
+        );
+        self.joel
     }
 
     /// The VPN's rate, moving towards `wanted` kbit/s: at once when it
@@ -283,6 +305,11 @@ impl Lanes {
         self.share = Some(share);
         share * rate
     }
+}
+
+/// What Joel needs on a lane past what he carried there, in kbit/s.
+fn need(carried: f64) -> f64 {
+    carried * HEADROOM + JOEL_LEAST
 }
 
 fn cmd(words: &str) -> Vec<String> {
@@ -387,10 +414,6 @@ mod tests {
     use super::*;
 
     const RATE: f64 = 10_000.0;
-
-    fn need(carried: f64) -> f64 {
-        carried * HEADROOM + JOEL_LEAST
-    }
 
     fn waiting(flows: u32) -> Agents {
         Agents {
@@ -725,6 +748,60 @@ mod tests {
             ),
             "the VPN held {}",
             split.vpn
+        );
+    }
+
+    // On 19 November the hidden-queue test's controller climbed to 8,557
+    // kbit/s past its router's 8,000, whose queue gave Joel's upload a
+    // 33rd of the line for a second. His lane, following that second, fell
+    // to 1,259 and took about four seconds to grow back beside 32 agents.
+    #[test]
+    fn joel_s_lane_falls_by_a_fifth_a_second_and_rises_at_once() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), Agents::default());
+        // Under the three quarters he may take beside waiting agents.
+        let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
+        assert!(near(busy, need(4_000.0)), "Joel busy held {busy}");
+        let dipped = lanes.split(&seen((200.0, 0.0), agents), 1.0).joel;
+        assert!(
+            near(dipped, busy * (1.0 - FALL)),
+            "a second's dip took Joel's lane from {busy} to {dipped}"
+        );
+        assert!(
+            near(lanes.at(RATE).joel, dipped),
+            "a new rate between seconds moved Joel's lane"
+        );
+        let back = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
+        assert!(
+            near(back, need(4_000.0)),
+            "didn't rise back at once: {back}"
+        );
+        let mut joel = back;
+        for _ in 0..20 {
+            joel = lanes.split(&seen((0.0, 0.0), agents), 1.0).joel;
+        }
+        assert!(
+            near(joel, need(0.0)),
+            "settled at {joel}, not {}",
+            need(0.0)
+        );
+    }
+
+    #[test]
+    fn joel_s_lane_inside_the_vpn_falls_slowly_too() {
+        let mut lanes = Lanes::default();
+        let agents = (waiting(32), waiting(10));
+        let busy = lanes.split(&seen((0.0, 5_000.0), agents), 1.0);
+        let dipped = lanes.split(&seen((0.0, 200.0), agents), 1.0);
+        // The VPN's class carries his part inside it, and agents' half of
+        // what he leaves, which his slow fall shrinks.
+        let left = |joel_vpn: f64| (RATE - need(0.0) - joel_vpn) / 2.0;
+        let held = need(5_000.0) * (1.0 - FALL);
+        assert!(
+            near(dipped.vpn, held + left(held)),
+            "a second's dip took the VPN from {} to {}",
+            busy.vpn,
+            dipped.vpn
         );
     }
 
