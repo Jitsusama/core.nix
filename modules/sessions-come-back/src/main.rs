@@ -49,7 +49,7 @@ use terminal_kit::{Exit, Failure, Help};
 mod machine;
 use machine::{Unheard, era, runs, within};
 #[cfg(test)]
-use machine::{console_login, era_of};
+use machine::{console_login, era_of, mac_era};
 
 /// How many runs a session waits to be started again before it's left:
 /// past that, the node isn't coming, or the folder isn't. At one a minute
@@ -768,7 +768,14 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
 /// said, stamped and named by its realm; the first is what the run ends
 /// with.
 fn run(mycelium: &str, realms: &[String]) -> Result<(), Failure> {
-    let era = era()?;
+    // Said stamped in each realm too, as every other failure is, since
+    // what the run ends with is written without a time, and a boot that
+    // can't be read is told apart from the Mac's busy minutes only by when.
+    let era = era().inspect_err(|failure| {
+        for realm in realms {
+            say(realm, &failure.to_string());
+        }
+    })?;
     let folder = state()?;
     let mut failed = None;
     for realm in realms {

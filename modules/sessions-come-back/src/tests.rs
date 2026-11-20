@@ -776,6 +776,32 @@ fn a_macs_era_is_its_boot_and_its_console_login() {
 }
 
 #[test]
+fn a_macs_boot_read_that_stalls_names_its_program() {
+    let look = |command: &mut Command| match command.get_program().to_str() {
+        Some("/usr/sbin/sysctl") => Ok("40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned()),
+        Some("/usr/bin/who") => Err(Unheard::Late(LOOK_WITHIN)),
+        _ => Ok("someone\n".to_owned()),
+    };
+    let said = mac_era(&look)
+        .expect_err("a stalled read fails")
+        .to_string();
+    assert!(
+        said.contains("/usr/bin/who: no answer within 20 s"),
+        "said {said:?}, not which read stalled"
+    );
+    let all = |command: &mut Command| match command.get_program().to_str() {
+        Some("/usr/sbin/sysctl") => Ok("40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned()),
+        Some("/usr/bin/who") => Ok(WHO.to_owned()),
+        _ => Ok("someone\n".to_owned()),
+    };
+    assert_eq!(
+        mac_era(&all).ok(),
+        Some("40DCF87A-79B7-469D-80E0-C06F4FAACF06 Nov 19 12:42".to_owned()),
+        "three answers read as the boot and login"
+    );
+}
+
+#[test]
 fn a_command_that_hangs_is_stopped_at_its_limit() {
     let _turn = one_at_a_time();
     let begun = Instant::now();

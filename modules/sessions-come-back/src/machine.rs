@@ -51,14 +51,24 @@ pub(super) fn era_of(uuid: &str, who: &str, user: &str) -> Result<String, String
 
 /// Which boot and login this is: a Mac's, or Linux's boot id.
 pub(super) fn era() -> Result<String, Failure> {
-    let unread = |why: String| {
-        Failure::new(Exit::Unavailable, "it couldn't read which boot this is").because(why)
-    };
     if let Ok(id) = fs::read_to_string("/proc/sys/kernel/random/boot_id") {
         return Ok(id.trim().into());
     }
-    let ran =
-        |command: &mut Command| within(command, LOOK_WITHIN).map_err(|e| unread(e.to_string()));
+    mac_era(&|command| within(command, LOOK_WITHIN))
+}
+
+/// A Mac's boot and login, from what `look` reads of each program. A read
+/// that fails names its program, since a Mac's three each answer at once
+/// by hand, and only the name says which one a busy Mac held up.
+pub(super) fn mac_era(
+    look: &dyn Fn(&mut Command) -> Result<String, Unheard>,
+) -> Result<String, Failure> {
+    let unread = |why: String| {
+        Failure::new(Exit::Unavailable, "it couldn't read which boot this is").because(why)
+    };
+    let ran = |command: &mut Command| {
+        look(command).map_err(|e| unread(format!("{}: {e}", command.get_program().display())))
+    };
     let uuid = ran(Command::new("/usr/sbin/sysctl").args(["-n", "kern.bootsessionuuid"]))?;
     let who = ran(Command::new("/usr/bin/who").env("TZ", "UTC0"))?;
     let user = ran(Command::new("/usr/bin/id").arg("-un"))?;
