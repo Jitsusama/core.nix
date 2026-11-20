@@ -110,6 +110,91 @@ Provider {
         });
     }
 
+    // Pause All Agents, found by its name from the launcher's top as Reboot
+    // is (WCJQSG, 2026-11-19 [1c8863e1]: for Joel's demo): Joel's own stop on
+    // every agent, here and on each machine that stops with this one, asked
+    // of the daemon on this socket, which takes it only from this shell's
+    // own process (src/serve.rs's paused). Costly, it arms on its first
+    // Return, saying what a second does, as Reboot's does, and the : line
+    // asks once, as it asks Reboot. Found only by what's typed, it's in no
+    // place a walk from outside goes, so a terminal's `launcher do` never
+    // finds it, which matters since serve can tell only that this shell
+    // asked. It stays while the daemon stops them, a few seconds, saying so
+    // at once, then says in the foot what stopped, or why nothing did, in
+    // the vocabulary's words for its code; the stop's own row in For You,
+    // with Resume, follows as any stop's.
+    readonly property var pauseAll: thing({
+        key: "agents:pause-all",
+        name: Words.name("agents:pause-all"),
+        verb: Words.verb("agents:pause-all"),
+        glyph: Words.glyph("agents:pause-all"),
+        hue: "action",
+        costly: true,
+        keywords: (Words.of("agents:pause-all").words ?? []).join(" "),
+        arms: Words.of("agents:pause-all").said?.arms ?? "",
+        confirm: true,
+        asked: () => Words.of("agents:pause-all").asked ?? "",
+        stays: true,
+        run: () => provider.pauseEveryAgent()
+    })
+
+    // Whether a pause is asked and not yet answered, so a Return while it is
+    // asks nothing more.
+    property bool pausing: false
+
+    function pauseEveryAgent() {
+        if (pausing)
+            return;
+        // Never sent is told from sent and lost: only the first is sure to
+        // have stopped nothing.
+        if (daemon.wire === null) {
+            provider.refused({ key: "agents:pause-all" }, { code: "unreached" });
+            return;
+        }
+        provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
+            Words.of("agents:pause-all").said?.pausing ?? "", Theme.strong]]);
+        pausing = true;
+        daemon.ask({ ask: "pause", scope: "all" }, answer => {
+            pausing = false;
+            provider.paused(answer);
+        });
+    }
+
+    // The refusals serve gives before it stops anything (OX4WFV, 2026-11-19
+    // [05cd8c54]), said as didn't take. Any other end, a failure, a code
+    // these words don't know or an answer lost, may come after some
+    // stopped, so it says so and points at For You.
+    readonly property var stoppedNothing: ["not-joel", "no-peer", "bad-scope", "no-plan",
+        "paused-already"]
+
+    things: [pauseAll]
+
+    // Says in the foot what the daemon answered Pause All Agents: what it
+    // stopped, in its own line; why it stopped nothing, for a refusal
+    // before any stop, or a serve too old to take a pause (unknown-ask);
+    // else that it may not have stopped them all, in no alert's colour,
+    // since some may have stopped. No answer at all (null) means the
+    // connection went after the ask was sent.
+    function paused(answer) {
+        const code = answer?.error?.code ?? "";
+        if (code === "unknown-ask") {
+            provider.refused({ key: "agents:pause-all" }, { code: "unoffered" });
+            return;
+        }
+        if (stoppedNothing.includes(code)) {
+            provider.refused({ key: "agents:pause-all" }, answer.error);
+            return;
+        }
+        const words = Words.of("agents:pause-all").said ?? {};
+        const said = answer !== null && !answer.error && typeof answer.said === "string"
+            ? answer.said : "";
+        if (said === "")
+            console.warn(`pineapple: pause all ended unsure: ${JSON.stringify(answer)}`);
+        provider.launcher?.tellOnOpen([[Words.name("agents:pause-all"),
+            said === "" ? words.unsure ?? "" : said,
+            said === "" ? Theme.strong : Theme.success]]);
+    }
+
     // What For You is given (ForYou.js's given): each row a thing to do now,
     // weighed by how long it has waited and, for a stop, by the sessions it
     // parked, which wait on Joel as a session's want does.
