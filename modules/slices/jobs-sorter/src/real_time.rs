@@ -149,20 +149,19 @@ pub fn take(dir: &Path, warned: &mut bool) {
                 Err(_) => {}
             }
         }
+        // A name is the program's own to choose, so one that holds a
+        // newline can't start a journal line of its own.
         let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        let comm = comm.trim().escape_debug();
         match result {
             Ok(()) => eprintln!(
-                "Took real time from {} ({pid}), work under {}: {taken} of {} threads.",
-                comm.trim(),
+                "Took real time from {comm} ({pid}), work under {}: {taken} of {} threads.",
                 dir.display(),
                 threads.len()
             ),
             Err(error) if error.raw_os_error() == Some(ESRCH) => {}
             Err(error) if !*warned => {
-                eprintln!(
-                    "Couldn't take real time from {} ({pid}): {error}",
-                    comm.trim()
-                );
+                eprintln!("Couldn't take real time from {comm} ({pid}): {error}");
                 *warned = true;
             }
             Err(_) => {}

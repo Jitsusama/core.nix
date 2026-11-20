@@ -33,12 +33,11 @@ in
     # pids controllers, and io reaches it besides. Its units take a list
     # of cores only with cpuset too, so all five are named. A lingering
     # account's manager, as Joel's is, keeps running through a logout, so
-    # it takes cpuset either when the switch that brings this re-executes
-    # it or at the next boot; the laptop shows which after the switch.
-    # With cores held, a process holding capabilities its mover lacks, a
-    # setuid program's, can't be moved onto other cores, so it stays where
-    # it was; the sorter warns of the first such refusal only, and its
-    # journal may still say it moved.
+    # it takes cpuset when a switch re-executes it, as the laptop's did on
+    # 19 November, or else at the next boot. With cores held, a process holding
+    # capabilities its mover lacks, a setuid program's, can't be moved onto
+    # other cores, so it stays where it was, and the sorter says so once
+    # for each group while it runs.
     systemd.services."user@".serviceConfig.Delegate = "cpu cpuset io memory pids";
   };
 }
