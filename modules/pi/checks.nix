@@ -20,8 +20,10 @@ let
     folder = "pi-monorepo";
   };
 in
-# The hosts' own checks change with host.nix alone, so they sit beside it.
+# The hosts' own checks change with host.nix alone, and the harness's
+# settings check with harness-settings.nix alone, so they sit beside them.
 import ./host-checks.nix args
+// import ./harness-settings-checks.nix args
 // {
   # pi's folder, its session logs among what it holds, is the account's
   # alone, set as the account is switched to, on every machine with pi.

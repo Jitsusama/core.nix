@@ -2700,6 +2700,10 @@
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
     mesh, signed in to the plan's own folder and with nothing that would bill an API instead
   '';
+  pi-harness-takes-its-settings = ''
+    the harness's config takes a machine's declared settings at a switch, on Linux and a Mac, keeps
+    every key already there, is left alone where none are declared, and a bad file doesn't stop it
+  '';
   pi-keeps-its-own-settings = ''
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched

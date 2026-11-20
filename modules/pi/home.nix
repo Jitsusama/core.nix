@@ -189,6 +189,7 @@ in
   imports = [
     ./agents.nix
     ./fence.nix
+    ./harness-settings.nix
     ./host.nix
     ../theme/home.nix
     ../keys/home.nix
