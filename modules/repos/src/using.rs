@@ -30,6 +30,15 @@ use serde::Serialize;
 /// (`USER_HZ`), the same on every architecture it runs on.
 pub const TICKS: u64 = 100;
 
+/// The furthest apart two readings may be and still measure a share,
+/// three of the daemon's minutes.
+pub const LONGEST: u64 = 3 * 60 * TICKS;
+
+/// Whether `now` measures processor time since `before`.
+pub fn measured(before: Option<&Sample>, now: &Sample) -> bool {
+    before.is_some_and(|before| now.at > before.at)
+}
+
 /// One process placed in a folder, as one reading saw it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Process {

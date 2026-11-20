@@ -116,8 +116,8 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut homes = homes_named();
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-    let mut working = Working::default();
-    working.read(&record);
+    let mut working = Working::start(|folders: &[PathBuf]| using::sample(Path::new("/proc"), folders));
+    working.read(folders_of(&record));
     shared.change(working.said(&record), feed::sources(&record));
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
@@ -152,7 +152,7 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
                 began = Instant::now();
                 whole = began;
                 let record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-                working.read(&record);
+                working.read(folders_of(&record));
                 record
             }
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
@@ -162,30 +162,50 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     }
 }
 
+/// How long the loop waits at the pace for what works in each tree.
+const SAMPLED: Duration = Duration::from_secs(1);
+
+/// How many paces may pass with no reading before what was last read
+/// goes unsaid.
+const STALE: u32 = 3;
+
+/// Every checkout's and tree's folder `record` holds.
+fn folders_of(record: &Record) -> Vec<PathBuf> {
+    record
+        .repositories
+        .iter()
+        .flat_map(|repository| &repository.checkouts)
+        .flat_map(|checkout| {
+            std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
+        })
+        .map(PathBuf::from)
+        .collect()
+}
+
 /// What worked in each checkout and tree at the last pace, and the
 /// reading it was measured from.
-#[derive(Default)]
 struct Working {
+    sample: Box<dyn FnMut(&[PathBuf]) -> Sample + Send>,
     last: Option<Sample>,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
 }
 
 impl Working {
-    /// Reads what works in each checkout and tree `record` holds, its
-    /// processor time measured only once time has passed since the last.
-    fn read(&mut self, record: &Record) {
-        let folders: Vec<PathBuf> = record
-            .repositories
-            .iter()
-            .flat_map(|repository| &repository.checkouts)
-            .flat_map(|checkout| {
-                std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
-            })
-            .map(PathBuf::from)
-            .collect();
-        let now = using::sample(Path::new("/proc"), &folders);
-        self.measured = self.last.as_ref().is_some_and(|last| now.at > last.at);
+    fn start(sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static) -> Self {
+        Self {
+            sample: Box::new(sample),
+            last: None,
+            used: BTreeMap::new(),
+            measured: false,
+        }
+    }
+
+    /// Reads what works in each of `folders`, its processor time measured
+    /// only once time has passed since the last.
+    fn read(&mut self, folders: Vec<PathBuf>) {
+        let now = (self.sample)(&folders);
+        self.measured = using::measured(self.last.as_ref(), &now);
         self.used = using::using(self.last.as_ref(), &now);
         self.last = Some(now);
     }
