@@ -49,15 +49,23 @@ const ABOVE_FLOOR_DB: f32 = 12.0;
 /// Quieter than this is never speech, however quiet the floor.
 const QUIETEST_SPEECH_DB: f32 = -55.0;
 /// Quieter than this is a line sending nothing, as a call does while
-/// its far end is muted or between words its far end gates out. It
-/// clears the floor, so neither the quiet from before it nor the nothing
-/// itself makes the line's hiss, back with the next word, read as loud.
+/// its far end is muted, between words its far end gates out, or for a
+/// packet it lost. The nothing sets no floor, nor does a frame holding
+/// this many samples of it in a row, a millisecond: the frame a mute
+/// starts or ends in, or a packet lost part of the way into it, holds
+/// only some of the line's sound, and would set a floor under its hiss.
 const NOTHING_DB: f32 = -90.0;
+const NOTHING_SAMPLES: usize = RATE / 1000;
+/// Nothing this long is a mute, across which the line may change, so it
+/// clears the floor: the quiet from before it mustn't make the line's
+/// hiss, back with the next word, read as loud. Less is packets lost,
+/// across which the line holds, so the floor does: cleared mid-speech,
+/// the words after would set it at their own level.
+const MUTE_FRAMES: usize = 25;
 /// For this long after a line sends nothing, any sound that could be
 /// speech is, while the floor is found again from what the line sends
 /// now: words with nothing between, from a far end that gates its line,
-/// would otherwise set it themselves. The frame the nothing ends in
-/// holds only some of the line's sound, so it sets no floor.
+/// would otherwise set it themselves.
 const SETTLE_FRAMES: usize = 50;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
@@ -118,6 +126,8 @@ pub struct Cutter {
     take_start: usize,
     /// Frames since the line last sent nothing, if it ever has.
     since_nothing: Option<usize>,
+    /// Frames of nothing in a row, up to the one just fed.
+    nothing_run: usize,
 }
 
 impl Cutter {
@@ -158,10 +168,14 @@ impl Cutter {
         let level = loudness(&frame);
         let speech = level > self.threshold();
         if level <= NOTHING_DB {
-            self.recent.clear();
+            self.nothing_run += 1;
+            if self.nothing_run >= MUTE_FRAMES {
+                self.recent.clear();
+            }
             self.since_nothing = Some(0);
         } else {
-            if self.since_nothing != Some(0) {
+            self.nothing_run = 0;
+            if !holds_nothing(&frame) {
                 self.recent.push_back(level);
                 if self.recent.len() > FLOOR_FRAMES {
                     self.recent.pop_front();
@@ -247,6 +261,19 @@ impl Cutter {
         let floor = self.recent.iter().copied().fold(f32::INFINITY, f32::min);
         (floor + ABOVE_FLOOR_DB).max(QUIETEST_SPEECH_DB)
     }
+}
+
+/// Whether a frame holds a run of nothing, `NOTHING_SAMPLES` long.
+fn holds_nothing(frame: &[f32]) -> bool {
+    let mut run = 0;
+    frame.iter().any(|&sample| {
+        run = if sample.abs() < f32::MIN_POSITIVE {
+            run + 1
+        } else {
+            0
+        };
+        run >= NOTHING_SAMPLES
+    })
 }
 
 /// Whether a frame, read with the one before it so a low voice's period
