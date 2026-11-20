@@ -9,6 +9,7 @@ what serves its Agents beside it.
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import os
 import socket
@@ -21,7 +22,7 @@ from typing import TYPE_CHECKING
 import launcher_on_niri
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json
 
@@ -56,12 +57,19 @@ USAGE = {
 # How long the node and the agents daemon may take to listen, in seconds.
 LISTENING = 30
 
+# How long a session's move takes at most to reach the shut shell from its presence, through
+# the node and the agents daemon, in seconds, so a step after it finds it there.
+MOVING = 1.0
+
 # The id the node's sessions are asked for under, after its hello, so its answer is known.
 LISTED = 2
 
 
-def presence(state: Path, nth: int) -> Json:
-    """Give the nth session as pi lays its presence, owned by this process, so alive."""
+def presence(state: Path, nth: int, turn: int = 0) -> Json:
+    """Give the nth session as pi lays its presence, owned by this process, so alive.
+
+    Each `turn` it stands as the next session did, as a real one moves between Joel's looks.
+    """
     stat = Path("/proc/self/stat").read_text()
     ticks = int(stat[stat.rindex(")") + 2 :].split()[19])
     address = f"LAB{nth:03d}"
@@ -83,8 +91,8 @@ def presence(state: Path, nth: int) -> Json:
                   "bootId": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
                   "startTicks": ticks, "startedAt": int(time.time() * 1000)},
         "at": now.isoformat(),
-        "state": STANDINGS[nth % len(STANDINGS)],
-        "busy": STANDINGS[nth % len(STANDINGS)] == "busy",
+        "state": STANDINGS[(nth + turn) % len(STANDINGS)],
+        "busy": STANDINGS[(nth + turn) % len(STANDINGS)] == "busy",
         "repo": "core.nix",
         "groups": ["#repo/core-nix", f"#lab-{nth}"],
         "usage": {**USAGE, "day": datetime.now().astimezone().date().isoformat()},
@@ -120,13 +128,15 @@ def listening(path: Path, process: subprocess.Popen[bytes], log: Path) -> None:
 
 
 @contextlib.contextmanager
-def agents_served(count: int) -> Iterator[None]:
+def agents_served(count: int) -> Iterator[Callable[[], None]]:
     """Lay `count` sessions and serve them as Joel's Agents are served; none given 0.
 
     His step took 9 agent rows in 10 to 37 ms, where a program's 9 take 2 to 5 (2026-11-20).
+    What it gives moves the first session on to its next standing, as his move between his
+    looks, so Agents, wanted again, has something new to say; given 0, it moves nothing.
     """
     if count == 0:
-        yield
+        yield lambda: None
         return
     state = Path(os.environ["XDG_STATE_HOME"])
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
@@ -136,6 +146,12 @@ def agents_served(count: int) -> Iterator[None]:
     laid.mkdir(parents=True, exist_ok=True)
     for nth in range(count):
         (laid / f"lab{nth:03d}.json").write_text(json.dumps(presence(state, nth)))
+    turns = itertools.count(1)
+
+    def moved() -> None:
+        (laid / "lab000.json").write_text(json.dumps(presence(state, 0, next(turns))))
+        time.sleep(MOVING)
+
     steer = state / "pi/agentic-harness.pi/steer"
     steer.mkdir(parents=True, exist_ok=True)
     serves = logs / "serves.json"
@@ -179,4 +195,4 @@ def agents_served(count: int) -> Iterator[None]:
         stack.callback(served.wait)
         stack.callback(served.terminate)
         listening(rows, served, logs / "agents.log")
-        yield
+        yield moved
