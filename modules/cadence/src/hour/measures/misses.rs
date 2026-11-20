@@ -1,7 +1,8 @@
 //! The misses Joel found himself, and whether the check each one's owner
 //! named runs here: a miss closes on the merge itself, read from the
 //! repository's main, once this machine runs it, never on the owner's word
-//! that a check exists.
+//! that a check exists. Long because its cases each replay a miss the card
+//! misread, and they read best beside the rule each one pins.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -208,7 +209,14 @@ pub fn checked(
     }
     let wanted = wanted_merged(text, &repos, &found);
     let unrun = running::unrun(&wanted, &repos, switches, pin, folder);
-    Ok(open_misses(text, &repos, &found, &unread, &unrun))
+    let here = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    let judged = Judged {
+        merged: &found,
+        unread: &unread,
+        unrun: &unrun,
+        here: here.trim(),
+    };
+    Ok(open_misses(text, &repos, &judged))
 }
 
 /// The changes the misses' checks name now that have merged: only these
@@ -321,7 +329,24 @@ fn misses(
     merged: &BTreeSet<Named>,
     unread: &BTreeSet<String>,
 ) -> Measure {
-    open_misses(text, repos, merged, unread, &BTreeMap::new())
+    let judged = Judged {
+        merged,
+        unread,
+        unrun: &BTreeMap::new(),
+        here: "here",
+    };
+    open_misses(text, repos, &judged)
+}
+
+/// What the hour knows of the misses' checks: which `merged`, the
+/// repositories whose main went `unread`, which merged but don't run here
+/// yet with why (`unrun`), and the machine it runs on, `here`.
+#[derive(Clone, Copy)]
+struct Judged<'a> {
+    merged: &'a BTreeSet<Named>,
+    unread: &'a BTreeSet<String>,
+    unrun: &'a BTreeMap<Named, &'static str>,
+    here: &'a str,
 }
 
 /// The misses Joel found himself, from the orchestrator's `misses.jsonl`:
@@ -333,14 +358,17 @@ fn misses(
 /// is in an `unread` main says so, since the hour, not its owner, is then
 /// what keeps it open: at 12:10 on 15 November the card asked the
 /// orchestrator to steer a miss whose check had merged in a main stock git
-/// couldn't open.
-fn open_misses(
-    text: &str,
-    repos: &Checkouts,
-    merged: &BTreeSet<Named>,
-    unread: &BTreeSet<String>,
-    unrun: &BTreeMap<Named, &'static str>,
-) -> Measure {
+/// couldn't open. A miss whose line names another `machine` than this one
+/// stays open until the line says when its check `runs` there, since the
+/// hour sees only this machine: at 22:10 on 19 November it told Joel his
+/// Mac's log-out miss fixed on harness #1860 installed here.
+fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
+    let Judged {
+        merged,
+        unread,
+        unrun,
+        here,
+    } = *judged;
     let changes = |miss: &Value| {
         miss["check"]
             .as_str()
@@ -350,8 +378,11 @@ fn open_misses(
     let open: Vec<(String, String, String)> = lines(text)
         .filter_map(|miss| {
             let changes = changes(&miss);
+            let elsewhere = miss["machine"].as_str().filter(|machine| {
+                !machine.eq_ignore_ascii_case(here) && miss["runs"].as_str().is_none()
+            });
             let ran = |change: &Named| merged.contains(change) && !unrun.contains_key(change);
-            if !changes.is_empty() && changes.iter().all(ran) {
+            if !changes.is_empty() && changes.iter().all(ran) && elsewhere.is_none() {
                 return None;
             }
             let what = named_as(&miss).to_owned();
@@ -373,6 +404,14 @@ fn open_misses(
                         .find_map(|change| Some((change, unrun.get(change)?)))?;
                     Some(format!(
                         "{HELD}{} #{}{UNRUN}{why}",
+                        change.repo, change.number
+                    ))
+                })
+                .or_else(|| {
+                    let (machine, change) = (elsewhere?, changes.iter().find(|c| ran(c))?);
+                    Some(format!(
+                        "{HELD}{} #{}{UNRUN}its miss was on {machine}, and no one has said \
+                         it runs there",
                         change.repo, change.number
                     ))
                 })
@@ -526,7 +565,13 @@ mod tests {
         );
         let merged = BTreeSet::from([change("core", 5800), change("core", 4500)]);
         let unrun = BTreeMap::from([(change("core", 5800), "the pi hosts don't load it yet")]);
-        let m = open_misses(&text, &repos(), &merged, &BTreeSet::new(), &unrun);
+        let judged = Judged {
+            merged: &merged,
+            unread: &BTreeSet::new(),
+            unrun: &unrun,
+            here: "here",
+        };
+        let m = open_misses(&text, &repos(), &judged);
         assert!(
             (m.now - 1.0).abs() < 0.5,
             "the unrun one open, got {}",
@@ -554,6 +599,47 @@ mod tests {
         serde_json::json!({"at": AT, "words": "x", "what": "the dock", "owner": "Y2YBTS",
             "check": check})
         .to_string()
+    }
+
+    /// At 22:10 on 19 November the card told Joel his Mac's log-out miss was
+    /// fixed on harness #1860, installed here but not on the Mac.
+    #[test]
+    fn a_miss_on_another_machine_stays_open_until_its_check_runs_there() {
+        let on = |machine: &str, runs: Option<&str>| {
+            let mut miss: Value = serde_json::from_str(&miss("harness #1860")).expect("a miss");
+            miss["machine"] = machine.into();
+            if let Some(runs) = runs {
+                miss["runs"] = runs.into();
+            }
+            format!("{miss}\n")
+        };
+        let merged = BTreeSet::from([change("harness", 1860)]);
+        let judged = Judged {
+            merged: &merged,
+            unread: &BTreeSet::new(),
+            unrun: &BTreeMap::new(),
+            here: "here",
+        };
+        let m = open_misses(&on("yonder", None), &repos(), &judged);
+        assert_eq!(
+            m.behind,
+            [format!(
+                "the cat waits · XY9H5C{HELD}harness #1860{UNRUN}its miss was on yonder, and \
+                 no one has said it runs there"
+            )],
+            "a miss on another machine closed on its check running here"
+        );
+        let runs = on("yonder", Some("2026-11-19T23:00:00-05:00"));
+        assert!(
+            open_misses(&runs, &repos(), &judged).behind.is_empty(),
+            "a miss whose check the ledger says runs there stayed open"
+        );
+        assert!(
+            open_misses(&on("Here", None), &repos(), &judged)
+                .behind
+                .is_empty(),
+            "a miss on this machine waited on the ledger"
+        );
     }
 
     #[test]
