@@ -378,6 +378,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi lets go of an extension's handler still pending when its run
+  # stops, blocking a tool call it was judging, and names one pending past 5 s,
+  # so no one handler holds a conversation's run for good.
+  pi-hosted-lets-go-of-a-stopped-handler =
+    pkgs.runCommandLocal "pi-hosted-lets-go-of-a-stopped-handler" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-lets-go-of-a-stopped-handler.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one

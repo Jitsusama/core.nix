@@ -2884,6 +2884,12 @@
     jiti's own order does, and evaluates each extension's modules afresh for each folder and after
     a reload
   '';
+  pi-hosted-lets-go-of-a-stopped-handler = ''
+    pi built with the host's patches, applied exactly, lets go of an extension's handler still
+    pending when its run stops, blocking a tool call it was judging and running the next handler,
+    reports what it does later, names one pending past 5 s in the journal, and awaits every
+    handler as before outside a run or in one that goes on
+  '';
   pi-hosted-yields-between-extensions = ''
     pi built with the host's patches, applied exactly, gives the event loop a turn before it
     imports each extension and before it runs each factory, and still loads every extension in

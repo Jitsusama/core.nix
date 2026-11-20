@@ -1,0 +1,148 @@
+A host lets go of an extension's handler still pending when its run stops.
+
+A run awaits each extension's handler for its turn's events, a tool call's
+judgement among them, with no bound. One handler that never settled held
+its conversation's run for good, and stopping the run freed nothing, since
+the stop waited on the very handler that held it.
+
+Race each handler for an event, a message's end, a tool's result and a
+tool call against the run's own abort signal, once a run is under way and
+not yet stopped. One pending as the run stops is let go: its answer no
+longer counts, a tool call it was judging is blocked rather than allowed,
+the next handler still runs, and what it does later is reported as an
+error. One pending past 5 s is named in the journal, and again each
+minute, so what holds a turn can be seen. Outside a run, or in a run
+already stopped, each handler is awaited as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/runner.ts
++++ b/packages/coding-agent/src/core/extensions/runner.ts
+@@ -281,6 +281,20 @@
+ 	return extensions.map((ext) => ({ ext, handlers: ext.handlers.get(event)?.slice() ?? [] }));
+ }
+ 
++// pi-host: a run awaits each extension's handler for its turn's events with no bound, so one
++// handler that never settles held its conversation's run for good, and stopping the run freed
++// nothing, since the stop waited on the very handler that held it. A handler pending when its run
++// stops is now let go: its answer no longer counts, a tool call it was asked about is blocked
++// rather than allowed, and what it does later is reported as an error. One pending past 5 s is
++// named in the journal, and again each minute, so what holds a turn can be seen.
++const HANDLER_NAMED_AFTER_MS = 5_000;
++const HANDLER_NAMED_EVERY_MS = 60_000;
++const handlerLetGo = Symbol("pi-host handler let go");
++
++function isHandlerLetGo(err: unknown): err is Error {
++	return err instanceof Error && handlerLetGo in err;
++}
++
+ function sameMessages(left: AgentMessage[], right: AgentMessage[]): boolean {
+ 	return left.length === right.length && left.every((message, index) => message === right[index]);
+ }
+@@ -1127,6 +1141,55 @@
+ 		);
+ 	}
+ 
++	/**
++	 * pi-host: what `run`, one of `ext`'s handlers for `event`, settles to, named in the journal while
++	 * it stays pending, and let go, as an error marked with handlerLetGo, should the run it is part of
++	 * stop while it is pending. A run already stopped as it starts awaits it as before.
++	 */
++	private async awaitHandler<T>(ext: Extension, event: string, run: () => T | Promise<T>): Promise<T> {
++		const signal = this.getSignalFn();
++		const started = Date.now();
++		const pending = Promise.resolve(run());
++		let naming: ReturnType<typeof setTimeout> | undefined;
++		const name = (): void => {
++			const seconds = Math.round((Date.now() - started) / 1000);
++			console.warn(`pi-host: extension ${ext.path}'s ${event} handler still pending after ${seconds} s`);
++			// Named again each minute it stays pending; unref'd, so it never keeps a process up.
++			naming = setTimeout(name, HANDLER_NAMED_EVERY_MS);
++			naming.unref?.();
++		};
++		// Named first once it has been pending 5 s; unref'd, so it never keeps a process up.
++		naming = setTimeout(name, HANDLER_NAMED_AFTER_MS);
++		naming.unref?.();
++		let onAbort: (() => void) | undefined;
++		try {
++			if (signal === undefined || signal.aborted) return await pending;
++			const stopped = new Promise<never>((_, reject) => {
++				onAbort = () => {
++					const message = `extension ${ext.path}'s ${event} handler was let go, as its run stopped while it was pending`;
++					reject(Object.assign(new Error(message), { [handlerLetGo]: true }));
++				};
++				signal.addEventListener("abort", onAbort, { once: true });
++			});
++			return await Promise.race([pending, stopped]);
++		} catch (err) {
++			if (isHandlerLetGo(err)) {
++				pending.then(undefined, (late: unknown) => {
++					this.emitError({
++						extensionPath: ext.path,
++						event,
++						error: `after it was let go: ${late instanceof Error ? late.message : String(late)}`,
++						stack: late instanceof Error ? late.stack : undefined,
++					});
++				});
++			}
++			throw err;
++		} finally {
++			clearTimeout(naming);
++			if (onAbort !== undefined) signal?.removeEventListener("abort", onAbort);
++		}
++	}
++
+ 	async emit<TEvent extends RunnerEmitEvent>(event: TEvent): Promise<RunnerEmitResult<TEvent>> {
+ 		const ctx = this.createContext();
+ 		let result: SessionBeforeEventResult | undefined;
+@@ -1134,7 +1197,7 @@
+ 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, event.type)) {
+ 			for (const handler of handlers) {
+ 				try {
+-					const handlerResult = await handler(event, ctx);
++					const handlerResult = await this.awaitHandler(ext, event.type, () => handler(event, ctx));
+ 
+ 					if (this.isSessionBeforeEvent(event) && handlerResult) {
+ 						result = handlerResult as SessionBeforeEventResult;
+@@ -1191,7 +1254,9 @@
+ 			for (const handler of handlers) {
+ 				try {
+ 					const currentEvent: MessageEndEvent = { ...event, message: currentMessage };
+-					const handlerResult = (await handler(currentEvent, ctx)) as MessageEndEventResult | undefined;
++					const handlerResult = (await this.awaitHandler(ext, "message_end", () =>
++						handler(currentEvent, ctx),
++					)) as MessageEndEventResult | undefined;
+ 					if (!handlerResult?.message) continue;
+ 
+ 					if (handlerResult.message.role !== currentMessage.role) {
+@@ -1229,7 +1294,9 @@
+ 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "tool_result")) {
+ 			for (const handler of handlers) {
+ 				try {
+-					const handlerResult = (await handler(currentEvent, ctx)) as ToolResultEventResult | undefined;
++					const handlerResult = (await this.awaitHandler(ext, "tool_result", () =>
++						handler(currentEvent, ctx),
++					)) as ToolResultEventResult | undefined;
+ 					if (!handlerResult) continue;
+ 
+ 					if (handlerResult.content !== undefined) {
+@@ -1284,9 +1351,16 @@
+ 		const ctx = this.createContext();
+ 		let result: ToolCallEventResult | undefined;
+ 
+-		for (const { handlers } of snapshotEventHandlers(this.extensions, "tool_call")) {
++		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "tool_call")) {
+ 			for (const handler of handlers) {
+-				const handlerResult = await handler(event, ctx);
++				let handlerResult: unknown;
++				try {
++					handlerResult = await this.awaitHandler(ext, "tool_call", () => handler(event, ctx));
++				} catch (err) {
++					// pi-host: a call nobody finished judging never runs.
++					if (isHandlerLetGo(err)) return { block: true, reason: err.message };
++					throw err;
++				}
+ 
+ 				if (handlerResult) {
+ 					result = handlerResult as ToolCallEventResult;
