@@ -92,6 +92,34 @@ QtObject {
             if (SessionRow.asks(presence) !== want)
                 failures.push(`asks of ${JSON.stringify(presence)}: not ${want}`);
         }
+        // A row offers the acts the daemon serves, in their order, and marks
+        // the one its Return does, which for one paused is Resume, not its
+        // first; one it doesn't list leads, and with nothing served, the
+        // shell's own list, Return on its first.
+        const served = ids => ids.map(id => ({ key: `verb:agent:${id}` }));
+        const offers = [
+            ["one paused marks Resume", served(["switch", "talk", "resume", "close"]),
+                "verb:agent:resume", ["talk"], "switch talk resume close", "resume"],
+            ["one listening marks Talk after Go To", served(["switch", "talk", "pause"]),
+                "verb:agent:talk", ["talk"], "switch talk pause", "talk"],
+            ["one parked marks Wake", served(["wake", "talk"]), "verb:agent:wake", ["talk"],
+                "wake talk", "wake"],
+            ["its order is the daemon's, not the shell's", served(["talk", "pause"]),
+                "verb:agent:talk", ["switch", "talk", "pause"], "talk pause", "talk"],
+            ["what Return does leads when the row doesn't list it", served(["talk", "pause"]),
+                "verb:agent:switch", ["talk"], "switch talk pause", "switch"],
+            ["its other keys aren't a session's acts",
+                [{ key: "verb:agents:landed:try" }, ...served(["talk"])], "verb:agent:talk", [],
+                "talk", "talk"],
+            ["nothing served, the shell's own, Return on its first", undefined, undefined,
+                ["switch", "talk", "pause"], "switch talk pause", "switch"]
+        ];
+        for (const [what, acts, returns, fallback, want, mark] of offers) {
+            const { ids, marked } = SessionRow.offered(acts, returns, fallback);
+            if (ids.join(" ") !== want || marked !== mark)
+                failures.push(`${what}: "${ids.join(" ")}" marking ${marked}, `
+                    + `not "${want}" marking ${mark}`);
+        }
 
 
         // A row says how it stands and what it spent today at its right,

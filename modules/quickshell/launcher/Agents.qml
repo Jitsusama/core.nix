@@ -1027,11 +1027,13 @@ Provider {
     function actsNamed(drawer, session) {
         if (drawer === null)
             return null;
-        const ids = SessionRow.acts(stateOf(session), windowedOf(session), session.here);
+        // Return marked on the act it does, which for one paused is Resume,
+        // not the first.
+        const { ids, marked } = offeredOf(session);
         return Object.assign({}, drawer, {
-            acts: ids.map((id, at) => ({
+            acts: ids.map(id => ({
                 name: Words.name(`verb:agent:${id}`),
-                key: at === 0 ? "\u21b5" : ""
+                key: id === marked ? "\u21b5" : ""
             }))
         });
     }
@@ -1271,12 +1273,21 @@ Provider {
         }
     }
 
-    // A session's own acts, in the order SessionRow.js gives them for how
-    // the agents daemon says it stands, each steering it through its inbox but Go To; an
-    // orchestrator's row is its session's, with its talks after them.
+    // The acts a session's row offers and the one its Return does, as the
+    // agents daemon serves its row (SessionRow.offered), so its drawer and
+    // its step in list the same; while its row isn't held, SessionRow.js's
+    // own for how it stands.
+    function offeredOf(session) {
+        const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
+        return SessionRow.offered(row?.acts, row?.held?.returns,
+            SessionRow.acts(stateOf(session), windowedOf(session), session.here));
+    }
+
+    // A session's own acts, in the order its row offers them, each steering
+    // it through its inbox but Go To; an orchestrator's row is its
+    // session's, with its talks after them.
     function sessionActs(session) {
-        return SessionRow.acts(stateOf(session), windowedOf(session), session.here)
-            .map(id => sessionAct(session, id));
+        return offeredOf(session).ids.map(id => sessionAct(session, id));
     }
 
     // What Close leaves of a session, its worktree or folder and its quest's
