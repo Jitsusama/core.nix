@@ -672,7 +672,8 @@ fn lines(text: &str) -> Vec<String> {
 /// rebase over a commit that edits only the lines beside the change gave
 /// it a new id, as happened to #2504 in a busy words.json, so its earlier
 /// run stopped counting. What main moved in the change's files is caught
-/// by the files it shares, not by the id.
+/// by the files it shares, not by the id. Whitespace counts, since it is
+/// code in some languages, so a review never carries to an edit of it.
 fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
     let diff = Command::new("git")
         .arg("-C")
@@ -685,7 +686,7 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
     let mut id = Command::new("git")
         .arg("-C")
         .arg(repo)
-        .args(["patch-id", "--stable"])
+        .args(["patch-id", "--stable", "--verbatim"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
