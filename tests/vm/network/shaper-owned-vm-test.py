@@ -41,11 +41,12 @@ APP_STARTS = 500_000
 # while any wait, and Joel's lane, which the app's upload rides, grows each
 # second from what it carried, settling near two thirds of the rate here, so
 # the share is read once that lane is past half. Were the router's queue
-# still hiding there, the app would carry one flow's share of 33, its lane
-# would never pass half, and the wait for it fails first. Its lane runs a
-# fifth and a megabit ahead of what it carried, so passing the wait doesn't
-# settle the bar; the share read after it does. Without the shaper the
-# router gives it that one flow's share, and a fifth is well clear of it.
+# still hiding there, or work put first left among the agents', the upload
+# would carry one flow's share of 33, its lane would never pass half, and the
+# wait for it fails first. Its lane runs a fifth and a megabit ahead of what
+# it carried, so passing the wait doesn't settle the bar; the share read
+# after it does. Without the shaper the router gives it that one flow's
+# share, and a fifth is well clear of it.
 SHAPED_SHARE = 0.5
 UNSHAPED_SHARE = 0.2
 # How long the client may take to boot to its first queues, and the shaper
@@ -74,9 +75,9 @@ class Rig:
         """Give the rate the shaper sends at on eth1, in kbit/s, or 0 before it says."""
         return int(self.link().get("up") or 0)
 
-    def joel_share(self) -> float:
-        """Give Joel's lane's share of the rate the shaper sends at on eth1, or 0 before it says."""
-        link = self.link()
+    def joel_share(self, link: Json | None = None) -> float:
+        """Give Joel's lane's share of the rate in `link`, eth1's status read now unless given."""
+        link = self.link() if link is None else link
         up = int(link.get("up") or 0)
         joel = int((link.get("lanes") or {}).get("joel") or 0)
         return joel / up if up else 0.0
@@ -141,12 +142,12 @@ class Rig:
         """
 
         def grown(last_try: bool) -> bool:
-            share = self.joel_share()
+            link = self.link()
+            share = self.joel_share(link)
             if last_try and share <= SHAPED_SHARE:
-                lanes = self.link().get("lanes")
                 print(
                     f"Joel's lane never passed {SHAPED_SHARE} of the rate, at {share:.2f}"
-                    f" with the lanes {lanes}:\n{self.trace()}"
+                    f" with the lanes {link.get('lanes')}:\n{self.trace()}"
                 )
             return share > SHAPED_SHARE
 
@@ -166,8 +167,9 @@ class Rig:
                 timeout=SENDING,
             )
             after = self.taken()
-            # The lanes as the share was read: the trace reads them after the stop.
-            lanes = self.link().get("lanes")
+            # The lanes as the share was read, since the trace reads them after the stop; with
+            # the shaper stopped there is no status to read.
+            lanes = self.link().get("lanes") if shaped else None
         except BaseException:
             self.client.execute(stop)
             raise
