@@ -12,7 +12,9 @@ use crate::denoise::Cleaner;
 const MV7: &str = "alsa_input.usb-Shure_Inc_Shure_MV7-00.analog-mono";
 const SHURE: &str = "Shure MV7";
 
-/// A folder of picks of its own, emptied.
+/// A folder of picks of its own, emptied. Each test names its own, since
+/// tests run at once in one process, and two sharing one empty and write
+/// each other's.
 fn picks(name: &str) -> Chosen {
     let folder = std::env::temp_dir().join(format!("offer-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
@@ -333,7 +335,7 @@ fn a_room_is_offered_again_once_a_pick() {
 
 #[test]
 fn a_new_pick_withdraws_a_nudge_standing() {
-    let chosen = picked_at_desk("withdrawn", -62);
+    let chosen = picked_at_desk("nudge-withdrawn", -62);
     let mut offers = Offers::new(&chosen, Vec::new());
     heard_in(&mut offers, &chosen, &desk(), -45);
     offers.stand(&chosen);
