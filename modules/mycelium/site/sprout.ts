@@ -3,7 +3,9 @@
 // New Work with his words filled in, and from the cell it is started from
 // where one is open. A page reads and never acts, so the map can't ask the
 // node to sprout; the launcher's own Return, pressed by him, is what starts
-// anything, as it is when he types there himself.
+// anything, as it is when he types there himself. What follows shapes only
+// the links this page writes: any page can write one, so mycelium-link and
+// the launcher hold their own bounds on what a link may carry.
 
 // A cell's address, as mycelium-link lets one through: 1 to 12 capitals
 // and digits.
@@ -23,16 +25,19 @@ export const isAddress = (from: string | null): from is string =>
   from !== null && ADDRESS.test(from);
 
 /**
- * The words as one line, spaces between them, or "" when there are none. A
- * half of a pair of UTF-16 halves pasted alone becomes the replacement
+ * The words as one line, spaces between them, or "" when there are none,
+ * cut at LONGEST_WORDS as the line's own field is. A half of a pair of
+ * UTF-16 halves left alone, pasted or by the cut, becomes the replacement
  * character, since encoding it as a link would throw.
  */
 export const sproutWords = (typed: string): string =>
   typed
-    .toWellFormed()
     .split(GAPS)
     .filter((word) => word !== "")
-    .join(" ");
+    .join(" ")
+    .slice(0, LONGEST_WORDS)
+    .trimEnd()
+    .toWellFormed();
 
 /**
  * The link that hands the launcher new work: its words, percent-encoded,
@@ -50,9 +55,17 @@ export const sproutLink = (typed: string, from: string | null): string | null =>
   return isAddress(from) ? `${link}&from=${from}` : link;
 };
 
-/** What the map says once the launcher has the work, `from` its cell's name. */
+/**
+ * What the map says once it has sent the work on, `from` its cell's name. A
+ * page can't know whether the launcher opened, and mycelium-link lets go of
+ * a link that follows another within a few seconds, so it says how to send
+ * the words again.
+ */
 export const handedWords = (from: string | null): string =>
-  `Handed to the Launcher's Start New Work${from === null ? "" : `, from ${from}`}; nothing starts until you press Return there.`;
+  `Sent to the Launcher's Start New Work${from === null ? "" : `, from ${from}`}; nothing starts until you press Return there. If it didn't open, wait a moment, then s brings the words back.`;
+
+/** What the map says once the line holds as many letters as it takes. */
+export const FULL_WORDS = `The line holds ${LONGEST_WORDS} letters; any past that were left off.`;
 
 /** What the map says when asked to start work with no words. */
 export const NO_WORDS = "Say what the new work is first; the Launcher needs its words.";

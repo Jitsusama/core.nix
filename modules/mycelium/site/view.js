@@ -74,7 +74,7 @@ import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
+import { FULL_WORDS, handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -164,6 +164,7 @@ import {
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
   let sproutOpener = null;
+  let sproutHeld = false;
   const trail = document.getElementById("trail");
   const trailSteps = document.getElementById("trail-steps");
   // What the find line matched, in the order n steps through them, and
@@ -3630,19 +3631,28 @@ import {
   sproutInput.maxLength = LONGEST_WORDS;
   const sproutableFrom = (address) =>
     isAddress(address) && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
-  const openSprout = (from) => {
+  const offerFrom = (from) => {
+    sproutFrom = sproutableFrom(from) ? from : null;
+    sproutFromLine.hidden = sproutFrom === null;
+    sproutFromBox.checked = true;
+    sproutFromWords.textContent = sproutFrom ? `From ${current?.byAddress.get(sproutFrom)?.short || sproutFrom}` : "";
+  };
+  // `named` is a drawer's button, which names its own cell.
+  const openSprout = (from, { named = false } = {}) => {
     // Asked again while open, it only takes the keys back, so a cleared
-    // tick stays cleared and the cell it starts from stays the same.
+    // tick stays cleared, unless a drawer's button names another cell,
+    // which it then offers, the keys going back to it on close.
     if (!sproutLine.hidden) {
+      if (named && from !== sproutFrom) {
+        sproutOpener = document.activeElement;
+        offerFrom(from);
+      }
       sproutInput.focus();
       return;
     }
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    sproutFrom = sproutableFrom(from) ? from : null;
-    sproutFromLine.hidden = sproutFrom === null;
-    sproutFromBox.checked = true;
-    sproutFromWords.textContent = sproutFrom ? `From ${current?.byAddress.get(sproutFrom)?.short || sproutFrom}` : "";
+    offerFrom(from);
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3657,7 +3667,7 @@ import {
   const sproutBack = () => {
     const address = sproutOpener?.dataset?.sproutFrom;
     const again = address ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`) : null;
-    const stands = sproutOpener?.isConnected && sproutOpener !== document.body;
+    const stands = sproutOpener?.isConnected && sproutOpener !== document.body && sproutOpener.checkVisibility();
     (stands ? sproutOpener : again || view).focus({ preventScroll: true });
   };
   // Words handed on are kept for the line's next opening; a line let go
@@ -3694,11 +3704,29 @@ import {
     closeSprout({ said: false, keep: true });
     where.textContent = handedWords(short);
   });
-  sproutInput.addEventListener("input", () => sproutInput.setCustomValidity(""));
+  // The field cuts a long paste at the cap by itself, so that is said.
+  sproutInput.addEventListener("input", () => {
+    sproutInput.setCustomValidity("");
+    if (sproutInput.value.length >= LONGEST_WORDS) where.textContent = FULL_WORDS;
+  });
+  // Where the line hangs a second row over what's under it, the drawer
+  // makes room above its first line, so nothing in it is covered.
+  new ResizeObserver(() => {
+    const hang = sproutLine.hidden ? 0 : sproutLine.getBoundingClientRect().bottom - sproutLine.parentElement.getBoundingClientRect().bottom - 1;
+    treeBox.style.setProperty("--hang", `${Math.max(0, Math.round(hang))}px`);
+  }).observe(sproutLine);
+  // A held s opens the line once; its repeats don't type into the field.
+  sproutLine.addEventListener("keyup", () => {
+    sproutHeld = false;
+  });
   // Escape closes the line from anywhere in it, its tick and button too,
   // which the page's own keys leave alone as fields; it goes no further,
   // so the same press never lets go of the open cell or closes Now.
   sproutLine.addEventListener("keydown", (e) => {
+    if (sproutHeld && e.repeat) {
+      e.preventDefault();
+      return;
+    }
     if (e.key !== "Escape") return;
     e.preventDefault();
     e.stopPropagation();
@@ -3915,7 +3943,7 @@ import {
     }
     const sprout = e.target.closest("[data-sprout-from]");
     if (sprout) {
-      openSprout(sprout.dataset.sproutFrom);
+      openSprout(sprout.dataset.sproutFrom, { named: true });
       return;
     }
     // The way back to the whole map is the way to Now, as it says.
@@ -4893,7 +4921,10 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
-    sprout: () => openSprout(chosen?.kind === "cell" ? chosen.id : null),
+    sprout: () => {
+      sproutHeld = true;
+      openSprout(chosen?.kind === "cell" ? chosen.id : null);
+    },
     "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),

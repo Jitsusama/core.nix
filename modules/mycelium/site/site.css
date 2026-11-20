@@ -313,6 +313,7 @@ body {
 .lines {
   position: relative;
   flex: 1 1 auto;
+  align-self: stretch;
   min-inline-size: 0;
   display: grid;
   align-items: center;
@@ -1241,24 +1242,27 @@ body {
    then the cell it starts from, then the hand-off in full ink, so the
    one act on the line reads as the one to press. Laid over the trail's
    room from its top, a line too narrow for one row hangs its second
-   over the map, as a sheet would, rather than pushing the map down. */
+   over the map, as a sheet would, rather than pushing the map down; its
+   rule lies on the line's own while it holds one row, and under the
+   sheet when it hangs. The drawer makes room above itself for what
+   hangs (view.js sets --hang), so none of it is covered. */
 .sprout {
   position: absolute;
   z-index: 3;
   inset-block-start: 0;
   inset-inline: 0;
-  min-block-size: 100%;
+  min-block-size: calc(100% + 1px);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0 var(--mark);
+  border-block-end: 1px solid var(--rule);
   background: var(--background);
 }
 
-@media (max-width: 30rem) {
-  .sprout {
-    border-block-end: 1px solid var(--rule);
-  }
+.panel {
+  padding-block-start: var(--hang, 0px);
+  scroll-padding-block-start: var(--hang, 0px);
 }
 
 .sprout svg {

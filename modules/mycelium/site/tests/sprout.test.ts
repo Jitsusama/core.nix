@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { handedWords, isAddress, sproutLink, sproutWords } from "../sprout.ts";
+import { handedWords, isAddress, LONGEST_WORDS, sproutLink, sproutWords } from "../sprout.ts";
 
 it("reads the typed words as one line", () => {
   assert.equal(
@@ -19,6 +19,21 @@ it("encodes a lone half of a UTF-16 pair rather than throwing", () => {
     sproutLink("tidy \uD800 rows", null),
     "mycelium:sprout?words=tidy%20%EF%BF%BD%20rows",
     "a lone half should read as the replacement character",
+  );
+});
+
+it("cuts the words where the line's own field does", () => {
+  const long = "a".repeat(LONGEST_WORDS + 100);
+  assert.equal(sproutWords(long).length, LONGEST_WORDS, "the words should stop at the cap");
+  assert.equal(
+    sproutWords(`${"a".repeat(LONGEST_WORDS - 1)} tail`),
+    "a".repeat(LONGEST_WORDS - 1),
+    "a cut falling on a space should leave no space at the end",
+  );
+  assert.equal(
+    sproutWords(`${"a".repeat(LONGEST_WORDS - 1)}\u{1F331}`),
+    `${"a".repeat(LONGEST_WORDS - 1)}\uFFFD`,
+    "a cut through a pair of halves should leave the replacement character",
   );
 });
 
@@ -63,13 +78,14 @@ it("says the cell it comes from only when that is an address", () => {
   }
 });
 
-it("says where the work went, and that nothing starts yet", () => {
+it("says where the work went, that nothing starts yet, and how to send it again", () => {
+  const again = " If it didn't open, wait a moment, then s brings the words back.";
   assert.equal(
     handedWords(null),
-    "Handed to the Launcher's Start New Work; nothing starts until you press Return there.",
+    `Sent to the Launcher's Start New Work; nothing starts until you press Return there.${again}`,
   );
   assert.equal(
     handedWords("Heron"),
-    "Handed to the Launcher's Start New Work, from Heron; nothing starts until you press Return there.",
+    `Sent to the Launcher's Start New Work, from Heron; nothing starts until you press Return there.${again}`,
   );
 });

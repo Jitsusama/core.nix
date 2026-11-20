@@ -864,8 +864,21 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) 
 
 # What new work's line hands the Launcher, said back once the line closes,
 # and what it ends with.
-HANDED = "Handed to the Launcher's Start New Work"
-HANDED_END = "; nothing starts until you press Return there."
+HANDED = "Sent to the Launcher's Start New Work"
+HANDED_END = (
+    "; nothing starts until you press Return there."
+    " If it didn't open, wait a moment, then s brings the words back."
+)
+# Where a box lies on the page, scrolled or not: left, top, width, height.
+PLACED = """(selector) => {
+  const r = document.querySelector(selector).getBoundingClientRect();
+  return [r.left + scrollX, r.top + scrollY, r.width, r.height];
+}"""
+# Where the field's chosen words start and end.
+CHOSEN = """(() => {
+  const f = document.getElementById("sprout");
+  return [f.selectionStart, f.selectionEnd];
+})()"""
 
 
 def test_s_hands_new_work_to_the_launcher_in_its_own_words(mycelium_opened: Opened) -> None:
@@ -902,15 +915,20 @@ def test_new_work_from_a_cell_takes_its_address_until_unticked(mycelium_opened: 
     page = mycelium_opened.page
     the_map_stands(page, "live")
     page.evaluate(TALK_HELD)
-    # From a cell's drawer, its address goes with the words, and a tick
-    # lets it go.
+    # From a cell's drawer, its address goes with the words, though the
+    # line was opened on the whole map, and a tick lets it go.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "the line's field has no cap").to_have_attribute(
+        "maxlength", "1000"
+    )
     page.locator("#map-view").focus()
     page.keyboard.press("a")
     expect(page, "a didn't open a cell").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
     drawer = page.locator("#panel-body").get_by_role("button", name="Start New Work From It")
     drawer.click()
     offered = page.locator("#sprout-from-words")
-    expect(offered, "the open cell wasn't offered").to_be_visible()
+    expect(offered, "the drawer's cell wasn't offered on the open line").to_be_visible()
     short = offered.inner_text().removeprefix("From ")
     page.keyboard.type("follow up")
     page.keyboard.press("Enter")
@@ -924,6 +942,7 @@ def test_new_work_from_a_cell_takes_its_address_until_unticked(mycelium_opened: 
     # The words handed on come back chosen, so Return hands them again.
     drawer.click()
     expect(page.locator("#sprout"), "the handed words didn't come back").to_have_value("follow up")
+    assert page.evaluate(CHOSEN) == [0, 9], "the handed words came back unchosen"
     page.keyboard.press("Escape")
     expect(drawer, "Escape didn't give the keys back to the drawer").to_be_focused()
     page.locator("#map-view").focus()
@@ -958,6 +977,7 @@ def test_escape_closes_only_new_works_line(mycelium_opened: Opened) -> None:
     page.keyboard.press("Escape")
     expect(line, "Escape on the button didn't close the line").to_be_hidden()
     expect(page, "Escape on the button let the cell go").to_have_url(re.compile("#cell="))
+    expect(page.locator("#map-view"), "the keys didn't go back to the map").to_be_focused()
     page.keyboard.press("s")
     page.locator("#map-view").focus()
     page.keyboard.press("Escape")
@@ -978,6 +998,55 @@ def test_escape_closes_only_new_works_line(mycelium_opened: Opened) -> None:
     expect(line, "Escape didn't close new work's line").to_be_hidden()
     expect(page.locator("#trail"), "the trail didn't come back").to_be_visible()
     assert page.evaluate("window.talkedTo") is None, "Escape handed the words on"
+    # Opened by the control, Escape gives the keys back to it.
+    control = page.locator("#sprout-control")
+    control.click()
+    page.keyboard.press("Escape")
+    expect(control, "the keys didn't go back to New Work").to_be_focused()
+
+
+def test_find_and_new_work_never_stand_together(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    line, finding, trail = (page.locator(f"#{e}") for e in ("sprout-line", "find-line", "trail"))
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(line, "s didn't open new work's line").to_be_visible()
+    page.locator("#map-view").focus()
+    page.keyboard.press("/")
+    expect(finding, "/ didn't open find").to_be_visible()
+    expect(line, "find stood beside new work").to_be_hidden()
+    expect(trail, "the trail stood beside find").to_be_hidden()
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(line, "s didn't open new work over find").to_be_visible()
+    expect(finding, "new work stood beside find").to_be_hidden()
+    expect(trail, "the trail stood beside new work").to_be_hidden()
+
+
+def test_new_works_line_hangs_over_the_map_on_a_phone(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[0], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        page.locator("#map-view").focus()
+        page.keyboard.press("a")
+        expect(page, "a didn't open a cell").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
+        was = page.evaluate(PLACED, "#map")
+        page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+        expect(page.locator("#sprout-from-words"), "the open cell wasn't offered").to_be_visible()
+        # Too narrow for one row, the line hangs its second over the map,
+        # which stays where it was, and the drawer makes room under it.
+        _, top, _, tall = page.evaluate(PLACED, "#sprout-line")
+        assert tall > 44 + 1, f"the line held one row, {tall} px tall"
+        assert page.evaluate(PLACED, "#map") == was, "the line moved the map"
+        _, body, _, _ = page.evaluate(PLACED, "#panel-body")
+        assert body >= top + tall - 1, f"the line, to {top + tall}, covers the drawer from {body}"
+    finally:
+        opened.close()
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
