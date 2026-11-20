@@ -868,7 +868,6 @@ let
     "QT_WAYLAND_DISABLE_WINDOWDECORATION=1"
     "MALLOC_CONF=narenas:1"
     "QS_DISABLE_FILE_WATCHER=1"
-    "QV4_PROFILE_WRITE_PERF_MAP=1"
     # What polkit's prompt asks of the process asking for Joel's password:
     # the quest it says it runs under, read by its name alone, so the shell
     # never holds the secrets beside it (asker-says/src/main.rs).
@@ -2805,16 +2804,15 @@ in
         # below), so the watch is turned off. shell-preview and the nested
         # niri checks run the working copy outside this unit, and keep it.
         #
-        # The shell's JavaScript is compiled to machine code once a function
-        # has run a few times, and a profile of Joel's shell named none of
-        # it, so what his openings spend past the parts the launcher names,
-        # 15 to 50 ms of each fill (2026-11-14), showed only as addresses.
-        # With the map, Qt writes each compiled function's name and address
-        # to /tmp/perf-<pid>.map as it compiles it, and perf reads it. Qt's
-        # profiler would name them too, but only through a debugging port
-        # any local process could drive. In the lab a shell wrote 3,032
-        # functions, 111 KB, and its openings took as long as without it;
-        # /tmp ages a map out after ten days.
+        # Qt writes nothing of the JavaScript it compiles here: with
+        # QV4_PROFILE_WRITE_PERF_MAP set it names each function to perf in
+        # /tmp/perf-<pid>.map, written from the shell's own thread as it
+        # compiles, and /tmp is on the root's btrfs. Under a loaded disk a
+        # write there waits for btrfs to reserve room: Joel's shell stood
+        # 958 ms in that wait as Super+N opened the launcher, and 873 ms
+        # half an hour on, with the map the one file on that disk it held
+        # open to write (2026-11-19). A profile sets it on a shell of its
+        # own, as shell-preview runs, never on his.
         Environment = shellEnvironment;
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
