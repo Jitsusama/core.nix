@@ -5,7 +5,8 @@
 //! merges an hour, main moved beside a change again before its run ended,
 //! and #4983 missed its time five times so.
 //!
-//! `ready`, where it would start a change's run again, boards it instead:
+//! `ready`, where it would start a change's run again, or send a head
+//! behind main to rebase over files main moved, boards it instead:
 //! a file under the net's state folder, `train/riders/<head>.json`, says
 //! its head, its branch and when it boarded, and `ready` starts the train
 //! as a user unit of its own, `merge-net ride`, unless it already goes.
@@ -277,7 +278,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
             board(&root, &rider).ok()?;
         }
     }
-    if !going() && !start(&root) {
+    if !goes_or_starts(&root) {
         alight(&root, head);
         return None;
     }
@@ -301,7 +302,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
 pub fn riding(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     rider_at(&root, head)?;
-    if !going() && !start(&root) {
+    if !goes_or_starts(&root) {
         alight(&root, head);
         return None;
     }
@@ -335,6 +336,14 @@ fn way(root: &Path, ended: &Ended) {
     if let Some(said) = right_of_way::follow(root, ended, crate::state::now()) {
         println!("merge-net: {said}");
     }
+}
+
+/// Whether the train under `root` goes, started if it didn't. Two readies
+/// at once may both find it stopped, and the one whose start loses the
+/// race to the other's finds it going after all, rather than being sent
+/// off the train.
+fn goes_or_starts(root: &Path) -> bool {
+    going() || start(root) || going()
 }
 
 /// Whether the train's unit goes.

@@ -52,8 +52,10 @@
 //!
 //! `merge-net --help` says how each is asked (`command.rs`).
 
+mod aboard;
 mod answers;
 mod apart;
+mod boarding;
 mod candidates;
 mod command;
 mod comments;
@@ -441,30 +443,6 @@ fn run_again(commit: &str) -> String {
         })
 }
 
-/// What to do about `commit`, whose pass at `checked` main moved beside:
-/// board the merge train, which merges it with the others on one run
-/// (`train.rs`), or, where it can't, run it again alone. A change whose
-/// needs no one heard, asked from no branch, or that fell off the train at
-/// this head runs again alone, as a reader of the kit owed its turn first
-/// still has it go first.
-fn ride_or_run_again(commit: &str, main: &str, checked: &str, files: &[String]) -> String {
-    if turn::waits_to_run(commit).is_none() && needs_heard(commit, main, &[checked], files) {
-        // A draft boards no more here than through may_merge.
-        let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or_default();
-        if let Some(said) = (!branch.is_empty())
-            .then(|| train::drafted(&branch).or_else(|| train::offer(commit, &branch)))
-            .flatten()
-        {
-            return said;
-        }
-    }
-    let again = run_again(commit);
-    match train::fell_said(commit) {
-        Some(fell) => format!("{fell}; {again}"),
-        None => again,
-    }
-}
-
 /// The newest commit on `main` to change the rules for which VM tests run
 /// before a merge, or nothing when git can't say.
 fn newest_rules(main: &str) -> String {
@@ -477,22 +455,6 @@ fn newest_rules(main: &str) -> String {
         "tools/merge-net/must-run.txt",
     ])
     .unwrap_or_default()
-}
-
-/// Refuse `commit`, behind origin's main at `main`, which since moved
-/// `shared` of its files unseen by its run at `checked`. A run again at a
-/// head behind main would check it against the same old base, so only a
-/// rebase brings main's moves in.
-fn rebase_over(commit: &str, main: &str, checked: &str, shared: &[String]) -> ExitCode {
-    eprintln!(
-        "merge-net: {} doesn't sit on origin's main as it is now, {}, which has since moved \
-         {}, so its run at {} didn't see them; rebase onto origin/main, push, and merge again",
-        short(commit),
-        short(main),
-        shared.join(", "),
-        short(checked)
-    );
-    ExitCode::FAILURE
 }
 
 /// Where `commit` stands against origin's main at `main`, as `ready` says
@@ -552,18 +514,26 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
             }
+            // A head behind main boards the train as one on it does
+            // (`boarding.rs`), and one that can't is told why.
             if behind {
-                return Ok(rebase_over(commit, main, &checked, &shared));
+                let boarded = aboard::boards(commit, main, &checked, &files);
+                if boarded.is_ok() {
+                    aboard::keep_regated(commit, &boarded, &shared);
+                }
+                let said = boarding::behind_said(commit, main, &checked, &shared, &boarded);
+                eprintln!("merge-net: {said}");
+                return Ok(ExitCode::FAILURE);
             }
             // Its run again keeps the place this pass's gate had.
             turn::keep_place(&[commit, &checked]);
-            let rerun = answers::Verdict::Regate(answers::Rerun::Files);
-            answers::keep(commit, rerun, &shared);
+            let boarded = aboard::boards(commit, main, &checked, &files);
+            aboard::keep_regated(commit, &boarded, &shared);
             eprintln!(
                 "merge-net: the same change passed at {}, but main has since moved {}; {}",
                 short(&checked),
                 shared.join(", "),
-                ride_or_run_again(commit, main, &checked, &files)
+                aboard::ride_or_run_again(commit, &boarded)
             );
         }
         ready::Before::Unchecked => eprintln!(
