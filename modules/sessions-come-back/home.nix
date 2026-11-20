@@ -1,10 +1,10 @@
-# Brings a Mac's pi sessions back after it restarts, so nobody types
-# `pi --session` for each (src/main.rs says how). An agent in the login runs
-# each minute and as the login starts: it keeps the pi sessions each realm's
-# node holds on this machine, and after a newer boot starts each again in
-# its own folder, through the node, which starts it through the account's
-# login shell. It's a Mac's alone, where restarts ended sessions someone
-# then typed back, and an account in no realm has none to keep.
+# Brings a Mac's pi sessions back after it reboots or its login restarts,
+# so nobody types `pi --session` for each (src/main.rs says how). An agent
+# in the login runs each minute and as the login starts: it keeps the pi
+# sessions each realm's node holds on this machine, and after a new boot or
+# console login starts each again in its own folder, through the node. It's
+# a Mac's alone, where both ended sessions someone then typed back, and an
+# account in no realm has none to keep.
 { mycelium }:
 {
   config,

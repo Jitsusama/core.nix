@@ -3316,10 +3316,12 @@
     slice above them carries one hard and one soft floor, the same at each
   '';
   sessions-come-back-after-a-reboot = ''
-    after a newer boot, sessions-come-back starts each pi session held before it again on the
-    machine, in its own folder, as pi --session with its id; one that ended while the machine
-    ran stays ended, one whose folder is gone is left, and one the node refuses is tried again
-    for a quarter of an hour
+    after a new boot or console login, sessions-come-back starts each pi session held before it
+    again on the machine, in its own folder, as the pi it ran as with --session and its id, once;
+    one that ended while the machine ran, or whose pi died, stays ended; a hold it can't read
+    plainly is passed over and said; a node silent past its limit is stopped; a record it can't
+    read is said; and one whose folder isn't there or that the node refuses is tried again for a
+    quarter of an hour
   '';
   sessions-come-back-passes-clippy = ''
     clippy finds nothing in sessions-come-back or its tests

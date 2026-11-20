@@ -31,10 +31,12 @@ in
 # The program's tests and clippy run on Linux's builders, which a Mac's
 # build of it repeats.
 onLinux {
-  # Its tests run as it builds: a restart sets each pi session held before
-  # it waiting and starts it again on the machine in its own folder, one
-  # that ended while the machine ran stays ended, one whose folder is gone
-  # is left, and one the node refuses is tried again for a while.
+  # Its tests run as it builds: a new boot or console login sets each pi
+  # session held before it waiting and starts it again on the machine, in
+  # its own folder, as the pi it ran as; one that ended while the machine
+  # ran, or whose pi died, stays ended; what the node can't say plainly is
+  # passed over and said; a hung node is stopped; and one whose folder
+  # isn't there or that the node refuses is tried again for a while.
   sessions-come-back-after-a-reboot = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in sessions-come-back, its tests included.
   sessions-come-back-passes-clippy = passesClippy "sessions-come-back-passes-clippy" (
