@@ -1975,6 +1975,11 @@ ShellRoot {
         const session = (busy, said, digest) => ({ address: "WANTD", title: "Session D",
             told: digest, presence: { session: "s-d", addresses: [], busy: busy,
                 wants: { kind: "question", said: said, since: "2026-11-10T12:00:00Z" } } });
+        // Lately's places are fixed while the launcher is open, and none
+        // leaves For You then, so these start shut, as Now hears it, and
+        // say when it opens (openedAt).
+        const wasOpenedAt = now.openedAt;
+        now.openedAt = Number.POSITIVE_INFINITY;
         Facts.all = [lately("mail", "Ann", () => ran = "mail"), lately("slack", "Bo", () => {})];
         Notices.history = told;
         WaitingOnYou.now = [toDo("Sign In")];
@@ -2003,10 +2008,6 @@ ShellRoot {
             JSON.stringify(keysOf(now.everything()).slice(1 + moment, 4 + moment).sort())
                 === JSON.stringify(asksNothing.slice().sort()),
             JSON.stringify([moment, keysOf(now.everything())]));
-        // Lately's places are fixed while the launcher is open, so these
-        // start shut, as Now hears it, and say when it opens (openedAt).
-        const wasOpenedAt = now.openedAt;
-        now.openedAt = Number.POSITIVE_INFINITY;
         // A critical notice unread is one to do, so Desktop, which holds
         // it, stands in For You while it waits, and leaves Now's rows.
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
@@ -2018,11 +2019,12 @@ ShellRoot {
                 && now.leadsTo("notices")[1].key === "on:waiting:desktop"
                 && now.leadsTo("notices").length === 2,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
-        // Read while Joel looks, it's held still, and Desktop with it, so
-        // the place he stands in doesn't leave For You under him.
+        // Read elsewhere while Joel looks, which Lately doesn't hold still,
+        // it no longer waits, but Desktop keeps the place he found it in.
         now.openedAt = Date.now() - 1000;
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
-            urgency: "critical", read: true, readAt: Date.now() }].concat(told);
+            urgency: "critical", read: true, readAt: Date.now(), readHow: "read on the phone" }]
+            .concat(told);
         expect("a critical notice read while the launcher's open keeps Desktop in For You",
             keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
         // Withdrawn by its sender, or woken back onto the screen, it no
@@ -2038,19 +2040,27 @@ ShellRoot {
         expect("a critical notice woken onto the screen while it's open keeps Desktop in For You",
             keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
         now.openedAt = Number.POSITIVE_INFINITY;
-        // Opened with its card up, Desktop stands in Now's rows, and stays
-        // there once the card's put away unread, so On Screen's climb goes
-        // where Desktop still stands.
+        // Opened with its card up, Desktop stands in Now's rows. Once the
+        // card's put away unread it waits, so Desktop comes into For You,
+        // which counts it, but not while Joel stands inside Desktop.
         expect("a critical notice with its card up leaves Desktop in Now's rows",
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
         now.openedAt = Date.now();
+        const wasHeld = theLauncher.held;
+        theLauncher.held = [{ row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
         Notices.live = {};
-        expect("a critical card put away while the launcher's open leaves Desktop in Now's rows",
+        expect("a critical card put away while Joel's inside Desktop leaves it in Now's rows",
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
+        theLauncher.held = [];
+        expect("and once he steps out, Desktop comes into For You, which counts it",
+            keysOf(inForYou()).includes("on:waiting:desktop")
+                && !keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        theLauncher.held = wasHeld;
         now.openedAt = Number.POSITIVE_INFINITY;
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
             urgency: "critical", read: true, readAt: Date.now() }].concat(told);
@@ -2067,6 +2077,14 @@ ShellRoot {
                 && !keysOf(now.everything()).includes("on:slack")
                 && now.leadsTo("notices").length === 1,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // Slack's daemon answering, its notices stand for nothing in its
+        // row, but a critical one still counts, so its row comes too.
+        Facts.all = [lately("mail", "Ann", () => ran = "mail"), Object.assign(
+            lately("slack", "Bo", () => {}), { piece: Object.assign(lately("slack", "Bo",
+                () => {}).piece, { answers: true }) })];
+        expect("a critical Slack notice while Slack's daemon answers brings Slack's row too",
+            keysOf(inForYou()).includes("on:slack"), JSON.stringify(keysOf(inForYou())));
+        Facts.all = [lately("mail", "Ann", () => ran = "mail"), lately("slack", "Bo", () => {})];
         Notices.history = told;
         expect("once it's gone, Slack's row goes back to Now's, and Super+N to Desktop there",
             !keysOf(inForYou()).includes("on:slack")

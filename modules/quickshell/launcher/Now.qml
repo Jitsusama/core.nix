@@ -2248,30 +2248,49 @@ Provider {
         return latelyPlaced[row.forYou?.source] === true;
     }
     // Which sources hold a critical notice unread, each asking its own
-    // notices as it holds them by the tray's rule (Holding.js's held), so
-    // a critical one Slack's row holds lifts Slack's row, not Desktop.
+    // notices by the tray's rule (Holding.js's held), so a critical one of
+    // Slack's lifts Slack's row, not Desktop. They're asked whether or not
+    // a source's daemon answers, as the tray counts them.
     readonly property var latelyCritical: {
         const onScreen = Object.keys(Notices.live).filter(id => !(id in Notices.resting));
+        const of = Lately.held(latelyNotices, []);
         const up = {};
         for (const source of Lately.SOURCES)
-            up[source] = Holding.held({ notices: noticesOf[source] ?? [], onScreen: onScreen })
+            up[source] = Holding.held({ notices: of[source] ?? [], onScreen: onScreen })
                 .notices.length > 0;
         return up;
     }
-    // Where Lately's rows stand, fixed while the launcher is open, so a
-    // notice read, withdrawn, woken onto the screen or put away while Joel
-    // looks never moves the row he stands in, or the one On Screen climbs
-    // to; the next opening places them again. One that comes while it's
-    // open is counted at once, its row moving at the next opening.
+    // Where Lately's rows stand. While the launcher is open a row comes
+    // into For You when one of its notices turns critical, so what For
+    // You counts it lists, but not while Joel stands inside that row, and
+    // none leaves until the next opening, so a notice read, withdrawn,
+    // woken onto the screen or put away never moves it out from under
+    // him. A row left holding nothing still goes (Lately.js's bands).
     // Never bound, since a binding would follow every notice while open.
     property var latelyPlaced: ({})
     onLatelyCriticalChanged: replaceLately()
     onOpenedAtChanged: replaceLately()
+    Connections {
+        target: provider.launcher
+        ignoreUnknownSignals: true
+
+        function onHeldChanged() {
+            provider.replaceLately();
+        }
+    }
     function replaceLately() {
-        if (openedAt !== Number.POSITIVE_INFINITY)
+        // Asked as the shell starts too, before latelyCritical is first read.
+        const critical = latelyCritical;
+        if (critical === undefined)
             return;
-        if (Lately.SOURCES.some(source => latelyPlaced[source] !== latelyCritical[source]))
-            latelyPlaced = latelyCritical;
+        const shut = openedAt === Number.POSITIVE_INFINITY;
+        const inside = (launcher?.held ?? []).map(step => step.row?.forYou?.source);
+        const placed = {};
+        for (const source of Lately.SOURCES)
+            placed[source] = shut ? critical[source] : latelyPlaced[source] === true
+                || (critical[source] === true && !inside.includes(source));
+        if (Lately.SOURCES.some(source => latelyPlaced[source] !== placed[source]))
+            latelyPlaced = placed;
     }
 
     // What came for Joel, Lately, in Now's own rows after the moment's, or
