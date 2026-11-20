@@ -95,12 +95,20 @@ holder() {
 # Each process's name is read by the shell itself, since a machine runs
 # thousands, and only Chrome's maps are searched. A live Chrome process
 # whose maps can't be read counts as mapping the profile, since what
-# can't be seen can't be ruled out.
+# can't be seen can't be ruled out. Only this account's count, by the
+# real user its status names, since another's can't be this profile's.
 quitting() {
-  local proc comm found
+  local proc comm key uid found
   for proc in /proc/[0-9]*; do
     read -r comm 2>/dev/null <"$proc/comm" || continue
     [ "$comm" = chrome ] || continue
+    uid=
+    {
+      while read -r key uid _; do
+        [ "$key" != Uid: ] || break
+      done <"$proc/status"
+    } 2>/dev/null || continue
+    [ "$uid" = "$UID" ] || continue
     found=0
     grep -qF " $real/" "$proc/maps" 2>/dev/null || found=$?
     if [ "$found" = 0 ] || { [ "$found" = 2 ] && [ -e "$proc" ]; }; then
@@ -144,7 +152,7 @@ while :; do
     chrome=$(held)
     if [ -n "$chrome" ]; then
       echo "$chrome holds the profile, so $folder and those after it stay on the disk"
-      echo "until Chrome quits and this runs again"
+      echo "until this runs again, as Chrome next quits or at the next login"
       break
     fi
     # What was there is a cache Chrome fills again, or its histograms, which
