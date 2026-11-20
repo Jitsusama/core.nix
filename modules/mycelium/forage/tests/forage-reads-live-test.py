@@ -53,8 +53,9 @@ NEED = "a <b>calm</b> field"
 CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # What a first visit to the forage page may cost, drawn from the stand-in's cells. Its files sit
 # at what the page asks for now, on purpose: each module is one more file a first visit waits
-# on, so splitting one out raises this as a choice rather than slipping past it.
-BUDGET = Budget(files=22, kilobytes=545, elements=255)
+# on, so splitting one out raises this as a choice rather than slipping past it. The kit's
+# cell.ts is the 23rd, the one way every site names a cell.
+BUDGET = Budget(files=23, kilobytes=545, elements=255)
 
 
 @pytest.fixture
