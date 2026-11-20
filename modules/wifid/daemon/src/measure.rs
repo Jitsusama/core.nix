@@ -81,6 +81,8 @@ pub struct Counts {
     pub retries: u32,
     pub failed: u32,
     pub signal: Option<i32>,
+    /// The kernel's average of the signal, steadier than one frame's.
+    pub average: Option<i32>,
     /// Bytes received and sent since the card joined, where the kernel
     /// says both.
     pub moved: Option<u64>,
@@ -244,8 +246,10 @@ impl Measures {
 
     /// How many best-effort echoes through the access point were lost
     /// within `within` of now, those taken while its card looked for
-    /// networks aside, and its signal as the kernel last said it, for
-    /// whether a call's link is fading (fading.rs).
+    /// networks aside, and its signal as the kernel last said it within
+    /// then, its average where it says one, for whether a call's link is
+    /// fading (fading.rs). A reading older than that says nothing of the
+    /// link now.
     pub fn lately(&self, point: &str, now: Instant, within: Duration) -> (usize, Option<i32>) {
         let Some(kept) = self.points.get(point) else {
             return (0, None);
@@ -257,7 +261,11 @@ impl Measures {
             .filter(|(at, echo)| now.duration_since(*at) <= within && *echo == Echo::Lost)
             .filter(|(at, _)| !looking(at))
             .count();
-        let signal = kept.counts.back().and_then(|(_, counts)| counts.signal);
+        let signal = kept
+            .counts
+            .back()
+            .filter(|(at, _)| now.duration_since(*at) <= within)
+            .and_then(|(_, counts)| counts.average.or(counts.signal));
         (lost, signal)
     }
 
@@ -364,7 +372,8 @@ pub async fn follow(
                     for on in &joined {
                         let around = state.borrow().around(&on.card);
                         let chooser = choosers.entry(on.card.clone()).or_default();
-                        moves::give_way(chooser, now, on, &around, &measures, (&asks, &state));
+                        let with = (&asks, &state, &looked);
+                        moves::give_way(chooser, now, on, &around, &measures, with);
                     }
                 }
             }
@@ -598,6 +607,12 @@ async fn measure(
                         class.name()
                     );
                     sockets.close(class);
+                    // A best-effort echo that couldn't be sent is lost as
+                    // surely as one unanswered, and a call's fading counts
+                    // it so.
+                    if class == Class::BestEffort {
+                        measures.echoed_as(class, &on.point, Instant::now(), Echo::Lost);
+                    }
                 }
             }
         }
@@ -631,6 +646,7 @@ fn counted(station: &Station) -> Option<Counts> {
         retries: station.retries?,
         failed: station.failed?,
         signal: station.signal,
+        average: station.average,
         moved: station
             .received
             .bytes
@@ -897,6 +913,7 @@ pub(crate) mod tests {
             retries,
             failed,
             signal: Some(-47),
+            average: None,
             moved: None,
             link: None,
         }
@@ -947,6 +964,24 @@ pub(crate) mod tests {
             "those from 5 s on, and the kernel's signal"
         );
         assert_eq!(unmeasured, (0, None), "nothing of a point not measured");
+    }
+
+    #[test]
+    fn lately_says_the_kernel_s_average_signal_and_none_from_an_old_reading() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        let averaged = Counts {
+            average: Some(-70),
+            ..counts(10, 0, 0)
+        };
+        kept.counted(DESK, start, averaged);
+        let within = Duration::from_secs(10);
+
+        let fresh = kept.lately(DESK, start + Duration::from_secs(10), within);
+        let old = kept.lately(DESK, start + Duration::from_secs(11), within);
+
+        assert_eq!(fresh, (0, Some(-70)), "the average, not one frame's -47");
+        assert_eq!(old, (0, None), "a reading 11 s old says nothing of now");
     }
 
     #[test]
