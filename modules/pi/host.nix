@@ -435,11 +435,16 @@ in
       lib.types.submodule {
         options = {
           command = lib.mkOption {
-            type = lib.types.nonEmptyListOf lib.types.str;
+            # A bare name would be looked up on the host's PATH, which a
+            # realm's own folders lead.
+            type = lib.types.addCheck (lib.types.nonEmptyListOf lib.types.str) (
+              command: lib.hasPrefix "/" (lib.head command)
+            );
             description = ''
-              A command that exits 0 while a host mustn't restart itself and 1
-              while it may. Any other exit, or none within 15 s, holds the
-              restart too, since it couldn't tell.
+              A command, its program named by an absolute path, that exits 0
+              while a host mustn't restart itself and 1 while it may. Any
+              other exit, or none within 15 s, holds the restart too, since it
+              couldn't tell.
             '';
           };
           why = lib.mkOption {
@@ -452,10 +457,10 @@ in
     default = [ ];
     description = ''
       What else a pi host's own restart, onto a new pi or harness or for
-      its heap, waits out, beside a call being on, which it always waits
-      out. The host looks again each minute and says why it waits. Only a
-      heap that has nearly run out restarts anyway, and a restart asked of
-      systemd by hand never waits.
+      its heap, waits out, beside a call being on here or on another of the
+      person's machines, which comes first. The host looks again each
+      minute and says why it waits. Only a heap that has nearly run out
+      restarts anyway, and a restart asked of systemd by hand never waits.
     '';
   };
 

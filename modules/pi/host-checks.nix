@@ -49,69 +49,91 @@ in
 {
   # A host's own restart waits out a call, always, and what a machine adds,
   # such as a meeting being near, in the order given, each with its words:
-  # read back from the unit's environment as the host reads it, unquoted
-  # and with systemd's doubled % made single.
+  # read back from each kind's unit environment as the host reads it,
+  # unquoted and with systemd's doubled % made single. The path holds a %,
+  # a quote and a backslash, so each layer of escaping is read through.
   pi-hosts-restart-waits-on-calls =
     let
       runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
-      named = lib.removeSuffix "\"" (
-        lib.removePrefix ''"PI_HOST_RESTART_WAITS_ON='' (
-          lib.findFirst (lib.hasPrefix ''"PI_HOST_RESTART_WAITS_ON='') "none" (
-            lib.toList
-              (account (bareNixos [
-                self.nixosModules.workstation
+      calls = ''/home/someone/100% "Calls" \ kept'';
+      services =
+        (account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.pi = {
+              hosts.one = {
+                pi = "${runtime}/lib/node_modules/pi";
+                node = "${pkgs.emptyDirectory}/node";
+                proof = proofOf { inherit runtime; };
+              };
+              hostRestartWaitsWhile = [
                 {
-                  home-manager.users.someone.jitsusama.pi = {
-                    hosts.one = {
-                      pi = "${runtime}/lib/node_modules/pi";
-                      node = "${pkgs.emptyDirectory}/node";
-                      proof = proofOf { inherit runtime; };
-                    };
-                    hostRestartWaitsWhile = [
-                      {
-                        command = [
-                          "/bin/a-meeting-is-near"
-                          "/home/someone/100% Calls"
-                        ];
-                        why = "a meeting is near";
-                      }
-                    ];
-                  };
+                  command = [
+                    "/bin/a-meeting-is-near"
+                    calls
+                  ];
+                  why = ''a "meeting" is near'';
                 }
-              ])).systemd.user.services.pi-host-one-background.Service.Environment
-          )
-        )
-      );
-      probes = builtins.fromJSON (
-        lib.replaceStrings
-          [
-            ''\"''
-            ''\\''
-            "%%"
-          ]
-          [
-            ''"''
-            ''\''
-            "%"
-          ]
-          (builtins.unsafeDiscardStringContext named)
-      );
-    in
-    holds "pi-hosts-restart-waits-on-calls"
-      "A pi host's own restart doesn't wait out a call, or what a machine adds, or names it in another order or in words the host can't read."
-      (
-        lib.length probes == 2
+              ];
+            };
+          }
+        ])).systemd.user.services;
+      # The variable's quoted entry in a kind's unit, or null with none.
+      named =
+        kind:
+        lib.findFirst (lib.hasPrefix ''"PI_HOST_RESTART_WAITS_ON='') null (
+          lib.toList services."pi-host-one-${kind}".Service.Environment
+        );
+      probesOf =
+        entry:
+        builtins.fromJSON (
+          lib.replaceStrings
+            [
+              ''\"''
+              ''\\''
+              "%%"
+            ]
+            [
+              ''"''
+              ''\''
+              "%"
+            ]
+            (
+              builtins.unsafeDiscardStringContext (
+                lib.removeSuffix "\"" (lib.removePrefix ''"PI_HOST_RESTART_WAITS_ON='' entry)
+              )
+            )
+        );
+      waitsRight =
+        kind:
+        let
+          entry = named kind;
+          probes = probesOf entry;
+        in
+        entry != null
+        # systemd would read a lone % as a specifier.
+        && lib.hasInfix "100%% " entry
+        && !(lib.hasInfix "100% " entry)
+        && lib.length probes == 2
         && (lib.head probes)."while" == "a call is on"
         && lib.hasSuffix "/bin/a-call-is-on" (lib.head (lib.head probes).run)
         && lib.length (lib.head probes).run == 1
         &&
           lib.last probes == {
-            "while" = "a meeting is near";
+            "while" = ''a "meeting" is near'';
             run = [
               "/bin/a-meeting-is-near"
-              "/home/someone/100% Calls"
+              calls
             ];
-          }
+          };
+    in
+    holds "pi-hosts-restart-waits-on-calls"
+      "A pi host's own restart doesn't wait out a call, or what a machine adds, or names it in another order, unescaped for systemd, or in words the host can't read."
+      (
+        lib.all waitsRight [
+          "attended"
+          "background"
+        ]
       );
 
   # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
