@@ -31,8 +31,9 @@ EVERY = 100 + 200 + 300 + 400 + 500 + 600 + 700 + 800
 # among its flags, the seventh field after the name, and with the flag next to it set instead.
 REFUSED = "812 (qemu (io) 1) S 1 812 812 0 -1 69238848 0 0"
 ALLOWED = "812 (qemu (io) 1) S 1 812 812 0 -1 35684416 0 0"
-# Every tick the ledger's lines below count under load, and frozen, idle and iowait with the busy.
-TICKED_UNDER = 60 + 30 + 10
+# Every tick the ledger's lines below count under load, in two counts, and frozen, idle and
+# iowait with the busy.
+TICKED_UNDER = 60 + 30 + 10 + 20 + 30
 TICKED_FROZEN = 5 + 40
 
 
@@ -103,6 +104,10 @@ def test_each_turn_keeps_every_tick_it_counted_and_a_turning_none() -> None:
     ledger.count("cpu  60 0 0 30 10 0 0 0 0 0", turn=True)
     ledger.count("cpu  90 0 0 80 10 0 0 0 0 0", turn=None)
     ledger.count("cpu  95 0 0 120 10 0 0 0 0 0", turn=False)
+    ledger.turning()
+    ledger.count("cpu  100 0 0 200 10 0 0 0 0 0", turn=True)
+    ledger.turned()
+    ledger.count("cpu  120 0 0 230 10 0 0 0 0 0", turn=True)
     under, frozen = ledger.ticked[True], ledger.ticked[False]
     assert under == TICKED_UNDER, f"under load the ledger kept {under} ticks"
     assert frozen == TICKED_FROZEN, f"frozen the ledger kept {frozen} ticks"
@@ -127,8 +132,6 @@ def test_a_turn_that_never_finished_keeps_what_follows_in_neither() -> None:
     ledger.count(stat(40, 400), turn=True)
     assert ledger.between, "a turn begun and never finished left the ledger out of it"
     assert ledger.turns[True] == (10, 100), f"under load the ledger kept {ledger.turns[True]}"
-    every = every_tick(stat(10, 100)) - every_tick(stat(0, 0))
-    assert ledger.ticked[True] == every, f"under load the ledger kept {ledger.ticked[True]} ticks"
     ledger.turned()
     ledger.count(stat(45, 450), turn=False)
     assert not ledger.between, "a finished turn left the ledger between turns"

@@ -112,10 +112,12 @@ GAUGING = 10
 # a little over 10 s, of about 4300 the four could.
 HELD_BUSY = 0.75
 # The ticks /proc/stat counts a processor each second, and the fewest the four may count while
-# held, half what they would in GAUGING seconds, so a window the guest stopped counting in fails
-# as that rather than passing on a few ticks. A slow read only lengthens the window.
+# held, a quarter of what they would in GAUGING seconds, so a window the guest stopped counting
+# in fails as that rather than passing on a few ticks. A guest blind to steal, held to two of
+# four, would count about half, so it's still the bar on what was stolen that fails it. A slow
+# read only lengthens the window, and time the builder takes in it the guest counts as stolen.
 USER_HZ = 100
-HELD_TICKS = PROCESSORS * GAUGING * USER_HZ // 2
+HELD_TICKS = PROCESSORS * GAUGING * USER_HZ // 4
 # The passes holding the VM's threads may take, past which a hold still missing one fails as that.
 HOLDING = 5
 TAIL = 0.95
@@ -1103,11 +1105,14 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
             with contextlib.suppress(ProcessLookupError):
                 on = ",".join(map(str, sorted(os.sched_getaffinity(thread))))
                 held[on] = held.get(on, 0) + 1
-        # Those the kernel refuses to hold are counted, so a hold that missed them says so.
-        refused = sum(not holds for holds in threads.values())
+        # Those the kernel refuses to hold are named, so a hold that missed them says which.
+        refused: list[str] = []
+        for thread in (thread for thread, holds in threads.items() if not holds):
+            with contextlib.suppress(FileNotFoundError, ProcessLookupError):
+                refused.append(Path(f"/proc/{thread}/comm").read_text().strip())
         print(
             f"the VM's threads, by the builder's processors each may run on: {held},"
-            f" of the builder's {builders}, and {refused} the kernel lets no one hold"
+            f" of the builder's {builders}, and those the kernel lets no one hold: {refused}"
         )
         # A hold that didn't take fails as that, so the bar on what was stolen judges the count.
         holding = ",".join(map(str, builders[:HELD_TO]))
@@ -1126,7 +1131,7 @@ def test_the_guest_counts_what_a_builder_holding_it_back_takes(desktop: Desktop)
         hold_vm(started, builders)
     assert every >= HELD_TICKS, (
         f"held, the guest counted {every} ticks in {gauged:.1f} s, under the {HELD_TICKS} its"
-        " processors count in half the window"
+        f" processors count in a quarter of {GAUGING} s"
     )
     assert busy >= HELD_BUSY * every, (
         f"held, the guest's processors were busy {busy} of {every} ticks, under {HELD_BUSY:.0%}"

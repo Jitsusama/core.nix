@@ -92,7 +92,8 @@ class Ledger:
         """Start counting from the kernel's line as it stands."""
         self.last = ticks(stat)
         self.turns: dict[bool, tuple[int, int]] = {True: (0, 0), False: (0, 0)}
-        self.every = every_tick(stat)
+        # Every tick on the last line, as last holds its stolen and busy ones.
+        self.last_every = every_tick(stat)
         self.ticked: dict[bool, int] = {True: 0, False: 0}
         # Whether the load is between turns, from asking it to turn until it has.
         self.between = False
@@ -112,9 +113,9 @@ class Ledger:
         if turn is not None and not self.between:
             stolen, busy = self.turns[turn]
             self.turns[turn] = (stolen + now[0] - self.last[0], busy + now[1] - self.last[1])
-            self.ticked[turn] += every - self.every
+            self.ticked[turn] += every - self.last_every
         self.last = now
-        self.every = every
+        self.last_every = every
 
     def said(self) -> str:
         """Say each turn's stolen and busy ticks, and the share they give, if any."""

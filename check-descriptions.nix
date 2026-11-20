@@ -86,8 +86,8 @@
     turn they were counted in and those while the load turned, or after a turn that never
     finished, in neither, each turn keeps every tick it counted, idle with the busy, so its busy
     ones weigh against the guest's own clock, a thread whose flags carry PF_NO_SETAFFINITY, read
-    past a name holding parentheses, is one the hold passes over, and what a subtest says names
-    each turn's ticks and the share, or no share when a turn had no busy ticks
+    past a name holding parentheses, reads as one the kernel won't let be held, and what a
+    subtest says names each turn's ticks and the share, or no share when a turn had no busy ticks
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
