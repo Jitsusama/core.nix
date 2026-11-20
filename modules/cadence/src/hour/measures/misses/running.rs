@@ -222,7 +222,9 @@ fn hosts_lack(
     if reaches.runtime && pin.is_none() {
         return Some("cadence can't see what the pi hosts load");
     }
-    let hosts = hosts?;
+    let Some(hosts) = hosts else {
+        return Some("cadence can't list the pi hosts");
+    };
     if hosts.is_empty() {
         return Some("no pi host runs to load it");
     }
