@@ -4220,6 +4220,62 @@ def test_each_eero_heads_the_devices_on_it(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
+    """The Home Network's list, a gap above each eero, ends on a whole row where a key leaves it.
+
+    It's drawn in home's card, which keeps one shape, so its gaps left its last row cut at the
+    foot. Its view rests on a row's top, draws only the rows wholly in it, and draws the row a
+    move lands on (Y2YBTS, 2026-11-20 [95c35e88]).
+    """
+    shell.answer("eero")
+    shell.launcher_until(functools.partial(selecting, "Home Network"))
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Study" in shown["rows"])
+    shell.normal()
+
+    # inView reads whole bands and not what's hidden, so a view that hid a row it holds whole
+    # would draw fewer than it spans.
+    def rested(shown: Json) -> bool:
+        return bool(
+            shown["cut"] == []
+            and shown["restsOnARow"]
+            and len(shown["gutter"]["numbers"]) == shown["drawnRows"]
+            and shown["drawnRows"] >= shown["inView"]["bottom"] - shown["inView"]["top"] + 1
+        )
+
+    def parts(shown: Json) -> tuple[object, ...]:
+        return (
+            shown["count"],
+            shown["current"],
+            shown["cut"],
+            shown["restsOnARow"],
+            shown["gutter"]["numbers"],
+            shown["drawnRows"],
+            shown["inView"],
+        )
+
+    # Read again, so a state the opening only passed through doesn't count.
+    shell.launcher_until(rested)
+    opened = shell.showing()
+    assert rested(opened), parts(opened)
+    count = opened["count"]
+    assert count > 2 * opened["drawnRows"], parts(opened)
+    for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
+        # The cursor's number, absolute, is drawn only beside a row the view draws.
+        def landed(shown: Json, at: int = at) -> bool:
+            return bool(
+                shown["current"] == at
+                and shown["gutter"]["cursor"] == str(at + 1)
+                and rested(shown)
+            )
+
+        shell.send_chars(key)
+        shell.launcher_until(landed)
+        shown = shell.showing()
+        assert landed(shown), (key, *parts(shown))
+    shell.close_launcher()
+
+
 def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shell) -> None:
     """The Home Network's row in Network has its own drawer: whose, a lead, then its figures.
 

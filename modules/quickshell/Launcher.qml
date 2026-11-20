@@ -4605,7 +4605,7 @@ Scope {
                 break;
             // A heading, or a row the view's edge would cut and so isn't
             // drawn, has no number.
-            if (headings.length > 0 && (Headings.isHeading(matches[at]) || !list.draws(entry)))
+            if (shown === list && (Headings.isHeading(matches[at]) || !list.draws(entry)))
                 continue;
             placed.push({ at: headings.length > 0 ? Headings.rank(headings, at) : at,
                 base: shown.y + entry.y - from + entry.nameBaseline });
@@ -6667,6 +6667,11 @@ Scope {
     // Where the rows' headings stand, which name the rows under them and
     // are never a row (Headings.js): none, for nearly every list.
     readonly property var headingsAt: Headings.placesOf(matches)
+    // Whether the list's view rests whole, on a row's top and drawing only
+    // the rows wholly in it: one with headings, or a place's own with a gap
+    // (Headings.restsWhole); a find's rests as it always has, spaces alone
+    // being none. Unlike unheaded, which takes spaces for a find.
+    readonly property bool restsWhole: Headings.restsWhole(matches, typed)
     // Where the selection was, which it leaves a heading the way it went
     // from.
     property int currentWas: 0
@@ -14360,11 +14365,11 @@ Scope {
                             // And the widest any row has said there.
                             readonly property int sides: root.sidesWidest
                             boundsBehavior: Flickable.StopAtBounds
-                            // Where the wheel or a flick leaves a list with
-                            // headings, it rests on a row's top, as a step
-                            // does (Headings.rested).
+                            // Where the wheel or a flick leaves a list that
+                            // rests whole, it rests on a row's top, as a
+                            // step does (Headings.rested).
                             onMovementEnded: {
-                                if (root.headingsAt.length > 0)
+                                if (root.restsWhole)
                                     list.contentY = Headings.rested(list.contentY, list.headed());
                             }
                             // A row built past the view each way, so the
@@ -14740,12 +14745,12 @@ Scope {
                                 return Math.max(least, Math.min(to, most));
                             }
 
-                            // Room under the last row where the list has
-                            // headings, so at its end too its view rests on
-                            // a row's top (Headings.rested), the list's own
+                            // Room under the last row where the list rests
+                            // whole, so at its end too its view rests on a
+                            // row's top (Headings.rested), the list's own
                             // bounds holding it there: less than a row's,
                             // and never drawn on.
-                            bottomMargin: root.headingsAt.length > 0 ? list.restRoom() : 0
+                            bottomMargin: root.restsWhole ? list.restRoom() : 0
                             function restRoom() {
                                 const last = root.matches.length - 1;
                                 const most = last < 0 ? 0
@@ -14833,7 +14838,7 @@ Scope {
                             // Where the list stands to show a row, from
                             // where it stands, moving as little as it can.
                             function showing(at, from) {
-                                if (root.headingsAt.length > 0)
+                                if (root.restsWhole)
                                     return Headings.rested(list.clamped(Headings.showing(at,
                                         from, list.headed())), list.headed());
                                 const top = list.rowY(at);
@@ -14842,16 +14847,15 @@ Scope {
                                     : bottom > from + list.height ? bottom - list.height : from);
                             }
 
-                            // The list as Headings reads it, to place a
-                            // view among headings.
                             // Whether the list draws `entry` where the view
-                            // stands: always without headings, and with them
-                            // only with what it draws whole, a heading only
-                            // with its first row's too. The gutter asks it
-                            // too, as the view moves and before the rows'
-                            // own bindings have caught up.
+                            // stands: always where it doesn't rest whole,
+                            // and where it does only with what it draws
+                            // whole, a heading only with its first row's
+                            // too. The gutter asks it too, as the view
+                            // moves and before the rows' own bindings have
+                            // caught up.
                             function draws(entry) {
-                                if (root.headingsAt.length === 0 || entry.aside)
+                                if (!root.restsWhole || entry.aside)
                                     return true;
                                 const span = list.extentOf(entry);
                                 const next = entry.index + 1;
@@ -14880,6 +14884,8 @@ Scope {
                                 return { from: top + choice.drawnFrom, to: top + choice.drawnTo };
                             }
 
+                            // The list as Headings reads it, to place a
+                            // view that rests whole.
                             function headed() {
                                 return {
                                     height: list.height,
@@ -14891,18 +14897,18 @@ Scope {
                             }
                             // The rows drawn but cut by the view, by their
                             // place, judged by what each draws where the
-                            // list has headings: none, there.
+                            // list rests whole: none, there.
                             function cut() {
                                 const from = list.contentY;
                                 const cuts = [];
-                                const headed = root.headingsAt.length > 0;
+                                const whole = root.restsWhole;
                                 for (let at = 0; at < root.matches.length; at += 1) {
                                     const entry = list.itemAtIndex(at);
                                     if (entry === null || entry.opacity === 0)
                                         continue;
-                                    const span = headed ? list.extentOf(entry) : null;
-                                    const top = headed ? span.from : entry.y;
-                                    const bottom = headed ? span.to : top + entry.height;
+                                    const span = whole ? list.extentOf(entry) : null;
+                                    const top = whole ? span.from : entry.y;
+                                    const bottom = whole ? span.to : top + entry.height;
                                     if (bottom > from + 0.5 && top < from + list.height - 0.5
                                         && (top < from - 0.5 || bottom > from + list.height + 0.5))
                                         cuts.push(at);
@@ -15063,7 +15069,7 @@ Scope {
                                 width: list.width
                                 height: root.tallOf(modelData, entry.index)
                                 // Drawn only wholly in view where the list
-                                // has headings, and a heading only with its
+                                // rests whole, and a heading only with its
                                 // first row, so the view never rests with a
                                 // row or a heading cut (VKCF3Z [c09d8222]).
                                 opacity: entry.whole ? 1 : 0
