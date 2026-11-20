@@ -121,10 +121,11 @@ fn health_ends_no_sooner_than_it_has_run_long_enough_however_its_followers_end()
 }
 
 #[test]
-fn a_stop_before_the_first_tick_leaves_the_day_as_the_last_run_wrote_it() {
+fn a_stop_before_the_first_tick_writes_no_day() {
     // A line a second, as the day's replay sends them, and a stop at the
     // clock's tenth look, four lines in and well within the half minute,
-    // whose day so far would be written over the whole one on disk.
+    // whose day so far would be written over any whole one a last run
+    // kept on disk.
     let Outcome {
         result,
         unread,
@@ -141,6 +142,33 @@ fn a_stop_before_the_first_tick_leaves_the_day_as_the_last_run_wrote_it() {
         result.is_ok() && unread == 26 && today.is_none(),
         "a stop in the replay ended the run with {unread} unread, writing a day: {}",
         today.is_some()
+    );
+}
+
+#[test]
+fn a_stop_cuts_short_a_wait_for_a_line_from_a_sender_it_leaves() {
+    // As the day's replay holds its senders past a stop while its merge
+    // sends nothing, so only the run's own looks for a stop end it, in
+    // real time, well within the half minute it would wait for a line.
+    let into = tempfile::tempdir().expect("a folder");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+    let (send, read) = mpsc::channel();
+    let start = Instant::now();
+    let result = run(
+        &mut follower,
+        &read,
+        || (Instant::now(), wall(start.elapsed().as_secs())),
+        |_| {},
+        Looked::default,
+        || start.elapsed() >= Duration::from_millis(100),
+        &|_| {},
+        &|_| {},
+    );
+    let took = start.elapsed();
+    drop(send);
+    assert!(
+        result.is_ok() && took < Duration::from_secs(2),
+        "a stop waited {took:?} for a line from a sender it left: {result:?}"
     );
 }
 

@@ -33,14 +33,16 @@ in
       ExecStart = "${lib.getExe package} follow";
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
       # Each time it starts, after a fault or a stop, it reads today's
-      # journals again from the day's start. It writes the day as it ends,
-      # by a follower's end or a stop it has five seconds to write in, so
-      # what it saw itself since its last write, as the lid and the disk,
-      # and the days before it held to try again, are lost only to a kill,
-      # a crash, a second stop or a day it can't write. A stop in its first
-      # half minute writes nothing, as the replay may be under way. A stop
-      # just past midnight also loses the old day's journal lines it hadn't
-      # read yet, as a start reads only today's.
+      # journals again from the day's start. What it sees itself, as the
+      # lid and the disk, it writes each half minute. It writes the day as
+      # it ends, by a follower's end or a stop it has three seconds to
+      # write in, so the days before it held to try again, and the short
+      # spells of failed writes it kept unsaid, are lost only to a kill, a
+      # crash, a second stop or a day it can't write. A stop before its
+      # first half minute's tick writes only the days it holds, as the
+      # replay may be under way. A stop just past midnight also loses the
+      # old day's journal lines it hadn't read yet, as a start reads only
+      # today's.
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";

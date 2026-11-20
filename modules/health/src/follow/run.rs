@@ -9,6 +9,12 @@ use super::spell::{self, Spell};
 use super::{EVERY, Follower, SESSIONS_A_TICK, SETTLED};
 use crate::lid::Looked;
 
+/// How long a wait for a line goes before `run` looks for a stop again:
+/// the day's replay holds senders a stop doesn't end, as its histories
+/// aren't followers, and its merge may send nothing for a while, so a
+/// wait for its next line could outlast the stop's `WRITES_WITHIN`.
+const STOP_HEARD_WITHIN: Duration = Duration::from_millis(500);
+
 /// Take the followers' lines until one has ended, which its `None` says,
 /// and health has run `SETTLED` by `now`, the awake clock and the wall's,
 /// in microseconds, and every half minute, however busy the journals are,
@@ -26,9 +32,9 @@ use crate::lid::Looked;
 /// the day and telling what a spell kept unsaid, as any end does; but
 /// before its first tick it writes only the days it holds, since the day's
 /// replay may be under way, and its day so far would be written over the
-/// whole one the last run kept, which the next start replays anyway. A
-/// stop ends the followers, so their senders go and a wait for a line
-/// ends at once.
+/// whole one the last run kept, which the next start replays anyway. It
+/// waits for a line no longer than `STOP_HEARD_WITHIN` at a time, so a
+/// stop is heard however quiet the journals are.
 ///
 /// A day that can't be written, as on a full disk, is said through `say`,
 /// and once written again through `notice`, as `Spell` decides. Health
@@ -68,7 +74,7 @@ pub(super) fn run(
         let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
         let mut refused = None;
         if hearing {
-            match read.recv_timeout(left) {
+            match read.recv_timeout(left.min(STOP_HEARD_WITHIN)) {
                 // Only a new day's line writes, and only a write that
                 // failed says so, so a line taken without one leaves the
                 // spell as it was.
@@ -114,8 +120,10 @@ pub(super) fn run(
             spell.tried(failed.as_ref(), at, wall, &follower.into, say, notice);
         }
     }
-    if stopped() && ticked == started && follower.held.is_empty() {
-        return Ok(());
+    if stopped() && ticked == started {
+        // Only the days held are written, as the day so far may be only
+        // the part of it the replay has sent yet.
+        follower.changed = false;
     }
     let written = spell.ending(follower.write(), &follower.into, notice);
     let lost = spell::losing(&follower.held);

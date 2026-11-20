@@ -59,8 +59,10 @@ pub const CAUGHT_WITHIN: Duration = Duration::from_millis(250);
 /// ended, so it writes the day, before it ends health all the same: a
 /// write takes milliseconds. A stop gives longer by default, systemd 90
 /// seconds and launchd 20, but a reboot gives the account's services 5 in
-/// all (`modules/systemd/nixos.nix`), so there the write had best be quick.
-const WRITES_WITHIN: Duration = Duration::from_secs(5);
+/// all (`modules/systemd/nixos.nix`), counted from before health hears of
+/// it, so this stays well under that, and a write that doesn't make it is
+/// said before the kill.
+const WRITES_WITHIN: Duration = Duration::from_secs(3);
 
 /// Whether `run` has returned, and the stop's thread and `rest` woken as
 /// it does or as a stop is caught.
