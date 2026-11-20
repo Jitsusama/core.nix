@@ -45,19 +45,30 @@ fill() {
   echo kept >"$profile/Default/History"
 }
 
+# Runs the command, failing rather than hanging the build on a run that
+# never ends: a run waits at most two half minutes, the give-up and its
+# last look, so two minutes is past any run that stops.
 run() {
+  local status=0
   # The command is the unit's, words split as systemd splits them.
   # shellcheck disable=SC2086
-  if ! $command >run.log 2>&1; then
+  timeout 120 $command >run.log 2>&1 || status=$?
+  if [ "$status" = 124 ]; then
+    echo "the account's command was still going two minutes into its $1 run, saying:"
+    cat run.log
+    exit 1
+  fi
+  if [ "$status" != 0 ]; then
     echo "the account's command fails on its $1 run, saying:"
     cat run.log
     exit 1
   fi
 }
 
-# A case that fails leaves its quitting stand-in waiting for this file, so
-# it's made as the test ends, however it ends.
-trap 'touch "$work/quit"' EXIT
+# A case that fails leaves its quitting stand-in waiting for this file, and
+# its running stand-in looping, so both end as the test ends, however it
+# ends.
+trap 'touch "$work/quit"; [ -z "${chrome-}" ] || kill "$chrome" 2>/dev/null || true' EXIT
 
 # Waits until a stand-in's process has taken Chrome's name, which it does a
 # moment after the fork.
@@ -280,7 +291,8 @@ until grep -q 'holds the profile' run.log 2>/dev/null; do
   # a minute to say it.
   sleep 0.1
 done
-# Half a minute of looks a second apart, less a few for a slow clock.
+# Half a minute of looks a second apart, less five seconds since the clock
+# counts whole seconds and the run starts a moment after it's read.
 if [ $((SECONDS - started)) -lt 25 ]; then
   echo "the command gave up on a quitting Chrome after $((SECONDS - started)) s, not half a minute"
   exit 1
