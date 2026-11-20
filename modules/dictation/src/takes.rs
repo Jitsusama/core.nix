@@ -630,11 +630,19 @@ mod tests {
                 quiet(2.0),
             ]
             .concat();
+            let takes = cut(&sound);
             assert_eq!(
-                cut(&sound).len(),
+                takes.len(),
                 1,
                 "the answer in the hiss, after {before} s of quiet and \
                  {into_a_frame} samples of a frame"
+            );
+            let answer = quiet(before).len() + RATE * 3 + into_a_frame + RATE * 7 / 2;
+            let take = &takes[0];
+            assert!(
+                take.start <= answer
+                    && take.start + take.samples.len() >= answer + voice(0.3, 150.0).len(),
+                "the whole answer, after {before} s of quiet"
             );
         }
     }
@@ -679,16 +687,48 @@ mod tests {
     }
 
     #[test]
+    fn a_lost_packet_adds_no_hiss_to_a_take() {
+        // The line's floor holds across the packets lost after a word,
+        // so its hiss after them is no more speech than before.
+        let sound = [
+            noise(3.0, 0.005, false),
+            voice(0.4, 150.0),
+            vec![0.0; FRAME * 2],
+            noise(3.0, 0.005, false),
+            quiet(1.0),
+        ]
+        .concat();
+        let takes = cut(&sound);
+        assert_eq!(takes.len(), 1, "the voice");
+        assert!(
+            seconds(takes[0].samples.len()) < 1.2,
+            "{}",
+            seconds(takes[0].samples.len())
+        );
+    }
+
+    #[test]
     fn words_with_nothing_between_are_a_take() {
         // A far end that gates its line sends nothing between words, so
-        // the words alone mustn't set the floor they're heard against.
-        let mut sound = vec![0.0; RATE * 2];
-        for _ in 0..6 {
-            sound.extend(voice(0.25, 150.0));
-            sound.extend(vec![0.0; RATE / 10]);
+        // the words alone mustn't set the floor they're heard against, nor
+        // a lone answer, whether or not the call was quiet before.
+        for before in [0.0, 2.0] {
+            let mut sound = [quiet(before), vec![0.0; RATE * 2]].concat();
+            for _ in 0..6 {
+                sound.extend(voice(0.25, 150.0));
+                sound.extend(vec![0.0; RATE / 10]);
+            }
+            sound.extend(vec![0.0; RATE * 2]);
+            assert_eq!(cut(&sound).len(), 1, "the words, after {before} s of quiet");
+            let answer = [
+                quiet(before),
+                vec![0.0; RATE * 2],
+                voice(0.3, 150.0),
+                vec![0.0; RATE * 2],
+            ]
+            .concat();
+            assert_eq!(cut(&answer).len(), 1, "the answer, after {before} s of quiet");
         }
-        sound.extend(vec![0.0; RATE * 2]);
-        assert_eq!(cut(&sound).len(), 1, "the words");
     }
 
     #[test]
