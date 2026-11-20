@@ -2021,15 +2021,42 @@ ShellRoot {
             urgency: "critical", read: true, readAt: Date.now() }].concat(told);
         expect("a critical notice read while the launcher's open keeps Desktop in For You",
             keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        // Withdrawn by its sender, or woken back onto the screen, it no
+        // longer waits, but Desktop keeps the place Joel found it in until
+        // the launcher closes, whatever moved the notice.
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, withdrawn: true, readAt: Date.now() }].concat(told);
+        expect("a critical notice withdrawn while the launcher's open keeps Desktop in For You",
+            keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: false }].concat(told);
+        Notices.live = { "1": {} };
+        expect("a critical notice woken onto the screen while it's open keeps Desktop in For You",
+            keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
         now.openedAt = Number.POSITIVE_INFINITY;
+        // Opened with its card up, Desktop stands in Now's rows, and stays
+        // there once the card's put away unread, so On Screen's climb goes
+        // where Desktop still stands.
+        now.openedAt = Date.now();
+        Notices.live = {};
+        expect("a critical card put away while the launcher's open leaves Desktop in Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        now.openedAt = Number.POSITIVE_INFINITY;
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now() }].concat(told);
         expect("and once the launcher's shut, Desktop goes back to Now's rows",
             !keysOf(inForYou()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
-        // A critical one Slack's row holds asks nothing of Desktop.
+        // A critical one Slack's row holds is one to do in Slack's row, so
+        // Slack's row stands in For You with it, and Desktop stays put.
         Notices.history = [{ id: 2, at: Date.now(), app: "Slack", summary: "Pager",
             urgency: "critical", read: false }].concat(told);
-        expect("a critical notice that isn't Desktop's leaves Desktop in Now's rows",
+        expect("a critical notice Slack's row holds brings Slack's row, not Desktop, to For You",
             !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(inForYou()).includes("on:slack")
+                && !keysOf(now.everything()).includes("on:slack")
                 && now.leadsTo("notices").length === 1,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
         Notices.history = told;
