@@ -315,7 +315,7 @@ fn plain(mut client: TcpStream, head: &http::Head, mut read: Vec<u8>) {
         Ok(framed) => framed,
         Err(why) => return refuse(client, 502, &format!("{authority} gave {why}")),
     };
-    let whole = pass_back(&mut client, &mut far, &answer, back, framed);
+    let whole = pass_back(&mut client, &mut far, &answer, back, &framed);
     drop(far);
     if whole {
         close(client);
@@ -405,7 +405,7 @@ fn pass_back(
     far: &mut TcpStream,
     answer: &http::Answer,
     mut back: Vec<u8>,
-    framed: Back,
+    framed: &Back,
 ) -> bool {
     let named = connection_names(&answer.headers);
     let mut head = format!("HTTP/1.1 {} {}\r\n", answer.status, answer.reason).into_bytes();
@@ -425,7 +425,7 @@ fn pass_back(
         head.extend_from_slice(b"\r\n");
     }
     let length = match framed {
-        Back::Length(length) => Some(length),
+        Back::Length(length) => Some(*length),
         // A HEAD's or 304's length says the body it stands for, which
         // a client may want; a 204 has none.
         Back::Empty if answer.status != 204 => {
@@ -436,7 +436,7 @@ fn pass_back(
     if let Some(length) = length {
         head.extend_from_slice(format!("Content-Length: {length}\r\n").as_bytes());
     }
-    if let Back::Chunked(codings) = &framed {
+    if let Back::Chunked(codings) = framed {
         head.extend_from_slice(format!("Transfer-Encoding: {codings}\r\n").as_bytes());
     }
     head.extend_from_slice(b"Connection: close\r\n\r\n");
@@ -445,7 +445,7 @@ fn pass_back(
     }
     match framed {
         Back::Empty => true,
-        Back::Length(length) => {
+        &Back::Length(length) => {
             let already = usize::try_from(length)
                 .unwrap_or(usize::MAX)
                 .min(back.len());
