@@ -592,7 +592,13 @@ mod tests {
             "the map drew cells alone · WCJQSG{HELD}map-cells wasn't read this hour"
         )];
         let (_, through) = compose("04:10", &[holding], &next, &BTreeMap::new(), "");
-        let (fourth, _) = compose("05:10", &[none.clone()], &through, &BTreeMap::new(), "");
+        let (fourth, _) = compose(
+            "05:10",
+            std::slice::from_ref(&none),
+            &through,
+            &BTreeMap::new(),
+            "",
+        );
         assert!(
             !fourth.contains("For Joel"),
             "a miss held an hour by its measure was told fixed a second time: {fourth}"
