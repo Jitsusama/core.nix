@@ -16,6 +16,7 @@ jq -e '.version == 1 and .sections.review == {"a": 1}
   and .sections."quest-workflow" == {"kept": true, "budgetWhenCapped": "a-budget"}' \
   "$file" > /dev/null \
   || {
-    echo "the harness's config lost a key or missed the declared one: $(cat "$file")"
+    written=$(< "$file")
+    echo "the harness's config lost a key or missed the declared one: $written"
     exit 1
   }
