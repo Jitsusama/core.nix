@@ -16,6 +16,7 @@ use terminal_kit::Room;
 use terminal_kit::ink::Pen;
 use terminal_kit::layout;
 
+use super::figures::unknown;
 use super::fit;
 
 /// What a run of text is, which the ink turns into the terminal's colour
@@ -160,6 +161,9 @@ struct Shared {
     after: Vec<usize>,
     gone: Vec<bool>,
     set: Vec<usize>,
+    /// Whether each shared column says nothing in every table, so one
+    /// table's dashes never take a column another has figures in.
+    silent: Vec<bool>,
 }
 
 impl Shared {
@@ -193,6 +197,9 @@ impl Shared {
             after: vec![0; columns],
             gone: vec![false; columns],
             set: vec![usize::MAX; columns],
+            silent: (0..columns)
+                .map(|at| tables.iter().all(|(_, table)| table.says_nothing(at)))
+                .collect(),
         };
         for (_, table) in &tables {
             let (wide, before, after) = table.widths();
@@ -453,8 +460,8 @@ impl Table {
         self.rows.push(Row::Across(line));
     }
 
-    /// Whether every row's cell in `column` is a dash, a missing figure,
-    /// in a table with at least one row.
+    /// Whether every row's cell in `column` is the dash a missing figure
+    /// shows, or no cell at all, in a table with at least one row.
     fn says_nothing(&self, column: usize) -> bool {
         let mut cells = self
             .rows
@@ -464,9 +471,16 @@ impl Table {
                 Row::Header(_) | Row::Across(_) => None,
             })
             .peekable();
-        cells.peek().is_some()
-            && cells
-                .all(|cell| cell.is_none_or(|cell| cell.iter().all(|run| run.text.trim() == "–")))
+        cells.peek().is_some() && cells.all(|cell| cell.is_none_or(|cell| *cell == unknown()))
+    }
+
+    /// Whether `column` says nothing: in this table alone, or for a column
+    /// it shares, in every table sharing it, since one gone goes from all.
+    fn silent(&self, column: usize, shared: Option<&Shared>) -> bool {
+        match shared {
+            Some(shared) if column < shared.columns => shared.silent[column],
+            _ => self.says_nothing(column),
+        }
     }
 
     /// The part of a cell its figure takes, its first run, and the part
@@ -510,7 +524,13 @@ impl Table {
     /// The columns kept in `cells`, and the width each is set at: whole
     /// columns go first, then the names shorten, then the last column. Only
     /// the columns `from` are set, the rest having gone already.
-    fn kept(&self, from: Vec<usize>, wide: &[usize], cells: usize) -> (Vec<usize>, Vec<usize>) {
+    fn kept(
+        &self,
+        from: Vec<usize>,
+        wide: &[usize],
+        cells: usize,
+        shared: Option<&Shared>,
+    ) -> (Vec<usize>, Vec<usize>) {
         let mut kept = from;
         let across = |kept: &[usize], at: &dyn Fn(usize) -> usize| {
             kept.iter().map(|column| at(*column)).sum::<usize>()
@@ -541,7 +561,7 @@ impl Table {
         let (silent, speaking): (Vec<&Vec<usize>>, Vec<&Vec<usize>>) = self
             .gives_way
             .iter()
-            .partition(|group| group.iter().all(|column| self.says_nothing(*column)));
+            .partition(|group| group.iter().all(|column| self.silent(*column, shared)));
         for group in silent.into_iter().chain(speaking) {
             if least(&kept) <= cells {
                 break;
@@ -596,7 +616,7 @@ impl Table {
             .filter(|at| shared.is_none_or(|shared| *at >= shared.columns || !shared.gone[*at]))
             .collect();
         let (kept, mut set) = match room.cells() {
-            Some(cells) => self.kept(from, &wide, cells.saturating_sub(indent)),
+            Some(cells) => self.kept(from, &wide, cells.saturating_sub(indent), shared),
             None => (from, wide),
         };
         if let Some(shared) = shared {
@@ -757,7 +777,6 @@ impl Ink {
 
 #[cfg(test)]
 mod tests {
-    use super::super::figures::unknown;
     use super::*;
 
     fn figure(value: &str, unit: &str) -> Line {
@@ -941,7 +960,10 @@ mod tests {
             .collect();
         assert_eq!(
             headers,
-            [vec!["device", "band", "speed"], vec!["device", "band", "last", "on"]],
+            [
+                vec!["device", "band", "speed"],
+                vec!["device", "band", "last", "on"]
+            ],
             "a band only the devices off lack gives way in its named place, so the devices on \
              keep theirs"
         );
