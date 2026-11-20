@@ -388,6 +388,13 @@ def test_a_card_whose_access_point_carries_slowly_moves_to_another_of_its_networ
         "wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:05:00",
         timeout=timedelta(seconds=30),
     )
+    # And says it got there, and how long that took, rather than only that it asked: on
+    # 16 Nov 2026 a move said as asked left the card 18 s on no network.
+    machine.wait_until_succeeds(
+        "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+        " | grep -qE '^wlan2 reached 02:00:00:00:05:00 [0-9]+ ms after it was asked'",
+        timeout=timedelta(seconds=30),
+    )
     wifid.holds_address("10.42.0.")
     machine.succeed("ip netns exec air tc qdisc del dev wlan0 root")
 

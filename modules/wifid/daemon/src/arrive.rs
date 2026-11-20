@@ -6,14 +6,19 @@
 //! didn't: the kernel had forgotten the access point, the card went back to
 //! scanning, and it was 18 s on no network with the journal saying it had
 //! moved. So each move is followed from the ask, through the card leaving
-//! the point it was on, to the card joined again, there or somewhere else,
-//! or back to looking for a network.
+//! the point it was on, to the card joined again, there or somewhere else.
+//! A card that gives up on the way is said lost as it does, and followed
+//! on, so where it lands is said too: that one rejoined another point.
 //!
 //! The time off the air runs from the first step away from the old point,
 //! as wpa_supplicant says it, to the card joined again. wpa_supplicant says
 //! a step some tens of milliseconds after the kernel takes it, and the card
 //! leaves the old point only once the new one's channel is tuned, so the
 //! time from the ask is said too: the link is down for no longer than that.
+//!
+//! A move whose end isn't seen, as when the card goes or wpa_supplicant
+//! says its steps too fast to tell apart, is forgotten after a while
+//! rather than closed by whatever the card does next.
 
 use std::collections::HashMap;
 
@@ -22,6 +27,14 @@ use tokio::time::{Duration, Instant};
 /// The steps wpa_supplicant says once a card has given up joining, for a
 /// move on its way to them that has failed.
 const GAVE_UP: [&str; 4] = ["disconnected", "inactive", "scanning", "interface_disabled"];
+
+/// The steps that take a card off the point it was on. A rekey's
+/// handshakes don't, since the card stays on its point meanwhile.
+const LEAVING: [&str; 3] = ["authenticating", "associating", "associated"];
+
+/// How long a move is followed. The move that failed took 18 s to land
+/// somewhere (2026-11-16), and a good one about 100 ms.
+const FOLLOWED: Duration = Duration::from_secs(30);
 
 /// Each card's move on its way, by the card's name.
 #[derive(Default)]
@@ -35,6 +48,8 @@ struct Move {
     asked: Instant,
     /// When it was first said to have left the point it was on.
     left: Option<Instant>,
+    /// Whether it's been said lost already.
+    lost: bool,
 }
 
 /// How a move ended.
@@ -53,12 +68,16 @@ pub enum Arrival {
         on: String,
         asked: Duration,
     },
+    /// It joined a point wifid can't name.
+    Unnamed { to: String, asked: Duration },
     /// It gave up joining, and is at this step.
     Lost {
         to: String,
         step: String,
         asked: Duration,
     },
+    /// Nothing said where it went while it was followed.
+    Unseen { to: String },
 }
 
 impl Arrivals {
@@ -67,56 +86,92 @@ impl Arrivals {
     pub fn asked(&mut self, card: &str, to: &str, now: Instant) {
         let to = to.to_owned();
         let asked = now;
-        self.moves.insert(
-            card.to_owned(),
-            Move {
-                to,
-                asked,
-                left: None,
-            },
-        );
+        let moved = Move {
+            to,
+            asked,
+            left: None,
+            lost: false,
+        };
+        self.moves.insert(card.to_owned(), moved);
     }
 
-    /// Forgets the card's move, as one wpa_supplicant refused never began.
+    /// Takes in that the card, already off its point and joining another
+    /// on its own, is now held to that access point, so wherever it joins
+    /// is to be judged by it.
+    pub fn heading(&mut self, card: &str, to: &str, now: Instant) {
+        let to = to.to_owned();
+        match self.moves.get_mut(card) {
+            Some(moving) => moving.to = to,
+            None => {
+                let moved = Move {
+                    to,
+                    asked: now,
+                    left: Some(now),
+                    lost: false,
+                };
+                self.moves.insert(card.to_owned(), moved);
+            }
+        }
+    }
+
+    /// Forgets the card's move, as one wpa_supplicant refused never began
+    /// and one whose card has gone can't end.
     pub fn forget(&mut self, card: &str) {
         self.moves.remove(card);
     }
 
     /// Takes in a step wpa_supplicant says the card is at, short of joined,
-    /// and says how its move ended if it has given up.
+    /// and says if its move has just given up, or was followed too long.
     pub fn step(&mut self, card: &str, step: &str, now: Instant) -> Option<Arrival> {
-        let on_its_way = self.moves.get_mut(card)?;
-        on_its_way.left.get_or_insert(now);
-        if !GAVE_UP.contains(&step) {
+        if let Some(unseen) = self.unseen(card, now) {
+            return unseen;
+        }
+        let moving = self.moves.get_mut(card)?;
+        let gave_up = GAVE_UP.contains(&step);
+        if gave_up || LEAVING.contains(&step) {
+            moving.left.get_or_insert(now);
+        }
+        if !gave_up || moving.lost {
             return None;
         }
-        let gone = self.moves.remove(card)?;
+        moving.lost = true;
         Some(Arrival::Lost {
-            to: gone.to,
+            to: moving.to.clone(),
             step: step.to_owned(),
-            asked: now - gone.asked,
+            asked: now - moving.asked,
         })
     }
 
-    /// Takes in that the card has joined that access point, and says how
-    /// its move ended, if it was moving.
-    pub fn joined(&mut self, card: &str, on: &str, now: Instant) -> Option<Arrival> {
+    /// Takes in that the card has joined a network, at that access point
+    /// where it can be named, and says how its move ended, if it was
+    /// moving.
+    pub fn joined(&mut self, card: &str, on: Option<&str>, now: Instant) -> Option<Arrival> {
+        if let Some(unseen) = self.unseen(card, now) {
+            return unseen;
+        }
         let done = self.moves.remove(card)?;
         let asked = now - done.asked;
-        if !done.to.eq_ignore_ascii_case(on) {
+        let to = done.to;
+        let Some(on) = on else {
+            return Some(Arrival::Unnamed { to, asked });
+        };
+        if !to.eq_ignore_ascii_case(on) {
             let on = on.to_owned();
-            return Some(Arrival::Elsewhere {
-                to: done.to,
-                on,
-                asked,
-            });
+            return Some(Arrival::Elsewhere { to, on, asked });
         }
         let off = done.left.map(|left| now - left);
-        Some(Arrival::Reached {
-            to: done.to,
-            asked,
-            off,
-        })
+        Some(Arrival::Reached { to, asked, off })
+    }
+
+    /// Ends the card's move if it's been followed too long, saying so where
+    /// it wasn't said lost already. None where it's still followed.
+    fn unseen(&mut self, card: &str, now: Instant) -> Option<Option<Arrival>> {
+        let moving = self.moves.get(card)?;
+        if now - moving.asked <= FOLLOWED {
+            return None;
+        }
+        let gone = self.moves.remove(card)?;
+        Some((!gone.lost).then_some(Arrival::Unseen { to: gone.to }))
     }
 }
 
@@ -137,9 +192,18 @@ impl Arrival {
                 "<4>{card} joined {on} rather than {to}, {} ms after it was asked",
                 asked.as_millis()
             ),
+            Arrival::Unnamed { to, asked } => format!(
+                "<4>{card} joined an access point wifid can't name, {} ms after it was asked \
+                 to move to {to}",
+                asked.as_millis()
+            ),
             Arrival::Lost { to, step, asked } => format!(
                 "<4>{card} didn't reach {to}: it was {step} {} ms after it was asked",
                 asked.as_millis()
+            ),
+            Arrival::Unseen { to } => format!(
+                "<4>{card}'s move to {to} wasn't seen to end within {} s",
+                FOLLOWED.as_secs()
             ),
         }
     }
@@ -151,87 +215,150 @@ mod tests {
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
+    const FAR: &str = "6c:ae:f6:ba:85:87";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
     }
 
+    /// Plays these steps, at so many ms after the ask, ending in a join at
+    /// that point, and gives every line said.
+    fn played(steps: &[(u64, &str)], joined: (u64, Option<&str>)) -> Vec<String> {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", FAR, now);
+        let mut said: Vec<_> = steps
+            .iter()
+            .filter_map(|&(at, step)| arrivals.step("wlan0", step, now + ms(at)))
+            .collect();
+        let (at, on) = joined;
+        said.extend(arrivals.joined("wlan0", on, now + ms(at)));
+        said.iter().map(|arrival| arrival.said("wlan0")).collect()
+    }
+
     #[test]
     fn a_move_that_arrives_says_how_long_from_the_ask_and_off_the_air() {
-        let mut arrivals = Arrivals::default();
-        let now = Instant::now();
-        arrivals.asked("wlan0", HALL, now);
+        // Each step of the move at 17:29:51 on 19 Nov 2026, as wifid said it.
+        let steps = [
+            (72, "authenticating"),
+            (84, "associating"),
+            (94, "associated"),
+        ];
+        let steps = [steps.as_slice(), &[(99, "4way_handshake")]].concat();
 
-        let left = arrivals.step("wlan0", "authenticating", now + ms(72));
-        let joining = arrivals.step("wlan0", "4way_handshake", now + ms(99));
-        let joined = arrivals.joined("wlan0", "6C:AE:F6:C1:84:28", now + ms(113));
+        let said = played(&steps, (113, Some("6C:AE:F6:BA:85:87")));
 
-        assert_eq!(left, None, "leaving isn't arriving");
-        assert_eq!(joining, None, "nor is a step on the way");
         assert_eq!(
-            joined,
-            Some(Arrival::Reached {
-                to: HALL.into(),
-                asked: ms(113),
-                off: Some(ms(41)),
-            }),
+            said,
+            [
+                "<6>wlan0 reached 6c:ae:f6:ba:85:87 113 ms after it was asked, \
+                 off the air 41 ms of them"
+            ],
             "timed from the ask, and from the first step away"
         );
-        let said = joined.map(|arrival| arrival.said("wlan0"));
+    }
+
+    #[test]
+    fn a_move_with_steps_said_together_still_arrives() {
+        // The move at 18:03:14 on 19 Nov 2026, associated said with the next.
+        let steps = [
+            (126, "authenticating"),
+            (129, "associating"),
+            (151, "4way_handshake"),
+        ];
+
+        let said = played(&steps, (166, Some(FAR)));
+
         assert_eq!(
-            said.as_deref(),
-            Some(
-                "<6>wlan0 reached 6c:ae:f6:c1:84:28 113 ms after it was asked, \
-                 off the air 41 ms of them"
-            )
+            said,
+            [
+                "<6>wlan0 reached 6c:ae:f6:ba:85:87 166 ms after it was asked, \
+                 off the air 40 ms of them"
+            ]
         );
     }
 
     #[test]
-    fn a_move_that_gives_up_says_so_once() {
-        let mut arrivals = Arrivals::default();
-        let now = Instant::now();
-        arrivals.asked("wlan0", HALL, now);
+    fn a_move_that_gives_up_is_said_lost_once_then_where_it_landed() {
+        // The move that failed at 05:10:41 on 16 Nov 2026: it went back to
+        // scanning, then rejoined the point it came from 18 s on.
+        let steps = [
+            (21, "authenticating"),
+            (201, "scanning"),
+            (18_000, "scanning"),
+        ];
+        let steps = [steps.as_slice(), &[(18_370, "authenticating")]].concat();
 
-        arrivals.step("wlan0", "authenticating", now + ms(20));
-        let lost = arrivals.step("wlan0", "scanning", now + ms(201));
-        let later = arrivals.step("wlan0", "scanning", now + ms(900));
-        let rejoined = arrivals.joined("wlan0", DESK, now + ms(18_000));
+        let said = played(&steps, (18_373, Some(DESK)));
 
         assert_eq!(
-            lost,
-            Some(Arrival::Lost {
-                to: HALL.into(),
-                step: "scanning".into(),
-                asked: ms(201),
-            })
-        );
-        assert_eq!(later, None, "said once");
-        assert_eq!(rejoined, None, "a join after it's said lost is no move's");
-        let said = lost.map(|arrival| arrival.said("wlan0"));
-        assert_eq!(
-            said.as_deref(),
-            Some(
-                "<4>wlan0 didn't reach 6c:ae:f6:c1:84:28: it was scanning 201 ms after it was asked"
-            )
+            said,
+            [
+                "<4>wlan0 didn't reach 6c:ae:f6:ba:85:87: it was scanning 201 ms after it was \
+                 asked",
+                "<4>wlan0 joined 6c:ae:f6:c1:84:26 rather than 6c:ae:f6:ba:85:87, \
+                 18373 ms after it was asked",
+            ],
+            "lost as it scans, once, and where it ended up"
         );
     }
 
     #[test]
-    fn a_move_that_lands_elsewhere_names_both() {
-        let mut arrivals = Arrivals::default();
-        let now = Instant::now();
-        arrivals.asked("wlan0", HALL, now);
+    fn a_move_that_lands_somewhere_unnamed_says_so() {
+        let said = played(&[(30, "authenticating")], (90, None));
 
-        let joined = arrivals.joined("wlan0", DESK, now + ms(300));
-
-        let said = joined.map(|arrival| arrival.said("wlan0"));
         assert_eq!(
-            said.as_deref(),
-            Some(
-                "<4>wlan0 joined 6c:ae:f6:c1:84:26 rather than 6c:ae:f6:c1:84:28, \
-                 300 ms after it was asked"
-            )
+            said,
+            [
+                "<4>wlan0 joined an access point wifid can't name, 90 ms after it was asked \
+                 to move to 6c:ae:f6:ba:85:87"
+            ],
+            "closed, not left open for a later step to close"
+        );
+    }
+
+    #[test]
+    fn a_move_followed_too_long_is_said_unseen_not_pinned_on_what_comes_next() {
+        let said = played(
+            &[(40, "authenticating"), (31_000, "disconnected")],
+            (32_000, Some(DESK)),
+        );
+
+        assert_eq!(
+            said,
+            ["<4>wlan0's move to 6c:ae:f6:ba:85:87 wasn't seen to end within 30 s"]
+        );
+    }
+
+    #[test]
+    fn a_lost_move_followed_too_long_ends_quietly() {
+        let said = played(&[(201, "scanning")], (40_000, Some(DESK)));
+
+        assert_eq!(
+            said,
+            ["<4>wlan0 didn't reach 6c:ae:f6:ba:85:87: it was scanning 201 ms after it was asked"],
+            "its loss was said already"
+        );
+    }
+
+    #[test]
+    fn a_rekey_isnt_leaving() {
+        let said = played(
+            &[
+                (10, "4way_handshake"),
+                (20, "group_handshake"),
+                (60, "authenticating"),
+            ],
+            (100, Some(FAR)),
+        );
+
+        assert_eq!(
+            said,
+            [
+                "<6>wlan0 reached 6c:ae:f6:ba:85:87 100 ms after it was asked, \
+                 off the air 40 ms of them"
+            ],
+            "off the air from authenticating, not the rekey before it"
         );
     }
 
@@ -241,10 +368,10 @@ mod tests {
         let now = Instant::now();
 
         let step = arrivals.step("wlan0", "scanning", now);
-        let joined = arrivals.joined("wlan0", DESK, now);
+        let joined = arrivals.joined("wlan0", Some(DESK), now);
 
-        assert_eq!(step, None);
-        assert_eq!(joined, None);
+        assert_eq!(step, None, "no move, so no loss");
+        assert_eq!(joined, None, "no move, so no arrival");
     }
 
     #[test]
@@ -253,11 +380,11 @@ mod tests {
         let now = Instant::now();
         arrivals.asked("wlan0", HALL, now);
         arrivals.forget("wlan0");
-        let forgotten = arrivals.joined("wlan0", HALL, now + ms(50));
+        let forgotten = arrivals.joined("wlan0", Some(HALL), now + ms(50));
 
         arrivals.asked("wlan0", HALL, now);
         arrivals.asked("wlan0", DESK, now + ms(500));
-        let newer = arrivals.joined("wlan0", DESK, now + ms(600));
+        let newer = arrivals.joined("wlan0", Some(DESK), now + ms(600));
 
         assert_eq!(forgotten, None, "a refused move never began");
         assert_eq!(
@@ -265,9 +392,41 @@ mod tests {
             Some(Arrival::Reached {
                 to: DESK.into(),
                 asked: ms(100),
-                off: None,
+                off: None
             }),
             "timed from the newer ask, with no step away said"
+        );
+    }
+
+    #[test]
+    fn a_card_held_elsewhere_on_its_way_is_judged_by_where_its_now_held() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", HALL, now);
+        arrivals.step("wlan0", "authenticating", now + ms(20));
+        arrivals.heading("wlan0", DESK, now + ms(50));
+        let retargeted = arrivals.joined("wlan0", Some(DESK), now + ms(120));
+
+        arrivals.heading("wlan0", HALL, now + ms(200));
+        let on_its_own = arrivals.joined("wlan0", Some(HALL), now + ms(260));
+
+        assert_eq!(
+            retargeted,
+            Some(Arrival::Reached {
+                to: DESK.into(),
+                asked: ms(120),
+                off: Some(ms(100))
+            }),
+            "the first ask's times, the newer hold's point"
+        );
+        assert_eq!(
+            on_its_own,
+            Some(Arrival::Reached {
+                to: HALL.into(),
+                asked: ms(60),
+                off: Some(ms(60))
+            }),
+            "a card already on its way is off the air from the hold"
         );
     }
 
@@ -278,7 +437,7 @@ mod tests {
         arrivals.asked("wlan0", HALL, now);
 
         let other = arrivals.step("wlan1", "scanning", now + ms(10));
-        let ours = arrivals.joined("wlan0", HALL, now + ms(90));
+        let ours = arrivals.joined("wlan0", Some(HALL), now + ms(90));
 
         assert_eq!(other, None, "another card's step isn't this move's");
         assert!(
