@@ -1048,21 +1048,8 @@ Floating {
     // leaves them: read again, every one of some 1,833 lines would be read
     // on the shell's thread just after that frame. None with no part shown.
     function partsMoved() {
-        const was = laidAt.parts;
-        const parts = runQuiet ? [] : runTexts();
-        if (!was || parts.length === 0)
-            return null;
-        const now = runPartsBox.mapToItem(column, 0, 0);
-        const dx = now.x - was.x;
-        const dy = now.y - was.y;
-        const kept = new Map();
-        for (const text of parts) {
-            const pieces = laidPieces.of.get(text);
-            if (!pieces)
-                return null;
-            kept.set(text, Page.shifted(pieces, dx, dy));
-        }
-        return kept;
+        return Page.partsKept(laidPieces.of, runQuiet ? [] : runTexts(), laidAt.parts,
+            runPartsBox.mapToItem(column, 0, 0));
     }
     // The next `count` lines of its run, or all that's left given none, in
     // a text of their own under the last, and its lines read again: only
@@ -1095,17 +1082,12 @@ Floating {
     }
     // What a part laid under the run moves nowhere, as its lines were last
     // read: all but what follows the run. None once the parts have moved
-    // since, as the page laid out before the going-in frame moves them,
-    // since pieces kept from before would then sit where the parts were,
-    // and the frame's partsMoved, reading where they stood from the last
-    // read, would never move them back.
+    // since, as the page laid out before the going-in frame moves them
+    // (Page.keptStill).
     function keptAbove() {
-        const was = laidAt.parts;
-        const now = runPartsBox.mapToItem(column, 0, 0);
-        if (was && (now.x !== was.x || now.y !== was.y))
-            return null;
-        const moved = new Set(actsShown.texts().concat(foldShown.texts()));
-        return new Map(Array.from(laidPieces.of).filter(([text]) => !moved.has(text)));
+        return Page.keptStill(laidPieces.of,
+            new Set(actsShown.texts().concat(foldShown.texts())), laidAt.parts,
+            runPartsBox.mapToItem(column, 0, 0));
     }
     // The parts laid quietly shown, and what follows the run moved under
     // them, in one frame: all but the parts is read again, as few lines
@@ -1148,7 +1130,7 @@ Floating {
         // and a frame asked for each.
         const shownAlready = !runQuiet && runNext >= 0;
         while (runNext >= 0)
-            layPart(runPart, true, !shownAlready);
+            layPart(runPart, true, false);
         if (shownAlready) {
             flow.forceLayout();
             readLaid(keptAbove());

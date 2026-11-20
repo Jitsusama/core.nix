@@ -800,6 +800,14 @@ QtObject {
         check(failures, "and says when it came in its key's own frame",
             Presented.drawerSaid(Object.assign({ came: Pacing.drawerCame(true) }, drawer))
                 .endsWith("frame's start, in the key's frame"), true);
+        // A slow drawer's own line, which reports off or on names its row
+        // by a key a title may be in, so it stays one line, its key quoted
+        // as the lab's ' took ' reads it.
+        const slow = { making: 200, waiting: 40, drawing: 60, came: "the frame after" };
+        check(failures, "a slow drawer's line says where its time went, its key quoted",
+            Presented.drawerTook("window:a \"b\"\nlauncher: x", 300, slow, " (split)"),
+            'launcher: drawer for "window:a \\"b\\"\\nlauncher: x" took 300 ms to its frame, '
+            + "200 ms making (split), 40 waiting for its frame, 60 drawing it, the frame after");
         const drawers = Presented.drawersSaid([drawer,
             { key: "program:kitty", place: "programs", from: 0, followed: 5, begun: 15, at: 40 },
             { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,

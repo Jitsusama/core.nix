@@ -1081,11 +1081,10 @@ QtObject {
             Search.found("\u0307i\u0307i", "\u0130\u0130\u0130\u0130\u0130\u0130"),
             [[0, 3], [3, 6]]);
         // In a text holding a joiner, a letter of two units, as an emoji
-        // is, is found whole, even by half of it, as a letter that lowers
-        // longer is; and a half with no other half after it, as a title cut
-        // mid-pair leaves, is a letter alone, so what follows keeps its place.
-        holds("half a letter of two units, in a text with a joiner, finds it whole",
-            Search.found("\ude00", "a-\u2060\ud83d\ude00"), [[3, 5]]);
+        // is, leaves what follows it in its place, as does a half with no
+        // other half after it, as a title cut mid-pair leaves, a letter alone.
+        holds("a letter of two units before a joiner leaves what follows in its place",
+            Search.found("x", "\ud83d\ude00\u2060x"), [[3, 4]]);
         holds("a half alone before a joiner leaves what follows in its place",
             Search.found("x", "\ud83d\u2060x"), [[2, 3]]);
         // A pattern of what's passed over alone is nothing to find, and
@@ -2054,6 +2053,25 @@ QtObject {
         holds("a part's pieces move right and down by what moved above them",
             Page.shifted([{ line: 3, x: 1, top: 10, base: 18, height: 9 }], 2, 5),
             [{ line: 3, x: 3, top: 15, base: 23, height: 9 }]);
+        const read = new Map([["one", [{ line: 0, x: 0, top: 4, base: 8 }]],
+            ["acts", [{ line: 9, x: 0, top: 90, base: 94 }]]]);
+        const kept = got => got ? Array.from(got) : got;
+        holds("the parts shown keep their pieces, moved by what moved the parts' box",
+            kept(Page.partsKept(read, ["one"], { x: 0, y: 0 }, { x: 1, y: 6 })),
+            [["one", [{ line: 0, x: 1, top: 10, base: 14 }]]]);
+        holds("but none where a part shown wasn't read",
+            Page.partsKept(read, ["one", "two"], { x: 0, y: 0 }, { x: 0, y: 6 }), null);
+        holds("nor with no part shown", Page.partsKept(read, [], { x: 0, y: 0 }, { x: 0, y: 0 }),
+            null);
+        holds("nor before the parts were read",
+            Page.partsKept(read, ["one"], undefined, { x: 0, y: 6 }), null);
+        holds("a part laid keeps all but what it moves, while the parts stand where read",
+            kept(Page.keptStill(read, new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 0 })),
+            [["one", [{ line: 0, x: 0, top: 4, base: 8 }]]]);
+        holds("but keeps none once the parts' box has moved down since",
+            Page.keptStill(read, new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 6 }), null);
+        holds("or across",
+            Page.keptStill(read, new Set(["acts"]), { x: 0, y: 0 }, { x: 2, y: 0 }), null);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",
