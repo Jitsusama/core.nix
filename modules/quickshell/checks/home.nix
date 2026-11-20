@@ -81,9 +81,10 @@
       touch $out
     '';
 
-  # Now's own rows, last: the time, the date, the location, the weather read as
-  # the launcher opens and the next meeting, whose Return is the meeting's own
-  # (modules/quickshell/tests/now-moment.qml), with the margin's pieces, the
+  # Now's own rows, before Lately's: the time, the date, the location, the
+  # weather read as the launcher opens and the next meeting, whose Return is
+  # the meeting's own (modules/quickshell/tests/now-moment.qml), with the
+  # margin's pieces, the
   # agents' waiting list, the weather and the calendar stood in. The location is
   # Location.qml's own, reading whereabouts itself over its socket: here is the
   # one it kept from before it started, written here, GeoClue isn't there to say
