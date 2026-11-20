@@ -637,7 +637,7 @@ they run in milliseconds.
 
 Its tests are Python in a file of their own, `<name>-vm-test.py` beside
 its `.nix` in its area of `tests/vm/`, or in the folder of the desktop's
-or the screens' split test: test functions that pytest runs inside the
+split test: test functions that pytest runs inside the
 driver, through `tests/lib/vm_pytest.py`. The test's Nix calls
 `tests/lib/pytest-vm-test.nix`
 in place of `runNixOSTest`, naming its machines and `tests = ./<name>-vm-test.py`,

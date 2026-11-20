@@ -16,11 +16,11 @@
 # dock's two screens, one goes and comes back: the margin and dictation's
 # bar must stay on the other and the margin come back on both. Sessions
 # reopened while a screen they were kept on is gone must go to it, in their
-# order, once it comes back. The tests are in screens/, an area to a file,
+# order, once it comes back. The tests are beside this, an area to a file,
 # each run through pytest on a machine of its own, so the areas run side by
 # side; the machine and the steps it's taken through are
-# screens/screens_session.py's fixtures, so each area takes only the steps
-# its tests ask for.
+# screens_session.py's fixtures, so each area takes only the steps its
+# tests ask for.
 {
   self,
   pkgs,
@@ -34,19 +34,19 @@ let
   values = pkgs.writeText "screens-values.json" (builtins.toJSON { inherit account; });
 
   # Stands in for dictation's service, which would load Whisper, as the
-  # desktop test's does (desktop/stand-in-dictation.py): it listens from
+  # desktop test's does (tests/desktop/stand-in-dictation.py): it listens from
   # the first press until the next.
   standInDictation = pkgs.writers.writePython3 "stand-in-dictation" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-dictation.py);
+  } (builtins.readFile ../../desktop/stand-in-dictation.py);
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "screens-${area}";
   extraPythonPackages = python: [
     (python.toPythonModule (
       pkgs.runCommandLocal "screens-session" { } ''
         mkdir -p $out/${python.python.sitePackages}
-        cp ${./screens/screens_session.py} $out/${python.python.sitePackages}/screens_session.py
+        cp ${./screens_session.py} $out/${python.python.sitePackages}/screens_session.py
       ''
     ))
   ];
@@ -147,7 +147,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
       environment.systemPackages = [
         # pi, as the shell opens a session it reopens, since the VM has none.
-        (import ./stand-ins/pi-stand-in.nix { inherit pkgs; })
+        (import ../../stand-ins/pi-stand-in.nix { inherit pkgs; })
         # wtype, to type as dictation does, and a swayidle of the script's
         # own to say whether niri took the session as idle meanwhile.
         pkgs.wtype
@@ -229,7 +229,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # on a dock is, until the script opens it. logind is to leave the lid
       # to niri, as it does at a desk.
       boot.extraModulePackages = [
-        (config.boot.kernelPackages.callPackage ./stand-ins/stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ../../stand-ins/stand-in-lid { })
       ];
       boot.kernelModules = [ "stand-in-lid" ];
       boot.extraModprobeConfig = ''
@@ -289,6 +289,6 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "info";
     };
 
-  tests = ./screens/screens-${area}-vm-test.py;
+  tests = ./screens-${area}-vm-test.py;
   inherit values;
 }

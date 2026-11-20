@@ -1,7 +1,7 @@
 """The screens test's machine, the steps it's taken through, and what reads it.
 
-Every area of the screens test (tests/screens/) loads this as a plugin, a module of the
-driver's Python that tests/screens.nix gives it. Each fixture takes the machine one step on
+Every area of the screens test (tests/vm/screens/) loads this as a plugin, a module of the
+driver's Python that screens.nix, beside this, gives it. Each fixture takes the machine one step on
 from the one it asks for: signed in with the lid shut since it started, the lid opened, a
 notice and the margin's marks up, the screens gone and back, the console switched, a sleep,
 then two screens apart, or the launcher through the screens going and a sleep. A fixture's
