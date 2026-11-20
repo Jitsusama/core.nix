@@ -5,7 +5,9 @@ disturb, waiting, the microphone, dictation, what's playing and caps lock.
 
 tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Every test asks for the desktop, started once a run
-(desktop_session.py), and waits at its start for what it needs, so any test runs alone.
+(desktop_session.py), and waits at its start for what it needs, so any test runs alone. Long
+because the lid's sleep needs its letting go said step by step, and splitting the margin's
+things into another area would boot another machine to prove a few lines of wiring each.
 """
 
 from __future__ import annotations
@@ -164,6 +166,8 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
             # so a sleep that never settled still leaves the power on and the lock let go.
             try:
                 step()
+            # Any error, since the first failure is the one reported, and each later step's
+            # is only logged so the rest still run.
             except Exception as missed:  # noqa: BLE001
                 machine.log(f"letting go after a failure, {name} failed: {missed!r}")
 
