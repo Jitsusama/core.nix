@@ -1737,8 +1737,8 @@ works the same way everywhere.
   unless it comes to hold nothing, and one that turns critical while
   Joel is under Now's own rows waits until he steps into For You or out
   of Now. Otherwise it's among Now's own rows (Joel, 2026-11-19: "I
-  almost never know what I am supposed to do with it"). Each is a place per source ("Mail", "Slack", Now's
-  Desktop), nothing after its name, its side "12 to read", its drawer
+  almost never know what I am supposed to do with it"). Each is a place
+  per source ("Mail", "Slack", Now's Desktop), nothing after its name, its side "12 to read", its drawer
   its senders newest first (VKCF3Z, 2026-11-09), ordered by its
   heaviest. A message inside is one row wherever it shows, Search
   Slack's hits included: named by its sender, its note its first line,
