@@ -310,6 +310,18 @@ impl Returns {
         }
         self.stuck.insert(name.to_owned()).then(still)
     }
+
+    /// What to say of `name` when systemd made it no scope and none was
+    /// there: once while it stays, with a mark of its own, so a move into
+    /// a scope found later still says why it failed.
+    fn unmade(&mut self, name: &str) -> Option<String> {
+        self.unmade.insert(name.to_owned()).then(|| {
+            format!(
+                "Couldn't give {name} its scope back from jobs, as systemd made it none and \
+                 none was there. It stays in jobs, and isn't said again while it does."
+            )
+        })
+    }
 }
 
 impl Sorter {
@@ -443,8 +455,8 @@ impl Sorter {
         };
         if sent.moved > 0 {
             return Some(format!(
-                "{} {} stayed where they were, as moving {pid} failed: {error}.",
-                found.says, sent.stayed
+                "{} Only {} went: {} stayed where they were, as moving {pid} failed: {error}.",
+                found.says, sent.moved, sent.stayed
             ));
         }
         self.refused.insert(found.key.clone()).then(|| {
@@ -1562,7 +1574,7 @@ fn split(
             Ok(output) if !*warned => {
                 eprintln!(
                     "Couldn't give {} ({}) a scope of its own: {}",
-                    piece.comm,
+                    piece.comm.escape_debug(),
                     piece.root,
                     String::from_utf8_lossy(&output.stderr).trim()
                 );
@@ -2090,12 +2102,7 @@ fn return_sessions(root: &Path, settings: &Settings, returns: &mut Returns) {
                 },
             )
         } else {
-            returns.unmade.insert(name.clone()).then(|| {
-                format!(
-                    "Couldn't give {name} its scope back from jobs, as systemd made it none \
-                     and none was there. It stays in jobs, and isn't said again while it does."
-                )
-            })
+            returns.unmade(&name)
         };
         if let Some(says) = says {
             eprintln!("{says}");
@@ -2821,24 +2828,50 @@ mod tests {
         let mut sorter = Sorter::default();
         let three = |cpu: u64| {
             let mut procs = window(cpu, 0);
-            procs.push(proc(32, 30, 30, "as", 0));
+            // What make started in a group of its own, as Nix's ssh is.
+            procs.push(proc(32, 30, 32, "ssh", 0));
             procs
         };
         let moves = looks(&mut sorter, &[three(0), three(90), three(180)]);
         let found = &moves[2][0];
         assert!(
             found.what.contains("3 processes"),
-            "a group names what it takes: {}",
+            "a group names what it takes, its own group's two and what they started: {}",
             found.what
         );
         // One went, one failed, and one had ended.
         let some = sorter.said(found, &sent(1, 1)).unwrap();
         assert!(
             some.ends_with(
-                "1 stayed where they were, as moving 31 failed: \
-             Permission denied (os error 13)."
+                "Only 1 went: 1 stayed where they were, as moving 31 failed: \
+                 Permission denied (os error 13)."
             ),
             "{some}"
+        );
+    }
+
+    #[test]
+    fn a_session_with_no_scope_leaves_a_later_failure_to_be_said() {
+        let mut returns = Returns::default();
+        assert!(
+            returns.unmade("pi-1.scope").is_some(),
+            "a session with no scope is said"
+        );
+        assert_eq!(
+            returns.unmade("pi-1.scope"),
+            None,
+            "said again while it stays"
+        );
+        assert!(
+            returned(
+                &mut returns.sessions,
+                "pi-1.scope",
+                &sent(0, 1),
+                |w| w,
+                |w| w
+            )
+            .is_some(),
+            "a failure into a scope found later went unsaid"
         );
     }
 
@@ -2884,15 +2917,21 @@ mod tests {
     #[test]
     fn a_kept_groups_busy_process_is_refused_once_while_it_runs() {
         let mut sorter = Sorter::default();
-        // node (21), under pi (20), whom the settings keep.
+        // node (21), under pi (20), whom the settings keep, with a name
+        // that tries to start a line of its own.
         let busy = |cpu: u64| {
             let mut procs = window(0, 0);
-            procs.push(proc(21, 20, 20, "node", cpu));
+            procs.push(proc(21, 20, 20, "node\nMoved", cpu));
             procs
         };
         let moves = looks(&mut sorter, &[busy(0), busy(90), busy(180)]);
         let found = &moves[2][0];
         assert_eq!(found.key.1, 21);
+        assert!(
+            !found.says.contains('\n') && found.what.starts_with("node\\nMoved (21)"),
+            "a kept group's process broke its line: {:?}",
+            found.says
+        );
         assert!(
             sorter.said(found, &sent(0, 1)).is_some(),
             "a first refusal is said"
