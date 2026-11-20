@@ -1996,6 +1996,13 @@ ShellRoot {
             asksNothing.every(key => keysOf(now.everything()).includes(key)
                 && !keysOf(inForYou()).includes(key)),
             JSON.stringify([keysOf(inForYou()), keysOf(now.everything())]));
+        // They come right after the moment's, before every piece's group,
+        // so what Joel reads first under the time is what came for him.
+        const moment = now.momentAt(now.location).length;
+        expect("Mail, Slack and Desktop come right after the moment's rows",
+            JSON.stringify(keysOf(now.everything()).slice(1 + moment, 4 + moment).sort())
+                === JSON.stringify(asksNothing.slice().sort()),
+            JSON.stringify([moment, keysOf(now.everything())]));
         // A critical notice unread is one to do, so Desktop, which holds
         // it, stands in For You while it waits, and leaves Now's rows.
         Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
@@ -2003,8 +2010,28 @@ ShellRoot {
         expect("a critical notice unread keeps Desktop in For You, and out of Now's rows",
             keysOf(inForYou()).includes("on:waiting:desktop")
                 && !keysOf(now.everything()).includes("on:waiting:desktop")
+                && now.leadsTo("notices")[0] === now.waiting
+                && now.leadsTo("notices")[1].key === "on:waiting:desktop"
                 && now.leadsTo("notices").length === 2,
-            JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").length]));
+            JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // Read while Joel looks, it's held still, and Desktop with it, so
+        // the place he stands in doesn't leave For You under him.
+        now.openedAt = Date.now() - 1000;
+        Notices.history = [{ id: 1, at: Date.now(), app: "power", summary: "Battery at 5%",
+            urgency: "critical", read: true, readAt: Date.now() }].concat(told);
+        expect("a critical notice read while the launcher's open keeps Desktop in For You",
+            keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        now.openedAt = Number.POSITIVE_INFINITY;
+        expect("and once the launcher's shut, Desktop goes back to Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        // A critical one Slack's row holds asks nothing of Desktop.
+        Notices.history = [{ id: 2, at: Date.now(), app: "Slack", summary: "Pager",
+            urgency: "critical", read: false }].concat(told);
+        expect("a critical notice that isn't Desktop's leaves Desktop in Now's rows",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && now.leadsTo("notices").length === 1,
+            JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
         Notices.history = told;
         expect("once it's gone, Desktop goes back to Now's rows, Super+N with it",
             !keysOf(inForYou()).includes("on:waiting:desktop")
