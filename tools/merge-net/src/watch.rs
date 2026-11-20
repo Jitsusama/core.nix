@@ -32,6 +32,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use serde_json::{Value, json};
 
+use crate::holds::Held;
 use crate::movers;
 use crate::running;
 use crate::state::{Ran, State, now, short};
@@ -216,8 +217,8 @@ pub struct Merged {
 /// What the round asks of git, nix and GitHub.
 pub trait World: Sync {
     /// Why nothing may start now, if something says so: a pause, or a
-    /// hold on the whole machine.
-    fn held(&self) -> Option<String>;
+    /// hold on the whole machine, and who it's from.
+    fn held(&self) -> Option<Held>;
     /// Fetch main and give its head.
     fn head(&self) -> Result<String, String>;
     /// Main's head as it was last fetched, without asking the remote.
@@ -1305,9 +1306,9 @@ pub fn round_beside(
 ) -> Result<Round, String> {
     settler.take_up();
     age_out_logs(state);
-    if let Some(why) = world.held() {
+    if let Some(Held { why, from }) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
-        if let Err(error) = state.held(&why) {
+        if let Err(error) = state.held(&why, &from) {
             state.say(&error);
         }
         return Ok(Round::Idle);
@@ -2367,7 +2368,7 @@ fn revert_wanted<'a>(
             // run, and a revert's checks take minutes: on 10 November the
             // net was paused at 07:45 to let #2832 fix #2809 forward, and
             // merged #2809's revert at 07:47 all the same.
-            if let Some(why) = world.held() {
+            if let Some(Held { why, .. }) = world.held() {
                 state.say(&format!(
                     "the revert of {} is wanted, but it lands nothing while held: {why}",
                     short(&found.commit)
@@ -2585,10 +2586,14 @@ mod tests {
     }
 
     impl World for Stand {
-        fn held(&self) -> Option<String> {
+        fn held(&self) -> Option<Held> {
             self.held
                 .clone()
                 .or_else(|| self.paused.lock().unwrap().clone())
+                .map(|why| Held {
+                    why,
+                    from: "P9R1KI".to_owned(),
+                })
         }
         fn head(&self) -> Result<String, String> {
             if let Some(error) = &self.fetch_fails {
@@ -6005,8 +6010,9 @@ mod tests {
         );
         let held = fs::read_to_string(state.root.join("held.json")).unwrap_or_default();
         assert!(
-            held.contains("a reboot"),
-            "a held net didn't say so where cadence reads it: {held}"
+            held.contains("a reboot")
+                && serde_json::from_str::<Value>(&held).is_ok_and(|held| held["from"] == "P9R1KI"),
+            "a held net didn't say so, and who held it, where cadence reads it: {held}"
         );
     }
 

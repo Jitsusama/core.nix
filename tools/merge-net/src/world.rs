@@ -720,9 +720,12 @@ pub fn build_args(
 }
 
 impl World for Real {
-    fn held(&self) -> Option<String> {
+    fn held(&self) -> Option<holds::Held> {
         if self.state.join("pause").exists() {
-            return Some(format!("{} is there", self.state.join("pause").display()));
+            return Some(holds::Held {
+                why: format!("{} is there", self.state.join("pause").display()),
+                from: "pause".to_owned(),
+            });
         }
         holds::standing(&holds::messages(), self.booted)
     }

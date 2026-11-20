@@ -273,12 +273,16 @@ impl State {
     /// merges weren't on and the net was six hours behind under a hold
     /// that stopped both from 09:55 to 15:47. It keeps `since`, when the
     /// net was first seen held, whatever held it (`held_since`), so cadence
-    /// can say when holds have stopped the net too long while main moves.
-    pub fn held(&self, why: &str) -> Result<(), String> {
+    /// can say when holds have stopped the net too long while main moves,
+    /// and `from`, who holds it now, so cadence can ask them.
+    pub fn held(&self, why: &str, from: &str) -> Result<(), String> {
         let file = self.root.join("held.json");
         let at = now();
         let since = held_since(read_json(&file).as_ref(), at);
-        write_json(&file, &json!({ "at": at, "why": why, "since": since }))
+        write_json(
+            &file,
+            &json!({ "at": at, "why": why, "since": since, "from": from }),
+        )
     }
 
     /// The last head the quick look ran its checks at, if any.

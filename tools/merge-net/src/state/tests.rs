@@ -305,11 +305,15 @@ fn a_hold_keeps_when_it_began_while_it_stands() {
         "a held.json written before `since` begins the hold now"
     );
     let state = state("held-since");
-    state.held("a reboot").unwrap();
+    state.held("a reboot", "P9R1KI").unwrap();
     let written = read_json(&state.root.join("held.json")).unwrap();
     assert_eq!(
         written["since"], written["at"],
         "held.json lacks since: {written}"
+    );
+    assert_eq!(
+        written["from"], "P9R1KI",
+        "held.json doesn't say who holds the net: {written}"
     );
     fs::remove_dir_all(&state.root).unwrap();
 }

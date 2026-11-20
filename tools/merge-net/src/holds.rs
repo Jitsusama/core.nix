@@ -374,10 +374,18 @@ pub fn booted() -> Option<u64> {
     Some(seconds * 1000)
 }
 
-/// The text of the first hold on the whole machine still standing among
-/// the messages in `folder` sent since `since` (milliseconds, as each
-/// file's name begins).
-pub fn standing(folder: &Path, since: u64) -> Option<String> {
+/// What stops the net: a hold's text, or a pause's, and who it's from, so
+/// cadence can ask the holder when one stops the net too long.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Held {
+    pub why: String,
+    pub from: String,
+}
+
+/// The first hold on the whole machine still standing among the messages
+/// in `folder` sent since `since` (milliseconds, as each file's name
+/// begins).
+pub fn standing(folder: &Path, since: u64) -> Option<Held> {
     let entries: Vec<fs::DirEntry> = fs::read_dir(folder).ok()?.filter_map(Result::ok).collect();
     let days: Vec<fs::DirEntry> = entries
         .iter()
@@ -417,7 +425,7 @@ pub fn standing(folder: &Path, since: u64) -> Option<String> {
             eprintln!("merge-net: passing by hold {id}, not about its work: {text}");
         }
     }
-    still_held(&messages)
+    held_by(&messages)
 }
 
 /// The holds the net has said it passes by. A misread hold would otherwise
@@ -445,10 +453,19 @@ fn standing_holds(messages: &[Value]) -> impl Iterator<Item = &Value> {
 
 /// The first hold on the whole machine among `messages` still standing and
 /// about the net's work.
-pub fn still_held(messages: &[Value]) -> Option<String> {
+fn held_by(messages: &[Value]) -> Option<Held> {
     standing_holds(messages)
         .find(|hold| about(hold, messages))
-        .map(|hold| hold["text"].as_str().unwrap_or_default().to_owned())
+        .map(|hold| Held {
+            why: hold["text"].as_str().unwrap_or_default().to_owned(),
+            from: hold["from"].as_str().unwrap_or_default().to_owned(),
+        })
+}
+
+/// The text of `held_by`'s hold, which is all most cases read.
+#[cfg(test)]
+fn still_held(messages: &[Value]) -> Option<String> {
+    held_by(messages).map(|held| held.why)
 }
 
 /// The holds on the whole machine among `messages` still standing that the
@@ -731,10 +748,20 @@ mod tests {
             fs::write(folder.join(name), message.to_string()).unwrap();
         };
         write("1000-A-1-aa.json", &hold("old", "A", "#machine"));
-        assert_eq!(standing(&folder, 500), Some("old".to_owned()));
+        assert_eq!(
+            standing(&folder, 500),
+            Some(Held {
+                why: "old".to_owned(),
+                from: "A".to_owned()
+            }),
+            "a hold standing says who sent it"
+        );
         assert_eq!(standing(&folder, 2000), None);
         write("3000-A-1-bb.json", &hold("new", "A", "#machine"));
-        assert_eq!(standing(&folder, 2000), Some("new".to_owned()));
+        assert_eq!(
+            standing(&folder, 2000).map(|held| held.why),
+            Some("new".to_owned())
+        );
         fs::remove_dir_all(&folder).unwrap();
     }
 
@@ -746,7 +773,7 @@ mod tests {
         let held = hold("1000-A-1-aa", "A", "#all");
         fs::write(folder.join("1000-A-1-aa.json"), held.to_string()).unwrap();
         assert_eq!(
-            standing(&folder, 500),
+            standing(&folder, 500).map(|held| held.why),
             Some("1000-A-1-aa".to_owned()),
             "a hold with no answer stands"
         );
