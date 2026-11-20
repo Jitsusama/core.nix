@@ -2214,7 +2214,9 @@ ShellRoot {
     // after the change rather than said outright: a session's notice updated
     // as its work turned just after Return into For You was drawn as
     // Return's act (the niri case, 2026-11-18). Deeper, where the notices
-    // themselves are shown, and with nothing held, they're said outright.
+    // themselves are shown, and with nothing held, they're said outright;
+    // so too with what's on screen held right under Now, where Super+N
+    // leads with no critical notice waiting (round 7, F77).
     function noticesWeighed(into) {
         const outright = (name, held, said) => {
             theLauncher.held = held;
@@ -2229,6 +2231,8 @@ ShellRoot {
             into(now.waiting.verbs()), 0);
         outright("held below For You, they are", into(now.waiting.verbs()).concat([
             { row: { key: "on:waiting:screen" }, rows: [] }]), 1);
+        outright("held right under Now, what's on screen, they are", [
+            { row: { from: now, key: "on" } }, { row: { key: "on:waiting:screen" }, rows: [] }], 1);
         outright("as they are with nothing held", [], 1);
     }
 
