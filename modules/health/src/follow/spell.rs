@@ -22,16 +22,17 @@ use crate::day::Day;
 /// minute.
 const QUIET_FOR: Duration = SETTLED;
 
-/// A spell of the day's writes failing: since when and for what, first
-/// and latest, while they do, whether it was said, and when a spell's end
-/// was last told. The two causes differ once the day failing does, as
-/// when a day held from before is written and today goes on failing.
+/// A spell of the day's writes failing: since when, its latest error,
+/// whether it was said and the kinds of cause it was said for, and when a
+/// spell's end was last told. A cause is known by its kind, as a disk full
+/// or read-only, since its words name the day failing, which changes at
+/// midnight or once a day held from before is written.
 #[derive(Debug, Default)]
 pub(super) struct Spell {
     since: Option<Instant>,
-    cause: String,
     latest: String,
     said: bool,
+    causes: Vec<io::ErrorKind>,
     told: Option<Instant>,
 }
 
@@ -79,12 +80,13 @@ impl Spell {
     }
 
     /// Take a write's `error` at `at`, if any. A spell's start is said
-    /// through `say`, naming the folder `into` and the spell's first
-    /// error, and its end through `notice`, once each, since the next
-    /// half minute's would most likely say the same. A spell starting
-    /// within `QUIET_FOR` of the last
-    /// end told is said only once `QUIET_FOR` has passed since, with how
-    /// long it has lasted, so a flapping disk is said at most once in each
+    /// through `say`, naming the folder `into` and the error, and its end
+    /// through `notice`, once each, since the next half minute's would
+    /// most likely say the same; a cause of a kind not yet said within the
+    /// spell is said once too, as a full disk turning read-only. A spell
+    /// starting within `QUIET_FOR` of the last end told is said only once
+    /// `QUIET_FOR` has passed since, with how long it has lasted and its
+    /// error then, so a flapping disk is said at most once in each
     /// `QUIET_FOR`, however short its spells, and a lasting one soon.
     pub(super) fn tried(
         &mut self,
@@ -100,25 +102,26 @@ impl Spell {
         match (error, self.since) {
             (Some(error), None) => {
                 self.since = Some(at);
-                self.cause = error.to_string();
                 self.said = self
                     .told
                     .is_none_or(|told| at.saturating_duration_since(told) >= QUIET_FOR);
                 if self.said {
-                    say(&unwritten(&self.cause, into, Duration::ZERO));
+                    self.causes.push(error.kind());
+                    say(&unwritten(&error.to_string(), into, Duration::ZERO));
                 }
             }
-            (Some(_), Some(since)) => {
+            (Some(error), Some(since)) => {
                 let quiet = self
                     .told
                     .is_some_and(|told| at.saturating_duration_since(told) < QUIET_FOR);
+                let lasted = at.saturating_duration_since(since);
                 if !self.said && !quiet {
                     self.said = true;
-                    say(&unwritten(
-                        &self.cause,
-                        into,
-                        at.saturating_duration_since(since),
-                    ));
+                    self.causes.push(error.kind());
+                    say(&unwritten(&error.to_string(), into, lasted));
+                } else if self.said && !self.causes.contains(&error.kind()) {
+                    self.causes.push(error.kind());
+                    say(&unwritten(&format!("now {error}"), into, lasted));
                 }
             }
             (None, Some(since)) => {
@@ -131,9 +134,9 @@ impl Spell {
                     self.told = Some(at);
                 }
                 self.since = None;
-                self.cause.clear();
                 self.latest.clear();
                 self.said = false;
+                self.causes.clear();
             }
             (None, None) => {}
         }
