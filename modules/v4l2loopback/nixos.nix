@@ -10,7 +10,7 @@
 # empty while none does or the camera is down, and the node it is to
 # .devices/<name> beside it. A camera PipeWire offers is held by PipeWire
 # for whoever reads it there, so the machine daemon finds those in
-# PipeWire's graph by that node. The folder lasts the boot, since a shell's
+# PipeWire's registry by that node. The folder lasts the boot, since a shell's
 # watch on it would be lost with it.
 {
   config,
@@ -145,8 +145,21 @@ in
               output
             ]
           );
-          # Stopped with its camera, it may not get to say nobody itself.
-          ExecStopPost = "${pkgs.coreutils}/bin/truncate -s 0 ${output}";
+          # Stopped with its camera, or killed, it may not get to say nobody
+          # itself, nor take back the node it said the camera was.
+          ExecStopPost = [
+            (lib.escapeShellArgs [
+              "${pkgs.coreutils}/bin/truncate"
+              "-s"
+              "0"
+              output
+            ])
+            (lib.escapeShellArgs [
+              "${pkgs.coreutils}/bin/rm"
+              "-f"
+              "${holdersDir}/.devices/${name}"
+            ])
+          ];
           Restart = "on-failure";
           RestartSec = 1;
           # It lists every process's open files, which takes reading past

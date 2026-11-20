@@ -116,10 +116,17 @@ impl Watch {
         fs::write(&self.stats, text).unwrap();
     }
 
-    /// Waits up to five seconds for the camera's file to be there or not.
+    /// Where the camera's node is said, beside its file.
+    fn device(&self) -> PathBuf {
+        let name = self.file.file_name().unwrap();
+        self.file.parent().unwrap().join(".devices").join(name)
+    }
+
+    /// Waits up to five seconds for the camera's file, and the file saying
+    /// its node, to be there or not.
     fn until_there(&self, wanted: bool, what: &str) {
         for _ in 0..100 {
-            if self.file.exists() == wanted {
+            if self.file.exists() == wanted && self.device().exists() == wanted {
                 return;
             }
             sleep(Duration::from_millis(50));
@@ -255,4 +262,5 @@ fn the_file_goes_when_it_is_stopped() {
     watch.stop();
     assert_eq!(watch.ended(), Some(0));
     assert!(!watch.file.exists());
+    assert!(!watch.device().exists(), "its node was still said");
 }

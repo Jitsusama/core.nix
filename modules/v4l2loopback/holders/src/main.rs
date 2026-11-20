@@ -34,7 +34,7 @@
 //!
 //! Beside the file, `.devices/<its name>` says which node the camera is,
 //! as its real path, for as long as there's one: a reader that sees
-//! `PipeWire` holding it finds the camera in `PipeWire`'s graph by it, and
+//! `PipeWire` holding it finds the camera in `PipeWire`'s registry by it, and
 //! names who reads it there (modules/machine's camera.rs). A node a link
 //! names, as the relay's is, changes with each plug-in, so the link is
 //! followed first.
@@ -405,6 +405,7 @@ fn loopback(events: &mut Events, options: &Options) {
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
+            say_device(&options.output, None);
             return;
         }
     }
@@ -505,6 +506,9 @@ mod tests {
         std::os::unix::fs::symlink(&node, &link).unwrap();
         let output = root.join("MX Brio 705 for Business");
         let file = root.join(".devices/MX Brio 705 for Business");
+        // A folder left narrower, as a umask might make it, is widened.
+        fs::create_dir(root.join(".devices")).unwrap();
+        fs::set_permissions(root.join(".devices"), fs::Permissions::from_mode(0o700)).unwrap();
         say_device(&output, Some(&link));
         let real = fs::canonicalize(&node).unwrap();
         assert_eq!(
@@ -526,7 +530,6 @@ mod tests {
         assert_eq!(fs::read_dir(root.join(".devices")).unwrap().count(), 1);
         say_device(&output, None);
         assert!(!file.exists(), "the camera gone, its node is said no more");
-        say_device(&output, None);
     }
 
     #[test]

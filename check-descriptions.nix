@@ -1810,7 +1810,7 @@
   '';
   machine-runs-beside-the-shell = ''
     the shell brings the machine daemon, on the daemons' socket, which systemd holds whether or not
-    it runs, restarted by a switch, and handed pw-dump, by which it finds who reads a camera
+    it runs, restarted by a switch, and handed pw-cli, by which it finds who reads a camera
     through PipeWire
   '';
   machines-remake-only-the-machine-that-changed = ''
