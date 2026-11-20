@@ -16,6 +16,7 @@ use terminal_kit::Room;
 use terminal_kit::ink::Pen;
 use terminal_kit::layout;
 
+use super::figures::unknown;
 use super::fit;
 
 /// What a run of text is, which the ink turns into the terminal's colour
@@ -160,6 +161,9 @@ struct Shared {
     after: Vec<usize>,
     gone: Vec<bool>,
     set: Vec<usize>,
+    /// Whether each shared column says nothing in every table, so one
+    /// table's dashes never take a column another has figures in.
+    silent: Vec<bool>,
 }
 
 impl Shared {
@@ -193,6 +197,9 @@ impl Shared {
             after: vec![0; columns],
             gone: vec![false; columns],
             set: vec![usize::MAX; columns],
+            silent: (0..columns)
+                .map(|at| tables.iter().all(|(_, table)| table.says_nothing(at)))
+                .collect(),
         };
         for (_, table) in &tables {
             let (wide, before, after) = table.widths();
@@ -348,7 +355,9 @@ enum Last {
 /// Columns of cells, each column as wide as its widest cell and two
 /// spaces from the next, the header muted. Into a terminal too narrow for
 /// it, whole columns give way in the order the view names them, least
-/// needed first; then the column of names is shortened in its middle, and
+/// needed first, save that one with a dash in every row goes before
+/// them all, and a shared one only where every shared table has only
+/// dashes in it; then the column of names is shortened in its middle, and
 /// the last column's words are cut or wrapped. The first column names
 /// each row, so it never goes.
 #[derive(Debug)]
@@ -453,6 +462,29 @@ impl Table {
         self.rows.push(Row::Across(line));
     }
 
+    /// Whether every row's cell in `column` is the dash a missing figure
+    /// shows, or no cell at all, in a table with at least one row.
+    fn says_nothing(&self, column: usize) -> bool {
+        let mut cells = self
+            .rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Cells(cells) => Some(cells.get(column)),
+                Row::Header(_) | Row::Across(_) => None,
+            })
+            .peekable();
+        cells.peek().is_some() && cells.all(|cell| cell.is_none_or(|cell| *cell == unknown()))
+    }
+
+    /// Whether `column` says nothing: in this table alone, or for a column
+    /// it shares, in every table sharing it, since one gone goes from all.
+    fn silent(&self, column: usize, shared: Option<&Shared>) -> bool {
+        match shared {
+            Some(shared) if column < shared.columns => shared.silent[column],
+            _ => self.says_nothing(column),
+        }
+    }
+
     /// The part of a cell its figure takes, its first run, and the part
     /// after it, its unit.
     fn split(cell: &[Run]) -> (usize, usize) {
@@ -494,7 +526,13 @@ impl Table {
     /// The columns kept in `cells`, and the width each is set at: whole
     /// columns go first, then the names shorten, then the last column. Only
     /// the columns `from` are set, the rest having gone already.
-    fn kept(&self, from: Vec<usize>, wide: &[usize], cells: usize) -> (Vec<usize>, Vec<usize>) {
+    fn kept(
+        &self,
+        from: Vec<usize>,
+        wide: &[usize],
+        cells: usize,
+        shared: Option<&Shared>,
+    ) -> (Vec<usize>, Vec<usize>) {
         let mut kept = from;
         let across = |kept: &[usize], at: &dyn Fn(usize) -> usize| {
             kept.iter().map(|column| at(*column)).sum::<usize>()
@@ -517,7 +555,16 @@ impl Table {
                 size
             })
         };
-        for group in &self.gives_way {
+        // A column that gives way and says nothing in any row, a dash in
+        // each, goes before the rest, since room spent on it shows no more
+        // than its heading: eero's cloud answers most reads with no speed
+        // for any device, and a narrow devices table otherwise kept its
+        // empty down and up and lost tx, which had figures.
+        let (silent, speaking): (Vec<&Vec<usize>>, Vec<&Vec<usize>>) = self
+            .gives_way
+            .iter()
+            .partition(|group| group.iter().all(|column| self.silent(*column, shared)));
+        for group in silent.into_iter().chain(speaking) {
             if least(&kept) <= cells {
                 break;
             }
@@ -571,7 +618,7 @@ impl Table {
             .filter(|at| shared.is_none_or(|shared| *at >= shared.columns || !shared.gone[*at]))
             .collect();
         let (kept, mut set) = match room.cells() {
-            Some(cells) => self.kept(from, &wide, cells.saturating_sub(indent)),
+            Some(cells) => self.kept(from, &wide, cells.saturating_sub(indent), shared),
             None => (from, wide),
         };
         if let Some(shared) = shared {
@@ -841,6 +888,101 @@ mod tests {
              device             last on\n\
              printer            2 d ago\n",
             "the kind the first table gave way to 32 cells goes from the second too"
+        );
+    }
+
+    #[test]
+    fn a_column_saying_nothing_in_any_row_gives_way_first() {
+        let table = || {
+            let mut table = Table::new(&[Align::Left, Align::Left, Align::Point, Align::Point]);
+            table.header(&["device", "kind", "down", "speed"]);
+            table.gives_way_by(&["kind", "down"]);
+            table.row(vec![
+                vec![plain("laptop")],
+                vec![plain("laptop")],
+                unknown(),
+                figure("11.5", "Mb/s"),
+            ]);
+            table.row(vec![
+                vec![plain("printer")],
+                vec![plain("printer")],
+                unknown(),
+                figure("98", "b/s"),
+            ]);
+            table
+        };
+        let headings = |room| {
+            let mut page = Page::default();
+            page.table(0, table());
+            let text = set(page, room);
+            let header = text.lines().next().unwrap_or_default().to_owned();
+            header
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            headings(Room::Cells(28)),
+            ["device", "kind", "speed"],
+            "a down that no row has a figure for goes before the kind named first"
+        );
+        let shared = |room| {
+            let mut page = Page::default();
+            page.shared_table(0, table());
+            let text = set(page, room);
+            let header = text.lines().next().unwrap_or_default().to_owned();
+            header
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shared(Room::Cells(28)),
+            ["device", "kind", "speed"],
+            "a shared table alone, as the devices on are when none is off, gives way alike"
+        );
+        assert_eq!(
+            headings(Room::Cells(33)),
+            ["device", "kind", "down", "speed"],
+            "where the table just fits, a column saying nothing still keeps its place"
+        );
+    }
+
+    #[test]
+    fn a_shared_column_one_table_has_figures_in_keeps_its_place_in_both() {
+        let mut on = Table::new(&[Align::Left, Align::Left, Align::Point]);
+        on.header(&["device", "band", "speed"]);
+        on.gives_way_by(&["band"]);
+        on.row(vec![
+            vec![plain("laptop")],
+            vec![plain("5 GHz")],
+            figure("11.5", "Mb/s"),
+        ]);
+        let mut off = Table::new(&[Align::Left, Align::Left, Align::Left, Align::Left]);
+        off.header(&["device", "band", "kind", "last on"]);
+        off.gives_way_by(&["kind", "band"]);
+        off.row(vec![
+            vec![plain("printer")],
+            unknown(),
+            vec![plain("printer")],
+            vec![plain("2 d ago")],
+        ]);
+        let mut page = Page::default();
+        page.shared_table(0, on);
+        page.shared_table(0, off);
+        let headers: Vec<Vec<String>> = set(page, Room::Cells(25))
+            .lines()
+            .filter(|line| line.starts_with("device"))
+            .map(|line| line.split_whitespace().map(str::to_owned).collect())
+            .collect();
+        assert_eq!(
+            headers,
+            [
+                vec!["device", "band", "speed"],
+                vec!["device", "band", "last", "on"]
+            ],
+            "a band only the devices off lack gives way in its named place, so the devices on \
+             keep theirs"
         );
     }
 
