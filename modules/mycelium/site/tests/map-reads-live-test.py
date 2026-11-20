@@ -690,6 +690,8 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
 # something, then the one stuck. Node.json lists them in that order too, so
 # waits.test.ts is what proves the order; this proves the page follows it.
 NEEDING = ("TERN02", "HERON1")
+# The machine the last of them runs on, in node.json, which its link names.
+NEEDING_ON = "osprey"
 NEEDING_SAID = ("One needs you:", "One is stuck:")
 # The first line after Now's heading, and the next line over a list.
 NOW_LEADS = """(() => {
@@ -728,7 +730,9 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     page.evaluate(TALK_HELD)
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
-    assert talked == f"mycelium:cell/{NEEDING[-1]}", f"t talked to {talked}, not the open cell"
+    assert talked == f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}", (
+        f"t talked to {talked}, not the open cell on its machine"
+    )
     page.keyboard.press("a")
     expect(page, "a didn't go round to the first").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
     # A receptor is a cell the Launcher can't talk to, and t says so.
@@ -747,6 +751,29 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     expect(page.locator("#where"), "t with no cell open didn't say so").to_have_text(
         "No cell is open to talk to; a opens the next that needs you."
     )
+
+
+# A cell named the ways another page or a notice names it, each with what
+# may follow its address: its whole link, its address on its machine, and
+# its link as a page escapes it into the hash.
+NAMED = (
+    f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}#notice:4",
+    f"{NEEDING[-1]}@{NEEDING_ON}",
+    f"mycelium%3Acell%2F{NEEDING[-1]}%40{NEEDING_ON}%2Fgo",
+)
+
+
+def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    talk = page.locator('#panel-body a[href^="mycelium:cell/"]')
+    for named in NAMED:
+        page.evaluate("location.hash = ''")
+        expect(talk, "the last cell's drawer stayed open").to_have_count(0)
+        page.evaluate(f"location.hash = '#cell={named}'")
+        expect(talk, f"#cell={named} didn't open its cell's drawer").to_have_attribute(
+            "href", f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}"
+        )
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:

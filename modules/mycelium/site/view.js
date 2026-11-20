@@ -20,6 +20,9 @@
 // when.ts, how each thing stands and why in health.ts, what each is doing
 // in doing.ts, what each spent in spend.ts, and what waits on each and what
 // holds stand in waits.ts, which this imports as the modules they're built to.
+// A cell's link, and the cell a link or a hash names, are the kit's cell.ts,
+// the one way every site names a cell.
+import { addressIn, cellLink } from "../../local-sites/kit/cell.js";
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -2861,9 +2864,20 @@ import {
   };
 
   const hashOf = (c) => (c ? `#${c.kind}=${encodeURIComponent(c.id)}` : "");
+  // A cell may be named by its whole link, as a notice gives it, or by its
+  // address with the machine it runs on, and opens as its address alone. A
+  // receptor's name is no address, so it opens as it is named. A stray % in
+  // a hash typed by hand names nothing.
   const fromHash = () => {
     const m = location.hash.match(/^#(cell|net|machine|talk)=(.+)$/);
-    return m ? { kind: m[1], id: decodeURIComponent(m[2]) } : null;
+    if (!m) return null;
+    let id;
+    try {
+      id = decodeURIComponent(m[2]);
+    } catch {
+      return null;
+    }
+    return { kind: m[1], id: m[1] === "cell" ? addressIn(id) ?? id : id };
   };
 
   // A visit goes in the history, so back returns from it.
@@ -3305,12 +3319,17 @@ import {
   // cell or Networks on a network, so the page still writes nothing. The
   // link names it and nothing more, in the letters mycelium-link lets
   // through, so a name it would refuse is never offered as a link that
-  // does nothing.
-  // A cell's address is 1 to 12 capitals and digits; a network's name
-  // takes more.
-  const LINK_NAME = { cell: /^[A-Z0-9]{1,12}$/, network: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/ };
-  const launcherLink = (kind, name, words) =>
-    LINK_NAME[kind]?.test(name || "") ? `<p class="led"><a class="inline" href="mycelium:${kind}/${name}">${esc(words)}</a></p>` : "";
+  // does nothing. A cell's is the kit's cellLink, saying the machine it
+  // runs on as a notice's link does; a network's name takes more letters.
+  const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  const linkOf = (kind, name, machine) => {
+    if (kind === "cell") return cellLink(name || "", machine);
+    return NETWORK_NAME.test(name || "") ? `mycelium:network/${name}` : null;
+  };
+  const launcherLink = (kind, name, words, machine) => {
+    const href = linkOf(kind, name, machine);
+    return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
+  };
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3396,7 +3415,7 @@ import {
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
-      (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher")) +
+      (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.machine)) +
       // The forage page lists only cells with a forage, so only those link there.
       (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
       factList(facts) +
@@ -4629,7 +4648,8 @@ import {
       where.textContent = "No cell is open to talk to; a opens the next that needs you.";
       return;
     }
-    const link = panelBody.querySelector(`a[href="mycelium:cell/${CSS.escape(chosen.id)}"]`);
+    const href = cellLink(chosen.id, current?.byAddress.get(chosen.id)?.machine);
+    const link = href && panelBody.querySelector(`a[href="${CSS.escape(href)}"]`);
     const c = { kind: "cell", id: chosen.id };
     if (!link) {
       where.textContent = `The Launcher can't talk to ${openedWords(c)}.`;
