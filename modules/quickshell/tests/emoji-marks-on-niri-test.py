@@ -1,14 +1,15 @@
-"""Each of Super+E's groups has its emoji centred on its name, as niri shows the launcher.
+"""Super+E's groups have their emoji centred on their names, as niri shows the launcher.
 
 modules/quickshell/checks/core.nix runs this through pytest in tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run and the clipboard's history serving Emoji's rows.
 The shell draws here through Qt's GPU path, on Mesa's software GL, as Joel's draws on its GPU.
 modules/quickshell/tests/emoji-marks.qml, which draws each mark anew and alone, stood each colour
-emoji on its name's capitals, while Joel's screen at 1.5 drew every group's emoji about 6 device
+emoji on its name's capitals, while Joel's screen at 1.5 drew every group's emoji about 7 device
 pixels high (2026-11-19, 19:39): the launcher's rows kept a measure of each emoji with no ink.
-So what's read here is the launcher's own rows as niri's screencopy has them: each row's emoji,
-the coloured ink left of its name, has its middle within a device pixel of its name's, halfway
-from the top of its capitals to their baseline.
+So what's read here is the launcher's own rows as niri's screencopy has them: each row read, its
+emoji the coloured ink left of its name, has its middle within a device pixel of its name's,
+halfway from the top of its capitals to their baseline. A row is read only where its emoji is
+coloured and its name runs well past it, which Emoji's group rows are; at least three must be.
 """
 
 from __future__ import annotations
@@ -56,8 +57,9 @@ COLUMN = 8
 # The share of a name's widest row of ink its baseline still holds, so a descender below it,
 # a y's or a j's, is never taken for it.
 BASELINE_HOLDS = 0.25
-# How long the launcher has to draw what it shows before it's read, in seconds.
-DRAWN = 1.0
+# How long the launcher has to stand still before it's read anyway, in seconds: its caret may
+# blink, so two pictures in a row may never agree.
+STILL_WITHIN = 5.0
 
 Pixels = tuple[int, int, bytes]
 
@@ -75,15 +77,29 @@ def picture() -> Pixels:
     fields: list[bytes] = []
     at = 0
     while len(fields) < 4:  # noqa: PLR2004
+        assert at < len(ppm), f"grim's picture ends in its header: {fields!r}"
         while ppm[at : at + 1].isspace():
             at += 1
         start = at
-        while not ppm[at : at + 1].isspace():
+        while at < len(ppm) and not ppm[at : at + 1].isspace():
             at += 1
         fields.append(ppm[start:at])
     assert fields[0] == b"P6", f"grim's picture isn't a PPM: {fields[0]!r}"
     assert fields[3] == b"255", f"grim's picture has {fields[3]!r} levels a channel"
     return int(fields[1]), int(fields[2]), ppm[at + 1 :]
+
+
+def still_picture() -> Pixels:
+    """Take niri's screen once two pictures in a row agree, or the last at STILL_WITHIN."""
+    deadline = time.monotonic() + STILL_WITHIN
+    last = picture()
+    while time.monotonic() < deadline:
+        time.sleep(0.1)
+        now = picture()
+        if now == last:
+            break
+        last = now
+    return last
 
 
 def colour(shown: Pixels, x: int, y: int) -> tuple[int, int, int]:
@@ -130,7 +146,13 @@ def middle(rows: list[int]) -> float:
 
 
 def name_beside(shown: Pixels, left: int, top: int, bottom: int) -> tuple[float, int, int] | None:
-    """Give a name's capitals' middle, top to baseline, where it starts and its width, or None."""
+    """Give a name's capitals' middle, top to baseline, where it starts and its width, or None.
+
+    Its top is its highest ink, an ascender's or a dot's too where one stands past the capitals:
+    a share of the widest row, as the baseline takes, put a round capital's thin top 3 pixels
+    low (2026-11-19). Its baseline is the lowest row holding a share of its widest, so a
+    descender below it is never taken for it.
+    """
     width, height, _ = shown
     counts: dict[int, int] = {}
     across: set[int] = set()
@@ -180,7 +202,7 @@ def marks_and_names(shown: Pixels) -> list[tuple[float, float]]:
 
 @pytest.mark.parametrize("scale", [1.5, 2])
 def test_each_groups_emoji_stands_centred_on_its_name(shell: Shell, scale: float) -> None:
-    """Super+E's groups each have their emoji's middle within a device pixel of their name's.
+    """Super+E's groups read have their emoji's middle within a device pixel of their name's.
 
     Joel, 2026-11-19 19:39, at 1.5: "the alignment for emojis is better, but still not right".
     """
@@ -191,10 +213,11 @@ def test_each_groups_emoji_stands_centred_on_its_name(shell: Shell, scale: float
         shell.as_account(shell.ipc("collection", "emoji"))
         shell.launcher_ready()
         shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
-        time.sleep(DRAWN)
-        read = marks_and_names(picture())
-        shell.close_launcher()
+        read = marks_and_names(still_picture())
     finally:
+        # Shut whatever happened, so the next scale's case opens it afresh.
+        if shell.showing()["open"]:
+            shell.close_launcher()
         shell.as_account("niri msg output winit scale 1")
     said = ", ".join(f"{mark:.1f} against {name:.1f}" for mark, name in read)
     assert len(read) >= READ_LEAST, f"read {len(read)} of Emoji's rows at {scale}: {said}"

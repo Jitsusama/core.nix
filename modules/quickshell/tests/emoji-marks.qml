@@ -132,6 +132,23 @@ ShellRoot {
         }).map(([what]) => what);
     }
 
+    // The measures it must keep, so a rule that keeps nothing is caught
+    // too: a picture by its box, and a letter traced with its box.
+    function rightlyLost() {
+        const face = Theme.level.figure.family;
+        const keyOf = text => [face, 2, text].join("\t");
+        const box = { x: 0, y: -10, width: 10, height: 10 };
+        const kept = [
+            ["a picture by its box", String.fromCodePoint(0x1f600),
+                Object.assign({ outline: 0, pictured: true }, box)],
+            ["a letter traced with its box", "H", Object.assign({ outline: 12 }, box)]
+        ];
+        return kept.filter(([, text, measure]) => {
+            MarkSize.measured(keyOf(text), measure, true);
+            return MarkSize.known(keyOf(text)) === null;
+        }).map(([what]) => what);
+    }
+
     function say() {
         console.log(`MEANT ${JSON.stringify({
             offsets: root.offsets,
@@ -144,7 +161,8 @@ ShellRoot {
             themePictured: Object.keys(Theme.glyph)
                 .filter(name => MarkSize.pictured(Theme.glyph[name])),
             emojiFace: Qt.fontFamilies().includes("Noto Color Emoji"),
-            wronglyKept: root.wronglyKept()
+            wronglyKept: root.wronglyKept(),
+            rightlyLost: root.rightlyLost()
         })}`);
         Qt.callLater(() => Qt.exit(0));
     }

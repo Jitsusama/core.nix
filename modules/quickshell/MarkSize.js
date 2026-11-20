@@ -61,8 +61,8 @@ function faceHeld(family, families) {
 // A picture is kept only by its box, and nothing with an empty box at all:
 // the launcher's rows once kept an emoji traced as a letter, an empty path
 // a pixel and a half across beside an empty box, and every row after drew
-// it as if it had no ink, its baseline on the capitals' middle, about 5
-// pixels high (Joel, 2026-11-19 19:39).
+// it as if it had no ink, its baseline on the capitals' middle, about 7
+// device pixels high at 1.5 (Joel, 2026-11-19 19:39).
 function measured(key, measure, whole) {
     const boxed = measure.width > 0 && measure.height > 0;
     const picture = pictured(key.split("\t").slice(2).join("\t"));
