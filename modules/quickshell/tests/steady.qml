@@ -320,6 +320,20 @@ QtObject {
         if (Steady.landing(null, { rows: rows("b") }).at !== -1)
             failures.push("with no landing asked, rows land nowhere");
 
+        // The card's list is sized one way wherever it's sized: its rows,
+        // and a gap once where one shown stands apart, never for one below.
+        const sizings = [
+            ["rows with no gap", [{}, {}, {}], 32],
+            ["a gap among those shown", [{}, { gap: true }, {}], 40],
+            ["a gap past those shown", [{}, {}, {}, { gap: true }], 32],
+            ["fewer rows than room", [{ gap: true }], 40]
+        ];
+        for (const [what, shown, want] of sizings) {
+            const sized = Steady.tallFor(shown, 2, 16, 8);
+            if (sized !== want)
+                failures.push(`${what}: sized ${sized}, not ${want}`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

@@ -656,6 +656,30 @@ QtObject {
             + "start\n"
             + "launcher: 1 change in quests presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms");
+        // A refresh due while home was still to be found waits for the find,
+        // not the pace, so a change held there says its hold apart, and one
+        // of the same place not held says it held for none (H6EDLC, Super+N,
+        // 2026-11-19).
+        const heldApart = Presented.changesSaid([
+            { place: "machine", from: 0, heard: 5, held: 10, refreshed: 40, begun: 48, at: 70 },
+            { place: "machine", from: 100, heard: 102, held: 110, refreshed: 122, begun: 130,
+                at: 190 },
+            { place: "machine", from: 200, heard: 204, refreshed: 214, begun: 220, at: 250 }
+        ]);
+        check(failures, "a change held for home's find says the hold apart from the pace",
+            heldApart.join("\n"),
+            "launcher: 3 changes in machine presented a median 70 ms from the line, "
+            + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms: a median 4 ms before the "
+            + "shell heard it, 8 waiting on the pace, 12 held while home was found, 8 in the "
+            + "shell and 30 from its frame's start");
+        const unheldToo = Presented.changesSaid([
+            { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 }
+        ]);
+        check(failures, "a place with none held says no hold", unheldToo.join("\n"),
+            "launcher: 1 change in windows presented a median 70 ms from the line, "
+            + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms: a median 5 ms before the "
+            + "shell heard it, 35 waiting on the pace, 8 in the shell and 22 from its frame's "
+            + "start");
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many

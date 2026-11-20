@@ -5628,6 +5628,10 @@ Scope {
         if (updatesWaiting[place] !== was) {
             updatesHeard[place] = KeyTimes.now();
             updatesBy[place] = Hearing.heardBy();
+            // Taken while a refresh is held for home's find, it waits on
+            // the find, which makes it in the slice after, not on the pace.
+            if (refreshHeld)
+                updatesHeld[place] = updatesHeard[place];
         }
     }
     // `refreshedFor`, when the launcher refreshes a source itself, says
@@ -5873,6 +5877,13 @@ Scope {
         // nothing's held, so a shut stopped short leaves no source waiting.
         if (fillFinding && open) {
             refreshHeld = true;
+            // Only the first hold counts, as it's held from when it was due.
+            const heldAt = KeyTimes.now();
+            for (const source of refreshing) {
+                const place = source.settings.name;
+                if (updatesHeard[place] !== undefined && updatesHeld[place] === undefined)
+                    updatesHeld[place] = heldAt;
+            }
             return;
         }
         // Any refresh made takes those held with it, so the slice after the
@@ -9669,8 +9680,8 @@ Scope {
     // frame under it (VKCF3Z, 2026-11-05).
     readonly property real footBase: (rowTall + footCaps.tightBoundingRect.height) / 2
     // The gap that sets a page's groups apart, above a row that has one,
-    // as Network's does; home has none; the card's height, the list and the rows' lines all read
-    // it, so the plate's lines can't drift from the list's.
+    // as Network's does; home has none; the list and the rows' lines read it, so the plate's
+    // lines can't drift from the list's, and the card's height the same beat (Steady.tallFor).
     readonly property real apart: matches.some(row => row.gap) ? Theme.space.beat : 0
     // A length to a hundredth, as reports say one, or null for none.
     function hundredths(length) {
@@ -10449,7 +10460,7 @@ Scope {
             prompt.text = "";
             matches = listed;
             current = 0;
-            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
+            tall = Steady.tallFor(matches, rows, rowTall, Theme.space.beat);
         } finally {
             keeping = false;
         }
@@ -10949,9 +10960,8 @@ Scope {
             // Always the same height, eight rows, kept until it closes, so
             // the card is the same shape however much home holds and its
             // rows fill it to the foot, none held under the last.
-            const sized = homeFound ? matches : homeKept;
-            tall = rows * rowTall + (sized.slice(0, rows).some(row => row.gap)
-                ? apart : 0);
+            tall = Steady.tallFor(homeFound ? matches : homeKept, rows, rowTall,
+                Theme.space.beat);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
             lap("keys");
@@ -11991,8 +12001,7 @@ Scope {
                 fillFoundHome = true;
                 // The card's height is home's as found, as the open
                 // handler sized it from before home was found after it.
-                tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap)
-                    ? apart : 0);
+                tall = Steady.tallFor(matches, rows, rowTall, Theme.space.beat);
             }
             heldAgreed(sources);
         } catch (error) {
@@ -12157,7 +12166,7 @@ Scope {
             prompt.text = "";
             matches = home;
             current = 0;
-            tall = rows * rowTall + (matches.slice(0, rows).some(row => row.gap) ? apart : 0);
+            tall = Steady.tallFor(matches, rows, rowTall, Theme.space.beat);
         } finally {
             keeping = false;
         }
@@ -12630,6 +12639,9 @@ Scope {
     // Whose line each place's waiting change came from, by place, so Now,
     // made from many daemons, says whose its changes were.
     readonly property var updatesBy: ({})
+    // When each place's waiting change was first held for home's find
+    // (refreshDue), by place, so its line says the hold apart from the pace.
+    readonly property var updatesHeld: ({})
     property var updatesPresented: []
     // Each drawer a key brought since the launcher opened, from that key to
     // when niri presented it, said by place as it closes (drawerMade).
@@ -12721,11 +12733,12 @@ Scope {
         const from = updatesWaiting[place];
         if (from === undefined)
             return;
-        const one = { place, from, heard: updatesHeard[place], refreshed,
-            by: updatesBy[place] };
+        const one = { place, from, heard: updatesHeard[place], held: updatesHeld[place],
+            refreshed, by: updatesBy[place] };
         updatesWaiting = Presented.drawn(updatesWaiting, place);
         delete updatesHeard[place];
         delete updatesBy[place];
+        delete updatesHeld[place];
         if (!(shown && open))
             return;
         afterFrame((begun, frame) => {
@@ -12756,6 +12769,8 @@ Scope {
             delete updatesHeard[place];
         for (const place of Object.keys(updatesBy))
             delete updatesBy[place];
+        for (const place of Object.keys(updatesHeld))
+            delete updatesHeld[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
         for (const said of [first, clock].filter(line => line !== "").concat(updates))
