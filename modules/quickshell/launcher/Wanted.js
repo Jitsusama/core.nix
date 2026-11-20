@@ -74,20 +74,30 @@ function readAt(stands, readers) {
         || readers.some(one => one !== null && wanted(stands, one));
 }
 
+// The source a step into `from` holds anew, read just before the step is
+// held, or null: one no step in `held` holds, whose rows the step read laid
+// out as they stand (Provider.qml's readsAfreshUnwanted). Asked once it's
+// held, that would be asked of a source wanted by then. One that kept its
+// rows while unwanted, as Windows does, says as it's held the rows it made
+// at last, and so does Agents stepped into from where its own rows after
+// its sessions' aren't read, which the step must show; neither is named.
+function heldAnew(from, held) {
+    if (from?.readsAfreshUnwanted !== true) {
+        return null;
+    }
+    return held.some(step => step.row?.from === from) ? null : from;
+}
+
 // Whether a source's change is only what a step read of it a moment before:
 // told by the source itself (no `launchers` reason), while the step that
-// holds it anew, `newlyHeld`, is being held, of a source whose rows asked
-// unwanted are laid out afresh (Provider.qml's readsAfreshUnwanted). Wanted
-// only from then, it compares its rows with what it said when last wanted,
-// so it says they changed, and made again, each of Joel's steps into Agents
-// by an arrow and Return waited 16 to 25 ms for its frame, where other
-// steps as long waited a median 2 (his journal, 2026-11-19 and 20). Any
-// other source's change then is its own, as is one from a source that kept
-// its rows while unwanted, as Windows does, which says the rows it made at
-// last; each refreshes as ever.
+// holds it anew (heldAnew's `newlyHeld`) is being held. Wanted only from
+// then, it compares its rows with what it said when last wanted, so it
+// says they changed, and made again, each of Joel's steps into Agents by
+// an arrow and Return waited 16 to 25 ms for its frame, where other steps
+// as long waited a median 2 (his journal, 2026-11-19 and 20). Any other
+// source's change then is its own, and refreshes as ever.
 function readByStep(source, newlyHeld, launchers) {
-    return newlyHeld !== null && source === newlyHeld && launchers === undefined
-        && source.readsAfreshUnwanted === true;
+    return newlyHeld !== null && source === newlyHeld && launchers === undefined;
 }
 
 // The order a kept opening's sources wake in, a few a frame, rather than

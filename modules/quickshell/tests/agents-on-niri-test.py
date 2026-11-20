@@ -2666,6 +2666,9 @@ def test_a_step_into_agents_from_home_makes_its_rows_once(shell: Shell) -> None:
     # A precondition, not the claim: Agents did say its rows moved as the step was held, so
     # the case stands where Joel's steps did rather than passing on a change never said.
     assert "agents said only what its step read" in said, f"Agents said no change: {said}"
+    # Only the step's own change is let by: one Agents says once it's held still shows.
+    lay("AFTERSTEP", "After the Step Quest", {"state": "listening"})
+    shell.launcher_until(lambda shown: "After the Step Quest" in shown["rows"])
 
 
 def arrived_shut(shell: Shell, arrive: Callable[[], None]) -> None:

@@ -57,8 +57,9 @@ USAGE = {
 # How long the node and the agents daemon may take to listen, in seconds.
 LISTENING = 30
 
-# How long a session's move takes at most to reach the shut shell from its presence, through
-# the node and the agents daemon, in seconds, so a step after it finds it there.
+# How long a session's move takes at most to reach the agents daemon from its presence, through
+# the node, in seconds. The shut shell's watch holds it back for up to a pace, and tells it as
+# the launcher next opens (Agents.qml's shutPace), so a step after that opening finds it there.
 MOVING = 1.0
 
 # The id the node's sessions are asked for under, after its hello, so its answer is known.
@@ -101,15 +102,28 @@ def presence(state: Path, nth: int, turn: int = 0) -> Json:
     }  # fmt: skip
 
 
+def laid_whole(path: Path, record: Json) -> None:
+    """Lay a presence record whole, by rename, as pi does, so the node never reads half of one."""
+    laying = path.with_name(f"{path.name}.tmp")
+    laying.write_text(json.dumps(record))
+    laying.replace(path)
+
+
 def held_by_node(node: Path) -> int:
     """Give how many sessions the node holds alive, asked over its daemon interface."""
     asks = [{"id": 1, "ask": "hello"}, {"id": LISTED, "ask": "list", "kind": "session"}]
     with socket.socket(socket.AF_UNIX) as asked:
+        # Bounded as its listening is, so a node that never answers fails the lab.
+        asked.settimeout(LISTENING)
         asked.connect(str(node))
         asked.sendall("".join(json.dumps(ask) + "\n" for ask in asks).encode())
         said = asked.makefile()
         while True:
-            answer = json.loads(said.readline())
+            line = said.readline()
+            if not line:
+                refused = "the node closed before it listed its sessions"
+                raise AssertionError(refused)
+            answer = json.loads(line)
             if answer.get("id") == LISTED:
                 records = answer.get("records", [])
                 return sum(1 for record in records if record.get("state") != "ended")
@@ -145,11 +159,11 @@ def agents_served(count: int) -> Iterator[Callable[[], None]]:
     laid = state / "pi/agentic-harness.pi/mesh-workflow/presence"
     laid.mkdir(parents=True, exist_ok=True)
     for nth in range(count):
-        (laid / f"lab{nth:03d}.json").write_text(json.dumps(presence(state, nth)))
+        laid_whole(laid / f"lab{nth:03d}.json", presence(state, nth))
     turns = itertools.count(1)
 
     def moved() -> None:
-        (laid / "lab000.json").write_text(json.dumps(presence(state, 0, next(turns))))
+        laid_whole(laid / "lab000.json", presence(state, 0, next(turns)))
         time.sleep(MOVING)
 
     steer = state / "pi/agentic-harness.pi/steer"
@@ -169,7 +183,7 @@ def agents_served(count: int) -> Iterator[Callable[[], None]]:
             stdout=node_log,
             stderr=subprocess.STDOUT,
         )
-        stack.callback(node.wait)
+        stack.callback(node.wait, timeout=LISTENING)
         stack.callback(node.terminate)
         listening(node_socket, node, logs / "mycelium.log")
         deadline = time.monotonic() + LISTENING
@@ -192,7 +206,7 @@ def agents_served(count: int) -> Iterator[Callable[[], None]]:
             stdout=agents_log,
             stderr=subprocess.STDOUT,
         )  # fmt: skip
-        stack.callback(served.wait)
+        stack.callback(served.wait, timeout=LISTENING)
         stack.callback(served.terminate)
         listening(rows, served, logs / "agents.log")
         yield moved

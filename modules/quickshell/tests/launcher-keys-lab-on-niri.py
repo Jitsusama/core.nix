@@ -196,7 +196,9 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
         shell.down_to(name)
         # Return comes once the arrow's frames are drawn, as Joel's hand comes after his ↓,
         # not in the frame the arrow moved.
-        shell.held_still()
+        if not shell.held_still():
+            refused = "the launcher never held still after the arrows"
+            raise AssertionError(refused)
     else:
         shell.type_in(name.lower(), selecting=name)
     since = shell.mark()
