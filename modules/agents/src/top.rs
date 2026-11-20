@@ -716,10 +716,7 @@ mod tests {
                 mark(&[row("O", "listening", 0, LIVE), row("A", "needs", 1, LIVE)]),
                 mark(&[row("O", "listening", 0, LIVE), row("A", "working", 1, LIVE)]),
             ],
-            [
-                "\"waitsOnJoel\":\"alert\"",
-                "\"agent\":\"program\""
-            ],
+            ["\"waitsOnJoel\":\"alert\"", "\"agent\":\"program\""],
             "a session inside waiting marks the folded row; none waiting leaves its own"
         );
     }
