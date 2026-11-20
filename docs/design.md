@@ -1732,9 +1732,7 @@ works the same way everywhere.
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
   the tray (VKCF3Z, 2026-11-08). A row of Lately's, what came, stands
-  in For You, leading it ahead of the sessions' asks, with home's row
-  naming it, so Super+O, Return, Return reaches a low battery (42P0R4
-  and Y2YBTS, 2026-11-20), only while one of its own
+  in For You only while one of its own
   notices is critical, unread and off the screen, so Mail's, which holds
   no notices, never does; while Slack's daemon answers, a critical
   notice of Slack's lifts Slack's row only if it lists one of the
@@ -1742,7 +1740,11 @@ works the same way everywhere.
   lifts, though the tray counts it. Once
   there it stays until the launcher next opens, unless it comes to hold
   nothing, and one that turns critical while Joel is under Now's own
-  rows waits until he steps into For You or out of Now. Otherwise it's
+  rows waits until he steps into For You or out of Now. There it leads
+  For You, ahead of everything else in it, and home's row names its
+  critical notice, or the row once that's read, so Super+O, Return,
+  Return reaches a low battery (42P0R4 and Y2YBTS, 2026-11-20).
+  Otherwise it's
   among Now's own rows (Joel, 2026-11-19: "I almost never know what I
   am supposed to do with it"). Each is a place per source, reading
   "Mail", "Slack" and "Desktop" (Now's Desktop), nothing after its

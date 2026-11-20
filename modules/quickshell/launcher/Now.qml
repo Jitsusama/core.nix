@@ -2305,12 +2305,20 @@ Provider {
     // Joel read here lifts nothing the tray no longer counts (round 5,
     // F66).
     readonly property var latelyCritical: {
+        const up = {};
+        for (const source of Lately.SOURCES)
+            up[source] = (latelyCriticalHeld[source] ?? []).length > 0;
+        return up;
+    }
+    // Each source's critical notices unread, as latelyCritical asks them,
+    // so home names the one leading the row For You leads with.
+    readonly property var latelyCriticalHeld: {
         const onScreen = Object.keys(Notices.live).filter(id => !(id in Notices.resting));
         const of = Lately.held(Notices.history, []);
         const up = {};
         for (const source of Lately.SOURCES)
             up[source] = Holding.held({ notices: of[source] ?? [], onScreen: onScreen })
-                .notices.length > 0;
+                .notices;
         return up;
     }
     // Where Lately's rows stand. While the launcher is open a row comes
@@ -2989,10 +2997,15 @@ Provider {
             return ForYou.bandsRun({ look: toLookAtCount, try: toTryCount },
                 Words.of("on:waiting").said ?? {});
         }
-        // A critical notice unread leads, as it leads For You (waitingRows),
-        // so home names what Return, Return reaches.
-        const critical = criticalNotices.length > 0
-            ? String(criticalNotices[0].summary ?? "") : "";
+        // The row of Lately's that leads For You (waitingRows) leads home
+        // too, by the same test over the same bands, never making its rows,
+        // so home names what Return, Return reaches: its critical notice,
+        // or the row's own name once that's read or has no summary.
+        const leading = latelyBands(Date.now()).bands.map(band => band.source)
+            .find(source => latelyComingIn({ forYou: { source: source } })) ?? null;
+        const critical = leading === null ? ""
+            : String((latelyCriticalHeld[leading] ?? [])[0]?.summary ?? "")
+                || Words.name(`for-you:source:${leading}`);
         const asked = sessions.length > 0 && critical === "";
         const lead = sessions.length === 0 && critical === ""
             ? WaitingOnYou.now[0] ?? null : null;
