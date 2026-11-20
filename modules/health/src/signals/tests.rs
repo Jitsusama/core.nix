@@ -23,10 +23,6 @@ const WAITS: Duration = Duration::from_secs(10);
 /// second stop comes while the first's ender runs.
 const ENDS_LATE: Duration = Duration::from_millis(200);
 
-/// How long after the first stop the second is sent: within `ENDS_LATE`,
-/// with room for the first to be caught.
-const STOPS_AGAIN: Duration = Duration::from_millis(50);
-
 /// How long a hangup the copy was started ignoring is given to end it,
 /// well past the `ENDS_LATE` in which a caught one would.
 const HANGS_UP: Duration = Duration::from_secs(1);
@@ -108,6 +104,18 @@ impl Stopped {
         std::fs::read_to_string(self.told_in().with_extension("said")).ok()
     }
 
+    /// Wait for the copy to have caught a stop, as its ender marks.
+    fn caught(&self) {
+        let since = Instant::now();
+        while !self.told_in().with_extension("caught").exists() {
+            assert!(
+                since.elapsed() < WAITS,
+                "the health to stop never caught a stop"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     fn send(&self, signal: c_int, group: bool) {
         let id = libc::pid_t::try_from(self.health.id()).expect("its id");
         // SAFETY: the health to stop leads its group, and isn't waited on
@@ -179,10 +187,14 @@ impl Drop for Stopped {
             self.send(libc::SIGKILL, true);
             let _ = self.health.wait();
         }
-        if self.follower != 0 && !gone(self.follower) {
-            let id = libc::pid_t::try_from(self.follower).expect("its id");
-            // SAFETY: the follower is the copy's, and still there.
-            unsafe { libc::kill(id, libc::SIGKILL) };
+        let follower = libc::pid_t::try_from(self.follower).expect("its id");
+        let group = libc::pid_t::try_from(self.health.id()).expect("its id");
+        // SAFETY: getpgid only asks a process's group.
+        let the_copys = follower != 0 && unsafe { libc::getpgid(follower) } == group;
+        if the_copys {
+            // SAFETY: still in the copy's group, so the follower and never
+            // another process that took its id.
+            unsafe { libc::kill(follower, libc::SIGKILL) };
         }
     }
 }
@@ -197,30 +209,43 @@ fn a_health_to_stop() {
         return;
     };
     let told = Path::new(&told);
-    // SAFETY: ignoring a signal is safe, and no catch is set yet.
-    unsafe { libc::signal(libc::SIGHUP, libc::SIG_IGN) };
+    // SAFETY: setting a signal's action is safe, and no catch is set yet.
+    // Whatever ran the tests may ignore a stop, as a script's `&` ignores
+    // interrupts, so each is set here.
+    unsafe {
+        libc::signal(libc::SIGTERM, libc::SIG_DFL);
+        libc::signal(libc::SIGINT, libc::SIG_DFL);
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
     let followers = Followers::default();
     let ender = followers.ender();
-    ending(move || {
-        thread::sleep(ENDS_LATE);
-        ender();
-    })
-    .expect("the stops caught");
-    let said = told.with_extension("said");
-    let mut sleep = Command::new("sleep");
-    sleep.arg("600");
-    let (follower, sent) = followers.following(sleep, move |words| {
-        std::fs::write(&said, words).expect("its end said");
-    });
-    let masks = blocking_and_ignoring(follower).map_or(String::new(), |(blocked, ignored)| {
-        format!(" {blocked} {ignored}")
-    });
-    let saying = told.with_extension("saying");
-    std::fs::write(&saying, format!("{follower}{masks}")).expect("said");
-    std::fs::rename(&saying, told).expect("said");
-    while let Ok(Some(_)) = sent.recv() {}
-    await_stop();
-    std::process::exit(LEAVES);
+    let caught = told.with_extension("caught");
+    // As follow() runs, so this is how health ends.
+    let ran = until_stopped(
+        move || {
+            std::fs::write(&caught, "").expect("the stop marked");
+            thread::sleep(ENDS_LATE);
+            ender();
+        },
+        || {
+            let said = told.with_extension("said");
+            let mut sleep = Command::new("sleep");
+            sleep.arg("600");
+            let (follower, sent) = followers.following(sleep, move |words| {
+                std::fs::write(&said, words).expect("its end said");
+            });
+            let masks = blocking_and_ignoring(follower)
+                .map_or(String::new(), |(blocked, ignored)| {
+                    format!(" {blocked} {ignored}")
+                });
+            let saying = told.with_extension("saying");
+            std::fs::write(&saying, format!("{follower}{masks}")).expect("said");
+            std::fs::rename(&saying, told).expect("said");
+            while let Ok(Some(_)) = sent.recv() {}
+            Err::<(), _>(io::Error::other("the follower ended"))
+        },
+    );
+    std::process::exit(if ran.is_ok() { 0 } else { LEAVES });
 }
 
 #[test]
@@ -246,6 +271,10 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
     // them too, as a run that blocked them showed, and a service manager's
     // stop would wait out its timeout to kill each. One health was started
     // ignoring, its follower ignores too.
+    assert!(
+        stopped.masks.is_some() || !cfg!(target_os = "linux"),
+        "the follower's masks went unread"
+    );
     if let Some(masks) = stopped.masks {
         assert_eq!(
             masks,
@@ -271,17 +300,17 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
 }
 
 #[test]
-fn a_second_stop_ends_health_at_once() {
+fn a_second_stop_ends_health_at_once_leaving_its_follower() {
     // The first stop's end of the followers is late, so a second that
-    // waited on it would end health by the first.
+    // waited on it would end health by the first, its follower ended.
     let mut stopped = Stopped::start();
     stopped.send(libc::SIGTERM, false);
-    thread::sleep(STOPS_AGAIN);
+    stopped.caught();
     stopped.send(libc::SIGINT, false);
     let ended = stopped.ending();
     assert_eq!(
-        ended.signal(),
-        Some(libc::SIGINT),
+        (ended.signal(), gone(stopped.follower)),
+        (Some(libc::SIGINT), false),
         "a second stop waited for the first to end health ({ended})"
     );
 }

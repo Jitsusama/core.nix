@@ -641,22 +641,20 @@ pub fn follow(into: &Path) -> io::Result<()> {
     // Dropped however this returns, ending every follower still running.
     let followers = Followers::default();
     // A stop ends the followers first, then health (`signals.rs`).
-    signals::ending(followers.ender())?;
-    let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
-    drop(lines);
-    let ran = run(
-        &mut follower,
-        &read,
-        Instant::now,
-        thread::sleep,
-        lid::look,
-        &FAILS,
-        &NOTICES,
-    );
-    // Once a stop is caught, health ends by it alone.
-    signals::await_stop();
-    ran?;
-    Err(ended)
+    signals::until_stopped(followers.ender(), || {
+        let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
+        drop(lines);
+        run(
+            &mut follower,
+            &read,
+            Instant::now,
+            thread::sleep,
+            lid::look,
+            &FAILS,
+            &NOTICES,
+        )?;
+        Err(ended)
+    })
 }
 
 /// What health ends on once `run` returns, given how its followers

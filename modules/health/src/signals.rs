@@ -17,13 +17,18 @@
 //! A stop under way is `stopping`, from the moment it's caught: a follower
 //! the same stop ended, as a terminal's interrupt ends its whole group,
 //! says nothing of its end, and health's own end waits for the signal's.
+//! A second stop while the first ends the followers ends health at once,
+//! leaving any follower not yet ended, so a stop can never hang.
 
 use std::io::{self, PipeReader, Read as _};
 use std::mem;
 use std::os::fd::{AsRawFd as _, IntoRawFd as _, OwnedFd};
+use std::os::unix::process::ExitStatusExt as _;
+use std::process::ExitStatus;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::thread;
+use std::time::Duration;
 
 use libc::c_int;
 
@@ -39,15 +44,33 @@ static CAUGHT: AtomicI32 = AtomicI32::new(-1);
 /// Whether a stop has been caught.
 static STOPPED: AtomicBool = AtomicBool::new(false);
 
-/// From now on, a signal that asks health to stop calls `end`, on a
-/// thread of its own, then ends health by that signal. A second while
-/// the first's `end` runs ends health at once, so a stop can't hang.
+/// How long a follower a stop ended waits for health to catch it: a stop
+/// to health's whole group reaches health and its followers at once, and
+/// a follower may end of it before health's catch has run.
+pub const CAUGHT_WITHIN: Duration = Duration::from_millis(100);
+
+/// `run`, with health's stops caught: a stop calls `end`, on a thread of
+/// its own, then ends health by its signal, and once one is caught,
+/// health ends by it alone, whatever `run` returns.
 ///
 /// # Errors
 ///
 /// When the pipe can't be made or the signals caught, or when they
-/// already are.
-pub fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
+/// already are, or what `run` returns.
+pub fn until_stopped<T>(
+    end: impl FnOnce() + Send + 'static,
+    run: impl FnOnce() -> io::Result<T>,
+) -> io::Result<T> {
+    ending(end)?;
+    let ran = run();
+    await_stop();
+    ran
+}
+
+/// From now on, a signal that asks health to stop calls `end`, on a
+/// thread of its own, then ends health by that signal. A second while
+/// the first's `end` runs ends health at once, so a stop can't hang.
+fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
     let mut caught = catch(&STOPPING)?;
     thread::spawn(move || {
         let mut signal = [0];
@@ -64,10 +87,17 @@ pub fn stopping() -> bool {
     STOPPED.load(Ordering::SeqCst)
 }
 
+/// Whether `status` is an end by one of the signals that stop health.
+pub fn by_a_stop(status: &ExitStatus) -> bool {
+    status
+        .signal()
+        .is_some_and(|signal| STOPPING.contains(&signal))
+}
+
 /// Wait for good once a stop has been caught, for the thread it's
 /// caught on to end health by its signal, rather than end health some
 /// other way first.
-pub fn await_stop() {
+fn await_stop() {
     while stopping() {
         thread::park();
     }
