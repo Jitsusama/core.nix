@@ -260,7 +260,7 @@
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
       right = "85.6";
-      handled = "43.0";
+      handled = "93.5";
     in
     pkgs.runCommand "call-transcripts-tells-voices-apart-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts voices ${voices} ${meetings} \
