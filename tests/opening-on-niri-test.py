@@ -1090,15 +1090,16 @@ def shared_after_a_kept_copy(shell: Shell, copied: str, hidden: str) -> None:
             with launcher_on_niri.niri_held():
                 # Told as the chord's call returns, as the wait for niri gives up half a second
                 # from the kept frame, held or not.
+                chord = time.monotonic()
                 shell.as_account(shell.ipc(*asked))
-                read = time.monotonic()
                 if name == "clipboard":
                     # One read, as a wait could outlast the half second the share must beat.
                     kept = shell.as_account(shell.ipc("drawnTexts"))
                     assert copied in kept, f"the kept clipboard didn't draw the copy: {kept}"
-                # A read slow enough to lose that race fails as the test's, not the fill's.
-                reading = round((time.monotonic() - read) * 1000)
                 stood.say(said=False)
+                # Timed from before the chord to the share told, all the test spends there, so
+                # a builder slow enough to lose that race fails as the test's, not the fill's.
+                telling = round((time.monotonic() - chord) * 1000)
                 read_shared(shell, shared=True)
                 shell.launcher_until(lambda shown: shown.get("open") and not shown.get("opening"))
                 # Read as the fill leaves it, before niri has presented anything of it.
@@ -1107,7 +1108,7 @@ def shared_after_a_kept_copy(shell: Shell, copied: str, hidden: str) -> None:
             said = shell.log.read_bytes()[since:].decode(errors="replace")
             # Asserted before it's put back, so a failure putting it back hides nothing.
             assert opening.get("filledBy") == "share", (
-                f"{name} waited out the share, told {reading} ms after the chord: {opening}"
+                f"{name} waited out the share, told at most {telling} ms after the chord: {opening}"
             )
             filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
             assert filled in said, f"{name}'s fill wasn't said:\n{said}"
