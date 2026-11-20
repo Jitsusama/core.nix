@@ -115,3 +115,128 @@ fn it_resumes_what_a_scope_names_out_of_pis_reach() {
         "nothing stands after: {left:?}"
     );
 }
+
+/// A pause plan naming a fake systemctl and mycelium, each writing down
+/// what it was asked in `asked`, and the plan's path.
+fn pause_plan(state: &Path) -> PathBuf {
+    let asked = state.join("asked");
+    let fake = |name: &str| {
+        let path = state.join(name);
+        fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\necho \"{name} $*\" >> '{}'\n\
+                 [ \"$1\" = sessions ] && echo '{{\"Ok\":{{\"Sessions\":[]}}}}'\nexit 0\n",
+                asked.to_string_lossy()
+            ),
+        )
+        .expect("a fake program");
+        Command::new("chmod")
+            .arg("+x")
+            .arg(&path)
+            .status()
+            .expect("chmod runs");
+        path
+    };
+    let plan = state.join("pause.json");
+    fs::write(
+        &plan,
+        json!({
+            "systemctl": fake("systemctl"),
+            "mycelium": fake("mycelium"),
+            "timers": ["cadence*.timer"],
+        })
+        .to_string(),
+    )
+    .expect("a plan");
+    plan
+}
+
+fn stop_all(state: &Path, args: &[&str], pi_says: bool) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_pineapple"));
+    command
+        .args(args)
+        .env("XDG_STATE_HOME", state)
+        .env("PINEAPPLE_PAUSE", pause_plan(state));
+    for var in ["PI_SESSION_ID", "PI_BASH_CALL", "PI_HOST_CONVERSATION"] {
+        command.env_remove(var);
+    }
+    if pi_says {
+        command.env("PI_SESSION_ID", "a-session");
+    }
+    command.output().expect("pineapple runs")
+}
+
+fn everything_stops(state: &Path) -> Vec<Value> {
+    fs::read_dir(state.join("pineapple/stops"))
+        .expect("the stops")
+        .flatten()
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .filter_map(|text| serde_json::from_str::<Value>(&text).ok())
+        .filter(|stop| stop["reaches"][0] == "everything")
+        .collect()
+}
+
+#[test]
+fn it_refuses_to_stop_all_where_pi_says_it_runs() {
+    let state = scratch("stop-refused");
+    let said = stop_all(&state, &["stop", "all"], true);
+    assert_eq!(said.status.code(), Some(77), "refused: {said:?}");
+    assert!(
+        String::from_utf8_lossy(&said.stderr).contains("only Joel stops every agent"),
+        "says why: {said:?}"
+    );
+    assert!(everything_stops(&state).is_empty(), "nothing was stopped");
+    assert!(!state.join("asked").exists(), "nothing was paused");
+}
+
+#[test]
+fn it_stops_all_and_resuming_undoes_it_out_of_pis_reach() {
+    let state = scratch("stop-all");
+    let said = stop_all(&state, &["stop", "all"], false);
+    if std::env::var_os("PI_SESSION_ID").is_some() {
+        // An agent running this case is under pi, whatever it clears.
+        assert_eq!(said.status.code(), Some(77), "refused under pi: {said:?}");
+        return;
+    }
+    let out = String::from_utf8_lossy(&said.stdout);
+    assert!(said.status.success(), "stops: {said:?}");
+    assert!(
+        out.starts_with("stopping 0 sessions on "),
+        "says so in one line: {out}"
+    );
+    assert!(
+        out.contains("nothing starts until pineapple resume all"),
+        "says how it ends: {out}"
+    );
+    let stops = everything_stops(&state);
+    assert!(
+        stops.len() == 1 && stops[0]["by_joel"] == true && stops[0]["resumed"].is_null(),
+        "one live stop on everything, Joel's: {stops:?}"
+    );
+    let asked = fs::read_to_string(state.join("asked")).expect("the machine was asked");
+    assert!(
+        asked.contains("mycelium starts stop"),
+        "agents' starts are refused: {asked}"
+    );
+
+    let again = stop_all(&state, &["stop", "all"], false);
+    assert!(
+        again.status.success()
+            && String::from_utf8_lossy(&again.stdout).contains("already stopped"),
+        "a second stop says the first stands: {again:?}"
+    );
+    assert_eq!(everything_stops(&state).len(), 1, "and makes no second");
+
+    let resumed = stop_all(&state, &["resume", "all"], false);
+    assert!(resumed.status.success(), "resumes: {resumed:?}");
+    assert!(
+        String::from_utf8_lossy(&resumed.stdout).contains("resuming every session on "),
+        "says what it undid: {resumed:?}"
+    );
+    let asked = fs::read_to_string(state.join("asked")).expect("the machine was asked");
+    assert!(
+        asked.contains("mycelium starts resume"),
+        "agents may start again: {asked}"
+    );
+}
