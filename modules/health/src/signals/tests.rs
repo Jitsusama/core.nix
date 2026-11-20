@@ -27,6 +27,11 @@ const FAILS_FIRST: &str = "HEALTH_STOPPED_FAILS_FIRST";
 /// follower stuck on a stalled disk.
 const ENDS_NEVER: &str = "HEALTH_STOPPED_ENDS_NEVER";
 
+/// Set only for a copy whose run returns once a stop wakes its rest,
+/// writing without waiting for its follower's end, as health's run does;
+/// a copy whose ender never returns does too.
+const RETURNS_AT_ONCE: &str = "HEALTH_STOPPED_RETURNS_AT_ONCE";
+
 /// Set only for a copy started hearing hangups, as in a terminal, rather
 /// than ignoring them, as under `nohup`.
 const HEARS_HANGUPS: &str = "HEALTH_STOPPED_HEARS_HANGUPS";
@@ -115,7 +120,8 @@ impl Stopped {
     }
 
     /// The copy started with `asked` set, if any (`HANGS`, `REPLAYS`,
-    /// `FAILS_FIRST`, `ENDS_NEVER` or `HEARS_HANGUPS`), once it has said its follower.
+    /// `FAILS_FIRST`, `ENDS_NEVER`, `RETURNS_AT_ONCE` or `HEARS_HANGUPS`),
+    /// once it has said its follower.
     fn starting(asked: Option<&str>) -> Self {
         let folder = tempfile::tempdir().expect("a folder");
         let health = Command::new(std::env::current_exe().expect("this test"))
@@ -278,8 +284,9 @@ impl Drop for Stopped {
 /// little later, as health writes the day, and leaves with an error, or
 /// never returns if it hangs. Asked, it replays a history too, its run
 /// waiting on that history's end, or returns its error at once and waits
-/// for a stop where `main` would say it, or never ends its follower once
-/// stopped, or hears hangups as in a terminal.
+/// for a stop where `main` would say it, or returns on a stop without
+/// waiting for its follower, whose end may never come, or hears hangups
+/// as in a terminal.
 #[test]
 #[ignore = "run only as the copy the stop tests start"]
 fn a_health_to_stop() {
@@ -305,6 +312,7 @@ fn a_health_to_stop() {
     let caught = told.with_extension("caught");
     let fails_first = std::env::var_os(FAILS_FIRST).is_some();
     let ends_never = std::env::var_os(ENDS_NEVER).is_some();
+    let returns_at_once = ends_never || std::env::var_os(RETURNS_AT_ONCE).is_some();
     // As follow() runs, so this is how health ends.
     let ran = until_stopped(
         move || {
@@ -343,7 +351,7 @@ fn a_health_to_stop() {
                 return Err(io::Error::other(FAILS_BEFORE));
             }
             rest(WAITS);
-            while let Ok(Some(_)) = sent.recv() {}
+            while !returns_at_once && matches!(sent.recv(), Ok(Some(_))) {}
             if std::env::var_os(HANGS).is_some() {
                 loop {
                     thread::park();
@@ -446,7 +454,8 @@ fn a_stop_to_the_whole_group_ends_health_by_it_and_its_follower_unsaid() {
 #[test]
 fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
     // `ending` fails past `WAITS`, well past the `WRITES_WITHIN` this stop
-    // takes, so a stop that waited for good fails.
+    // takes, so a stop that waited for good fails. The ender returns
+    // `ENDS_LATE` on, so a stop counted from its return ends health late.
     let mut stopped = Stopped::starting(Some(HANGS));
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
@@ -458,7 +467,9 @@ fn a_stop_ends_health_by_its_signal_though_its_run_never_returns() {
         "a stop waited on a run that never returns ({ended})"
     );
     assert!(
-        took >= WRITES_WITHIN && stopped.failed().contains(UNWRITTEN),
+        took >= WRITES_WITHIN
+            && took < WRITES_WITHIN + ENDS_LATE
+            && stopped.failed().contains(UNWRITTEN),
         "a stop to a run that never returns ended health {took:?} on, or didn't say the day \
          went unwritten: {}",
         stopped.failed()
@@ -510,10 +521,32 @@ fn a_stop_says_the_error_a_run_returned_just_before_it() {
     let ended = stopped.ending();
     assert!(
         ended.signal() == Some(libc::SIGTERM)
+            && gone(stopped.follower)
             && stopped
                 .failed()
                 .contains(&format!("health: {FAILS_BEFORE}")),
-        "a stop ended health ({ended}) without saying the error its run returned first: {}",
+        "a stop ended health ({ended}) before its follower, or without saying the error its \
+         run returned first: {}",
+        stopped.failed()
+    );
+}
+
+#[test]
+fn a_stop_ends_the_followers_before_health_though_its_run_returns_at_once() {
+    // As health's run writes and returns on a stop without waiting for its
+    // followers' end, which the ender makes late.
+    let mut stopped = Stopped::starting(Some(RETURNS_AT_ONCE));
+    let since = Instant::now();
+    stopped.send(libc::SIGTERM, false);
+    let ended = stopped.ending();
+    let took = since.elapsed();
+    assert!(
+        ended.signal() == Some(libc::SIGTERM)
+            && gone(stopped.follower)
+            && stopped.wrote()
+            && took >= ENDS_LATE
+            && !stopped.failed().contains(UNWRITTEN),
+        "a stop ended health ({ended}) {took:?} on, before its follower or the day's write: {}",
         stopped.failed()
     );
 }
@@ -574,6 +607,7 @@ fn a_hangup_after_another_stop_is_the_same_stop() {
 fn a_stop_whose_followers_never_end_still_ends_health_in_time() {
     // As a follower stuck on a stalled disk outlives its kill, so health's
     // end of it never returns, and the stop's bound must count without it.
+    // The run writes all the same, not waiting on its followers.
     let mut stopped = Stopped::starting(Some(ENDS_NEVER));
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
@@ -582,9 +616,11 @@ fn a_stop_whose_followers_never_end_still_ends_health_in_time() {
     assert!(
         ended.signal() == Some(libc::SIGTERM)
             && took >= WRITES_WITHIN
-            && stopped.failed().contains(UNWRITTEN),
-        "a stop whose followers never end ended health ({ended}) {took:?} on, or didn't say \
-         the day went unwritten: {}",
+            && stopped.wrote()
+            && !stopped.failed().contains(UNWRITTEN)
+            && stopped.failed().contains("left a follower running"),
+        "a stop whose followers never end ended health ({ended}) {took:?} on, didn't write \
+         the day, or didn't say it left one: {}",
         stopped.failed()
     );
 }
