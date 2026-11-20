@@ -19,6 +19,7 @@ which leaves this note behind.
 | `spend.ts`     | what each spent today, most first, as the drawer lists it   |
 | `waits.ts`     | what waits on each cell and what holds stand, in words      |
 | `reach.ts`     | whether the drawing reaches every cell, said when asked     |
+| `lines.ts`     | how wide a line is drawn as the map steps in and out        |
 | `map-check.sh` | `mycelium-map-check`, asking the page this machine serves   |
 | `index.html`   | the page, and `site.css` its styles                         |
 | `index.md`     | its Markdown twin, with `llms.txt` for a model              |
@@ -30,11 +31,11 @@ by hand, served unchanged but for its seams: site.ts hands it each reading,
 keys.ts says what each key it hears asks, outline.ts which rows the tree
 shows and where its keys go, words.ts what each thing is in words, when.ts
 how a time is said, health.ts how each thing stands, doing.ts what each is
-doing, spend.ts what each spent and waits.ts what waits and what holds, so
-those decisions are typed and unit-tested while the drawing carries them
-out. They come
-under the linters as the drawing is rewritten in TypeScript on the kit, and
-until then `treefmt.nix` names them as kept out.
+doing, spend.ts what each spent, waits.ts what waits and what holds and
+lines.ts how wide a line is drawn, so those decisions are typed and
+unit-tested while the drawing carries them out. They come under the
+linters as the drawing is rewritten in TypeScript on the kit, and until
+then `treefmt.nix` names them as kept out.
 
 The `tests/` folder's `map-reads-live-test.py` reads the page as Nix builds
 it in headless Chromium, through the real server beside a stand-in node holding

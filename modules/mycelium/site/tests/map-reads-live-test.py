@@ -9,8 +9,9 @@ stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
 say what waits on a cell and what holds stand, as the node judges them,
-draw every cell until one is too small to read, gather the talk between two
-networks into one line until it or a cell it touches opens,
+draw every cell until one is too small to read, thin every line as the map
+steps out past its own size, gather the talk between two networks into one
+line until it or a cell it touches opens,
 draw a receptor's feeding of a cell while the node says it and not after,
 grow one network out of another while a forage says a cell of the one
 started a cell of the other,
@@ -129,6 +130,11 @@ GROWN_BY_TITLE = "Rig The Skiff"
 CELL_R = 11
 FOLD_PX = 2.5
 STEPPED_PX = 4
+# The least a line thins to as the map steps out (view.js's HAIRLINE), and a
+# zoom far enough out that a line thins to well under what it carries.
+HAIRLINE_PX = 1
+THINNED_UNDER = 0.25
+THICKER_BY = 0.05  # px a thinned line is told from a hairline or its own width by
 # Two cells of Chart the Harbour who just told TERN03, of Mend the Sails,
 # something, so their talk runs between two networks: HERON1 three times, as
 # warm as view.js's second step (WARM_AT), and HERON2 once.
@@ -1071,6 +1077,49 @@ def test_every_cell_is_drawn_until_too_small_to_read(mycelium_opened: Opened) ->
         k = further
     page.wait_for_function(f"{PAINTED}.folded > 0", timeout=PACE_MS)
     assert cells.count() < CELLS, "every cell was drawn too small to read"
+
+
+def test_a_line_thins_as_the_map_steps_out_past_its_own_size(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    *_, k = settled(page, "0 didn't fit the whole map")
+    while k < 1:
+        page.keyboard.press("i")
+        *_, nearer = settled(page, "i didn't step in")
+        assert nearer > k, f"the map stopped stepping in at {k:.3f}"
+        k = nearer
+    painted = page.evaluate(PAINTED)
+    assert painted["widestCarried"] > HAIRLINE_PX, (
+        f"at {k:.3f} the widest line carried {painted['widestCarried']} px, too few to tell"
+    )
+    # A canvas holds a line's width at single precision, so widths match to
+    # a hundredth rather than exactly.
+    assert painted["widest"] == pytest.approx(painted["widestCarried"], abs=0.01), (
+        f"at its own size or nearer, {k:.3f}, a line was drawn {painted['widest']} px"
+        f" though it carries {painted['widestCarried']} px"
+    )
+    while k >= THINNED_UNDER:
+        page.keyboard.press("o")
+        *_, further = settled(page, "o didn't step out")
+        assert further < k, f"the map stopped stepping out at {k:.3f}"
+        k = further
+    painted = page.evaluate(PAINTED)
+    carried, drawn = painted["widestCarried"], painted["widest"]
+    assert carried > HAIRLINE_PX, f"the widest line carried {carried} px, too few to thin"
+    # How far each line thins is the unit cases' (lines.test.ts); here, that
+    # the drawing thins the heaviest under what it carries but over the
+    # hairline the lighter ones are drawn at, so it still reads heavier.
+    assert HAIRLINE_PX + THICKER_BY < drawn < carried - THICKER_BY, (
+        f"stepped out to {k:.3f}, the widest line, {carried:.2f} px for what it carries,"
+        f" was drawn {drawn:.2f} px, not thinned between a hairline and that"
+    )
+    cell, cell_carried = painted["cellWidest"], painted["cellWidestCarried"]
+    assert cell == pytest.approx(cell_carried, abs=0.01), (
+        f"stepped out to {k:.3f}, a cell's mark carrying {cell_carried:.2f} px was drawn"
+        f" {cell:.2f} px, though a cell's marks shrink with it and never thin"
+    )
 
 
 def test_talk_between_two_networks_is_one_line_until_it_or_a_cell_it_touches_opens(
