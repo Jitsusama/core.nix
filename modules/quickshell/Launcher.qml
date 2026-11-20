@@ -12150,9 +12150,14 @@ Scope {
     // again as it opens, so a screen that shrinks while it's shut (a new
     // scale, another output) keeps it again at as many rows as now fit;
     // kept at 1 and opened at 1.5, its foot ran 30 px off the bottom. Its
-    // height reads the room and the rows' sizes as well as how many, and
-    // rowSizes holds every one `rows` is worked out from, so it's kept
-    // again as any of them moves.
+    // height reads the room and the rows' sizes as well as how many, so
+    // it's kept again as either moves. Both are worked out from the same
+    // room, in no order Qt promises, so whichever is worked out last keeps
+    // it again with the other already current.
+    onRowsChanged: {
+        if (homeHeld)
+            keepHome();
+    }
     onRowSizesChanged: {
         if (homeHeld)
             keepHome();
