@@ -280,9 +280,9 @@ fn the_heads_and_the_hold_outlast_the_program() {
 }
 
 // cadence reads `since` to say when a hold has stopped the net for half an
-// hour while main moves, as the conclude and Slack holds of 19 November
-// did for over four hours, so it stays put while the net stays held,
-// whatever holds it, and starts again after a gap.
+// hour while main moves, as holds renewed and reworded did for over three
+// hours on 19 November, so it stays put while the net stays held, whatever
+// holds it, and starts again after a gap.
 #[test]
 fn a_hold_keeps_when_it_began_while_it_stands() {
     let first = held_since(None, 1_000);
@@ -294,9 +294,19 @@ fn a_hold_keeps_when_it_began_while_it_stands() {
         "a stop seen a minute on, by this hold or its rewording, began when it was first seen"
     );
     assert_eq!(
+        held_since(Some(&still), 1_060 + HELD_GAP_S),
+        1_000,
+        "a hold seen again at the longest gap the net leaves began when first seen"
+    );
+    assert_eq!(
         held_since(Some(&still), 1_060 + HELD_GAP_S + 1),
         1_060 + HELD_GAP_S + 1,
         "a hold seen again after a gap begins again"
+    );
+    assert_eq!(
+        held_since(Some(&still), 1_030),
+        1_030,
+        "a held.json written after now, a clock moved back, carried a stop begun later"
     );
     let older = json!({ "at": 1_060, "why": "a reboot" });
     assert_eq!(
@@ -305,8 +315,9 @@ fn a_hold_keeps_when_it_began_while_it_stands() {
         "a held.json written before `since` begins the hold now"
     );
     let state = state("held-since");
-    state.held("a reboot", "P9R1KI").unwrap();
-    let written = read_json(&state.root.join("held.json")).unwrap();
+    state.held("a reboot", Some("P9R1KI")).unwrap();
+    let file = state.root.join("held.json");
+    let written = read_json(&file).unwrap();
     assert_eq!(
         written["since"], written["at"],
         "held.json lacks since: {written}"
@@ -314,6 +325,21 @@ fn a_hold_keeps_when_it_began_while_it_stands() {
     assert_eq!(
         written["from"], "P9R1KI",
         "held.json doesn't say who holds the net: {written}"
+    );
+    // Held a minute ago since an hour ago, as the last held.json says.
+    let at = written["at"].as_u64().unwrap();
+    let last = json!({ "at": at - 60, "why": "a reboot", "since": at - 3_600 });
+    fs::write(&file, last.to_string()).unwrap();
+    state.held("a pause", None).unwrap();
+    let written = read_json(&file).unwrap();
+    assert_eq!(
+        written["since"],
+        at - 3_600,
+        "held.json didn't carry the stop's start from the last one: {written}"
+    );
+    assert!(
+        written["from"].is_null(),
+        "a hold no session holds named one: {written}"
     );
     fs::remove_dir_all(&state.root).unwrap();
 }

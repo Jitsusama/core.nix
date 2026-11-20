@@ -379,7 +379,9 @@ pub fn booted() -> Option<u64> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Held {
     pub why: String,
-    pub from: String,
+    /// The mesh address of the session whose hold it is, or nothing where
+    /// none holds it, as a pause file holds it.
+    pub from: Option<String>,
 }
 
 /// The first hold on the whole machine still standing among the messages
@@ -458,7 +460,10 @@ fn held_by(messages: &[Value]) -> Option<Held> {
         .find(|hold| about(hold, messages))
         .map(|hold| Held {
             why: hold["text"].as_str().unwrap_or_default().to_owned(),
-            from: hold["from"].as_str().unwrap_or_default().to_owned(),
+            from: hold["from"]
+                .as_str()
+                .filter(|from| !from.is_empty())
+                .map(str::to_owned),
         })
 }
 
@@ -752,9 +757,21 @@ mod tests {
             standing(&folder, 500),
             Some(Held {
                 why: "old".to_owned(),
-                from: "A".to_owned()
+                from: Some("A".to_owned())
             }),
             "a hold standing says who sent it"
+        );
+        // A hold the net doesn't read sent first names no one the net waits on.
+        let mut conclude = hold("conclude", "B", "#machine");
+        conclude["text"] = json!(
+            "P9R1KI hold: conclude or retire no quest, on either machine, until I end this \
+             hold. Concluded quests' folders are being deleted. Everything else carries on."
+        );
+        write("900-B-1-ab.json", &conclude);
+        assert_eq!(
+            standing(&folder, 500).and_then(|held| held.from),
+            Some("A".to_owned()),
+            "a hold the net leaves alone was named as who holds it"
         );
         assert_eq!(standing(&folder, 2000), None);
         write("3000-A-1-bb.json", &hold("new", "A", "#machine"));

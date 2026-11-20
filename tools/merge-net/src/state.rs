@@ -274,8 +274,13 @@ impl State {
     /// that stopped both from 09:55 to 15:47. It keeps `since`, when the
     /// net was first seen held, whatever held it (`held_since`), so cadence
     /// can say when holds have stopped the net too long while main moves,
-    /// and `from`, who holds it now, so cadence can ask them.
-    pub fn held(&self, why: &str, from: &str) -> Result<(), String> {
+    /// and `from`, the mesh address of the session whose hold stops it now,
+    /// so cadence can ask them; null where no session's does, as for a
+    /// pause file. A new holder keeps `since` and changes `from`, so an ask
+    /// made once per stop is made once per `since` and `from` together.
+    /// `since` counts the time the net starts nothing: a round already
+    /// running when a hold lands writes it as it ends.
+    pub fn held(&self, why: &str, from: Option<&str>) -> Result<(), String> {
         let file = self.root.join("held.json");
         let at = now();
         let since = held_since(read_json(&file).as_ref(), at);
@@ -576,7 +581,9 @@ fn remove(path: &Path) -> Result<(), String> {
 
 /// The longest the net goes between writing `held.json` while one hold
 /// stands: it writes each minute it looks, so a gap past this is a hold
-/// that ended and one that began.
+/// that ended and one that began. It is cadence's `HELD_FRESH_S`
+/// (modules/cadence/src/watch.rs), past which cadence reads the net as
+/// free, so the two say the same of a stop.
 const HELD_GAP_S: u64 = 180;
 
 /// When the net's stop, held again at `at`, began: when `prior`, the last
@@ -585,13 +592,17 @@ const HELD_GAP_S: u64 = 180;
 /// 19 November holds renewed and reworded stopped the net for over three
 /// hours, and a stop counted from each rewording would never read long.
 fn held_since(prior: Option<&Value>, at: u64) -> u64 {
+    // A prior written later than now, or a stop begun after it, is a clock
+    // that moved back, and begins the stop now.
     prior
         .filter(|prior| {
             prior["at"]
                 .as_u64()
-                .is_some_and(|last| at.saturating_sub(last) <= HELD_GAP_S)
+                .and_then(|last| at.checked_sub(last))
+                .is_some_and(|gap| gap <= HELD_GAP_S)
         })
         .and_then(|prior| prior["since"].as_u64())
+        .filter(|since| *since <= at)
         .unwrap_or(at)
 }
 

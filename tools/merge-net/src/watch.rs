@@ -1308,7 +1308,7 @@ pub fn round_beside(
     age_out_logs(state);
     if let Some(Held { why, from }) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
-        if let Err(error) = state.held(&why, &from) {
+        if let Err(error) = state.held(&why, from.as_deref()) {
             state.say(&error);
         }
         return Ok(Round::Idle);
@@ -2587,13 +2587,18 @@ mod tests {
 
     impl World for Stand {
         fn held(&self) -> Option<Held> {
-            self.held
-                .clone()
-                .or_else(|| self.paused.lock().unwrap().clone())
-                .map(|why| Held {
-                    why,
-                    from: "P9R1KI".to_owned(),
-                })
+            // A hold is a session's, and a pause, as the pause file is, no one's.
+            let hold = self.held.clone().map(|why| Held {
+                why,
+                from: Some("P9R1KI".to_owned()),
+            });
+            hold.or_else(|| {
+                self.paused
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .map(|why| Held { why, from: None })
+            })
         }
         fn head(&self) -> Result<String, String> {
             if let Some(error) = &self.fetch_fails {
