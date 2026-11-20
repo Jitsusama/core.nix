@@ -10,6 +10,11 @@
 //! raise it to the talker's own level, while a louder room raises it
 //! within the ten seconds. It's fed sound as it
 //! comes, so a live call's takes are ready as each pause ends.
+//!
+//! Loud isn't always speech: a breath, a cough or a burst of static is
+//! loud too, and Parakeet writes "Yeah." for a breath. A voice has a
+//! pitch and they have none, so a take is only kept when enough of its
+//! loud frames repeat at a voice's pitch.
 
 use std::collections::VecDeque;
 
@@ -39,6 +44,16 @@ const FLOOR_FRAMES: usize = 10 * 50;
 const ABOVE_FLOOR_DB: f32 = 12.0;
 /// Quieter than this is never speech, however quiet the floor.
 const QUIETEST_SPEECH_DB: f32 = -55.0;
+/// Fewer voiced frames than this, 100 ms, and a take has no voice in it:
+/// the vowel of a lone "Yeah." holds several times as many.
+const LEAST_VOICED_FRAMES: usize = 5;
+/// The shortest and longest periods of a voice's pitch, in samples: 400
+/// Hz down to 60 Hz.
+const SHORTEST_PERIOD: usize = RATE / 400;
+const LONGEST_PERIOD: usize = RATE / 60;
+/// How alike sound one period apart must be for a frame to be voiced. A
+/// voice's vowels are near 1; noise, its slope taken out, is near 0.
+const VOICED_LIKENESS: f32 = 0.5;
 
 /// Some speech, and where it starts in the side's sound, in samples.
 #[derive(Debug, PartialEq)]
@@ -157,7 +172,11 @@ impl Cutter {
             }
         }
         let spoken = ended.iter().filter(|(_, _, speech)| *speech).count();
-        (spoken >= LEAST_SPEECH_FRAMES).then(|| Take {
+        let voiced = ended
+            .windows(2)
+            .filter(|pair| pair[1].2 && voiced(&pair[0].0, &pair[1].0))
+            .count();
+        (spoken >= LEAST_SPEECH_FRAMES && voiced >= LEAST_VOICED_FRAMES).then(|| Take {
             start,
             samples: ended.into_iter().flat_map(|(frame, _, _)| frame).collect(),
         })
@@ -170,6 +189,28 @@ impl Cutter {
         let floor = self.recent.iter().copied().fold(f32::INFINITY, f32::min);
         (floor + ABOVE_FLOOR_DB).max(QUIETEST_SPEECH_DB)
     }
+}
+
+/// Whether a frame, read with the one before it so a low voice's period
+/// fits twice, repeats at a voice's pitch. Each sample less most of the
+/// one before it is what's compared, so the slow drift of a rumble or a
+/// breath's low noise doesn't read as a repeat.
+fn voiced(before: &[f32], frame: &[f32]) -> bool {
+    let sound: Vec<f32> = before
+        .iter()
+        .chain(frame)
+        .copied()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .map(|pair| pair[1] - 0.97 * pair[0])
+        .collect();
+    (SHORTEST_PERIOD..=LONGEST_PERIOD.min(sound.len() / 2)).any(|period| {
+        let (early, late) = (&sound[..sound.len() - period], &sound[period..]);
+        let together: f32 = early.iter().zip(late).map(|(a, b)| a * b).sum();
+        let apart =
+            early.iter().map(|a| a * a).sum::<f32>() * late.iter().map(|b| b * b).sum::<f32>();
+        apart > 0.0 && together / apart.sqrt() > VOICED_LIKENESS
+    })
 }
 
 /// A frame's loudness in decibels below full scale.
@@ -208,6 +249,30 @@ mod tests {
             .cycle()
             .take(quiet(seconds).len())
             .collect()
+    }
+
+    /// `seconds` of noise at about `level`, white or, `brown`, each sample
+    /// a step from the last, as a breath or a rumble is.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "a test's few seconds of samples"
+    )]
+    fn noise(seconds: f32, level: f32, brown: bool) -> Vec<f32> {
+        let count = (seconds * RATE as f32) as usize;
+        let mut seed: u32 = 1;
+        let mut walk = 0.0;
+        let raw: Vec<f32> = (0..count)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let white = (seed >> 8) as f32 / (1 << 24) as f32 * 2.0 - 1.0;
+                walk = 0.99 * walk + white;
+                if brown { walk } else { white }
+            })
+            .collect();
+        let rms = (raw.iter().map(|s| s * s).sum::<f32>() / count as f32).sqrt();
+        raw.iter().map(|s| s * level / rms).collect()
     }
 
     /// A room's quiet, about -70 dBFS.
@@ -273,6 +338,20 @@ mod tests {
         for pair in takes.windows(2) {
             assert_eq!(pair[0].start + pair[0].samples.len(), pair[1].start);
         }
+    }
+
+    #[test]
+    fn loud_noise_with_no_voice_in_it_makes_no_take() {
+        for brown in [false, true] {
+            let sound = [quiet(2.0), noise(1.0, 0.1, brown), quiet(2.0)].concat();
+            assert_eq!(cut(&sound), Vec::new(), "brown: {brown}");
+        }
+    }
+
+    #[test]
+    fn a_word_as_short_as_yeah_is_a_take() {
+        let sound = [quiet(2.0), spoken(0.4), quiet(2.0)].concat();
+        assert_eq!(cut(&sound).len(), 1);
     }
 
     #[test]

@@ -28,10 +28,10 @@ const FILLER: [&str; 22] = [
 /// What a take's words say, without what a speech model writes of the
 /// sound itself in brackets ("[static]", "(wind blowing)"); or nothing
 /// when that leaves no word but hesitations ("Mm.", "Uh, um."), which the
-/// meetings' score leaves out too. A take of filler alone is kept:
-/// Parakeet, unlike Whisper, writes nothing for the click, breath and
-/// cough `call-transcripts-writes-only-what-was-said` plays it, so a lone
-/// "Yeah." was said, and dropping it cost meetings' transcripts their
+/// meetings' score leaves out too. A take of filler alone is kept: a
+/// take is only cut where a voice is heard (`takes`), so a breath that
+/// Parakeet would hear as "Yeah." never reaches it, and a lone "Yeah."
+/// that does was said; dropping it cost meetings' transcripts their
 /// short answers.
 pub fn spoken(text: &str) -> Option<String> {
     let mut said = String::new();
