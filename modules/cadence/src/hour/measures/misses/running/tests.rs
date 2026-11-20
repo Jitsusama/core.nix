@@ -116,12 +116,19 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         Some("runtime"),
         "switched in, but a host patch didn't wait on the hosts"
     );
-    // Core's own runtime build runs only in checks, and a runtime built
-    // elsewhere chooses its own patches, so its change reaches no host.
+    // A fix to how core builds its runtime, with no patch, can't be seen in
+    // a runtime built elsewhere, while a note beside the patches reaches no
+    // host at all.
     let build =
         |_: &str| Some("modules/pi/hosted-pi.nix\nmodules/pi/host-patches/README.md".into());
     assert_eq!(
         judge("core", at, Some("f00d"), all, build, lack),
+        Some("cadence can't tell what a pi host loads"),
+        "a fix to core's runtime build alone was told fixed"
+    );
+    let note = |_: &str| Some("modules/pi/host-patches/README.md".to_owned());
+    assert_eq!(
+        judge("core", at, Some("f00d"), all, note, lack),
         None,
         "a change reaching no host's patches waited on the hosts"
     );
@@ -330,24 +337,36 @@ fn scratch(name: &str) -> std::path::PathBuf {
 fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
     let repo = scratch("versions");
     std::fs::create_dir_all(&repo).expect("a scratch history");
-    let commit = |x: Option<&str>, message: &str| {
-        match x {
-            Some(text) => std::fs::write(repo.join("x.patch"), text).expect("x written"),
-            None => std::fs::remove_file(repo.join("gone.patch")).expect("gone removed"),
+    // Writes each patch named with its text, or removes it, and commits.
+    let commit = |patches: &[(&str, Option<&str>)], message: &str| {
+        for (name, text) in patches {
+            let file = repo.join(name);
+            match text {
+                Some(text) => std::fs::write(file, text).expect("a patch written"),
+                None => std::fs::remove_file(file).expect("a patch removed"),
+            }
         }
-        git(&repo, &["commit", "-qam", message]);
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-qm", message]);
     };
     git(&repo, &["init", "-q", "-b", "main"]);
-    std::fs::write(repo.join("x.patch"), "old").expect("x written");
-    std::fs::write(repo.join("gone.patch"), "g").expect("gone written");
-    git(&repo, &["add", "."]);
-    git(&repo, &["commit", "-qm", "before"]);
+    let first = [
+        ("x.patch", Some("oldest")),
+        ("gone.patch", Some("g")),
+        ("later.patch", Some("l0")),
+    ];
+    commit(&first, "before");
+    commit(&[("x.patch", Some("old"))], "a step");
     // A side branch cut before the fix, holding the patch without it.
     git(&repo, &["checkout", "-qb", "side"]);
-    commit(Some("side"), "side");
+    commit(&[("x.patch", Some("side"))], "side");
     git(&repo, &["checkout", "-qb", "fix", "main"]);
-    commit(Some("new"), "fix");
-    commit(None, "remove");
+    let fix = [
+        ("x.patch", Some("new")),
+        ("gone.patch", None),
+        ("later.patch", Some("l1")),
+    ];
+    commit(&fix, "fix");
     git(&repo, &["checkout", "-q", "main"]);
     git(&repo, &["merge", "-q", "--no-ff", "-m", "the fix", "fix"]);
     let out = std::process::Command::new("git")
@@ -355,14 +374,22 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         .output()
         .expect("git runs");
     let sha = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-    commit(Some("newer"), "a later fix");
+    commit(&[("x.patch", Some("newer"))], "a later fix");
     git(
         &repo,
         &["merge", "-q", "--no-ff", "-s", "ours", "-m", "side", "side"],
     );
-    commit(Some("old"), "a revert");
+    // A revert to a state from before the step before the fix, a rewrite
+    // built on it, and a later removal of what the fix rewrote.
+    commit(&[("x.patch", Some("oldest"))], "a revert");
+    commit(&[("x.patch", Some("rewritten"))], "a rewrite");
+    commit(&[("later.patch", None)], "a removal");
     let path = repo.to_string_lossy();
-    let patches = ["x.patch".to_owned(), "gone.patch".to_owned()];
+    let patches = [
+        "x.patch".to_owned(),
+        "gone.patch".to_owned(),
+        "later.patch".to_owned(),
+    ];
     assert_eq!(
         versions(&path, &sha, &patches),
         Some(Wanted::from([
@@ -371,8 +398,10 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
                 vec![Some("new".to_owned()), Some("newer".to_owned())]
             ),
             ("gone.patch".to_owned(), vec![None]),
+            ("later.patch".to_owned(), vec![Some("l1".to_owned())]),
         ])),
-        "a revert to the patch before the fix, or a side branch's, counted as carrying it"
+        "a revert, what was built on it, a later removal or a side branch's patch counted \
+         as carrying the fix"
     );
     assert_eq!(
         versions(&path, "0000000000000000000000000000000000000000", &patches),

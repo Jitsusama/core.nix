@@ -47,6 +47,9 @@ const APPLIED: &str = "share/pi-host/patches";
 /// (its `X-SwitchMethod` is `keep-old`) until the host next starts.
 const HOST_UNIT: &str = "modules/pi/host.nix";
 
+/// How core builds the runtime its own checks run, applying its patches.
+const HOSTED_PI: &str = "modules/pi/hosted-pi.nix";
+
 /// The patches a runtime applied, by name, each as its copy reads.
 type Applied = BTreeMap<String, String>;
 
@@ -187,6 +190,11 @@ fn judge(
             .collect(),
         unit: files.lines().any(|file| file == HOST_UNIT),
     };
+    // A fix to how core builds its runtime, with no patch to compare, can't
+    // be seen in a runtime built elsewhere, so it isn't told fixed.
+    if reaches.patches.is_empty() && files.lines().any(|file| file == HOSTED_PI) {
+        return Some("cadence can't tell what a pi host loads");
+    }
     (!reaches.patches.is_empty() || reaches.unit)
         .then(|| hosts(sha, reaches))
         .flatten()
@@ -389,7 +397,16 @@ fn carries(path: &str, sha: &str, rev: &str) -> Option<bool> {
 fn changed(path: &str, sha: &str) -> Option<String> {
     command(
         "git",
-        &["-C", path, "diff", "--name-only", &format!("{sha}^1"), sha],
+        // A rename would hide the name a runtime still applies the patch by.
+        &[
+            "-C",
+            path,
+            "diff",
+            "--no-renames",
+            "--name-only",
+            &format!("{sha}^1"),
+            sha,
+        ],
     )
     .ok()
 }
@@ -422,14 +439,14 @@ fn applied(root: &Path) -> Option<Applied> {
 
 /// Each of `patches` by name, with every state of it a runtime may hold and
 /// carry the change: as the merge `sha` left it, `None` where it removed
-/// it, and as each merge on main's own line has left it since. A state the
-/// patch had before `sha` is never one of them, as a revert brings it back
-/// without the change, and a side branch's commits aren't read, as one cut
-/// before the merge holds the patch without it. `None` when git can't say.
+/// it, and as each merge on main's own line has left it since, up to the
+/// first that removes it or brings back a state it had before `sha`, as a
+/// revert does: what follows is built on the patch without the change. A
+/// side branch's commits aren't read, as one cut before the merge holds the
+/// patch without it. `None` when git can't say.
 fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
-    let mut versions = Wanted::new();
-    for patch in patches {
-        let since = command(
+    let log = |range: &str, patch: &str| {
+        command(
             "git",
             &[
                 "-C",
@@ -437,23 +454,32 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
                 "log",
                 "--first-parent",
                 "--format=%H",
-                &format!("{sha}..{}", main_of(path)),
+                range,
                 "--",
                 patch,
             ],
         )
-        .ok()?;
-        // The log above fails for a merge cadence doesn't have, so a patch
+        .ok()
+    };
+    let mut versions = Wanted::new();
+    for patch in patches {
+        // The log fails for a merge cadence doesn't have, so a patch
         // missing from it is one the merge removed, not one unfetched.
-        let before = state(path, &format!("{sha}^1"), patch);
+        let since = log(&format!("{sha}..{}", main_of(path)), patch)?;
+        let earlier = log(&format!("{sha}^1"), patch)?;
+        let mut before: Vec<Option<String>> = earlier
+            .lines()
+            .map(|commit| state(path, commit.trim(), patch))
+            .collect();
+        before.push(state(path, &format!("{sha}^1"), patch));
         let mut states = vec![state(path, sha, patch)];
-        states.extend(
-            since
-                .lines()
-                .map(|commit| state(path, commit.trim(), patch)),
-        );
-        states.retain(|it| *it != before);
-        states.dedup();
+        for commit in since.lines().rev() {
+            let later = state(path, commit.trim(), patch);
+            if later.is_none() || before.contains(&later) {
+                break;
+            }
+            states.push(later);
+        }
         let name = Path::new(patch).file_name()?.to_str()?.to_owned();
         versions.insert(name, states);
     }
@@ -495,7 +521,9 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
             "--user",
             "list-units",
             "--type=service",
-            "--state=active",
+            // A host down for a moment, restarting or failed comes back on
+            // its unit's runtime, so it is read too, as one cadence can't see.
+            "--state=active,activating,deactivating,reloading,failed",
             "--no-legend",
             "--plain",
             "pi-host-*",
