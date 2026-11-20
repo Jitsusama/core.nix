@@ -226,6 +226,35 @@ pub struct Heard {
 /// was said.
 #[must_use]
 pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
+    let spoken = |group: &[usize]| group.iter().map(|&i| heard[i].samples).sum::<usize>();
+    let all: usize = heard.iter().map(|h| h.samples).sum();
+    let mut voices: Vec<Vec<usize>> = groups(heard)
+        .into_iter()
+        .filter(|g| as_f64(spoken(g)) >= LEAST_SHARE * as_f64(all))
+        .take(people.unwrap_or(usize::MAX))
+        .collect();
+    let mut out = vec![None; heard.len()];
+    let alone = |voice: &[usize]| as_f64(all - spoken(voice)) < LEAST_SHARE * as_f64(all);
+    match voices.as_slice() {
+        [] => return out,
+        [voice] if alone(voice) => return out,
+        _ => {}
+    }
+    voices.sort_by_key(|g| g.iter().min().copied());
+    for (voice, group) in voices.iter().enumerate() {
+        for &i in group {
+            out[i] = Some(voice);
+        }
+    }
+    out
+}
+
+/// The takes grouped by average linkage on cosine distance until the
+/// nearest two groups are further than `APART`, each group the takes it
+/// holds, the group with the most samples first; apart.rs reports them,
+/// so a measurement says why a voice wasn't named.
+#[must_use]
+pub fn groups(heard: &[Heard]) -> Vec<Vec<usize>> {
     let unit: Vec<Vec<f32>> = heard.iter().map(|h| unit(&h.embedding)).collect();
     let mut groups: Vec<Vec<usize>> = (0..heard.len()).map(|i| vec![i]).collect();
     let mut apart: Vec<Vec<f32>> = unit
@@ -252,28 +281,8 @@ pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
         let moved = groups.remove(b);
         groups[a].extend(moved);
     }
-    let spoken = |group: &[usize]| group.iter().map(|&i| heard[i].samples).sum::<usize>();
-    let all: usize = heard.iter().map(|h| h.samples).sum();
-    groups.sort_by_key(|g| std::cmp::Reverse(spoken(g)));
-    let mut voices: Vec<Vec<usize>> = groups
-        .into_iter()
-        .filter(|g| as_f64(spoken(g)) >= LEAST_SHARE * as_f64(all))
-        .take(people.unwrap_or(usize::MAX))
-        .collect();
-    let mut out = vec![None; heard.len()];
-    let alone = |voice: &[usize]| as_f64(all - spoken(voice)) < LEAST_SHARE * as_f64(all);
-    match voices.as_slice() {
-        [] => return out,
-        [voice] if alone(voice) => return out,
-        _ => {}
-    }
-    voices.sort_by_key(|g| g.iter().min().copied());
-    for (voice, group) in voices.iter().enumerate() {
-        for &i in group {
-            out[i] = Some(voice);
-        }
-    }
-    out
+    groups.sort_by_key(|g| std::cmp::Reverse(g.iter().map(|&i| heard[i].samples).sum::<usize>()));
+    groups
 }
 
 /// The two nearest groups, the first before the second, or None for fewer

@@ -91,6 +91,7 @@ pub fn apart(model: &Path, set: &Path, floors: Option<(usize, usize)>) -> Result
                 cut.push(speakers);
             }
         }
+        println!("{}", shares(meeting.name, &heard, &cut));
         let takes: Vec<Take> = voices::group(&heard, None)
             .into_iter()
             .zip(cut)
@@ -130,6 +131,39 @@ pub fn apart(model: &Path, set: &Path, floors: Option<(usize, usize)>) -> Result
         );
         Ok(())
     }
+}
+
+/// How a meeting's takes were grouped, the six largest groups' shares of
+/// the takes' samples, beside each speaker's share of the far end's speech
+/// by the reference, so a voice not named can be seen to be one too small
+/// or one with too little beside it.
+fn shares(name: &str, heard: &[Heard], cut: &[HashMap<String, usize>]) -> String {
+    let all: usize = heard.iter().map(|h| h.samples).sum();
+    let groups: Vec<String> = voices::groups(heard)
+        .iter()
+        .take(6)
+        .map(|g| percent(tenths(g.iter().map(|&i| heard[i].samples).sum(), all)))
+        .collect();
+    let mut speakers: Vec<(&str, usize)> = Vec::new();
+    for take in cut {
+        for (name, &samples) in take {
+            match speakers.iter_mut().find(|(n, _)| n == name) {
+                Some((_, sum)) => *sum += samples,
+                None => speakers.push((name, samples)),
+            }
+        }
+    }
+    speakers.sort_unstable();
+    let speech: usize = speakers.iter().map(|(_, s)| s).sum();
+    let speakers: Vec<String> = speakers
+        .iter()
+        .map(|(name, s)| format!("{name} {}", percent(tenths(*s, speech))))
+        .collect();
+    format!(
+        "{name}: its largest groups hold {} of the takes; the reference gives {}",
+        groups.join(", "),
+        speakers.join(", ")
+    )
 }
 
 /// How many samples of `start` to `end` each speaker on the far end
