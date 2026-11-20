@@ -60,15 +60,18 @@ BASELINE_HOLDS = 0.25
 # How long the launcher has to stand still before it's read anyway, in seconds: its caret may
 # blink, so two pictures in a row may never agree.
 STILL_WITHIN = 5.0
+# A PPM header's fields: its magic, width, height and greatest value.
+PPM_FIELDS = 4
 
 Pixels = tuple[int, int, bytes]
 
 
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell, started once a run."""
+    """Give the shell, started once for every scale, and left at 1 as it began."""
     with launcher_on_niri.running() as started:
         yield started
+        started.as_account("niri msg output winit scale 1")
 
 
 def picture() -> Pixels:
@@ -76,7 +79,7 @@ def picture() -> Pixels:
     ppm = subprocess.run(["grim", "-t", "ppm", "-"], check=True, capture_output=True).stdout
     fields: list[bytes] = []
     at = 0
-    while len(fields) < 4:  # noqa: PLR2004
+    while len(fields) < PPM_FIELDS:
         assert at < len(ppm), f"grim's picture ends in its header: {fields!r}"
         while ppm[at : at + 1].isspace():
             at += 1
