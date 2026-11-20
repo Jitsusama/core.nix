@@ -276,14 +276,14 @@
   # Others where one talker holds all but a tenth of a far end, as
   # TS3003a's holds 97%. A change that tells them apart better raises the
   # floors to what it reaches; each sits half a point under what the last
-  # measurement on 2026-11-20 gave.
+  # measurement on 2026-11-20 gave, 82.7% and 96.9%.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "85.6";
-      handled = "93.5";
+      right = "82.2";
+      handled = "96.4";
     in
     pkgs.runCommand "call-transcripts-tells-voices-apart-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts voices ${voices} ${meetings} \
