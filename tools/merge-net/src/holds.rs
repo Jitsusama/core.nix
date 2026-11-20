@@ -87,25 +87,24 @@ const HOLDING: [&str; 20] = [
 ];
 
 /// The starts of words naming what happens to the machine, which only a
-/// list after "doesn't hold" ending "or anything else" frees: "the laptop
-/// reboots and Slack is fine" holds.
+/// list after "doesn't hold" frees: "the laptop reboots and Slack is fine"
+/// holds.
 const EVENTS: [&str; 13] = [
     "reboot", "boot", "suspend", "sleep", "shut", "power", "halt", "kernel", "upgrad", "roll",
     "firmware", "flash", "freez",
 ];
 
 /// What a sentence says to leave alone what follows, up to its next such
-/// phrase or clause (`AFTER_ENDS`): a list ending "or anything else", or
-/// at most `FEW` words with no `EVENTS` among them, since more may be a
-/// clause of their own. `HOLDING` is read in what remains once these are
-/// taken out.
+/// phrase or clause (`AFTER_ENDS`): a list, whose items are at most `FEW`
+/// words each, since a longer one may be a clause of its own. `HOLDING` is
+/// read in what remains once these are taken out.
 const FREES_AFTER: [&str; 3] = ["doesn't hold", "does not hold", "don't hold"];
 
 /// Where what "doesn't hold" frees ends: a clause of its own begins.
 const AFTER_ENDS: [&str; 6] = [", and ", " and ", ", so ", ", but ", ", while ", ", then "];
 
-/// The most words a freeing phrase frees that aren't a list ending "or
-/// anything else" after it, or a clause of their own before it.
+/// The most words an item of what "doesn't hold" frees may have, as "pi
+/// host cuts" does; "the laptop reboots at 21:00" is a clause.
 const FEW: usize = 3;
 
 /// The most words before "is fine" it frees, as "concluding or retiring a
@@ -174,11 +173,21 @@ fn held_part(
                 .filter_map(|ends| sentence[end..].find(ends).map(|at| end + at))
                 .min()
                 .unwrap_or(sentence.len());
-            let to = phrase.min(clause);
-            let freed = sentence[end..to].trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
-            let listed = freed.ends_with("anything else");
-            if !listed && (count(freed) > FEW || event(freed)) {
-                continue;
+            // What it frees is a list, of items split by ", " and " or ";
+            // it ends before the first item of more than `FEW` words, as a
+            // clause spliced on is.
+            let mut to = phrase.min(clause);
+            let mut item = end;
+            while item < to {
+                let next = [", ", " or "]
+                    .iter()
+                    .filter_map(|split| sentence[item..to].find(split).map(|at| (at, split.len())))
+                    .min()
+                    .map_or(to, |(at, len)| item + at + len);
+                if count(&sentence[item..next]) > FEW {
+                    to = item;
+                }
+                item = next;
             }
             (start, to)
         } else {
