@@ -277,8 +277,9 @@ impl State {
     /// and `from`, the mesh address of the session whose hold stops it now,
     /// so cadence can ask them; null where no session's does, as for a
     /// pause file. A new holder keeps `since` and changes `from`, so an ask
-    /// made once per `since` alone never reaches the new holder; an asker
-    /// keys on both to.
+    /// made once per `since` alone never reaches the new holder, and one
+    /// that names its silence names the old holder's; an asker keys on
+    /// both.
     /// `since` counts the time the net starts nothing: a round already
     /// running when a hold lands writes it as it ends.
     pub fn held(&self, why: &str, from: Option<&str>) -> Result<(), String> {
