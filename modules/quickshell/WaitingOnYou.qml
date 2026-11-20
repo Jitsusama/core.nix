@@ -119,6 +119,14 @@ Singleton {
         return Waiting.kept(toldLast, "owners", Waiting.owners(questKind?.answered
             ? questKind.held : null, named === "" ? [] : named.split(" ")));
     }
+    // Each open quest's title, by its id, kept while the titles read the
+    // same: a look's row reads it for who asks, so every row needn't follow
+    // each change in the index, as ownerOf's drawer does.
+    readonly property var titles: {
+        void questKind?.revision;
+        return Waiting.kept(toldLast, "titles",
+            Waiting.titles(questKind?.answered ? questKind.held : null));
+    }
     // What Joel has said of each item: { done, notNow }, by identity.
     property var settled: ({})
 

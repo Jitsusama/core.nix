@@ -1269,6 +1269,70 @@ ShellRoot {
             JSON.stringify([lifted?.side, wanted.map(row => [row.name, row.side,
                 changed.includes(row)])]));
         Sessions.wanting = [];
+        // A look says who asks and what, its choices first in its step, and
+        // its drawer what happens if Joel does nothing, with no weight (Joel,
+        // 2026-11-19: "I almost never know what I am supposed to do with
+        // it"). Return on its row opens it: a choice is answered only from
+        // inside, as the key language's answer has it.
+        const askingText = JSON.stringify({ v: 1, id: "q", kind: "pr", at: root.lookedAt,
+            target: "https://example.com/pull/1", title: "History overlays stop rescanning",
+            why: "Each read re-listed an empty folder.", state: "waiting", address: "leftq",
+            asker: "The trunk disk incident", ask: "Merge it now, or hold it for review?",
+            ifNothing: "It waits, unmerged, and the rescans go on.",
+            choices: [{ value: "merge", label: "Queue It" }, { value: "hold", label: "Hold It" }] });
+        const expiring = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+        const expiringText = JSON.stringify({ v: 1, id: "e", kind: "page", at: root.lookedAt,
+            target: "https://example.com", title: "Read E", why: "Because.", state: "waiting",
+            asks: false, expiresAt: expiring });
+        now.lookTexts = { "q.json": askingText, "a.json": lookAt("a", "Read A"),
+            "e.json": expiringText };
+        const askingRow = () => looked().find(row => row.key === "on:look:q");
+        const asked = askingRow();
+        const stepKeys = (asked?.verbs() ?? []).map(act => act.key);
+        expect("a look's row says who asks, then what, its choices first in its step",
+            asked?.note === "The trunk disk incident"
+                && asked?.side === "Merge it now, or hold it for review?"
+                && JSON.stringify(stepKeys.slice(0, 3)) === JSON.stringify([
+                    "verb:on:look:answer:q:merge", "verb:on:look:answer:q:hold",
+                    "verb:on:look:open:q"]),
+            JSON.stringify([asked?.note, asked?.side, stepKeys]));
+        const askedDrawer = asked?.drawer() ?? {};
+        const factOf = label => (askedDrawer.facts ?? []).find(each => each.label === label)
+            ?.value ?? null;
+        expect("its drawer says who asks, its choices, and if nothing, no weight",
+            askedDrawer.eyebrow === "The trunk disk incident"
+                && factOf("Choices") === "Queue It \u00b7 Hold It"
+                && factOf("If You Do Nothing") === "It waits, unmerged, and the rescans go on."
+                && factOf("Weight") === null && factOf("Clears When") === null,
+            JSON.stringify([askedDrawer.eyebrow, askedDrawer.facts]));
+        const plainDrawer = looked().find(row => row.key === "on:look:a")?.drawer() ?? {};
+        expect("a look whose session says nothing of it goes quiet 3 days after it came",
+            (plainDrawer.facts ?? []).find(each => each.label === "If You Do Nothing")?.value
+                === "it goes quiet into History 3 days after it came",
+            JSON.stringify(plainDrawer.facts));
+        const expiringLook = now.looks.reading.find(one => one.id === "e");
+        const expiringDrawer = expiringLook === undefined ? {} : now.lookDrawer(expiringLook);
+        const expiresClock = now.forYouSaid(Date.now()).clock(Date.parse(expiring));
+        expect("a look with a time to expire says it expires then",
+            (expiringDrawer.facts ?? []).find(each => each.label === "If You Do Nothing")?.value
+                === `it expires into History at ${expiresClock}`,
+            JSON.stringify(expiringDrawer.facts));
+        const plainRow = looked().find(row => row.key === "on:look:a");
+        const steeredBefore = Sessions.steered.length;
+        expect("Return on a look's row opens it, as on one asking nothing, and answers nothing",
+            asked !== undefined && asked.verb === plainRow?.verb && asked.later === true
+                && asked.stays !== true,
+            JSON.stringify([asked?.verb, plainRow?.verb, asked?.later]));
+        (asked?.verbs() ?? [])[0]?.run();
+        // The node took it, so it leaves what waits at once (Looks.js's taken).
+        expect("its step's first act answers with its first choice",
+            Sessions.steered.length === steeredBefore + 1
+                && Sessions.steered[steeredBefore]?.fields?.value === "merge"
+                && askingRow() === undefined,
+            JSON.stringify([Sessions.steered.slice(steeredBefore), askingRow()?.side]));
+        // Later cases count the steers the shell itself sends from none.
+        Sessions.steered = Sessions.steered.slice(0, steeredBefore);
+        now.lookAnswers = {};
         now.lookTexts = {};
 
         // What's on is made again as any one fact moves, and each piece's
@@ -2019,6 +2083,11 @@ ShellRoot {
                 && now.leadsTo("notices")[1].key === "on:waiting:desktop"
                 && now.leadsTo("notices").length === 2,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // What's on screen is reached the same way, through For You.
+        expect("and Super+N with notices on screen goes through For You to them",
+            now.leadsTo("onScreen").length === 2 && now.leadsTo("onScreen")[0] === now.waiting
+                && now.leadsTo("onScreen")[1].key === "on:waiting:screen",
+            JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
         // Read elsewhere while Joel looks, which Lately doesn't hold still,
         // it no longer waits, but Desktop keeps the place he found it in.
         now.openedAt = Date.now() - 1000;
@@ -2141,6 +2210,10 @@ ShellRoot {
                 && now.leadsTo("notices").length === 1
                 && now.leadsTo("notices")[0].key === "on:waiting:desktop",
             JSON.stringify(now.leadsTo("notices").map(row => row.key)));
+        expect("and Super+N with notices on screen goes straight to them, under Now",
+            now.leadsTo("onScreen").length === 1
+                && now.leadsTo("onScreen")[0].key === "on:waiting:screen",
+            JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
         now.openedAt = wasOpenedAt;
         const first = byKey(forYou());
         const mail = first["on:mail"];
@@ -2237,7 +2310,9 @@ ShellRoot {
         outright("held right under Now, what's on screen, they are",
             underNow("on:waiting:screen"), 1);
         outright("and Desktop right under Now, they are", underNow("on:waiting:desktop"), 1);
-        outright("but Mail right under Now, they aren't", underNow("piece:mail"), 0);
+        outright("and Slack's notices right under Now, they are",
+            underNow("on:waiting:slack"), 1);
+        outright("but Mail right under Now, they aren't", underNow("on:mail"), 0);
         outright("as they are with nothing held", [], 1);
     }
 

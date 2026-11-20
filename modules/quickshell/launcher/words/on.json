@@ -419,10 +419,9 @@
         "openedHow": "opened",
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",
-        "clearsLook": "you open or clear it",
-        "clearsAnswer": "you answer, open or clear it",
         "answering": "answered {choice}",
-        "clearsPr": "it merges or closes",
+        "ifNothing": "it goes quiet into History 3 days after it came",
+        "expires": "it expires into History at {clock}",
         "review": "{at} review",
         "diff": "{at} diff",
         "yesterday": "yesterday",
@@ -449,6 +448,16 @@
       "id": "on:waiting:clears",
       "in": "on:waiting",
       "name": "Clears When"
+    },
+    {
+      "id": "on:waiting:choices",
+      "in": "on:waiting",
+      "name": "Choices"
+    },
+    {
+      "id": "on:waiting:ifNothing",
+      "in": "on:waiting",
+      "name": "If You Do Nothing"
     },
     {
       "id": "on:waiting:takes",

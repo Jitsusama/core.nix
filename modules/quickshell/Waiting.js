@@ -117,6 +117,20 @@ function owners(index, named) {
     return known;
 }
 
+// Each quest the index holds, by id, as its title; none before the node
+// has answered. A look's row names who asks by it (Now.qml's lookAsker),
+// and it's kept while the titles read the same (WaitingOnYou.qml's
+// titles), so a quest's other fields moving remakes no row.
+function titles(index) {
+    const named = {};
+    for (const key of Object.keys(index ?? {})) {
+        if (key.startsWith(QUEST_KEY)) {
+            named[key.slice(QUEST_KEY.length)] = String(index[key]?.title ?? "");
+        }
+    }
+    return named;
+}
+
 // Whether Joel can do an item now: once the to do daemon found it ready,
 // else as its owner says, `ready`, or, in a file older than that, its when
 // saying now.
