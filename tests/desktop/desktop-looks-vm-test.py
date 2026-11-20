@@ -1022,9 +1022,8 @@ def a_landing_opens(desktop: Desktop, from_its_step: bool) -> None:
         stepped = desktop.showing()["held"]
         time.sleep(PAST_THE_CLOSING)
         held = desktop.showing()
-        assert held["held"] == stepped and held["rows"] == ["Open", "Go To", "Talk"], (
-            f"the landing's step went from under him: {held}"
-        )
+        assert held["held"] == stepped, f"the landing's step went from under him: {held}"
+        assert held["rows"] == ["Open", "Go To", "Talk"], f"the step's acts changed: {held}"
     desktop.machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["held"] == ["agents", "Landed", TRYING] and shown["open"]
