@@ -154,10 +154,12 @@ ShellRoot {
     // Said nothing of where the harness reads it, a start opens its window
     // at once, never asking.
     function unset() {
-        if (Sessions.startsHosted)
+        // Waits until the old shape is what's read, so a moment's empty
+        // file as it's written can't pass for it.
+        if (Sessions.startsHosted || !config.text().includes("quest-workflow"))
             return;
         Sessions.start("QEST-QUIET", root.folder, false);
-        Expect.expect("with nothing said, a start opens its window at once",
+        Expect.expect("said outside sections, a start opens its window at once",
             startedOn("QEST-QUIET").length === 1, Niri.spawns.join("\n"));
         decided.reload();
         Expect.expect("and its decider is never asked", !decided.text().includes("QEST-QUIET"),
