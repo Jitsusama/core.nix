@@ -8,7 +8,7 @@ use std::fmt::Write;
 use serde::{Deserialize, Serialize};
 
 use super::lines::{figure, shown_lines};
-use super::measures::{Class, HELD, Measure, drag};
+use super::measures::{Class, HELD, Measure, UNRUN, UNSEEN, drag};
 use super::owing::by_owner;
 
 /// How many hours a drag may stay unmoved before the orchestrator is
@@ -207,11 +207,18 @@ fn still_told(kept: &Kept, open: &[String]) -> Vec<String> {
     let reopened: Vec<&str> = open
         .iter()
         // Only the part after the owner's mark says it's held, since a
-        // miss's own words might hold the same phrase.
+        // miss's own words might hold the same phrase. One held because its
+        // check doesn't run here yet was told fixed too soon, as at 21:10 on
+        // 19 November, so it's told again once it runs. One held only because
+        // the hour can't see what runs stays told, so a blind hour doesn't
+        // tell a long-fixed miss fixed again.
         .filter(|miss| {
-            !miss
-                .rsplit_once(" · ")
-                .is_some_and(|(_, by)| by.contains(HELD))
+            !miss.rsplit_once(" · ").is_some_and(|(_, by)| {
+                by.contains(HELD)
+                    && by
+                        .split_once(UNRUN)
+                        .is_none_or(|(_, why)| why.starts_with(UNSEEN))
+            })
         })
         .map(|miss| miss_words(miss))
         .collect();
@@ -590,10 +597,29 @@ mod tests {
             "the map drew cells alone · WCJQSG{HELD}map-cells wasn't read this hour"
         )];
         let (_, through) = compose("04:10", &[holding], &next, &BTreeMap::new(), "");
-        let (fourth, _) = compose("05:10", &[none], &through, &BTreeMap::new(), "");
+        let (fourth, _) = compose(
+            "05:10",
+            std::slice::from_ref(&none),
+            &through,
+            &BTreeMap::new(),
+            "",
+        );
         assert!(
             !fourth.contains("For Joel"),
             "a miss held an hour by its measure was told fixed a second time: {fourth}"
+        );
+        // One told fixed on its merge, then held as not running here, as at
+        // 21:10 on 19 November, is told again once it runs.
+        let mut unrun = measure("misses", Class::Miss, 1.0, Some(0.0));
+        unrun.behind = vec![format!(
+            "the map drew cells alone · WCJQSG{HELD}core #5800{UNRUN}the last switch \
+             doesn't carry it"
+        )];
+        let (_, waiting) = compose("04:10", &[unrun], &next, &BTreeMap::new(), "");
+        let (fifth, _) = compose("05:10", &[none], &waiting, &BTreeMap::new(), "");
+        assert!(
+            fifth.contains("For Joel"),
+            "a miss told fixed before it ran wasn't told again once it ran: {fifth}"
         );
     }
 

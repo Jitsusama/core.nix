@@ -42,20 +42,27 @@ const NET_RULES: &str = "80ECO2";
 const NET: &str = "D5QEKR";
 const BUMPS: &str = "0FX11G";
 
-/// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]... [--realm NAME]...`:
-/// prints the hour's card, and sends it to the address given, the
-/// orchestrator's; one without `--to` is a look, keeping nothing. Each
-/// checkout is another repository whose main says which of the misses'
-/// checks merged, beside core's and the harness's; each realm's node says
-/// whether a machine is crowded beside one with room.
+/// `cadence hour [--to ADDRESS] [--checkout NAME=PATH]... [--realm NAME]...
+/// [--host-runtime NAME=FOLDER]`: prints the hour's card, and sends it to
+/// the address given, the orchestrator's; one without `--to` is a look,
+/// keeping nothing. Each checkout is another repository whose main says
+/// which of the misses' checks merged, beside core's and the harness's;
+/// each realm's node says whether a machine is crowded beside one with
+/// room. The host runtime names the checkout and folder that pin the pi
+/// hosts' runtime, so a check in it closes its miss only once the hosts
+/// load it.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut to = None;
     let mut checkouts = Vec::new();
     let mut realms = Vec::new();
+    let mut pin = None;
     while let Some(flag) = args.next() {
         match (flag.as_str(), args.next()) {
             ("--to", Some(address)) => to = Some(address),
             ("--checkout", Some(named)) if named.contains('=') => checkouts.push(named),
+            ("--host-runtime", Some(named)) if measures::Pin::parse(&named).is_some() => {
+                pin = Some(named);
+            }
             ("--realm", Some(realm)) => realms.push(realm),
             _ => {
                 return Err(wrongly(
@@ -65,10 +72,15 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
             }
         }
     }
-    hour(to.as_deref(), &checkouts, &realms).map_err(failed)
+    hour(to.as_deref(), &checkouts, &realms, pin.as_deref()).map_err(failed)
 }
 
-fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result<()> {
+fn hour(
+    to: Option<&str>,
+    checkouts: &[String],
+    realms: &[String],
+    pin: Option<&str>,
+) -> io::Result<()> {
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
     let kept_at = folder.join("hour.json");
@@ -90,6 +102,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &misses,
         now,
         checkouts,
+        pin.and_then(measures::Pin::parse),
         &mut kept.fetched,
     )?;
     for m in measures
@@ -209,6 +222,7 @@ fn gather(
     misses: &str,
     now: i64,
     checkouts: &[String],
+    pin: Option<measures::Pin<'_>>,
     fetched: &mut Vec<i64>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
@@ -228,7 +242,13 @@ fn gather(
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let asks = text(&mission.join("asks.jsonl"));
     let mut all = vec![
-        measures::checked(misses, folder, checkouts)?,
+        measures::checked(
+            misses,
+            folder,
+            checkouts,
+            &text(&state_home.join("integration/switches.jsonl")),
+            pin,
+        )?,
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),

@@ -194,6 +194,22 @@ in
         `FETCH_HEAD` stays its own; every other main is read as it stands.
       '';
     };
+    hostRuntime = lib.mkOption {
+      # Checked here, since the hour refuses a malformed pin and would write
+      # no card at all.
+      type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+=[^=]*[^=/][^=]*");
+      default = null;
+      example = "machines=hosts/pi";
+      description = ''
+        Where the pi hosts' runtime is pinned, as `NAME=FOLDER`: a checkout
+        `checkouts` names, and the folder in it whose `flake.nix` names the
+        runtime by store path and whose `flake.lock` pins core. A miss whose
+        check changed the hosts' runtime closes only once every running host
+        loads a runtime pinned with a core that carries it. Unset, or naming
+        a checkout `checkouts` doesn't, such a miss stays open, since
+        cadence can't see what the hosts load.
+      '';
+    };
     path = lib.mkOption {
       type = lib.types.listOf (lib.types.either lib.types.package lib.types.str);
       default = [ ];
@@ -405,6 +421,10 @@ in
               "${name}=${path}"
             ]) cfg.checkouts
           )
+          ++ lib.optionals (cfg.hostRuntime != null) [
+            "--host-runtime"
+            cfg.hostRuntime
+          ]
           ++ reading
         );
         # git for the three mains, and journalctl for update-to-main's

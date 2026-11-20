@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, drag, rounds};
+use super::measures::{BLIND, Class, HELD, Measure, UNRUN, UNSEEN, drag, rounds};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -18,6 +18,30 @@ struct Filed {
     owner: String,
     says: String,
     text: String,
+}
+
+/// What a miss's owner is asked, by what holds it open, `held`: nothing yet
+/// but a check, a measure still finding it, or its check not running here.
+fn asked_of_owner(what: &str, held: &str) -> String {
+    if held.contains(UNRUN) {
+        format!(
+            "cadence hour: a miss Joel found himself is yours: {what}. Its check, {held}, so \
+             it stays open, and Joel isn't told it's fixed, until this machine runs it. \
+             Please reply with when it will."
+        )
+    } else if held.is_empty() {
+        format!(
+            "cadence hour: a miss Joel found himself is yours: {what}. Which check would have \
+             caught it? It stays open until that check merges; tell the orchestrator its PR, \
+             for the misses ledger's check field."
+        )
+    } else {
+        format!(
+            "cadence hour: a miss Joel found himself is yours: {what}. Its check merged, but \
+             the measure {held}, so it stays open until that measure is judged within its \
+             target. Please reply with what keeps it there."
+        )
+    }
 }
 
 /// What the drag files: one entry for its measure, or, for Joel's misses,
@@ -30,11 +54,15 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .iter()
             .filter_map(|line| line.rsplit_once(" · "))
             // A miss held only because the hour couldn't look is the hour's
-            // to fix, not its owner's, so it isn't put to them.
+            // to fix, not its owner's, so it isn't put to them: a measure
+            // unread, or what runs here unseen.
             .filter(|(_, owner)| {
-                owner
-                    .split_once(HELD)
-                    .is_none_or(|(_, why)| !BLIND.iter().any(|b| why.ends_with(b)))
+                owner.split_once(HELD).is_none_or(|(_, why)| {
+                    !BLIND.iter().any(|b| why.ends_with(b))
+                        && why
+                            .split_once(UNRUN)
+                            .is_none_or(|(_, unrun)| !unrun.starts_with(UNSEEN))
+                })
             })
             .map(|(what, owner)| {
                 // A note after the owner, ", though its check ...", is no
@@ -48,19 +76,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
                 } else {
                     format!("hour:miss-held:{what}")
                 };
-                let text = if held.is_empty() {
-                    format!(
-                        "cadence hour: a miss Joel found himself is yours: {what}. Which \
-                         check would have caught it? It stays open until that check merges; \
-                         tell the orchestrator its PR, for the misses ledger's check field."
-                    )
-                } else {
-                    format!(
-                        "cadence hour: a miss Joel found himself is yours: {what}. Its check \
-                         merged, but the measure {held}, so it stays open until that measure \
-                         is judged within its target. Please reply with what keeps it there."
-                    )
-                };
+                let text = asked_of_owner(what, held);
                 Filed {
                     key,
                     owner: owner
@@ -282,6 +298,39 @@ pub fn file(
 mod tests {
     use super::super::measure;
     use super::*;
+
+    #[test]
+    fn a_miss_cadence_cant_see_running_isnt_put_to_its_owner() {
+        let mut m = measure("misses", Class::Miss, 1.0, Some(0.0));
+        m.behind = vec![format!(
+            "the host crashed · OSPHT4{HELD}core #5800{UNRUN}cadence can't see what runs here"
+        )];
+        assert!(
+            filed(&m).is_empty(),
+            "the owner was asked about what only the hour can mend"
+        );
+    }
+
+    #[test]
+    fn the_owner_of_a_miss_whose_check_doesnt_run_yet_is_asked_when_it_will() {
+        let mut m = measure("misses", Class::Miss, 1.0, Some(0.0));
+        m.behind = vec![format!(
+            "the host crashed · OSPHT4{HELD}core #5800{UNRUN}the pi hosts don't load it yet"
+        )];
+        let filed = filed(&m);
+        assert_eq!(filed.len(), 1, "the miss wasn't put to its owner");
+        assert_eq!(filed[0].owner, "OSPHT4");
+        assert_eq!(filed[0].key, "hour:miss-held:the host crashed");
+        assert!(
+            filed[0]
+                .text
+                .contains("core #5800 merged, but the pi hosts don't load it yet")
+                && filed[0].text.contains("when it will")
+                && !filed[0].text.contains("Which check"),
+            "its owner was asked for a check again, or not when it will run: {}",
+            filed[0].text
+        );
+    }
 
     #[test]
     fn a_drag_is_filed_once_with_its_owner_and_closes_once_back_in() {
