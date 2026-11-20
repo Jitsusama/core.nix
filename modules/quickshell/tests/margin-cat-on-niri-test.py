@@ -143,17 +143,17 @@ def shell() -> Iterator[Shell]:
 
 
 @pytest.fixture(autouse=True)
-def awake(shell: Shell) -> None:
-    """Wake the cat with a key before each case, since nobody types here and it dozes off."""
+def awake(shell: Shell) -> Iterator[None]:
+    """Wake the cat before each case and close the launcher after it.
+
+    Nobody types here, so the cat dozes off without a key. A case that fails
+    with the launcher up would leave the cat held for the next, so each
+    closes it, to fail alone.
+    """
     since = shell.mark()
     shell.send_key("F24")
     if dozing(shell):
         heard(shell, lambda said: not asleep(said), since)
-
-
-@pytest.fixture(autouse=True)
-def launcher_closed_after(shell: Shell) -> Iterator[None]:
-    """Close the launcher after each case, so one failing with the cat held fails alone."""
     yield
     shell.launcher_left_closed()
 
