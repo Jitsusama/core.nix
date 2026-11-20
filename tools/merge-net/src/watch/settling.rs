@@ -14,6 +14,10 @@
 //! a net restarted between rounds, as every switch that changes it does,
 //! takes it up again; one that ends in an error stays there, and the next
 //! round takes it up.
+//!
+//! Long because the queue, its lanes and how each kind of job settles
+//! share one lock and one record on disk, so a job's rest, hold or end
+//! can't be read apart from the queue that takes it up.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
