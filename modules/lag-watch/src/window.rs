@@ -46,7 +46,8 @@ pub struct Snapshot {
     pub apps: BTreeMap<String, Group>,
     /// Each watched thread's schedstat.
     pub threads: BTreeMap<Thread, Sched>,
-    /// How many of each app's threads it had lowered, left out of `threads`.
+    /// How many of each app's processes it had lowered, hidden tabs, whose
+    /// threads are left out of `threads`.
     pub lowered: BTreeMap<String, usize>,
 }
 
@@ -151,8 +152,8 @@ pub struct Window {
     /// a window without a call, and of those written before it was added.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub call: BTreeMap<String, Worst>,
-    /// How many of each app's watched threads (`apps::APPS`) it had
-    /// lowered at the window's end, hidden tabs, and so left out of its
+    /// How many of each app's processes (`apps::APPS`) it had lowered at
+    /// the window's end, hidden tabs, whose threads are left out of its
     /// wait. Left out when none was, and of windows written before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub lowered: BTreeMap<String, usize>,

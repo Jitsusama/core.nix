@@ -46,15 +46,25 @@ pub struct Sched {
     pub slices: u64,
 }
 
-/// A thread's nice, from its `stat`: field 19, counted after the name,
-/// which is in brackets and may hold spaces of its own.
+/// A thread's nice, from its `stat`: field 19. A process's `stat` holds
+/// its main thread's.
 pub fn nice(text: &str) -> Option<i64> {
+    stat_field(text, 19)?.parse().ok()
+}
+
+/// When a process started, in clock ticks since boot, from its `stat`:
+/// field 22. A pid used again is another process with another start.
+pub fn started(text: &str) -> Option<u64> {
+    stat_field(text, 22)?.parse().ok()
+}
+
+/// Field `n` of a `stat`, counted from 1, past the name, which is in
+/// brackets and may hold spaces and brackets of its own.
+fn stat_field(text: &str, n: usize) -> Option<&str> {
     text.rsplit_once(')')?
         .1
         .split_whitespace()
-        .nth(16)?
-        .parse()
-        .ok()
+        .nth(n.checked_sub(3)?)
 }
 
 pub fn sched(text: &str) -> Option<Sched> {
@@ -259,11 +269,20 @@ pub fn threads(
             continue;
         }
         let comm = text(&entry.path().join("comm"));
-        if let Some((_, label)) = APPS.iter().find(|(app, _)| *app == comm.trim()) {
-            found.extend(apps.of(&name, &entry.path(), label));
+        let mut joels = false;
+        if let Some((_, label)) = APPS.iter().find(|(app, _)| *app == comm.trim())
+            && let Some(drawing) = apps.of(&name, &entry.path(), label)
+        {
+            joels = true;
+            found.extend(drawing);
         }
         running.insert(name.clone());
         if comm.trim() == "chrome" {
+            // A Chrome Joel didn't open, an agent's or a test's with a fake
+            // microphone, carries no call of his.
+            if !joels {
+                continue;
+            }
             chrome.extend(
                 tasks(&entry.path())
                     .into_iter()
@@ -401,20 +420,32 @@ pub mod tests {
         assert_eq!(seen(&root, None, &tuple).len(), 3);
     }
 
+    /// The account the tests' processes are Joel's in.
+    pub const ACCOUNT: &str = "/user.slice/user-1000.slice/user@1000.service";
+
+    /// A process named `comm`, in the scope of an app Joel opened.
+    pub fn opened(proc: &Path, pid: &str, comm: &str) {
+        write(&proc.join(pid).join("comm"), &format!("{comm}\n"));
+        let scope = format!("{ACCOUNT}/app.slice/app-niri-a-70.scope");
+        write(&proc.join(pid).join("cgroup"), &format!("0::{scope}\n"));
+    }
+
     /// The threads found in a first look, with no app's process known yet.
     fn seen(proc: &Path, compositor: Option<u32>, unit: &Path) -> Vec<Thread> {
-        threads(proc, compositor, unit, &mut Apps::default())
+        threads(proc, compositor, unit, &mut Apps::of_account(ACCOUNT))
     }
 
     #[test]
-    fn a_thread_s_nice_is_read_past_a_name_holding_spaces_and_brackets() {
+    fn a_thread_s_nice_and_start_are_read_past_a_name_holding_spaces_and_brackets() {
         let stat = "72 (chrome (a) b) S 70 1 1 0 -1 4194560 1 0 0 0 5 6 0 0 25 5 30 0 99\n";
         assert_eq!(nice(stat), Some(5));
+        assert_eq!(started(stat), Some(99));
         assert_eq!(
             nice("72 (chrome) S 70 1 1 0 -1 4194560 1 0 0 0 5 6 0 0 12 -8"),
             Some(-8)
         );
         assert_eq!(nice("72 (chrome) S 70"), None);
+        assert_eq!(started("72 (chrome) S 70"), None);
         assert_eq!(nice(""), None);
     }
 
@@ -437,7 +468,7 @@ pub mod tests {
         write(&proc.join("60/task/60/comm"), ".tuple-wrapped\n");
         write(&proc.join("60/task/61/comm"), "Signaling\n");
         write(&proc.join("60/task/62/comm"), "AudioEncoder\n");
-        write(&proc.join("30/comm"), "chrome\n");
+        opened(&proc, "30", "chrome");
         write(&proc.join("30/task/31/comm"), "WebRTC_Network\n");
         write(&proc.join("30/task/32/comm"), "ThreadPoolAudio\n");
         write(&proc.join("30/task/33/comm"), "AudioOutputDevi\n");
@@ -453,7 +484,15 @@ pub mod tests {
                 .collect()
         };
         assert_eq!(chrome(&proc), []);
-        write(&proc.join("40/comm"), "chrome\n");
+        // Nor while only a Chrome Joel didn't open records one, a test's.
+        write(&proc.join("50/comm"), "chrome\n");
+        write(
+            &proc.join("50/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/apps-under-load.service\n"),
+        );
+        write(&proc.join("50/task/51/comm"), "AudioInputDevic\n");
+        assert_eq!(chrome(&proc), []);
+        opened(&proc, "40", "chrome");
         write(&proc.join("40/task/41/comm"), "AudioInputDevic\n");
         assert_eq!(
             seen(&proc, None, &root.join("tuple.service")),

@@ -19,7 +19,8 @@ in
     Service = {
       ExecStart = "${lib.getExe package} run";
       # Beside the compositor and sound, so it isn't starved while it
-      # measures what starves them; it reads a few files every ten seconds.
+      # measures what starves them; every ten seconds it reads a small
+      # file for each watched thread and each app process, a few dozen.
       Slice = "session.slice";
       Restart = "on-failure";
       RestartSec = "5s";
