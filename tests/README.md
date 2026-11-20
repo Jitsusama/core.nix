@@ -25,10 +25,9 @@ and why.
 - `lib/`, `repository/`, `rules/`, `stand-ins/` and `vm/` say what they hold
   in their own READMEs.
 - `desktop/`: the desktop VM test's areas, one `-vm-test.py` each, with the
-  programs its machine runs to drive the desktop. Five measure the launcher at
-  Joel's scales, side by side, and share `looks_session.py`: looks itself
-  (sessions, meters, budgets, meaning, the ErgoDox, what's around), and
-  looks-rows, looks-vi, looks-plates and looks-file-picker.
+  launcher's areas in `desktop/launcher/`, the looks areas in
+  `desktop/looks/` and the programs its machine runs to drive the desktop
+  in `desktop/stand-ins/`, as its README says.
 
 ## Moving Out
 

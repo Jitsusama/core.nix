@@ -25,11 +25,13 @@
 # start without a single QML error.
 #
 # The test runs as one VM test per area of the desktop, each on this same
-# machine: its tests are desktop/desktop-<area>-vm-test.py, run through
-# pytest inside the driver, which ask for the desktop, its boot and helpers,
-# from desktop/desktop_session.py. So a change to one area reruns only that
-# one, and the areas run side by side. checks.nix names each area, or the
-# checks.nix of its area of tests/vm/ once it has moved there.
+# machine: its tests are desktop/desktop-<area>-vm-test.py, those of an
+# area named launcher-* in desktop/launcher/ and of looks and looks-* in
+# desktop/looks/. They run through pytest inside the driver, and ask for
+# the desktop, its boot and helpers from desktop/desktop_session.py. So a
+# change to one area reruns only that one, and the areas run side by side.
+# checks.nix names each area, or the checks.nix of its area of tests/vm/
+# once it has moved there.
 #
 # The pictures it takes for a person to look at, which `shots-changed`
 # compares, are taken only by an area's gallery, `.gallery`, the same test
@@ -55,7 +57,7 @@ let
   # The areas the launcher's looks are measured in, split so they run side
   # by side rather than one taking half an hour: looks itself, and its rows,
   # vi modes, plates and file picker. Each brings what looks brought, and
-  # imports what they share from desktop/looks_session.py.
+  # imports what they share from desktop/looks/looks_session.py.
   looksAreas = [
     "looks"
     "looks-rows"
@@ -189,17 +191,19 @@ let
   '';
 
   # Lantern's front desk, as a hotel's: every page is sent there until
-  # someone signs in (desktop/front-desk.py).
-  frontDesk = ./desktop/front-desk.py;
+  # someone signs in (desktop/stand-ins/front-desk.py).
+  frontDesk = ./desktop/stand-ins/front-desk.py;
 
   # The VM's own time server, which its chrony keeps the clock by
-  # (desktop/stand-in-time.conf).
+  # (desktop/stand-ins/stand-in-time.conf).
   timePort = 11123;
   # The hardware address of opens-and-sets' cable, which names it cable0.
   cableAddress = "52:54:00:0c:ab:1e";
   # And of the switch at that cable's other end, which names it switch0.
   switchAddress = "52:54:00:0c:ab:1f";
-  timeStandIn = pkgs.replaceVars ./desktop/stand-in-time.conf { port = toString timePort; };
+  timeStandIn = pkgs.replaceVars ./desktop/stand-ins/stand-in-time.conf {
+    port = toString timePort;
+  };
 
   # Text views and file lists draw on the theme's dark background, which
   # nothing else on the screen uses, so a window that hasn't drawn can't pass
@@ -221,7 +225,7 @@ let
   '';
 
   # Stands in for fwupd, which the VM doesn't run, on the system bus
-  # (desktop/stand-in-fwupd.py): each of its answers is what the test wrote
+  # (desktop/stand-ins/stand-in-fwupd.py): each of its answers is what the test wrote
   # to the runtime folder's fwupd/<command>.json, as fwupdmgr's --json says
   # it, or else the laptop's two devices with nothing offered.
   fwupdDevices = pkgs.writeText "fwupd-devices.json" (
@@ -254,7 +258,7 @@ let
   standInFwupd = pkgs.writers.writePython3 "stand-in-fwupd" {
     libraries = [ pkgs.python3Packages.jeepney ];
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-fwupd.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-fwupd.py);
   # Lets the stand-in hold fwupd's name on the system bus, and anyone ask it.
   standInFwupdPolicy = pkgs.writeTextDir "share/dbus-1/system.d/stand-in-fwupd.conf" ''
     <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
@@ -278,23 +282,23 @@ let
   '';
 
   # Stands in for dictation's service, on the socket systemd hands it
-  # (desktop/stand-in-dictation.py). ruff and mypy read each of these
+  # (desktop/stand-ins/stand-in-dictation.py). ruff and mypy read each of these
   # stand-ins through `nix fmt`, so the writers' flake8 is off.
   standInDictation = pkgs.writers.writePython3 "stand-in-dictation" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-dictation.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-dictation.py);
 
   # Stands in for pi-ask, which would ask a model, speaking pi's RPC
-  # (desktop/stand-in-ask.py).
+  # (desktop/stand-ins/stand-in-ask.py).
   standInAsk = pkgs.writers.writePython3 "stand-in-ask" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-ask.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-ask.py);
 
   # Stands in for the collector, keeping each line the launcher sends it
-  # (desktop/stand-in-collector.py).
+  # (desktop/stand-ins/stand-in-collector.py).
   standInCollector = pkgs.writers.writePython3 "stand-in-collector" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-collector.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-collector.py);
 
   # spend-watch serving only what a test writes in its runtime directory,
   # as its daemon would write it, since the VM runs no daemon to read pi's
@@ -319,40 +323,44 @@ let
   ];
 
   # Stands in for the google program, which would ask Google, on its socket
-  # (desktop/stand-in-google.py).
+  # (desktop/stand-ins/stand-in-google.py).
   standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-google.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-google.py);
 
   # Stands in for virsh, which would ask libvirt, giving the launcher one
-  # session machine to list and start (desktop/stand-in-virsh.sh), since
+  # session machine to list and start (desktop/stand-ins/stand-in-virsh.sh), since
   # the VM runs no libvirt.
-  standInVirsh = pkgs.writeShellScriptBin "virsh" ''
-    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/stand-in-virsh.sh} "$@"
-  '';
+  standInVirsh =
+    let
+      script = ./desktop/stand-ins/stand-in-virsh.sh;
+    in
+    pkgs.writeShellScriptBin "virsh" ''
+      PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${script} "$@"
+    '';
 
   # Stands in for Slack's daemon, which would ask Slack, on its socket
-  # (desktop/stand-in-slack.py).
+  # (desktop/stand-ins/stand-in-slack.py).
   standInSlack = pkgs.writers.writePython3 "stand-in-slack" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-slack.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-slack.py);
 
   # Stands in for the eero daemon, which would ask eero's cloud, on its
-  # socket (desktop/stand-in-eero.py).
+  # socket (desktop/stand-ins/stand-in-eero.py).
   standInEero = pkgs.writers.writePython3 "stand-in-eero" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-eero.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-eero.py);
 
   # Stands in for the noise-cancelled daemon's trial, which would record
-  # and clean the microphone, on its socket (desktop/stand-in-noise-cancelled.py).
+  # and clean the microphone, on its socket (desktop/stand-ins/stand-in-noise-cancelled.py).
   standInNoiseCancelled = pkgs.writers.writePython3 "stand-in-noise-cancelled" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-noise-cancelled.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-noise-cancelled.py);
 
   # The areas that walk Passwords, looks-programs, which shoots it, and
   # keeps-pace, which steps into it under load, whose 1Password's manager
   # asks a stand-in for 1Password's command, op, since no 1Password account
-  # signs in here (desktop/op-stand-in.sh).
+  # signs in here (desktop/stand-ins/op-stand-in.sh).
   walksPasswords = builtins.elem area [
     "launcher-goes-places"
     "looks-programs"
@@ -364,24 +372,28 @@ let
   # password, so the launcher draws them in Asks.
   answersSecretAsks = area == "answers-secret-asks";
   released = "op://Keeping/Lighthouse Console/password";
-  standInOp = pkgs.writeShellScript "op" ''
-    PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/op-stand-in.sh} "$@"
-  '';
+  standInOp =
+    let
+      script = ./desktop/stand-ins/op-stand-in.sh;
+    in
+    pkgs.writeShellScript "op" ''
+      PATH=${pkgs.coreutils}/bin exec ${pkgs.lib.getExe pkgs.bash} ${script} "$@"
+    '';
 
   # Stands in for the screen-text daemon, which would read screenshots with
   # its models, on its socket, saying what the runtime folder's
-  # screen-text-texts.json says each says (desktop/stand-in-screen-text.py).
+  # screen-text-texts.json says each says (desktop/stand-ins/stand-in-screen-text.py).
   standInScreenText = pkgs.writers.writePython3 "stand-in-screen-text" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-screen-text.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-screen-text.py);
 
   # Stands in for the meaning daemon, which would embed the launcher's
   # things with its model, on its socket, finding for each text what the
   # runtime folder's meaning-means.json says it means
-  # (desktop/stand-in-meaning.py).
+  # (desktop/stand-ins/stand-in-meaning.py).
   standInMeaning = pkgs.writers.writePython3 "stand-in-meaning" {
     doCheck = false;
-  } (builtins.readFile ./desktop/stand-in-meaning.py);
+  } (builtins.readFile ./desktop/stand-ins/stand-in-meaning.py);
 
   # Google's own pages' window, as jitsusama.google.window opens one: what
   # it was asked to open, written down, since the VM has no browser.
@@ -390,32 +402,32 @@ let
   '';
 
   # Asks the portal to open a file, always asking what with, and writes down
-  # its answer (desktop/ask-portal.py).
+  # its answer (desktop/stand-ins/ask-portal.py).
   askPortal = pkgs.writers.writePython3 "ask-portal" {
     libraries = [ pkgs.python3Packages.jeepney ];
     doCheck = false;
-  } (builtins.readFile ./desktop/ask-portal.py);
+  } (builtins.readFile ./desktop/stand-ins/ask-portal.py);
 
   # Asks the portal for a file to open or save in a folder, and writes down
-  # its answer (desktop/choose-a-file.py).
+  # its answer (desktop/stand-ins/choose-a-file.py).
   chooseAFile = pkgs.writers.writePython3 "choose-a-file" {
     libraries = [ pkgs.python3Packages.jeepney ];
     doCheck = false;
-  } (builtins.readFile ./desktop/choose-a-file.py);
+  } (builtins.readFile ./desktop/stand-ins/choose-a-file.py);
 
   # A window through X11 named only as Tuple names its windows
-  # (desktop/tuple-window.py).
+  # (desktop/stand-ins/tuple-window.py).
   tupleWindow = pkgs.writers.writePython3 "tuple-window" {
     libraries = [ pkgs.python3Packages.xlib ];
     doCheck = false;
-  } (builtins.readFile ./desktop/tuple-window.py);
+  } (builtins.readFile ./desktop/stand-ins/tuple-window.py);
 
   # Windows through X11 retitled without rest, as a crowd of agents'
-  # windows is (desktop/window-storm.py).
+  # windows is (desktop/stand-ins/window-storm.py).
   windowStorm = pkgs.writers.writePython3 "window-storm" {
     libraries = [ pkgs.python3Packages.xlib ];
     doCheck = false;
-  } (builtins.readFile ./desktop/window-storm.py);
+  } (builtins.readFile ./desktop/stand-ins/window-storm.py);
 
   # A command fenced as pi fences one, trying for Joel's secret copy
   # through X11 (../modules/pi/tests/pi-fence-keeps-x11-from-secrets.sh).
@@ -432,35 +444,35 @@ let
   };
 
   # A stand-in touchscreen, as wide as the screen, which swipes or taps as
-  # it's told through /run/touchscreen (desktop/touchscreen.py).
+  # it's told through /run/touchscreen (desktop/stand-ins/touchscreen.py).
   touchscreen = pkgs.writers.writePython3 "touchscreen" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
-  } (builtins.readFile ./desktop/touchscreen.py);
+  } (builtins.readFile ./desktop/stand-ins/touchscreen.py);
 
   # A stand-in Copilot key, sending Super, Shift and F23 as the laptop's
   # does, each time it's told through /run/copilot-key
-  # (desktop/copilot-key.py).
+  # (desktop/stand-ins/copilot-key.py).
   copilotKey = pkgs.writers.writePython3 "copilot-key" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
-  } (builtins.readFile ./desktop/copilot-key.py);
+  } (builtins.readFile ./desktop/stand-ins/copilot-key.py);
 
   # A stand-in keyboard, pressing one key each time it's told through
   # /run/keyboard and saying when, so a key is timed from the device
-  # (desktop/keyboard.py).
+  # (desktop/stand-ins/keyboard.py).
   keyboard = pkgs.writers.writePython3 "keyboard" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
-  } (builtins.readFile ./desktop/keyboard.py);
+  } (builtins.readFile ./desktop/stand-ins/keyboard.py);
 
   # A stand-in ErgoDox, plugged in for as long as it runs
-  # (desktop/ergodox.py), and the layout its module describes for the
+  # (desktop/stand-ins/ergodox.py), and the layout its module describes for the
   # shell, from the firmware the board runs.
   ergodox = pkgs.writers.writePython3 "ergodox" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
-  } (builtins.readFile ./desktop/ergodox.py);
+  } (builtins.readFile ./desktop/stand-ins/ergodox.py);
   ergodoxLayout =
     let
       firmware = import ../modules/ergodox/firmware.nix pkgs {
@@ -539,11 +551,11 @@ let
   piStandIn = import ./stand-ins/pi-stand-in.nix { inherit pkgs; };
 
   # Stands in for Inkscape where keeps-copies opens a new drawing in it
-  # (desktop/inkscape-stand-in.sh), adding it to the list of files opened
+  # (desktop/stand-ins/inkscape-stand-in.sh), adding it to the list of files opened
   # lately as Inkscape does, through the open-with module's recent-files.
   standInInkscape = pkgs.writeShellScript "inkscape" ''
     PATH=${pkgs.coreutils}/bin:${pkgs.callPackage ../modules/open-with/recent-files.nix { }}/bin \
-      exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/inkscape-stand-in.sh} "$@"
+      exec ${pkgs.lib.getExe pkgs.bash} ${./desktop/stand-ins/inkscape-stand-in.sh} "$@"
   '';
 
   # spotify-recent signed in, as the-launcher-plays-from-spotify stands it
@@ -573,7 +585,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # And what the looks areas share, only where it's read, so no other
         # area's test moves with it.
         + pkgs.lib.optionalString isLooks ''
-          cp ${./desktop/looks_session.py} $out/${python.python.sitePackages}/looks_session.py
+          cp ${./desktop/looks/looks_session.py} $out/${python.python.sitePackages}/looks_session.py
         ''
         # And how keeps-pace counts what its builder took, only there, for the same reason.
         + pkgs.lib.optionalString (area == "keeps-pace") ''
@@ -1144,15 +1156,20 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           ]
         );
         # tuple-call follows a stand-in for Tuple's command, whose stream
-        # says what the test writes (desktop/tuple-stand-in.sh), since no
+        # says what the test writes (desktop/stand-ins/tuple-stand-in.sh), since no
         # call can be made in the VM.
         systemd.user.services.tuple-call.Service.ExecStart = lib.mkForce (
           lib.escapeShellArgs [
             (lib.getExe (pkgs.callPackage ../modules/tuple/call/package.nix { }))
             "%t/daemons/tuple-call.sock"
-            (pkgs.writeShellScript "tuple" ''
-              PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./desktop/tuple-stand-in.sh} "$@"
-            '')
+            (
+              let
+                script = ./desktop/stand-ins/tuple-stand-in.sh;
+              in
+              pkgs.writeShellScript "tuple" ''
+                PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${script} "$@"
+              ''
+            )
           ]
         );
         # Tuple's daemon answering on its socket, which is all tuple-call
@@ -1231,22 +1248,22 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # may bring one, silent until a test writes what it knows.
         jitsusama.people.sources.pages = {
           order = 30;
-          source = ./desktop/people-pages.qml;
+          source = ./desktop/stand-ins/people-pages.qml;
         };
         # And one that knows a crowd, as Tuple knows every contact, silent
         # until a test says how many.
         jitsusama.people.sources.crowd = {
           order = 31;
-          source = ./desktop/people-crowd.qml;
+          source = ./desktop/stand-ins/people-crowd.qml;
         };
         # And one whose crowd the people daemon holds, as Tuple's contacts
         # are, none of them listed, so only a search finds one.
         jitsusama.people.sources.roster = {
           order = 32;
-          source = ./desktop/people-roster.qml;
+          source = ./desktop/stand-ins/people-roster.qml;
           daemon = [
             (lib.getExe pkgs.bash)
-            "${./desktop/people-roster.sh}"
+            "${./desktop/stand-ins/people-roster.sh}"
           ];
         };
         # Slack's reader, where Slack's module is imported, a stand-in the
@@ -1255,14 +1272,14 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.people.sources.slack = lib.mkIf bringsSlack {
           daemon = lib.mkForce [
             (lib.getExe pkgs.bash)
-            "${./desktop/people-slack.sh}"
+            "${./desktop/stand-ins/people-slack.sh}"
           ];
         };
         # A source ending each search, as Search Slack does, silent until a
         # test says what it ends with.
         jitsusama.quickshell.launcher.providers.search-ends = {
           order = 990;
-          source = ./desktop/search-ends.qml;
+          source = ./desktop/stand-ins/search-ends.qml;
         };
         # Slack's daemon, for the Search Slack that Slack's module brings
         # where it's imported, as a stand-in the test starts when it wants
@@ -1468,7 +1485,19 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       };
     };
 
-  tests = ./desktop/desktop-${area}-vm-test.py;
+  # An area's name decides its folder: those named launcher-* are in
+  # desktop/launcher/, looks and those named looks-* in desktop/looks/,
+  # looksAreas or not, and the rest in desktop/ itself.
+  tests =
+    (
+      if pkgs.lib.hasPrefix "launcher-" area then
+        ./desktop/launcher
+      else if area == "looks" || pkgs.lib.hasPrefix "looks-" area then
+        ./desktop/looks
+      else
+        ./desktop
+    )
+    + "/desktop-${area}-vm-test.py";
   values =
     { nodes, ... }:
     let
@@ -1528,8 +1557,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             # (stand-ins/desk-light-stand-in.py).
             desk_light = "${pkgs.python3}/bin/python3 ${./stand-ins/desk-light-stand-in.py}";
             # A crowd of pi's sessions, a few changing each beat
-            # (desktop/stand-in-sessions.py).
-            stand_in_sessions = "${pkgs.python3}/bin/python3 ${./desktop/stand-in-sessions.py}";
+            # (desktop/stand-ins/stand-in-sessions.py).
+            stand_in_sessions = pkgs.lib.concatStringsSep " " [
+              "${pkgs.python3}/bin/python3"
+              "${./desktop/stand-ins/stand-in-sessions.py}"
+            ];
             tuple_window = tupleWindow;
             inherit (pkgs)
               coreutils

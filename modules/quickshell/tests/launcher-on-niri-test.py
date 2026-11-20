@@ -3355,10 +3355,10 @@ def test_a_meaning_lands_on_a_part_inside_a_place(shell: Shell) -> None:
     """The parts a place holds are told to the meaning daemon, and one meant is found itself.
 
     The launcher tells the stand-in the spots its devices hold, as a screen's Resolution, as well
-    as its things (tests/desktop/stand-in-meaning.py), and a spot it says is meant is added below
-    what the letters found as typing would find it, saying where it lives and that it was found
-    by its meaning. That it stands where its place would have, and is meant once by its name, is
-    modules/meaning/tests/meaning.qml's to prove; this is the wiring.
+    as its things (tests/desktop/stand-ins/stand-in-meaning.py), and a spot it says is meant is
+    added below what the letters found as typing would find it, saying where it lives and that
+    it was found by its meaning. That it stands where its place would have, and is meant once by
+    its name, is modules/meaning/tests/meaning.qml's to prove; this is the wiring.
     """
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
     means = runtime / "meaning-means.json"
@@ -4164,7 +4164,7 @@ def test_the_home_network_is_found_by_eeros_name_and_by_whats_on_it(shell: Shell
     Joel reaches his home network by the name on its boxes as by its own (QEST-20261111-PN2VZC),
     and the place was found only by its name and its noun, so "eero" found only a node whose
     model says it. The eero daemon's stand-in holds the contract's network
-    (tests/desktop/stand-in-eero.py), whose console is named game console 1.
+    (tests/desktop/stand-ins/stand-in-eero.py), whose console is named game console 1.
     """
     for typed, name in [("eero", "Home Network"), ("game console", "game console 1")]:
         shell.answer(typed)

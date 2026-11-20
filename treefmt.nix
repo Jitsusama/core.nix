@@ -157,12 +157,15 @@ in
   # the two shell cases still in tests/ import from outside its folder, and
   # the tests folder's glossary reader and its replaced names, which the
   # shell's cases import as their checks copy them in beside them. And what
-  # the sites' VM tests share, which each imports as its driver's plugin.
+  # the sites' VM tests share, which each imports as its driver's plugin,
+  # and what the desktop test's areas share, which those in its launcher
+  # and looks folders import from the folder above.
   # Each is named alone, so an edit to a file beside them rebuilds no mypy.
   jitsusama.mypy.paths = [
     ./modules/local-sites/tests
     ./modules/niri/tests
     ./modules/quickshell/tests/launcher_on_niri.py
+    ./tests/desktop/desktop_session.py
     ./tests/repository/glossary.py
     ./tests/repository/names.py
     ./tests/vm/sites/sites_session.py

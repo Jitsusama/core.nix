@@ -3,7 +3,7 @@
 // with an error, as pi-ask did without its proxy's key: the row says it
 // can't start and why before anything is asked, and a question asked says
 // why within 3 s, Return asking again rather than closing. The other speaks
-// pi's RPC as the work machine's pi does (tests/desktop/stand-in-ask.py):
+// pi's RPC as the work machine's pi does (tests/desktop/stand-ins/stand-in-ask.py):
 // a question is thought about at once and answered in place; a second gets
 // a pi of its own, never one that carries the first; and closing the
 // launcher while it answers stops it, the next answered whole. It exits 0

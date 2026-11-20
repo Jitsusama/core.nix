@@ -20,7 +20,7 @@
   "modules/swayimg/tests/swayimg-moves-by-its-keys.sh" = 2;
   "modules/tuple/call/tests/daemon.rs" = 1;
   "tests/desktop/desktop-keeps-pace-vm-test.py" = 1;
-  "tests/desktop/desktop-launcher-waits-on-joel-vm-test.py" = 1;
+  "tests/desktop/launcher/desktop-launcher-waits-on-joel-vm-test.py" = 1;
   "tests/desktop/desktop-shows-then-rests-vm-test.py" = 1;
   "tests/desktop/desktop_session.py" = 1;
   "modules/quickshell/tests/launcher_on_niri.py" = 1;

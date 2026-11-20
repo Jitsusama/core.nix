@@ -397,7 +397,7 @@
       '';
       standIn = pkgs.writers.writePython3 "stand-in-ask" {
         doCheck = false;
-      } (builtins.readFile ../../../tests/desktop/stand-in-ask.py);
+      } (builtins.readFile ../../../tests/desktop/stand-ins/stand-in-ask.py);
       niri = singleton "Niri.qml" "function spawn(command) {}";
       sessions = singleton "Sessions.qml" ''
         readonly property string home: Quickshell.env("HOME")
