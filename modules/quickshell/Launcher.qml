@@ -6667,13 +6667,10 @@ Scope {
     // Where the rows' headings stand, which name the rows under them and
     // are never a row (Headings.js): none, for nearly every list.
     readonly property var headingsAt: Headings.placesOf(matches)
-    // Whether the list's view rests whole: on a row's top, drawing only the
-    // rows wholly in it. A list with headings does, and so does one with
-    // gaps, as the home network's eeros each have, since its rows' bands no
-    // longer fall on home's card's pitch and its foot would cut its last
-    // row; the room left under them is less than a row's, and bare (Y2YBTS,
-    // 2026-11-20 [95c35e88]).
-    readonly property bool restsWhole: headingsAt.length > 0 || matches.some(row => row?.gap)
+    // Whether the list's view rests whole, on a row's top and drawing only
+    // the rows wholly in it: one with headings, or a place's own with a gap
+    // (Headings.restsWhole), a find's as it always has, as unheaded says.
+    readonly property bool restsWhole: Headings.restsWhole(matches, typed !== "")
     // Where the selection was, which it leaves a heading the way it went
     // from.
     property int currentWas: 0
@@ -14849,15 +14846,13 @@ Scope {
                                     : bottom > from + list.height ? bottom - list.height : from);
                             }
 
-                            // The list as Headings reads it, to place a
-                            // view among headings.
                             // Whether the list draws `entry` where the view
                             // stands: always where it doesn't rest whole,
                             // and where it does only with what it draws
                             // whole, a heading only with its first row's
-                            // too. The gutter asks it
-                            // too, as the view moves and before the rows'
-                            // own bindings have caught up.
+                            // too. The gutter asks it too, as the view
+                            // moves and before the rows' own bindings have
+                            // caught up.
                             function draws(entry) {
                                 if (!root.restsWhole || entry.aside)
                                     return true;
@@ -14888,6 +14883,8 @@ Scope {
                                 return { from: top + choice.drawnFrom, to: top + choice.drawnTo };
                             }
 
+                            // The list as Headings reads it, to place a
+                            // view that rests whole.
                             function headed() {
                                 return {
                                     height: list.height,
@@ -14903,14 +14900,14 @@ Scope {
                             function cut() {
                                 const from = list.contentY;
                                 const cuts = [];
-                                const headed = root.restsWhole;
+                                const whole = root.restsWhole;
                                 for (let at = 0; at < root.matches.length; at += 1) {
                                     const entry = list.itemAtIndex(at);
                                     if (entry === null || entry.opacity === 0)
                                         continue;
-                                    const span = headed ? list.extentOf(entry) : null;
-                                    const top = headed ? span.from : entry.y;
-                                    const bottom = headed ? span.to : top + entry.height;
+                                    const span = whole ? list.extentOf(entry) : null;
+                                    const top = whole ? span.from : entry.y;
+                                    const bottom = whole ? span.to : top + entry.height;
                                     if (bottom > from + 0.5 && top < from + list.height - 0.5
                                         && (top < from - 0.5 || bottom > from + list.height + 0.5))
                                         cuts.push(at);

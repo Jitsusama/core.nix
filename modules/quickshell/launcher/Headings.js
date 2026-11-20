@@ -203,6 +203,18 @@ function drawn(row, view) {
     return whole(row) && !(row.heading && row.under !== null && !whole(row.under));
 }
 
+// Whether a list's view rests whole: on a row's top, drawing only the rows
+// wholly in it, the room left under the last less than a row's and bare. A
+// list with headings does, and so does a place's own list with a gap, as
+// the home network's eeros each have, since its rows' bands then fall off
+// the pitch of home's card, whose foot would cut its last row (Y2YBTS,
+// 2026-11-20 [95c35e88]). A find's rows rest as they always have: they
+// never have headings, and a gap they carry from their place shouldn't
+// change how the list rests as one is found and the next letter loses it.
+function restsWhole(rows, found) {
+    return rows.some(isHeading) || (!found && rows.some(row => Boolean(row?.gap)));
+}
+
 // The rows with no heading, as a search shows them: its ranking mixes the
 // groups, so no heading names what's under it. The same list where none
 // is, so what reads it sees nothing new.

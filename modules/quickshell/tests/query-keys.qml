@@ -593,6 +593,15 @@ QtObject {
         holds("a row whose ground would cross the foot isn't drawn by it", drawn(5, 90), false);
         holds("but is by its line, which fits", drawn(5, 90, 14), true);
         holds("as is a heading whose first row's line fits", drawn(4, 85, 14), true);
+        // Which lists rest whole (Y2YBTS [95c35e88]).
+        const gappedRows = [row("Den"), { name: "Study", gap: true }, row("phone")];
+        holds("a list with headings rests whole", Headings.restsWhole(rows, false), true);
+        holds("as does a place's own list with a gap",
+            Headings.restsWhole(gappedRows, false), true);
+        holds("but not a find whose rows carry one", Headings.restsWhole(gappedRows, true),
+            false);
+        holds("nor a list with neither", Headings.restsWhole(plain, false), false);
+        holds("nor one with none at all", Headings.restsWhole([], false), false);
     }
 
     // A paragraph of rows, as Vim's of lines (VKCF3Z, 2026-11-05): a run of

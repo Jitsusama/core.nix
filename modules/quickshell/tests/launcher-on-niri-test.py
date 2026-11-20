@@ -4233,16 +4233,29 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     shell.launcher_until(lambda shown: "Study" in shown["rows"])
     shell.normal()
 
+    # inView reads whole bands and not what's hidden, so a view that hid a row it holds whole
+    # would draw fewer than it spans.
     def rested(shown: Json) -> bool:
         return bool(
             shown["cut"] == []
             and shown["restsOnARow"]
             and len(shown["gutter"]["numbers"]) == shown["drawnRows"]
+            and shown["drawnRows"] >= shown["inView"]["bottom"] - shown["inView"]["top"] + 1
+        )
+
+    def parts(shown: Json) -> tuple[object, ...]:
+        return (
+            shown["current"],
+            shown["cut"],
+            shown["restsOnARow"],
+            shown["gutter"]["numbers"],
+            shown["drawnRows"],
+            shown["inView"],
         )
 
     shell.launcher_until(rested)
     count = shell.showing()["count"]
-    assert count > 2 * shell.showing()["drawnRows"], shell.showing()
+    assert count > 2 * shell.showing()["drawnRows"], parts(shell.showing())
     for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
 
         def landed(shown: Json, at: int = at) -> bool:
@@ -4250,7 +4263,8 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
 
         shell.send_chars(key)
         shell.launcher_until(landed)
-        assert landed(shell.showing()), shell.showing()
+        shown = shell.showing()
+        assert landed(shown), (key, *parts(shown))
     shell.close_launcher()
 
 
