@@ -22,7 +22,7 @@ use crate::running;
 use crate::state::{now, short};
 use crate::subtests;
 use crate::watch::{
-    Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNREACHED, UNSENT, World, untaken,
+    Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNCOMPARED, UNREACHED, UNSENT, World, untaken,
 };
 
 /// What the net's changed-checks runs ask, so a builder lets them ahead of
@@ -90,10 +90,7 @@ impl Clock {
 
     /// Whether this run's part of `log` says a builder took it.
     fn said_taken(&self, log: &Path) -> bool {
-        self.ours(log).is_some_and(|ours| {
-            ours.windows(TAKEN.len())
-                .any(|seen| seen == TAKEN.as_bytes())
-        })
+        self.ours(log).is_some_and(|ours| taken_in(&ours))
     }
 
     /// Whether the run whose log is `log` should be stopped at `now`.
@@ -629,10 +626,10 @@ impl Real {
 
     /// Compare a Mac's checks at `commit` against `base` into `log`, as a
     /// gate whose Mac was away would have, in a checkout of `commit`; none
-    /// when it couldn't be started or ran past its time. One no Mac took
-    /// ends `UNSENT`, as nix-offload ends 75 for a Mac part it can't send,
-    /// and so does one that compared nothing: stopped before a builder
-    /// took it, or failed on the network alone, as `mac_unsent` reads it.
+    /// when a builder took it and it ran past its time or was stopped. One
+    /// no Mac took ends `UNSENT`, as nix-offload ends 75 for a Mac part it
+    /// can't send, and one that compared nothing ends `UNCOMPARED`: one
+    /// that couldn't be started, or that `mac_ending` reads so.
     fn compared_on_a_mac(
         &self,
         commit: &str,
@@ -640,41 +637,108 @@ impl Real {
         log: &Path,
         dropped: &dyn Fn() -> bool,
     ) -> Option<i32> {
-        let apart = Comparing::at(self, commit).ok()?;
-        let output = file(log).ok()?;
+        // One that couldn't be started compared nothing, and says nothing
+        // of the merge, so it waits for the next round rather than being
+        // read as a stall told to the merge's owner.
+        let Ok(apart) = Comparing::at(self, commit) else {
+            return Some(UNCOMPARED);
+        };
+        let Ok(output) = file(log) else {
+            return Some(UNCOMPARED);
+        };
         let mut clock = Clock::new(log, Instant::now());
-        let child = Command::new("nix-offload")
-            .args(mac_args(base))
-            .current_dir(&apart.folder)
-            .stdin(Stdio::null())
-            .stdout(output.try_clone().ok()?)
-            .stderr(output)
-            .spawn()
-            .ok()?;
+        let child = output.try_clone().and_then(|out| {
+            Command::new("nix-offload")
+                .args(mac_args(base))
+                .current_dir(&apart.folder)
+                .stdin(Stdio::null())
+                .stdout(out)
+                .stderr(output)
+                .spawn()
+        });
+        let Ok(child) = child else {
+            return Some(UNCOMPARED);
+        };
         let code = ended(child, &mut clock, commit, log, dropped);
-        let ours = clock.ours(log).unwrap_or_default();
-        mac_unsent(code, clock.said_taken(log), &String::from_utf8_lossy(&ours))
+        mac_ending(code, clock.ours(log).as_deref())
     }
 }
 
+/// Whether a run's part of its log says a builder took it.
+fn taken_in(ours: &[u8]) -> bool {
+    ours.windows(TAKEN.len())
+        .any(|seen| seen == TAKEN.as_bytes())
+}
+
 /// What a Mac's comparison that ended with `code` says of its riders,
-/// `taken` saying whether a builder took it and `words` its log: `UNSENT`
-/// for one that compared nothing, so it's sent again. One stopped before
-/// any builder took it ran nothing: on 17 November a hold on the Mac's
-/// load stopped 135 that way, each read as a stall. One that failed on
-/// the network alone, its builder unable to name a cache's host and no
-/// build of its own failing, says nothing of the change: on 19 November
-/// two such failed #5650's comparison and told its owner so.
-fn mac_unsent(code: Option<i32>, taken: bool, words: &str) -> Option<i32> {
-    let unresolved = words.contains("Could not resolve host")
-        && !words.contains("Reason: builder failed with exit code")
-        && !words.contains("\u{2715} a check the change touched failed");
+/// read with `ours`, its run's part of the log: `UNCOMPARED` for one
+/// that compared nothing, so it waits for the next round. One whose
+/// process was ended by a signal before any builder took it ran nothing:
+/// on 17 November a hold on the Mac's load stopped 135 that way, each
+/// read as a stall, and 65 merges were let go unchecked. One that failed
+/// on the network alone says nothing of the change either: on 19 November
+/// two such failed #5650's comparison and told its owner so. A log that
+/// can't be read leaves the ending as it was.
+fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
+    let Some(ours) = ours else {
+        return match code {
+            Some(UNSENT | UNREACHED) => Some(UNSENT),
+            code => code,
+        };
+    };
     match code {
-        None if !taken => Some(UNSENT),
+        None if !taken_in(ours) => Some(UNCOMPARED),
         Some(UNSENT | UNREACHED) => Some(UNSENT),
-        Some(code) if code != 0 && unresolved => Some(UNSENT),
+        Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
         code => code,
     }
+}
+
+/// The errors a build prints when a cache can't be reached, as nix printed
+/// them on 19 November when the Mac couldn't name its caches' hosts: each
+/// error line's start, and words it must hold beside.
+const NETWORK_ERRORS: [(&str, &str); 6] = [
+    ("unable to download ", "Could not resolve host"),
+    ("Cannot build ", ""),
+    ("path ", "there is no substituter that can build it"),
+    ("some references of path ", "could not be realised"),
+    (
+        "some substitutes for the outputs of derivation ",
+        "usually happens due to networking issues",
+    ),
+    ("Build failed due to failed dependency", ""),
+];
+
+/// Whether a failed run's log says it failed on the network alone: some
+/// error names a host that couldn't be resolved, every error is one
+/// `NETWORK_ERRORS` names, every reason is that dependencies failed, and
+/// no check is said to have failed. An evaluation error, a builder that
+/// failed (which a fetch failing on the network prints too, so that stays
+/// a failure) or a check that failed beside a lookup error is a failure.
+fn unresolved(words: &str) -> bool {
+    let mut named = false;
+    for line in words.lines().map(str::trim_start) {
+        if let Some(error) = line.strip_prefix("error:") {
+            let error = error.trim_start();
+            let known = NETWORK_ERRORS
+                .iter()
+                .any(|(start, beside)| error.starts_with(start) && error.contains(beside));
+            if !known {
+                return false;
+            }
+            named |= error.contains("Could not resolve host");
+        } else if let Some(reason) = line.strip_prefix("Reason:") {
+            let reason = reason.trim();
+            if !(reason.ends_with(" dependencies failed.")
+                || reason.ends_with(" dependency failed."))
+            {
+                return false;
+            }
+        } else if line.starts_with('\u{2715}') {
+            return false;
+        }
+    }
+    named
 }
 
 /// What the net asks `nix-offload there` to compare a Mac's checks with,
@@ -2027,76 +2091,123 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
+    /// What #5650's comparison printed on 19 November when the Mac couldn't
+    /// name its caches' hosts, line for line, trimmed to one of each.
+    const LOOKUPS: &str = "\
+nix-offload: building on a-mac, /tmp/compare
+\
+warning: unable to download 'https://cache.nixos.org/6cr488dcf8v0b1rvcj0zwc6vbj9slx3k.narinfo': \
+Could not resolve hostname (6) Could not resolve host: cache.nixos.org; retrying in 277 ms \
+(attempt 1/5)
+error: unable to download \
+'https://cache.nixos.org/nar/0ipa1af092lbrh7nnh508k9r87k29wq1x2agpfd8kpwghdx0z2bh.nar.zst': \
+Could not resolve hostname (6) Could not resolve host: cache.nixos.org
+error: path '/nix/store/zjp7c0q83l4ab8fvz6vvhq2kcinanf71-rustc-1.99.1' is required, but \
+there is no substituter that can build it
+error: some references of path \
+'/nix/store/iy1y0jds2l1nn22rks4va7crg8r835bn-clippy-1.99.1' could not be realised
+error: some substitutes for the outputs of derivation \
+'/nix/store/js8vczs3xzm3gkx4iysycvmhzlrlb5hj-clippy-1.99.1.drv' failed (usually happens due \
+to networking issues); try '--fallback' to build derivation from source
+error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.drv'.
+       Reason: 3 dependencies failed.
+";
+
     #[test]
-    fn a_mac_comparison_stopped_before_a_builder_took_it_is_sent_again() {
+    fn a_mac_comparison_ended_before_a_builder_took_it_compared_nothing() {
+        let ours = b"comparing aarch64-darwin's checks at 7103329c5f54";
         assert_eq!(
-            mac_unsent(
-                None,
-                false,
-                "comparing aarch64-darwin's checks at 7103329c5f54"
-            ),
-            Some(UNSENT),
-            "a comparison stopped before any builder took it was read as a stall"
+            mac_ending(None, Some(ours)),
+            Some(UNCOMPARED),
+            "a comparison ended before any builder took it was read as a stall"
         );
     }
 
     #[test]
     fn a_mac_comparison_stopped_once_a_builder_took_it_is_a_stall() {
         assert_eq!(
-            mac_unsent(None, true, "nix-offload: building on a-mac"),
+            mac_ending(None, Some(b"nix-offload: building on a-mac")),
             None,
             "a comparison a builder took and that was stopped wasn't read as a stall"
+        );
+        assert_eq!(
+            mac_ending(None, None),
+            None,
+            "a stopped comparison whose log couldn't be read wasn't left a stall"
         );
     }
 
     #[test]
-    fn a_mac_comparison_failing_on_host_lookups_alone_is_sent_again() {
-        let words = "warning: error: unable to download 'https://cache.nixos.org/x.narinfo': \
-                     Could not resolve host: cache.nixos.org\n\
-                     error: Cannot build 'system-passes-clippy.drv'.\n\
-                     Reason: 4 dependencies failed.";
+    fn a_mac_comparison_failing_on_host_lookups_alone_compared_nothing() {
         assert_eq!(
-            mac_unsent(Some(1), true, words),
-            Some(UNSENT),
+            mac_ending(Some(1), Some(LOOKUPS.as_bytes())),
+            Some(UNCOMPARED),
             "a comparison that failed only because its builder couldn't name a cache counted"
         );
     }
 
     #[test]
-    fn a_mac_comparison_whose_build_failed_still_fails_whatever_the_lookups() {
-        let words = "Could not resolve host: cache.nixos.org\n\
-                     Reason: builder failed with exit code 1.";
-        assert_eq!(
-            mac_unsent(Some(1), true, words),
-            Some(1),
-            "a build that failed was let off because its builder also couldn't name a cache"
+    fn a_mac_comparison_that_failed_beside_lookups_still_fails() {
+        let built = format!(
+            "{LOOKUPS}error: Cannot build '/nix/store/x-check.drv'.\n       \
+             Reason: builder failed with exit code 1.\n"
         );
-        let told = "Could not resolve host: cache.nixos.org\n\
-                    \u{2715} a check the change touched failed";
-        assert_eq!(
-            mac_unsent(Some(1), true, told),
-            Some(1),
-            "a check that failed was let off because its builder also couldn't name a cache"
-        );
+        let evaluated = format!("{LOOKUPS}error: attribute 'example-darwin' missing\n");
+        let bare = format!("{LOOKUPS}error:\n       \u{2026} while evaluating\n");
+        let told = format!("{LOOKUPS}\u{2715} a check the change touched failed\n");
+        for (words, what) in [
+            (built, "a build that failed"),
+            (evaluated, "an evaluation that failed"),
+            (bare, "an evaluation whose error is on the lines after"),
+            (told, "a check that failed"),
+        ] {
+            assert_eq!(
+                mac_ending(Some(1), Some(words.as_bytes())),
+                Some(1),
+                "{what} was let off because its builder also couldn't name a cache"
+            );
+        }
     }
 
     #[test]
     fn a_mac_comparison_that_passed_or_was_unsent_stays_so() {
-        let lookups = "Could not resolve host: cache.nixos.org";
         assert_eq!(
-            mac_unsent(Some(0), true, lookups),
+            mac_ending(Some(0), Some(LOOKUPS.as_bytes())),
             Some(0),
-            "a pass was turned unsent"
+            "a pass was turned uncompared"
         );
         assert_eq!(
-            mac_unsent(Some(UNREACHED), false, ""),
+            mac_ending(Some(UNREACHED), Some(b"")),
             Some(UNSENT),
             "an unreached Mac wasn't read as unsent"
         );
         assert_eq!(
-            mac_unsent(Some(1), true, "Reason: builder failed with exit code 1."),
+            mac_ending(Some(1), Some(b"Reason: builder failed with exit code 1.")),
             Some(1),
             "a plain failure was changed"
         );
+        assert_eq!(
+            mac_ending(
+                Some(1),
+                Some(b"error: unable to download 'x': HTTP error 404")
+            ),
+            Some(1),
+            "a failure naming no unresolved host was let off"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparisons_ending_is_read_from_its_own_part_of_the_log() {
+        let log = std::env::temp_dir().join(format!("merge-net-ours-{}.log", std::process::id()));
+        fs::write(&log, "nix-offload: building on a-mac, /tmp/compare\n").unwrap();
+        let clock = Clock::new(&log, Instant::now());
+        let mut file = fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(file, "comparing aarch64-darwin's checks at 7103329c5f54").unwrap();
+        assert_eq!(
+            mac_ending(None, clock.ours(&log).as_deref()),
+            Some(UNCOMPARED),
+            "a run ended before a builder took it was read as taken from the run before"
+        );
+        fs::remove_file(&log).unwrap();
     }
 }
