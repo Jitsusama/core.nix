@@ -165,9 +165,10 @@ what net says of the day.
   a television, with its model, whether it's on or in standby, and the
   name it was given on its own screen, which stands for eero's unless
   Joel nicknamed it there. A TV heard once is remembered while the
-  daemon runs: a minute it's silent keeps its name, role and model, says
-  it isn't answering, and makes the source unreachable while no TV
-  answers. The answer stays as `detail.samsung`, but for its ids and the
+  daemon runs: a minute it's silent, or answers as something else, keeps
+  its name, role and model, says it isn't answering, and makes the source
+  unreachable while no TV answers. A TV switched off leaves eero's list,
+  so it isn't asked. The answer stays as `detail.samsung`, but for its ids and the
   addresses eero gives. Sending it a key waits on Joel pressing Allow on
   the TV, so none is sent.
 
