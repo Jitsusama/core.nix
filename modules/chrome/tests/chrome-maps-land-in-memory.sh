@@ -46,16 +46,19 @@ fill() {
 }
 
 # Runs the command, failing rather than hanging the build on a run that
-# never ends: a run waits at most two half minutes, the give-up and its
-# last look, so two minutes is past any run that stops.
+# never ends: in these cases a run waits at most two half minutes, the
+# give-up and its last look, before it ends or starts over on a profile
+# nothing holds, so two minutes is past any run that stops.
 run() {
   local status=0
   # The command is the unit's, words split as systemd splits them.
   # shellcheck disable=SC2086
   timeout 120 $command >run.log 2>&1 || status=$?
   if [ "$status" = 124 ]; then
-    echo "the account's command was still going two minutes into its $1 run, saying:"
-    cat run.log
+    # One that loops says the same few lines over and over, so its first
+    # are enough.
+    echo "the account's command was still going two minutes into its $1 run, first saying:"
+    head -n 20 run.log
     exit 1
   fi
   if [ "$status" != 0 ]; then

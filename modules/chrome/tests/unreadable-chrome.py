@@ -1,8 +1,8 @@
 """A stand-in for one of Chrome's sandboxed processes.
 
-Its maps its own account can't read: it takes Chrome's name, marks itself
-not dumpable as Chrome's sandbox does, and waits until the file it's given
-exists.
+Its own account can't read its maps: it marks itself not dumpable, as
+Chrome's sandbox does, takes Chrome's name, and waits until the file it's
+given exists.
 
 Usage: unreadable-chrome.py QUIT_FILE
 """
