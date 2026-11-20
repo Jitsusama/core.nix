@@ -2,21 +2,32 @@
 //! fix on Joel's machine: at 21:10 on 19 November the card told him his
 //! 19:05 miss, the background pi host's crash, was fixed on core #5800's
 //! merge, while the last switch predated it and the host still loaded the
-//! older runtime's pi.
+//! older runtime's pi. Whatever cadence can't read counts as not running,
+//! so a blind hour never tells him fixed.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde_json::Value;
 
-use super::{Checkouts, Named, main_of};
-use crate::command;
+use super::{Checkouts, Named, main_of, merged_numbers};
+use crate::{command, write_whole};
 
 /// What a miss's line says between its change and why, after its check's
 /// note, when the change merged and doesn't run here yet. The card reads
 /// it to tell the miss fixed again once it runs, and the owner's note to
 /// ask when it will rather than which check.
 pub const UNRUN: &str = " merged, but ";
+
+/// How each reason cadence's own blindness gives begins, so the owner isn't
+/// asked about what only the hour can mend.
+pub const UNSEEN: &str = "cadence can't ";
+
+/// The repositories whose running revision cadence reads: core's and
+/// World's from the last switch, the harness's from the version installed.
+/// A change elsewhere, deployed apart, is followed no further than its
+/// merge.
+const RUN_HERE: &[&str] = &["core", "world", "harness"];
 
 /// The files of core a change carries into the pi hosts' runtime, which a
 /// host loads only once it restarts onto a runtime built with them, apart
@@ -47,70 +58,142 @@ impl<'a> Pin<'a> {
 }
 
 /// Which of `merged` don't run here yet, each with why. A change runs once
-/// its repository's running revision carries its merge: core's and any
-/// other the last switch in `switches` names, by that switch's revision,
-/// and the harness's by the version installed. A core change to the hosts'
-/// runtime runs only once every running host also loads a runtime `pin`
-/// shows built from a core carrying it. A change in a repository with no
-/// running revision cadence knows, such as one deployed apart, is followed
-/// no further than its merge.
+/// its repository's running revision carries its merge, and a core change
+/// to the hosts' runtime once every running host also loads a runtime
+/// `pin` shows built from a core carrying it. A change seen running is kept
+/// in `folder`'s `ran.json` and never read again, so a closed miss isn't
+/// reopened, and told fixed twice, by an hour that can't see for a moment:
+/// a host restarting at :10, or a switch from a branch.
 #[must_use]
 pub fn unrun(
     merged: &BTreeSet<Named>,
     repos: &Checkouts,
     switches: &str,
     pin: Option<Pin<'_>>,
+    folder: &Path,
 ) -> BTreeMap<Named, &'static str> {
+    let ran_at = folder.join("ran.json");
+    let ran: BTreeSet<Named> = std::fs::read_to_string(&ran_at)
+        .ok()
+        .and_then(|kept| serde_json::from_str(&kept).ok())
+        .unwrap_or_default();
     let mut revs = switched(switches);
     if let Some(installed) = installed() {
         revs.insert("harness".to_owned(), installed);
     }
-    // A pin in a checkout cadence wasn't given can't be read.
-    let pin = pin.filter(|pin| repos.contains_key(pin.checkout));
-    let mut hosts: Option<BTreeSet<Option<String>>> = None;
+    let pin = pin.filter(|pin| {
+        let known = repos.contains_key(pin.checkout);
+        if !known {
+            eprintln!(
+                "cadence: --host-runtime names {}, which no --checkout gives",
+                pin.checkout
+            );
+        }
+        known
+    });
+    let mut hosts: Option<Option<BTreeSet<Option<String>>>> = None;
     let mut unrun = BTreeMap::new();
-    for change in merged {
-        let (Some(rev), Some(path)) = (revs.get(&change.repo), repos.get(&change.repo)) else {
+    for change in merged.iter().filter(|change| !ran.contains(*change)) {
+        let Some(path) = repos.get(&change.repo) else {
             continue;
         };
         let path = path.to_string_lossy();
-        let why = match merge_of(&path, change.number) {
-            None => Some("cadence can't find its merge"),
-            Some(sha) if !carries(&path, &sha, rev) => Some(if change.repo == "harness" {
-                "the harness installed doesn't carry it"
-            } else {
-                "the last switch doesn't carry it"
-            }),
-            Some(sha) if change.repo == "core" && hosted(&changed(&path, &sha)) => {
+        let why = judge(
+            &change.repo,
+            revs.get(&change.repo).map(String::as_str),
+            merge_of(&path, change.number).as_deref(),
+            |sha, rev| carries(&path, sha, rev),
+            |sha| changed(&path, sha),
+            |sha| {
                 let pins = hosts.get_or_insert_with(|| pinned(pin, repos));
-                hosts_lack(pins, pin, |rev| carries(&path, &sha, rev))
-            }
-            Some(_) => None,
-        };
+                hosts_lack(pins.as_ref(), pin, |rev| carries(&path, sha, rev))
+            },
+        );
         if let Some(why) = why {
             unrun.insert(change.clone(), why);
         }
     }
+    let now_ran: BTreeSet<Named> = merged
+        .iter()
+        .filter(|change| !unrun.contains_key(*change))
+        .chain(&ran)
+        .cloned()
+        .collect();
+    if now_ran != ran
+        && let Err(error) = serde_json::to_string(&now_ran)
+            .map_err(std::io::Error::from)
+            .and_then(|kept| write_whole(&ran_at, &kept))
+    {
+        eprintln!(
+            "cadence: keeping what runs in {}: {error}",
+            ran_at.display()
+        );
+    }
     unrun
+}
+
+/// Why a change of `repo` merged as `merge` doesn't run here yet, if it
+/// doesn't: `rev` is its repository's running revision, `carries` says
+/// whether a revision holds a commit, `changed` the files a merge changed,
+/// and `hosts` why the pi hosts lack a hosts' runtime change. What cadence
+/// couldn't read counts as not running.
+fn judge(
+    repo: &str,
+    rev: Option<&str>,
+    merge: Option<&str>,
+    carries: impl Fn(&str, &str) -> bool,
+    changed: impl Fn(&str) -> Option<String>,
+    hosts: impl FnOnce(&str) -> Option<&'static str>,
+) -> Option<&'static str> {
+    if !RUN_HERE.contains(&repo) {
+        return None;
+    }
+    let Some(rev) = rev else {
+        return Some("cadence can't see what runs here");
+    };
+    let Some(sha) = merge else {
+        return Some("cadence can't find its merge");
+    };
+    if !carries(sha, rev) {
+        return Some(if repo == "harness" {
+            "the harness installed doesn't carry it"
+        } else {
+            "the last switch doesn't carry it"
+        });
+    }
+    if repo != "core" {
+        return None;
+    }
+    match changed(sha) {
+        None => Some("cadence can't read what it changed"),
+        Some(files) if hosted(&files) => hosts(sha),
+        Some(_) => None,
+    }
 }
 
 /// Why the hosts don't load a hosted change, if they don't: the core each
 /// running host's runtime was pinned with, `None` for one whose pin wasn't
-/// found, must carry it.
+/// found, must carry it. `None` for them all is hosts cadence couldn't list.
 fn hosts_lack(
-    pins: &BTreeSet<Option<String>>,
+    pins: Option<&BTreeSet<Option<String>>>,
     pin: Option<Pin<'_>>,
     carries: impl Fn(&str) -> bool,
 ) -> Option<&'static str> {
-    if pin.is_none() {
-        Some("cadence can't see what the pi hosts load")
-    } else if pins.is_empty() {
-        Some("no pi host runs to load it")
-    } else if pins.iter().any(|rev| !rev.as_deref().is_some_and(&carries)) {
-        Some("the pi hosts don't load it yet")
-    } else {
-        None
+    match pins {
+        _ if pin.is_none() => Some("cadence can't see what the pi hosts load"),
+        None => Some("cadence can't list the pi hosts"),
+        Some(pins) if pins.is_empty() => Some("no pi host runs to load it"),
+        Some(pins) if pins.iter().any(|rev| !rev.as_deref().is_some_and(&carries)) => {
+            Some("the pi hosts don't load it yet")
+        }
+        Some(_) => None,
     }
+}
+
+/// Whether `text` is a commit's name git can only read as one: hex, at
+/// least seven long, so nothing from a state file reaches git as an option.
+fn is_rev(text: &str) -> bool {
+    (7..=40).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// The revisions the last switch was built from, by repository, from
@@ -123,7 +206,9 @@ fn switched(text: &str) -> BTreeMap<String, String> {
         .and_then(|switch| {
             switch["revs"].as_object().map(|revs| {
                 revs.iter()
-                    .filter_map(|(repo, rev)| Some((repo.clone(), rev.as_str()?.to_owned())))
+                    .filter_map(|(repo, rev)| Some((repo.clone(), rev.as_str()?)))
+                    .filter(|(_, rev)| is_rev(rev))
+                    .map(|(repo, rev)| (repo, rev.to_owned()))
                     .collect()
             })
         })
@@ -135,23 +220,24 @@ fn switched(text: &str) -> BTreeMap<String, String> {
 fn installed() -> Option<String> {
     let mirror = crate::axes::landings::harness_mirror();
     let current = std::fs::read_link(mirror.parent()?.join("current")).ok()?;
-    Some(current.file_name()?.to_string_lossy().into_owned())
+    let name = current.file_name()?.to_string_lossy().into_owned();
+    is_rev(&name).then_some(name)
 }
 
-/// The commit on `path`'s main that merged pull request `number`, as GitHub
-/// or a squash names it.
+/// The commit on `path`'s main that merged pull request `number`, by its
+/// subject as `merged_numbers` reads it, since git's grep matches a line of
+/// any commit's body too.
 fn merge_of(path: &str, number: u64) -> Option<String> {
     let merged = format!("--grep=^Merge pull request #{number} from ");
-    let squashed = format!("--grep=\\(#{number}\\)$");
-    let sha = command(
+    let squashed = format!("--grep=\\(#{number}\\)\\s*$");
+    let found = command(
         "git",
         &[
             "-C",
             path,
             "log",
             "--first-parent",
-            "-1",
-            "--format=%H",
+            "--format=%H %s",
             "-E",
             &merged,
             &squashed,
@@ -159,8 +245,18 @@ fn merge_of(path: &str, number: u64) -> Option<String> {
         ],
     )
     .ok()?;
-    let sha = sha.trim();
-    (!sha.is_empty()).then(|| sha.to_owned())
+    subject_merging(&found, number)
+}
+
+/// The newest of `found`, each `SHA SUBJECT`, whose subject says it merged
+/// `number`.
+fn subject_merging(found: &str, number: u64) -> Option<String> {
+    found.lines().find_map(|line| {
+        let (sha, subject) = line.split_once(' ')?;
+        merged_numbers(subject)
+            .contains(&number)
+            .then(|| sha.to_owned())
+    })
 }
 
 /// Whether `rev` carries `sha`. An unknown revision carries nothing.
@@ -172,13 +268,13 @@ fn carries(path: &str, sha: &str, rev: &str) -> bool {
     .is_ok()
 }
 
-/// The files the merge `sha` changed on its main.
-fn changed(path: &str, sha: &str) -> String {
+/// The files the merge `sha` changed on its main, if git could say.
+fn changed(path: &str, sha: &str) -> Option<String> {
     command(
         "git",
         &["-C", path, "diff", "--name-only", &format!("{sha}^1"), sha],
     )
-    .unwrap_or_default()
+    .ok()
 }
 
 /// Whether a change touching `files` reaches the pi hosts' runtime.
@@ -189,38 +285,62 @@ fn hosted(files: &str) -> bool {
 }
 
 /// The core each running pi host's runtime was pinned with, `None` for a
-/// runtime `pin` names in no commit it reads.
-fn pinned(pin: Option<Pin<'_>>, repos: &Checkouts) -> BTreeSet<Option<String>> {
+/// runtime `pin` names in no commit it reads, or a host whose runtime
+/// couldn't be read; no set at all when the hosts couldn't be listed.
+fn pinned(pin: Option<Pin<'_>>, repos: &Checkouts) -> Option<BTreeSet<Option<String>>> {
     let (Some(pin), Some(checkout)) = (pin, pin.and_then(|pin| repos.get(pin.checkout))) else {
-        return BTreeSet::new();
+        return Some(BTreeSet::new());
     };
     let checkout = checkout.to_string_lossy();
     let main = main_of(&checkout);
     let flake = format!("{}/flake.nix", pin.folder);
-    hosts()
-        .iter()
-        .map(|runtime| {
-            let commit = command(
-                "git",
-                &[
-                    "-C",
-                    &checkout,
-                    "log",
-                    "-1",
-                    "--format=%H",
-                    PINNED_WITHIN,
-                    "-S",
-                    runtime,
-                    main,
-                    "--",
-                    &flake,
-                ],
-            )
-            .ok()?;
-            let lock = format!("{}:{}/flake.lock", commit.trim(), pin.folder);
-            core_pin(&command("git", &["-C", &checkout, "show", &lock]).ok()?)
-        })
-        .collect()
+    let show = |commit: &str, file: &str| {
+        command(
+            "git",
+            &["-C", &checkout, "show", &format!("{commit}:{file}")],
+        )
+        .ok()
+    };
+    Some(
+        hosts()?
+            .iter()
+            .map(|runtime| {
+                let runtime = runtime.as_deref()?;
+                let touched = command(
+                    "git",
+                    &[
+                        "-C",
+                        &checkout,
+                        "log",
+                        "--format=%H",
+                        PINNED_WITHIN,
+                        "-S",
+                        runtime,
+                        main,
+                        "--",
+                        &flake,
+                    ],
+                )
+                .ok()?;
+                let commit = first_naming(&touched, |commit| {
+                    show(commit, &flake).is_some_and(|text| text.contains(runtime))
+                })?;
+                core_pin(&show(commit, &format!("{}/flake.lock", pin.folder))?)
+            })
+            .collect(),
+    )
+}
+
+/// The oldest of `touched`, commits newest first, that `names` the runtime:
+/// git's `-S` gives the commit that dropped a runtime as well as the one
+/// that pinned it, and the first pin is what the runtime was built with.
+fn first_naming(touched: &str, names: impl Fn(&str) -> bool) -> Option<&str> {
+    touched
+        .lines()
+        .map(str::trim)
+        .filter(|commit| !commit.is_empty())
+        .rev()
+        .find(|commit| names(commit))
 }
 
 /// The core revision a `flake.lock` pins, by the root's input named core.
@@ -229,30 +349,55 @@ fn core_pin(lock: &str) -> Option<String> {
     let node = lock["nodes"]["root"]["inputs"]["core"].as_str()?;
     lock["nodes"][node]["locked"]["rev"]
         .as_str()
+        .filter(|rev| is_rev(rev))
         .map(str::to_owned)
 }
 
-/// Every runtime a running pi host loads its pi from.
-fn hosts() -> BTreeSet<String> {
-    let Ok(processes) = std::fs::read_dir("/proc") else {
-        return BTreeSet::new();
-    };
-    processes
-        .flatten()
-        .map(|process| process.path())
-        .filter(|path| std::fs::read(path.join("cmdline")).is_ok_and(|cmdline| host(&cmdline)))
-        .filter_map(|path| runtime(&std::fs::read(path.join("environ")).ok()?))
-        .collect()
+/// The runtime each running pi host loads its pi from, `None` for a host
+/// whose runtime couldn't be read. A host is the main process of a unit
+/// core's host module names `pi-host-REALM-KIND`, so what it starts, which
+/// keeps its environment after the host moves on, isn't read.
+fn hosts() -> Option<BTreeSet<Option<String>>> {
+    let units = command(
+        "systemctl",
+        &[
+            "--user",
+            "list-units",
+            "--type=service",
+            "--state=active",
+            "--no-legend",
+            "--plain",
+            "pi-host-*",
+        ],
+    )
+    .ok()?;
+    Some(
+        units
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|unit| host_unit(unit))
+            .map(|unit| {
+                let pid = command(
+                    "systemctl",
+                    &["--user", "show", "-p", "MainPID", "--value", unit],
+                )
+                .ok()?;
+                let pid = pid.trim();
+                if pid == "0" || !pid.bytes().all(|b| b.is_ascii_digit()) {
+                    return None;
+                }
+                runtime(&std::fs::read(format!("/proc/{pid}/environ")).ok()?)
+            })
+            .collect(),
+    )
 }
 
-/// Whether a process's command line is a pi host's, started by its
-/// runtime's own node. Only the host itself is read, since what it starts
-/// keeps its environment after the host moves on.
-fn host(cmdline: &[u8]) -> bool {
-    cmdline
-        .split(|&b| b == 0)
-        .next()
-        .is_some_and(|program| program.ends_with(b"/libexec/pi-host/node"))
+/// Whether `unit` is a pi host's, `pi-host-REALM-KIND.service`, and not one
+/// of the units beside them, such as `pi-host-down@`.
+fn host_unit(unit: &str) -> bool {
+    unit.strip_prefix("pi-host-")
+        .and_then(|rest| rest.strip_suffix(".service"))
+        .is_some_and(|named| !named.contains('@') && named.contains('-'))
 }
 
 /// The runtime a pi host loads its pi from, as the hash of the store path
@@ -284,18 +429,109 @@ mod tests {
     #[test]
     fn the_last_whole_switch_names_what_runs() {
         let switches = concat!(
-            "{\"generation\":1,\"revs\":{\"core\":\"aaa\",\"world\":\"www\"}}\n",
-            "{\"generation\":2,\"revs\":{\"core\":\"bbb\",\"world\":\"www\"}}\n",
+            "{\"generation\":1,\"revs\":{\"core\":\"aaaaaaa\",\"world\":\"0000000\"}}\n",
+            "{\"generation\":2,\"revs\":{\"core\":\"bbbbbbb\",\"world\":\"0000000\"}}\n",
             "{\"generation\":3,\"revs\":{\"core\":\"cc",
         );
         assert_eq!(
             switched(switches),
             BTreeMap::from([
-                ("core".to_owned(), "bbb".to_owned()),
-                ("world".to_owned(), "www".to_owned()),
+                ("core".to_owned(), "bbbbbbb".to_owned()),
+                ("world".to_owned(), "0000000".to_owned()),
             ]),
         );
         assert!(switched("").is_empty(), "no switch named a revision");
+        assert_eq!(
+            switched("{\"revs\":{\"core\":\"--output=/x\",\"world\":\"abc\"}}"),
+            BTreeMap::new(),
+            "what isn't a commit's name reached git"
+        );
+    }
+
+    #[test]
+    fn what_cadence_cant_read_counts_as_not_running() {
+        let all = |_: &str, _: &str| true;
+        let none = |_: &str, _: &str| false;
+        let files = |_: &str| Some("modules/cadence/src/main.rs".to_owned());
+        let hosted = |_: &str| Some("modules/pi/host-patches/x.patch".to_owned());
+        let lack = |_: &str| Some("the pi hosts don't load it yet");
+        let never = |_: &str| -> Option<&'static str> { panic!("a host was read") };
+        let at = Some("a1b2c3d");
+        assert_eq!(
+            judge("core", at, Some("f00d"), none, files, never),
+            Some("the last switch doesn't carry it"),
+            "the 21:10 case: merged, but not switched in"
+        );
+        assert_eq!(
+            judge("core", at, Some("f00d"), all, hosted, lack),
+            Some("the pi hosts don't load it yet"),
+            "switched in, but the hosts still load the older pi"
+        );
+        assert_eq!(judge("core", at, Some("f00d"), all, files, never), None);
+        assert_eq!(
+            judge("core", None, Some("f00d"), all, files, never),
+            Some("cadence can't see what runs here"),
+            "no switch read, yet the change counted as running"
+        );
+        assert_eq!(
+            judge("core", at, None, all, files, never),
+            Some("cadence can't find its merge")
+        );
+        assert_eq!(
+            judge("core", at, Some("f00d"), all, |_| None, never),
+            Some("cadence can't read what it changed"),
+            "an unread diff skipped the hosts"
+        );
+        assert_eq!(
+            judge("harness", at, Some("f00d"), none, files, never),
+            Some("the harness installed doesn't carry it")
+        );
+        assert_eq!(
+            judge("world", at, Some("f00d"), all, |_| None, never),
+            None,
+            "World's changes don't reach the hosts' runtime"
+        );
+        assert_eq!(
+            judge("mycelium", None, None, none, files, never),
+            None,
+            "a repository deployed apart is followed to its merge"
+        );
+    }
+
+    #[test]
+    fn a_merge_is_found_by_its_subject_not_a_later_body() {
+        let found = concat!(
+            "1111111 fix(pi): quote the crash (#5800)\n",
+            "2222222 Merge pull request #5800 from me/fix\n",
+        );
+        assert_eq!(subject_merging(found, 5800), Some("1111111".to_owned()));
+        let body = "3333333 Merge pull request #5801 from me/next\n";
+        assert_eq!(
+            subject_merging(body, 5800),
+            None,
+            "a later merge whose body named the change was taken as its merge"
+        );
+    }
+
+    #[test]
+    fn a_runtime_is_pinned_where_it_was_first_named() {
+        let touched = "dropped\nrenamed\nadded\n";
+        let names = |commit: &str| commit != "dropped";
+        assert_eq!(
+            first_naming(touched, names),
+            Some("added"),
+            "the commit dropping the runtime, or a later one, was read as its pin"
+        );
+        assert_eq!(
+            first_naming("", |_| true),
+            None,
+            "a runtime pinned nowhere was read against the working lock"
+        );
+        assert_eq!(
+            first_naming("dropped\n", |_| false),
+            None,
+            "a commit that only dropped the runtime counted as its pin"
+        );
     }
 
     #[test]
@@ -316,9 +552,8 @@ mod tests {
 
     #[test]
     fn a_host_is_read_by_the_runtime_its_pi_loads_from() {
-        let environ = format!(
-            "HOME=/x\0PI_PACKAGE_DIR=/nix/store/{OLD}-pi-host-runtime-1.5.0/lib/pi\0"
-        );
+        let environ =
+            format!("HOME=/x\0PI_PACKAGE_DIR=/nix/store/{OLD}-pi-host-runtime-1.5.0/lib/pi\0");
         assert_eq!(runtime(environ.as_bytes()), Some(OLD.to_owned()));
         let other = format!("PI_PACKAGE_DIR=/nix/store/{OLD}-pi-1.5.0/lib\0");
         assert_eq!(runtime(other.as_bytes()), None, "a pi not a host's runtime");
@@ -328,18 +563,24 @@ mod tests {
             "a pi outside the store"
         );
         assert_eq!(runtime(b"HOME=/home/x\0"), None, "no pi named");
-        let node = format!("/nix/store/{OLD}-pi-host-runtime-1.5.0/libexec/pi-host/node\0--x\0");
-        assert!(host(node.as_bytes()), "the host's own node wasn't a host");
-        assert!(!host(b"bash\0-c\0pi-host\0"), "what a host started was one");
+        assert!(
+            host_unit("pi-host-work-background.service"),
+            "a host's unit wasn't a host"
+        );
+        assert!(
+            !host_unit("pi-host-down@pi-host-work-attended.service"),
+            "the unit saying a host is down was a host"
+        );
+        assert!(!host_unit("pi-hostess.service"), "another unit was a host");
     }
 
     #[test]
     fn a_lock_pins_core_by_the_roots_input() {
         let lock = r#"{"nodes": {
             "root": {"inputs": {"core": "core_2", "nixpkgs": "nixpkgs"}},
-            "core": {"locked": {"rev": "old"}},
-            "core_2": {"locked": {"rev": "abc"}}}}"#;
-        assert_eq!(core_pin(lock), Some("abc".to_owned()));
+            "core": {"locked": {"rev": "0123456"}},
+            "core_2": {"locked": {"rev": "abcdef0"}}}}"#;
+        assert_eq!(core_pin(lock), Some("abcdef0".to_owned()));
         assert_eq!(
             core_pin(r#"{"nodes": {"root": {"inputs": {}}}}"#),
             None,
@@ -369,25 +610,62 @@ mod tests {
         let pins = |revs: &[Option<&str>]| -> BTreeSet<Option<String>> {
             revs.iter().map(|rev| rev.map(str::to_owned)).collect()
         };
-        assert_eq!(hosts_lack(&pins(&[Some("new")]), pin, has), None);
+        assert_eq!(hosts_lack(Some(&pins(&[Some("new")])), pin, has), None);
         assert_eq!(
-            hosts_lack(&pins(&[Some("new"), Some("old")]), pin, has),
+            hosts_lack(Some(&pins(&[Some("new"), Some("old")])), pin, has),
             Some("the pi hosts don't load it yet"),
             "one host on the old runtime left it unrun"
         );
         assert_eq!(
-            hosts_lack(&pins(&[Some("new"), None]), pin, has),
+            hosts_lack(Some(&pins(&[Some("new"), None])), pin, has),
             Some("the pi hosts don't load it yet"),
             "a runtime pinned nowhere cadence reads counted as carrying it"
         );
         assert_eq!(
-            hosts_lack(&pins(&[]), pin, has),
+            hosts_lack(Some(&pins(&[])), pin, has),
             Some("no pi host runs to load it")
         );
         assert_eq!(
-            hosts_lack(&pins(&[Some("new")]), None, has),
+            hosts_lack(None, pin, has),
+            Some("cadence can't list the pi hosts"),
+            "hosts cadence couldn't list counted as none"
+        );
+        assert_eq!(
+            hosts_lack(Some(&pins(&[Some("new")])), None, has),
             Some("cadence can't see what the pi hosts load"),
             "with no pin named, a host's runtime counted as followed"
         );
+    }
+
+    #[test]
+    fn a_change_seen_running_is_kept_and_not_read_again() {
+        let folder = std::env::temp_dir().join(format!("cadence-ran-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a scratch folder");
+        let mycelium = Named {
+            repo: "mycelium".into(),
+            number: 7,
+        };
+        let repos = Checkouts::from([("mycelium".to_owned(), folder.clone())]);
+        let merged = BTreeSet::from([mycelium.clone()]);
+        assert!(
+            unrun(&merged, &repos, "", None, &folder).is_empty(),
+            "a change deployed apart was held"
+        );
+        let kept: BTreeSet<Named> =
+            serde_json::from_str(&std::fs::read_to_string(folder.join("ran.json")).expect("kept"))
+                .expect("a set");
+        assert_eq!(kept, merged, "the change seen running wasn't kept");
+        let core = Named {
+            repo: "core".into(),
+            number: 1,
+        };
+        let repos = Checkouts::from([("core".to_owned(), folder.clone())]);
+        let held = unrun(&BTreeSet::from([core.clone()]), &repos, "", None, &folder);
+        assert_eq!(
+            held.get(&core),
+            Some(&"cadence can't see what runs here"),
+            "a core change with no switch read counted as running"
+        );
+        std::fs::remove_dir_all(&folder).expect("the scratch folder removed");
     }
 }

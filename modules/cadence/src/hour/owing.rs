@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, UNRUN, drag, rounds};
+use super::measures::{BLIND, Class, HELD, Measure, UNRUN, UNSEEN, drag, rounds};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -54,11 +54,15 @@ fn filed(m: &Measure) -> Vec<Filed> {
             .iter()
             .filter_map(|line| line.rsplit_once(" · "))
             // A miss held only because the hour couldn't look is the hour's
-            // to fix, not its owner's, so it isn't put to them.
+            // to fix, not its owner's, so it isn't put to them: a measure
+            // unread, or what runs here unseen.
             .filter(|(_, owner)| {
-                owner
-                    .split_once(HELD)
-                    .is_none_or(|(_, why)| !BLIND.iter().any(|b| why.ends_with(b)))
+                owner.split_once(HELD).is_none_or(|(_, why)| {
+                    !BLIND.iter().any(|b| why.ends_with(b))
+                        && why
+                            .split_once(UNRUN)
+                            .is_none_or(|(_, unrun)| !unrun.starts_with(UNSEEN))
+                })
             })
             .map(|(what, owner)| {
                 // A note after the owner, ", though its check ...", is no
@@ -294,6 +298,18 @@ pub fn file(
 mod tests {
     use super::super::measure;
     use super::*;
+
+    #[test]
+    fn a_miss_cadence_cant_see_running_isnt_put_to_its_owner() {
+        let mut m = measure("misses", Class::Miss, 1.0, Some(0.0));
+        m.behind = vec![format!(
+            "the host crashed · OSPHT4{HELD}core #5800{UNRUN}cadence can't see what runs here"
+        )];
+        assert!(
+            filed(&m).is_empty(),
+            "the owner was asked about what only the hour can mend"
+        );
+    }
 
     #[test]
     fn the_owner_of_a_miss_whose_check_doesnt_run_yet_is_asked_when_it_will() {

@@ -19,7 +19,7 @@ mod held;
 mod running;
 
 pub use held::{BLIND, HELD, held};
-pub use running::{Pin, UNRUN};
+pub use running::{Pin, UNRUN, UNSEEN};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -180,8 +180,7 @@ fn main_of(path: &str) -> &'static str {
 /// keep them, and each of `checkouts`, as `NAME=PATH`, and runs here, as
 /// the last of `switches` and the hosts' runtime `pin` say. The changes
 /// found merged are kept in `folder`, so a main is never read again for
-/// them; whether one runs is read each hour, so a switch rolled back opens
-/// its miss again.
+/// them, and so are those seen running, so a closed miss stays closed.
 pub fn checked(
     text: &str,
     folder: &Path,
@@ -207,7 +206,8 @@ pub fn checked(
     if found != known {
         write_whole(&kept_at, &serde_json::to_string(&found)?)?;
     }
-    let unrun = running::unrun(&wanted_merged(text, &repos, &found), &repos, switches, pin);
+    let wanted = wanted_merged(text, &repos, &found);
+    let unrun = running::unrun(&wanted, &repos, switches, pin, folder);
     Ok(open_misses(text, &repos, &found, &unread, &unrun))
 }
 
