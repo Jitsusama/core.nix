@@ -3011,6 +3011,36 @@ mod tests {
     }
 
     #[test]
+    fn a_mac_comparison_that_stalled_twice_is_told_to_its_owner() {
+        // On 17 November 65 merges' comparisons stalled twice and were let
+        // go as if they had passed, unchecked and unsaid.
+        let state = state("mac-stalled");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[STALL, STALL]);
+        round(&world, &state, "s").unwrap();
+        let told: Vec<Value> = findings(&state)
+            .into_iter()
+            .filter(|finding| finding["kind"] == "stalled")
+            .collect();
+        assert!(
+            told.iter()
+                .any(|finding| finding["commit"] == "m1" && finding["owner_pr"] == 2),
+            "a Mac's comparison that stalled twice wasn't told to its owner: {told:?}"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a merge was reverted for a comparison that compared nothing"
+        );
+    }
+
+    #[test]
     fn a_merge_whose_gate_compared_a_mac_is_not_compared_again() {
         let state = state("mac-compared");
         let world = Stand {

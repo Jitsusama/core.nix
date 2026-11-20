@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use super::{
     AT_ONCE, Bad, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
     fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
-    same_drv, search, settle,
+    same_drv, search, settle, stalled,
 };
 use crate::state::{State, now, short};
 
@@ -565,7 +565,8 @@ impl<'a> Settler<'a> {
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
     /// if they fail twice there. One no Mac took is kept, and the next
     /// round takes it up again, until it was handed `UNRUN` ago: then it's
-    /// told as a finding naming its PR, and let go.
+    /// told as a finding naming its PR, and let go. One a builder took
+    /// that stalled twice is told as a stall naming its PR, and let go.
     fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
         match attempt(world, state, merge, check) {
@@ -598,7 +599,15 @@ impl<'a> Settler<'a> {
                 };
                 self.end(check, || revert_and_tell(world, state, &found, merge))
             }
-            Outcome::Passed | Outcome::Flaky | Outcome::Stalled => self.end(check, || Ok(())),
+            // One a builder took that stalled twice compared nothing, so
+            // it's told to its owner rather than let go as if it had
+            // passed: on 17 November 65 merges' comparisons were let go
+            // that way, unchecked and unsaid.
+            Outcome::Stalled => {
+                let owner = pr_of(&world.subject(merge));
+                self.end(check, || stalled(state, merge, check, owner))
+            }
+            Outcome::Passed | Outcome::Flaky => self.end(check, || Ok(())),
         }
     }
 

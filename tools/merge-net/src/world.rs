@@ -73,9 +73,9 @@ impl Clock {
         }
     }
 
-    /// Whether this run's part of `log` says a builder took it, read from
-    /// where it begins rather than from the runs before it.
-    fn said_taken(&self, log: &Path) -> bool {
+    /// This run's part of `log`, read from where it begins rather than
+    /// from the runs before it; none when it can't be read.
+    fn ours(&self, log: &Path) -> Option<Vec<u8>> {
         let mut ours = Vec::new();
         fs::File::open(log)
             .and_then(|mut file| {
@@ -84,10 +84,16 @@ impl Clock {
                 ))?;
                 file.read_to_end(&mut ours)
             })
-            .is_ok_and(|_| {
-                ours.windows(TAKEN.len())
-                    .any(|seen| seen == TAKEN.as_bytes())
-            })
+            .ok()?;
+        Some(ours)
+    }
+
+    /// Whether this run's part of `log` says a builder took it.
+    fn said_taken(&self, log: &Path) -> bool {
+        self.ours(log).is_some_and(|ours| {
+            ours.windows(TAKEN.len())
+                .any(|seen| seen == TAKEN.as_bytes())
+        })
     }
 
     /// Whether the run whose log is `log` should be stopped at `now`.
@@ -624,7 +630,9 @@ impl Real {
     /// Compare a Mac's checks at `commit` against `base` into `log`, as a
     /// gate whose Mac was away would have, in a checkout of `commit`; none
     /// when it couldn't be started or ran past its time. One no Mac took
-    /// ends `UNSENT`, as nix-offload ends 75 for a Mac part it can't send.
+    /// ends `UNSENT`, as nix-offload ends 75 for a Mac part it can't send,
+    /// and so does one that compared nothing: stopped before a builder
+    /// took it, or failed on the network alone, as `mac_unsent` reads it.
     fn compared_on_a_mac(
         &self,
         commit: &str,
@@ -643,10 +651,29 @@ impl Real {
             .stderr(output)
             .spawn()
             .ok()?;
-        match ended(child, &mut clock, commit, log, dropped)? {
-            UNSENT | UNREACHED => Some(UNSENT),
-            code => Some(code),
-        }
+        let code = ended(child, &mut clock, commit, log, dropped);
+        let ours = clock.ours(log).unwrap_or_default();
+        mac_unsent(code, clock.said_taken(log), &String::from_utf8_lossy(&ours))
+    }
+}
+
+/// What a Mac's comparison that ended with `code` says of its riders,
+/// `taken` saying whether a builder took it and `words` its log: `UNSENT`
+/// for one that compared nothing, so it's sent again. One stopped before
+/// any builder took it ran nothing: on 17 November a hold on the Mac's
+/// load stopped 135 that way, each read as a stall. One that failed on
+/// the network alone, its builder unable to name a cache's host and no
+/// build of its own failing, says nothing of the change: on 19 November
+/// two such failed #5650's comparison and told its owner so.
+fn mac_unsent(code: Option<i32>, taken: bool, words: &str) -> Option<i32> {
+    let unresolved = words.contains("Could not resolve host")
+        && !words.contains("Reason: builder failed with exit code")
+        && !words.contains("\u{2715} a check the change touched failed");
+    match code {
+        None if !taken => Some(UNSENT),
+        Some(UNSENT | UNREACHED) => Some(UNSENT),
+        Some(code) if code != 0 && unresolved => Some(UNSENT),
+        code => code,
     }
 }
 
@@ -1998,5 +2025,78 @@ mod tests {
             "the merge that met a conflict wasn't undone"
         );
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_mac_comparison_stopped_before_a_builder_took_it_is_sent_again() {
+        assert_eq!(
+            mac_unsent(
+                None,
+                false,
+                "comparing aarch64-darwin's checks at 7103329c5f54"
+            ),
+            Some(UNSENT),
+            "a comparison stopped before any builder took it was read as a stall"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_stopped_once_a_builder_took_it_is_a_stall() {
+        assert_eq!(
+            mac_unsent(None, true, "nix-offload: building on a-mac"),
+            None,
+            "a comparison a builder took and that was stopped wasn't read as a stall"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_failing_on_host_lookups_alone_is_sent_again() {
+        let words = "warning: error: unable to download 'https://cache.nixos.org/x.narinfo': \
+                     Could not resolve host: cache.nixos.org\n\
+                     error: Cannot build 'system-passes-clippy.drv'.\n\
+                     Reason: 4 dependencies failed.";
+        assert_eq!(
+            mac_unsent(Some(1), true, words),
+            Some(UNSENT),
+            "a comparison that failed only because its builder couldn't name a cache counted"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_whose_build_failed_still_fails_whatever_the_lookups() {
+        let words = "Could not resolve host: cache.nixos.org\n\
+                     Reason: builder failed with exit code 1.";
+        assert_eq!(
+            mac_unsent(Some(1), true, words),
+            Some(1),
+            "a build that failed was let off because its builder also couldn't name a cache"
+        );
+        let told = "Could not resolve host: cache.nixos.org\n\
+                    \u{2715} a check the change touched failed";
+        assert_eq!(
+            mac_unsent(Some(1), true, told),
+            Some(1),
+            "a check that failed was let off because its builder also couldn't name a cache"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_that_passed_or_was_unsent_stays_so() {
+        let lookups = "Could not resolve host: cache.nixos.org";
+        assert_eq!(
+            mac_unsent(Some(0), true, lookups),
+            Some(0),
+            "a pass was turned unsent"
+        );
+        assert_eq!(
+            mac_unsent(Some(UNREACHED), false, ""),
+            Some(UNSENT),
+            "an unreached Mac wasn't read as unsent"
+        );
+        assert_eq!(
+            mac_unsent(Some(1), true, "Reason: builder failed with exit code 1."),
+            Some(1),
+            "a plain failure was changed"
+        );
     }
 }
