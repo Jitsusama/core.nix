@@ -604,8 +604,8 @@ impl Children {
         self.running().children.remove(&id)
     }
 
-    /// Kill every child still running, within the lock so an end beside this
-    /// one can't return before, then wait on each, and start none after.
+    /// Kill every child still running within the lock, so an end beside
+    /// this can't return before every kill is sent; then wait on each.
     fn end(&self) {
         let mut running = self.running();
         running.ended = true;

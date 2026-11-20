@@ -53,11 +53,36 @@ static CAUGHT: AtomicI32 = AtomicI32::new(-1);
 /// Whether a stop has been caught.
 static STOPPED: AtomicBool = AtomicBool::new(false);
 
+/// Whether `until_stopped`'s run has returned, for a catch, which can't
+/// take `RAN`'s lock, to read.
+static RETURNED: AtomicBool = AtomicBool::new(false);
+
+/// Whether stderr is the journal's stream, kept before the stops are
+/// caught for a catch to mark its line as `source::fail` marks a failure.
+static JOURNAL: AtomicBool = AtomicBool::new(false);
+
+/// The mark a second stop's line opens with, cut where stderr isn't the
+/// journal, as `source::fail` marks a failure (sd-daemon(3)).
+const MARK: &[u8] = b"<3>";
+
+const _: () = assert!(
+    MARK[1] == b'0' + crate::source::ERROR
+        && CUT_SHORT[1] == MARK[1]
+        && CUT_SHORT_RETURNED[1] == MARK[1],
+    "a second stop's line isn't marked as the failure source::fail says"
+);
+
 /// What a second stop says as it ends health, written within its catch,
 /// where nothing that formats is safe, so whoever interrupted twice knows
-/// what it cost.
+/// what it cost: the day's write, or once the run has returned, the
+/// followers' end and the saying of any error the run returned.
 const CUT_SHORT: &[u8] =
-    b"health: a second stop ended health at once, not waiting for the day's write\n";
+    b"<3>health: a second stop ended health at once, not waiting for the day's write\n";
+
+/// What a second stop says once the run has returned (`CUT_SHORT`).
+const CUT_SHORT_RETURNED: &[u8] =
+    b"<3>health: a second stop ended health at once, its run returned, not waiting for its \
+      followers' end nor saying any error the run returned\n";
 
 /// How long a follower that ends waits for health to catch a stop before
 /// it says so: a stop to health's whole group, as a service manager's,
@@ -111,6 +136,7 @@ pub fn until_stopped<T>(
     if let Err(error) = &ran {
         *UNSAID.lock().unwrap_or_else(PoisonError::into_inner) = Some(format!("health: {error}"));
     }
+    RETURNED.store(true, Ordering::SeqCst);
     mark(&RAN);
     await_stop();
     ran
@@ -123,6 +149,8 @@ pub fn until_stopped<T>(
 /// it's a hangup, the same stop. Both threads start now rather than as a
 /// stop comes, so a stop never waits on a thread it may be refused.
 fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
+    let journal = terminal_kit::Environment::here().journal;
+    JOURNAL.store(journal, Ordering::SeqCst);
     let mut caught = catch(&STOPPING)?;
     let ender = thread::Builder::new().spawn(move || {
         while !stopping() {
@@ -275,16 +303,23 @@ extern "C" fn heard(signal: c_int) {
             unsafe { *errno() = kept };
             return;
         }
+        let said = if RETURNED.load(Ordering::SeqCst) {
+            CUT_SHORT_RETURNED
+        } else {
+            CUT_SHORT
+        };
+        // Marked as a failure only where the journal reads the mark.
+        let said = &said[if JOURNAL.load(Ordering::SeqCst) {
+            0
+        } else {
+            MARK.len()
+        }..];
         // SAFETY: all three are safe within a catch; the signal's own
         // action restored and raised ends the process once the catch
         // returns, as the signal caught waits until then. A stderr that
         // fails only goes unsaid.
         unsafe {
-            libc::write(
-                libc::STDERR_FILENO,
-                CUT_SHORT.as_ptr().cast(),
-                CUT_SHORT.len(),
-            );
+            libc::write(libc::STDERR_FILENO, said.as_ptr().cast(), said.len());
             libc::signal(signal, libc::SIG_DFL);
             libc::raise(signal);
         }

@@ -660,6 +660,8 @@ pub fn follow(into: &Path) -> io::Result<()> {
             &NOTICES,
         )
     })
+    // `until_stopped` runs the run whenever it returns well, so this
+    // default is never said, there only as `ended` can't be known set.
     .and(Err(
         ended.unwrap_or_else(|| io::Error::other("its run never began"))
     ))

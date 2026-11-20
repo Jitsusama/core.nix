@@ -75,6 +75,13 @@ const UNWRITTEN: &str = "a stop ended health before it wrote the day";
 /// What a stop that ended health before a follower's end says.
 const LEFT: &str = "a stop left a follower running";
 
+/// What a second stop says as it ends health.
+const SECOND: &str = "a second stop ended health";
+
+/// How far past its bound a stop may end health on a busy builder, well
+/// short of a second bound's worth.
+const LATE_BY: Duration = Duration::from_secs(1);
+
 /// The mask a process's status gives for `signal`.
 fn bit(signal: c_int) -> u64 {
     1 << (signal - 1)
@@ -405,6 +412,7 @@ fn a_stop_ends_the_followers_then_health_by_its_signal() {
         took < WRITES_WITHIN
             && !stopped.failed().contains(UNWRITTEN)
             && !stopped.failed().contains(LEFT)
+            && !stopped.failed().contains(SECOND)
             && stopped
                 .failed()
                 .contains(&format!("health: {FAILS_ENDING}")),
@@ -494,7 +502,7 @@ fn a_stop_whose_run_and_followers_never_end_takes_one_bound() {
     assert!(
         ended.signal() == Some(libc::SIGTERM)
             && took >= WRITES_WITHIN
-            && took < WRITES_WITHIN + ENDS_LATE
+            && took < WRITES_WITHIN + LATE_BY
             && stopped.failed().contains(UNWRITTEN)
             && stopped.failed().contains(LEFT),
         "a stop whose run and followers never end ended health ({ended}) {took:?} on, or \
@@ -613,6 +621,11 @@ fn a_hangup_heard_again_is_the_same_stop() {
         (Some(libc::SIGHUP), true, true),
         "a second hangup ended health ({ended}) before its follower or the day's write"
     );
+    assert!(
+        !stopped.failed().contains(SECOND),
+        "a second hangup said it was a second stop: {}",
+        stopped.failed()
+    );
 }
 
 #[test]
@@ -628,6 +641,11 @@ fn a_hangup_after_another_stop_is_the_same_stop() {
         (ended.signal(), gone(stopped.follower), stopped.wrote()),
         (Some(libc::SIGTERM), true, true),
         "a hangup after a stop ended health ({ended}) before its follower or the day's write"
+    );
+    assert!(
+        !stopped.failed().contains(SECOND),
+        "a hangup after a stop said it was a second stop: {}",
+        stopped.failed()
     );
 }
 
@@ -670,9 +688,35 @@ fn a_second_stop_ends_health_at_once_leaving_its_follower() {
             "a second stop ({second}) waited for the first ({first}) to end health ({ended})"
         );
         assert!(
-            stopped.failed().contains("a second stop ended health"),
-            "a second stop ended health without saying so: {}",
+            stopped.failed().contains(&format!(
+                "{SECOND} at once, not waiting for the day's write"
+            )),
+            "a second stop before the day's write ended health without saying so: {}",
             stopped.failed()
         );
     }
+}
+
+#[test]
+fn a_second_stop_after_the_run_returned_says_it_returned() {
+    // As one interrupts again while a follower is slow to end, the day
+    // written, so the second stop mustn't say a write was lost.
+    let mut stopped = Stopped::starting(&[ENDS_NEVER]);
+    stopped.send(libc::SIGTERM, false);
+    let since = Instant::now();
+    while !stopped.wrote() {
+        assert!(since.elapsed() < WAITS, "the copy's run never wrote");
+        thread::sleep(Duration::from_millis(5));
+    }
+    thread::sleep(ENDED_BEFORE);
+    stopped.send(libc::SIGINT, false);
+    let ended = stopped.ending();
+    assert!(
+        ended.signal() == Some(libc::SIGINT)
+            && stopped
+                .failed()
+                .contains(&format!("{SECOND} at once, its run returned")),
+        "a second stop after the run returned ended health ({ended}) saying otherwise: {}",
+        stopped.failed()
+    );
 }
