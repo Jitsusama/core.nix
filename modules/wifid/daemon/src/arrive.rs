@@ -20,10 +20,11 @@
 //! says its steps too fast to tell apart, is forgotten after a while
 //! rather than closed by whatever the card does next.
 //!
-//! A move that hasn't reached its point within `BACK_AFTER` is handed back,
-//! once, with the point its card left, so the card is sent back there
-//! rather than left on no network: the 16 Nov failure scanned for 18 s.
-//! The way back is followed as a move of its own, with no way back.
+//! A move that hasn't reached its point within `BACK_AFTER`, or whose card
+//! comes off its network on the way, is handed back, once, with the point
+//! its card left, so the card is sent back there rather than left on no
+//! network: the 16 Nov failure scanned for 18 s. The way back is followed
+//! as a move of its own, with no way back.
 
 use std::collections::HashMap;
 
@@ -94,7 +95,7 @@ pub enum Arrival {
     Unseen { to: String },
 }
 
-/// A move that hasn't reached its point in time, to be sent back.
+/// A move that hasn't reached its point, to be sent back.
 #[derive(Debug, PartialEq)]
 pub struct Unreached {
     pub card: String,
@@ -102,6 +103,16 @@ pub struct Unreached {
     pub from: String,
     /// The point it didn't reach.
     pub to: String,
+    pub why: Short,
+}
+
+/// Why a move is sent back.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Short {
+    /// It hadn't reached its point within `BACK_AFTER`.
+    Late,
+    /// Its card came off its network on the way.
+    Off,
 }
 
 impl Arrivals {
@@ -161,11 +172,34 @@ impl Arrivals {
                 let from = moving.from.take()?;
                 let card = card.clone();
                 let to = moving.to.clone();
-                Some(Unreached { card, from, to })
+                let why = Short::Late;
+                Some(Unreached {
+                    card,
+                    from,
+                    to,
+                    why,
+                })
             })
             .collect();
         unreached.sort_by(|one, other| one.card.cmp(&other.card));
         unreached
+    }
+
+    /// Hands back the card's move at once, with the point it left, as the
+    /// card comes off its network on the way. wpa_supplicant gives up on a
+    /// point that doesn't answer within some tens of milliseconds, and then
+    /// takes whatever other network it hears, as it did in a test
+    /// (2026-11-20), unless the card is sent back first. None where the
+    /// move has no way back, or was handed back already.
+    pub fn fell_off(&mut self, card: &str) -> Option<Unreached> {
+        let moving = self.moves.get_mut(card)?;
+        let from = moving.from.take()?;
+        Some(Unreached {
+            card: card.to_owned(),
+            from,
+            to: moving.to.clone(),
+            why: Short::Off,
+        })
     }
 
     /// Forgets the card's move, as one wpa_supplicant refused never began
@@ -527,12 +561,53 @@ mod tests {
             [Unreached {
                 card: "wlan0".into(),
                 from: DESK.into(),
-                to: FAR.into()
+                to: FAR.into(),
+                why: Short::Late
             }],
             "handed back with the point it left"
         );
         assert_eq!(again, [], "handed back once");
         assert_eq!(arrivals.due(), None, "nothing more due");
+    }
+
+    #[test]
+    fn a_move_whose_card_falls_off_its_network_is_handed_back_at_once_and_once() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.step("wlan0", "authenticating", now + ms(20));
+        arrivals.step("wlan0", "disconnected", now + ms(188));
+
+        let off = arrivals.fell_off("wlan0");
+        let again = arrivals.fell_off("wlan0");
+        let late = arrivals.unreached(now + BACK_AFTER);
+
+        assert_eq!(
+            off,
+            Some(Unreached {
+                card: "wlan0".into(),
+                from: DESK.into(),
+                to: FAR.into(),
+                why: Short::Off
+            }),
+            "handed back as it falls off, with the point it left"
+        );
+        assert_eq!(again, None, "handed back once");
+        assert_eq!(late, [], "not again when its second is up");
+        assert_eq!(arrivals.due(), None, "nothing more due");
+    }
+
+    #[test]
+    fn a_card_falling_off_with_no_way_back_hands_nothing_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.heading("wlan0", FAR, now);
+
+        let held = arrivals.fell_off("wlan0");
+        let unfollowed = arrivals.fell_off("wlan1");
+
+        assert_eq!(held, None, "a card held on its way left no point known");
+        assert_eq!(unfollowed, None, "a card not moving has no move");
     }
 
     #[test]

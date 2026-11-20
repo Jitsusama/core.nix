@@ -540,20 +540,30 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     retry(hears_the_second, timeout=timedelta(seconds=60))
     # wpa_supplicant keeps an access point through two looks that don't hear it, so the move
     # still finds the second after its own look over the channel, and is asked into nothing.
+    # The card gives up on it within tens of milliseconds, and would take the Roadside Inn
+    # if it weren't sent back first (2026-11-20).
     machine.succeed("systemctl stop lantern-two")
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
     assert answer == {"id": 1, "done": True}, answer
-    wifid.says(
-        "wlan2 didn't reach 02:00:00:00:05:00 within 1000 ms, so goes back to 02:00:00:00:00:00"
-    )
-    machine.wait_until_succeeds(
-        f"journalctl -o cat -u wifid --after-cursor='{since}'"
-        " | grep -qE '^wlan2 reached 02:00:00:00:00:00 [0-9]+ ms after it was asked'",
-        timeout=timedelta(seconds=30),
-    )
-    machine.log(
-        machine.succeed(f"journalctl -o short-precise -u wifid --after-cursor='{since}'")
+    # The way back is timed by its journal, kept whether it comes or not.
+    try:
+        wifid.says(
+            "wlan2 came off its network short of 02:00:00:00:05:00,"
+            " so goes back to 02:00:00:00:00:00"
+        )
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qE '^wlan2 reached 02:00:00:00:00:00 [0-9]+ ms after it was asked'",
+            timeout=timedelta(seconds=30),
+        )
+    finally:
+        machine.log(
+            machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'")
+        )
+    machine.fail(
+        f"journalctl -o cat -u wpa_supplicant --after-cursor='{since}'"
+        " | grep 'wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:01:00'"
     )
     machine.succeed(
         "s=$(wpa_cli -i wlan2 status)"
