@@ -7,8 +7,9 @@
 //! Each of the reference's lines is also heard alone, cut from its side
 //! where the reference says it was said, with a little sound either side,
 //! and none too long for Parakeet's window: a second reading, with no
-//! cutting, sifting or echo filter but no context either. It's no floor for the model alone, since a clip also hears
-//! whoever talks over its speaker; the gap between the two readings says
+//! cutting, sifting or echo filter but no context either. It's no floor
+//! for the model alone, since a clip also hears whoever talks over its
+//! speaker; the gap between the two readings says
 //! what context and the cutting are worth, a side at a time.
 
 use std::fmt::Write as _;
@@ -63,14 +64,16 @@ struct Scored {
 /// each one's errors and the set's, and fails when the set's, as written
 /// down, are above `ceiling` tenths of a percent.
 pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), String> {
-    // Every reference is read before the model loads, so a bad one is
-    // refused at once rather than after the meetings before it are heard.
+    // Every reference and recording is read before the model loads, so a
+    // bad one is refused at once rather than after the meetings before it
+    // are heard.
     let sides = read(&set.join("sides"))?;
     let mut meetings = Vec::new();
     for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
-        let (name, mine) = entry
-            .split_once(' ')
-            .ok_or_else(|| format!("sides: {entry:?} isn't a meeting and a speaker"))?;
+        let mut fields = entry.split_whitespace();
+        let (Some(name), Some(mine), None) = (fields.next(), fields.next(), fields.next()) else {
+            return Err(format!("sides: {entry:?} isn't a meeting and a speaker"));
+        };
         let file = format!("{name}.ref");
         let lines = reference(&read(&set.join(&file))?).map_err(|e| format!("{file}: {e}"))?;
         if !lines.iter().any(|line| line.speaker == mine) {
@@ -79,10 +82,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
             ));
         }
         for side in [Side::Mine, Side::Theirs] {
-            let wav = set.join(format!("{name}.{}.wav", label(side)));
-            if !wav.is_file() {
-                return Err(format!("{} isn't there", wav.display()));
-            }
+            sound(&set.join(format!("{name}.{}.wav", label(side))))?;
         }
         meetings.push((name, mine, lines));
     }
@@ -95,11 +95,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
         let mut scored = Scored::default();
         let mut lines = Vec::new();
         for side in [Side::Mine, Side::Theirs] {
-            let file = set.join(format!("{name}.{}.wav", label(side)));
-            let sound = wav::samples(
-                &std::fs::read(&file).map_err(|e| format!("reading {}: {e}", file.display()))?,
-            )
-            .map_err(|e| format!("{}: {e}", file.display()))?;
+            let sound = sound(&set.join(format!("{name}.{}.wav", label(side))))?;
             for take in takes(&sound) {
                 let (text, _) = speech.transcribe(&take.samples)?;
                 if let Some(text) = said::spoken(&text) {
@@ -288,6 +284,12 @@ fn samples(seconds: f64) -> usize {
     samples
 }
 
+/// A side's recording, its file named when it can't be read.
+fn sound(file: &Path) -> Result<Vec<f32>, String> {
+    let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
+    wav::samples(&bytes).map_err(|e| format!("{}: {e}", file.display()))
+}
+
 fn read(file: &Path) -> Result<String, String> {
     std::fs::read_to_string(file).map_err(|e| format!("reading {}: {e}", file.display()))
 }
@@ -360,20 +362,33 @@ mod tests {
         refused("no meetings");
         write("sides", "M\n");
         refused("isn't a meeting and a speaker");
-        // A whole first meeting, so only reading every reference before
-        // the model loads can refuse the second's.
+        write("sides", "M A B\n");
+        refused("isn't a meeting and a speaker");
+        // A whole first meeting, so only reading every reference and
+        // recording before the model loads can refuse the second's.
+        let silence = [
+            b"RIFF\x24\0\0\0WAVEfmt \x10\0\0\0".as_slice(),
+            b"\x01\0\x01\0\x80\x3e\0\0\0\x7d\0\0\x02\0\x10\0data\0\0\0\0",
+        ]
+        .concat();
+        let blank = |file: &str| std::fs::write(set.path().join(file), &silence).unwrap();
         write("M.ref", "0.50 1.00 A Okay\n");
-        write("M.mine.wav", "");
-        write("M.theirs.wav", "");
-        write("sides", "M A\nN A\n");
+        blank("M.mine.wav");
+        blank("M.theirs.wav");
+        write("sides", "M A \nN A\n");
         write("N.ref", "1.00 0.50 A Okay\n");
         refused("N.ref: a reference line");
         write("N.ref", "0.50 1.00 B Okay\n");
         refused("N.ref: A never speaks");
         write("N.ref", "0.50 1.00 A Okay\n");
-        refused("N.mine.wav isn't there");
+        refused(&format!(
+            "reading {}",
+            set.path().join("N.mine.wav").display()
+        ));
         write("N.mine.wav", "");
-        refused("N.theirs.wav isn't there");
+        refused("N.mine.wav: not a RIFF WAV");
+        blank("N.mine.wav");
+        refused("N.theirs.wav");
     }
 
     #[test]
