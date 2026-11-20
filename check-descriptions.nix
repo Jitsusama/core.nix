@@ -532,6 +532,12 @@
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
     down with no more of their words wrong than the ceiling the last measurement set
   '';
+  call-transcripts-tells-voices-apart-as-well-as-it-did = ''
+    the far ends of three AMI meetings laid out as calls are told apart into voices, with as much
+    of what was named named right, and of their speech handled as it should be (given a voice,
+    or left under Others where one talker holds nearly all), as the floors the last measurement
+    set
+  '';
   call-transcripts-writes-down-both-sides = ''
     a call's two recorded sides come out as one transcript, cut at each side's pauses, in the order
     they spoke, each turn with its speaker and its time in the call

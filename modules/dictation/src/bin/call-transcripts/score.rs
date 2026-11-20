@@ -46,20 +46,21 @@ const _: () = assert!(
 );
 
 /// One line of a reference: when it was said, by whom, and its words.
-struct Said {
-    start: f64,
-    end: f64,
-    speaker: String,
-    text: String,
+pub struct Said {
+    pub start: f64,
+    pub end: f64,
+    pub speaker: String,
+    pub text: String,
 }
 
 /// A meeting of the set, read: its name, the speaker on Joel's side, its
-/// reference, and each side's sound.
-struct Meeting<'a> {
-    name: &'a str,
-    mine: &'a str,
-    reference: Vec<Said>,
-    sounds: [Vec<f32>; 2],
+/// reference, and each side's sound. How well voices are told apart reads
+/// the same set (apart.rs).
+pub struct Meeting<'a> {
+    pub name: &'a str,
+    pub mine: &'a str,
+    pub reference: Vec<Said>,
+    pub sounds: [Vec<f32>; 2],
 }
 
 /// A meeting's errors: each side's as written down, and as heard alone.
@@ -99,6 +100,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                         start: take.start,
                         end: take.start + take.samples.len(),
                         text,
+                        voice: None,
                     });
                 }
             }
@@ -143,7 +145,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
 
 /// The meetings `sides` names in `set`, each refused when its line,
 /// reference or either side's recording is wrong.
-fn meetings<'a>(set: &Path, sides: &'a str) -> Result<Vec<Meeting<'a>>, String> {
+pub fn meetings<'a>(set: &Path, sides: &'a str) -> Result<Vec<Meeting<'a>>, String> {
     let mut meetings: Vec<Meeting> = Vec::new();
     for entry in sides.lines().filter(|line| !line.trim().is_empty()) {
         let mut fields = entry.split_whitespace();
@@ -220,7 +222,7 @@ fn verdict(tenths: usize, most: usize) -> Result<String, String> {
 }
 
 /// Tenths of a percent, as a percentage to one place.
-fn percent(tenths: usize) -> String {
+pub fn percent(tenths: usize) -> String {
     format!("{}.{}%", tenths / 10, tenths % 10)
 }
 
@@ -291,7 +293,7 @@ fn reference(text: &str) -> Result<Vec<Said>, String> {
         .collect()
 }
 
-fn whose(line: &Said, mine: &str) -> Side {
+pub fn whose(line: &Said, mine: &str) -> Side {
     if line.speaker == mine {
         Side::Mine
     } else {
@@ -306,7 +308,7 @@ fn label(side: Side) -> &'static str {
     }
 }
 
-fn index(side: Side) -> usize {
+pub fn index(side: Side) -> usize {
     match side {
         Side::Mine => 0,
         Side::Theirs => 1,
@@ -314,7 +316,7 @@ fn index(side: Side) -> usize {
 }
 
 /// Seconds into a side as samples, none before its start.
-fn samples(seconds: f64) -> usize {
+pub fn samples(seconds: f64) -> usize {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -330,7 +332,7 @@ fn sound(file: &Path) -> Result<Vec<f32>, String> {
     wav::samples(&bytes).map_err(|e| format!("{}: {e}", file.display()))
 }
 
-fn read(file: &Path) -> Result<String, String> {
+pub fn read(file: &Path) -> Result<String, String> {
     std::fs::read_to_string(file).map_err(|e| format!("reading {}: {e}", file.display()))
 }
 

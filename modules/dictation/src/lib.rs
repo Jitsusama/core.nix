@@ -2,9 +2,9 @@
 //! speech: dictation (main.rs), which types what Joel says with Whisper,
 //! tidied first by a small language model where that's asked for (tidy.rs),
 //! and call-transcripts (bin/call-transcripts), which writes down what's
-//! said on a call with Parakeet (parakeet.rs) and sums it up with a
-//! language model (language.rs), its hearing measured by word error rate
-//! (wer.rs). The two share OpenVINO's calls and the
+//! said on a call with Parakeet (parakeet.rs), tells the far end's voices
+//! apart (voices.rs) and sums it up with a language model (language.rs),
+//! its hearing measured by word error rate (wer.rs). The two share OpenVINO's calls and the
 //! cache of what's compiled. screen-text
 //! (bin/screen-text), which reads the words in screenshots, and meaning
 //! (bin/meaning), which finds the launcher's things and pictures by what
@@ -29,6 +29,7 @@ pub mod takes;
 pub mod tidy;
 pub mod transcript;
 pub mod vocab;
+pub mod voices;
 pub mod watch;
 pub mod wav;
 pub mod wer;

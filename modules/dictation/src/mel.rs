@@ -15,7 +15,7 @@ const N_FFT: usize = 400;
 const HOP: usize = 160;
 const BINS: usize = N_FFT / 2 + 1;
 
-type Complex = (f64, f64);
+pub(crate) type Complex = (f64, f64);
 
 /// What every spectrogram is worked out with, made once.
 pub struct Spectrogram {
@@ -106,8 +106,9 @@ fn reflect(samples: &[f64], edge: usize) -> Vec<f64> {
     out
 }
 
-// Slaney's mel scale: linear to 1 kHz, logarithmic above.
-fn hz_to_mel(hz: f64) -> f64 {
+// Slaney's mel scale: linear to 1 kHz, logarithmic above. TitaNet's bands
+// are on it too (voices.rs).
+pub(crate) fn hz_to_mel(hz: f64) -> f64 {
     if hz >= 1000.0 {
         15.0 + (hz / 1000.0).ln() / (6.4_f64.ln() / 27.0)
     } else {
@@ -115,7 +116,7 @@ fn hz_to_mel(hz: f64) -> f64 {
     }
 }
 
-fn mel_to_hz(mel: f64) -> f64 {
+pub(crate) fn mel_to_hz(mel: f64) -> f64 {
     if mel >= 15.0 {
         1000.0 * ((6.4_f64.ln() / 27.0) * (mel - 15.0)).exp()
     } else {
@@ -146,8 +147,9 @@ fn filters() -> Vec<f64> {
 /// The discrete Fourier transform of `n` points of `input`, starting at
 /// `start` and `stride` apart, into `out`, split by its smallest factor at
 /// each step. `twiddles` holds the whole transform's roots, of which this
-/// size takes every `step`th.
-fn transform(
+/// size takes every `step`th. TitaNet's 512 points go through it too
+/// (voices.rs).
+pub(crate) fn transform(
     input: &[Complex],
     start: usize,
     stride: usize,

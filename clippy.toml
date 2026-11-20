@@ -16,6 +16,8 @@ doc-valid-idents = [
   "PipeWire",
   "SigLIP",
   "SplitMix64",
+  "TitaNet",
+  "NeMo",
   "UDisks2",
   "UPower",
   "wpa_supplicant",

@@ -34,7 +34,7 @@
 
 use std::fmt::Write as _;
 
-use dictation::transcript::OTHERS;
+use dictation::transcript::{OTHERS, unnamed};
 
 /// The most of a call's words one pick is asked over, in characters:
 /// about a thousand tokens, which Gemma read whole and picked well from.
@@ -130,13 +130,16 @@ pub fn lines(transcript: &str) -> Vec<Said> {
 }
 
 /// What a transcript says first of who the others were, as transcript.rs
-/// writes it: the paragraph after its heading, when it's no line said.
-fn note(transcript: &str) -> Option<&str> {
+/// writes it: the paragraphs after its heading and before its first line
+/// said, where it says who was on the call and what its voices are.
+fn notes(transcript: &str) -> Vec<&str> {
     transcript
         .split("\n\n")
         .map(str::trim)
-        .find(|paragraph| !paragraph.is_empty() && !paragraph.starts_with('#'))
-        .filter(|paragraph| !paragraph.starts_with("**"))
+        .filter(|paragraph| !paragraph.is_empty())
+        .skip_while(|paragraph| paragraph.starts_with('#'))
+        .take_while(|paragraph| !paragraph.starts_with("**") && !paragraph.starts_with('#'))
+        .collect()
 }
 
 /// The summary of the call `transcript` writes down, titled `title`,
@@ -155,12 +158,12 @@ pub fn summarize(
     transcript: &str,
 ) -> Result<String, String> {
     let mut said = lines(transcript);
-    // Joel is whoever isn't them, by name or as Others, since a
-    // transcript naming them can open with their line.
+    // Joel is whoever isn't them, by name, as Others or as a voice told
+    // apart, since a transcript can open with their line.
     let me = said
         .iter()
         .map(|line| line.who.as_str())
-        .find(|who| *who != OTHERS && Some(*who) != them)
+        .find(|who| !unnamed(who) && Some(*who) != them)
         .unwrap_or("Me")
         .to_owned();
     if let Some(them) = them {
@@ -168,10 +171,14 @@ pub fn summarize(
             them.clone_into(&mut line.who);
         }
     }
+    let voiced = said
+        .iter()
+        .any(|line| unnamed(&line.who) && line.who != OTHERS);
     let call = Call {
         said: &said,
         me,
         them: them.map(str::to_owned),
+        voiced,
     };
     let parts = parts(&said, PART_CHARS);
     let mut kept = Vec::new();
@@ -212,7 +219,7 @@ pub fn summarize(
     let _ = write!(summary, "{HOW_MADE}\n\n");
     // Their name is only as sure as where it came from, so the summary
     // says so as the transcript does.
-    if let Some(note) = note(transcript) {
+    for note in notes(transcript) {
         let _ = write!(summary, "{note}\n\n");
     }
     if kept.is_empty() {
@@ -223,12 +230,13 @@ pub fn summarize(
     Ok(summary)
 }
 
-/// A call's lines, what Joel is called in them, and who the others are
-/// where the call knows.
+/// A call's lines, what Joel is called in them, who the others are
+/// where the call knows, and whether their voices are told apart.
 struct Call<'a> {
     said: &'a [Said],
     me: String,
     them: Option<String>,
+    voiced: bool,
 }
 
 impl Call<'_> {
@@ -242,15 +250,25 @@ impl Call<'_> {
         }
     }
 
-    /// What the others' lines are under.
+    /// What the others' lines are under, or what they are together when
+    /// their voices are told apart.
     fn others(&self) -> &str {
-        self.them.as_deref().unwrap_or(OTHERS)
+        match &self.them {
+            Some(them) => them,
+            None if self.voiced => "the others",
+            None => OTHERS,
+        }
     }
 
     /// Who the call is between, for a prompt.
     fn between(&self) -> String {
         match &self.them {
             Some(them) => format!("a call between {} and {them}", self.me),
+            None if self.voiced => format!(
+                "a call between {} and the others on it, whose voices are called Voice 1, \
+                 Voice 2 and so on by how they sound, or {OTHERS} where none was sure",
+                self.me
+            ),
             None => format!(
                 "a call between {} and the others on it, called {OTHERS}",
                 self.me
@@ -445,7 +463,7 @@ fn none(answer: &str) -> bool {
 /// giving them fuel" or "it's like Joel" said by Joel: words someone
 /// else said to them, as Joel told his wife's on the Chad call.
 fn named(quote: &str, speaker: &str) -> bool {
-    if speaker == OTHERS {
+    if unnamed(speaker) {
         return false;
     }
     let Some(name) = speaker.split_whitespace().next().map(plain) else {

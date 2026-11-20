@@ -17,6 +17,11 @@
 # in a cache of its own, since a load removes whatever else is in the
 # folder it's given.
 #
+# Where the calendar or Tuple doesn't name their side for certain, its
+# voices are told apart by how each take sounds, through TitaNet small
+# (modules/dictation/titanet.nix) on the CPU, and written as Voice 1,
+# Voice 2 and on; who each voice is, the transcript says, isn't known.
+#
 # Once a call is written down whole, it's summed up in its own words:
 # Gemma 4 26B-A4B (summarizer.nix) on the GPU picks the lines worth
 # reading and the words in each worth keeping, and the daemon copies
@@ -75,6 +80,7 @@ let
   # The launcher's words, which transcripts-people says each call in.
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
   model = pkgs.callPackage ../dictation/parakeet.nix { };
+  voices = pkgs.callPackage ../dictation/titanet.nix { };
   device = config.jitsusama.call-transcripts.summarizerDevice;
   realm = config.jitsusama.mycelium.realm or null;
   account = config.jitsusama.google.receptorAccount or null;
@@ -162,6 +168,7 @@ in
       RestartSec = 5;
       Environment = [
         "DICTATION_CACHE=%C/call-transcripts/parakeet"
+        "CALL_TRANSCRIPTS_VOICES=${voices}"
         "SUMMARIZER_CACHE=%C/call-transcripts/gemma"
         "SUMMARIZER_DEVICE=${toString device}"
         "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
