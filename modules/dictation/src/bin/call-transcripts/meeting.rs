@@ -259,7 +259,10 @@ fn named(someone: &Value, field: &str) -> Option<String> {
     speaker(someone[field].as_str()?)
 }
 
-/// `name` as a transcript can write a speaker under, as `named` says.
+/// `name` as a transcript can write a speaker under, as `named` says, and
+/// in quotes when it's what their side is called unnamed, Others or a
+/// voice told apart, so someone who picked such a name for an invitation
+/// or Tuple is never taken for one, nor one for them.
 pub fn speaker(name: &str) -> Option<String> {
     let name = name
         .chars()
@@ -269,6 +272,9 @@ pub fn speaker(name: &str) -> Option<String> {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
+    if dictation::transcript::unnamed(&name) {
+        return Some(format!("\"{name}\""));
+    }
     (!name.is_empty()).then_some(name)
 }
 
@@ -408,6 +414,25 @@ mod tests {
         );
         let kept = joined(kept, &[]);
         assert_eq!(kept.len(), 3, "those who left are still kept");
+    }
+
+    #[test]
+    fn someone_called_what_their_side_is_called_unnamed_is_quoted() {
+        assert_eq!(
+            speaker("Voice  1").as_deref(),
+            Some("\"Voice 1\""),
+            "a person called Voice 1 would be taken for a voice told apart"
+        );
+        assert_eq!(
+            speaker("Others").as_deref(),
+            Some("\"Others\""),
+            "a person called Others would be taken for their side unnamed"
+        );
+        assert_eq!(
+            speaker("Ada").as_deref(),
+            Some("Ada"),
+            "a name like any other was changed"
+        );
     }
 
     #[test]

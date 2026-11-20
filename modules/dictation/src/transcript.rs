@@ -46,12 +46,14 @@ pub const OTHERS: &str = "Others";
 const VOICE: &str = "Voice ";
 
 /// The voice, from 0, a speaker `markdown` wrote is, when it's one: Voice
-/// and a number from 1.
+/// and a number from 1, in digits alone, as it writes them, so a name such
+/// as "Voice +1" or "Voice 01" isn't read as a voice.
 fn voice_of(who: &str) -> Option<usize> {
-    who.strip_prefix(VOICE)?
-        .parse::<usize>()
-        .ok()?
-        .checked_sub(1)
+    let number = who.strip_prefix(VOICE)?;
+    if number.starts_with('0') || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    number.parse::<usize>().ok()?.checked_sub(1)
 }
 
 /// Whether a speaker `markdown` wrote is their side unnamed, Others or a
@@ -64,7 +66,7 @@ pub fn unnamed(who: &str) -> bool {
 /// taken for a person someone has named.
 pub const VOICES_NOTE: &str = "Their side's voices are told apart by how they sound, and \
     numbered in the order they first spoke; who each one is isn't known. Lines no voice was \
-    sure of stay under Others.";
+    sure of, or heard after the service restarted during the call, stay under Others.";
 
 /// The transcript: lines in the order they were said, echoes left out, a
 /// speaker's lines in a row joined into one paragraph under the time it
@@ -84,8 +86,10 @@ pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>
     if voiced {
         paragraphs.push(VOICES_NOTE.to_owned());
     }
-    // The notes are no line, so a run of lines never joins onto them.
-    let mut last = None;
+    // The notes are no line, so a run of lines never joins onto them. A
+    // run is one side under one speaker, so a line of theirs never joins
+    // Joel's, even where he's called what one of them is.
+    let mut last: Option<(Side, String)> = None;
     for line in heard {
         let who = match (line.side, named, line.voice.filter(|_| voiced)) {
             (Side::Mine, ..) => me.to_owned(),
@@ -94,7 +98,7 @@ pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>
             (Side::Theirs, None, None) => OTHERS.to_owned(),
         };
         match paragraphs.last_mut() {
-            Some(paragraph) if last.as_ref() == Some(&who) => {
+            Some(paragraph) if last.as_ref() == Some(&(line.side, who.clone())) => {
                 paragraph.push(' ');
                 paragraph.push_str(&line.text);
             }
@@ -104,7 +108,7 @@ pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>
                 paragraphs.push(paragraph);
             }
         }
-        last = Some(who);
+        last = Some((line.side, who));
     }
     paragraphs.join("\n\n") + "\n"
 }
@@ -272,6 +276,32 @@ mod tests {
             read(&written, "Voice 1")[0].voice,
             None,
             "Joel's own line was read back as a voice of theirs"
+        );
+    }
+
+    #[test]
+    fn a_line_of_theirs_never_joins_joels_whatever_they_are_called() {
+        for (me, theirs) in [
+            ("Voice 1", voiced(5, 0, "Yes.")),
+            ("Others", line(Side::Theirs, 5, "Yes.")),
+        ] {
+            let written = markdown(&[line(Side::Mine, 0, "Hello."), theirs], me, None, None);
+            let paragraphs = written.lines().filter(|l| l.starts_with("**")).count();
+            assert_eq!(
+                paragraphs, 2,
+                "with Joel called {me}, their line joined his paragraph: {written}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_voice_as_markdown_writes_one_is_read_as_one() {
+        for name in ["Voice +1", "Voice 01", "Voice 0", "Voice ", "Voice 1a"] {
+            assert!(!unnamed(name), "{name:?} was taken for a voice told apart");
+        }
+        assert!(
+            unnamed("Voice 12"),
+            "Voice 12 wasn't taken for a voice told apart"
         );
     }
 

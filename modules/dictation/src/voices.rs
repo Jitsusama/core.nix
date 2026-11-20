@@ -35,6 +35,11 @@ pub const APART: f32 = 0.6;
 /// The least of the far end's speech a group holds to be named as a
 /// voice: smaller ones were mostly takes holding two voices.
 pub const LEAST_SHARE: f64 = 0.1;
+/// The most takes a call groups, its longest: grouping holds every take's
+/// distance from every other, 36 MB at this many, and a far end with
+/// chatter on it can cut a take a second for hours. The shortest are left
+/// out, saying least of how a voice sounds, and stay under Others.
+pub const MOST_TAKES: usize = 3000;
 
 /// A window's samples, 25 ms, and how far each is from the last, 10 ms.
 const LENGTH: usize = 400;
@@ -63,13 +68,15 @@ pub struct Voices {
 
 impl Voices {
     /// TitaNet from its ONNX `model`, compiled for the CPU on one thread,
-    /// since a take's embedding is small and comes while Parakeet hears.
+    /// since a take's embedding is small and comes while Parakeet hears,
+    /// and kept compiled in `cache`, where there's one, so a call's first
+    /// take needn't wait for it.
     ///
     /// # Errors
     ///
     /// When OpenVINO can't read or compile it.
-    pub fn load(model: &Path) -> Result<Self> {
-        let core = Core::new(None)?;
+    pub fn load(model: &Path, cache: Option<&Path>) -> Result<Self> {
+        let core = Core::new(cache)?;
         let compiled = core.compile_on_one_thread(&core.read(model)?)?;
         Ok(Self {
             request: compiled.request()?,
@@ -214,39 +221,55 @@ fn as_f64(n: usize) -> f64 {
     f64::from(u32::try_from(n).expect("a count of samples or bins fits in 32 bits"))
 }
 
-/// A take's embedding, and how many samples it holds.
+/// A take's embedding, how many samples it holds, and whether words were
+/// heard in it, so it has a line.
 pub struct Heard {
     pub embedding: Vec<f32>,
     pub samples: usize,
+    pub worded: bool,
 }
 
 /// Which voice each take is, in the order the voices first spoke, or None
 /// for a take that's no voice for sure. Takes are grouped by average
 /// linkage on cosine distance until the nearest two groups are further
 /// than `APART`; a group is a voice when it holds at least `LEAST_SHARE`
-/// of the samples, and when `people` says how many others were on the
-/// call, only that many of the largest are. One voice is named only when
-/// at least `LEAST_SHARE` of the speech is left outside it, so there's
-/// someone else to tell it apart from; a far end of one person whose odd
-/// takes fall outside its voice stays Others. `heard` is in the order it
-/// was said.
+/// of the speech words were heard in, and when `people` says how many
+/// others were on the call, only that many of those holding the most
+/// are. A take with no words helps group the rest, but counts for nothing
+/// in naming them: a group of those alone, such as a far end's hold music
+/// or a room's chatter, takes no voice from a person, and a voice is
+/// numbered from its first take with words, so the transcript opens on
+/// Voice 1. One voice is named only when at least `LEAST_SHARE` of the
+/// speech is left outside it, so there's someone else to tell it apart
+/// from; a far end of one person whose odd takes fall outside its voice
+/// stays Others. `heard` is in the order it was said.
 #[must_use]
 pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
-    let spoken = |group: &[usize]| group.iter().map(|&i| heard[i].samples).sum::<usize>();
-    let all: usize = heard.iter().map(|h| h.samples).sum();
+    let said = |group: &[usize]| {
+        group
+            .iter()
+            .filter(|&&i| heard[i].worded)
+            .map(|&i| heard[i].samples)
+            .sum::<usize>()
+    };
+    let all: usize = heard.iter().filter(|h| h.worded).map(|h| h.samples).sum();
+    let mut out = vec![None; heard.len()];
+    if all == 0 {
+        return out;
+    }
     let mut voices: Vec<Vec<usize>> = groups(heard)
         .into_iter()
-        .filter(|g| as_f64(spoken(g)) >= LEAST_SHARE * as_f64(all))
-        .take(people.unwrap_or(usize::MAX))
+        .filter(|g| as_f64(said(g)) >= LEAST_SHARE * as_f64(all))
         .collect();
-    let mut out = vec![None; heard.len()];
-    let alone = |voice: &[usize]| as_f64(all - spoken(voice)) < LEAST_SHARE * as_f64(all);
+    voices.sort_by_key(|g| std::cmp::Reverse(said(g)));
+    voices.truncate(people.unwrap_or(usize::MAX));
+    let alone = |voice: &[usize]| as_f64(all - said(voice)) < LEAST_SHARE * as_f64(all);
     match voices.as_slice() {
         [] => return out,
         [voice] if alone(voice) => return out,
         _ => {}
     }
-    voices.sort_by_key(|g| g.iter().min().copied());
+    voices.sort_by_key(|g| g.iter().copied().filter(|&i| heard[i].worded).min());
     for (voice, group) in voices.iter().enumerate() {
         for &i in group {
             out[i] = Some(voice);
@@ -257,74 +280,118 @@ pub fn group(heard: &[Heard], people: Option<usize>) -> Vec<Option<usize>> {
 
 /// The takes grouped by average linkage on cosine distance until the
 /// nearest two groups are further than `APART`, each group the takes it
-/// holds, the group with the most samples first; apart.rs reports them,
-/// so a measurement says why a voice wasn't named.
+/// holds in the order said, the group with the most samples first; only
+/// the `MOST_TAKES` longest are grouped. apart.rs reports them, so a
+/// measurement says why a voice wasn't named.
 #[must_use]
 pub fn groups(heard: &[Heard]) -> Vec<Vec<usize>> {
-    let unit: Vec<Vec<f32>> = heard.iter().map(|h| unit(&h.embedding)).collect();
-    let mut groups: Vec<Vec<usize>> = (0..heard.len()).map(|i| vec![i]).collect();
-    let mut live = vec![true; heard.len()];
+    let kept = longest(heard);
+    let unit: Vec<Vec<f32>> = kept.iter().map(|&i| unit(&heard[i].embedding)).collect();
     let mut apart: Vec<Vec<f32>> = unit
         .iter()
         .map(|a| unit.iter().map(|b| 1.0 - dot(a, b)).collect())
         .collect();
-    // Each group's nearest, kept so a merge looks again only at the rows
-    // it changed: grouping runs as the call ends, on the thread that hears
-    // the next call, and searching the whole table for each merge took a
-    // long call's thousands of takes to the cube.
-    let mut near: Vec<Option<(usize, f32)>> = (0..heard.len())
-        .map(|a| nearest_to(a, &apart, &live))
-        .collect();
-    while let Some((a, b)) = closest(&near, &live) {
-        // Average linkage: the merged group is as far from each other as
-        // its takes are on average, each part weighed by its size.
-        let (na, nb) = (as_f32(groups[a].len()), as_f32(groups[b].len()));
-        live[b] = false;
-        let merged: Vec<f32> = apart[a]
-            .iter()
-            .zip(&apart[b])
-            .map(|(from_a, from_b)| (na * from_a + nb * from_b) / (na + nb))
-            .collect();
-        for (row, &distance) in apart.iter_mut().zip(&merged) {
-            row[a] = distance;
-        }
-        apart[a] = merged;
-        let moved = std::mem::take(&mut groups[b]);
-        groups[a].extend(moved);
-        for k in (0..near.len()).filter(|&k| live[k]) {
-            let stale = k == a || near[k].is_some_and(|(j, _)| j == a || j == b);
-            if stale {
-                near[k] = nearest_to(k, &apart, &live);
-            } else if near[k].is_none_or(|(_, d)| apart[k][a] < d) {
-                near[k] = Some((a, apart[k][a]));
+    let mut groups: Vec<Vec<usize>> = kept.iter().map(|&i| vec![i]).collect();
+    let mut open = vec![true; kept.len()];
+    // Each group in the chain is the nearest to the one below it, and two
+    // that are each other's nearest are joined. Average linkage never
+    // brings a joined group nearer anything than the nearer of its parts
+    // was, so this joins what joining the nearest pair of all each time
+    // would, in about the square of the takes rather than the cube: it
+    // runs as a call ends, on the thread that hears the next one.
+    let mut chain: Vec<usize> = Vec::new();
+    loop {
+        let Some(&top) = chain.last() else {
+            let Some(first) = open.iter().position(|&o| o) else {
+                break;
+            };
+            chain.push(first);
+            continue;
+        };
+        let below = chain.len().checked_sub(2).map(|at| chain[at]);
+        match nearest(top, below, &apart, &open) {
+            Some((next, distance)) if distance <= APART => {
+                if Some(next) == below {
+                    chain.truncate(chain.len() - 2);
+                    join(
+                        top.min(next),
+                        top.max(next),
+                        &mut apart,
+                        &mut groups,
+                        &mut open,
+                    );
+                } else {
+                    chain.push(next);
+                }
+            }
+            // Nothing is within APART of the top, so nothing is of any
+            // group in the chain, each as near the one above it as
+            // anything; and since joining brings no group nearer, none of
+            // them will ever join another.
+            _ => {
+                for done in chain.drain(..) {
+                    open[done] = false;
+                }
             }
         }
     }
     let mut groups: Vec<Vec<usize>> = groups.into_iter().filter(|g| !g.is_empty()).collect();
+    for group in &mut groups {
+        group.sort_unstable();
+    }
     groups.sort_by_key(|g| std::cmp::Reverse(g.iter().map(|&i| heard[i].samples).sum::<usize>()));
     groups
 }
 
-/// The live group nearest group `a`, and how far, the first of any tied.
-fn nearest_to(a: usize, apart: &[Vec<f32>], live: &[bool]) -> Option<(usize, f32)> {
-    apart[a]
-        .iter()
-        .enumerate()
-        .filter(|&(b, _)| b != a && live[b])
-        .min_by(|x, y| x.1.total_cmp(y.1))
-        .map(|(b, &d)| (b, d))
+/// The takes grouped, in the order said: every one, or the `MOST_TAKES`
+/// longest.
+fn longest(heard: &[Heard]) -> Vec<usize> {
+    let mut kept: Vec<usize> = (0..heard.len()).collect();
+    if kept.len() > MOST_TAKES {
+        kept.sort_by_key(|&i| std::cmp::Reverse(heard[i].samples));
+        kept.truncate(MOST_TAKES);
+        kept.sort_unstable();
+    }
+    kept
 }
 
-/// The two live groups nearest each other, the first before the second,
-/// when they're no further than `APART`, the first pair of any tied.
-fn closest(near: &[Option<(usize, f32)>], live: &[bool]) -> Option<(usize, usize)> {
-    let (a, (b, distance)) = near
+/// The open group nearest group `a`, and how far: `below`, the group that
+/// led to it, where that's as near as any, so two groups each other's
+/// nearest are found to be, else the first of any tied.
+fn nearest(
+    a: usize,
+    below: Option<usize>,
+    apart: &[Vec<f32>],
+    open: &[bool],
+) -> Option<(usize, f32)> {
+    let best = apart[a]
         .iter()
         .enumerate()
-        .filter(|&(a, _)| live[a])
-        .filter_map(|(a, n)| n.map(|n| (a, n)))
-        .min_by(|x, y| x.1.1.total_cmp(&y.1.1).then(x.0.cmp(&y.0)))?;
-    (distance <= APART).then_some((a.min(b), a.max(b)))
+        .filter(|&(b, _)| b != a && open[b])
+        .min_by(|x, y| x.1.total_cmp(y.1))
+        .map(|(b, &d)| (b, d))?;
+    Some(match below {
+        Some(b) if apart[a][b] <= best.1 => (b, apart[a][b]),
+        _ => best,
+    })
+}
+
+/// Joins group `b` into `a`, the joined group as far from each other as
+/// its takes are on average, each part weighed by its size.
+fn join(a: usize, b: usize, apart: &mut [Vec<f32>], groups: &mut [Vec<usize>], open: &mut [bool]) {
+    let (na, nb) = (as_f32(groups[a].len()), as_f32(groups[b].len()));
+    let joined: Vec<f32> = apart[a]
+        .iter()
+        .zip(&apart[b])
+        .map(|(from_a, from_b)| (na * from_a + nb * from_b) / (na + nb))
+        .collect();
+    for (row, &distance) in apart.iter_mut().zip(&joined) {
+        row[a] = distance;
+    }
+    apart[a] = joined;
+    open[b] = false;
+    let moved = std::mem::take(&mut groups[b]);
+    groups[a].extend(moved);
 }
 
 fn unit(v: &[f32]) -> Vec<f32> {
@@ -441,7 +508,44 @@ mod tests {
         Heard {
             embedding: embedding.to_vec(),
             samples: seconds * RATE,
+            worded: true,
         }
+    }
+
+    fn wordless(embedding: &[f32], seconds: usize) -> Heard {
+        Heard {
+            worded: false,
+            ..heard(embedding, seconds)
+        }
+    }
+
+    #[test]
+    fn a_voice_is_numbered_from_its_first_take_with_words() {
+        let takes = [
+            wordless(&[1.0, 0.0], 2),
+            heard(&[0.0, 1.0], 5),
+            heard(&[1.0, 0.0], 5),
+        ];
+        assert_eq!(
+            group(&takes, None),
+            [Some(1), Some(0), Some(1)],
+            "a voice whose first take had no words was numbered from it, so the transcript \
+             would open on Voice 2"
+        );
+    }
+
+    #[test]
+    fn takes_with_no_words_are_no_voice_and_take_no_ones_place() {
+        let takes = [
+            wordless(&[1.0, 0.0, 0.0], 20),
+            heard(&[0.0, 1.0, 0.0], 5),
+            heard(&[0.0, 0.0, 1.0], 3),
+        ];
+        assert_eq!(
+            group(&takes, Some(2)),
+            [None, Some(0), Some(1)],
+            "a group of takes with no words, such as hold music, took a person's voice"
+        );
     }
 
     #[test]
@@ -553,6 +657,15 @@ mod tests {
             [vec![0, 1], vec![2]],
             "a chain of takes was joined end to end"
         );
+        // The same chain said the other way round, so the pair joined is
+        // the last two, and the first take's distance to it is the one
+        // the join worked out.
+        let backwards = groups(&[at(125.0), at(60.0), at(0.0)]);
+        assert_eq!(
+            backwards,
+            [vec![1, 2], vec![0]],
+            "a chain said backwards was joined end to end"
+        );
         // A pair 0.7 and 0.4 from a third, so 0.55 on average: the
         // furthest, as complete linkage takes it, would leave it out.
         let pair = groups(&[at(0.0), at(19.41), at(72.54)]);
@@ -560,6 +673,115 @@ mod tests {
             pair,
             [vec![0, 1, 2]],
             "a take near a group on average was left out of it"
+        );
+    }
+
+    /// Numbers from -1 to 1 that are the same every run, from a seed.
+    struct Seeded(u64);
+
+    impl Seeded {
+        fn next(&mut self) -> f32 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            let top = u16::try_from(self.0 >> 48).expect("the top 16 bits fit in a u16");
+            f32::from(top) / 32_768.0 - 1.0
+        }
+    }
+
+    /// Average linkage the slow way: each time, the pair of groups whose
+    /// takes are nearest on average, worked out afresh, joined while
+    /// they're within `APART`.
+    fn by_brute_force(heard: &[Heard]) -> Vec<Vec<usize>> {
+        let unit: Vec<Vec<f32>> = heard.iter().map(|h| unit(&h.embedding)).collect();
+        let between = |a: &[usize], b: &[usize]| {
+            let sum: f64 = a
+                .iter()
+                .flat_map(|&i| b.iter().map(move |&j| (i, j)))
+                .map(|(i, j)| f64::from(1.0 - dot(&unit[i], &unit[j])))
+                .sum();
+            sum / (as_f64(a.len()) * as_f64(b.len()))
+        };
+        let mut groups: Vec<Vec<usize>> = (0..heard.len()).map(|i| vec![i]).collect();
+        loop {
+            let mut best: Option<(f64, usize, usize)> = None;
+            for (a, first) in groups.iter().enumerate() {
+                for (b, second) in groups.iter().enumerate().skip(a + 1) {
+                    let distance = between(first, second);
+                    if best.is_none_or(|(nearest, ..)| distance < nearest) {
+                        best = Some((distance, a, b));
+                    }
+                }
+            }
+            match best {
+                Some((distance, a, b)) if distance <= f64::from(APART) => {
+                    let moved = groups.remove(b);
+                    groups[a].extend(moved);
+                }
+                _ => break,
+            }
+        }
+        groups
+    }
+
+    fn sorted(mut groups: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+        for group in &mut groups {
+            group.sort_unstable();
+        }
+        groups.sort();
+        groups
+    }
+
+    #[test]
+    fn grouping_joins_what_joining_the_nearest_pair_each_time_does() {
+        for seed in 1..=6 {
+            let mut seeded = Seeded(seed);
+            let centres: Vec<Vec<f32>> = (0..5)
+                .map(|_| (0..6).map(|_| seeded.next()).collect())
+                .collect();
+            let takes: Vec<Heard> = (0..60)
+                .map(|take| {
+                    let centre = &centres[take % centres.len()];
+                    let embedding: Vec<f32> =
+                        centre.iter().map(|x| x + 0.5 * seeded.next()).collect();
+                    heard(&embedding, 1)
+                })
+                .collect();
+            let slow = sorted(by_brute_force(&takes));
+            assert!(
+                slow.len() > 1 && slow.len() < takes.len(),
+                "seed {seed} made {} groups of 60 takes, which tests no joining",
+                slow.len()
+            );
+            assert_eq!(
+                sorted(groups(&takes)),
+                slow,
+                "seed {seed}'s takes weren't grouped as joining the nearest pair each time \
+                 groups them"
+            );
+        }
+    }
+
+    #[test]
+    fn past_the_most_takes_only_the_longest_are_grouped() {
+        let mut takes = vec![Heard {
+            samples: 1,
+            ..heard(&[1.0, 0.0], 0)
+        }];
+        takes.extend((0..MOST_TAKES).map(|_| Heard {
+            samples: 2,
+            ..heard(&[1.0, 0.0], 0)
+        }));
+        let grouped = groups(&takes);
+        let held: Vec<usize> = grouped.iter().flatten().copied().collect();
+        assert_eq!(
+            held.len(),
+            MOST_TAKES,
+            "more takes than the most were grouped"
+        );
+        assert!(
+            !held.contains(&0),
+            "the shortest take was grouped in place of a longer one"
         );
     }
 

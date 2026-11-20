@@ -247,6 +247,10 @@ fn a_speaker_called_by_their_own_name_is_telling_someone_elses_words() {
     assert!(!named("I told Joel about the fuel", "Joel"));
     assert!(!named("Joel, you keep giving them fuel", "Ada"));
     assert!(!named("Others, you keep giving them fuel", "Others"));
+    assert!(
+        !named("my voice, it's going", "Voice 2"),
+        "a voice's own word in its quote was taken for its name, so the quote was dropped"
+    );
     let call = "**Joel**, 0:10: And it's like Joel, you keep giving them fuel for their \
          fire.\n";
     let mut model = Model {

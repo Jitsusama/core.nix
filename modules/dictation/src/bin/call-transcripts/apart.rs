@@ -3,7 +3,9 @@
 //! end cut into takes as a call's is, each take embedded and the takes
 //! grouped as hear.rs groups them (`dictation::voices`), with no count of
 //! the people on it, as on a call with no invitation, then held to its
-//! reference.
+//! reference. A take the reference has far-end speech in stands for one
+//! Parakeet would hear words in, and one too short or odd to embed is
+//! speech under Others, as on a call.
 //!
 //! Each voice stands for the speaker it holds most of, no two voices for
 //! one speaker, taken greedily from the largest share down. Two numbers
@@ -85,28 +87,36 @@ fn tenths(part: usize, whole: usize) -> usize {
 pub fn apart(model: &Path, set: &Path, floors: Option<(usize, usize)>) -> Result<(), String> {
     let sides = score::read(&set.join("sides"))?;
     let meetings = meetings(set, &sides)?;
-    let mut speaker = Voices::load(model)?;
+    let mut speaker = Voices::load(model, None)?;
     let mut all = Told::default();
     for meeting in &meetings {
         let sound = &meeting.sounds[index(Side::Theirs)];
         let mut heard = Vec::new();
+        let mut embedded = Vec::new();
         let mut cut = Vec::new();
         for take in takes(sound) {
             let end = take.start + take.samples.len();
             let speakers = spoken(take.start, end, &meeting.reference, meeting.mine);
-            if let Some(embedding) = speaker.embed(&take.samples)? {
+            let at = speaker.embed(&take.samples)?.map(|embedding| {
                 heard.push(Heard {
                     embedding,
                     samples: take.samples.len(),
+                    worded: !speakers.is_empty(),
                 });
-                cut.push(speakers);
-            }
+                heard.len() - 1
+            });
+            embedded.push(at);
+            cut.push(speakers);
         }
         println!("{}", shares(meeting.name, &heard, &cut));
-        let takes: Vec<Take> = voices::group(&heard, None)
+        let grouped = voices::group(&heard, None);
+        let takes: Vec<Take> = embedded
             .into_iter()
             .zip(cut)
-            .map(|(voice, speakers)| Take { voice, speakers })
+            .map(|(at, speakers)| Take {
+                voice: at.and_then(|at| grouped[at]),
+                speakers,
+            })
             .collect();
         let told = tell(&takes);
         println!("{}", report(meeting.name, &told));
