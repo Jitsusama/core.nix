@@ -465,9 +465,10 @@ onLinux {
   # tries sizes sharing only a width or an area with a kept set, and walks
   # it through more sizes than the pool's 64 MiB keeps, going back to one it
   # holds after three newer sizes and again once it's the oldest held whole.
-  # That bounds the cap between about 63 and 85 MiB and, at a cap under
-  # about 69, shows an effect takes its new set before keeping its old
-  # (tests/keeps-a-blur-ready.py).
+  # That and what the pool says it keeps once it lets go bound the cap
+  # between about 63 and 68 MiB, where taking the set back whole shows an
+  # effect takes back the set kept for its size before keeping the one it
+  # gave up (tests/keeps-a-blur-ready.py).
   niri-keeps-a-blur-ready =
     let
       files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;

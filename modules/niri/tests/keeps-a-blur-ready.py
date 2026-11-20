@@ -12,14 +12,14 @@ goes back to its first size and draws once more as it is, each step waiting for 
 It takes the grown size's width at another height, then its area turned on its side, while the
 grown set is kept, so a pool matching on width or on bytes alone would hand that set out, and
 takes the grown size back to show that set was kept. Then it nearly fills the screen at fourteen
-sizes in turn, more than the pool's 64 MiB keeps, going back to the second after five, to it
-again after the last, and to the first at the end. niri says at debug what each blur's
+sizes in turn, more than the pool's 64 MiB keeps, going back to the second after five and again
+after the last. niri says at debug what each blur's
 textures came from, and each step is judged by what niri said after it alone: the first opening
 makes its set, shutting and a frame that changes nothing make none, opening again takes the whole
 set back, growing gives the set up for the next blur of its size, which going back takes, a size
 sharing only a width or an area with a kept set makes its own, the walk's second set is still
-kept after three newer sizes and once more after all of them, and its first has been let go by
-the time the walk comes back to it.
+kept after three newer sizes and once more after all of them, and the pool never says it keeps
+more than 64 MiB once it has let go.
 
 usage: keeps-a-blur-ready.py <niri's log>
 """
@@ -42,16 +42,20 @@ GROWN = (480, 300)
 # turned on its side: neither may take the grown set.
 TALLER = (480, 360)
 TURNED = (300, 480)
-# Sizes inside the nested screen, which sway's frame leaves 1276x773 of, so niri cuts none to fit.
-# Each set, a framebuffer and a blur's textures from its full size down to an eighth, is 6.7 to
-# 7.5 MiB, in the pool's own unit: the twelve kept after the first hold about 85 MiB, and the pool
-# lets go a texture at a time, oldest first, so under a cap of about 85 MiB it has let all of the
-# first go, and over it keeps some of the first and fails the last step.
+# The nested screen, what sway's frame leaves of it.
+SCREEN = (1276, 773)
+# Sizes inside the nested screen, so niri cuts none to fit.
+# Each set, a framebuffer and a blur's textures from its full size down to an eighth, is 6.6 to
+# 7.5 MiB, in the pool's own unit, and the pool lets go a texture at a time, oldest first.
 FILLING = [(1200 - 10 * step, 700) for step in range(14)]
 # After the walk's fifth size it goes back to its second, which the third, fourth and fifth
 # followed: taking it back needs a pool of about 22 MiB, so one too small for the launcher's 21
 # MiB set on Joel's screen has let it go.
 RECALLED_AFTER = 5
+# The pool's cap, in whole MiB as niri says it. The pool lets go a texture at a time until it holds
+# no more, so what it keeps once it has let go is within a texture, 3.2 MiB at most here, of its
+# cap: saying 64 or less holds the cap under about 68 MiB, short of the 69 the order step needs.
+MOST = 64
 OVERLAY = 3
 # The wl_shm format with alpha, as the launcher draws: smithay skips drawing whatever an opaque
 # surface covers, the blur behind it included, so an opaque stand-in would never be blurred.
@@ -62,6 +66,9 @@ NAMESPACE = "launcher"
 SAID = re.compile(
     r"a background effect sized (\d+) \S+ (\d+) made (\d+) textures and took (\d+) kept"
 )
+# niri's line for textures the pool let go, printed beside the step that made it say so, since
+# that tells a cap too small from an effect keeping its old set before taking its new one.
+LET_GO = re.compile(r"the texture pool let go of \d+ textures, keeping (\d+) MB")
 COLOURS = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -91,9 +98,19 @@ class Launcher:
         self.resize(FIRST)
 
     def resize(self, size: tuple[int, int]) -> None:
-        """Ask for `size`, answer the configure niri sends for it, and attach a buffer of it."""
+        """Ask for `size`, answer the configure niri sends for it, and attach a buffer of it.
+
+        niri may draw a frame between asking and attaching, the old buffer and its blur at the new
+        size's place, centred. Where that runs off the screen, niri blurs the cut size and makes a
+        set for it, so each size must leave room at its place for the one before.
+        """
         connection = self.connection
         width, height = size
+        if any(
+            (whole - new) // 2 + old > whole
+            for whole, new, old in zip(SCREEN, size, self.size, strict=True)
+        ):
+            sys.exit(f"the walk goes from {self.size} to {size}, so the old runs off the screen")
         connection.send(self.role, 0, struct.pack("<II", width, height))
         connection.send(self.surface, 6)
         opcode, configured = connection.wait_for(self.role, "the layer surface's configure")
@@ -133,11 +150,15 @@ class Launcher:
 
 def said(log: Path) -> list[tuple[int, int, int, int]]:
     """Each blur's size, how many textures it made, and how many it took kept, in order."""
-    text = COLOURS.sub("", log.read_text(encoding="utf-8", errors="replace"))
     return [
         (int(width), int(height), int(made), int(kept))
-        for width, height, made, kept in SAID.findall(text)
+        for width, height, made, kept in SAID.findall(read(log))
     ]
+
+
+def read(log: Path) -> str:
+    """Niri's log, its colours taken out."""
+    return COLOURS.sub("", log.read_text(encoding="utf-8", errors="replace"))
 
 
 class Steps:
@@ -147,6 +168,8 @@ class Steps:
         """Read niri's log at `log`, from what it holds now."""
         self.log = log
         self.seen = len(said(log))
+        self.let_go = len(LET_GO.findall(read(log)))
+        self.heard_let_go = False
 
     def after(self, name: str, size: tuple[int, int], *, says: bool) -> tuple[int, int]:
         """How many textures niri made and took kept since the last step, adding up its lines.
@@ -171,6 +194,13 @@ class Steps:
         time.sleep(SETTLE)
         lines = said(self.log)[self.seen :]
         self.seen += len(lines)
+        let_go = list(LET_GO.finditer(read(self.log)))[self.let_go :]
+        self.let_go += len(let_go)
+        for line in let_go:
+            print(f"{name}: {line[0]}")
+            self.heard_let_go = True
+            if int(line[1]) > MOST:
+                sys.exit(f"after {name}, the pool kept {line[1]} MB: its cap is over {MOST} MiB")
         for width, height, made, kept in lines:
             print(f"{name}: a blur {width} x {height} made {made} and took {kept} kept")
             if (width, height) != size:
@@ -239,12 +269,12 @@ def main() -> None:
     )
     for size in FILLING[RECALLED_AFTER:]:
         fill(launcher, steps, size, expect=(whole, 0), why="a size the pool had never seen")
-    # After the last size it goes back to the second once more. That set is then the oldest the
-    # pool holds whole, about 63 MiB with the eight newer ones, so a pool under that has let some
-    # of it go. Under about 69 MiB, so has one keeping the last size's set before taking the
-    # second's, which pushes out the very set about to be taken; over it there is room for both,
-    # so the order is shown only at a cap under that. About 1 MiB is to spare at 64 MiB, so sets
-    # grown by another niri fail here too.
+    # After the last size it goes back to the second once more. That set is then the oldest
+    # the pool holds whole, about 63 MiB with the eight newer ones, so a pool under that has let
+    # some of it go. Under about 69 MiB, so has one keeping the last size's set before taking
+    # the second's, which pushes out the very set about to be taken, and what the pool says it
+    # keeps holds its cap under about 68. About 1 MiB is to spare at 64 MiB, so sets grown by
+    # another niri fail here too.
     fill(
         launcher,
         steps,
@@ -253,13 +283,11 @@ def main() -> None:
         why="the pool let go of the oldest set it held whole: it keeps less than about 63 MiB, "
         "or kept the set given up before taking this one, or each set grew",
     )
-    fill(
-        launcher,
-        steps,
-        FILLING[0],
-        expect=(whole, 0),
-        why="the pool kept some of the walk's first set past its 64 MiB",
-    )
+    if not steps.heard_let_go:
+        sys.exit(
+            "niri never said its pool let go of textures: its cap is over about 97 MiB, "
+            "or its let-go line no longer reads as LET_GO expects"
+        )
 
 
 def alike(launcher: Launcher, steps: Steps, whole: int) -> None:
