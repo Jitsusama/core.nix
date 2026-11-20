@@ -2878,6 +2878,7 @@ Provider {
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
     // held, its rows are laid out as asked, from the daemon's rows held.
+    readsAfreshUnwanted: true
     function everything() {
         // Its search looks through the tree's rows, so their texts are
         // made ready from those (Provider.qml's looksThrough).
