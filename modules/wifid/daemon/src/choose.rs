@@ -1,5 +1,6 @@
 //! Which access point of its network a card should be on, from what each
-//! carried from here (measure.rs), changed rarely and never during a call.
+//! carried from here (measure.rs), changed rarely, and during a call only
+//! where its link fails, or fades (fading.rs).
 //!
 //! The best access point changes with the hour and the room (Joel, 14 Nov
 //! 2026: "fixating on one could hurt me"), so none is fixed: the one the
@@ -37,6 +38,7 @@ use std::collections::HashMap;
 
 use tokio::time::{Duration, Instant};
 
+use crate::fading;
 use crate::measure::Measured;
 
 /// How long after a move the card stays put, so it never hunts.
@@ -227,6 +229,8 @@ pub struct Chooser {
     unreached: Option<String>,
     /// When a card on a wider band was last slowed by its own download.
     queued: Option<Instant>,
+    /// When the card last gave way during a call (fading.rs).
+    gave_way: Option<Instant>,
 }
 
 struct Trial {
@@ -406,6 +410,31 @@ impl Chooser {
     /// if it did, said once.
     pub fn unreached(&mut self) -> Option<String> {
         self.unreached.take()
+    }
+
+    /// Whether the card keeps off that access point, as one found worse
+    /// from here or never reached.
+    pub fn keeps_off(&self, point: &str, now: Instant) -> bool {
+        self.spurned
+            .get(point)
+            .is_some_and(|spurned| now.duration_since(*spurned) < SPURNED)
+    }
+
+    /// Whether the card may give way during a call now: not again within
+    /// `fading::BETWEEN` of the last time.
+    pub fn may_give_way(&self, now: Instant) -> bool {
+        self.gave_way
+            .is_none_or(|gave| now.duration_since(gave) >= fading::BETWEEN)
+    }
+
+    /// Takes in that the card gave way during a call, as a move of its own
+    /// rather than one on trial: the call needs a link more than a quicker
+    /// one, so it isn't judged against what it left, and settles as any
+    /// move does once the call ends.
+    pub fn gave_way(&mut self, now: Instant) {
+        self.gave_way = Some(now);
+        self.moved = Some(now);
+        self.trial = None;
     }
 
     /// Judges the move on trial, if any, from what the card's point carried:
@@ -1519,6 +1548,43 @@ pub(crate) mod tests {
 
         assert_eq!(held, Choice::Stay, "a slow link is borne through a call");
         assert_eq!(saved, Choice::Try(HALL.into()), "a failing one isn't");
+    }
+
+    #[test]
+    fn a_card_that_gave_way_in_a_call_waits_to_again_and_settles_after_it() {
+        let mut chooser = after_a_bad_minute(HALL);
+        let badly = carried(119, 0.5);
+        let start = Instant::now();
+        let first = chooser.may_give_way(start);
+
+        chooser.gave_way(start);
+        let soon = chooser.may_give_way(start + Duration::from_secs(29));
+        let later = chooser.may_give_way(start + fading::BETWEEN);
+        let ended = start + Duration::from_secs(120);
+        let after = chooser.choose(ended, (HALL, &badly, -50, CH52), &[elsewhere()], false);
+
+        assert!(first, "the first may give way at once");
+        assert!(!soon, "not again before its window fills");
+        assert!(later, "again once it has");
+        assert_eq!(
+            after,
+            Choice::Stay,
+            "once the call's over, it settles as any move"
+        );
+    }
+
+    #[test]
+    fn a_card_keeps_off_a_point_never_reached_for_an_hour() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.spurned.insert(HALL.into(), start);
+
+        let within = chooser.keeps_off(HALL, start + SPURNED - Duration::from_secs(1));
+        let past = chooser.keeps_off(HALL, start + SPURNED);
+
+        assert!(within, "kept off within the hour");
+        assert!(!past, "not past it");
+        assert!(!chooser.keeps_off(DESK, start), "nor another point");
     }
 
     #[test]

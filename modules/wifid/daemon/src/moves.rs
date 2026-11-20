@@ -12,6 +12,7 @@ use tokio::time::Instant;
 use crate::acts;
 use crate::air::Heard;
 use crate::choose::{self, Choice, Chooser, Other};
+use crate::fading::{self, Giving, Why};
 use crate::learn::Learned;
 use crate::measure::{self, Measured, Measures};
 use crate::service::Ask;
@@ -106,6 +107,45 @@ pub fn choose(
         }
         None => {}
     }
+}
+
+/// Has a card on a call give way at once to another access point of its
+/// network, where its link is fading (fading.rs), and says why.
+pub fn give_way(
+    chooser: &mut Chooser,
+    now: Instant,
+    on: &Joined,
+    around: &[Heard],
+    lately: &Measures,
+    (asks, air): (&mpsc::Sender<Ask>, &watch::Receiver<State>),
+) {
+    if !chooser.may_give_way(now) {
+        return;
+    }
+    let measured = lately.lately(&on.point, now, fading::WINDOW);
+    let kept_off = |point: &str| chooser.keeps_off(point, now);
+    let Some(giving) = fading::giving_way(&on.point, measured, around, kept_off) else {
+        return;
+    };
+    println!("<6>{}", gave_way(on, &giving));
+    chooser.gave_way(now);
+    tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), giving.to));
+}
+
+/// Why a card on a call gives way to another access point.
+fn gave_way(on: &Joined, giving: &Giving) -> String {
+    let why = match giving.why {
+        Why::Lossy(lost) => format!(
+            "{} lost {lost} echoes in {} s",
+            on.point,
+            fading::WINDOW.as_secs()
+        ),
+        Why::Faint(signal) => format!("{} has faded to {signal} dBm", on.point),
+    };
+    format!(
+        "{} gives way to {}, heard at {} dBm, during a call, as {why}",
+        on.card, giving.to, giving.heard
+    )
 }
 
 /// What a card does next, where it doesn't stay as it is.
