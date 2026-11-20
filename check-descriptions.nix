@@ -350,6 +350,11 @@
     other's; one whose words alone change is said again in place, by its id, and not once Joel has
     put it away; and one that goes takes back whichever of its notices is up
   '';
+  an-emoji-stands-on-its-name-on-niri = ''
+    each of Super+E's groups, as niri shows the launcher's rows drawn through Qt's GPU path at 1.5
+    and 2, has its emoji's middle within a device pixel of its name's, halfway from the top of its
+    capitals to their baseline
+  '';
   an-emoji-stands-on-its-names-capitals = ''
     thirteen emoji, the first of each of Emoji's groups as they stood on 19 Nov and four below the
     emoji blocks, drawn through the one mark, have their ink's middle within two device pixels of
