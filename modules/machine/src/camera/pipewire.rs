@@ -20,6 +20,9 @@
 //! it. A process's name is still its own to set, as it is for a camera's
 //! other holders, so the name says which program it says it is, and one
 //! that gives none counts as a reader that can't be named.
+//!
+//! Long because half of it is its tests, each a registry as pw-cli could
+//! list it, read through the rules above, which change with them.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
@@ -86,17 +89,24 @@ impl Global {
 /// a line as `key = "value"`.
 ///
 /// pw-cli prints a value as it stands, so a client that puts a line break
-/// in a property of its own can write lines that read as more. The
-/// server's own properties, its `pipewire.sec.pid` among them, are listed
-/// before any a client sets, so the first a key is said is the one kept.
-/// pw-cli keeps the objects at their ids and lists them in that order
-/// (`pw_map_for_each` over its globals), rising, so one said under an id
-/// no higher than the last was written into a property, to stand for an
-/// object listed before it or after: the listing is refused, rather than
-/// read with a reader shadowed or renamed. What's left to a client is an
-/// object of its own making under an id nothing has, to name whoever it
-/// likes as reading, much as a process can call itself anything.
+/// in a property of its own can write lines that read as more. pw-cli
+/// keeps the objects at their ids and lists them in that order
+/// (`pw_map_for_each` over its globals), rising, each property once, so a
+/// listing with an id no higher than the one before it, or a key said
+/// twice in one object, was written into, to stand for another object or
+/// to say a property ahead of the server's own (a node's `object.path` is
+/// listed before its `client.id`): it's refused, rather than read with a
+/// reader shadowed or renamed. What's left to a client is a property its
+/// object lacks, as a stream's `device.id`, which `readers` doesn't take
+/// a client's word for, or an object of its own making under an id
+/// nothing has, to name whoever it likes as reading, much as a process
+/// can call itself anything.
 pub fn registry(text: &str) -> Result<Vec<Global>, String> {
+    // Said the same each time, whatever a client writes, so it's said once.
+    const WRITTEN_INTO: &str = concat!(
+        "pw-cli's listing was refused, as an id falls back or a key is said twice in it, ",
+        "as a client's property holding a line break makes it, or a pw-cli listing otherwise"
+    );
     let mut globals: Vec<Global> = Vec::new();
     for line in text.lines().map(str::trim) {
         if let Some((id, kind)) = line
@@ -107,13 +117,7 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
             if let Some(last) = globals.last()
                 && id <= last.id
             {
-                // Said the same each time, whatever ids a client picks, so
-                // it's said once.
-                return Err(
-                    "pw-cli's listing was refused, as its ids fall back where a \
-                            client's property holds a line break"
-                        .to_owned(),
-                );
+                return Err(WRITTEN_INTO.to_owned());
             }
             let kind = kind.strip_prefix("PipeWire:Interface:").unwrap_or(kind);
             let kind = kind.split_once('/').map_or(kind, |(kind, _)| kind);
@@ -129,10 +133,13 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
                 .strip_prefix('"')
                 .and_then(|value| value.strip_suffix('"'))
                 .unwrap_or(value);
-            global
+            if global
                 .props
-                .entry(key.to_owned())
-                .or_insert_with(|| value.to_owned());
+                .insert(key.to_owned(), value.to_owned())
+                .is_some()
+            {
+                return Err(WRITTEN_INTO.to_owned());
+            }
         }
     }
     Ok(globals)
@@ -221,10 +228,14 @@ impl PipeWire {
             }
             Err(why) => {
                 if state.failing.as_deref() != Some(why.as_str()) {
+                    let when = if state.listed_at.is_some() {
+                        format!("once the last listing is {KEPT_FOR:?} old")
+                    } else {
+                        "now, as none came before".to_owned()
+                    };
                     eprintln!(
                         "<4>PipeWire's registry gave no listing to go by, so a camera it \
-                         holds is said held by it once the last listing is {KEPT_FOR:?} old: \
-                         {why}"
+                         holds is said held by it {when}: {why}"
                     );
                 }
                 state.failing = Some(why);
@@ -304,11 +315,12 @@ pub(super) fn through_pipewire(programs: &[String]) -> bool {
 /// can say a device of its node, then whoever's linked to them, passing
 /// through any node `PipeWire`'s own programs run, as a converter of
 /// theirs is, to the program it serves. They're sorted, and `PipeWire` is
-/// kept after
-/// them wherever a reader can't be named (a node with no client, a client
-/// with no process, or a node of `PipeWire`'s with nobody after it), and
-/// alone where nobody is, so a camera it holds never reads as off. None
-/// when the registry shows no such camera, as one not offered there is.
+/// kept after them wherever a reader can't be named (a node with no
+/// client, a client with no process, a node of `PipeWire`'s with nobody
+/// after it, or one linked into the camera's, as nothing feeds a camera),
+/// and alone where nobody is, so a camera it holds never reads as off.
+/// None when the registry shows no such camera, as one not offered there
+/// is.
 pub fn readers(
     graph: &[Global],
     device: Option<&str>,
@@ -368,7 +380,8 @@ pub fn readers(
         })
         .map(|global| global.id)
         .collect();
-    let mut seen: HashSet<u64> = frontier.iter().copied().collect();
+    let seeds: HashSet<u64> = frontier.iter().copied().collect();
+    let mut seen = seeds.clone();
     let mut named = Vec::new();
     let mut unknown = false;
     while let Some(node) = frontier.pop() {
@@ -378,6 +391,12 @@ pub fn readers(
                 unknown = true;
                 continue;
             };
+            // A camera's node is fed by nothing, so one linked into is a
+            // reader's, saying its node is the camera's in a name it set.
+            if seeds.contains(&input) {
+                unknown = true;
+                continue;
+            }
             if !seen.insert(input) {
                 continue;
             }
@@ -600,15 +619,19 @@ pub(crate) mod tests {
 
     #[test]
     fn a_client_writing_lines_into_its_own_property_shadows_nothing() {
-        // Its name carries a break and a pid of its choosing.
-        let client = "\tid 33, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"7\"\n \
-                      \t\tapplication.name = \"x\n \t\tpipewire.sec.pid = \"102\"\n";
-        let globals = registry(client).expect("it rises by id");
-        assert_eq!(
-            globals[0].number("pipewire.sec.pid"),
-            Some(7),
-            "the server's pid, said first"
-        );
+        let client = "\tid 33, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"7\"\n";
+        // Its name carries a break and a pid of its choosing, after the
+        // server's or, as a node's path is listed before its client, ahead.
+        let after =
+            format!("{client} \t\tapplication.name = \"x\n \t\tpipewire.sec.pid = \"102\"\n");
+        let ahead = "\tid 33, type PipeWire:Interface:Node/3\n \t\tobject.path = \"x\n \
+                     \t\tclient.id = \"2\"\n \t\tclient.id = \"5\"\n";
+        for (said, written) in [("after", after.as_str()), ("ahead", ahead)] {
+            assert!(
+                registry(written).is_err(),
+                "a key said twice, {said} the server's, is no listing to read"
+            );
+        }
         // Then an object under an id said before it, or one said after it.
         let link = |id: u64| {
             format!("\tid {id}, type PipeWire:Interface:Link/3\n \t\tlink.input.node = \"9\"\n")
@@ -693,6 +716,9 @@ pub(crate) mod tests {
                 .is_some_and(|why| why.contains("refused"))
         };
         for _ in 0..5 {
+            // Listed just now, however long the tries before took, so it's
+            // the refusal kept through that's seen, not the clock.
+            pipewire.state().listed_at = Some(Instant::now());
             pipewire.refresh();
             if refused() {
                 break;
@@ -767,6 +793,13 @@ pub(crate) mod tests {
         assert_eq!(
             readers(&graph, Some("/dev/video32"), "camera", &root),
             named(&["chrome", "tuple"])
+        );
+        // And as its process is named for PipeWire, as one can name itself.
+        fs::write(root.path("/proc/103/comm"), "pipewire\n").unwrap();
+        assert_eq!(
+            readers(&graph, Some("/dev/video32"), "camera", &root),
+            named(&["tuple", "pipewire"]),
+            "a node linked into the camera's is a reader not named"
         );
     }
 

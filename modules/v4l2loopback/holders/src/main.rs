@@ -192,9 +192,10 @@ fn say_device(output: &Path, node: Option<&Path>) {
     }
 }
 
-/// Removes each file in the folder but this one that says this node; one
-/// being written, its name ending in a dot and a pid, is left to its
-/// writer.
+/// Removes each file in the folder but this one that says this node, and
+/// the holders file beside the folder that it's named for, as that camera
+/// is gone; one being written, its name ending in a dot and a pid, is left
+/// to its writer.
 fn forget_node(folder: &Path, own: &Path, said: &str) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
@@ -208,11 +209,19 @@ fn forget_node(folder: &Path, own: &Path, said: &str) {
         if path == own || being_written || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
-        if fs::read_to_string(&path).is_ok_and(|text| text == said)
-            && let Err(error) = fs::remove_file(&path)
-            && error.kind() != io::ErrorKind::NotFound
-        {
-            complain(format_args!("{}: {error}", path.display()));
+        if !fs::read_to_string(&path).is_ok_and(|text| text == said) {
+            continue;
+        }
+        // Its holders file first, so a camera is never left said held with
+        // no node file to say who reads it.
+        let holders = folder.parent().map(|above| above.join(entry.file_name()));
+        for gone in holders.iter().chain([&path]) {
+            if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
+                && let Err(error) = fs::remove_file(gone)
+                && error.kind() != io::ErrorKind::NotFound
+            {
+                complain(format_args!("{}: {error}", gone.display()));
+            }
         }
     }
 }
@@ -369,9 +378,10 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     if let Some(file) = device_file(&output) {
         tidy(&file);
         // A USB camera's unit is the one that watches its node, so another
-        // camera's file saying it was left by a run killed before it could
-        // remove it. A loopback's unit removes its own as it stops, and one
-        // with no card may say a node another camera has since been given.
+        // camera's files saying it were left by a run killed before it
+        // could remove them. A loopback's unit removes its own as it stops,
+        // and one with no card may say a node another camera has since been
+        // given.
         if let Some(folder) = file.parent() {
             forget_node(folder, &file, &format!("{}\n", node.display()));
         }
@@ -542,8 +552,16 @@ mod tests {
         // A folder left narrower, as a umask might make it, is widened.
         fs::create_dir(root.join(".devices")).unwrap();
         fs::set_permissions(root.join(".devices"), fs::Permissions::from_mode(0o700)).unwrap();
-        say_device(&output, Some(&link));
         let real = fs::canonicalize(&node).unwrap();
+        // Only a USB camera's run forgets another's file saying its node.
+        let another = root.join(".devices/Another");
+        fs::write(&another, format!("{}\n", real.display())).unwrap();
+        say_device(&output, Some(&link));
+        assert!(
+            another.exists(),
+            "another camera's file, said by a loopback"
+        );
+        fs::remove_file(&another).unwrap();
         assert_eq!(
             fs::read_to_string(&file).unwrap(),
             format!("{}\n", real.display())
