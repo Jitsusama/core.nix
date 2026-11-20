@@ -481,7 +481,7 @@ QtObject {
                 queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
 
-        // After optimus's reset on 2026-11-20, Reopen Them All gave four
+        // After the machine reset on 2026-11-20, Reopen Them All gave four
         // sessions kept nowhere, which ran with no window, windows on their
         // orchestrator's workspace, and sent one kept on the second
         // workspace to its orchestrator's third.

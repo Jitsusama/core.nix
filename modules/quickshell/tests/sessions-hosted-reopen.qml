@@ -303,19 +303,16 @@ ShellRoot {
         Expect.expect("its place kept for its window as it wakes", place?.slept === true
             && place?.asleep === true && typeof place?.workspace === "number",
             JSON.stringify(Sessions.keptPlaces));
-        // The one begun opens, so the walk goes on to the next asked.
-        const classed = /\/pi-sessions\/kitty\.sock (pi-session\.\d+) /u
-            .exec(piFor("s-stale")[0])?.[1] ?? "";
-        const window = { id: 51, pid: 510, workspace_id: 41, session: true, opened: classed,
-            layout: { pos_in_scrolling_layout: [2, 1] } };
-        Niri.windows = Object.assign({}, Niri.windows, { "51": window });
-        Niri.revision += 1;
-        windowsTell({ changed: [windowRecord(51, classed, 41)] });
+        // Kept nowhere as the boot ended, it had no window, so it comes back
+        // held without one, and the walk goes on without waiting for one.
+        Expect.expect("one kept nowhere comes back held, with no window",
+            piFor("s-stale").length === 1 && piFor("s-stale")[0].includes("holds add --detached")
+            && !piFor("s-stale")[0].includes("/pi-sessions/kitty.sock"),
+            Niri.spawns.join("\n"));
         stage = "adrift";
-        Niri.windowOpenedOrChanged(window);
         Sessions.reopenAll([{ id: "s-adrift", cwd: "/given-back", quest: "QEST-ADRIFT" }],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone, and nothing started afresh`),
-            kept({}), Sessions.carryOn);
+            kept({ "s-adrift": keptOn(3) }), Sessions.carryOn);
     }
 
     // Its folder given back, its quest starts afresh where the harness says,

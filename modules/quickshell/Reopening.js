@@ -84,7 +84,7 @@ function mayBegin(text, now) {
 }
 
 // How Reopen Them All brings back a session the boot took (Joel,
-// 2026-11-20 13:24, after optimus's reset at 13:15: crash-taken windows
+// 2026-11-20 13:24, after the machine reset at 13:15: crash-taken windows
 // come back where they were, unfocused, and windowless sessions come back
 // windowless). One kept somewhere had a window as the boot ended, so it
 // opens there (`window`), at its kept place rather than its
