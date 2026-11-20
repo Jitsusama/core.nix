@@ -394,6 +394,22 @@ QtObject {
             (choosing.offers ?? []).map(one => [one.value, one.label]),
             [["posted", "Posted"], ["later", "later"], ["c", "c"], ["d", "d"]]);
         expect("an older look, offering none", read.waiting[1].offers, []);
+        // Who asks, in plain words, and what happens if Joel does nothing, as
+        // its session writes them, else from what's known (Joel, 2026-11-19:
+        // "i almost never know what I am supposed to do with it").
+        const told = Looks.looks([{ file: "t.json", text: lookOf({ id: "T",
+            asker: "The trunk disk incident", ask: "Merge it now, or hold it?",
+            ifNothing: "It waits, unmerged, and the rescans go on." }) }], {}, now).waiting[0];
+        const quest = { title: "Trunkd Disk Saturation During Compaction (INV-31016)" };
+        expect("who asks, as its session says, else its quest's name without its id",
+            [Looks.askerOf(told, quest), Looks.askerOf(read.waiting[1], quest),
+                Looks.askerOf(read.waiting[1], { title: "Plain Words" }),
+                Looks.askerOf(read.waiting[1], null)],
+            ["The trunk disk incident", "Trunkd Disk Saturation During Compaction",
+                "Plain Words", ""]);
+        expect("what it asks and what happens if nothing, as written, else none",
+            [told.ask, told.ifNothing, read.waiting[1].ask, read.waiting[1].ifNothing],
+            ["Merge it now, or hold it?", "It waits, unmerged, and the rescans go on.", "", ""]);
         const posted = { value: "posted", label: "Posted" };
         expect("an answer, to the session while it runs",
             Looks.answer(choosing, posted, true, now),

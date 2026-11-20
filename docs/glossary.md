@@ -348,6 +348,9 @@ or a copy, can be opened, copied or forgotten.
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
 | agents asking | For You's row gathering the sessions waiting on Joel, once two are, the most pressing first | | `for-you:kind:agent` |
 | look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
+| asker | who a look comes from, in plain words: what its session writes, else its quest's name without its id, said in its row's note and its drawer's eyebrow | the quest's title, its id | a look's `asker` |
+| ask | what a look asks of Joel, at its row's side, with its choices first in its step; Return answers with the first, marked ↵, as the asker puts the safe one first | | a look's `ask` |
+| if you do nothing | what happens if Joel leaves a look as it is: what its session writes, else that it waits three days and then goes quiet into History | Clears When, Weight | a look's `ifNothing` |
 | to look at | a look For You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it, or a day from when it landed | | |
 | to read | a look that asks nothing of Joel, only to be seen, kept in For You's last row 24 hours and then put in History as expired | | `for-you:kind:read` |

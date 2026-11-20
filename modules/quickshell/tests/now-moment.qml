@@ -1269,6 +1269,49 @@ ShellRoot {
             JSON.stringify([lifted?.side, wanted.map(row => [row.name, row.side,
                 changed.includes(row)])]));
         Sessions.wanting = [];
+        // A look says who asks and what, Return answering with its first
+        // choice, its choices first in its step, and its drawer what happens
+        // if Joel does nothing, with no weight (Joel, 2026-11-19: "I almost
+        // never know what I am supposed to do with it").
+        const asking = JSON.stringify({ v: 1, id: "q", kind: "pr", at: root.lookedAt,
+            target: "https://example.com/pull/1", title: "History overlays stop rescanning",
+            why: "Each read re-listed an empty folder.", state: "waiting", address: "leftq",
+            asker: "The trunk disk incident", ask: "Merge it now, or hold it for review?",
+            ifNothing: "It waits, unmerged, and the rescans go on.",
+            choices: [{ value: "merge", label: "Queue It" }, { value: "hold", label: "Hold It" }] });
+        now.lookTexts = { "q.json": asking, "a.json": lookAt("a", "Read A") };
+        const askingRow = () => looked().find(row => row.key === "on:look:q");
+        const asked = askingRow();
+        const stepKeys = (asked?.verbs() ?? []).map(act => act.key);
+        expect("a look's row says who asks, then what, its choices first in its step",
+            asked?.note === "The trunk disk incident"
+                && asked?.side === "Merge it now, or hold it for review?"
+                && JSON.stringify(stepKeys.slice(0, 3)) === JSON.stringify([
+                    "verb:on:look:answer:q:merge", "verb:on:look:answer:q:hold",
+                    "verb:on:look:open:q"]),
+            JSON.stringify([asked?.note, asked?.side, stepKeys]));
+        const askedDrawer = asked?.drawer() ?? {};
+        const factOf = label => (askedDrawer.facts ?? []).find(each => each.label === label)
+            ?.value ?? null;
+        expect("its drawer says who asks, its choices, Return's marked, and if nothing, no weight",
+            askedDrawer.eyebrow === "The trunk disk incident"
+                && factOf("Choices") === "\u21b5 Queue It \u00b7 Hold It"
+                && factOf("If You Do Nothing") === "It waits, unmerged, and the rescans go on."
+                && factOf("Weight") === null && factOf("Clears When") === null,
+            JSON.stringify([askedDrawer.eyebrow, askedDrawer.facts]));
+        const plainDrawer = looked().find(row => row.key === "on:look:a")?.drawer() ?? {};
+        expect("a look whose session says nothing of it waits three days, then goes quiet",
+            (plainDrawer.facts ?? []).find(each => each.label === "If You Do Nothing")?.value
+                === "it waits here 3 days, then goes quiet into History",
+            JSON.stringify(plainDrawer.facts));
+        const steeredBefore = Sessions.steered.length;
+        asked?.run();
+        expect("Return answers with its first choice",
+            Sessions.steered.length === steeredBefore + 1
+                && Sessions.steered[steeredBefore]?.fields?.value === "merge"
+                && askingRow()?.side === "answered Queue It",
+            JSON.stringify([Sessions.steered.slice(steeredBefore), askingRow()?.side]));
+        now.lookAnswers = {};
         now.lookTexts = {};
 
         // What's on is made again as any one fact moves, and each piece's
