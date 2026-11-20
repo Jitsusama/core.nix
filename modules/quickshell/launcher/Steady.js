@@ -222,12 +222,37 @@ function landing(waiting, came) {
 }
 
 // How tall the list stands while the launcher is open, sized from `shown`,
-// the rows it's sized for: `rows` rows `rowTall` high, and `gap` more where
-// one of those it shows first stands apart from the row above, as a group
-// of Network's does. One rule for every place the card is sized, home as
-// found among them, so none can size it from another list's gaps.
-function tallFor(shown, rows, rowTall, gap) {
-    return rows * rowTall + (shown.slice(0, rows).some(row => row.gap) ? gap : 0);
+// the rows it's sized for: as tall as its first `rows` rows stand by
+// tallOf, and the headings among them, so the last row it shows ends at
+// its foot, every gap among them counted however many stand apart. A heading is never a row (Headings.js), so it adds its
+// line and not to the count, which `heading` tells it of. It never passes
+// `sizes.room`, the screen's room for the list, stopping at the last row
+// that fits in it, and a heading is never left alone at its foot. A list
+// with fewer rows is sized for the room, a band for each row it hasn't,
+// so a short place opens as tall as a long one. One rule for every place
+// the card is sized, home as found among them, so none can size it from
+// another list's gaps.
+function tallFor(shown, rows, sizes, heading) {
+    let tall = 0;
+    let counted = 0;
+    let at = 0;
+    // How tall the headings since the last row stand, taken back should
+    // the room end the card under them.
+    let trailing = 0;
+    for (; at < shown.length && counted < rows; at += 1) {
+        const headed = heading(shown[at]);
+        const one = tallOf(headed, shown[at]?.gap, at, sizes);
+        if (tall + one > sizes.room) {
+            return tall - trailing;
+        }
+        tall += one;
+        trailing = headed ? trailing + one : 0;
+        counted += headed ? 0 : 1;
+    }
+    for (; counted < rows && tall + sizes.row <= sizes.room; counted += 1) {
+        tall += sizes.row;
+    }
+    return tall;
 }
 
 // How tall one row stands in the list, at `at` among them: its band,
@@ -236,10 +261,8 @@ function tallFor(shown, rows, rowTall, gap) {
 // but for the list's first, which stands where the list starts (VKCF3Z,
 // 2026-11-15 [90904822]). Whether it's a heading the caller says, as
 // Headings.js decides it. A row's gap is its own, whatever list it comes
-// from, and the same value tallFor counts. The two agree for as many rows
-// as the card has room for, with no heading and at most one gap among them;
-// tallFor sizes a shorter list for the room, counts one gap however many
-// stand apart, and a heading as a row, which is left to its own change.
+// from. tallFor sums it over the rows a card shows, so the two can't part
+// but for a list shorter than the card, which is sized for the room.
 function tallOf(heading, gap, at, sizes) {
     if (heading) {
         return (at === 0 ? 0 : sizes.rung) + sizes.heading;

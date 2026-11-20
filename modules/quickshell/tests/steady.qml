@@ -320,27 +320,54 @@ QtObject {
         if (Steady.landing(null, { rows: rows("b") }).at !== -1)
             failures.push("with no landing asked, rows land nowhere");
 
-        // The card's list is sized from its rows, and a gap where one shown
-        // stands apart, never for one below them; how a card with two gaps
-        // among its first rows is sized is left to its own change.
-        const sizings = [
-            ["rows with no gap", [{}, {}, {}], 32],
-            ["a gap among those shown", [{}, { gap: true }, {}], 40],
-            ["a gap on the first row", [{ gap: true }, {}, {}], 40],
-            ["a gap just past those shown", [{}, {}, { gap: true }], 32],
-            ["a gap past those shown", [{}, {}, {}, { gap: true }], 32],
-            ["fewer rows than room", [{ gap: true }], 40]
-        ];
-        for (const [what, shown, want] of sizings) {
-            const sized = Steady.tallFor(shown, 2, 16, 8);
-            if (sized !== want)
-                failures.push(`${what}: sized ${sized}, not ${want}`);
-        }
-
         // A row in the list stands its band high, with the gap above one
         // that stands apart wherever in the list it stands, and a heading its
-        // line, with the groups' rung above it but for the list's first.
-        const rowSizes = { row: 16, heading: 10, gap: 8, rung: 4 };
+        // line, with the groups' rung above it but for the list's first. The
+        // screen's room for the list is all but endless here, but for the
+        // cases that give their own.
+        const rowSizes = { row: 16, heading: 10, gap: 8, rung: 4, room: 1000 };
+        const headed = one => one?.heading === true;
+
+        // The card's list is as tall as the rows it shows first stand, and
+        // the headings among them, `rows` rows of them, so its last row ends
+        // at its foot: every gap among them counted, and none below them. It
+        // never passes the screen's room, and stops at the last row that
+        // fits in it, a heading never left alone at its foot. A list with
+        // fewer rows than that is sized for the room. Each case says how
+        // many of the list's first it shows.
+        const sizings = [
+            ["rows with no gap", [{}, {}, {}], 2, 2, 32],
+            ["a gap among those shown", [{}, { gap: true }, {}], 2, 2, 40],
+            ["a gap on the first row", [{ gap: true }, {}, {}], 2, 2, 40],
+            ["a gap just past those shown", [{}, {}, { gap: true }], 2, 2, 32],
+            ["a gap past those shown", [{}, {}, {}, { gap: true }], 2, 2, 32],
+            ["fewer rows than room", [{ gap: true }], 2, 1, 40],
+            ["no rows at all", [], 2, 0, 32],
+            ["two rows standing apart", [{ gap: true }, {}, { gap: true }, {}], 3, 3, 64],
+            ["a headed list", [{ heading: true }, {}, { heading: true }, {}, {}, {}], 3, 5, 72],
+            ["a heading among a card's rows", [{}, { heading: true }, {}, {}], 2, 3, 46],
+            ["rows past the screen's room", [{ gap: true }, { gap: true }, { gap: true }, {}],
+                3, 2, 48, 56],
+            ["a heading the room leaves at the foot", [{}, { heading: true }, {}, {}], 3, 1, 16,
+                40],
+            ["fewer rows than room, two apart", [{ gap: true }, { gap: true }], 3, 2, 64],
+            ["rows that fill the room to the pixel", [{ gap: true }, { gap: true },
+                { gap: true }, {}], 3, 3, 72, 72],
+            ["a short list on a small screen", [{ gap: true }], 3, 1, 40, 40]
+        ];
+        for (const [what, shown, fit, shows, want, room] of sizings) {
+            const sizes = Object.assign({}, rowSizes, room === undefined ? {} : { room: room });
+            const sized = Steady.tallFor(shown, fit, sizes, headed);
+            if (sized !== want)
+                failures.push(`${what}: sized ${sized}, not ${want}`);
+            // Where the list runs past the card, the rows it shows stand as
+            // tall as the card, so the last ends at its foot.
+            const stood = shown.slice(0, shows).reduce((sum, row, at) =>
+                sum + Steady.tallOf(headed(row), row.gap, at, sizes), 0);
+            if (shown.length > shows && stood !== sized)
+                failures.push(`${what}: its rows stand ${stood}, the card ${sized}`);
+        }
+
         const rowHeights = [
             ["a row", false, undefined, 1, 16],
             ["a row standing apart", false, true, 1, 24],
@@ -353,18 +380,6 @@ QtObject {
             const tall = Steady.tallOf(heading, gap, at, rowSizes);
             if (tall !== want)
                 failures.push(`${what}: stands ${tall}, not ${want}`);
-        }
-
-        // The rows a card shows stand as tall as the card is sized for them,
-        // with no heading and at most one gap among them, the two rules'
-        // common ground; one with fewer rows than room is sized for the
-        // room.
-        for (const [what, shown] of sizings.filter(one => one[1].length >= 2)) {
-            const card = Steady.tallFor(shown, 2, rowSizes.row, rowSizes.gap);
-            const stood = shown.slice(0, 2).reduce((sum, row, at) =>
-                sum + Steady.tallOf(false, row.gap, at, rowSizes), 0);
-            if (stood !== card)
-                failures.push(`${what}: its rows stand ${stood}, the card ${card}`);
         }
 
         for (const failure of failures)

@@ -4176,12 +4176,12 @@
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes, but an
-    answer given only while nothing else was goes once something comes; the height Steady's
-    tallFor gives the card's list from its rows counts a gap only for a row it shows; and each
-    row stands as Steady's tallOf says, with its own gap above it wherever it stands, and a
-    heading with the groups' rung above it but for the list's first; and the unheaded rows a
-    card shows, with at most one gap among them and as many as it has room for, stand as tall
-    as the card is sized for them
+    answer given only while nothing else was goes once something comes; each row stands as
+    Steady's tallOf says, with its own gap above it wherever it stands, and a heading with the
+    groups' rung above it but for the list's first; and the height Steady's tallFor gives the
+    card's list is what the rows it shows stand, every gap and heading among them counted and
+    none below them, within the screen's room and with no heading alone at its foot, a list
+    shorter than the card sized for the room
   '';
   the-launcher-joins-only-what-changed = ''
     joining the launcher's rows again makes ready only the rows of sources whose things or
