@@ -188,6 +188,7 @@ in
 {
   imports = [
     ./agents.nix
+    ./compile-cache.nix
     ./fence.nix
     ./harness-settings.nix
     ./host.nix
