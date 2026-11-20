@@ -770,8 +770,12 @@ mod tests {
             if let Some(kind) = kind {
                 meant["type"] = kind.into();
             }
+            assert!(
+                said.ends_with('\n') && said.matches('\n').count() == 1,
+                "{form} didn't answer on one line: {said:?}"
+            );
             let said: serde_json::Value =
-                serde_json::from_str(&said).expect("the answer wasn't one JSON line");
+                serde_json::from_str(&said).expect("the answer wasn't JSON");
             assert_eq!(said, meant, "{form} didn't answer the ask's id alone");
         }
     }
