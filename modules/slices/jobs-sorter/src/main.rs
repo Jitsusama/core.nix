@@ -253,23 +253,28 @@ struct Sorter {
     /// Groups and processes whose move to jobs failed, each said once
     /// while it runs: a setuid program's, with cores held.
     refused: HashSet<(String, u32)>,
-    /// What's been said of scopes moved back out of jobs.
+    /// What's been said of scopes moved back to where they belong.
     returns: Returns,
 }
 
-/// What's been said of scopes moved back out of jobs, by name, each
-/// forgotten once it's no longer found there.
+/// What's been said of scopes moved back to where they belong, by name,
+/// each forgotten once it's no longer found: a stray to what started it,
+/// and a session out of jobs to a scope of its own.
 #[derive(Debug, Default)]
 struct Returns {
     /// Strays whose move back failed, said once while they stay.
     strays: HashSet<String>,
-    /// Sessions whose move back failed, said once while they stay.
+    /// Sessions whose move into their scope failed, said once while
+    /// they stay.
     sessions: HashSet<String>,
     /// Sessions given a scope through systemd, which fills it after it
     /// answers, so one found in jobs again wasn't filled.
     asked: HashSet<String>,
     /// Those asked for and found in jobs again, said once while they stay.
     stuck: HashSet<String>,
+    /// Sessions systemd gave no scope, with none there to move into, said
+    /// once while they stay.
+    unmade: HashSet<String>,
 }
 
 impl Returns {
@@ -281,7 +286,12 @@ impl Returns {
 
     /// Forgets what was said of sessions no longer found in jobs.
     fn sessions_found(&mut self, names: &HashSet<String>) {
-        for said in [&mut self.sessions, &mut self.asked, &mut self.stuck] {
+        for said in [
+            &mut self.sessions,
+            &mut self.asked,
+            &mut self.stuck,
+            &mut self.unmade,
+        ] {
             said.retain(|name| names.contains(name));
         }
     }
@@ -330,13 +340,18 @@ impl Sorter {
                 let total: u64 = members.iter().map(|proc| used[&proc.pid]).sum();
                 let key = (scope.to_string(), *pgrp);
                 if total * MS_PER_TICK >= busy_after && self.streak(&key, settings) {
-                    let name = leader.map_or("a group", |leader| leader.comm.as_str());
+                    // A name is the program's own to choose, so one that
+                    // holds a newline can't start a journal line of its own.
+                    let name = leader.map_or("a group".to_owned(), |leader| {
+                        leader.comm.escape_debug().to_string()
+                    });
+                    let pids = whole(members, procs);
                     let what = format!(
                         "{name} (process group {pgrp}, {} processes) from {scope}",
-                        members.len()
+                        pids.len()
                     );
                     moves.push(Move {
-                        pids: whole(members, procs),
+                        pids,
                         key,
                         says: format!(
                             "Moved {what} to jobs: {} ms of CPU in {span_ms} ms.",
@@ -362,7 +377,8 @@ impl Sorter {
                 if self.streak(&key, settings) {
                     let what = format!(
                         "{} ({}) and what it started from {scope}",
-                        proc.comm, proc.pid
+                        proc.comm.escape_debug(),
+                        proc.pid
                     );
                     moves.push(Move {
                         pids: descendants(proc.pid, procs),
@@ -1718,8 +1734,8 @@ fn sent_by(pids: &[u32], mut write: impl FnMut(u32) -> io::Result<()>) -> Sent {
     sent
 }
 
-/// Says the first failure in the sorter's life of a move other than a busy
-/// group's, which [`Sorter::said`] says, and how many processes went.
+/// Writes `pids` into `into`, saying the first failure in the sorter's
+/// life of the moves that split a cgroup, which say nothing of what went.
 fn sent_warned(into: &Path, pids: &[u32], warned: &mut bool) {
     let sent = send(into, pids);
     if let Some((pid, error)) = &sent.failed
@@ -2047,15 +2063,16 @@ fn return_sessions(root: &Path, settings: &Settings, returns: &mut Returns) {
                 &name,
                 || {
                     format!(
-                        "Gave {name} ({} processes) its scope back in {slice}, from jobs.",
+                        "Asked systemd to give {name} ({} processes) its scope back in \
+                         {slice}, from jobs.",
                         pids.len()
                     )
                 },
                 || {
                     format!(
-                        "{name} is still in jobs after its scope was given back in {slice}, so \
-                         some of it didn't go; systemd's journal of the scope says why. It's \
-                         tried again each time, and isn't said again while it stays."
+                        "{name} is still in jobs after systemd was asked for its scope in \
+                         {slice}, so some of it didn't go; systemd's journal of the scope says \
+                         why. It's tried again each time, and isn't said again while it stays."
                     )
                 },
             )
@@ -2073,10 +2090,10 @@ fn return_sessions(root: &Path, settings: &Settings, returns: &mut Returns) {
                 },
             )
         } else {
-            returns.sessions.insert(name.clone()).then(|| {
+            returns.unmade.insert(name.clone()).then(|| {
                 format!(
-                    "Couldn't give {name} its scope back from jobs. It stays there, and isn't \
-                     said again while it does."
+                    "Couldn't give {name} its scope back from jobs, as systemd made it none \
+                     and none was there. It stays in jobs, and isn't said again while it does."
                 )
             })
         };
@@ -2698,6 +2715,15 @@ mod tests {
             None,
             "another scope's look forgot it"
         );
+        sorter.forget_unlooked(&HashSet::from([
+            "kitty-1-1.scope".to_owned(),
+            "kitty-2-1.scope".to_owned(),
+        ]));
+        assert_eq!(
+            sorter.said(found, &sent(0, 2)),
+            None,
+            "a scope still looked at lost its refusal"
+        );
         sorter.forget_unlooked(&HashSet::from(["kitty-2-1.scope".to_owned()]));
         assert!(
             sorter.said(found, &sent(0, 2)).is_some(),
@@ -2746,7 +2772,10 @@ mod tests {
         let mut returns = Returns::default();
         let refused = |why: String| why;
         let none = HashSet::new();
-        assert!(returned(&mut returns.strays, "s", &sent(0, 1), |w| w, refused).is_some());
+        assert!(
+            returned(&mut returns.strays, "s", &sent(0, 1), |w| w, refused).is_some(),
+            "a stray's first failure is said"
+        );
         returns.strays_found(&HashSet::from(["s".to_owned()]));
         assert_eq!(
             returned(&mut returns.strays, "s", &sent(0, 1), |w| w, refused),
@@ -2763,11 +2792,70 @@ mod tests {
         };
         ask(&mut returns);
         ask(&mut returns);
+        for set in [&mut returns.sessions, &mut returns.unmade] {
+            set.insert("pi-1.scope".to_owned());
+            set.insert("pi-2.scope".to_owned());
+        }
+        returns.asked.insert("pi-2.scope".to_owned());
+        returns.stuck.insert("pi-2.scope".to_owned());
+        returns.sessions_found(&HashSet::from(["pi-2.scope".to_owned()]));
+        let kept: HashSet<String> = HashSet::from(["pi-2.scope".to_owned()]);
+        for (which, set) in [
+            ("sessions", &returns.sessions),
+            ("asked", &returns.asked),
+            ("stuck", &returns.stuck),
+            ("unmade", &returns.unmade),
+        ] {
+            assert_eq!(set, &kept, "{which} kept the wrong sessions");
+        }
         returns.sessions_found(&none);
         assert_eq!(
             ask(&mut returns).as_deref(),
             Some("given"),
             "a session that left jobs was remembered"
+        );
+    }
+
+    #[test]
+    fn a_move_counts_what_stayed_not_what_it_left() {
+        let mut sorter = Sorter::default();
+        let three = |cpu: u64| {
+            let mut procs = window(cpu, 0);
+            procs.push(proc(32, 30, 30, "as", 0));
+            procs
+        };
+        let moves = looks(&mut sorter, &[three(0), three(90), three(180)]);
+        let found = &moves[2][0];
+        assert!(
+            found.what.contains("3 processes"),
+            "a group names what it takes: {}",
+            found.what
+        );
+        // One went, one failed, and one had ended.
+        let some = sorter.said(found, &sent(1, 1)).unwrap();
+        assert!(
+            some.ends_with(
+                "1 stayed where they were, as moving 31 failed: \
+             Permission denied (os error 13)."
+            ),
+            "{some}"
+        );
+    }
+
+    #[test]
+    fn a_name_with_a_newline_stays_on_its_line() {
+        let mut sorter = Sorter::default();
+        let forged = |cpu: u64| {
+            let mut procs = window(cpu, 0);
+            procs[2].comm = "make\nMoved".into();
+            procs
+        };
+        let moves = looks(&mut sorter, &[forged(0), forged(90), forged(180)]);
+        let found = &moves[2][0];
+        assert!(
+            !found.says.contains('\n') && found.says.starts_with("Moved make\\nMoved ("),
+            "a name broke its line: {:?}",
+            found.says
         );
     }
 
