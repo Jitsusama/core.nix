@@ -423,33 +423,56 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
 /// The earlier commits are looked for among those the rounds read, so a
 /// reviewed commit with no pass of its own still counts. Why not, when not.
 fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    let folder = seen::rounds_folder();
-    let read = seen::witnessed(&folder)?;
-    if read.contains(commit)
-        || !same_change(commit, main, files, &read.into_iter().collect::<Vec<_>>()).is_empty()
-    {
+    let read = seen::witnessed(&seen::rounds_folder())?;
+    read_among(commit, &read, |witnessed| {
+        same_change(commit, main, files, witnessed)
+    })
+}
+
+/// Whether `commit` is among the commits the rounds `read`, or `earlier`,
+/// given those commits, finds one of the same change among them.
+fn read_among(
+    commit: &str,
+    read: &std::collections::HashSet<String>,
+    earlier: impl FnOnce(&[String]) -> Vec<String>,
+) -> Result<(), String> {
+    if read.contains(commit) {
         return Ok(());
     }
-    Err(seen::unread(short(commit)))
+    let mut witnessed: Vec<String> = read.iter().cloned().collect();
+    witnessed.sort();
+    if earlier(&witnessed).is_empty() {
+        Err(seen::unread(short(commit)))
+    } else {
+        Ok(())
+    }
 }
 
 /// The earlier commits of `commit`'s change among `records` touching
 /// `files` whose own change, against their base on main, is the same patch
 /// as `commit`'s.
 fn same_change(commit: &str, main: &str, files: &[String], records: &[String]) -> Vec<String> {
-    let base = git(&["merge-base", main, commit]).unwrap_or_else(|_| main.to_owned());
-    let Some(change) = patch_id(Path::new("."), &base, commit) else {
+    let candidates = candidates(commit, main, files, records).unwrap_or_default();
+    same_patch(Path::new("."), commit, main, candidates)
+}
+
+/// Those of `candidates`, in the repo at `repo`, whose own change against
+/// their base on `main` is the same patch as `commit`'s against its own:
+/// a clean rebase of a reviewed commit, whose range-diff is empty, is one.
+fn same_patch(repo: &Path, commit: &str, main: &str, candidates: Vec<String>) -> Vec<String> {
+    let base_of = |at: &str| git_at(repo, &["merge-base", main, at]).ok();
+    let base = base_of(commit).unwrap_or_else(|| main.to_owned());
+    let Some(change) = patch_id(repo, &base, commit) else {
         return Vec::new();
     };
-    candidates(commit, main, files, records)
-        .unwrap_or_default()
+    candidates
         .into_iter()
         .filter(|candidate| {
             ready::when_same(
                 candidate,
                 &change,
-                |at| git(&["merge-base", at, main]).ok(),
-                |base, at| patch_id(Path::new("."), base, at),
+                base_of,
+                |base, at| patch_id(repo, base, at),
                 |_| Some(()),
             )
             .is_some()
@@ -705,7 +728,14 @@ fn logged(commits: &[String], format: &[&str]) -> Option<String> {
 }
 
 fn git(arguments: &[&str]) -> Result<String, String> {
+    git_at(Path::new("."), arguments)
+}
+
+/// What git says, run in the repo at `repo`.
+fn git_at(repo: &Path, arguments: &[&str]) -> Result<String, String> {
     let ran = Command::new("git")
+        .arg("-C")
+        .arg(repo)
         .args(arguments)
         .output()
         .map_err(|error| format!("running git: {error}"))?;
@@ -748,6 +778,78 @@ mod tests {
         fs::write(repo.join("w"), words).unwrap();
         git_in(repo, &["commit", "-qam", "w"]);
         git_in(repo, &["rev-parse", "HEAD"])
+    }
+
+    // A head a round read passes; one it didn't passes only when an
+    // earlier commit of its change is found among the commits the rounds
+    // read, which are what's searched, not the day's passes, so a reviewed
+    // commit that never passed alone still speaks for its clean rebase.
+    #[test]
+    fn a_head_is_read_when_a_round_read_it_or_its_change_before_a_rebase() {
+        let read = std::collections::HashSet::from(["aaa".to_owned(), "bbb".to_owned()]);
+        let never = |_: &[String]| -> Vec<String> { panic!("searched for a head a round read") };
+        assert_eq!(read_among("aaa", &read, never), Ok(()));
+        let mut searched = Vec::new();
+        let found = read_among("ccc", &read, |witnessed| {
+            searched = witnessed.to_vec();
+            vec!["bbb".to_owned()]
+        });
+        assert_eq!(found, Ok(()), "a clean rebase of a read commit was refused");
+        assert_eq!(
+            searched,
+            ["aaa", "bbb"],
+            "the search wasn't over what the rounds read"
+        );
+        let refused = read_among("ccc", &read, |_| Vec::new()).unwrap_err();
+        assert!(
+            refused.contains("no review round of ours read"),
+            "{refused}"
+        );
+    }
+
+    // A reviewed commit rebased cleanly onto a main that moved elsewhere
+    // is the same patch, so the review carries across with no new round;
+    // one rebased with a line of its own added is not, and is refused.
+    #[test]
+    fn a_clean_rebase_of_a_read_commit_is_read_and_a_changed_one_is_not() {
+        let repo = env::temp_dir().join(format!("merge-net-rebase-{}", std::process::id()));
+        fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("w"), "a\nb\nc\n").unwrap();
+        fs::write(repo.join("v"), "x\n").unwrap();
+        git_in(&repo, &["add", "w", "v"]);
+        git_in(&repo, &["commit", "-qm", "base"]);
+        let base = git_in(&repo, &["rev-parse", "HEAD"]);
+        let reviewed = commit(&repo, "a\nB\nc\n");
+        git_in(&repo, &["checkout", "-q", &base]);
+        fs::write(repo.join("v"), "y\n").unwrap();
+        git_in(&repo, &["commit", "-qam", "elsewhere"]);
+        let main = git_in(&repo, &["rev-parse", "HEAD"]);
+        git_in(&repo, &["cherry-pick", &reviewed]);
+        let rebased = git_in(&repo, &["rev-parse", "HEAD"]);
+        git_in(&repo, &["checkout", "-q", &main]);
+        let changed = commit(&repo, "a\nB\nc\nd\n");
+        let range = format!("{base}..{reviewed}");
+        let range_diff = git_in(
+            &repo,
+            &["range-diff", "-s", &range, &format!("{main}..{rebased}")],
+        );
+        assert!(
+            range_diff.contains(" = "),
+            "the rebase wasn't clean: {range_diff}"
+        );
+        let read = std::collections::HashSet::from([reviewed.clone()]);
+        let search = |head: &str| {
+            read_among(head, &read, |witnessed| {
+                same_patch(&repo, head, &main, witnessed.to_vec())
+            })
+        };
+        assert_eq!(search(&rebased), Ok(()), "a clean rebase lost its review");
+        assert!(
+            search(&changed).is_err(),
+            "a changed rebase kept its review"
+        );
+        fs::remove_dir_all(&repo).unwrap();
     }
 
     #[test]
