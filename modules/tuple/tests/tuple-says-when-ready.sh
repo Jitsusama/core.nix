@@ -17,19 +17,37 @@
 #
 # Given the ExecStartPost's program, the systemctl and log it names, what
 # modules/health takes for a ready line (launches.rs's READY_FOLLOWED), and
-# the unit's SyslogIdentifier, SyslogLevel, LogLevelMax and StandardOutput,
-# each empty when unset.
+# the unit's SyslogIdentifier, SyslogLevel, LogLevelMax, LogFilterPatterns
+# and StandardOutput, each as Name=value, empty when unset, so a swapped
+# argument fails. It refuses settings health couldn't read the unit by,
+# having first judged a table of its own, since the unit's real settings
+# reach few of the refusals.
 set -euo pipefail
 
 post=$1
 systemctl=$2
 log=$3
 ready=$4
-named=$5
-level=$6
-ceiling=$7
-output=$8
 here=$PWD
+
+# Sets `value` to the setting named `$2`, given as `$1`.
+setting() {
+  if [[ $1 != "$2="* ]]; then
+    echo "given '$1' where $2 belongs"
+    exit 1
+  fi
+  value=${1#"$2="}
+}
+setting "$5" SyslogIdentifier
+named=${value}
+setting "$6" SyslogLevel
+level=${value}
+setting "$7" LogLevelMax
+ceiling=${value}
+setting "$8" LogFilterPatterns
+filters=${value}
+setting "$9" StandardOutput
+output=${value}
 
 # Sets `n` to the syslog priority a level names, by name or by number as
 # systemd takes it, or -1 for none.
@@ -48,33 +66,84 @@ priority() {
   esac
 }
 
-# Health files a ready time under the name its line goes out with, which must
-# be Tuple's, not the script's, which changes with each build; and it reads
-# ready lines only from notice to information priority (health/src/journal.rs),
-# so the unit's lines must go out there, under any ceiling it sets, to the
-# journal. Unset, a level is info, no ceiling holds, and output is journalled.
-if [[ ${named} != tuple ]]; then
-  echo "tuple.service names its lines '${named}', not tuple"
+# Sets `refused` to why health couldn't read the unit by its name, level,
+# ceiling, filters and output, or to nothing. Health files a ready time under
+# the name its line goes out with, which must be Tuple's, not the script's,
+# which changes with each build; it reads ready lines only from notice to
+# information priority (health/src/journal.rs), from the journal; and it times
+# a start from systemd's Stopping and Started lines, at info, which a user
+# unit's LogLevelMax keeps out of the journal when it sits below info (a user
+# unit under a notice ceiling lost its Started line on systemd 262,
+# 2026-11-20). An info floor keeps the ready line too, whichever manager
+# applies the ceiling. LogFilterPatterns works only for system services, as
+# systemd.exec(5) says, but any is refused, as nothing sets one and a systemd
+# that honoured it could drop the ready line. Unset, a level is info, no
+# ceiling holds and output is journalled.
+judged() {
+  local name=$1 at=$2 most=$3 filter=$4 out=$5
+  refused=
+  priority "${at:-info}"
+  local said_at=${n}
+  priority "${most:-debug}"
+  if [[ -z ${name} ]]; then
+    refused="tuple.service sets no SyslogIdentifier, so its lines go out under the script's name"
+  elif [[ ${name} != tuple ]]; then
+    refused="tuple.service names its lines '${name}', not tuple"
+  elif ((said_at < 5 || said_at > 6)); then
+    refused="tuple.service logs at ${at}, where health doesn't read"
+  elif ((n < 0)); then
+    refused="tuple.service sets LogLevelMax to '${most}', which isn't a level"
+  elif ((n < 6)); then
+    refused="tuple.service keeps nothing past ${most}, so not systemd's Started line"
+  elif [[ -n ${filter} ]]; then
+    refused="tuple.service filters its lines by '${filter}', which may drop the ready line"
+  elif [[ ${out} != "" && ${out} != journal && ${out} != journal+console ]]; then
+    refused="tuple.service sends its output to ${out}, not the journal"
+  fi
+}
+
+# Each row: taken, or words its refusal must hold, so each is refused for its
+# own reason; then a name, level, ceiling, filters and output. A row naming
+# neither, or blank, fails.
+while IFS='|' read -r want name at most filter out; do
+  judged "${name}" "${at}" "${most}" "${filter}" "${out}"
+  if [[ ${want} == taken ]]; then
+    wrong=${refused}
+  elif [[ -z ${want} || ${refused} != *"${want}"* ]]; then
+    wrong="wanted '${want}' but got '${refused:-taken}'"
+  else
+    wrong=
+  fi
+  if [[ -n ${wrong} ]]; then
+    echo "judged ${name}|${at}|${most}|${filter}|${out} wrongly: ${wrong}"
+    exit 1
+  fi
+done <<'SETTINGS'
+sets no SyslogIdentifier|||||
+names its lines|tuple-says-ready||||
+logs at debug|tuple|debug|||
+logs at warning|tuple|warning|||
+logs at 7|tuple|7|||
+logs at loud|tuple|loud|||
+keeps nothing past notice|tuple|notice|notice||
+keeps nothing past warning|tuple||warning||
+keeps nothing past 5|tuple||5||
+isn't a level|tuple||quiet||
+filters its lines|tuple|||~ready|
+sends its output to null|tuple||||null
+sends its output to file|tuple||||file:/tmp/x
+taken|tuple||||
+taken|tuple|6|||journal
+taken|tuple|notice|||journal+console
+taken|tuple||info||
+taken|tuple|notice|7||
+SETTINGS
+
+judged "${named}" "${level}" "${ceiling}" "${filters}" "${output}"
+if [[ -n ${refused} ]]; then
+  echo "${refused}"
   exit 1
 fi
-priority "${level:-info}"
-said_at=${n}
-if ((said_at < 5 || said_at > 6)); then
-  echo "tuple.service logs at ${level}, where health doesn't read"
-  exit 1
-fi
-priority "${ceiling:-debug}"
-if ((said_at > n)); then
-  echo "tuple.service keeps nothing past ${ceiling}, so not its ready line"
-  exit 1
-fi
-case ${output} in
-"" | journal | journal+console) ;;
-*)
-  echo "tuple.service sends its output to ${output}, not the journal"
-  exit 1
-  ;;
-esac
 
 # journalctl matches health's pattern as PCRE2, as grep -P does, and whatever
 # its case only while it holds no capital letter.

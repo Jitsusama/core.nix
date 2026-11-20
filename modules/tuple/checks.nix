@@ -109,8 +109,9 @@ onLinux {
   # Tuple says only that it started, so the service says when it can take
   # a call, after systemd's own line, where health takes it: its own
   # ExecStartPost, run against a stand-in systemctl and a log of its own
-  # (tests/tuple-says-when-ready.sh), given too the name, level, ceiling and
-  # output the unit's lines go out with, which health reads by. The pattern
+  # (tests/tuple-says-when-ready.sh), given too the name, level, filters and
+  # output the unit's lines go out with, and the ceiling systemd's own lines
+  # about it are kept under, which health reads by. The pattern
   # journalctl picks health's ready lines with is read from health's own
   # source, so the two can't drift apart; the words health's parser times
   # after it, `X: ready in N ms`, are pinned by health's own tests, as the
@@ -120,7 +121,7 @@ onLinux {
       home = account graphical;
       service = home.systemd.user.services.tuple.Service;
       post = service.ExecStartPost;
-      setting = name: toString (service.${name} or "");
+      setting = name: "${name}=${toString (service.${name} or "")}";
       declared = ''^pub const READY_FOLLOWED: &str = r"(.*)";$'';
       lines = lib.splitString "\n" (builtins.readFile ../health/src/launches.rs);
       lost = "tuple-says-when-ready reads READY_FOLLOWED off one line of launches.rs, a raw string";
@@ -137,6 +138,7 @@ onLinux {
           (setting "SyslogIdentifier")
           (setting "SyslogLevel")
           (setting "LogLevelMax")
+          (setting "LogFilterPatterns")
           (setting "StandardOutput")
         ]
       }
