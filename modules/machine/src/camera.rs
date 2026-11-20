@@ -59,6 +59,17 @@ pub fn cameras(root: &Root, pipewire: &PipeWire) -> Vec<Value> {
                 .graph
                 .as_deref()
                 .and_then(|graph| readers(graph, device.as_deref().map(str::trim), &name, root));
+            // A listing that shows no such camera, as one whose format has
+            // moved on or whose camera is offered under another path,
+            // reads as `PipeWire` alone, so it's said once why.
+            if through.is_some() {
+                state.unfound.remove(&name);
+            } else if state.graph.is_some() && state.unfound.insert(name.clone()) {
+                eprintln!(
+                    "<4>PipeWire holds {name}, but its registry shows no such camera, so it's \
+                     said held by PipeWire"
+                );
+            }
             (name, named_through(programs, through))
         })
         .collect::<Vec<_>>();
@@ -134,7 +145,7 @@ mod tests {
     use std::fs;
 
     use super::pipewire::LIST_WAIT;
-    use super::pipewire::tests::{listing, machine, named, processes, pw_cli};
+    use super::pipewire::tests::{listed_whole, listing, machine, named, processes, pw_cli};
     use super::*;
 
     fn write(root: &Root, name: &str, text: &str) {
@@ -218,22 +229,49 @@ mod tests {
             ),
         );
         let pipewire = PipeWire::new(&root, Some(cli));
-        pipewire.refresh();
+        listed_whole(&pipewire);
         assert_eq!(
             cameras(&root, &pipewire)[0]["programs"],
             json!(["chrome", "tuple", "obs"]),
             "by the node its device file says, a line and all"
         );
         assert!(pipewire.due().is_some(), "read again while it holds one");
+        let ran = fs::read_to_string(&runs).unwrap();
         write(&root, "camera", "obs\n");
         pipewire.refresh();
         assert_eq!(cameras(&root, &pipewire)[0]["programs"], json!(["obs"]));
         assert_eq!(pipewire.due(), None, "not read again once it lets go");
         assert_eq!(
             fs::read_to_string(&runs).unwrap(),
-            "\n",
+            ran,
             "pw-cli is run only while PipeWire holds a camera"
         );
+    }
+
+    #[test]
+    fn a_camera_its_registry_shows_nothing_of_is_said_once_until_it_does() {
+        let root = machine("unfound");
+        processes(&root);
+        write(&root, "camera", "pipewire\n");
+        let listed = root.path("/listed");
+        fs::write(&listed, listing("Built-in Camera", "/dev/video40", 0)).unwrap();
+        let _alone = crate::acts::tests::alone();
+        let cli = pw_cli(&root, &format!("cat '{}'", listed.display()));
+        let pipewire = PipeWire::new(&root, Some(cli));
+        listed_whole(&pipewire);
+        assert_eq!(
+            cameras(&root, &pipewire)[0]["programs"],
+            json!(["pipewire"])
+        );
+        assert!(pipewire.state().unfound.contains("camera"), "said");
+        fs::write(&listed, listing("camera", "/dev/video40", 0)).unwrap();
+        listed_whole(&pipewire);
+        assert_eq!(
+            cameras(&root, &pipewire)[0]["programs"],
+            json!(["chrome", "tuple"]),
+            "found by its name once it's shown"
+        );
+        assert!(pipewire.state().unfound.is_empty(), "to be said again");
     }
 
     #[test]

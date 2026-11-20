@@ -79,6 +79,13 @@ impl Watch {
         fs::create_dir_all(&folder).unwrap();
         // What a run killed mid-write would have left.
         fs::write(folder.join("MX Brio 705 for Business.99"), "").unwrap();
+        // What a killed run of a camera since unplugged left, saying the
+        // node this one is now, and another camera's, saying its own.
+        let devices = folder.join(".devices");
+        fs::create_dir_all(&devices).unwrap();
+        let real = fs::canonicalize(&node).unwrap();
+        fs::write(devices.join("Unplugged"), format!("{}\n", real.display())).unwrap();
+        fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -179,6 +186,17 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     assert_eq!(fs::read_to_string(&watch.file).unwrap(), "");
     let left = watch.file.with_file_name("MX Brio 705 for Business.99");
     assert!(!left.exists(), "a killed run's file was left");
+    let device = watch.device();
+    let devices = device.parent().unwrap();
+    assert!(
+        !devices.join("Unplugged").exists(),
+        "a killed run's file saying this camera's node was left"
+    );
+    assert_eq!(
+        fs::read_to_string(devices.join("Another")).unwrap(),
+        "/dev/video9\n",
+        "another camera's node file was touched"
+    );
 }
 
 #[test]

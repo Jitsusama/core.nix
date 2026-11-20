@@ -168,7 +168,9 @@ fn device_file(output: &Path) -> Option<PathBuf> {
 
 /// Says which node the output's camera is, as its real path, or with none,
 /// removes what said it, so a reader never finds the camera by a node it
-/// no longer is.
+/// no longer is. Saying it removes any other camera's file saying the same
+/// node, as a run killed before it could remove its own leaves one, and
+/// the node is this camera's now: one unit watches each node.
 fn say_device(output: &Path, node: Option<&Path>) {
     let Some(file) = device_file(output) else {
         return;
@@ -177,9 +179,13 @@ fn say_device(output: &Path, node: Option<&Path>) {
         Some(node) => {
             let node = fs::canonicalize(node).unwrap_or_else(|_| node.to_owned());
             let folder = file.parent().unwrap_or_else(|| Path::new(""));
+            let said = format!("{}\n", node.display());
             fs::create_dir_all(folder)
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
-                .and_then(|()| replace(&file, &format!("{}\n", node.display())))
+                .and_then(|()| {
+                    forget_node(folder, &file, &said);
+                    replace(&file, &said)
+                })
         }
         None => match fs::remove_file(&file) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
@@ -188,6 +194,31 @@ fn say_device(output: &Path, node: Option<&Path>) {
     };
     if let Err(error) = said {
         complain(format_args!("{}: {error}", file.display()));
+    }
+}
+
+/// Removes each file in the folder but this one that says this node; one
+/// being written, its name ending in a dot and a pid, is left to its
+/// writer.
+fn forget_node(folder: &Path, own: &Path, said: &str) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let being_written = path
+            .extension()
+            .and_then(|end| end.to_str())
+            .is_some_and(|end| !end.is_empty() && end.bytes().all(|byte| byte.is_ascii_digit()));
+        if path == own || being_written || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        if fs::read_to_string(&path).is_ok_and(|text| text == said)
+            && let Err(error) = fs::remove_file(&path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            complain(format_args!("{}: {error}", path.display()));
+        }
     }
 }
 

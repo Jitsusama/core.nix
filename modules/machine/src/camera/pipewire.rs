@@ -21,7 +21,7 @@
 //! other holders, so the name says which program it says it is, and one
 //! that gives none counts as a reader that can't be named.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -60,6 +60,11 @@ const THROUGH_EVERY: Duration = Duration::from_secs(2);
 /// and back: three reads' worth.
 const KEPT_FOR: Duration = Duration::from_secs(6);
 
+/// The most of a listing read, far past any machine's, which is tens of
+/// kilobytes: a client stuffing its properties gets a failed listing, not
+/// a walk that holds every read up.
+const LONGEST: u64 = 4 << 20;
+
 /// One object in `PipeWire`'s registry, as `pw-cli ls` lists it: its id,
 /// its kind (`Node`, `Link`, `Client`, `Device`) and its properties.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -83,31 +88,34 @@ impl Global {
 /// pw-cli prints a value as it stands, so a client that puts a line break
 /// in a property of its own can write lines that read as more. The
 /// server's own properties, its `pipewire.sec.pid` among them, are listed
-/// before any a client sets, so the first a key is said is the one kept,
-/// and an id said again is passed over, its lines with it: a client can
-/// shadow no property or object listed before its own lines.
-pub fn registry(text: &str) -> Vec<Global> {
+/// before any a client sets, so the first a key is said is the one kept.
+/// pw-cli lists the objects by their ids, rising, so one said under an id
+/// no higher than the last was written into a property, to stand for an
+/// object listed before it or after: the listing is refused, rather than
+/// read with a reader shadowed or renamed. What's left to a client is an
+/// object of its own making under an id nothing has, to name whoever it
+/// likes as reading, much as a process can call itself anything.
+pub fn registry(text: &str) -> Result<Vec<Global>, String> {
     let mut globals: Vec<Global> = Vec::new();
-    let mut ids = HashSet::new();
-    let mut taking = false;
     for line in text.lines().map(str::trim) {
         if let Some((id, kind)) = line
             .strip_prefix("id ")
             .and_then(|rest| rest.split_once(", type "))
             && let Ok(id) = id.parse()
         {
-            taking = ids.insert(id);
-            if taking {
-                let kind = kind.strip_prefix("PipeWire:Interface:").unwrap_or(kind);
-                let kind = kind.split_once('/').map_or(kind, |(kind, _)| kind);
-                globals.push(Global {
-                    id,
-                    kind: kind.to_owned(),
-                    props: BTreeMap::new(),
-                });
+            if let Some(last) = globals.last()
+                && id <= last.id
+            {
+                return Err(format!("id {id} was listed after id {}", last.id));
             }
-        } else if taking
-            && let Some(global) = globals.last_mut()
+            let kind = kind.strip_prefix("PipeWire:Interface:").unwrap_or(kind);
+            let kind = kind.split_once('/').map_or(kind, |(kind, _)| kind);
+            globals.push(Global {
+                id,
+                kind: kind.to_owned(),
+                props: BTreeMap::new(),
+            });
+        } else if let Some(global) = globals.last_mut()
             && let Some((key, value)) = line.split_once(" = ")
         {
             let value = value
@@ -120,7 +128,7 @@ pub fn registry(text: &str) -> Vec<Global> {
                 .or_insert_with(|| value.to_owned());
         }
     }
-    globals
+    Ok(globals)
 }
 
 /// Where `PipeWire`'s registry comes from, the last listing of it, and
@@ -143,8 +151,12 @@ pub(super) struct State {
     pub(super) held_at: Option<Instant>,
     /// When the registry was last listed whole.
     listed_at: Option<Instant>,
-    /// Why the last listing failed, said once until one succeeds.
+    /// Why the last listing failed, said once until one succeeds or
+    /// `PipeWire` lets go.
     failing: Option<String>,
+    /// The cameras `PipeWire` holds that the last listing showed nothing
+    /// of, said once until it shows them.
+    pub(super) unfound: HashSet<String>,
 }
 
 impl PipeWire {
@@ -188,13 +200,15 @@ impl PipeWire {
             let mut state = self.state();
             state.graph = None;
             state.listed_at = None;
+            state.failing = None;
+            state.unfound.clear();
             return;
         }
-        let listed = self.listed();
+        let listed = self.listed().and_then(|text| registry(&text));
         let mut state = self.state();
         match listed {
-            Ok(text) => {
-                state.graph = Some(registry(&text));
+            Ok(graph) => {
+                state.graph = Some(graph);
                 state.listed_at = Some(Instant::now());
                 state.failing = None;
             }
@@ -202,7 +216,7 @@ impl PipeWire {
                 if state.failing.as_deref() != Some(why.as_str()) {
                     eprintln!(
                         "<4>PipeWire's registry couldn't be listed, so a camera it holds is \
-                         said held by it: {why}"
+                         said held by it once the last listing is {KEPT_FOR:?} old: {why}"
                     );
                 }
                 state.failing = Some(why);
@@ -235,13 +249,30 @@ impl PipeWire {
         // read as the replacement character rather than losing the rest.
         std::thread::spawn(move || {
             let mut bytes = Vec::new();
-            let _ = stdout.read_to_end(&mut bytes);
-            let _ = said.send(String::from_utf8_lossy(&bytes).into_owned());
+            let read = stdout
+                .by_ref()
+                .take(LONGEST)
+                .read_to_end(&mut bytes)
+                .and_then(|_| stdout.read(&mut [0]))
+                .map_err(|error| format!("pw-cli's listing: {error}"))
+                .and_then(|more| match more {
+                    0 => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                    _ => Err(format!("pw-cli listed more than {LONGEST} bytes")),
+                });
+            let _ = said.send(read);
         });
-        let Ok(text) = heard.recv_timeout(LIST_WAIT) else {
+        let Ok(read) = heard.recv_timeout(LIST_WAIT) else {
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!("pw-cli didn't answer within {LIST_WAIT:?}"));
+        };
+        let text = match read {
+            Ok(text) => text,
+            Err(why) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(why);
+            }
         };
         let ended = child.wait().map_err(|error| format!("pw-cli: {error}"))?;
         if !ended.success() {
@@ -300,12 +331,19 @@ pub fn readers(
     if devices.is_empty() {
         return None;
     }
+    let by_id = |kind: &'static str| -> HashMap<u64, &Global> {
+        typed(kind).map(|global| (global.id, global)).collect()
+    };
+    let (nodes, clients) = (by_id("Node"), by_id("Client"));
+    let mut links: HashMap<u64, Vec<&Global>> = HashMap::new();
+    for link in typed("Link") {
+        if let Some(output) = link.number("link.output.node") {
+            links.entry(output).or_default().push(link);
+        }
+    }
     let process = |node: u64| {
-        let client = typed("Node")
-            .find(|global| global.id == node)?
-            .number("client.id")?;
-        let client = typed("Client").find(|global| global.id == client)?;
-        let pid = client.number("pipewire.sec.pid")?;
+        let client = nodes.get(&node)?.number("client.id")?;
+        let pid = clients.get(&client)?.number("pipewire.sec.pid")?;
         let name = program(root.read(&format!("/proc/{pid}/comm"))?.trim());
         // The camera portal connects for the program it lets in, so the
         // socket's pid is the portal's, not the program's.
@@ -319,24 +357,19 @@ pub fn readers(
         })
         .map(|global| global.id)
         .collect();
-    let mut seen = frontier.clone();
+    let mut seen: HashSet<u64> = frontier.iter().copied().collect();
     let mut named = Vec::new();
     let mut unknown = false;
     while let Some(node) = frontier.pop() {
-        let mut onward = false;
-        for link in typed("Link") {
-            if link.number("link.output.node") != Some(node) {
-                continue;
-            }
-            onward = true;
+        let onward = links.get(&node).map_or(&[][..], Vec::as_slice);
+        for link in onward {
             let Some(input) = link.number("link.input.node") else {
                 unknown = true;
                 continue;
             };
-            if seen.contains(&input) {
+            if !seen.insert(input) {
                 continue;
             }
-            seen.push(input);
             match process(input) {
                 Some(name) if PIPEWIRE.contains(&name.as_str()) => frontier.push(input),
                 Some(name) => once(&mut named, &name),
@@ -345,11 +378,11 @@ pub fn readers(
         }
         // A node of `PipeWire`'s own that passes the camera to nobody is
         // read by something no link names.
-        let device_node = typed("Node")
-            .find(|global| global.id == node)
+        let device_node = nodes
+            .get(&node)
             .and_then(|global| global.number("device.id"))
             .is_some_and(|id| devices.contains(&id));
-        unknown |= !onward && !device_node;
+        unknown |= onward.is_empty() && !device_node;
     }
     named.sort();
     if named.is_empty() || unknown {
@@ -463,7 +496,19 @@ pub(crate) mod tests {
 
     fn graph(root: &Root, card: &str, path: &str) -> Vec<Global> {
         processes(root);
-        registry(&listing(card, path, 0))
+        registry(&listing(card, path, 0)).expect("the listing rises by id")
+    }
+
+    /// Lists the registry until a listing comes whole, as one forking a
+    /// shell on a starved builder may miss `LIST_WAIT` a time or two.
+    pub(crate) fn listed_whole(pipewire: &PipeWire) {
+        for _ in 0..5 {
+            pipewire.refresh();
+            if pipewire.state().listed_at.is_some() {
+                return;
+            }
+        }
+        panic!("no listing came whole in five tries");
     }
 
     /// Who a camera's read by, as `readers` says when it knows.
@@ -490,19 +535,34 @@ pub(crate) mod tests {
 
     #[test]
     fn a_listing_as_pw_cli_gives_one_is_read_as_its_objects() {
-        // A client, a link and the loopback camera, as this machine's
-        // pw-cli listed them.
-        let globals = registry(include_str!("listed.txt"));
+        // A client, a link, the two nodes it joins, a stream's and a
+        // device's, and the loopback camera, as this machine's pw-cli
+        // listed them.
+        let globals = registry(include_str!("listed.txt")).expect("it rises by id");
         let kinds: Vec<(u64, &str)> = globals
             .iter()
             .map(|global| (global.id, global.kind.as_str()))
             .collect();
-        assert_eq!(kinds, [(33, "Client"), (34, "Link"), (124, "Device")]);
+        assert_eq!(
+            kinds,
+            [
+                (33, "Client"),
+                (34, "Link"),
+                (46, "Node"),
+                (124, "Device"),
+                (223, "Node")
+            ]
+        );
         assert_eq!(globals[0].number("pipewire.sec.pid"), Some(2180));
         assert_eq!(globals[1].number("link.output.node"), Some(46));
         assert_eq!(globals[1].number("link.input.node"), Some(223));
-        assert_eq!(globals[2].props["object.path"], "v4l2:/dev/video32");
-        assert_eq!(globals[2].props["device.description"], "Built-in Camera");
+        // The two keys a reader is found by: a node's device, and its client.
+        assert_eq!(globals[2].number("device.id"), None);
+        assert_eq!(globals[2].number("client.id"), Some(36));
+        assert_eq!(globals[4].number("device.id"), Some(160));
+        assert_eq!(globals[4].number("client.id"), Some(33));
+        assert_eq!(globals[3].props["object.path"], "v4l2:/dev/video32");
+        assert_eq!(globals[3].props["device.description"], "Built-in Camera");
     }
 
     #[test]
@@ -511,7 +571,7 @@ pub(crate) mod tests {
                     \t\tapplication.name = \"Wire = Plumber\"\n\tid 34, type \
                     PipeWire:Interface:Link/3\n \t\tlink.output.node = \"46\"\nremote 0 \
                     is named 'pipewire-0'\n";
-        let globals = registry(text);
+        let globals = registry(text).expect("it rises by id");
         assert_eq!(globals.len(), 2);
         assert_eq!((globals[0].id, globals[0].kind.as_str()), (33, "Client"));
         assert_eq!(globals[0].props["application.name"], "Wire = Plumber");
@@ -524,20 +584,27 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_client_writing_lines_into_its_own_property_shadows_nothing_before_them() {
-        // Its name carries a break, a pid of its choosing, and a Link
-        // under an id already listed.
-        let text = "\tid 33, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"7\"\n \
-                    \t\tapplication.name = \"x\n \t\tpipewire.sec.pid = \"102\"\n\tid 33, type \
-                    PipeWire:Interface:Link/3\n \t\tlink.input.node = \"9\"\n";
-        let globals = registry(text);
-        assert_eq!(globals.len(), 1, "an id said again is passed over");
-        assert_eq!(globals[0].kind, "Client");
-        assert_eq!(globals[0].number("pipewire.sec.pid"), Some(7));
-        assert!(
-            !globals[0].props.contains_key("link.input.node"),
-            "the Link said again under its id lent the Client none of its lines"
+    fn a_client_writing_lines_into_its_own_property_shadows_nothing() {
+        // Its name carries a break and a pid of its choosing.
+        let client = "\tid 33, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"7\"\n \
+                      \t\tapplication.name = \"x\n \t\tpipewire.sec.pid = \"102\"\n";
+        let globals = registry(client).expect("it rises by id");
+        assert_eq!(
+            globals[0].number("pipewire.sec.pid"),
+            Some(7),
+            "the server's pid, said first"
         );
+        // Then an object under an id said before it, or one said after it.
+        let link = |id: u64| {
+            format!("\tid {id}, type PipeWire:Interface:Link/3\n \t\tlink.input.node = \"9\"\n")
+        };
+        let after = format!("{}\tid 34, type PipeWire:Interface:Node/3\n", link(40));
+        for (what, written) in [("its own", link(33)), ("one after", after)] {
+            assert!(
+                registry(&format!("{client}{written}")).is_err(),
+                "a Link written under {what} id is no listing to read"
+            );
+        }
     }
 
     #[test]
@@ -556,12 +623,15 @@ pub(crate) mod tests {
     fn a_reader_the_portal_let_in_or_with_no_name_leaves_pipewire_named() {
         let root = machine("portal");
         let mut graph = graph(&root, "Built-in Camera", "/dev/video32");
-        graph.extend(registry(
-            "\tid 60, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"105\"\n\tid \
-             61, type PipeWire:Interface:Node/3\n \t\tclient.id = \"60\"\n\tid 62, type \
-             PipeWire:Interface:Link/3\n \t\tlink.output.node = \"11\"\n \t\tlink.input.node = \
-             \"61\"\n",
-        ));
+        graph.extend(
+            registry(
+                "\tid 60, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"105\"\n\tid \
+                 61, type PipeWire:Interface:Node/3\n \t\tclient.id = \"60\"\n\tid 62, type \
+                 PipeWire:Interface:Link/3\n \t\tlink.output.node = \"11\"\n \t\tlink.input.node \
+                 = \"61\"\n",
+            )
+            .expect("it rises by id"),
+        );
         fs::create_dir_all(root.path("/proc/105")).unwrap();
         for comm in ["xdg-desktop-por", ".xdg-desktop-po", "", " "] {
             fs::write(root.path("/proc/105/comm"), format!("{comm}\n")).unwrap();
@@ -593,17 +663,24 @@ pub(crate) mod tests {
             ),
         );
         let pipewire = PipeWire::new(&root, Some(cli));
-        pipewire.refresh();
-        assert!(pipewire.state().graph.is_some(), "listed");
+        let programs = || super::super::cameras(&root, &pipewire)[0]["programs"].clone();
+        listed_whole(&pipewire);
+        let readers = serde_json::json!(["chrome", "tuple"]);
+        assert_eq!(programs(), readers, "listed");
         fs::write(&failing, "").unwrap();
         pipewire.refresh();
-        assert!(
-            pipewire.state().graph.is_some(),
-            "kept through one that fails"
+        assert_eq!(programs(), readers, "kept through one that fails");
+        pipewire.state().listed_at = Some(
+            Instant::now()
+                .checked_sub(KEPT_FOR)
+                .expect("the machine has been up longer than a listing is kept"),
         );
-        pipewire.state().listed_at = Instant::now().checked_sub(KEPT_FOR);
         pipewire.refresh();
-        assert!(pipewire.state().graph.is_none(), "not kept once it's old");
+        assert_eq!(
+            programs(),
+            serde_json::json!(["pipewire"]),
+            "not kept once it's old"
+        );
     }
 
     #[test]
@@ -626,7 +703,7 @@ pub(crate) mod tests {
             .split_inclusive("\tid ")
             .filter(|object| !object.starts_with("132,"))
             .collect();
-        twins.extend(registry(&twin));
+        twins.extend(registry(&twin).expect("it rises by id"));
         assert_eq!(readers_of(&twins, None), None, "two cameras of one name");
         assert_eq!(
             readers_of(&twins, Some("/dev/video42")),
@@ -667,7 +744,26 @@ pub(crate) mod tests {
         assert_eq!(
             without(&|global| global.id == 4),
             named(&["tuple", "pipewire"]),
-            "a client with no process said"
+            "a client not listed"
+        );
+        let lacking = |id: u64, key: &str| {
+            let mut graph = graph.clone();
+            for global in &mut graph {
+                if global.id == id {
+                    global.props.remove(key);
+                }
+            }
+            readers(&graph, Some("/dev/video32"), "camera", &root)
+        };
+        assert_eq!(
+            lacking(4, "pipewire.sec.pid"),
+            named(&["tuple", "pipewire"]),
+            "a client with no process said, though it names itself"
+        );
+        assert_eq!(
+            lacking(32, "link.input.node"),
+            named(&["tuple", "pipewire"]),
+            "a link to nowhere said"
         );
         assert_eq!(
             without(&|global| global.id == 31),
