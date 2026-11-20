@@ -1027,16 +1027,17 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         typing = (
             "i=0; while [ ! -e ~/typing-done ]; do"
             ' wtype "$(seq -f "w%.0f " $((i+1)) $((i+10)) | tr -d "\\n")"; i=$((i+10));'
-            " echo $i > ~/typing-count; done; wtype -k Return"
+            " echo $i > ~/typing-count.new; mv ~/typing-count.new ~/typing-count; done;"
+            " wtype -k Return"
         )
-        # The count starts at none typed, written before the typing starts:
-        # it was written only once the first ten words were, and the session
-        # handed over showed in about 3 s, before a loaded builder's first
-        # wtype ended, so reading the count failed first in each of the seven
-        # failed runs from 17 to 19 Nov, and in five the subtests after it
-        # failed too.
-        desktop.as_account(
-            f"echo 0 > ~/typing-count; setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &"
+        desktop.as_account(f"setsid sh -c {shlex.quote(typing)} > /dev/null 2>&1 &")
+        # Typing has begun before the session is handed over, so the count is
+        # there to read: a loaded builder's first ten words can take longer
+        # than the session takes to show, and the count was read before it was
+        # written. It's written whole, by a rename, so no read finds it empty,
+        # as in desktop-moves-keep-their-window-vm-test.py.
+        machine.wait_until_succeeds(
+            desktop.in_session("[ -s ~/typing-count ]"), timeout=dt.timedelta(seconds=60)
         )
         record_the_screen(desktop)
         # As a quest's spawn hands it over: the one that asked, no focus asked for.
@@ -1051,12 +1052,17 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
             timeout=dt.timedelta(seconds=300),
         )
         # Typed on past the window showing and the shell placing it.
-        since = int(desktop.as_account("cat ~/typing-count").strip() or "0")
+        since = int(desktop.as_account("cat ~/typing-count").strip())
         machine.wait_until_succeeds(
             desktop.in_session(f"[ $(cat ~/typing-count) -ge {since + 20} ]"),
             timeout=dt.timedelta(seconds=120),
         )
         desktop.as_account("touch ~/typing-done")
+        # The typer looks for typing-done only between its runs of ten words,
+        # so what it typed is read once it has ended, never mid-word.
+        machine.wait_until_fails(
+            desktop.in_session("pgrep -f 'typing-don[e]'"), timeout=dt.timedelta(seconds=60)
+        )
         changed = frames_changed(desktop, box)
         machine.wait_until_succeeds(
             desktop.in_session("[ -s ~/typed ]"), timeout=dt.timedelta(seconds=60)
@@ -1068,17 +1074,20 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         assert set(workspaces) <= {notes["workspace_id"]}, workspaces
         assert changed == [], f"the window Joel types in changed in frames {changed}"
     finally:
-        # The typer is ended, not only told to stop after its next ten words,
-        # so a case that fails mid-way leaves nothing typing into the next.
-        desktop.as_account("pkill -f 'typing-don[e]'; pkill -x wtype; true")
+        # A case that fails mid-way leaves nothing typing into the next: the
+        # typer is let finish its ten words, so no key is left held, and is
+        # ended only if it outstays a minute.
         desktop.as_account(
-            "touch ~/typing-done; pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
+            "touch ~/typing-done; for _ in $(seq 60); do pgrep -f 'typing-don[e]' > /dev/null"
+            " || break; sleep 1; done; pkill -f 'typing-don[e]';"
+            " pkill -f 'event-strea[m]'; rm -f $XDG_RUNTIME_DIR/pi-stays;"
             f" pkill -f 'sleep 60[0]'; niri msg action close-window --id {notes['id']};"
             f" rm -f {PI_PRESENCE}/asideqa.json {owner}; pkill -x stress-ng;"
             " pkill -INT -x wf-recorder; true"
         )
         desktop.as_account(
-            "rm -rf ~/aside ~/typed ~/typing-done ~/typing-count ~/focus-events ~/.asideqa-pi"
+            "rm -rf ~/aside ~/typed ~/typing-done ~/typing-count ~/typing-count.new"
+            " ~/focus-events ~/.asideqa-pi"
         )
 
 
