@@ -191,6 +191,11 @@ mod tests {
             "name": "the proxy feed's bill stopped settling"}]}"#;
         let unsaid = r#"{"findings": [{"key": "finding:unbilled-held:proxy",
             "name": "the proxy feed hasn't said how far pi's bill is settled"}]}"#;
+        // A note Joel marked expected still leaves the day unjudged, since
+        // the bill under it hasn't settled however expected that is.
+        let expected = r#"{"findings": [{"key": "finding:unbilled-held:proxy",
+            "name": "the proxy feed hasn't said how far pi's bill is settled",
+            "role": "expected"}]}"#;
         for collection in [
             None,
             Some("not json"),
@@ -198,6 +203,7 @@ mod tests {
             Some(held),
             Some(unsettled),
             Some(unsaid),
+            Some(expected),
         ] {
             let m = unbilled(collection, Some(&beat(30)), NOW, "WCJQSG");
             assert_eq!(m.target, None, "{collection:?}");

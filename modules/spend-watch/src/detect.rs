@@ -1716,7 +1716,7 @@ fn held_finding(feed: &str) -> Finding {
 
 /// What's told when `feed` last settled `through` (exclusive), too long
 /// ago to judge any budget's bill by, or past now: none is judged until
-/// it settles again, or its row is put right.
+/// it settles again, or until a row past now is deleted or its hour comes.
 fn unsettled_finding(picture: &Picture, feed: &str, through: i64) -> Finding {
     let since = picture
         .zone
@@ -1726,12 +1726,15 @@ fn unsettled_finding(picture: &Picture, feed: &str, through: i64) -> Finding {
             format!("the {feed} feed's bill is settled past now"),
             // The settled hour never moves back, so the feed can't put it
             // right by settling again; the row in spend-watch's history
-            // has to be.
+            // has to be. Left alone it is trusted once its hour comes,
+            // settled or not, which is why the detail says so.
             format!(
                 "The {feed} feed says it has settled pi's bill to {since}, which \
-                 hasn't come yet, so no budget's bill is held against its logs until \
-                 the feed's row is deleted from the settled table of spend-watch's \
-                 history, which settling again never moves back."
+                 hasn't come yet, so no budget's bill is held against its logs before \
+                 then, and once it comes the hour is trusted whether or not it settled. \
+                 Settling never moves the row back: delete the feed's row from the \
+                 settled table of spend-watch's history, and this goes at the next pass. \
+                 If it comes back, the feed itself is sending an hour still to come."
             ),
         )
     } else {
