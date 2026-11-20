@@ -35,7 +35,8 @@ if TYPE_CHECKING:
 
 # Joel's scales.
 JOELS_SCALES = ("2", "1.5")
-# Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
+# Where the stand-in keyboard is told what to press, and says when it did
+# (desktop/stand-ins/keyboard.py).
 KEYBOARD = "/run/keyboard"
 SAID = "/run/keyboard.log"
 # An arrow held down, as niri repeats it: 30 a second.

@@ -16,7 +16,7 @@
   # What was taken lately reads its folder through the programs daemon, handed a
   # source for it as modules/quickshell/home.nix hands one, and finds
   # screenshots by their words (Taken.qml), asking a stand-in for the
-  # screen-text daemon (tests/desktop/stand-in-screen-text.py) over one
+  # screen-text daemon (tests/desktop/stand-ins/stand-in-screen-text.py) over one
   # connection made on the first search and let go at rest, each text once, the
   # last few kept, none for fewer than three letters, a ragged line given as one
   # short one, and finds a few thousand files by name, newest first, as Recent
@@ -27,7 +27,7 @@
     let
       standIn = pkgs.writers.writePython3 "stand-in-screen-text" {
         doCheck = false;
-      } (builtins.readFile ../../../tests/desktop/stand-in-screen-text.py);
+      } (builtins.readFile ../../../tests/desktop/stand-ins/stand-in-screen-text.py);
     in
     pkgs.runCommandLocal "the-desktop-finds-screenshots-by-their-words" { } ''
       mkdir -p runtime/daemons shots && chmod 700 runtime
