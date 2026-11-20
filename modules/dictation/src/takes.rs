@@ -546,6 +546,23 @@ mod tests {
     }
 
     #[test]
+    fn a_short_answer_after_a_line_sent_nothing_is_a_take() {
+        // A call sends nothing while its far end is muted, so the line's
+        // hiss comes back only with the answer, and the answer must not
+        // be lost in it.
+        let nothing = vec![0.0; RATE * 3];
+        let sound = [
+            nothing,
+            noise(3.5, 0.005, false),
+            voice(0.3, 150.0),
+            noise(3.5, 0.005, false),
+            quiet(2.0),
+        ]
+        .concat();
+        assert_eq!(cut(&sound).len(), 1, "the answer in the hiss");
+    }
+
+    #[test]
     fn quiet_alone_and_a_click_make_no_take() {
         let sound = [quiet(5.0), spoken(0.1), quiet(5.0)].concat();
         assert_eq!(cut(&sound), Vec::new());
