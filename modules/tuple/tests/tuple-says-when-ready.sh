@@ -6,12 +6,14 @@
 # counting, and then say how long that took from the log's first timed line,
 # in the words modules/health reads, across midnight too. Each log opens as
 # Tuple's do, with a line that has no time. A clock that stepped either way
-# between the two says nothing, as does a unit never active; a caller's name
-# posing as the line is waited out, and said to be, in words health doesn't
-# take for a ready line. It asks systemd only until the unit is active, gives
-# up on an ask systemd doesn't answer, serves daemons systemd couldn't choose
-# between, and leaves at once when systemd takes it for the unit's main
-# process, as it does when the start forked no daemon.
+# between the two says only that the signaller connected, and when; a unit
+# never active, and a caller's name posing as the line, are waited out and
+# said to be; each in words health doesn't take for a ready line. Every case
+# waits for the waiter to end, so a second line can't follow unseen. It asks
+# systemd only until the unit is active, gives up on an ask systemd doesn't
+# answer, serves daemons systemd couldn't choose between, and leaves at once
+# when systemd takes it for the unit's main process, as it does when the
+# start forked no daemon.
 #
 # Given the ExecStartPost's program, and the systemctl and log it names.
 set -euo pipefail
@@ -60,7 +62,8 @@ THREE_LOOKS=0.3
 # and the asks a case waits on before it lets the unit be active, time to
 # spare on a loaded machine.
 gave_up="tuple: its signaller hadn't connected 5 s after it started"
-untimed="tuple: its signaller connected, but not within 5 s by its log's clock"
+never_active="tuple: systemd hadn't said it was active 5 s after it started"
+untimed="ms after its log began, past the 5 s it times"
 # What modules/health takes for a ready line (launches.rs's READY_FOLLOWED),
 # which journalctl matches whatever its case, as it's written in lower case.
 ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
@@ -81,6 +84,14 @@ unready() {
     echo "$1: health would read it as ready"
     failed=1
   fi
+}
+
+# Waits for the post to say its line and for its waiter to end, and fails the
+# case `what` when all it said isn't `wanted`.
+says_only() {
+  says "$1" "$2"
+  ended "$1" 0
+  says "$1" "$2"
 }
 
 # Waits for the post to say its line, and fails the case when it isn't `wanted`.
@@ -210,7 +221,7 @@ echo '00:00:00.700|1|7|info|S.cpp:181|signaler state changed: synchronizing -> c
 looked 4 "a start"
 quiet "a start" "before the unit was active"
 touch up
-says "a start" "tuple: ready in 1200 ms"
+says_only "a start" "tuple: ready in 1200 ms"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -223,7 +234,7 @@ quiet "an active unit" "before the signaller connected"
 asked 1 "an active unit"
 echo '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >>log.txt
-says "an active unit" "tuple: ready in 250 ms"
+says_only "an active unit" "tuple: ready in 250 ms"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -231,10 +242,10 @@ printf '%s\n' \
   '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up hangs
-says "an ask systemd doesn't answer" "tuple: ready in 250 ms"
+says_only "an ask systemd doesn't answer" "tuple: ready in 250 ms"
 
 starts up many
-says "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
+says_only "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
 
 # The log already says the signaller connected, so only leaving at once
 # keeps it quiet.
@@ -253,7 +264,8 @@ quiet "a start that forked no daemon" "as the unit's main process"
 
 starts
 ended "a unit never active" 1
-quiet "a unit never active" "at all"
+says "a unit never active" "${never_active}"
+unready "a unit never active"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -261,8 +273,7 @@ printf '%s\n' \
   '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up
-says "a clock stepped back" "${untimed}"
-ended "a clock stepped back" 0
+says_only "a clock stepped back" "tuple: its signaller connected 86395250 ${untimed}"
 unready "a clock stepped back"
 
 # Beside the clock stepped back, which the wrap past midnight turns into most
@@ -274,8 +285,7 @@ printf '%s\n' \
   '10:00:06.000|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up
-says "a clock stepped forward" "${untimed}"
-ended "a clock stepped forward" 0
+says_only "a clock stepped forward" "tuple: its signaller connected 6000 ${untimed}"
 unready "a clock stepped forward"
 
 # What a caller would name themselves to pose as the line, on a line with a
