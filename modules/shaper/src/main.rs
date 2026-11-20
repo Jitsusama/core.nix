@@ -62,6 +62,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
@@ -288,6 +289,12 @@ struct Shaped {
     probes: Probes,
     trips: trips::Trips,
     applied: (u64, u64),
+    /// What Joel's CAKE was last told, a rate or none (`lanes::joel_cake`),
+    /// which waits for the classes' and is told again until it takes, apart
+    /// from them (`lanes::joel_rate`). It's untold after an install, which
+    /// names no rate: one adopting another shaper's CAKE keeps the rate it
+    /// had, with nothing else to change it.
+    joel_told: Option<lanes::Cake>,
     state: State,
     /// The link whose rate this one takes, when both reach the same router.
     follows: Option<String>,
@@ -597,6 +604,7 @@ fn start(
         probes,
         trips: trips::Trips::default(),
         applied: (up, down),
+        joel_told: None,
         state: State::Resting,
         follows: None,
         told: false,
@@ -850,7 +858,12 @@ fn run(options: &Options) -> Result<(), Failure> {
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
     let mut swept = false;
+    heed_stopping();
     loop {
+        if STOPPING.load(Ordering::Relaxed) {
+            unshape_joel(&shaped);
+            return Ok(());
+        }
         let now = Instant::now();
         let t = (now - began).as_secs_f64();
         if last_sessions.is_none_or(|at| now - at >= Duration::from_secs(5)) {
@@ -904,22 +917,7 @@ fn run(options: &Options) -> Result<(), Failure> {
             }
         }
         step_links(&mut shaped, &mut live, &ceilings);
-        // A follower holds its leader's rates, so the two together stay
-        // under the one connection; its own pings still say its round trips.
-        // Its download goes straight in as its leader's does, since nothing
-        // limits the one connection's.
-        let rates: BTreeMap<String, (u64, u64, bool)> = shaped
-            .iter()
-            .map(|(n, s)| (n.clone(), (s.up.rate, s.down.rate, s.download.straight())))
-            .collect();
-        for s in shaped.values_mut() {
-            if let Some(&(up, down, straight)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
-                s.up.rate = up;
-                s.down.rate = down;
-                apply(s);
-                go_straight(s, straight);
-            }
-        }
+        hold_followers(&mut shaped);
         let heard = live.heard().map(|(link, mut h)| {
             h.up_tins_kbit = up_tins.kbit();
             (link, h)
@@ -1265,6 +1263,7 @@ fn look(
                         s.download.straight(),
                     );
                     s.applied = (s.up.rate, s.down.rate);
+                    s.joel_told = None;
                 }
                 if !s.probes.running() {
                     s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send);
@@ -1317,6 +1316,35 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
                 // look for.
                 eprintln!("{name}: the real-time traffic stopped");
             }
+        }
+    }
+}
+
+/// Holds each follower to its leader's rates, so the two together stay
+/// under the one connection; its own pings still say its round trips. Its
+/// download goes straight in as its leader's does, since nothing limits
+/// the one connection's. Whether a limit holds its upload is judged
+/// against the lower of its leader's ceiling and its own, so its CAKE is
+/// never told a rate its own link can't carry.
+fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
+    let rates: BTreeMap<String, (u64, u64, bool, u64)> = shaped
+        .iter()
+        .map(|(n, s)| {
+            let held = (
+                s.up.rate,
+                s.down.rate,
+                s.download.straight(),
+                s.up.bounds.max,
+            );
+            (n.clone(), held)
+        })
+        .collect();
+    for s in shaped.values_mut() {
+        if let Some(&(up, down, straight, most)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
+            s.up.rate = up;
+            s.down.rate = down;
+            apply(s, most.min(s.up.bounds.max));
+            go_straight(s, straight);
         }
     }
 }
@@ -1405,7 +1433,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged) {
     } else {
         State::Resting
     };
-    apply(s);
+    apply(s, s.up.bounds.max);
     go_straight(s, rates.down.is_none());
 }
 
@@ -1520,8 +1548,11 @@ fn go_straight(s: &mut Shaped, straight: bool) {
     }
 }
 
-/// Puts a link's rates on its queues when they moved by more than 1%.
-fn apply(s: &mut Shaped) {
+/// Puts a link's rates on its queues when they moved by more than 1%, and
+/// tells Joel's CAKE a rate while the upload's is under `most`, the
+/// ceiling that holds it: its own, or for a follower the lower of its
+/// leader's and its own.
+fn apply(s: &mut Shaped, most: u64) {
     let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
     let (up, down) = (s.up.rate, s.down.rate);
     if moved(up, s.applied.0) {
@@ -1530,6 +1561,15 @@ fn apply(s: &mut Shaped) {
         let split = s.lanes.at(float(up));
         if run_all(lanes::change(&s.uplink.name, up, &split)) {
             (s.applied.0, s.split) = (up, split);
+        }
+    }
+    // Apart from the classes, so a CAKE that refuses its rate never makes
+    // them read as unmoved, and asked again each step until it takes.
+    let joel = lanes::joel_cake(s.up.rate, most, s.applied.0);
+    if s.joel_told != Some(joel) {
+        match sh(&lanes::joel_rate(&s.uplink.name, joel)) {
+            Ok(_) => s.joel_told = Some(joel),
+            Err(e) => eprintln!("{e}"),
         }
     }
     if moved(down, s.applied.1) {
@@ -1653,6 +1693,43 @@ fn restarting(unit: &str) -> bool {
         Err(why) => {
             eprintln!("systemd couldn't say whether {unit} restarts, so its queues go: {why}");
             false
+        }
+    }
+}
+
+/// Set once systemd asks the running shaper to stop.
+static STOPPING: AtomicBool = AtomicBool::new(false);
+
+/// Only marks the stop, since a signal's handler may do little else; the
+/// loop sees it within a step.
+extern "C" fn stopping(_: libc::c_int) {
+    STOPPING.store(true, Ordering::Relaxed);
+}
+
+/// Has a SIGTERM end the loop rather than the process, so the shaper can
+/// leave its queues as any version of it takes them back.
+fn heed_stopping() {
+    let handler = stopping as extern "C" fn(libc::c_int);
+    // SAFETY: the handler only stores to an atomic, which is safe to do in
+    // a signal's handler, and it lives as long as the process.
+    unsafe {
+        libc::signal(libc::SIGTERM, handler as libc::sighandler_t);
+    }
+}
+
+/// Tells each link's CAKE in Joel's lane it has no rate, as it is built
+/// before this shaper gives it one. A restart keeps the queues for the
+/// next shaper to take back, and one that never tells the CAKE a rate, as
+/// before this, would keep the last one held for as long as it ran. Every
+/// link is told, whatever `joel_told` says: the stop's SIGTERM reaches a
+/// `tc` running then too, which may have set a rate before it was killed.
+fn unshape_joel(shaped: &BTreeMap<String, Shaped>) {
+    for s in shaped.values() {
+        if let Err(why) = sh(&lanes::joel_rate(&s.uplink.name, lanes::Cake::Unlimited)) {
+            eprintln!(
+                "{}: Joel's CAKE kept its rate as the shaper stopped: {why}",
+                s.uplink.name
+            );
         }
     }
 }

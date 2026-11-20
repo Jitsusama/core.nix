@@ -6,8 +6,10 @@
 # shaper puts in the video tin, and one to 443, which it takes for a page's
 # QUIC and sends best effort. While a call is on, the call to 443 goes in
 # the video tin too. Each call loses at most a hundredth of its datagrams
-# coming down, a bar the router meets alone with the shaper stopped. The
-# tests are shaper-call-vm-test.py, run through pytest.
+# coming down, a bar the router meets alone with the shaper stopped. With
+# the upload held low and the app uploading beside its video call, the
+# shaper drops at most a hundredth of the call going up. The tests are
+# shaper-call-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;

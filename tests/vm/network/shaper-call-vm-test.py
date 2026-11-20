@@ -13,6 +13,7 @@ from __future__ import annotations
 import bisect
 import datetime as dt
 import json
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +40,14 @@ TINS = ["bulk", "best effort", "video", "voice"]
 JOBS_DOWNLOADS = 8
 JOBS_UPLOADS = 4
 APP_DOWNLOADS = 2
+# An app's own uploads beside its call, a file's over TCP, which go best effort in Joel's lane
+# rather than the agents'.
+APP_UPLOADS = 2
+# The upload a call goes ahead of its app's uploads under, held there by a trial's ceiling:
+# with agents' quarter taken it leaves Joel's lane 4.5 Mbit/s, and a third of that, what
+# turns by weight give video, is under the call's 2.5.
+HELD_KBIT = 6_000
+TRIAL = "/run/shaper-trial/upload.json"
 # A call's video each way: datagrams of 1,200 bytes at 2.5 Mbit/s, as a Meet call sends at
 # its sharpest, for long enough that a drop every few seconds would show.
 CALL_RATE = "2500K"
@@ -49,11 +58,14 @@ CALL_SECONDS = 20
 CALL_LEAST = 2_500_000 * CALL_SECONDS // (CALL_LENGTH * 8) * 9 // 10
 # The most a call may lose coming down, of that least, shaped or not: a CAKE that limits the
 # download drops a few as it takes the queue home, and on 13 November the router alone lost
-# 4, then 6, on a busy builder, and none on a rerun. Going up is only printed: the router VM
-# dropped from 94 to 1,296 of an unshaped call's datagrams from run to run, and dropped a
-# shaped one's while the client sent 10 Mbit/s into its 15, which is the builder's CPU and
-# no queue of the shaper's.
+# 4, then 6, on a busy builder, and none on a rerun. What it loses going up is only printed:
+# the router VM dropped from 94 to 1,296 of an unshaped call's datagrams from run to run,
+# and dropped a shaped one's while the client sent 10 Mbit/s into its 15, which is the
+# builder's CPU and no queue of the shaper's.
 DOWN_MOST = CALL_LEAST // 100
+# The most of a call the shaper's own CAKE may drop going up, the same hundredth: unlike the
+# router VM's, those drops are the shaper's queue alone.
+UP_DROPPED_MOST = DOWN_MOST
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
@@ -91,6 +103,41 @@ class Rig:
     def counts(self, dev: str, what: str) -> list[int]:
         """Give one of CAKE's counts on a device, a value per tin."""
         return [int(tin[what]) for tin in self.cake(dev)["tins"]]
+
+    def upload_rates(self) -> tuple[int, int | None]:
+        """Give the rate the upload's classes are held to, and Joel's CAKE's, in kbit/s.
+
+        tc gives both in bytes a second, and a CAKE with no rate of its own as unlimited,
+        which reads here as none.
+        """
+        classes = json.loads(self.client.succeed("tc -j class show dev eth1"))
+        qdiscs = json.loads(self.client.succeed("tc -j qdisc show dev eth1"))
+        held = next(c["rate"] for c in classes if c["handle"] == "1:2")
+        joel = next(q["options"]["bandwidth"] for q in qdiscs if q["handle"] == "2:")
+        kbit = int(joel) * 8 // 1000 if isinstance(joel, int) else None
+        return int(held) * 8 // 1000, kbit
+
+    def least_up(self, since: int) -> int | None:
+        """Give the least the controller asked eth1's upload be held to from a second on.
+
+        From its trace, in kbit/s, so a cut that climbed back before it's read shows too; none
+        if it asked no limit then.
+        """
+        _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl 2>/dev/null")
+        asks: list[int] = []
+        for line in text.splitlines():
+            try:
+                step: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (
+                isinstance(step, dict)
+                and step.get("link") == "eth1"
+                and step.get("at", 0) >= since
+                and isinstance(step.get("up"), int)
+            ):
+                asks.append(step["up"])
+        return min(asks, default=None)
 
     def ifb(self) -> str:
         """Give the name of the IFB that carries eth1's downloads."""
@@ -326,8 +373,13 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
     return now
 
 
-def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
-    """Hold both calls while the jobs and an app fill the connection, and give what each lost.
+def under_load(
+    rig: Rig, *, shaped: bool, app_uploads: int = 0, names: list[str] | None = None
+) -> dict[str, dict[str, int]]:
+    """Hold the calls named, both unless named, while the jobs and an app fill the connection.
+
+    Each call's losses are given. With app_uploads, the app uploads too, filling Joel's lane
+    rather than the agents'.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
@@ -346,6 +398,8 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
         ("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload),
         ("app-downloads", "app.slice", APP_DOWNLOADS, download),
     ]
+    if app_uploads:
+        loads.append(("app-uploads", "app.slice", app_uploads, upload))
     try:
         for unit, slice_name, flows, script in loads:
             rig.start(unit, slice_name, flows, script)
@@ -368,7 +422,7 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
                 ),
                 timeout=FILLING,
             )
-        results = rig.calls()
+        results = rig.calls(names)
     finally:
         # Every load, started or not: a start can fail after making its unit.
         stuck = rig.stop(*(unit for unit, _, _, _ in loads))
@@ -447,6 +501,67 @@ def test_a_call_loses_little(rig: Rig) -> None:
                 f"the {name} call lost {ways['down']} datagrams down, over {DOWN_MOST};"
                 f" dropped by tin: {dropped}\n{trace}"
             )
+
+
+def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
+    """While an app uploads beside its call, the shaper's upload drops at most a hundredth of it.
+
+    The app's uploads, over TCP, go best effort in Joel's own CAKE, beside the call's video. A
+    CAKE with no rate of its own takes turns by weight, best effort's twice video's, so with the
+    lane full it dropped about a third of the call going up. A trial holds the upload where the
+    lane is full whatever the controller finds. Only the media call is made, since the page call
+    goes best effort, where the app's uploads would crowd its handshake out too. The bar is on the
+    shaper's own drops in the video tin, which only the media call fills, since what the
+    router VM drops going up is the builder's.
+    """
+    try:
+        rig.client.succeed(f"echo '{{\"most_kbit\": {HELD_KBIT}}}' > {TRIAL}")
+        before = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
+        since = int(rig.client.succeed("date +%s"))
+        under_load(rig, shaped=True, app_uploads=APP_UPLOADS, names=["media"])
+        least = rig.least_up(since)
+        after = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
+        # The step that moves the classes' rate tells Joel's CAKE a moment after, so a read
+        # between the two is taken again; one that never agrees is a CAKE left behind.
+        for _ in range(5):
+            held, joel = rig.upload_rates()
+            if joel == held:
+                break
+            time.sleep(1)
+    finally:
+        # A ceiling left on would hold the next tests' upload under it for ten minutes, and
+        # the rate climbs back gently even once it's gone: test_unshaped, next, stops the
+        # shaper, so no shaped test is to follow this one.
+        rig.client.succeed(f"rm -f {TRIAL}")
+    meanwhile = {
+        what: dict(
+            zip(TINS, (a - b for a, b in zip(after[what], before[what], strict=True)), strict=True)
+        )
+        for what in after
+    }
+    dropped, sent = meanwhile["drops"], meanwhile["sent_packets"]
+    print(f"the upload dropped by tin meanwhile: {dropped}, and sent {sent}")
+    print(
+        f"the upload's classes held to {held} kbit/s, and Joel's CAKE to {joel},"
+        f" the controller asking at least {least}"
+    )
+    # Without the hold, with the call in another tin, or with the app's uploads elsewhere
+    # than beside it, the video tin would drop nothing whatever CAKE did; and counts that
+    # started again would go back.
+    assert held <= HELD_KBIT, f"the trial never held the upload: its classes at {held} kbit/s"
+    # Held much under it at any moment, the call would outgrow the half that CAKE serves video
+    # first, so the least it asked through the loads and the call is what's judged.
+    assert least is not None, "the controller asked the upload no limit under the trial"
+    assert least >= HELD_KBIT * 9 // 10, f"the controller cut under the trial, to {least} kbit/s"
+    assert joel is not None, f"Joel's CAKE has no rate, with the classes at {held} kbit/s"
+    assert joel == held, f"Joel's CAKE at {joel} kbit/s doesn't follow the classes' {held}"
+    assert sent["video"] >= CALL_LEAST, f"the call didn't go in the video tin: {sent}"
+    assert min(dropped.values()) >= 0, f"Joel's CAKE started its counts again: {dropped}"
+    assert dropped["best effort"] > 0, f"the app's uploads never filled Joel's lane: {dropped}"
+    assert dropped["video"] <= UP_DROPPED_MOST, (
+        f"the shaper's upload dropped {dropped['video']} of the video call's datagrams, over"
+        f" {UP_DROPPED_MOST}; by tin: {dropped}\n{rig.trace()}"
+    )
 
 
 def test_unshaped(rig: Rig) -> None:
