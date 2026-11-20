@@ -36,7 +36,10 @@ pub struct Line {
     /// What the controller asked each way be held to, in kbit/s, before the
     /// shaper's floor and the link's most; none asked no limit. A line
     /// written before the download was traced has none for it too, so a
-    /// held replay of its day reads the download as never limited.
+    /// held replay of its day reads the download as never limited; and its
+    /// upload is the way's own rate, which the controller doesn't hand over
+    /// while it lets go or hears no reflector, so such a replay scores those
+    /// spells at a rate that was never asked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
