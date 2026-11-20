@@ -573,7 +573,22 @@ out of it to home with nothing typed, as Super+Tab then - does, and
 `LAB_WINDOWS` opens that many windows first, so Windows holds some. Those
 windows join home's rows too, so the typed keys' medians change with them.
 Out of Windows over 10, holding fell from 7.5 to 5 ms once the foot was
-fitted once a step (2026-11-18). `LAB_COSTLIEST` says how many of the
+fitted once a step (2026-11-18). `LAB_AGENTS` lays that many live
+sessions and serves them through the realm's node and the agents daemon,
+as Joel's are served, so `LAB_STEP = "Agents"` lays agent rows. With 9,
+the step took 18 to 42 ms where Joel's took 59 to 171, and its 9 rows 7 to
+20 ms where his took 10 to 37; most of a row was its words laid out
+afresh, since a step reuses rows home held (2026-11-20).
+`LAB_STEP_BY = "arrow"` reaches the place by arrows from home with
+nothing typed, as Joel reaches Agents, whose rows home makes only once a
+letter or a step wants them; typed, they're made before the step. With
+`LAB_AGENTS`, one session moves before each step, as his do between his
+looks. By arrow, each step into Agents then made its rows again before
+its frame, "act moved in agents: its own rows", and waited 5 to 9 ms for
+it where typed it waited 1; his waited 16 to 25 (2026-11-20). Since a
+step no longer makes again the rows it just read, each says "agents said
+only what its step read" and waits 1 to 5 ms (2026-11-20).
+`LAB_COSTLIEST` says how many of the
 costliest bindings, handlers and functions each part lists.
 Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces
 or commas, such as `keep pick`, each call of them is profiled apart as

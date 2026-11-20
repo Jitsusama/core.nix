@@ -16,6 +16,9 @@ two actions, so a program's own page, whose provider keys it by its id, is there
 by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts a program).
 Given LAB_BACK too, it steps back out of that place with - each round and prints that step's
 line, and given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
+LAB_AGENTS, it lays that many live sessions and serves them through the realm's node and the
+agents daemon (agents_served.py), so a step into Agents lays as many agent rows as Joel's, one
+of them moving before each step as his do between his looks. Given
 LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
 and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
@@ -40,6 +43,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
 
 import launcher_on_niri
+from agents_served import agents_served
 
 if TYPE_CHECKING:
     import pytest
@@ -181,12 +185,22 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
     Joel could feel (launcher/Trials.js's felt); one quicker gives none. Given LAB_BACK, it then
     steps back out with -, and gives that step's line second; else None. That step puts back
     the words typed to find the place, so it searches them as a key: Joel's out of Windows put
-    none back, which LAB_CHORD steps as.
+    none back, which LAB_CHORD steps as. Given LAB_STEP_BY=arrow, it reaches the place by arrows
+    from home with nothing typed, as Joel reaches Agents, which home builds no rows for until a
+    step or a letter wants them (launcher/Wanted.js).
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    shell.type_in(name.lower(), selecting=name)
+    if os.environ.get("LAB_STEP_BY") == "arrow":
+        shell.down_to(name)
+        # Return comes once the arrow's frames are drawn, as Joel's hand comes after his ↓,
+        # not in the frame the arrow moved.
+        if not shell.held_still():
+            refused = "the launcher never held still after the arrows"
+            raise AssertionError(refused)
+    else:
+        shell.type_in(name.lower(), selecting=name)
     since = shell.mark()
     shell.step_in(key)
     step = f"\u2192 {name}"
@@ -615,7 +629,8 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
     named(os.environ.get("LAB_NAMED", ""), step, step_key)
     within_known(Path(os.environ["SHELL_FOLDER"]) / "Launcher.qml")
-    with launcher_on_niri.running() as shell:
+    agents = agents_served(int(os.environ.get("LAB_AGENTS", "0")))
+    with agents as moved, launcher_on_niri.running() as shell:
         shell.unshared()
         shell.launcher_until(lambda shown: shown.get("kept"))
         # Windows to list are opened before the profiler listens, so it hears only the keys.
@@ -631,6 +646,9 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
         for round_ in range(rounds):
             for word in words[round_ % len(words) :] + words[: round_ % len(words)]:
                 tallied(round_, word, typed_from_home(shell, word), parts, capsys)
+            # A session moves while home's shut, as Joel's do between his looks, so Agents
+            # has something new to say once the step wants its rows; with no LAB_AGENTS, none.
+            moved()
             stepped_round(shell, round_, (step, step_key), capsys)
         if profiler is not None:
             flushed(profiler, trace)

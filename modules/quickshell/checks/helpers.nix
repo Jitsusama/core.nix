@@ -328,11 +328,13 @@ let
   # each part runs last (modules/quickshell/tests/cases_in_parts.py). The check
   # is then the parts together, so it fails as any part does. On 13 November the
   # launcher's 100 cases took 357 to 549 s in one run, the longest build on the
-  # merge path, built 44 times in 12 hours.
+  # merge path, built 44 times in 12 hours. `helpers` are modules of its own the
+  # file imports, put beside it; one given none builds as it did before them.
   launcherOnNiri =
     {
       name,
       tests,
+      helpers ? [ ],
       given ? [ ],
       shell ? { },
       parts ? [ ],
@@ -340,10 +342,15 @@ let
     }:
     let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
+      # Each helper beside the tests, as a line after the tests' own, so a
+      # check given none builds as it did before helpers were given.
+      installed = lib.concatMapStrings (
+        helper: "\ninstall -D -m 644 ${helper} $out/${baseNameOf helper}"
+      ) helpers;
       checked = pkgs.runCommandLocal "${name}-tests" { } ''
         install -D -m 644 ${../tests/launcher_on_niri.py} $out/launcher_on_niri.py
         install -D -m 644 ${../tests/cases_in_parts.py} $out/cases_in_parts.py
-        install -D -m 644 ${tests} $out/${baseNameOf tests}
+        install -D -m 644 ${tests} $out/${baseNameOf tests}${installed}
       '';
       # Each part's bounds: the case it starts at, and the next part's.
       bounds = lib.zipListsWith (from: until: { inherit from until; }) ([ "" ] ++ parts) (

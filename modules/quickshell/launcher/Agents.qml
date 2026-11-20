@@ -2877,7 +2877,11 @@ Provider {
         .filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
-    // held, its rows are laid out as asked, from the daemon's rows held.
+    // held, its sessions' rows are laid out as asked, from the daemon's rows
+    // held; its own after them only while they're read (readNow), and
+    // otherwise as last made, so a step from a place that doesn't read
+    // them, as a category Agents is in, shows them made again once held.
+    readsAfreshUnwanted: readNow
     function everything() {
         // Its search looks through the tree's rows, so their texts are
         // made ready from those (Provider.qml's looksThrough).

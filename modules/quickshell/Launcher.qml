@@ -5434,8 +5434,18 @@ Scope {
         // folder it came from, though it was stepped into without being
         // selected, as the file picker holds each folder on the way to
         // where it opens; Return steps into the selection, so it's the same.
-        held = held.concat([Object.assign(here(), walk?.stood ?? {}, { key: steadyId(row),
-            row: row, rows: into ?? [], learned: meant })]);
+        //
+        // A source no step held before becomes wanted as its step is held,
+        // and says its rows changed, which may be only the rows just read
+        // for the step (Wanted.readByStep, which refreshed() asks). Whether
+        // they were read as they stand is asked now, before it's wanted.
+        newlyHeld = Wanted.heldAnew(row.from ?? null, held);
+        try {
+            held = held.concat([Object.assign(here(), walk?.stood ?? {}, {
+                key: steadyId(row), row: row, rows: into ?? [], learned: meant })]);
+        } finally {
+            newlyHeld = null;
+        }
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -5620,6 +5630,9 @@ Scope {
     // before the rows read from them (choices, partsOfRows) have heard;
     // each source heard is made again once, in the order heard.
     property var refreshing: []
+    // The source `enter` steps into, only while it puts the step in
+    // `held`, when no step held that source before (Wanted.readByStep).
+    property var newlyHeld: null
     // A change told from a daemon's line is timed from it, on the
     // monotonic clock, to the frame niri presents with it (Hearing.js).
     // It's heard when the launcher takes the change its line is timed
@@ -5651,6 +5664,14 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
+        // Its rows are those the step just read, so none is made again;
+        // its note may have moved, so the choices are joined after the
+        // step's frame rather than in it.
+        if (Wanted.readByStep(source, newlyHeld, refreshedFor)) {
+            Report.say(`${source.settings.name} said only what its step read`);
+            afterFrame(freshen);
+            return;
+        }
         // Only a key that acted owns a change beside it, to a place on
         // screen (Pacing.keyed), timed from when its work was done
         // (Pacing.sinceKey). What's on screen is read only beside such a
@@ -14528,8 +14549,9 @@ Scope {
                                 // Whose rows it spends on is said too, since
                                 // Joel's "aq" took 8 rows back in 112 ms, 14
                                 // a row, where the keys lab's take 0.9
-                                // (2026-11-18), and the lab holds none of his
-                                // agents, runs or people.
+                                // (2026-11-18), and the lab holds his agents
+                                // only given LAB_AGENTS, and none of his runs
+                                // or people.
                                 const laidBy = RowsKept.begunLaying(asideFrom);
                                 list.laidBy = laidBy;
                                 let aside = 0;
