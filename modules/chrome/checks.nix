@@ -125,7 +125,7 @@ onLinux {
   # second run, a boot's empty runtime folder and a lock Chrome left behind
   # are each handled, a Chrome still quitting is waited for, as is one
   # whose maps can't be read, one still quitting after half a minute is
-  # left to the next run, which starts over if it quits as the run ends,
+  # given up on, the run starting over once it has quit,
   # and with Chrome running, or started again as it quits, nothing in the
   # profile is touched
   # (tests/chrome-maps-land-in-memory.sh). The unit runs as the account's

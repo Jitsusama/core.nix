@@ -20,7 +20,9 @@ def main() -> None:
     """Take Chrome's name, hide the maps, and wait to be told to quit."""
     quit_file = pathlib.Path(sys.argv[1])
     libc = ctypes.CDLL(None, use_errno=True)
-    for option, value in ((PR_SET_NAME, ctypes.c_char_p(b"chrome")), (PR_SET_DUMPABLE, 0)):
+    # Hidden before it's named, so a test that waits for the name never
+    # finds its maps still readable.
+    for option, value in ((PR_SET_DUMPABLE, 0), (PR_SET_NAME, ctypes.c_char_p(b"chrome"))):
         if libc.prctl(option, value, 0, 0, 0) != 0:
             sys.exit(f"prctl {option} failed: errno {ctypes.get_errno()}")
     while not quit_file.exists():

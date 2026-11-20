@@ -9,8 +9,8 @@
 # another program's, doesn't stop it; that a Chrome which has dropped its
 # lock but still maps a file in the profile is waited for, as is one whose
 # maps can't be read; that a Chrome started again while the old one quits
-# stops the move; that one still quitting after the half minute is left
-# to the next run, and the run starts over when it quits as the run ends;
+# stops the move; that one still quitting after the half minute is given
+# up on, and the run looks once more and starts over once it has quit;
 # and that while a Chrome holds the profile, on this host or another,
 # nothing in the profile is touched, though the folders in memory are
 # still made; and that folders reaching outside the profile are refused.
@@ -244,6 +244,7 @@ run "relaunched Chrome's" &
 running=$!
 # As long as the quitting Chrome's wait, for the same reason.
 sleep 2
+waiting "a quitting Chrome, before another started"
 ./chrome &
 chrome=$!
 named "$chrome"
@@ -254,8 +255,8 @@ wait "$running"
 kill "$chrome"
 untouched "with Chrome started again as the old one quit"
 
-# A Chrome still quitting after the half minute is left to the next run,
-# and when it quits as the run ends, the run starts over and moves them.
+# A Chrome still quitting after the half minute is given up on, and when
+# it quits as the run looks once more, the run starts over and moves them.
 # This one case waits the whole half minute, since that's what it proves.
 fill
 quit_later "$work/quit"
@@ -263,7 +264,14 @@ quit_later "$work/quit"
 rm -f run.log
 run "long-quitting Chrome's" &
 running=$!
+looks=0
 until grep -q 'holds the profile' run.log 2>/dev/null; do
+  waiting "a Chrome still quitting, ending before it gave up"
+  looks=$((looks + 1))
+  if [ "$looks" -gt 900 ]; then
+    echo "the command hadn't given up on a quitting Chrome after a minute and a half"
+    exit 1
+  fi
   # A tenth of a second between looks at the run's log, which takes half
   # a minute to say it.
   sleep 0.1
