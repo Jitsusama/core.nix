@@ -330,8 +330,7 @@ in
         lib.hasSuffix "/scripts/pi-host.ts ${kind}" last
         # Each kind writes its own log, and its own record of starts.
         && lib.hasInfix "/Users/someone/Library/Logs/pi-host-one-${kind}.log" start
-        &&
-          daemon.Label or null == "org.jitsusama.pi-host-one-${kind}"
+        && daemon.Label or null == "org.jitsusama.pi-host-one-${kind}"
         && daemon.UserName or null == "someone"
         && daemon.RunAtLoad or false
         # nix-darwin gives every key of KeepAlive, those unset as null.
