@@ -82,7 +82,7 @@ use zlink::Server;
 
 use address::AddressKey;
 use air::AccessPoint;
-use arrive::{Arrivals, Unreached};
+use arrive::{Arrivals, Short, Unreached};
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use detail::Polled;
@@ -371,16 +371,9 @@ async fn follow(
             Some(Ok(message)) = links.recv() => wifid.link_changed(&message, &mut networks).await,
             Some(Ok(message)) = signals.recv() => {
                 air.take_in(bus, &message).await;
-                // A join the shell asked for turns the others back on as
-                // it ends, however it ends, so a card coming off its
-                // network meanwhile is left to it.
                 for card in std::mem::take(&mut air.left) {
-                    wifid.picked.borrow_mut().remove(&card);
                     let free = joining.as_ref().is_none_or(|joining| joining.card != card);
-                    if free {
-                        wifid.turn_on_networks(&card).await;
-                    }
-                    wifid.let_go(&card, free).await;
+                    wifid.came_off(&card, free).await;
                 }
                 for card in std::mem::take(&mut air.settled) {
                     let free = joining.as_ref().is_none_or(|joining| joining.card != card);
@@ -426,7 +419,10 @@ async fn follow(
             () = until(unreached), if unreached.is_some() => {
                 let unreached = wifid.arrivals.borrow_mut().unreached(Instant::now());
                 for late in unreached {
-                    wifid.go_back(late).await;
+                    let card = late.card.clone();
+                    if !wifid.go_back(late).await {
+                        wifid.let_go(&card, false).await;
+                    }
                 }
             }
             _ = polling.tick(), if *watching.borrow() > 0 => {
@@ -2167,22 +2163,36 @@ impl Wifid<'_> {
     /// it's joined afresh, the only point it may join being the one it
     /// left. One that got there as its time ran out is left there.
     ///
-    /// A way back that can't be asked lets the card's network go, so it
-    /// can join wherever it's heard.
-    async fn go_back(&self, Unreached { card, from, to }: Unreached) {
+    /// Says whether the way back was asked, or the card left where it got
+    /// to, so a caller lets the card's network go otherwise, and it can
+    /// join wherever it's heard.
+    async fn go_back(
+        &self,
+        Unreached {
+            card,
+            from,
+            to,
+            why,
+        }: Unreached,
+    ) -> bool {
         let there = self
             .state
             .borrow()
             .joined()
             .iter()
             .any(|joined| joined.card == card && joined.point.eq_ignore_ascii_case(&to));
-        if there {
-            return;
+        if there && why == Short::Late {
+            return true;
         }
-        println!(
-            "<4>{card} didn't reach {to} within {} ms, so goes back to {from}",
-            arrive::BACK_AFTER.as_millis()
-        );
+        match why {
+            Short::Late => println!(
+                "<4>{card} didn't reach {to} within {} ms, so goes back to {from}",
+                arrive::BACK_AFTER.as_millis()
+            ),
+            Short::Off => {
+                println!("<4>{card} came off its network short of {to}, so goes back to {from}");
+            }
+        }
         let held = self.held.borrow().get(&card).cloned();
         let gone_back = async {
             let interface =
@@ -2204,11 +2214,31 @@ impl Wifid<'_> {
                 }
             }
         };
-        if let Err(error) = gone_back.await {
-            self.arrivals.borrow_mut().forget(&card);
-            self.let_go(&card, false).await;
-            println!("<4>{card} couldn't go back to {from}: {error}");
+        let Err(error) = gone_back.await else {
+            return true;
+        };
+        self.arrivals.borrow_mut().forget(&card);
+        println!("<4>{card} couldn't go back to {from}: {error}");
+        false
+    }
+
+    /// Takes in a card come off its network. One that falls off partway
+    /// into a move goes back, held, before wpa_supplicant takes another
+    /// network. Otherwise it's let go, and its networks turned on where
+    /// it's free: a join the shell asked for turns the others back on as
+    /// it ends, however it ends, so a card in one is left to it.
+    async fn came_off(&self, card: &str, free: bool) {
+        let back = self.arrivals.borrow_mut().fell_off(card);
+        if let Some(back) = back
+            && self.go_back(back).await
+        {
+            return;
         }
+        self.picked.borrow_mut().remove(card);
+        if free {
+            self.turn_on_networks(card).await;
+        }
+        self.let_go(card, free).await;
     }
 
     /// Whether the card, at this step, is joining the access point it's
