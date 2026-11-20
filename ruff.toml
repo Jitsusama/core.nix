@@ -47,6 +47,6 @@ ignore = [
 # What every live page's browser test shares asserts what a page must do, as the desktop does.
 "modules/local-sites/tests/live_page.py" = ["S101"]
 # The screens test's machine and steps assert what each step needs, as the desktop does.
-"tests/screens/screens_session.py" = ["S101"]
+"tests/vm/screens/screens_session.py" = ["S101"]
 # wifid as the Wi-Fi test's areas reach it asserts what a refusal says, as the desktop does.
 "tests/vm/network/wifi/wifi_session.py" = ["S101"]

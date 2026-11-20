@@ -3,7 +3,7 @@
 niri starts with the lid shut and holds the first frame, typing keeps the session awake, and
 sessions and workspaces go back where they sat.
 
-tests/screens.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
+screens.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The machine and each step it's taken
 through are screens_session.py's fixtures, which every test asks for by name.
 """

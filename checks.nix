@@ -338,21 +338,6 @@ let
         height = 1800;
       };
     };
-    # Whether the shell's surfaces come back after a screen goes shows only
-    # with niri on the screen itself, not nested in Cage. Each area is a
-    # machine of its own, so they run side by side (tests/screens.nix).
-    vm-screens-come-and-go = import ./tests/screens.nix {
-      inherit self pkgs;
-      area = "come-and-go";
-    };
-    vm-screens-keep-places = import ./tests/screens.nix {
-      inherit self pkgs;
-      area = "keep-places";
-    };
-    vm-screens-keep-the-launcher = import ./tests/screens.nix {
-      inherit self pkgs;
-      area = "keep-the-launcher";
-    };
   };
   vmTests = vmTestsOn vmHostPkgs;
 
@@ -732,6 +717,7 @@ gather {
     ./tests/vm/keys/checks.nix
     ./tests/vm/network/checks.nix
     ./tests/vm/programs/checks.nix
+    ./tests/vm/screens/checks.nix
     ./tests/vm/sites/checks.nix
     ./tests/vm/sound/checks.nix
     ./tools/changed-checks/checks.nix

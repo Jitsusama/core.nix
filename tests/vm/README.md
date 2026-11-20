@@ -22,10 +22,10 @@ They are grouped by what they prove, a folder an area:
 | `boot/`     | the boot theme's ask, a Bluetooth keyboard there, greeter, reboots |
 | `sites/`    | Joel's local sites' server reading the daemons its pages watch     |
 | `programs/` | a program Joel runs saying what it has open, as Chrome its tabs    |
+| `screens/`  | the shell as screens go and come: its places, and the launcher     |
 
-Two VM tests aren't here yet, the desktop's and the screens': each is a
-`.nix` in `../` with its areas in a folder of its own, `../desktop/` and
-`../screens/`, and moves here as its owner frees it. Shared helpers are
+One VM test isn't here yet, the desktop's: it is `../desktop.nix`, with its
+areas in `../desktop/`, and moves here as its owner frees it. Shared helpers are
 in `../lib/`, and stand-ins several tests use are in `../stand-ins/`,
 each saying what it stands in for. A check that needs no VM goes beside
 its module instead.

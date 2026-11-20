@@ -1,5 +1,5 @@
 Lets niri drive a display through a software renderer, for the screens
-VM test alone (tests/screens.nix): the VM has no GPU, only llvmpipe, and
+VM test alone (tests/vm/screens/screens.nix): the VM has no GPU, only llvmpipe, and
 niri as it ships skips a software EGL device, so it would find nothing to
 draw with. A software device names no render node either, so the device's
 own stands in for it, which is the one niri took as its primary.

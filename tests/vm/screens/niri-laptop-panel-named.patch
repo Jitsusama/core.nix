@@ -1,5 +1,5 @@
 Lets the screens VM test say which of its screens is a laptop's own
-panel (tests/screens.nix): niri knows one only by its connector's name,
+panel (tests/vm/screens/screens.nix): niri knows one only by its connector's name,
 eDP, LVDS or DSI, and the VM's are all Virtual-N. NIRI_LAPTOP_PANEL
 names the connector that stands in for one, so its stand-in lid shuts
 that screen as a laptop's lid shuts its panel.
