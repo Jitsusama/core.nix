@@ -250,8 +250,9 @@ struct Sorter {
     last: u64,
     /// systemd-run's services already said of.
     told: strays::Told,
-    /// Groups and processes whose move to jobs was refused, each said
-    /// once while it runs.
+    /// Groups and processes whose move to jobs failed, each said once
+    /// while it runs. A scope that ends keeps its few, as refusals are
+    /// rare: a setuid program's, with cores held.
     refused: HashSet<(String, u32)>,
 }
 
@@ -334,6 +335,10 @@ impl Sorter {
         // A streak breaks the moment its group or process rests.
         self.busy
             .retain(|key, _| key.0 != scope || still.contains(key));
+        // A refusal is forgotten once its group or process has gone from
+        // the scope, which a group's key outlives its leader for.
+        self.refused
+            .retain(|key| key.0 != scope || groups.contains_key(&key.1) || here.contains(&key.1));
         for proc in procs {
             self.seen.insert(proc.pid, proc.cpu);
         }
@@ -363,25 +368,28 @@ impl Sorter {
     }
 
     /// What to say of `found` once its processes were written as `sent`
-    /// says: the move, when any went; when none did, that it was refused,
-    /// once for each group or process while it runs, since it's tried
-    /// again each time it has been busy long enough; and nothing when
-    /// every one had ended.
+    /// says: the move, when any went; when none did, that it failed, once
+    /// for each group or process while it runs, since it's tried again
+    /// each time it has been busy long enough; and nothing when every one
+    /// had ended.
     fn said(&mut self, found: &Move, sent: &Sent) -> Option<String> {
-        let Some((pid, error)) = &sent.refused else {
+        let Some((pid, error)) = &sent.failed else {
             return (sent.moved > 0).then(|| found.says.clone());
         };
         if sent.moved > 0 {
             self.refused.remove(&found.key);
             return Some(format!(
-                "{} {} of them stayed where they were, as moving {pid} was refused: {error}.",
-                found.says, sent.stayed
+                "{} {} of the {} it took stayed where they were, as moving {pid} failed: \
+                 {error}.",
+                found.says,
+                sent.stayed,
+                found.pids.len()
             ));
         }
         self.refused.insert(found.key.clone()).then(|| {
             format!(
-                "Couldn't move {} to jobs, as moving {pid} was refused: {error}. It stays \
-                 where it is, and isn't said again while it runs.",
+                "Couldn't move {} to jobs, as moving {pid} failed: {error}. It stays where \
+                 it is, and isn't said again while it runs.",
                 found.what
             )
         })
@@ -408,7 +416,6 @@ impl Sorter {
     /// Forgets processes that have gone, and notes when this look was.
     fn finish(&mut self, alive: &HashSet<u32>, now: u64) {
         self.seen.retain(|pid, _| alive.contains(pid));
-        self.refused.retain(|(_, pid)| alive.contains(pid));
         self.last = now;
     }
 }
@@ -1591,16 +1598,16 @@ fn cgroup_of(pid: u32, manager: &str) -> Option<String> {
 struct Sent {
     /// How many went.
     moved: usize,
-    /// How many stayed, refused rather than ended.
+    /// How many stayed, failing rather than having ended.
     stayed: usize,
-    /// The first refused, and why. With cores held, one holding
+    /// The first that failed, and why. With cores held, one holding
     /// capabilities its mover lacks, a setuid program's, is refused a
-    /// move onto other cores.
-    refused: Option<(u32, io::Error)>,
+    /// move onto other cores; a cgroup that has gone fails every one.
+    failed: Option<(u32, io::Error)>,
 }
 
 /// Writes each process into the cgroup `into`. One that has exited since
-/// is no loss, so it counts as neither moved nor refused.
+/// is no loss, so it counts as neither moved nor stayed.
 fn send(into: &Path, pids: &[u32]) -> Sent {
     let mut sent = Sent::default();
     for pid in pids {
@@ -1609,24 +1616,34 @@ fn send(into: &Path, pids: &[u32]) -> Sent {
             Err(error) if error.raw_os_error() == Some(3) => {}
             Err(error) => {
                 sent.stayed += 1;
-                sent.refused.get_or_insert((*pid, error));
+                sent.failed.get_or_insert((*pid, error));
             }
         }
     }
     sent
 }
 
-/// Says the first refusal in the sorter's life of a move other than a busy
-/// group's, which [`Sorter::said`] says, and whether any process went.
-fn sent_warned(into: &Path, pids: &[u32], warned: &mut bool) -> bool {
+/// Says the first failure in the sorter's life of a move other than a busy
+/// group's, which [`Sorter::said`] says, and how many processes went.
+fn sent_warned(into: &Path, pids: &[u32], warned: &mut bool) -> usize {
     let sent = send(into, pids);
-    if let Some((pid, error)) = &sent.refused
+    if let Some((pid, error)) = &sent.failed
         && !*warned
     {
         eprintln!("Couldn't move {pid} into {}: {error}", into.display());
         *warned = true;
     }
-    sent.moved > 0
+    sent.moved
+}
+
+/// How many of `all` processes went, as the journal says it: all of them
+/// alone, or how many of them.
+fn went(moved: usize, all: usize) -> String {
+    if moved == all {
+        format!("{all} processes")
+    } else {
+        format!("{moved} of {all} processes")
+    }
 }
 
 fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure> {
@@ -1822,13 +1839,14 @@ fn return_stray(scope: &Path, root: &Path, manager: &str, slice: &str, warned: &
         return;
     };
     let pids: Vec<u32> = procs.iter().map(|proc| proc.pid).collect();
-    if !sent_warned(&root.join(back.trim_start_matches('/')), &pids, warned) {
+    let moved = sent_warned(&root.join(back.trim_start_matches('/')), &pids, warned);
+    if moved == 0 {
         return;
     }
     let name = scope.file_name().unwrap_or_default().to_string_lossy();
     eprintln!(
-        "Moved {name} ({} processes) back to {back}, which started it.",
-        pids.len()
+        "Moved {name} ({}) back to {back}, which started it.",
+        went(moved, pids.len())
     );
 }
 
@@ -1862,20 +1880,23 @@ fn return_sessions(root: &Path, settings: &Settings, warned: &mut bool) {
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success());
-        if !made && scope.join("cgroup.procs").exists() {
-            if !sent_warned(&scope, &pids, warned) {
-                continue;
-            }
-        } else if !made {
+        let moved = if made {
+            pids.len()
+        } else if scope.join("cgroup.procs").exists() {
+            sent_warned(&scope, &pids, warned)
+        } else {
             if !*warned {
                 eprintln!("Couldn't give {name} its scope back from jobs.");
                 *warned = true;
             }
             continue;
+        };
+        if moved == 0 {
+            continue;
         }
         eprintln!(
-            "Gave {name} ({} processes) its scope back in {slice}, from jobs.",
-            pids.len()
+            "Gave {name} ({}) its scope back in {slice}, from jobs.",
+            went(moved, pids.len())
         );
     }
 }
@@ -2396,8 +2417,27 @@ mod tests {
         Sent {
             moved,
             stayed,
-            refused: (stayed > 0).then(|| (31, io::Error::from_raw_os_error(13))),
+            failed: (stayed > 0).then(|| (31, io::Error::from_raw_os_error(13))),
         }
+    }
+
+    #[test]
+    fn sending_counts_what_went_and_names_the_first_that_failed() {
+        let into = std::env::temp_dir().join(format!("sent-{}", std::process::id()));
+        fs::create_dir_all(&into).unwrap();
+        let went = send(&into, &[30, 31]);
+        assert_eq!((went.moved, went.stayed), (2, 0));
+        assert!(went.failed.is_none());
+        let gone = send(&into.join("gone"), &[30, 31]);
+        assert_eq!((gone.moved, gone.stayed), (0, 2));
+        assert_eq!(gone.failed.as_ref().map(|(pid, _)| *pid), Some(30));
+        fs::remove_dir_all(&into).unwrap();
+    }
+
+    #[test]
+    fn a_move_names_how_many_went_only_when_some_stayed() {
+        assert_eq!(went(3, 3), "3 processes");
+        assert_eq!(went(2, 3), "2 of 3 processes");
     }
 
     #[test]
@@ -2416,8 +2456,38 @@ mod tests {
         );
         let some = sorter.said(found, &sent(1, 1)).unwrap();
         assert!(
-            some.starts_with(&found.says) && some.contains("1 of them stayed"),
+            some.starts_with(&found.says) && some.contains("1 of the 2 it took stayed"),
             "a move that took only some says how many stayed: {some}"
+        );
+    }
+
+    #[test]
+    fn a_move_that_takes_some_lets_a_later_refusal_be_said() {
+        let mut sorter = Sorter::default();
+        let moves = looks(&mut sorter, &[window(0, 0), window(90, 1), window(180, 2)]);
+        let found = &moves[2][0];
+        assert!(sorter.said(found, &sent(0, 2)).is_some());
+        let some = sorter.said(found, &sent(2, 1)).unwrap();
+        assert!(some.contains("1 of the 2 it took stayed"), "{some}");
+        assert!(
+            sorter.said(found, &sent(0, 2)).is_some(),
+            "a refusal after a move that went is said again"
+        );
+    }
+
+    #[test]
+    fn a_refusal_outlives_its_groups_leader() {
+        let mut sorter = Sorter::default();
+        let moves = looks(&mut sorter, &[window(0, 0), window(90, 1), window(180, 2)]);
+        let found = &moves[2][0];
+        assert!(sorter.said(found, &sent(0, 1)).is_some());
+        // make (30) has ended; cc1 (31) runs on in its group.
+        let leaderless = vec![proc(10, 1, 10, "zsh", 5), proc(31, 1, 30, "cc1", 270)];
+        looks(&mut sorter, &[leaderless]);
+        assert_eq!(
+            sorter.said(found, &sent(0, 1)),
+            None,
+            "said again without its leader"
         );
     }
 
@@ -2429,7 +2499,7 @@ mod tests {
         let first = sorter.said(found, &sent(0, 2)).unwrap();
         assert!(
             first.starts_with("Couldn't move make (process group 30, 2 processes)")
-                && first.contains("moving 31 was refused"),
+                && first.contains("moving 31 failed"),
             "a refusal names the group and why: {first}"
         );
         assert_eq!(
