@@ -45,8 +45,10 @@ in
       On Linux, modules the sweep of ended sessions' work trees loads its providers
       other than git's from, each one's default export a function giving
       them, as the hosts load them from their own packages. The sweep
-      judges the trees of each provider it loads, and the hosts stand
-      their own sweeps down only for trees it judged.
+      judges the trees of each provider it loads, and a host stands its
+      own sweep down only while the sweep has judged every provider the
+      host has, so one left out here keeps that host's whole sweep on its
+      thread.
     '';
   };
 
@@ -149,8 +151,8 @@ in
     # listings held every conversation in the host for up to 262 s on 19
     # November. Each sweep that runs to its end leaves a stamp naming the
     # providers whose trees it judged, and while that stamp is under two
-    # hours old a host whose providers it names stands its own sweeps
-    # down, so stopping this timer, or a sweep that keeps failing, hands
+    # hours old a host whose providers it names, every one, stands its own
+    # sweeps down, so stopping this timer, or a sweep that keeps failing, hands
     # sweeping back to the hosts. It runs at the top of each hour by the
     # wall clock the stamp is dated by, which also fires on waking when a
     # sleep took the hour.
