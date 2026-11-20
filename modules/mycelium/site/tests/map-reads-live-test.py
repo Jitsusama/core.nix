@@ -1044,11 +1044,12 @@ def test_new_works_line_holds_one_row_on_a_phone(browser: Browser, mycelium_serv
         )
         expect(go, "the button kept its long words").to_have_text("Start", use_inner_text=True)
         _, top, _, tall = page.evaluate(PLACED, "#sprout-line")
-        _, body, _, _ = page.evaluate(PLACED, "#panel-body")
+        # The drawer scrolls, so its edge, not its words, is where it shows.
+        _, edge, _, _ = page.evaluate(PLACED, "#panel")
         # One row is the trail's room and the rule under it.
         _, _, _, room = page.evaluate(PLACED, ".lines")
         assert tall <= room + 1.5, f"the line took more than a row, {tall} px in {room}"
-        assert top + tall - 1 <= body, f"the line, to {top + tall}, covers the drawer from {body}"
+        assert top + tall - 1 <= edge, f"the line, to {top + tall}, covers the drawer from {edge}"
         now = [page.evaluate(PLACED, s) for s in ("#map", "#panel-body")]
         assert now == was, f"the line moved the map or the drawer: {was} to {now}"
     finally:
