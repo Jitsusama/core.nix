@@ -21,8 +21,11 @@
 # files under the unit and the name the unit gives it. Nothing it does can
 # fail the unit: signed out or unreachable, the daemon never connects, and
 # it says only that. When `tuple start` forked no daemon, as it doesn't when
-# one already runs outside the unit, systemd finds no main process, and the
-# waiter would be all that kept the unit up: so it leaves at once.
+# one already runs outside the unit, systemd takes the waiter, alone in the
+# unit, for its main process, and the waiter would be all that kept it up:
+# so named, it leaves at once, and the unit stops as it did before there
+# was a waiter. As the main process, how it ends is how the unit ends, so it
+# always ends well, or Restart= would start Tuple again.
 #
 # Given systemctl, the unit's name, the daemon's log and how many seconds to
 # wait.
@@ -62,21 +65,23 @@ waits() {
       done <<<"${shown}"
       # The unit leaves active only by stopping, which ends this with it.
       if [[ ${state} == active ]]; then
-        [[ ${main} != 0 ]] || return
+        # A main process of 0 is a start that left daemons systemd couldn't
+        # choose between, which serve all the same.
+        [[ ${main} != "${BASHPID}" ]] || return 0
         active=yes
       fi
     fi
     if [[ -n ${active} ]] &&
       connected=$(grep -m1 -E "${timed}signaler state changed: [a-z]+ -> connected$" "${log}"); then
-      first=$(grep -m1 -E "${stamped}" "${log}") || return
+      first=$(grep -m1 -E "${stamped}" "${log}") || return 0
       began=$(millis "${first}")
       ended=$(millis "${connected}")
       took=$((ended - began))
       # A start that ran past midnight reads its end on the next day.
       ((took < 0)) && took=$((took + 86400000))
-      ((took <= wait * 1000)) || return
+      ((took <= wait * 1000)) || return 0
       echo "tuple: ready in ${took} ms"
-      return
+      return 0
     fi
     # Neither systemd nor the log says when it changes, so it looks again
     # a tenth of a second on: the line lands that close behind the daemon.
@@ -85,6 +90,7 @@ waits() {
   if [[ -n ${active} ]]; then
     echo "tuple: its signaller hadn't connected ${wait} s after it started"
   fi
+  return 0
 }
 
 waits </dev/null 2>/dev/null &

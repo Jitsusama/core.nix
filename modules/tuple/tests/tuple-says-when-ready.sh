@@ -1,15 +1,17 @@
 # shellcheck shell=bash
 # Runs tuple.service's own ExecStartPost with systemctl and the daemon's log
-# swapped for its own, and its wait cut to four seconds: it must return while
+# swapped for its own, and its wait cut to five seconds: it must return while
 # the unit is still starting, say nothing until the unit is active and the
 # log says the signaller has connected, a connection of another kind not
 # counting, and then say how long that took from the log's first timed line,
 # in the words modules/health reads, across midnight too. Each log opens as
 # Tuple's do, with a line that has no time. A clock that stepped either way
-# between the two says nothing; a caller's name posing as the line is waited
-# out, and said to be. It asks systemd only until the unit is active, gives
-# up on an ask systemd doesn't answer, and leaves a unit whose start forked
-# no daemon at once.
+# between the two says nothing, as does a unit never active; a caller's name
+# posing as the line is waited out, and said to be, in words health doesn't
+# take for a ready line. It asks systemd only until the unit is active, gives
+# up on an ask systemd doesn't answer, serves daemons systemd couldn't choose
+# between, and leaves at once when systemd takes it for the unit's main
+# process, as it does when the start forked no daemon.
 #
 # Given the ExecStartPost's program, and the systemctl and log it names.
 set -euo pipefail
@@ -21,10 +23,12 @@ here=$PWD
 
 mkdir -p bin
 # Answers the one ask the post makes, the unit active only once the case
-# has said it's up, with no main process when the case says its start forked
-# none, and refuses any other ask, so one of the wrong manager or unit fails
-# here as it would say nothing on a machine. Each ask is counted, so a case
-# knows the post has looked; one the case says hangs is never answered.
+# has said it's up, and refuses any other ask, so one of the wrong manager or
+# unit fails here as it would say nothing on a machine. Its main process is a
+# daemon's, or none when the case says its start left `many`, or, once the
+# case has found it, the post's own waiter when the case says it's `alone`,
+# as systemd takes it then. Each ask is counted, so a case knows the post has
+# looked; one the case says hangs is never answered.
 cat >bin/systemctl <<EOF
 #!${BASH}
 [[ "\$*" == "--user show --property=ActiveState,MainPID tuple.service" ]] || exit 1
@@ -32,28 +36,34 @@ echo >>${here}/asked
 # A systemd that never answers: far past the post's two-second bound on it.
 if [[ -e ${here}/hangs ]]; then rm ${here}/hangs; exec sleep 10; fi
 if [[ ! -e ${here}/up ]]; then printf 'MainPID=0\nActiveState=activating\n'
-elif [[ -e ${here}/alone ]]; then printf 'MainPID=0\nActiveState=active\n'
+elif [[ -e ${here}/alone && -e ${here}/main ]]; then
+  printf 'MainPID=%s\nActiveState=active\n' "\$(cat ${here}/main)"
+elif [[ -e ${here}/alone ]]; then printf 'MainPID=0\nActiveState=activating\n'
+elif [[ -e ${here}/many ]]; then printf 'MainPID=0\nActiveState=active\n'
 else printf 'MainPID=7\nActiveState=active\n'; fi
 EOF
 chmod +x bin/systemctl
 
-sed "s|${systemctl}|${here}/bin/systemctl|; s|${log}|${here}/log.txt|; s| 30\$| 4|" \
+sed "s|${systemctl}|${here}/bin/systemctl|; s|${log}|${here}/log.txt|; s| 30\$| 5|" \
   "${post}" >started
 chmod +x started
 grep -q "${here}/bin/systemctl" started
 grep -q "${here}/log.txt" started
-grep -q ' 4$' started
+grep -q ' 5$' started
 
 failed=0
 # Three of the post's looks, a tenth of a second apart, any of which would say
 # its line too early if it didn't wait for what the case holds back.
 THREE_LOOKS=0.3
-# Past the four seconds the post waits, which it counts in whole seconds, so
+# Past the five seconds the post waits, which it counts in whole seconds, so
 # a case that must say nothing has seen the post give up, not just not look.
-# Those whole seconds can run up to one ahead, so four leave an ask systemd
-# never answers, which takes two, time for another.
-WAITED_OUT=4.5
-gave_up="tuple: its signaller hadn't connected 4 s after it started"
+# Those whole seconds can run up to one ahead, so five leave an ask systemd
+# never answers, which takes two, and the asks a case waits on before it lets
+# the unit be active, time to spare on a loaded machine.
+WAITED_OUT=5.5
+gave_up="tuple: its signaller hadn't connected 5 s after it started"
+# What modules/health takes for a ready line (launches.rs's READY_FOLLOWED).
+ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
 
 # Fails the case `what` when the post has said anything yet.
 quiet() {
@@ -111,13 +121,52 @@ asked() {
   fi
 }
 
+# Sets `running` when the process at `proc` runs with this case's log among
+# its words, as the post, its waiter and the waiter's asks of systemd do. It
+# forks nothing, so a look over every process ends while the waiter waits.
+runs() {
+  local words word
+  running=""
+  mapfile -d '' words 2>/dev/null <"$1/cmdline" || return 0
+  for word in "${words[@]}"; do
+    [[ ${word} != "${here}/log.txt" ]] || running=yes
+  done
+}
+
+# The post's waiter, once the post has returned: the process running with the
+# case's log whose parent doesn't, as the waiter's own asks do.
+waiter() {
+  local proc parent
+  for proc in /proc/[0-9]*; do
+    runs "${proc}"
+    [[ -n ${running} ]] || continue
+    read -r _ _ _ parent _ 2>/dev/null <"${proc}/stat" || continue
+    runs "/proc/${parent}"
+    [[ -n ${running} ]] || echo "${proc#/proc/}"
+  done
+}
+
+# Waits until the process `pid` has ended, and fails the case `what` when it
+# hasn't within two seconds.
+gone() {
+  local pid=$1 what=$2
+  for _ in {1..40}; do
+    [[ -e /proc/${pid} ]] || return 0
+    # It ends on its next look, a tenth of a second on at most.
+    sleep 0.05
+  done
+  echo "${what}: the waiter still runs"
+  failed=1
+}
+
 # Starts a case: the unit starting, or as named, already active (`up`), with
-# no main process (`alone`), or first asked about in vain (`hangs`), and what
-# the post says and asks from now in files of the case's own, so a post still
-# waiting from the case before can't speak into it.
+# daemons systemd couldn't choose between (`many`), with no daemon but the
+# waiter (`alone`), or first asked about in vain (`hangs`), and what the post
+# says and asks from now in files of the case's own, so a post still waiting
+# from the case before can't speak into it.
 starts() {
   local each
-  rm -f up alone hangs said asked
+  rm -f up many alone main hangs said asked
   for each in "$@"; do touch "${each}"; done
   ./started tuple.service >said
 }
@@ -129,10 +178,10 @@ printf '%s\n' \
   '00:00:00.101|1|7|info|S.cpp:181|signaler state changed: connecting -> synchronizing' \
   >log.txt
 starts
-looked 3 "a start"
+looked 2 "a start"
 echo '00:00:00.700|1|7|info|S.cpp:181|signaler state changed: synchronizing -> connected' \
   >>log.txt
-looked 6 "a start"
+looked 4 "a start"
 quiet "a start" "before the unit was active"
 touch up
 says "a start" "tuple: ready in 1200 ms"
@@ -158,13 +207,25 @@ printf '%s\n' \
 starts up hangs
 says "an ask systemd doesn't answer" "tuple: ready in 250 ms"
 
+starts up many
+says "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
+
 # The log already says the signaller connected, so only leaving at once
 # keeps it quiet.
 starts up alone
-looked 1 "a start that forked no daemon"
-sleep "${THREE_LOOKS}"
-quiet "a start that forked no daemon" "for a unit it alone held up"
-asked 1 "a start that forked no daemon"
+main=$(waiter)
+if [[ ${main} =~ ^[0-9]+$ ]]; then
+  echo "${main}" >main
+  gone "${main}" "a start that forked no daemon"
+else
+  echo "a start that forked no daemon: found no one waiter, but '${main}'"
+  failed=1
+fi
+quiet "a start that forked no daemon" "as the unit's main process"
+
+starts
+sleep "${WAITED_OUT}"
+quiet "a unit never active" "at all"
 
 printf '%s\n' \
   'launching from pid 1...' \
@@ -175,6 +236,8 @@ starts up
 sleep "${WAITED_OUT}"
 quiet "a clock stepped back" "at all"
 
+# Beside the clock stepped back, which the wrap past midnight turns into most
+# of a day, this is what holds the bound to the wait, not to a day.
 printf '%s\n' \
   'launching from pid 1...' \
   '10:00:00.000|1|1|info|closing fd 0' \
@@ -197,5 +260,9 @@ printf '%s\n' \
 starts up
 sleep "${WAITED_OUT}"
 says "a caller named like the line" "${gave_up}"
+if grep -qE "${ready}" said; then
+  echo "a caller named like the line: health would read its giving up as ready"
+  failed=1
+fi
 
 exit "${failed}"
