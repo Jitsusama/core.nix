@@ -116,12 +116,15 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         Some("runtime"),
         "switched in, but a host patch didn't wait on the hosts"
     );
-    let added =
+    // `changed` names core's runtime build only where it changed more than
+    // its list of patches, which a runtime built elsewhere may lack beside
+    // the patch.
+    let beside =
         |_: &str| Some("modules/pi/host-patches/x.patch\nmodules/pi/hosted-pi.nix".to_owned());
     assert_eq!(
-        judge("core", at, Some("f00d"), all, added, lack),
-        Some("runtime"),
-        "a new patch with its line in core's runtime build wasn't judged by the patch"
+        judge("core", at, Some("f00d"), all, beside, lack),
+        Some("cadence can't tell what a pi host loads"),
+        "a patch beside a change to core's runtime build was judged by the patch alone"
     );
     // A fix to how core builds its runtime, with no patch, can't be seen in
     // a runtime built elsewhere, while a note beside the patches reaches no
@@ -150,6 +153,31 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         judge("core", at, Some("f00d"), all, home, lack),
         None,
         "a switch alone didn't carry the rest"
+    );
+}
+
+#[test]
+fn a_runtime_build_that_only_lists_the_patches_changed_is_left_to_them() {
+    let files = [
+        "modules/pi/host-patches/x.patch",
+        "modules/pi/hosted-pi.nix",
+    ];
+    let listed = "--- a/modules/pi/hosted-pi.nix\n+++ b/modules/pi/hosted-pi.nix\n\
+                  @@ -24 +24,2 @@\n+    ./host-patches/x.patch\n";
+    assert!(
+        only_lists(listed, &files),
+        "a new patch's line in the list was taken for a change to the build"
+    );
+    let built =
+        format!("{listed}@@ -30 +31 @@\n-  patchFlags = [ ];\n+  patchFlags = [ \"-p1\" ];\n");
+    assert!(
+        !only_lists(&built, &files),
+        "a change to a step of the build was taken for the list alone"
+    );
+    let other = "@@ -24 +24 @@\n+    ./host-patches/y.patch\n";
+    assert!(
+        !only_lists(other, &files),
+        "a line listing a patch the merge didn't change was taken for its own"
     );
 }
 
@@ -215,6 +243,7 @@ fn a_host_is_read_by_its_units_main_process() {
         "pi-host-home-attended.service not-found active running pi",
         "pi-host-gone-attended.service not-found inactive dead pi",
         "pi-host-down@x.service loaded inactive dead down",
+        "pi-host-work-failing.service loaded failed failed pi",
     ];
     assert_eq!(
         listed
@@ -222,11 +251,13 @@ fn a_host_is_read_by_its_units_main_process() {
             .filter_map(|line| listed_host(line))
             .collect::<Vec<_>>(),
         [
-            "pi-host-work-attended.service",
-            "pi-host-work-background.service",
-            "pi-host-home-attended.service",
+            ("pi-host-work-attended.service", false),
+            ("pi-host-work-background.service", true),
+            ("pi-host-home-attended.service", false),
+            ("pi-host-work-failing.service", false),
         ],
-        "a stopped host, or one still running after its unit's file went, was left out"
+        "a stopped host, a failed one or one still running after its unit's file went was \
+         left out, or a failed one was read as stopped, by the runtime it can't start on"
     );
     assert!(
         !host_unit("pi-host-down@pi-host-work-attended.service"),
@@ -267,6 +298,7 @@ fn host(kept: Option<&str>, started: Option<i64>) -> Host {
     Host {
         applied: kept.map(|kept| Applied::from([("x.patch".to_owned(), kept.to_owned())])),
         started,
+        stopped: false,
     }
 }
 
@@ -387,9 +419,10 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
     let repo = scratch("versions");
     std::fs::create_dir_all(&repo).expect("a scratch history");
     // The patches lie where core keeps them, and are named by their files.
-    let [x, y, gone, later] =
-        ["x", "y", "gone", "later"].map(|name| format!("{PATCHES}{name}.patch"));
+    let [x, y, gone, later, backed] =
+        ["x", "y", "gone", "later", "backed"].map(|name| format!("{PATCHES}{name}.patch"));
     let (x, y, gone, later) = (x.as_str(), y.as_str(), gone.as_str(), later.as_str());
+    let backed = backed.as_str();
     // Writes each patch named with its text, or removes it, and commits.
     let commit = |patches: &[(&str, Option<&str>)], message: &str| {
         for (name, text) in patches {
@@ -409,6 +442,7 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         (y, Some("y0")),
         (gone, Some("g")),
         (later, Some("l0")),
+        (backed, Some("b0")),
     ];
     commit(&first, "before");
     commit(&[(x, Some("old"))], "a step");
@@ -421,16 +455,21 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
         (y, Some("y1")),
         (gone, None),
         (later, Some("l1")),
+        (backed, Some("b1")),
     ];
     commit(&fix, "fix");
+    let head = |name: &str| {
+        let out = std::process::Command::new("git")
+            .args(["-C", &repo.to_string_lossy(), "rev-parse", name])
+            .output()
+            .expect("git runs");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    let fixed = head("HEAD");
     git(&repo, &["checkout", "-q", "main"]);
     git(&repo, &["merge", "-q", "--no-ff", "-m", "the fix", "fix"]);
-    let out = std::process::Command::new("git")
-        .args(["-C", &repo.to_string_lossy(), "rev-parse", "HEAD"])
-        .output()
-        .expect("git runs");
-    let sha = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-    commit(&[(x, Some("newer"))], "a later fix");
+    let sha = head("HEAD");
+    commit(&[(x, Some("newer")), (backed, Some("b2"))], "a later fix");
     // The side branch merged since, its text taking y back to one without
     // the fix.
     commit(&[(y, Some("y2"))], "a later fix to y");
@@ -440,13 +479,17 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
             "merge", "-q", "--no-ff", "-X", "theirs", "-m", "side", "side",
         ],
     );
-    // A revert to a state from before the step before the fix, a rewrite
-    // built on it, and a later removal of what the fix rewrote.
+    // The fix's commit reverted after its patch changed again, which leaves
+    // a text found nowhere before; a revert to a state from before the step
+    // before the fix, a rewrite built on it, and a later removal of what
+    // the fix rewrote.
+    let undone = format!("Revert \"fix\"\n\nThis reverts commit {fixed}.");
+    commit(&[(backed, Some("b2 without b1"))], &undone);
     commit(&[(x, Some("oldest"))], "a revert");
     commit(&[(x, Some("rewritten")), (y, Some("y3"))], "a rewrite");
     commit(&[(later, None)], "a removal");
     let path = repo.to_string_lossy();
-    let patches = [x, y, gone, later].map(str::to_owned);
+    let patches = [x, y, gone, later, backed].map(str::to_owned);
     assert_eq!(
         versions(&path, &sha, &patches),
         Some(Wanted::from([
@@ -460,6 +503,10 @@ fn a_patch_carries_a_change_as_merged_or_as_mains_own_line_left_it() {
             ),
             ("gone.patch".to_owned(), vec![None]),
             ("later.patch".to_owned(), vec![Some("l1".to_owned())]),
+            (
+                "backed.patch".to_owned(),
+                vec![Some("b1".to_owned()), Some("b2".to_owned())]
+            ),
         ])),
         "a revert, what was built on it, a later removal or a side branch's patch counted \
          as carrying the fix"
@@ -513,6 +560,20 @@ fn every_host_must_have_started_since_its_unit_switched_in() {
     assert_eq!(
         lack(&[host(None, None)], Some(100)),
         Some("cadence can't tell when a pi host started")
+    );
+    // A host stopped since it last started keeps no unit, and starts on the
+    // one switched in.
+    let stopped = |started| Host {
+        stopped: true,
+        ..host(None, started)
+    };
+    assert_eq!(
+        lack(
+            &[host(None, Some(200)), stopped(Some(50)), stopped(None)],
+            Some(100)
+        ),
+        None,
+        "a stopped host's last start held its unit's miss open"
     );
     assert_eq!(
         lack(&[host(None, Some(200))], None),

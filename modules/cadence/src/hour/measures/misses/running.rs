@@ -53,16 +53,22 @@ const HOSTED_PI: &str = "modules/pi/hosted-pi.nix";
 /// The patches a runtime applied, by name, each as its copy reads.
 type Applied = BTreeMap<String, String>;
 
+/// A pi host as listed, before its copies are read: the runtime it loads,
+/// when it started, and whether it was stopped.
+type Listed = (Option<std::path::PathBuf>, Option<i64>, bool);
+
 /// The states of each patch of a change, by name, that carry it: its
 /// text, or `None` for one the change removed.
 type Wanted = BTreeMap<String, Vec<Option<String>>>;
 
-/// A running pi host as cadence reads it: the patches its runtime applied,
-/// and when it started, each `None` where that couldn't be read.
+/// A pi host as cadence reads it: the patches its runtime applied, and
+/// when it started, each `None` where that couldn't be read, and whether
+/// it was stopped, with no process to keep an older unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Host {
     applied: Option<Applied>,
     started: Option<i64>,
+    stopped: bool,
 }
 
 /// Which of `merged` don't run here yet, each with why. A change runs once
@@ -105,9 +111,13 @@ pub fn unrun(
                     .unit
                     .then(|| first_switched(switches, |rev| carries(&path, sha, rev) == Some(true)))
                     .flatten();
-                let merged = versions(&path, sha, &reaches.patches);
+                // Walked only once a host keeps copies to compare with it.
+                let merged = std::cell::OnceCell::new();
                 hosts_lack(read.as_deref(), &reaches, switched_at, |applied| {
-                    merged.as_ref().map(|wanted| loads(applied, wanted))
+                    merged
+                        .get_or_init(|| versions(&path, sha, &reaches.patches))
+                        .as_ref()
+                        .map(|wanted| loads(applied, wanted))
                 })
             },
         );
@@ -190,9 +200,10 @@ fn judge(
             .collect(),
         unit: files.lines().any(|file| file == HOST_UNIT),
     };
-    // A fix to how core builds its runtime, with no patch to compare, can't
-    // be seen in a runtime built elsewhere, so it isn't told fixed.
-    if reaches.patches.is_empty() && files.lines().any(|file| file == HOSTED_PI) {
+    // A fix to how core builds its runtime can't be seen in a runtime built
+    // elsewhere, which copies only its patches, so it isn't told fixed;
+    // `changed` leaves the build out where it only listed the patches.
+    if files.lines().any(|file| file == HOSTED_PI) {
         return Some("cadence can't tell what a pi host loads");
     }
     (!reaches.patches.is_empty() || reaches.unit)
@@ -227,18 +238,18 @@ fn hosts_lack(
     if runtime && loaded.contains(&Some(false)) {
         return Some("the pi hosts don't load it yet");
     }
+    // A stopped host keeps no unit: it starts on the one switched in.
+    let running = || hosts.iter().filter(|host| !host.stopped);
     if reaches.unit
         && let Some(at) = switched_at
-        && hosts
-            .iter()
-            .any(|host| host.started.is_some_and(|started| started < at))
+        && running().any(|host| host.started.is_some_and(|started| started < at))
     {
         return Some("a pi host keeps its unit from before it");
     }
     if runtime && loaded.contains(&None) {
         return Some("cadence can't tell what a pi host loads");
     }
-    if reaches.unit && (switched_at.is_none() || hosts.iter().any(|host| host.started.is_none())) {
+    if reaches.unit && (switched_at.is_none() || running().any(|host| host.started.is_none())) {
         return Some("cadence can't tell when a pi host started");
     }
     None
@@ -393,37 +404,70 @@ fn carries(path: &str, sha: &str, rev: &str) -> Option<bool> {
     )
 }
 
-/// The files the merge `sha` changed on its main, if git could say.
+/// The files the merge `sha` changed on its main, one a line, if git could
+/// say, leaving out core's runtime build where all it changed was the list
+/// of the patches the merge changed.
 fn changed(path: &str, sha: &str) -> Option<String> {
-    command(
+    let parent = format!("{sha}^1");
+    // A rename would hide the name a runtime still applies the patch by,
+    // and a name git quotes or splits would miss the patches' folder and
+    // read as reaching no host, so names come whole, apart by NUL.
+    let names = command(
         "git",
-        // A rename would hide the name a runtime still applies the patch by,
-        // and a quoted name would miss the patches' folder and read as
-        // reaching no host.
         &[
             "-C",
             path,
-            "-c",
-            "core.quotePath=false",
             "diff",
+            "-z",
             "--no-renames",
             "--name-only",
-            &format!("{sha}^1"),
+            &parent,
             sha,
         ],
     )
-    .ok()
+    .ok()?;
+    let mut files: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
+    if files.iter().any(|name| name.contains('\n')) {
+        return None;
+    }
+    if files.contains(&HOSTED_PI) {
+        let diff = command(
+            "git",
+            &["-C", path, "diff", "-U0", &parent, sha, "--", HOSTED_PI],
+        )
+        .ok()?;
+        if only_lists(&diff, &files) {
+            files.retain(|name| *name != HOSTED_PI);
+        }
+    }
+    Some(files.join("\n"))
 }
 
-/// Each running pi host, with the patches its runtime applied where it
-/// keeps them, or `None` when the hosts couldn't be listed.
+/// Whether each line `diff` of core's runtime build adds or removes is the
+/// line listing one of the patches in `files`, so it changed no step of the
+/// build a runtime built elsewhere would lack.
+fn only_lists(diff: &str, files: &[&str]) -> bool {
+    diff.lines()
+        .filter(|line| !line.starts_with("+++") && !line.starts_with("---"))
+        .filter_map(|line| line.strip_prefix('+').or_else(|| line.strip_prefix('-')))
+        .all(|listed| {
+            files.iter().any(|file| {
+                file.strip_prefix(PATCHES)
+                    .is_some_and(|name| listed.trim() == format!("./host-patches/{name}"))
+            })
+        })
+}
+
+/// Each pi host, with the patches its runtime applied where it keeps them,
+/// or `None` when the hosts couldn't be listed.
 fn read_hosts() -> Option<Vec<Host>> {
     Some(
         hosts()?
             .into_iter()
-            .map(|(runtime, started)| Host {
+            .map(|(runtime, started, stopped)| Host {
                 applied: runtime.and_then(|runtime| applied(&runtime)),
                 started,
+                stopped,
             })
             .collect(),
     )
@@ -458,6 +502,13 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
     };
     let range = format!("{sha}..{}", main_of(path));
     let parent = format!("{sha}^1");
+    // The merge and the commits it brought, which a revert names.
+    let fix = command(
+        "git",
+        &["-C", path, "rev-list", &format!("{parent}..{sha}")],
+    )
+    .ok()?;
+    let fix: Vec<&str> = fix.lines().collect();
     let mut versions = Wanted::new();
     for patch in patches {
         let read = |commit: &str| state(path, commit.trim(), patch).ok();
@@ -486,7 +537,7 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
         let mut states = vec![read(sha)?];
         for commit in since.lines().rev() {
             let later = read(commit)?;
-            if later.is_none() || before.contains(&later) {
+            if later.is_none() || before.contains(&later) || reverts(path, commit, &fix)? {
                 break;
             }
             states.push(later);
@@ -495,6 +546,32 @@ fn versions(path: &str, sha: &str, patches: &[String]) -> Option<Wanted> {
         versions.insert(name, states);
     }
     Some(versions)
+}
+
+/// Whether the commit `commit` on main, or one it merged, says it reverts
+/// one of `fix`, as `git revert` writes: a revert made after the patch
+/// changed again leaves a text found nowhere before, without the fix.
+/// `None` when git can't say.
+fn reverts(path: &str, commit: &str, fix: &[&str]) -> Option<bool> {
+    let commit = commit.trim();
+    let said = command(
+        "git",
+        &[
+            "-C",
+            path,
+            "log",
+            "--format=%B",
+            &format!("{commit}^1..{commit}"),
+        ],
+    )
+    .ok()?;
+    Some(said.lines().any(|line| {
+        let Some(named) = line.trim().strip_prefix("This reverts commit ") else {
+            return false;
+        };
+        let named: String = named.chars().take_while(char::is_ascii_hexdigit).collect();
+        named.len() >= 7 && fix.iter().any(|fixed| fixed.starts_with(&named))
+    }))
 }
 
 /// The patch at `file` as `commit` holds it, `None` where it holds none, or
@@ -532,12 +609,14 @@ fn input_pin(lock: &str, input: &str) -> Option<String> {
 }
 
 /// The runtime each pi host loads its pi from and when it started, each
-/// `None` where it couldn't be read. A host is the main process of a unit
-/// core's host module names `pi-host-REALM-KIND`, so what it starts, which
-/// keeps its environment after the host moves on, isn't read. A host with
-/// no main process, stopped, failed or restarting, comes back on the
+/// `None` where it couldn't be read, and whether it was stopped. A host is
+/// the main process of a unit core's host module names
+/// `pi-host-REALM-KIND`, so what it starts, which keeps its environment
+/// after the host moves on, isn't read. A host stopped comes back on the
 /// runtime its unit names, so it's judged by that rather than left out.
-fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
+/// One failed or restarting may never load that runtime, as when it
+/// can't start on it, so what it loads can't be told.
+fn hosts() -> Option<Vec<Listed>> {
     let units = command(
         "systemctl",
         &[
@@ -555,7 +634,7 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
         units
             .lines()
             .filter_map(listed_host)
-            .map(|unit| {
+            .map(|(unit, stopped)| {
                 let shown = command(
                     "systemctl",
                     &[
@@ -573,26 +652,31 @@ fn hosts() -> Option<Vec<(Option<std::path::PathBuf>, Option<i64>)>> {
                 )
                 .unwrap_or_default();
                 let (pid, started) = shown_host(&shown);
-                let runtime = match pid {
-                    Some(pid) => std::fs::read(format!("/proc/{pid}/environ"))
-                        .ok()
-                        .and_then(|environ| runtime(&environ)),
-                    None => unit_runtime(&shown),
-                };
-                (runtime, started)
+                match pid {
+                    Some(pid) => {
+                        let runtime = std::fs::read(format!("/proc/{pid}/environ"))
+                            .ok()
+                            .and_then(|environ| runtime(&environ));
+                        (runtime, started, false)
+                    }
+                    None if stopped => (unit_runtime(&shown), None, true),
+                    None => (None, None, false),
+                }
             })
             .collect(),
     )
 }
 
-/// The host unit a line of `systemctl list-units --all` names, unless it's
-/// one gone from the config and stopped: a host still running after its
-/// unit's file went still loads its runtime, so it's read.
-fn listed_host(line: &str) -> Option<&str> {
+/// The host unit a line of `systemctl list-units --all` names, and whether
+/// it was stopped, unless it's one gone from the config and stopped: a host
+/// still running after its unit's file went still loads its runtime, so
+/// it's read.
+fn listed_host(line: &str) -> Option<(&str, bool)> {
     let mut fields = line.split_whitespace();
     let unit = fields.next().filter(|unit| host_unit(unit))?;
     let (load, active) = (fields.next(), fields.next());
-    (load == Some("loaded") || active != Some("inactive")).then_some(unit)
+    let stopped = active == Some("inactive");
+    (load == Some("loaded") || !stopped).then_some((unit, stopped))
 }
 
 /// A host unit's main process and when it started, from `systemctl show`.
