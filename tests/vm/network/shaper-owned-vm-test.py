@@ -37,11 +37,16 @@ WINDOW = 4_000_000
 # What the app sends before its share counts, so its slow start, while the
 # jobs still hold the connection, isn't counted against it.
 APP_STARTS = 500_000
-# The app's least share with the shaper: CAKE gives bulk a sixteenth while
-# anything else wants the connection, so it's near fifteen sixteenths, and
-# half is well clear of what a busy host's gaps take from it. Without the
-# shaper the router gives it one flow's share of 33, and a fifth is well
-# clear of that.
+# The app's least share with the shaper. Agents keep a quarter of the rate
+# while any wait, and Joel's lane, which the app's upload rides, grows each
+# second from what it carried, settling near two thirds of the rate here, so
+# the share is read once that lane is past half. Were the router's queue
+# still hiding there, or work put first left among the agents', the upload
+# would carry one flow's share of 33, its lane would never pass half, and the
+# wait for it fails first. Its lane runs a fifth and a megabit ahead of what
+# it carried, so passing the wait doesn't settle the bar; the share read
+# after it does. Without the shaper the router gives it that one flow's
+# share, and a fifth is well clear of it.
 SHAPED_SHARE = 0.5
 UNSHAPED_SHARE = 0.2
 # How long the client may take to boot to its first queues, and the shaper
@@ -61,10 +66,21 @@ class Rig:
     client: BaseMachine
     server: BaseMachine
 
+    def link(self) -> Json:
+        """Give what the shaper says of eth1, or nothing before it says; fails once it stops."""
+        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
+        return next((link for link in status if link["name"] == "eth1"), {})
+
     def up(self) -> int:
         """Give the rate the shaper sends at on eth1, in kbit/s, or 0 before it says."""
-        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
-        return next((int(link.get("up") or 0) for link in status if link["name"] == "eth1"), 0)
+        return int(self.link().get("up") or 0)
+
+    def joel_share(self, link: Json | None = None) -> float:
+        """Give Joel's lane's share of the rate in `link`, eth1's status read now unless given."""
+        link = self.link() if link is None else link
+        up = int(link.get("up") or 0)
+        joel = int((link.get("lanes") or {}).get("joel") or 0)
+        return joel / up if up else 0.0
 
     def trace(self) -> str:
         """Give what the recorder saw each second, and what the shaper said, for a failure.
@@ -114,26 +130,52 @@ class Rig:
             f" {BIN}/cat /dev/zero > /dev/tcp/{FAR}/{port}; done) & done; wait'"
         )
 
-    def app_share(self, slice_name: str = "app.slice") -> float:
+    def app_share(self, slice_name: str = "app.slice", *, shaped: bool = True) -> float:
         """Give the app's share of what the server takes, once its upload is under way.
 
         The app's one upload runs in `slice_name`, an app's own unless a test says otherwise.
+        While `shaped`, the share is read once the shaper gives Joel's lane, which the upload
+        rides, more than SHAPED_SHARE of its rate: on 19 November one read soon after the
+        upload began gave 0.47, where reads once the lane had grown gave 0.71 and over.
+        The upload is stopped however this ends, so a failure leaves the next test the line,
+        and a stop that fails after a good read fails here rather than in the next test.
         """
+
+        def grown(last_try: bool) -> bool:
+            link = self.link()
+            share = self.joel_share(link)
+            if last_try and share <= SHAPED_SHARE:
+                print(
+                    f"Joel's lane never passed {SHAPED_SHARE} of the rate, at {share:.2f}"
+                    f" with the lanes {link.get('lanes')}:\n{self.trace()}"
+                )
+            return share > SHAPED_SHARE
+
+        stop = "systemctl -M alice@ --user stop app-upload.service"
         self.uploads("app-upload", slice_name, 1, APP_PORT)
-        started = self.taken().get(APP_PORT, 0)
-        retry(
-            lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
-            timeout=SENDING,
-        )
-        before = self.taken()
-        retry(
-            lambda _last_try: sum(self.taken().values()) - sum(before.values()) >= WINDOW,
-            timeout=SENDING,
-        )
-        after = self.taken()
-        self.client.succeed("systemctl -M alice@ --user stop app-upload.service")
+        try:
+            started = self.taken().get(APP_PORT, 0)
+            retry(
+                lambda _last_try: self.taken().get(APP_PORT, 0) - started >= APP_STARTS,
+                timeout=SENDING,
+            )
+            if shaped:
+                retry(grown, timeout=SENDING)
+            before = self.taken()
+            retry(
+                lambda _last_try: sum(self.taken().values()) - sum(before.values()) >= WINDOW,
+                timeout=SENDING,
+            )
+            after = self.taken()
+            # The lanes as the share was read, since the trace reads them after the stop; with
+            # the shaper stopped there is no status to read.
+            lanes_said = f", with the lanes {self.link().get('lanes')}" if shaped else ", unshaped"
+        except BaseException:
+            self.client.execute(stop)
+            raise
+        self.client.succeed(stop)
         moved = {port: after[port] - before.get(port, 0) for port in after}
-        print(f"what the server took while the app uploaded: {moved}")
+        print(f"what the server took while the app uploaded: {moved}{lanes_said}")
         return moved.get(APP_PORT, 0) / sum(moved.values())
 
 
@@ -210,7 +252,6 @@ def test_work_put_first_outruns_the_jobs(loaded: Rig, slice_name: str, name: str
     try:
         share = loaded.app_share(slice_name)
     finally:
-        loaded.client.execute("systemctl -M alice@ --user stop app-upload.service")
         loaded.client.succeed(f"rm -rf {folder}")
     assert share > SHAPED_SHARE, (
         f"work put first got {share:.2f} of the line at {loaded.up()} kbit/s:\n{loaded.trace()}"
@@ -226,5 +267,5 @@ def test_work_put_first_outruns_the_jobs(loaded: Rig, slice_name: str, name: str
 def test_unshaped(loaded: Rig) -> None:
     """Without it, the router gives the app one flow's share."""
     loaded.client.succeed("systemctl stop shaper.service")
-    share = loaded.app_share()
+    share = loaded.app_share(shaped=False)
     assert share < UNSHAPED_SHARE, f"the app got {share:.2f} of the line without the shaper"
