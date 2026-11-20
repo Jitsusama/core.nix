@@ -8,7 +8,8 @@ nix-darwin.lib.darwinSystem {
     core.darwinModules.workstation
     core.darwinModules.graphical
     core.darwinModules.linux-builder
-    # A module no role brings, so it meets the others here first.
+    # Modules no role brings, so they meet the others here first.
+    core.darwinModules.netconsole
     core.darwinModules.update-to-main
     (
       { lib, pkgs, ... }:
@@ -19,6 +20,9 @@ nix-darwin.lib.darwinSystem {
         # Nix kept by its own installer rather than nix-darwin, as the Linux
         # builder is written for.
         nix.enable = false;
+
+        # It keeps the kernel logs a laptop on its network sends.
+        jitsusama.netconsole.from = "192.168.1.0/24";
 
         jitsusama.update-to-main = {
           repository = "https://github.com/example/machines";
