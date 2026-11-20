@@ -50,25 +50,31 @@ const ABOVE_FLOOR_DB: f32 = 12.0;
 const QUIETEST_SPEECH_DB: f32 = -55.0;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
-/// lone "Yeah." holds several times as much. Five, with a likeness of
-/// 0.5, left out 13 of the meetings' words more.
+/// lone "Yeah." holds several times as much. Five left out 13 of the
+/// meetings' words more.
 const LEAST_VOICED_FRAMES: usize = 3;
 /// The shortest and longest lags a repeat is looked for at, in samples: a
 /// period of 400 Hz down to 60 Hz. A higher pitch repeats at a multiple
-/// of its period too, so it's voiced, while a hum below about 50 Hz
-/// repeats only past the longest, so it isn't.
+/// of its period too, so it's voiced, while a hum below about 49 Hz
+/// repeats only past the longest, so it isn't. Mains hum, at 50 or
+/// 60 Hz, is voiced, and Parakeet writes nothing for it.
 const SHORTEST_PERIOD: usize = RATE / 400;
 const LONGEST_PERIOD: usize = RATE / 60;
 /// Each sample is compared less the one this far before it, 6 samples at
 /// 16 kHz. That takes out an offset and a breath's slow drift, and its
 /// gain peaks near 1.3 kHz, among a low voice's strong harmonics, so a
-/// line's hiss gains little on the voice. Less the very next sample, hiss
-/// gains about 20 dB on an 85 Hz voice, and one with hiss 10 dB under it
+/// line's hiss gains about 9 dB on an 85 Hz voice. Less the very next
+/// sample, hiss gains about 24 dB, and a voice with hiss 10 dB under it
 /// has no voiced frame.
 const APART: usize = RATE * 3 / 8000;
 /// How alike sound one period apart must be for a frame to be voiced. A
-/// voice's vowels are near 1; noise, its slope taken out, is near 0.
-const VOICED_LIKENESS: f32 = 0.4;
+/// voice's vowels are near 1, and white or drifting noise near 0. Noise
+/// rung through the throat's resonances, as a breath is, is alike to
+/// itself a few periods on, the more so the narrower they ring: at 0.4,
+/// one in eight frames of a breath through two 200 Hz wide resonances
+/// was voiced, against one in a hundred at 0.5. Every one of the
+/// meetings' takes that held words still had three frames past 0.55.
+const VOICED_LIKENESS: f32 = 0.5;
 
 /// Some speech, and where it starts in the side's sound, in samples.
 #[derive(Debug, PartialEq)]
@@ -213,8 +219,9 @@ impl Cutter {
 
 /// Whether a frame, read with the one before it so a low voice's period
 /// fits twice, repeats at a voice's pitch. Each sample less the one
-/// `APART` before it is what's compared, so an offset, or the drift of a
-/// breath's low noise, doesn't read as a repeat. A repeat only counts past
+/// `APART` before it is what's compared, so a voice riding on an offset,
+/// or on the drift of a breath's low noise, still shows its own repeat
+/// rather than the drift's likeness at every lag. A repeat only counts past
 /// where the sound is first unlike itself, so a hum below a voice's pitch,
 /// alike to itself at every short lag, isn't one either.
 fn voiced(before: &[f32], frame: &[f32]) -> bool {
