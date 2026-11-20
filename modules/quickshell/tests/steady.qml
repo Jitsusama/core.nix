@@ -173,15 +173,36 @@ QtObject {
         if (Steady.hiddenGone({ back: [], ahead: [], tags: [], last: null }).last !== null)
             failures.push("with no last place, none is made");
 
-        // A way back the share has just emptied says so, where it would
-        // otherwise say nothing or E73: one that never held a place, or
-        // still holds one, says what it says anyway.
-        const emptied = [[2, 0], [1, 0], [0, 0], [2, 1], [1, 1]]
-            .map(([had, left]) => Steady.shareEmptied(had, left));
-        const emptiedWant = JSON.stringify([true, true, false, false, false]);
-        if (JSON.stringify(emptied) !== emptiedWant)
-            failures.push(`a way back says the share let it go: said ${JSON.stringify(emptied)}, `
-                + `meant ${emptiedWant}`);
+        // A way back a share has let go says so at its own key's first
+        // press, where it would otherwise say nothing or E73, and its next
+        // press says what Vim says. untold empties all four at a share's
+        // start, and one press's hiddenGone can empty several, so each way
+        // keeps its own mark until its key is pressed; one that never held
+        // a place, still holds one or holds one again isn't let go.
+        const counts = (back, ahead, tags, last) => ({ back, ahead, tags, last });
+        const marked = marks => Object.keys(marks).filter(way => marks[way]).join(" ");
+        const none = Steady.noneLetGo();
+        const started = Steady.waysLetGo(none, counts(2, 0, 1, 1), counts(0, 0, 0, 0));
+        if (marked(started) !== "back tags last")
+            failures.push(`a share's start lets go of each way that held a place: `
+                + `${marked(started)}`);
+        const pressed = Steady.letGoTold(started, "back");
+        const again = Steady.letGoTold(pressed.marks, "back");
+        const tagged = Steady.letGoTold(Steady.waysLetGo(pressed.marks, counts(0, 0, 0, 0),
+            counts(0, 0, 0, 0)), "tags");
+        const told = [pressed.say, again.say, tagged.say, marked(tagged.marks)];
+        const toldWant = JSON.stringify([true, false, true, "last"]);
+        if (JSON.stringify(told) !== toldWant)
+            failures.push(`each way says it was let go once, at its own key: `
+                + `${JSON.stringify(told)}, not ${toldWant}`);
+        const stillHeld = Steady.waysLetGo(none, counts(2, 1, 0, 1), counts(1, 0, 0, 1));
+        if (marked(stillHeld) !== "ahead")
+            failures.push(`only a way left empty is let go: ${marked(stillHeld)}`);
+        const refilled = Steady.waysLetGo(started, counts(0, 0, 0, 0), counts(1, 0, 0, 0));
+        if (marked(refilled) !== "tags last")
+            failures.push(`a way holding a place again isn't let go: ${marked(refilled)}`);
+        if (Steady.letGoTold(none, "ahead").say)
+            failures.push("a way that never held a place says what Vim says");
 
         // A row that arrives while the list is shown comes at the end, out
         // of the place a tree would give it, so it reads as it would ranked
