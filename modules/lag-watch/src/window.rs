@@ -46,6 +46,8 @@ pub struct Snapshot {
     pub apps: BTreeMap<String, Group>,
     /// Each watched thread's schedstat.
     pub threads: BTreeMap<Thread, Sched>,
+    /// How many of each app's threads it had lowered, left out of `threads`.
+    pub lowered: BTreeMap<String, usize>,
 }
 
 /// A share of the window, in percent, each kind of stall.
@@ -149,6 +151,11 @@ pub struct Window {
     /// a window without a call, and of those written before it was added.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub call: BTreeMap<String, Worst>,
+    /// How many of each app's watched threads (`kernel::APPS`) it had
+    /// lowered at the window's end, hidden tabs, and so left out of its
+    /// wait. Left out when none was, and of windows written before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lowered: BTreeMap<String, usize>,
     pub niri: Answers,
     /// What counted as Joel waiting, in words.
     pub trouble: Vec<String>,
@@ -312,6 +319,7 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         memory,
         waits,
         call,
+        lowered: now.lowered.clone(),
         niri,
         trouble: Vec::new(),
         worst: String::new(),
