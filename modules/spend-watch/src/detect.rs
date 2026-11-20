@@ -344,21 +344,6 @@ fn unending_finding(
     }
     // Known by now means given and past, which the margin shows first.
     let passed = view.cap.ends_known;
-    // Why the end it gives, if any, isn't one to warn ahead of.
-    // A known end past while the feed still reads the override may be one
-    // the feed hasn't run since, so the cap may already refuse.
-    let given = match (view.cap.ends, ahead, view.cap.ends_known) {
-        (Some(day), Some(_), _) => format!(" (its end, {}, is a guess)", Zone::day_name(day)),
-        (Some(day), None, false) => {
-            format!(" (its end, {}, a guess, has passed)", Zone::day_name(day))
-        }
-        (Some(day), None, true) => format!(
-            " (its end, {}, has passed, but the feed still reads it, and may not have \
-             run since)",
-            Zone::day_name(day)
-        ),
-        (None, ..) => String::new(),
-    };
     let reaches = clock
         .and_then(|clock| reach(picture, view, clock))
         .map_or_else(String::new, |at| {
@@ -378,14 +363,7 @@ fn unending_finding(
             allowance_named(&view.cap),
             if passed { "has passed" } else { "is unknown" }
         ),
-        format!(
-            "Nobody knows when the {} override ends{given}, and the {} spent is \
-             already over the {} that follows it, so the cap refuses the moment it \
-             ends.{reaches}",
-            whole(allowance),
-            whole(view.spent),
-            whole(fallback)
-        ),
+        unending_detail(view, ahead, allowance, fallback, &reaches),
     );
     f.badge = if passed { "end passed" } else { "end unknown" }.into();
     f.note = format!("over the {} after it", whole(fallback));
@@ -394,6 +372,39 @@ fn unending_finding(
     f.cap = true;
     f.action = ask;
     Some(f)
+}
+
+/// What the unknown-end warning says: why the end the feed gives, if any,
+/// isn't one to warn ahead of, and what follows, with `reaches` after it.
+fn unending_detail(
+    view: &CapView,
+    ahead: Option<f64>,
+    allowance: f64,
+    fallback: f64,
+    reaches: &str,
+) -> String {
+    let (spent, after) = (whole(view.spent), whole(fallback));
+    // A known end past while the feed still reads the override may be one
+    // the feed hasn't run since, so the cap may already refuse.
+    if let (Some(day), true) = (view.cap.ends, view.cap.ends_known) {
+        return format!(
+            "The {} override's end, {}, has passed, but the feed still reads it and may \
+             not have run since, and the {spent} spent is already over the {after} that \
+             follows it, so the cap may already refuse.{reaches}",
+            whole(allowance),
+            Zone::day_name(day)
+        );
+    }
+    let given = match (view.cap.ends, ahead) {
+        (Some(day), Some(_)) => format!(" (its end, {}, is a guess)", Zone::day_name(day)),
+        (Some(day), None) => format!(" (its end, {}, a guess, has passed)", Zone::day_name(day)),
+        (None, _) => String::new(),
+    };
+    format!(
+        "Nobody knows when the {} override ends{given}, and the {spent} spent is already \
+         over the {after} that follows it, so the cap refuses the moment it ends.{reaches}",
+        whole(allowance)
+    )
 }
 
 /// A moment by its day and time, "Fri 20 Nov 23:00", for a finding told
@@ -1583,11 +1594,8 @@ pub fn unbilled(
     {
         return Ok(vec![unsettled_finding(picture, &feed, least)]);
     }
-    if let Some((feed, first)) = settled.held {
-        return Ok(vec![held_finding(
-            &feed,
-            first < now - UNBILLED_STALE_HOURS,
-        )]);
+    if !settled.held.is_empty() {
+        return held_findings(picture, history, &settled.held);
     }
     let Some((through, _)) = settled.least else {
         return Ok(Vec::new());
@@ -1656,10 +1664,10 @@ struct Settled {
     least: Option<(i64, String)>,
     /// The same of the feed settled furthest.
     most: Option<(i64, String)>,
-    /// The first by name of the feeds that bill pi from the warehouse but
-    /// haven't said how far they've settled, so no day can be judged on
-    /// their bills until they do, and the hour it first billed.
-    held: Option<(String, i64)>,
+    /// The feeds, by name, that bill pi from the warehouse but haven't
+    /// said how far they've settled, so no day can be judged on their
+    /// bills until they do.
+    held: Vec<String>,
 }
 
 /// How far every warehouse feed the config runs has settled. A feed
@@ -1698,53 +1706,53 @@ fn warehouse_settled(history: &History, runs: &HashSet<&str>) -> Result<Settled,
     let mut billing = history
         .db
         .prepare(
-            "SELECT feed, MIN(hour) FROM billed WHERE source = 'warehouse' AND tool = 'pi'
-             GROUP BY feed ORDER BY feed",
+            "SELECT DISTINCT feed FROM billed WHERE source = 'warehouse' AND tool = 'pi'
+             ORDER BY feed",
         )
         .map_err(fail)?;
     let feeds = billing
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })
+        .query_map([], |row| row.get::<_, String>(0))
         .map_err(fail)?;
-    let mut held = None;
+    let mut held = Vec::new();
     for feed in feeds {
-        let (feed, first) = feed.map_err(fail)?;
+        let feed = feed.map_err(fail)?;
         if runs.contains(feed.as_str()) && !settling.contains(&feed) {
-            held = Some((feed, first));
-            break;
+            held.push(feed);
         }
     }
     Ok(Settled { least, most, held })
 }
 
-/// What's told while a feed that bills pi from the warehouse hasn't said
-/// how far it has settled: a note, which never takes a notice, while it
-/// may only lag, and a warning once it has `stopped`. It's keyed apart
-/// from a wrong row's warning, so marking one expected leaves the other
-/// to be told. cadence reads either as the day unjudged rather than as
-/// no budget unbilled.
-fn held_finding(feed: &str, stopped: bool) -> Finding {
-    if stopped {
-        // Billing for longer than a settled hour may lag, it has stopped
-        // short of settling rather than not got there yet, and a note
-        // would hold the detector off unseen for good.
-        let mut f = finding(
-            format!("{UNBILLED_HELD}:{feed}"),
-            "unbilled",
-            Severity::Warning,
-            format!("the {feed} feed's bill has never settled"),
-            format!(
-                "The {feed} feed has billed pi from the warehouse for more than \
-                 {UNBILLED_STALE_HOURS} hours without saying how far its bill is settled, \
-                 so no budget's bill is held against its logs until it does."
-            ),
-        );
-        f.badge = "never settled".into();
-        f.note = format!("{feed} never settled");
-        f.surprise = 2.0;
-        return f;
+/// What's told of each `held` feed: its note, and beside it a warning once
+/// the note has stood longer than a settled hour may lag. That's how long
+/// the note has stood, not how old the feed's bills are, so a feed whose
+/// settled row was just deleted, or one sending old bills for the first
+/// time, is given its while.
+fn held_findings(
+    picture: &Picture,
+    history: &History,
+    held: &[String],
+) -> Result<Vec<Finding>, String> {
+    let mut told = Vec::new();
+    for feed in held {
+        let note = held_finding(feed);
+        let stood = crate::findings::started(history, &note.key)?.is_some_and(|started| {
+            picture.now - started > crate::time::hour_start(UNBILLED_STALE_HOURS)
+        });
+        told.push(note);
+        if stood {
+            told.push(not_settling_finding(feed));
+        }
     }
+    Ok(told)
+}
+
+/// What's told while a feed that bills pi from the warehouse hasn't said
+/// how far it has settled: a note, which never takes a notice, since it
+/// may only lag. It's keyed apart from a wrong row's warning, so marking
+/// one expected leaves the other to be told. cadence reads it as the day
+/// unjudged rather than as no budget unbilled.
+fn held_finding(feed: &str) -> Finding {
     let mut f = finding(
         format!("{UNBILLED_HELD}:{feed}"),
         "unbilled",
@@ -1757,6 +1765,28 @@ fn held_finding(feed: &str, stopped: bool) -> Finding {
     );
     f.badge = "not settled".into();
     f.note = format!("{feed} not settled");
+    f
+}
+
+/// What's told beside a feed's held note once it has stood for more than
+/// a settled hour may lag: the feed has stopped short of settling rather
+/// than not got there yet, and the note alone would hold the detector off
+/// unseen for good.
+fn not_settling_finding(feed: &str) -> Finding {
+    let mut f = finding(
+        format!("{UNBILLED_NOT_SETTLING}:{feed}"),
+        "unbilled",
+        Severity::Warning,
+        format!("the {feed} feed hasn't settled pi's bill in {UNBILLED_STALE_HOURS} hours"),
+        format!(
+            "For more than {UNBILLED_STALE_HOURS} hours the {feed} feed has billed pi from \
+             the warehouse without saying how far its bill is settled, so no budget's bill \
+             has been held against its logs since. This goes an hour after it says."
+        ),
+    );
+    f.badge = "not settling".into();
+    f.note = format!("{feed} not settling");
+    f.surprise = 2.0;
     f
 }
 
@@ -1816,6 +1846,12 @@ pub const UNBILLED_UNSETTLED: &str = "unbilled-unsettled";
 /// the two is told behind the feed's name, so a mark on one feed's leaves
 /// another's to be told.
 pub const UNBILLED_HELD: &str = "unbilled-held";
+
+/// The key of the warning told beside a held note that has stood too long,
+/// apart from the note's so that marking the note expected, as a feed that
+/// only lags may be, still leaves the warning to be told. cadence needn't
+/// read it, since the note stands beside it.
+pub const UNBILLED_NOT_SETTLING: &str = "unbilled-not-settling";
 
 /// Each budget a session asked for in the last day and the harness
 /// couldn't draw on, as the harness wrote it in the session's log: its
@@ -2335,7 +2371,7 @@ mod tests {
     // A guessed end is no end known, and nor is a known one already past
     // while the override stands: each is warned, saying which it is.
     #[test]
-    fn a_guessed_or_passed_end_is_still_unknown() {
+    fn a_guessed_or_passed_end_is_said_so() {
         let detail = |ends: &str, known: bool| {
             let found = unending(&raised_picture(33_671.0, Some(ends), known));
             assert_eq!(found.len(), 1, "{ends} {known}: {found:?}");
@@ -2350,8 +2386,9 @@ mod tests {
         );
         assert!(
             detail("2026-10-10", true).starts_with(
-                "Nobody knows when the $40,000 override ends (its end, Sat 10 Oct, has passed, \
-                 but the feed still reads it, and may not have run since),"
+                "The $40,000 override's end, Sat 10 Oct, has passed, but the feed still reads \
+                 it and may not have run since, and the $33,671 spent is already over the \
+                 $4,000 that follows it, so the cap may already refuse."
             ),
             "{}",
             detail("2026-10-10", true)
@@ -2374,7 +2411,7 @@ mod tests {
     fn the_reach_is_said_by_its_day() {
         let mut picture = raised_picture(37_000.0, None, false);
         picture.caps[0].clock = Some(crate::caps::Clock {
-            reaches_at: Some(NOW + 36.0 * HOUR),
+            reaches_at: Some(NOW + 36.5 * HOUR),
             ..crate::caps::Clock::default()
         });
         let found = caps(&picture);
@@ -2387,12 +2424,12 @@ mod tests {
         };
         assert!(
             detail(":unending")
-                .ends_with(" At Wed 14 Oct 14:00's pace it reaches $40,000 by Fri 16 Oct 02:30."),
+                .ends_with(" At Wed 14 Oct 14:00's pace it reaches $40,000 by Fri 16 Oct 03:00."),
             "{found:?}"
         );
         assert!(
             detail(":near")
-                .ends_with(" At Wed 14 Oct 14:00's pace it's reached by Fri 16 Oct 02:30."),
+                .ends_with(" At Wed 14 Oct 14:00's pace it's reached by Fri 16 Oct 03:00."),
             "{found:?}"
         );
     }
@@ -2428,21 +2465,21 @@ mod tests {
     // warning would say as fact what nobody knows.
     #[test]
     fn a_guessed_end_close_by_is_not_said_to_be_ending() {
-        let said = ending_in("2026-10-15", false, NOW + 36.0 * HOUR);
+        let said = ending_in("2026-10-15", false, NOW + 36.5 * HOUR);
         let keys: Vec<&str> = said.iter().map(|(key, _)| key.as_str()).collect();
         assert!(
             keys.contains(&"unending") && !keys.contains(&"ending"),
             "{said:?}"
         );
         let unending = &said.iter().find(|(key, _)| key == "unending").unwrap().1;
-        assert!(unending.ends_with(" by Fri 16 Oct 02:30."), "{unending}");
+        assert!(unending.ends_with(" by Fri 16 Oct 03:00."), "{unending}");
     }
 
     // Under the fallback there's no unknown-end warning, so a guessed end
     // close by is still warned of as it nears, said to be a guess.
     #[test]
     fn a_guessed_end_close_by_under_what_follows_is_said_to_be_a_guess() {
-        let said = spent_ending_in(3_000.0, "2026-10-15", false, NOW + 36.0 * HOUR);
+        let said = spent_ending_in(3_000.0, "2026-10-15", false, NOW + 36.5 * HOUR);
         let keys: Vec<&str> = said.iter().map(|(key, _)| key.as_str()).collect();
         assert!(!keys.contains(&"unending"), "{said:?}");
         let ending = &said.iter().find(|(key, _)| key == "ending").unwrap().1;
@@ -2456,16 +2493,16 @@ mod tests {
     // feed still reads the override.
     #[test]
     fn a_passed_end_keeps_its_reach() {
-        let said = ending_in("2026-10-10", true, NOW + 36.0 * HOUR);
+        let said = ending_in("2026-10-10", true, NOW + 36.5 * HOUR);
         let unending = &said.iter().find(|(key, _)| key == "unending").unwrap().1;
-        assert!(unending.ends_with(" by Fri 16 Oct 02:30."), "{unending}");
+        assert!(unending.ends_with(" by Fri 16 Oct 03:00."), "{unending}");
     }
 
     // A known end a day off is said to be ending, and a reach past it isn't
     // said, since by then the allowance is the fallback's.
     #[test]
     fn a_known_end_close_by_hides_a_reach_past_it() {
-        let said = ending_in("2026-10-15", true, NOW + 36.0 * HOUR);
+        let said = ending_in("2026-10-15", true, NOW + 36.5 * HOUR);
         let keys: Vec<&str> = said.iter().map(|(key, _)| key.as_str()).collect();
         assert!(
             keys.contains(&"ending") && !keys.contains(&"unending"),
@@ -3373,61 +3410,59 @@ mod tests {
         assert_eq!(unbilled_keys(&history), ["unbilled-held:proxy"]);
     }
 
-    // A feed billing pi for longer than a settled hour may lag, with no
-    // settled hour yet, has stopped short of settling rather than not got
-    // there yet: a warning, under the same key, where one billing only
-    // since yesterday is a note.
+    // A held note that has stood for more than a settled hour may lag gains
+    // a warning beside it, under a key of its own, so marking the note
+    // expected leaves the warning to be told. It's how long the note has
+    // stood that counts, not how old the bills are: these are a week old.
     #[test]
-    fn a_feed_never_settled_for_days_is_warned() {
-        let told = |first: &str| {
+    fn a_feed_held_for_days_is_warned() {
+        let told = |stood: f64| {
             let history = History::memory();
-            billed_on(&history, "proxy", first, "pi", "teal", 10.0);
+            billed_on(
+                &history,
+                "proxy",
+                "2026-10-07T12:00:00Z",
+                "pi",
+                "teal",
+                10.0,
+            );
             turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
             let picture = Picture::read(&history, &fed_config(), NOW).unwrap();
+            let first = unbilled(&picture, &history, &fed_config()).unwrap();
+            crate::findings::settle(&history, &first, NOW - stood).unwrap();
             unbilled(&picture, &history, &fed_config())
                 .unwrap()
                 .into_iter()
                 .map(|f| (f.key, f.severity, f.title))
                 .collect::<Vec<_>>()
         };
+        let note = (
+            "unbilled-held:proxy".to_owned(),
+            Severity::Note,
+            "the proxy feed hasn't said how far pi's bill is settled".to_owned(),
+        );
+        let warning = (
+            "unbilled-not-settling:proxy".to_owned(),
+            Severity::Warning,
+            "the proxy feed hasn't settled pi's bill in 48 hours".to_owned(),
+        );
+        assert_eq!(told(0.0), std::slice::from_ref(&note), "just told");
         assert_eq!(
-            told("2026-10-07T12:00:00Z"),
-            [(
-                "unbilled-held:proxy".to_owned(),
-                Severity::Warning,
-                "the proxy feed's bill has never settled".to_owned()
-            )]
+            told(48.0 * HOUR),
+            std::slice::from_ref(&note),
+            "two days to the second"
         );
         assert_eq!(
-            told("2026-10-13T12:00:00Z"),
-            [(
-                "unbilled-held:proxy".to_owned(),
-                Severity::Note,
-                "the proxy feed hasn't said how far pi's bill is settled".to_owned()
-            )]
+            told(48.0 * HOUR + 60.0),
+            [note, warning],
+            "a minute past two days"
         );
     }
 
-    // The same lone feed, billing for days, is still told by its key.
+    // Every feed that holds back is told, by name, whichever billed first,
+    // so a fresh feed's note can't hide one that has stopped settling.
     #[test]
-    fn a_lone_feed_never_settled_for_days_is_told() {
-        let history = History::memory();
-        billed_on(
-            &history,
-            "proxy",
-            "2026-10-07T12:00:00Z",
-            "pi",
-            "teal",
-            10.0,
-        );
-        turn_on(&history, IN_SETTLED, 100.0, Some("teal"));
-        assert_eq!(unbilled_keys(&history), ["unbilled-held:proxy"]);
-    }
-
-    // Of two feeds that hold back, the first by name is told, whichever
-    // billed first, so the note doesn't change from one pass to the next.
-    #[test]
-    fn the_first_held_feed_by_name_is_told() {
+    fn every_held_feed_is_told_by_name() {
         let history = History::memory();
         billed_before(&history);
         billed_on(&history, "third", "2026-10-07T12:00:00Z", "pi", "teal", 1.0);
@@ -3442,7 +3477,8 @@ mod tests {
         let all = config_running(&["proxy", "second", "third"]);
         let picture = Picture::read(&history, &all, NOW).unwrap();
         let found = unbilled(&picture, &history, &all).unwrap();
-        assert_eq!(found[0].note, "second never settled");
+        let keys: Vec<_> = found.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["unbilled-held:second", "unbilled-held:third"]);
     }
 
     // One feed that stopped settling is told however fresh another is, so

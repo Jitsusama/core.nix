@@ -109,7 +109,7 @@ pub struct Cap {
     #[serde(default)]
     pub ends: Option<String>,
     /// Whether the feed could know the end: false means it's unknown, not
-    /// that there's none.
+    /// that there's none, and true with no `ends` means there's none.
     #[serde(default)]
     pub ends_known: bool,
     /// When the spend next goes back to nothing, for a cap counted over

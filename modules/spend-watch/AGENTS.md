@@ -141,8 +141,10 @@ feed speaks.
   behind, or past now, is told once in their place, by name, and a
   feed the config runs that bills pi without saying how far it has
   settled holds every budget back, told as a note under a key of its
-  own, after any wrong row, since it hides none, and as a warning once
-  it has billed for more than 48 hours without settling. A budget a
+  own, after any wrong row, since it hides none. Every such feed is
+  told, by name, and once its note has stood for more than 48 hours a
+  warning under a key of its own stands beside it, so marking the note
+  expected leaves the warning. A budget a
   session asked for in the last
   day and the harness couldn't draw on, as its budget entry says, is
   told with how many sessions missed it, the day they start rather

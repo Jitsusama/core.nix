@@ -90,7 +90,8 @@ An allowance and where spend stands against it, as of `at`: `name`, `label`,
 `allowance` in dollars, more than nothing (null for none), `windowHours`, `spent`, `warn` as a
 fraction of the allowance, and `state`: `ok`, `notified` or `refused`.
 `fallback` is the allowance that applies when a raised one ends, on `ends`;
-`endsKnown` says whether the feed could know the end at all. Every change in
+`endsKnown` says whether the feed could know the end at all: true with no
+`ends` says there is none, and false with one says it's a guess. Every change in
 allowance or state is kept as the cap's history.
 
 `label` is the window's name, as the launcher shows it and a sentence says
