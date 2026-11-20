@@ -1,0 +1,331 @@
+Keeps the textures a background effect let go, and gives them to the
+next effect of their size, rather than making them again in the frame
+that shows it. smithay's damage tracker keeps a framebuffer effect's
+cache only for the elements a frame draws, so a layer surface whose
+blur region goes empty, as a shut launcher's does while it stays
+mapped, lost its framebuffer and blur textures, and each opening made
+all five inside niri's render: 22 to 48 ms of it on a 4K screen under
+load. Blur already remade textures only on a size change; that and a
+framebuffer of a new size now hand theirs to the pool too. Each
+renderer's context keeps its own pool, oldest let go past 64 MB, and a
+texture still shared is never kept, since the blur's output stays
+drawn from until its intermediate goes. At debug, each frame a blur's
+textures change, it says its size, how many it made and took, and how
+long that took on the CPU. It adds no setting.
+
+diff --git a/src/render_helpers/blur.rs b/src/render_helpers/blur.rs
+index f6a10ed..656de88 100644
+--- a/src/render_helpers/blur.rs
++++ b/src/render_helpers/blur.rs
+@@ -107,6 +107,16 @@ impl Blur {
+         self.renderer_context_id.clone()
+     }
+ 
++    /// The size its textures were made for, if it has any.
++    pub fn textures_size(&self) -> Option<Size<i32, Buffer>> {
++        self.textures.first().map(|texture| texture.size())
++    }
++
++    /// Give up its textures, so they can be kept for another blur of the same size.
++    pub fn take_textures(&mut self) -> Vec<GlesTexture> {
++        std::mem::take(&mut self.textures)
++    }
++
+     pub fn prepare_textures(
+         &mut self,
+         mut create_texture: impl FnMut(Fourcc, Size<i32, Buffer>) -> Result<GlesTexture, GlesError>,
+diff --git a/src/render_helpers/framebuffer_effect.rs b/src/render_helpers/framebuffer_effect.rs
+index 4dc529d..dbe2740 100644
+--- a/src/render_helpers/framebuffer_effect.rs
++++ b/src/render_helpers/framebuffer_effect.rs
+@@ -1,4 +1,6 @@
+ use std::cell::RefCell;
++use std::rc::{Rc, Weak};
++use std::time::Instant;
+ 
+ use glam::{Mat3, Vec2};
+ use niri_config::CornerRadius;
+@@ -8,7 +10,7 @@ use smithay::backend::renderer::gles::{
+     ffi, GlesError, GlesFrame, GlesRenderer, GlesTexture, Uniform,
+ };
+ use smithay::backend::renderer::utils::CommitCounter;
+-use smithay::backend::renderer::{Frame as _, FrameContext, Offscreen, Texture as _};
++use smithay::backend::renderer::{Frame as _, FrameContext, Texture as _};
+ use smithay::gpu_span_location;
+ use smithay::utils::user_data::UserDataMap;
+ use smithay::utils::{Buffer, Logical, Physical, Rectangle, Scale, Transform};
+@@ -18,6 +20,7 @@ use crate::render_helpers::background_effect::RenderParams;
+ use crate::render_helpers::blur::{Blur, BlurOptions};
+ use crate::render_helpers::renderer::AsGlesFrame as _;
+ use crate::render_helpers::shaders::{mat3_uniform, Shaders};
++use crate::render_helpers::texture_pool::{Taken, TexturePool};
+ use crate::utils::region::TransformedRegion;
+ 
+ #[derive(Debug)]
+@@ -47,6 +50,8 @@ struct Inner {
+     intermediate: Option<GlesTexture>,
+     /// Reusable storage for subregion-filtered damage rects.
+     subregion_damage: Vec<Rectangle<i32, Physical>>,
++    /// Where its textures go when smithay lets it go, for the next effect of the same size.
++    pool: Weak<RefCell<TexturePool>>,
+ }
+ 
+ impl FramebufferEffect {
+@@ -214,20 +219,42 @@ impl RenderElement<GlesRenderer> for FramebufferEffectElement {
+ 
+             let size = size.to_logical(1).to_buffer(1, Transform::Normal);
+ 
+-            // Recreate framebuffer if needed.
++            // Textures come from those another effect let go before new ones are made, since
++            // making them is most of the frame that first shows a blur. They go back to the pool
++            // of the context that made them, as they do when the effect is let go. An effect last
++            // drawn in another context, or one since gone, holds that context's textures, so it
++            // lets them go rather than drawing with them or keeping them here, and takes this
++            // context's pool as its own: all it holds is then always of the pool it keeps into.
++            let pool = TexturePool::of(guard.as_mut());
++            if !inner.pool.upgrade().is_some_and(|own| Rc::ptr_eq(&own, &pool)) {
++                inner.framebuffer = None;
++                if let Some(b) = &mut inner.blur {
++                    drop(b.take_textures());
++                }
++                inner.pool = Rc::downgrade(&pool);
++            }
++            let started = Instant::now();
++            let mut taken = Taken::default();
++
++            // What another size gave up is kept for an effect of its size only once this size
++            // has taken its own, so keeping it can't push out the set about to be taken.
++            let mut given_up = Vec::new();
++
++            // Recreate framebuffer if needed, keeping the old one for an effect of its size.
+             if inner
+                 .framebuffer
+                 .as_ref()
+                 .is_some_and(|fb| fb.size() != size)
+             {
+-                inner.framebuffer = None;
++                given_up.extend(inner.framebuffer.take());
+             }
+             let framebuffer = if let Some(fb) = &inner.framebuffer {
+                 fb
+             } else {
+                 trace!("creating framebuffer texture sized {} × {}", size.w, size.h);
+                 let renderer = guard.as_mut();
+-                let texture = renderer.create_buffer(Fourcc::Abgr8888, size)?;
++                let texture =
++                    TexturePool::texture(&pool, renderer, Fourcc::Abgr8888, size, &mut taken)?;
+                 inner.framebuffer.insert(texture)
+             };
+ 
+@@ -235,8 +262,13 @@ impl RenderElement<GlesRenderer> for FramebufferEffectElement {
+             let mut blur = Option::zip(inner.blur.as_mut(), self.blur_options);
+             if let Some((b, options)) = &mut blur {
+                 let renderer = guard.as_mut();
++                // Blur would drop textures of another size; keep them for an effect of theirs.
++                // The intermediate went at the top, so the blur's output is no longer shared.
++                if b.textures_size().is_some_and(|made| made != framebuffer.size()) {
++                    given_up.append(&mut b.take_textures());
++                }
+                 if let Err(err) = b.prepare_textures(
+-                    |fourcc, size| renderer.create_buffer(fourcc, size),
++                    |fourcc, size| TexturePool::texture(&pool, renderer, fourcc, size, &mut taken),
+                     framebuffer,
+                     *options,
+                 ) {
+@@ -244,6 +276,19 @@ impl RenderElement<GlesRenderer> for FramebufferEffectElement {
+                     blur = None;
+                 }
+             }
++            if !given_up.is_empty() {
++                pool.borrow_mut().keep(given_up);
++            }
++            if taken.made + taken.kept > 0 {
++                debug!(
++                    "a background effect sized {} × {} made {} textures and took {} kept, in {:.1} ms",
++                    size.w,
++                    size.h,
++                    taken.made,
++                    taken.kept,
++                    started.elapsed().as_secs_f64() * 1000.
++                );
++            }
+ 
+             // We can't use renderer.with_context() as that will reset the GlesFrame binding that we
+             // want to blit from.
+@@ -452,6 +497,25 @@ impl Inner {
+             blur: Blur::new(renderer),
+             intermediate: None,
+             subregion_damage: Vec::new(),
++            pool: Rc::downgrade(&TexturePool::of(renderer)),
+         }
+     }
+ }
++
++impl Drop for Inner {
++    fn drop(&mut self) {
++        // The blur's output is shared with the intermediate until that goes.
++        self.intermediate = None;
++        let Some(pool) = self.pool.upgrade() else {
++            return;
++        };
++        let Ok(mut pool) = pool.try_borrow_mut() else {
++            return;
++        };
++        let mut set: Vec<_> = self.framebuffer.take().into_iter().collect();
++        if let Some(blur) = &mut self.blur {
++            set.append(&mut blur.take_textures());
++        }
++        pool.keep(set);
++    }
++}
+diff --git a/src/render_helpers/mod.rs b/src/render_helpers/mod.rs
+index 474437a..afce62f 100644
+--- a/src/render_helpers/mod.rs
++++ b/src/render_helpers/mod.rs
+@@ -49,6 +49,7 @@ pub mod snapshot;
+ pub mod solid_color;
+ pub mod surface;
+ pub mod texture;
++pub mod texture_pool;
+ pub mod xray;
+ 
+ /// A rendering context.
+diff --git a/src/render_helpers/texture_pool.rs b/src/render_helpers/texture_pool.rs
+new file mode 100644
+index 0000000..e7572cf
+--- /dev/null
++++ b/src/render_helpers/texture_pool.rs
+@@ -0,0 +1,133 @@
++//! Textures a background effect let go, kept for the next effect that needs them.
++//!
++//! smithay keeps a framebuffer effect's textures in its damage tracker only for the elements a
++//! frame draws, so a surface whose blur comes and goes, as a launcher's does each time it opens,
++//! makes its framebuffer and blur textures again inside the frame that shows it. Making them is
++//! the slow part of that frame: tens of milliseconds on the CPU when the driver has none of that
++//! size to hand. The pool keeps what an effect let go, up to a cap, and the next effect of the
++//! same size takes them rather than making new ones.
++//!
++//! A kept texture still holds the screen another surface's blur was drawn over, so whoever takes
++//! one draws over all of it before anything samples it, as a framebuffer effect's capture and
++//! each blur pass do.
++
++use std::cell::RefCell;
++use std::collections::VecDeque;
++use std::rc::Rc;
++
++use smithay::backend::allocator::Fourcc;
++use smithay::backend::renderer::gles::{GlesError, GlesRenderer, GlesTexture};
++use smithay::backend::renderer::{Offscreen as _, Texture as _};
++use smithay::utils::{Buffer, Size};
++
++/// The most the pool holds, in bytes. A launcher card with its drawer beside, at 4K's 1.5 scale,
++/// keeps about 21 MB of framebuffer and blur textures; this keeps that and a few smaller
++/// surfaces' sets, and lets the oldest go rather than holding more idle. What it keeps stays
++/// until an effect takes it or newer textures push it out, however long that is, since a
++/// launcher opened after an hour shut is the opening this is for. Other surfaces' sets, and the
++/// launcher's own at other heights, are kept beside it, so two or more of sizes it hasn't seen
++/// push its resting set out.
++const MOST: usize = 64 << 20;
++
++/// The most one effect's set may hold and still be kept. A prompt that fills a 4K screen gives
++/// up about 74 MB, more than the whole pool, and keeping it would push out every other set, the
++/// launcher's among them, for a surface seldom shown; so a set past half the pool is let go whole.
++const SET_MOST: usize = MOST / 2;
++
++// The launcher's set, about 21 MB on a 4K screen at 1.5, is the one this is for, so a smaller
++// limit would let it go each time the launcher shuts.
++const _: () = assert!(SET_MOST > 21 << 20, "the launcher's set must fit in SET_MOST");
++
++/// One renderer's kept textures, oldest first.
++#[derive(Debug, Default)]
++pub struct TexturePool {
++    kept: VecDeque<GlesTexture>,
++    bytes: usize,
++}
++
++/// What an effect's textures came from in one frame, for its log line.
++#[derive(Debug, Default, Clone, Copy)]
++pub struct Taken {
++    pub made: u32,
++    pub kept: u32,
++}
++
++fn bytes_of(texture: &GlesTexture) -> usize {
++    let size = texture.size();
++    usize::try_from(size.w).unwrap_or(0) * usize::try_from(size.h).unwrap_or(0) * 4
++}
++
++impl TexturePool {
++    /// The pool of the renderer's own context, made the first time it's asked for.
++    pub fn of(renderer: &mut GlesRenderer) -> Rc<RefCell<Self>> {
++        renderer
++            .egl_context()
++            .user_data()
++            .get_or_insert(|| Rc::new(RefCell::new(Self::default())))
++            .clone()
++    }
++
++    /// A kept texture of this format and size, or a new one from the renderer.
++    pub fn texture(
++        pool: &RefCell<Self>,
++        renderer: &mut GlesRenderer,
++        format: Fourcc,
++        size: Size<i32, Buffer>,
++        taken: &mut Taken,
++    ) -> Result<GlesTexture, GlesError> {
++        if let Ok(mut pool) = pool.try_borrow_mut() {
++            if let Some(texture) = pool.take(format, size) {
++                taken.kept += 1;
++                return Ok(texture);
++            }
++        }
++        taken.made += 1;
++        renderer.create_buffer(format, size)
++    }
++
++    fn take(&mut self, format: Fourcc, size: Size<i32, Buffer>) -> Option<GlesTexture> {
++        let at = self
++            .kept
++            .iter()
++            .rposition(|texture| texture.size() == size && texture.format() == Some(format))?;
++        let texture = self.kept.remove(at)?;
++        self.bytes -= bytes_of(&texture);
++        Some(texture)
++    }
++
++    /// Keep the set one effect gave up, of textures nothing else draws from, letting the oldest
++    /// go past the cap.
++    pub fn keep(&mut self, set: Vec<GlesTexture>) {
++        // A texture still shared would be drawn into under whoever holds it.
++        let set: Vec<_> = set
++            .into_iter()
++            .filter_map(|mut texture| texture.is_unique_reference().then_some(texture))
++            .collect();
++        let bytes: usize = set.iter().map(bytes_of).sum();
++        if bytes > SET_MOST {
++            debug!(
++                "the texture pool kept none of a set of {} MB, over half its {} MB",
++                bytes >> 20,
++                MOST >> 20
++            );
++            return;
++        }
++        self.bytes += bytes;
++        self.kept.extend(set);
++        let mut let_go = 0;
++        while self.bytes > MOST {
++            let Some(oldest) = self.kept.pop_front() else {
++                break;
++            };
++            self.bytes -= bytes_of(&oldest);
++            let_go += 1;
++        }
++        // Said once a set, so a surface resizing each frame logs no more than its own line does.
++        if let_go > 0 {
++            debug!(
++                "the texture pool let go of {let_go} textures, keeping {} MB",
++                self.bytes >> 20
++            );
++        }
++    }
++}

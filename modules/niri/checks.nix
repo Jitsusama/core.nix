@@ -456,6 +456,45 @@ onLinux {
         touch $out
       '';
 
+  # A layer surface the account's rule blurs, as the launcher's, takes back
+  # the textures its blur let go while its blur region was empty, rather
+  # than making them again in the frame that shows it
+  # (blur-kept-for-its-size.patch). The account's niri, nested in the
+  # sandbox, says where each blur's textures came from while a stand-in
+  # opens, shuts and opens one, grows it and takes it back to its size, and
+  # walks it through more sizes than the pool's 64 MB keeps, going back to
+  # one it holds after three newer sizes. That bounds the cap between about
+  # 23 and 96 MB, not at 64 (tests/keeps-a-blur-ready.py).
+  niri-keeps-a-blur-ready =
+    let
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) (account graphical).xdg.configFile;
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "niri-keeps-a-blur-ready"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          pkgs.dbus
+          pkgs.python3
+          pkgs.sway-unwrapped
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+        # niri's own filter, which lets its line on a blur's textures through.
+        RUST_LOG = "niri=debug";
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          python3 ${./tests}/keeps-a-blur-ready.py logs/niri.log
+        touch $out
+      '';
+
   # A sandbox's window, one opened through pi-fence-display's
   # wp-security-context-v1 socket as a fenced command's would be, opens on
   # a workspace no screen shows and never takes the focus, whether it opens,
