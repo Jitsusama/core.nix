@@ -305,6 +305,9 @@ ShellRoot {
         same("and a first Return on it only arms", Arming.pressed(Arming.rest(), root.key,
             { keysTaken: 1, counted: 1, now: 0, wait: 300 }).act, "armed");
         same("so nothing is sent", link.sent, []);
+        // Kept, a share starting while the launcher is shut would draw
+        // the ask's name in its next opening's first frame.
+        same("Asks is never kept for a later opening", Arming.keepsPlace(asks), false);
     }
 
     // Opened from outside, as any process running as Joel may open it.
