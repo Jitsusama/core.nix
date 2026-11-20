@@ -78,7 +78,7 @@ fn help() -> Help {
     .words_unsaid()
     .exit(
         Exit::Failed,
-        "the daemon stopped, or the ask couldn't be put up",
+        "the daemon stopped, or the ask couldn't be put up or its id printed",
     )
 }
 
@@ -131,7 +131,10 @@ fn ask_help() -> Help {
         .option("--quest-id ID", "the quest it's for, with --quest-title")
         .option("--quest-title TITLE", "that quest's title")
         .words_unsaid()
-        .exit(Exit::Failed, "the ask couldn't be put up")
+        .exit(
+            Exit::Failed,
+            "the ask couldn't be put up, or its id printed",
+        )
 }
 
 fn received_help() -> Help {
@@ -279,7 +282,7 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         gh: served.gh.map(PathBuf::from),
     });
     Err(Failure::new(Exit::Failed, "it stopped serving")
-        .because("it said why just above, or its watch on the asks folder ended"))
+        .because("its earlier lines in the journal say why, or its watch on the asks folder ended"))
 }
 
 /// Sixteen random bytes as 32 lowercase hex characters.
@@ -463,7 +466,8 @@ mod tests {
     fn refused_everywhere(line: &[&str]) -> Vec<(&'static str, Ending)> {
         let mut journal = Environment::of([false; 3], &[]);
         journal.journal = true;
-        let json = [line, &["--format", "json"]].concat();
+        // First, since a shared flag after `--` is the command's.
+        let json = [&["--format", "json"][..], line].concat();
         vec![
             ("a pipe", ran(line)),
             (
@@ -526,7 +530,8 @@ mod tests {
     #[test]
     fn a_mistyped_flag_is_answered_with_the_one_meant_and_never_said() {
         // The walk reads a dash word before a word left over, and the body
-        // one at the end; both answer alike.
+        // one at the end; both offer the flag meant and never say the one
+        // given.
         for line in [&["ask", "--itme", "x"][..], &["ask", "--itme"]] {
             let ending = ran(line);
             assert_eq!(ending.exit, Exit::Usage, "{line:?} wasn't refused");
@@ -785,6 +790,16 @@ mod tests {
                 .filter_map(|option| option.name.split_whitespace().next())
                 .collect();
             assert_eq!(named, flags, "{}'s help and its flags disagree", help.name);
+            // The walk takes a flag's next word as its value only when its
+            // help names one, so each must, as every flag here takes one.
+            for option in &help.options {
+                assert!(
+                    option.name.split_whitespace().nth(1).is_some(),
+                    "{}'s help gives {} no value",
+                    help.name,
+                    option.name
+                );
+            }
         }
     }
 
