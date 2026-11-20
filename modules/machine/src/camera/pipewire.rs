@@ -68,6 +68,16 @@ const KEPT_FOR: Duration = Duration::from_secs(6);
 /// a walk that holds every read up.
 const LONGEST: u64 = 4 << 20;
 
+/// Why a listing past `LONGEST` is refused, as it starts.
+const TOO_LONG: &str = "pw-cli listed more than";
+
+/// Why a listing that was written into is refused, said the same each
+/// time, whatever a client writes, so it's said once.
+const WRITTEN_INTO: &str = concat!(
+    "pw-cli's listing was refused, as an id falls back or a key is said twice in it, ",
+    "as a client's property holding a line break makes it, or a pw-cli listing otherwise"
+);
+
 /// One object in `PipeWire`'s registry, as `pw-cli ls` lists it: its id,
 /// its kind (`Node`, `Link`, `Client`, `Device`) and its properties.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -102,11 +112,6 @@ impl Global {
 /// nothing has, to name whoever it likes as reading, much as a process
 /// can call itself anything.
 pub fn registry(text: &str) -> Result<Vec<Global>, String> {
-    // Said the same each time, whatever a client writes, so it's said once.
-    const WRITTEN_INTO: &str = concat!(
-        "pw-cli's listing was refused, as an id falls back or a key is said twice in it, ",
-        "as a client's property holding a line break makes it, or a pw-cli listing otherwise"
-    );
     let mut globals: Vec<Global> = Vec::new();
     for line in text.lines().map(str::trim) {
         if let Some((id, kind)) = line
@@ -205,7 +210,9 @@ impl PipeWire {
     /// Lists the registry afresh while a camera's file names `PipeWire`,
     /// and forgets it while none does; it's run before the cameras are
     /// read, outside the reader's lock. A listing that fails leaves the
-    /// last for up to `KEPT_FOR`, then none.
+    /// last for up to `KEPT_FOR`, then none; one a client wrote into or
+    /// stuffed leaves none at once, as the last would show the camera's
+    /// readers from before that client came.
     pub fn refresh(&self) {
         let held = held_cameras(&self.root)
             .iter()
@@ -238,8 +245,9 @@ impl PipeWire {
                          holds is said held by it {when}: {why}"
                     );
                 }
+                let forced = why == WRITTEN_INTO || why.starts_with(TOO_LONG);
                 state.failing = Some(why);
-                if state.listed_at.is_none_or(|at| at.elapsed() >= KEPT_FOR) {
+                if forced || state.listed_at.is_none_or(|at| at.elapsed() >= KEPT_FOR) {
                     state.graph = None;
                 }
             }
@@ -276,7 +284,7 @@ impl PipeWire {
                 .map_err(|error| format!("pw-cli's listing: {error}"))
                 .and_then(|more| match more {
                     0 => Ok(String::from_utf8_lossy(&bytes).into_owned()),
-                    _ => Err(format!("pw-cli listed more than {LONGEST} bytes")),
+                    _ => Err(format!("{TOO_LONG} {LONGEST} bytes")),
                 });
             let _ = said.send(read);
         });
@@ -319,8 +327,8 @@ pub(super) fn through_pipewire(programs: &[String]) -> bool {
 /// client, a client with no process, a node of `PipeWire`'s with nobody
 /// after it, or one linked into the camera's, as nothing feeds a camera),
 /// and alone where nobody is, so a camera it holds never reads as off.
-/// None when the registry shows no such camera, as one not offered there
-/// is.
+/// None when the registry shows no such camera, or no node `PipeWire`'s
+/// own programs made for it, as one not offered there is.
 pub fn readers(
     graph: &[Global],
     device: Option<&str>,
@@ -380,6 +388,11 @@ pub fn readers(
         })
         .map(|global| global.id)
         .collect();
+    // A camera PipeWire made no node for is one it isn't offering as it
+    // was listed, as a reader's own node claiming it doesn't make it so.
+    if frontier.is_empty() {
+        return None;
+    }
     let seeds: HashSet<u64> = frontier.iter().copied().collect();
     let mut seen = seeds.clone();
     let mut named = Vec::new();
@@ -453,7 +466,8 @@ pub(crate) mod tests {
     }
 
     /// A registry as `pw-cli ls` lists one: the camera's device and its
-    /// node, and for each program reading it, its client, its stream's
+    /// node, WirePlumber's as on a real machine, and for each program
+    /// reading it, its client, its stream's
     /// node and the link between, with `PipeWire`'s own converter between
     /// the camera and Tuple; Chrome calls itself Firefox, which nothing
     /// believes; a second node of the camera's that nobody reads; and a
@@ -508,11 +522,11 @@ pub(crate) mod tests {
                     ("object.path", format!("v4l2:{path}")),
                 ],
             ),
-            node(11, 1, Some(10)),
+            node(11, 2, Some(10)),
             node(12, 2, None),
             node(13, 3, None),
             node(14, 4, None),
-            node(15, 1, Some(10)),
+            node(15, 2, Some(10)),
             global(20, "Device", &[("object.path", "alsa:hw:0".to_owned())]),
             node(21, 1, Some(20)),
             node(22, 5, None),
@@ -690,42 +704,46 @@ pub(crate) mod tests {
         fs::write(folder.join("Built-in Camera"), "pipewire\n").unwrap();
         let listed = root.path("/listed");
         fs::write(&listed, listing("Built-in Camera", "/dev/video32", 0)).unwrap();
-        let failing = root.path("/failing");
+        let (failing, written) = (root.path("/failing"), root.path("/written"));
         let _alone = crate::acts::tests::alone();
         let cli = pw_cli(
             &root,
             &format!(
-                "[ -e '{}' ] && cat '{}'; cat '{}'",
+                "[ -e '{}' ] && exit 1; [ -e '{}' ] && cat '{}'; cat '{}'",
                 failing.display(),
+                written.display(),
                 listed.display(),
                 listed.display()
             ),
         );
         let pipewire = PipeWire::new(&root, Some(cli));
         let programs = || super::super::cameras(&root, &pipewire)[0]["programs"].clone();
-        listed_whole(&pipewire);
         let readers = serde_json::json!(["chrome", "tuple"]);
+        // Tried until one comes, as a starved builder may miss the wait.
+        let fails_with = |said: &str| {
+            let failed = || {
+                pipewire
+                    .state()
+                    .failing
+                    .as_deref()
+                    .is_some_and(|why| why.contains(said))
+            };
+            for _ in 0..5 {
+                // Listed just now, however long the tries before took, so
+                // it's the failure kept through that's seen, not the clock.
+                pipewire.state().listed_at = Some(Instant::now());
+                pipewire.refresh();
+                if failed() {
+                    break;
+                }
+            }
+            assert!(failed(), "no listing failed with {said:?}");
+        };
+        listed_whole(&pipewire);
         assert_eq!(programs(), readers, "listed");
         fs::write(&failing, "").unwrap();
-        // Tried until one comes, as a starved builder may miss the wait.
-        let refused = || {
-            pipewire
-                .state()
-                .failing
-                .as_deref()
-                .is_some_and(|why| why.contains("refused"))
-        };
-        for _ in 0..5 {
-            // Listed just now, however long the tries before took, so it's
-            // the refusal kept through that's seen, not the clock.
-            pipewire.state().listed_at = Some(Instant::now());
-            pipewire.refresh();
-            if refused() {
-                break;
-            }
-        }
-        assert!(refused(), "a listing whose ids fall back read as one");
-        assert_eq!(programs(), readers, "kept through one a client wrote into");
+        fails_with("ended");
+        assert_eq!(programs(), readers, "kept through a failed one");
         pipewire.state().listed_at = Some(
             Instant::now()
                 .checked_sub(KEPT_FOR)
@@ -737,6 +755,35 @@ pub(crate) mod tests {
             serde_json::json!(["pipewire"]),
             "not kept once it's old"
         );
+        fs::remove_file(&failing).unwrap();
+        listed_whole(&pipewire);
+        assert_eq!(programs(), readers, "listed again");
+        // Its ids fall back, as a client's property can make them.
+        fs::write(&written, "").unwrap();
+        fails_with("refused");
+        assert_eq!(
+            programs(),
+            serde_json::json!(["pipewire"]),
+            "kept through one a client wrote into"
+        );
+    }
+
+    #[test]
+    fn a_camera_as_this_machine_offers_it_is_one_of_pipewires() {
+        // The built-in camera's device, its node and the client that made
+        // it, as this machine's pw-cli listed them, word for word.
+        let root = machine("offered");
+        let graph = registry(include_str!("offered.txt")).expect("it rises by id");
+        let readers_of = || readers(&graph, Some("/dev/video34"), "Built-in Camera", &root);
+        fs::create_dir_all(root.path("/proc/2359")).unwrap();
+        fs::write(root.path("/proc/2359/comm"), "wireplumber\n").unwrap();
+        assert_eq!(
+            readers_of(),
+            named(&["pipewire"]),
+            "its node is WirePlumber's"
+        );
+        fs::write(root.path("/proc/2359/comm"), "chrome\n").unwrap();
+        assert_eq!(readers_of(), None, "a node a reader made is no camera's");
     }
 
     #[test]

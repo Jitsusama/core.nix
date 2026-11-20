@@ -62,8 +62,8 @@ pub fn cameras(root: &Root, pipewire: &PipeWire) -> Vec<Value> {
                 .and_then(|graph| readers(graph, device.as_deref().map(str::trim), &name, root));
             if unseen(&mut state, &name, through.is_some()) {
                 eprintln!(
-                    "<4>PipeWire holds {name}, but its registry shows no such camera, so it's \
-                     said held by PipeWire"
+                    "<4>PipeWire holds {name}, but its registry shows no such camera, or no \
+                     node of PipeWire's for it, so it's said held by PipeWire"
                 );
             }
             (name, named_through(programs, through))
