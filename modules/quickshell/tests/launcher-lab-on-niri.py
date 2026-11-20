@@ -706,6 +706,7 @@ def test_a_key_after_going_into_a_drawer_is_timed(
     shell.down_to(into)
     shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("title") == into)
     timed: list[int] = []
+    swapped: list[int] = []
     for round_ in range(rounds):
         after = afters[round_ % len(afters)]
         mark = shell.mark()
@@ -718,10 +719,15 @@ def test_a_key_after_going_into_a_drawer_is_timed(
             raise AssertionError(failed)
         took = int(found.group(3)) - after
         timed.append(took)
+        # The shell's own share, from when it heard j to its swap, apart from niri's.
+        swap = f", {found.group(2)} to the shell's swap" if found.group(2) else ""
+        if found.group(2):
+            swapped.append(int(found.group(2)))
         with capsys.disabled():
             print(
                 f"lab-key-in {into} round {round_}: j {after} ms after going in took {took} ms "
-                f"to its frame, {found.group(3)} from going in",
+                f"to its frame, {found.group(3)} from going in; from j heard, "
+                f"{found.group(1)} to its frame{swap}",
                 flush=True,
             )
         shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
@@ -732,7 +738,10 @@ def test_a_key_after_going_into_a_drawer_is_timed(
         print(
             f"lab-key-in {into}: {len(timed)} keys took a median "
             f"{round(statistics.median(timed)) if timed else '?'} ms to their frames, "
-            f"p90 {p90(timed) if timed else '?'}, the slowest {max(timed) if timed else '?'}",
+            f"p90 {p90(timed) if timed else '?'}, the slowest {max(timed) if timed else '?'}; "
+            f"the shell's from j heard to its swap, of the {len(swapped)} that kept one, a "
+            f"median {round(statistics.median(swapped)) if swapped else '?'} ms, "
+            f"p90 {p90(swapped) if swapped else '?'}",
             flush=True,
         )
 

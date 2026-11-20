@@ -518,12 +518,12 @@ A key typed just after going in is timed by
 `test_a_key_after_going_into_a_drawer_is_timed`, run alone with
 `PYTEST_ADDOPTS = "-k key_after"`: it types j in the chord's own `wtype`,
 `LAB_INTO_AFTER` ms after it (0 to 480 unless given, a round each), and
-prints j's time to its frame from going in, less that wait. With 80 windows
-and the rest of Emoji's run laid whole in one go, j took a median 827 ms and a
-p90 1,050. Laid a part a turn off the screen and shown in one frame, with only
-the parts near the view drawn, it took a median 68 to 132 over three runs, the
-shell's share to its swap 5 to 20 ms for a j typed 120 ms or more after going
-in (2026-11-19). The rest is niri drawing 80 windows in software, which swings
+prints j's time to its frame from going in, less that wait, and the shell's
+own share, from hearing j to its swap. With 80 windows and the rest of Emoji's
+run laid whole in one go, j took a median 827 ms and a p90 1,050. Laid a part
+a turn off the screen and shown in one frame, with only the parts near the
+view drawn, it took a median 89 and 128 ms in two runs of 16, the shell's
+share a median 18 and a p90 95 (2026-11-19). The rest is niri drawing 80 windows in software, which swings
 with the builder's load. A j typed with the chord waits on the going-in frame
 itself, 87 to 137 ms there even with nothing laid past what shows. While the
 margin cat moves, its frames keep niri drawing too.
