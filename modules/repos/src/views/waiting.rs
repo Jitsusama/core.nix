@@ -4,6 +4,8 @@
 //! him leads, as docs/design.md's For You says, so a review asked of him
 //! is found in a terminal rather than on GitHub.
 
+use std::collections::BTreeSet;
+
 use terminal_kit::Pen;
 use terminal_kit::layout::{Align, ITEMS, Room};
 
@@ -11,11 +13,12 @@ use repos::model::{ChecksState, Record, Review};
 
 use super::{named, table};
 
-/// What waits on someone: why, the change, and its title, last, so a long
-/// one is cut, and where even that leaves no room, it goes.
+/// What waits on someone: the change, first, so it's never cut, why, and
+/// its title, last, so a long one is cut, and where even that leaves no
+/// room, it goes.
 const FOR_YOU: [(&str, Align); 3] = [
-    ("for you", Align::Left),
     ("change", Align::Left),
+    ("for you", Align::Left),
     ("title", Align::Left),
 ];
 const FOR_YOU_GIVES_WAY: [usize; 1] = [2];
@@ -32,17 +35,27 @@ pub(super) fn waiting(record: &Record, login: Option<&str>, pen: &Pen, room: Roo
 
 /// The open changes waiting on the person GitHub knows as `login`: each
 /// asking their review, then each of their own failing its checks or with
-/// changes asked, each kind the one updated last first. The login is the
-/// one the machine declares, matched as GitHub matches one, ASCII case
-/// aside, against GitHub's own fields for who asked and who wrote, never
-/// anything a change says of itself.
+/// changes asked, each kind the one updated last first, across every
+/// repository. Whose review a change asks is what the refresh kept of it,
+/// worked out against the same declared login, since the logins aren't
+/// kept (model.rs); whose it is, GitHub's author, matched as GitHub
+/// matches logins, ASCII case aside. Nothing a change says of itself
+/// counts. Two clones of one repository, or a remote typed in another
+/// case, hold the same changes, so each is led with once, by GitHub's own
+/// address for it, as the receptor counts it once.
 fn for_you(record: &Record, login: &str) -> Vec<Vec<String>> {
     let is = |one: &str| one.eq_ignore_ascii_case(login);
+    let mut led: BTreeSet<&str> = BTreeSet::new();
     let mut waiting: Vec<(bool, u64, Vec<String>)> = Vec::new();
     for repository in &record.repositories {
         let name = named(record, repository);
         for change in &repository.changes {
-            let asked = change.review_asked_of.iter().any(|one| is(one));
+            if let Some(github) = &change.github
+                && !led.insert(github.url.as_str())
+            {
+                continue;
+            }
+            let asked = change.asks_your_review;
             let why = if asked {
                 "your review".to_owned()
             } else if change.author.as_deref().is_some_and(is) {
@@ -66,7 +79,7 @@ fn for_you(record: &Record, login: &str) -> Vec<Vec<String>> {
             waiting.push((
                 asked,
                 change.updated_at,
-                vec![why, change_named, change.title.clone()],
+                vec![change_named, why, change.title.clone()],
             ));
         }
     }

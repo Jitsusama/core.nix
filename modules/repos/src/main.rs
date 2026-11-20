@@ -25,7 +25,8 @@
 //! file `REPOS_HOMES` names, where the local sites set it (homes.rs). The
 //! collection leads with what waits on the GitHub login `REPOS_LOGIN`
 //! names, from `jitsusama.repos.receptorLogin`, and with nothing where
-//! it names none.
+//! it names none; a refresh keeps whether each change asks that login's
+//! review, never the login.
 
 mod commands;
 // The daemon hears the disk through inotify, so it's Linux's alone.
@@ -85,9 +86,15 @@ fn run(context: &Context) -> Result<(), Failure> {
         [] => {
             let record = record(home, now)?;
             show(context, &views::repositories_json(&record), || {
-                let login = std::env::var("REPOS_LOGIN").ok();
-                let login = login.as_deref().filter(|login| !login.is_empty());
-                views::repositories(&record, &clock, home, login, &context.out, context.room)
+                let login = login();
+                views::repositories(
+                    &record,
+                    &clock,
+                    home,
+                    login.as_deref(),
+                    &context.out,
+                    context.room,
+                )
             })
         }
         [name] => {
@@ -285,6 +292,9 @@ fn refresh(home: Option<&Path>, now: u64) -> Result<Seen, Failure> {
         || gh::token(gh::command(&gh)),
         |token, query| github::post(github::GRAPHQL, token, query),
     ));
+    if let Some(login) = login() {
+        seen.mark_asked(&login);
+    }
     let file = seen_file(home)?;
     github::keep(&file, &seen).map_err(|why| {
         Failure::new(Exit::Failed, "repos couldn't keep what GitHub holds")
@@ -313,6 +323,14 @@ fn say_the_receptor(seen: &Seen, now: u64) {
     if let Err(why) = receptor.say(seen, now, pid) {
         eprintln!("repos couldn't say its receptor: {why}");
     }
+}
+
+/// The GitHub login whose waiting changes lead the collection, the one the
+/// machine declares in `REPOS_LOGIN`; none where it's unset or empty.
+fn login() -> Option<String> {
+    std::env::var("REPOS_LOGIN")
+        .ok()
+        .filter(|login| !login.is_empty())
 }
 
 /// The repositories a machine lists to be read through gh's sign-in, by

@@ -130,9 +130,17 @@ fn what_waits_on_the_login_leads_the_collection() {
 
 #[test]
 fn nothing_leads_where_nothing_waits_or_no_login_is_declared() {
+    // Whose review a change asks was settled by the refresh, against the
+    // same declared login, so only whose changes they are can differ here.
+    let mut joels_own = waiting_on_joel();
+    for repository in &mut joels_own.repositories {
+        for change in &mut repository.changes {
+            change.asks_your_review = false;
+        }
+    }
     for (record, login) in [
         (waiting_on_joel(), None),
-        (waiting_on_joel(), Some("someone-else")),
+        (joels_own, Some("someone-else")),
         (refreshed(), Some("joel")),
     ] {
         let text = repositories(
@@ -209,8 +217,7 @@ fn a_review_asked_of_the_login_leads_once_a_refresh_has_kept_it() {
         vec![asked, asked_of_another],
     );
     seen.mark_asked("joel");
-    let folder =
-        std::env::temp_dir().join(format!("repos-{}-asked-and-kept", std::process::id()));
+    let folder = std::env::temp_dir().join(format!("repos-{}-asked-and-kept", std::process::id()));
     let file = folder.join("github.json");
     github::keep(&file, &seen).expect("it keeps");
     let written = std::fs::read_to_string(&file).expect("it reads");

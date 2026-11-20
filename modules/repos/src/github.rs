@@ -414,8 +414,17 @@ fn data(answer: Value) -> Result<Value, String> {
 }
 
 impl Seen {
-    /// Says of each change whether it asks the review of `login`.
-    pub fn mark_asked(&mut self, _login: &str) {}
+    /// Says of each change whether it asks the review of `login`, as
+    /// GitHub matches logins, ASCII case aside, so what's kept says so
+    /// without holding a login (model.rs).
+    pub fn mark_asked(&mut self, login: &str) {
+        for change in self.changes.values_mut().flatten() {
+            change.asks_your_review = change
+                .review_asked_of
+                .iter()
+                .any(|one| one.eq_ignore_ascii_case(login));
+        }
+    }
 
     /// Nothing seen yet, by a refresh asking at `now`.
     pub fn new(now: u64) -> Self {

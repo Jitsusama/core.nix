@@ -54,19 +54,24 @@ let
   ];
   # The command's settings, as defaults a caller may still set for one
   # run. gh is named only where a machine lists repositories for it, so
-  # it's never asked elsewhere. The login whose review the receptor counts
-  # is the one the collection leads with what waits on.
+  # it's never asked elsewhere.
   settings = {
     REPOS_ROOTS = lib.concatStringsSep ":" roots;
     REPOS_GIT = lib.getExe config.programs.git.package;
-  }
-  // lib.optionalAttrs (receptorLogin != null) {
-    REPOS_LOGIN = receptorLogin;
   }
   // lib.optionalAttrs (throughGh != [ ]) {
     REPOS_THROUGH_GH = lib.concatStringsSep " " throughGh;
     REPOS_GH = lib.getExe config.programs.gh.package;
   };
+  # The login whose review the receptor counts is the one the collection
+  # leads with what waits on, and whose asked reviews a refresh keeps. It's
+  # set, not a default, and unset where none is declared, so what leads is
+  # what the machine declares and never what a caller's environment says.
+  login =
+    if receptorLogin != null then
+      "--set REPOS_LOGIN ${lib.escapeShellArg receptorLogin}"
+    else
+      "--unset REPOS_LOGIN";
   wrapped = pkgs.symlinkJoin {
     name = "repos-${repos.version}";
     paths = [ repos ];
@@ -76,7 +81,7 @@ let
         lib.concatStringsSep " " (
           lib.mapAttrsToList (name: value: "--set-default ${name} ${lib.escapeShellArg value}") settings
         )
-      }
+      } ${login}
     '';
     inherit (repos) meta;
   };
