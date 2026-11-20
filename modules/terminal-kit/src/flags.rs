@@ -297,4 +297,56 @@ mod tests {
             Some("the subcommands are show, do and completion")
         );
     }
+
+    #[test]
+    fn a_command_whose_words_are_unsaid_never_says_a_shared_flag_or_a_byte_back() {
+        use crate::{Environment, Help, run, run_os};
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        let help = || Help::new("thing", "does a thing").command("go", "does it");
+        let unsaid = help().words_unsaid();
+        // Marking only a subcommand keeps these unsaid too, since they're
+        // refused before the line reaches it.
+        let below = Help::new("thing", "does a thing")
+            .subcommand(Help::new("go", "does it").words_unsaid());
+        let environment = Environment::of([false; 3], &[]);
+        for help in [&unsaid, &below] {
+            for line in ["go --format lighthouse", "go --color=lighthouse"] {
+                let ending = run(help, "1.0", &environment, args(line), |_| Ok(()));
+                assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
+                assert!(
+                    !ending.stderr.contains("lighthouse"),
+                    "{line}'s refusal said its value: {}",
+                    ending.stderr
+                );
+            }
+            let bytes = vec![
+                OsString::from("go"),
+                OsString::from_vec(b"light\xffhouse".to_vec()),
+            ];
+            let ending = run_os(help, "1.0", &environment, bytes, |_| Ok(()));
+            assert_eq!(
+                ending.exit,
+                Exit::Usage,
+                "a byte that isn't text wasn't refused"
+            );
+            assert!(
+                !ending.stderr.contains("light"),
+                "the refusal said the argument: {}",
+                ending.stderr
+            );
+        }
+        let said = run(
+            &help(),
+            "1.0",
+            &environment,
+            args("go --format lighthouse"),
+            |_| Ok(()),
+        );
+        assert!(
+            said.stderr.contains("lighthouse"),
+            "an unmarked command stopped saying a bad form: {}",
+            said.stderr
+        );
+    }
 }

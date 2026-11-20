@@ -622,56 +622,6 @@ mod tests {
     }
 
     #[test]
-    fn a_command_whose_words_are_unsaid_never_says_a_shared_flag_or_a_byte_back() {
-        use std::os::unix::ffi::OsStringExt;
-        let unsaid = help().words_unsaid();
-        // Marking only a subcommand keeps the shared flags unsaid too,
-        // since they're taken before the line reaches it.
-        let below = Help::new("thing", "does a thing")
-            .subcommand(Help::new("go", "does it").words_unsaid());
-        let environment = Environment::of([false; 3], &[]);
-        for help in [&unsaid, &below] {
-            for line in ["go --format lighthouse", "go --color=lighthouse"] {
-                let args = line.split_whitespace().map(str::to_owned).collect();
-                let ending = run(help, "1.0", &environment, args, |_| Ok(()));
-                assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
-                assert!(
-                    !ending.stderr.contains("lighthouse"),
-                    "{line}'s refusal said its value: {}",
-                    ending.stderr
-                );
-            }
-        }
-        let said = run(
-            &help(),
-            "1.0",
-            &environment,
-            vec!["go".into(), "--format".into(), "lighthouse".into()],
-            |_| Ok(()),
-        );
-        assert!(
-            said.stderr.contains("lighthouse"),
-            "an unmarked command stopped saying a bad form: {}",
-            said.stderr
-        );
-        let args = vec![
-            OsString::from("go"),
-            OsString::from_vec(b"light\xffhouse".to_vec()),
-        ];
-        let ending = run_os(&unsaid, "1.0", &environment, args, |_| Ok(()));
-        assert_eq!(
-            ending.exit,
-            Exit::Usage,
-            "a byte that isn't text wasn't refused"
-        );
-        assert!(
-            !ending.stderr.contains("light"),
-            "the refusal said the argument: {}",
-            ending.stderr
-        );
-    }
-
-    #[test]
     fn a_stream_ends_with_its_outcome() {
         let ending = ran("go --format jsonl", |_| {
             Err(Failure::new(Exit::TryAgain, "busy"))
