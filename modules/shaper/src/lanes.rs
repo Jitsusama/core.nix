@@ -19,9 +19,11 @@
 //! shaper, a router's queue when the controller climbs past the line, gave
 //! his upload little would otherwise leave him little the next, and beside
 //! agents he'd take seconds to grow back. What he carries now on both
-//! lanes comes first, and what's held past it only from what's spare, so a
-//! lane he left never squeezes the one he's on; while he leaves it, HTB
-//! lends it to agents. HTB lends Joel's two classes what the others leave
+//! lanes comes first, and the VPN's share is set from it, so a lane he
+//! left never squeezes the one he's on, nor the VPN, whose own CAKE holds
+//! it hard; what's held past it comes only from what agents straight on
+//! the connection get past their part of the quarter below, which HTB
+//! lends back to them while he leaves it. HTB lends Joel's two classes what the others leave
 //! before it lends agents' any, and every class may borrow up to the whole
 //! rate: the VPN's own CAKE is what holds it near V, and when that runs
 //! ahead of a cut for a moment, its class borrows rather than dropping
@@ -79,7 +81,10 @@ const WAITING_BYTES: u64 = 3_000;
 /// quiet stretches, and costs the VPN at most that long after it ends.
 const PRESSED_S: f64 = 20.0;
 /// The most the VPN's share, or what Joel needs straight on the
-/// connection, falls in a second, as a share of itself.
+/// connection, falls in a second, as a share of itself. What Joel needs
+/// falls by it for each second of a gap, since he was quiet through them;
+/// the VPN's share falls by it once however long the gap, as it always
+/// has, since a loop that stalled read nothing of its agents meanwhile.
 const FALL: f64 = 0.2;
 /// A move of the VPN's share under this share of itself isn't made.
 const STILL: f64 = 0.05;
@@ -253,27 +258,30 @@ impl Lanes {
         };
         // What Joel carries now on his two lanes shrinks alike when
         // together they'd pass what he may take, so neither is starved for
-        // the other; what's held of his straight lane past that comes only
-        // from what's spare.
+        // the other.
         let room = rate - floor;
         let now = (need(seen.joel_straight), need(seen.joel_vpn));
         let scale = (room / (now.0 + now.1)).min(1.0);
-        let spare = room - (now.0 + now.1) * scale;
-        let held = self.joel_held(now.0, dt);
-        let joel = now.0 * scale + (held - now.0).min(spare).max(0.0);
-        let joel_vpn = now.1 * scale;
+        let (carried, joel_vpn) = (now.0 * scale, now.1 * scale);
         // What's left is the agents', evenly between the lanes they wait
         // on. With none waiting it goes to the VPN, whose own CAKE is
         // held to V: the classes beside it borrow what it leaves.
-        let left = rate - joel - joel_vpn;
-        let to_vpn = match (beside, within) {
-            (true, true) => left / 2.0,
-            (true, false) => 0.0,
-            (false, _) => left,
+        let left = rate - carried - joel_vpn;
+        let (to_vpn, straight_floor) = match (beside, within) {
+            (true, true) => (left / 2.0, floor / 2.0),
+            (true, false) => (0.0, floor),
+            (false, _) => (left, 0.0),
         };
         let vpn = self
             .hold(joel_vpn + to_vpn, joel_vpn, rate, dt)
-            .min(rate - joel);
+            .min(rate - carried);
+        // What's held of his straight lane past what he carries comes only
+        // from agents straight on the connection, past their part of the
+        // floor: they borrow it back while he leaves it, where the VPN's
+        // own CAKE would keep what it lost from anyone inside it.
+        let held = self.joel_held(now.0, dt) - now.0;
+        let spare = (room - carried - joel_vpn).min(rate - carried - vpn - straight_floor);
+        let joel = carried + held.min(spare).max(0.0);
         Split {
             joel,
             vpn,
@@ -843,11 +851,56 @@ mod tests {
             moved.vpn,
             need(4_000.0)
         );
-        // What's held of the lane he left comes only from what's spare.
-        let spare = RATE * (1.0 - AGENTS_FLOOR) - need(4_000.0);
+        // What's held of the lane he left past need(0) comes only from
+        // agents straight past their floor.
+        let spare = RATE * (1.0 - AGENTS_FLOOR) - need(0.0) - need(4_000.0);
         assert!(
-            near(moved.joel, spare),
+            near(moved.joel, need(0.0) + spare),
             "the lane he left held {}",
+            moved.joel
+        );
+    }
+
+    // The VPN's own CAKE holds it hard, so what Joel's straight lane held
+    // from it would sit unused while he was quiet.
+    #[test]
+    fn joel_s_hold_takes_nothing_from_the_vpn() {
+        let mut lanes = Lanes::default();
+        let agents = (Agents::default(), waiting(30));
+        lanes.split(&seen((4_000.0, 0.0), agents), 1.0);
+        let quiet = lanes.split(&seen((0.0, 0.0), agents), 1.0);
+        assert!(
+            near(quiet.vpn, RATE - need(0.0)),
+            "the VPN got {} with Joel quiet and agents only inside it",
+            quiet.vpn
+        );
+        assert!(
+            near(quiet.joel, need(0.0)),
+            "Joel's lane held {} that only the VPN's agents could use",
+            quiet.joel
+        );
+    }
+
+    // The VPN's share falls slowly too, so what both hold could leave the
+    // agents waiting straight less than their quarter.
+    #[test]
+    fn both_holds_leave_agents_straight_their_floor() {
+        let mut lanes = Lanes::default();
+        lanes.split(&seen((4_000.0, 0.0), (Agents::default(), waiting(30))), 1.0);
+        let moved = lanes.split(&seen((0.0, 0.0), (waiting(32), Agents::default())), 1.0);
+        assert!(
+            adds_up(moved, RATE),
+            "the classes don't add up to the rate: {moved:?}"
+        );
+        assert!(
+            moved.agents >= RATE * AGENTS_FLOOR - 1.0,
+            "agents straight got {} of their {} with both holds on",
+            moved.agents,
+            RATE * AGENTS_FLOOR
+        );
+        assert!(
+            moved.joel > need(0.0) + 1.0,
+            "Joel's lane kept nothing of its hold: {}",
             moved.joel
         );
     }
