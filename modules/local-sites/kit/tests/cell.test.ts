@@ -23,11 +23,26 @@ it("an address alone, or with its machine and anchor, names the same cell", () =
   }
 });
 
+it("an address runs to twelve letters and a machine to sixty-four, as mycelium-link's do", () => {
+  const machine = `k${"e".repeat(63)}`;
+  assert.equal(addressIn("ABCDEFGHIJKL"), "ABCDEFGHIJKL");
+  assert.equal(addressIn(`SKIFF1@${machine}`), "SKIFF1");
+  assert.equal(addressIn(`SKIFF1@${machine}e`), null);
+  assert.equal(cellLink("SKIFF1", machine), `mycelium:cell/SKIFF1@${machine}`);
+  assert.equal(cellLink("SKIFF1", `${machine}e`), "mycelium:cell/SKIFF1");
+  assert.equal(cellLink("ABCDEFGHIJKL"), "mycelium:cell/ABCDEFGHIJKL");
+});
+
 it("a link to anything else, or a misshaped address or machine, names no cell", () => {
   for (const named of [
     "mycelium:network/orchestration.skiff1",
     "mycelium:machine/kestrel",
+    "mycelium:Cell/SKIFF1",
+    "mycelium:cell",
+    "mycelium:cellSKIFF1",
     "mycelium:cell/",
+    "SKIFF1@kestrel@osprey",
+    "@kestrel",
     "mycelium:cell/skiff1",
     "calls@kestrel",
     "SKIFF1@",

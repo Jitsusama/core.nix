@@ -2864,20 +2864,16 @@ import {
   };
 
   const hashOf = (c) => (c ? `#${c.kind}=${encodeURIComponent(c.id)}` : "");
-  // A cell may be named by its whole link, as a notice gives it, or by its
-  // address with the machine it runs on, and opens as its address alone. A
-  // receptor's name is no address, so it opens as it is named. A stray % in
-  // a hash typed by hand names nothing.
+  // A stray % in a hash typed by hand names nothing, rather than throwing
+  // out of the draw that reads it.
   const fromHash = () => {
     const m = location.hash.match(/^#(cell|net|machine|talk)=(.+)$/);
     if (!m) return null;
-    let id;
     try {
-      id = decodeURIComponent(m[2]);
+      return { kind: m[1], id: decodeURIComponent(m[2]) };
     } catch {
       return null;
     }
-    return { kind: m[1], id: m[1] === "cell" ? addressIn(id) ?? id : id };
   };
 
   // A visit goes in the history, so back returns from it.
@@ -2943,8 +2939,21 @@ import {
     history.replaceState(history.state, "", hashOf(as));
     return as;
   };
+  // A cell may be named by its whole link, as a notice gives it, or by its
+  // address with the machine it runs on: one the map doesn't know as named
+  // opens as the address it gives, with the hash said as the map says it,
+  // so a later visit to the same cell finds it already there. A receptor's
+  // name is looked up as it is first, whatever its letters.
+  const cellFor = (c) => {
+    if (c?.kind !== "cell" || !current || current.byAddress.has(c.id)) return c;
+    const address = addressIn(c.id);
+    if (!address) return c;
+    const as = { kind: "cell", id: address };
+    history.replaceState(history.state, "", hashOf(as));
+    return as;
+  };
   const apply = (animate) => {
-    const c = standFor(fromHash());
+    const c = cellFor(standFor(fromHash()));
     chosen = knows(c) ? c : null;
     if (chosen?.kind === "machine") machinesShown = true;
     const key = keyOf(chosen);
@@ -3320,7 +3329,8 @@ import {
   // link names it and nothing more, in the letters mycelium-link lets
   // through, so a name it would refuse is never offered as a link that
   // does nothing. A cell's is the kit's cellLink, saying the machine it
-  // runs on as a notice's link does; a network's name takes more letters.
+  // runs on (its host, never the basin it is drawn from) as a notice's
+  // link does; a network's name takes more letters.
   const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
   const linkOf = (kind, name, machine) => {
     if (kind === "cell") return cellLink(name || "", machine);
@@ -3415,7 +3425,7 @@ import {
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
-      (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.machine)) +
+      (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.host)) +
       // The forage page lists only cells with a forage, so only those link there.
       (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
       factList(facts) +
@@ -4648,7 +4658,7 @@ import {
       where.textContent = "No cell is open to talk to; a opens the next that needs you.";
       return;
     }
-    const href = cellLink(chosen.id, current?.byAddress.get(chosen.id)?.machine);
+    const href = cellLink(chosen.id, current?.byAddress.get(chosen.id)?.host);
     const link = href && panelBody.querySelector(`a[href="${CSS.escape(href)}"]`);
     const c = { kind: "cell", id: chosen.id };
     if (!link) {

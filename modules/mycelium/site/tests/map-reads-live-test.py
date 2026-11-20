@@ -775,6 +775,14 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) 
         expect(talk, f"#cell={named} didn't open its cell's drawer").to_have_attribute(
             "href", f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}"
         )
+        expect(page, f"#cell={named} wasn't said as its address").to_have_url(
+            re.compile(f"#cell={NEEDING[-1]}$")
+        )
+    # A stray % typed by hand names nothing, and the map still answers after it.
+    page.evaluate("location.hash = '#cell=%E0%A4%A'")
+    expect(talk, "a stray % opened a cell").to_have_count(0)
+    page.evaluate(f"location.hash = '#cell={NAMED[1]}'")
+    expect(talk, "the map stopped answering after a stray %").to_have_count(1)
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
@@ -854,6 +862,10 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Its link to the Launcher names that machine too, never the basin.
+        expect(
+            body.locator('a[href^="mycelium:cell/"]'), "the cell's link lost its machine"
+        ).to_have_attribute("href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}")
         # Now counts every machine, a basin's each its own, not each mark.
         page.locator("#now-control").click()
         expect(title, "Now never opened").to_have_text("Now")

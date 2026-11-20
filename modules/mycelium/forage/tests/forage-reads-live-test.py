@@ -226,6 +226,29 @@ def test_the_keys_step_the_cursor(forage_page: Page) -> None:
     selected(forage_page, "KESTRL", "g didn't go to the first row")
 
 
+# A cell named by its whole link, as a notice or another page gives it.
+LINKED = "TERNAA"
+LINKED_AS = f"mycelium:cell/{LINKED}@kestrel#notice:4"
+
+
+def test_a_cell_opens_by_its_whole_link_as_its_address(
+    browser: Browser, forage_served: Served
+) -> None:
+    root, _ = forage_served
+    opened = Opened(browser, f"{root}forage/#cell={LINKED_AS}", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        selected(page, LINKED, f"#cell={LINKED_AS} didn't open {LINKED}")
+        expect(page, "the hash wasn't said as its address").to_have_url(
+            re.compile(f"#cell={LINKED}$")
+        )
+        page.evaluate("location.hash = '#cell=SKIFFS%40kestrel'")
+        selected(page, "SKIFFS", "an address on its machine didn't open its cell")
+    finally:
+        opened.close()
+
+
 def test_a_purpose_written_and_a_cell_gone_are_followed(
     forage_page: Page, mycelium_node: StandIn
 ) -> None:
