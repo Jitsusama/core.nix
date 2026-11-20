@@ -558,6 +558,8 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
             " | grep -qE '^wlan2 reached 02:00:00:00:00:00 [0-9]+ ms after it was asked'",
             timeout=timedelta(seconds=30),
         )
+        # Sent back with its other networks off, it has them on again once there.
+        wifid.says("wlan2 is back, and may join its other networks again")
     finally:
         machine.log(
             machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'")
