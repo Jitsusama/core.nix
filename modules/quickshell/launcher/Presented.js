@@ -296,14 +296,16 @@ function keyShown(key, whole) {
 // The row a drawer is for as the journal may say it: by its key, or by
 // its name where it has none, as a place's own answers have, but only
 // while reports are on, since a name is what a source wrote. Otherwise
-// such a row is said as `answer`, the launcher's own word, so it's never
-// said as `drawer for ""`, and the place it's tallied in tells whose.
+// such a row is said as `answer`, and one whose key has no kind, as the
+// stopwatch's, as `row`, the launcher's own words, since a daemon's key
+// may be a record's name: so a row is never said as `drawer for ""`,
+// and the place it's tallied in tells whose.
 function rowShown(row, whole) {
     if (whole) {
         return row?.key || row?.name || "";
     }
     if (row?.key) {
-        return keyShown(row.key, false);
+        return keyShown(row.key, false) || "row";
     }
     return row?.name ? "answer" : "";
 }
