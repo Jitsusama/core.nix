@@ -1089,6 +1089,12 @@ def test_the_cat_walks_between_workspaces_as_if_on_one_screen(shell: Shell) -> N
     heard(shell, moving, since)
     sits_over(shell, upper, since)
     up = crossed(shell, since, -1)
+    # On a loaded builder the case runs past the cat's 45 s doze, and asleep it keeps its place
+    # as the workspace goes (2026-11-20, cat-niri10), so a key wakes it, as before each case.
+    woken = shell.mark()
+    shell.send_key("F24")
+    if dozing(shell):
+        heard(shell, lambda said: not asleep(said), woken)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, since)
