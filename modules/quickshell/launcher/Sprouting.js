@@ -57,6 +57,9 @@ function uncontrolled(word) {
     }).join("");
 }
 
+// The spaces between a line's words.
+const SPACES = /\s+/;
+
 // A character written as a pair of UTF-16 halves, as an emoji is.
 const PAIRED = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
 
@@ -76,7 +79,7 @@ function offered(words, from, nameOf) {
     if (!said.startsWith("words:")) {
         return null;
     }
-    const plain = said.slice("words:".length).split(/\s+/)
+    const plain = said.slice("words:".length).split(SPACES)
         .map(uncontrolled)
         .filter(word => word !== "")
         .join(" ");
@@ -91,7 +94,7 @@ function offered(words, from, nameOf) {
         ? nameOf(address) : null;
     return {
         words: plain,
-        from: typeof name === "string" && name !== "" ? { address: address, name: name } : null
+        from: typeof name === "string" && name !== "" ? { address, name } : null
     };
 }
 
