@@ -64,7 +64,8 @@ if [ -z "$command" ] || [ ! -x "$command" ]; then
   exit 1
 fi
 
-# The stand-in qs writes down what it's asked here.
+# The stand-in qs writes down what it's asked here, each argument in
+# brackets.
 export ASKED=$work/asked
 failed=0
 # Opens a link as the entry would, the last one's time forgotten, and checks
@@ -80,20 +81,21 @@ opening() {
     failed=1
   fi
 }
-opening 'mycelium:cell/DAHTNJ' 'ipc call launcher talkTo DAHTNJ'
-opening 'MYCELIUM://cell/DAHTNJ/talk?say=hi#now' 'ipc call launcher talkTo DAHTNJ'
+opening 'mycelium:cell/DAHTNJ' '[ipc][call][launcher][talkTo][DAHTNJ]'
+opening 'MYCELIUM://cell/DAHTNJ/talk?say=hi#now' '[ipc][call][launcher][talkTo][DAHTNJ]'
 # A notice's whole cell link, naming where its session runs and what in it
 # the notice is about, reaches the same session by its address alone.
-opening 'mycelium:cell/DAHTNJ@kestrel#notice:12' 'ipc call launcher talkTo DAHTNJ'
-opening 'mycelium:cell/DAHTNJ@kestrel/go#notice:12' 'ipc call launcher goTo DAHTNJ'
-opening 'mycelium:network/repo.core-nix' 'ipc call launcher network repo.core-nix'
+opening 'mycelium:cell/DAHTNJ@kestrel#notice:12' '[ipc][call][launcher][talkTo][DAHTNJ]'
+opening 'mycelium:cell/DAHTNJ@kestrel/go#notice:12' '[ipc][call][launcher][goTo][DAHTNJ]'
+opening 'mycelium:network/repo.core-nix' '[ipc][call][launcher][network][repo.core-nix]'
 # The system page's Open in the Launcher, on a machine's row.
-opening 'mycelium:machine/osprey?from=system' 'ipc call launcher machine osprey'
+opening 'mycelium:machine/osprey?from=system' '[ipc][call][launcher][machine][osprey]'
 # The map's Start New Work from a cell: the words decoded once, the cell
 # kept only as an address, each after a fixed word so neither is a flag.
 opening 'mycelium:sprout?words=tidy%20the%20rows%20%26%20more&from=TERN02' \
-  'ipc call launcher newWork words:tidy the rows & more from:TERN02'
-opening 'mycelium:sprout?words=-rf+now&from=tern02' 'ipc call launcher newWork words:-rf now from:'
+  '[ipc][call][launcher][newWork][words:tidy the rows & more][from:TERN02]'
+opening 'mycelium:sprout?words=-rf+now&from=tern02' \
+  '[ipc][call][launcher][newWork][words:-rf now][from:]'
 opening 'mycelium:sprout?from=TERN02' ''
 opening 'mycelium:sprout?words=tidy&words=reboot' ''
 opening 'mycelium:cell/dahtnj' ''
@@ -109,7 +111,7 @@ rm -f asked runtime/mycelium-link.last
 desktop "$asking_stand_in" 'mycelium:cell/DAHTNJ'
 desktop "$asking_stand_in" 'mycelium:network/repo.core-nix' 2> /dev/null
 said=$(cat asked)
-if [ "$said" != 'ipc call launcher talkTo DAHTNJ' ]; then
+if [ "$said" != '[ipc][call][launcher][talkTo][DAHTNJ]' ]; then
   echo "two links at once asked: $said"
   failed=1
 fi

@@ -172,9 +172,11 @@
   # A mycelium: link a page hands the desktop reaches mycelium-link's entry
   # through niri's own list of defaults, the entry registered for the scheme in
   # the profile's applications as the portal needs, and none left in the
-  # account's own folder to stand in its way. It asks the launcher to talk to the
-  # cell or show the network it names, by its name alone, and nothing for a link
-  # naming neither or a second within a few seconds
+  # account's own folder to stand in its way. It asks the launcher to talk to or
+  # go to the cell, or show the network or machine it names, by its name alone;
+  # to offer a sprout's plain words as new work, the cell they say they're from
+  # kept only as an address; and nothing for a link naming none of them, or a
+  # second within a few seconds
   # (modules/quickshell/tests/mycelium-links-open-in-the-launcher.sh). Its tests
   # run as it builds.
   mycelium-links-open-in-the-launcher =
@@ -192,9 +194,13 @@
         "${lib.head holding}/share/applications/${named}";
       defaults = home.xdg.configFile."niri-mimeapps.list".text;
       # The same program built to ask a stand-in, which writes down what
-      # it was asked where the script says.
+      # it was asked where the script says, each argument in brackets, so
+      # words split into several show.
       askingStandIn = pkgs.callPackage ../mycelium-link/package.nix {
-        quickshell = pkgs.writeShellScriptBin "qs" ''printf '%s\n' "$*" >> "$ASKED"'';
+        quickshell = pkgs.writeShellScriptBin "qs" ''
+          printf '[%s]' "$@" >> "$ASKED"
+          echo >> "$ASKED"
+        '';
       };
     in
     pkgs.runCommandLocal "mycelium-links-open-in-the-launcher"
