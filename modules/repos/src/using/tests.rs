@@ -181,6 +181,57 @@ fn a_reading_keeps_the_processes_working_in_a_folder() {
 }
 
 #[test]
+fn a_process_counts_the_children_it_has_waited_on() {
+    // A build's compilers start and end between two readings; the cargo
+    // that waited on them holds their time, in fields 16 and 17.
+    let proc = proc_with("children");
+    let cargo = "41 (cargo) S 1 1 1 0 -1 4194560 100 0 0 0 70 30 \
+                 4000 1000 20 0 1 0 900 1000 10";
+    pid(&proc, 41, Some(TREE), cargo, None);
+    let sample = sample(&proc, &folders());
+    assert_eq!(
+        sample.processes.iter().map(|process| process.ticks).collect::<Vec<_>>(),
+        [5_100],
+        "its own 100 ticks and its children's 5,000"
+    );
+    let _ = fs::remove_dir_all(&proc);
+}
+
+#[test]
+fn a_process_in_a_removed_folder_works_nowhere() {
+    // The kernel says a working folder that was removed with " (deleted)"
+    // after it, which would place it in the checkout holding that tree.
+    let proc = proc_with("deleted");
+    let gone = format!("{CHECKOUT}/.trees/gone (deleted)");
+    pid(&proc, 41, Some(&gone), &stat(41, "cargo", 70, 30, 900), None);
+    assert_eq!(sample(&proc, &folders()).processes, []);
+    let _ = fs::remove_dir_all(&proc);
+}
+
+#[test]
+fn readings_far_apart_measure_no_share() {
+    // After a suspend the time since boot has run on while nothing
+    // worked, so a share of it would read near nothing.
+    let before = Sample {
+        at: 1_000,
+        processes: vec![process(1, TREE, 10, 100, 0)],
+    };
+    let slept = Sample {
+        at: 1_000 + LONGEST + 1,
+        processes: vec![process(1, TREE, 10, 400, 0)],
+    };
+    assert!(!measured(Some(&before), &slept), "readings past LONGEST apart");
+    assert_eq!(using(Some(&before), &slept)[Path::new(TREE)].cpu, None);
+    let soon = Sample {
+        at: 1_000 + LONGEST,
+        ..slept
+    };
+    assert!(measured(Some(&before), &soon), "readings LONGEST apart");
+    assert!(!measured(Some(&before), &before), "readings no time apart");
+    assert!(!measured(None, &soon), "a first reading");
+}
+
+#[test]
 fn nothing_is_read_where_there_is_no_proc() {
     let gone = std::env::temp_dir().join(format!("repos-using-{}-none", std::process::id()));
     assert_eq!(sample(&gone, &folders()), Sample::default());

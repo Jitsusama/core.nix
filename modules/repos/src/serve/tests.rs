@@ -8,7 +8,9 @@ use repos::read;
 
 use serde_json::json;
 
-use super::{Disk, LONGEST, Of, QUIET, SPACED, health, ready, settle};
+use repos::using::{Process, Sample};
+
+use super::{Disk, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, health, ready, settle};
 
 fn of(name: &str) -> Of {
     Of::Checkout(PathBuf::from(name))
@@ -130,6 +132,58 @@ fn a_checkout_gone_when_its_folder_is_heard_is_let_go() {
         "a gone checkout still said: {record:#?}"
     );
     assert!(disk.found.is_empty(), "a gone checkout still held");
+}
+
+#[test]
+fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
+    // A process holding its memory map locked holds up a read of its
+    // smaps_rollup until it lets go, which may be never. The first
+    // reading answers, and each after it waits on `free`.
+    let (free, freed) = mpsc::channel::<()>();
+    let freed = std::sync::Mutex::new(freed);
+    let calls = std::sync::atomic::AtomicU64::new(0);
+    let mut working = Working::start(move |folders: &[PathBuf]| {
+        let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if call > 0 {
+            let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
+        }
+        Sample {
+            at: 100 + call * 6_000,
+            processes: vec![Process {
+                pid: 1,
+                folder: folders[0].clone(),
+                started: 1,
+                ticks: call * 600,
+                memory: Some(4_096),
+            }],
+        }
+    });
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    working.read(folders.clone());
+    assert_eq!(working.used.len(), 1, "the first reading wasn't taken");
+
+    let began = Instant::now();
+    for _ in 0..STALE {
+        working.read(folders.clone());
+    }
+    assert!(
+        began.elapsed() < SAMPLED + LATE,
+        "a stuck reading held up the loop {:?}",
+        began.elapsed()
+    );
+    assert!(
+        working.used.is_empty() && !working.measured,
+        "what was read before a reading stuck is still said as now"
+    );
+
+    drop(free);
+    let until = Instant::now() + SAMPLED * 4 + LATE;
+    while working.used.is_empty() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(10));
+        working.read(folders.clone());
+    }
+    assert_eq!(working.used.len(), 1, "a reading freed again wasn't taken");
+    assert!(working.measured, "two readings a minute apart measure a share");
 }
 
 #[test]
