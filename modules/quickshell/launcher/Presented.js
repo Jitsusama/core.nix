@@ -214,22 +214,24 @@ const drawerParts = [["from", "followed", "before it followed"],
 // drawer on the 60 Hz screen took 54 ms, on the 120 Hz panel 33, and the
 // day's median followed which he worked on (2026-11-17).
 function drawerSaid(one) {
-    return `launcher: drawer for "${one.key}" presented ${Math.round(one.at - one.from)} ms `
+    return `launcher: drawer for ${quoted(one.key)} presented ${Math.round(one.at - one.from)} ms `
         + `from the key${partsSwapped([one], drawerParts)}, ${one.came ?? "the frame after"}`
         + screensSaid([one]);
 }
 
-// The keys gone into a drawer, `{ key, from, at, swapped, laid, screen,
-// refresh }`, said as the frame they came in is presented, with how much
-// of it was the shell's, to that frame's swap where it was kept, and how
-// many of its lines that frame laid: Ctrl+W l into Emoji's laid all 1,833
-// lines first, where its view shows some 37, until only those were
-// (2026-11-19).
+// The keys gone into a drawer, `{ key, page, from, at, swapped, laid,
+// screen, refresh }`, said as the frame they came in is presented, with
+// how much of it was the shell's, to that frame's swap where it was kept,
+// and how many of its lines that frame laid: Ctrl+W l into Emoji's laid
+// all 1,833 lines first, where its view shows some 37, until only those
+// were (2026-11-19). The page is named, since going back from its list of
+// keys is a going-in under the same row.
 function intoSaid(one) {
     const swap = one.swapped > 0
         ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
     const key = quoted(one.key);
-    return `launcher: into the drawer for ${key} presented `
+    const page = one.page ? ` on ${quoted(one.page)}` : "";
+    return `launcher: into the drawer for ${key}${page} presented `
         + `${Math.round(one.at - one.from)} ms from the key${swap}, ${one.laid} `
         + `${one.laid === 1 ? "line" : "lines"} laid first${screensSaid([one])}`;
 }
@@ -244,15 +246,28 @@ function quoted(key) {
 
 // A key in a drawer, `{ act, key, from, into, at, swapped, screen, refresh
 // }`, said as its frame is presented: from its press, or where it had none
-// from when it was heard, and from going in (`into`), so a key typed a set
-// time after Ctrl+W l says its whole wait, queued behind the drawer's lay
-// or not, as that less the time it was typed after.
+// from when it was heard, and from going in (`into`) where it came soon
+// after, so a key typed a set time after Ctrl+W l says its whole wait,
+// queued behind the drawer's lay or not, as that less the time it was
+// typed after.
 function keyInSaid(one) {
     const swap = one.swapped > 0
         ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
+    const into = one.into === undefined ? "" : `, ${Math.round(one.at - one.into)} from going in`;
     return `launcher: ${one.act} in the drawer for ${quoted(one.key)} presented `
-        + `${Math.round(one.at - one.from)} ms from the key${swap}, `
-        + `${Math.round(one.at - one.into)} from going in${screensSaid([one])}`;
+        + `${Math.round(one.at - one.from)} ms from the key${swap}${into}${screensSaid([one])}`;
+}
+
+// A row's key as a line in the journal may say it: whole where `whole`,
+// as while reports are on, but a window's without its title, which may
+// be a mail's subject or a document's name, so `window:<app>:<title>`
+// is said as `window:<app>`.
+function keyShown(key, whole) {
+    if (whole || !key.startsWith("window:")) {
+        return key;
+    }
+    const app = key.indexOf(":", "window:".length);
+    return app < 0 ? key : key.slice(0, app);
 }
 
 // The drawers presented since the launcher opened, a line a place, as a

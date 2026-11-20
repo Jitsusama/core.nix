@@ -16,6 +16,26 @@ const newline = /\n/g;
 // in Emoji's drawer would be found nowhere. A pattern pasted from one is
 // read the same way.
 const unbroken = /\u00a0/g;
+// It holds a hyphenated word whole with a word joiner after its hyphen,
+// and a zero-width space may stand where a line breaks: neither is typed,
+// so they're passed over, or /t-shirt would be found nowhere.
+const unseen = /[\u2060\u200b]/;
+
+// A text with what's passed over taken out, and where each of its letters
+// stands in the text, one past its last too, so a place found in it is
+// said on the text as it stands.
+function seen(text) {
+    let letters = "";
+    const at = [];
+    for (let from = 0; from < text.length; from++) {
+        if (!unseen.test(text[from])) {
+            letters += text[from];
+            at.push(from);
+        }
+    }
+    at.push(text.length);
+    return { letters, at };
+}
 
 // Whether a pattern is matched by its case: only once it has a capital.
 function cased(pattern) {
@@ -30,13 +50,19 @@ function found(pattern, text) {
         return [];
     }
     const byCase = cased(pattern);
-    const plain = text.replace(unbroken, " ");
-    const looked = byCase ? plain : plain.toLowerCase();
-    const sought = (byCase ? pattern : pattern.toLowerCase()).replace(unbroken, " ");
+    const plain = seen(text);
+    const spaced = plain.letters.replace(unbroken, " ");
+    const looked = byCase ? spaced : spaced.toLowerCase();
+    const sought = seen(byCase ? pattern : pattern.toLowerCase()).letters.replace(unbroken, " ");
     const spans = [];
+    if (sought === "") {
+        return spans;
+    }
     let from = looked.indexOf(sought);
     while (from >= 0) {
-        spans.push([from, from + sought.length]);
+        // Its end is one past its last letter, so a joiner after the
+        // place found isn't taken into it.
+        spans.push([plain.at[from], plain.at[from + sought.length - 1] + 1]);
         from = looked.indexOf(sought, from + sought.length);
     }
     return spans;

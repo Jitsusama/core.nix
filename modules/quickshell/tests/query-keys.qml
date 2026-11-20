@@ -1056,6 +1056,18 @@ QtObject {
             Search.found("pirate flag", "Pinata \u00b7 Pirate\u00a0flag"), [[9, 20]]);
         holds("a no-break space pasted finds a space",
             Search.found("pirate\u00a0flag", "Pinata \u00b7 Pirate flag"), [[9, 20]]);
+        // A drawer holds a hyphenated word whole with a word joiner after
+        // its hyphen, and a zero-width space may stand where it breaks, so
+        // /t-shirt in Emoji's drawer would be found nowhere; the place
+        // found spans the joiner, on the text as it stands.
+        holds("a hyphen typed finds one a word joiner holds",
+            Search.found("t-shirt", "T-\u2060shirt"), [[0, 8]]);
+        holds("and finds it past one, at the text's own letters",
+            Search.found("wi-fi", "a \u00b7 wi-\u2060fi \u00b7 wi-\u2060fi"), [[4, 10], [13, 19]]);
+        holds("a zero-width space is passed over too",
+            Search.found("ab", "a\u200bb"), [[0, 3]]);
+        holds("and a joiner pasted in a pattern finds a plain hyphen",
+            Search.found("t-\u2060shirt", "T-shirt"), [[0, 7]]);
     }
 
     function drawerSearch(holds) {
@@ -1982,6 +1994,19 @@ QtObject {
             Page.moved("first", 0, onHeaded({ line: 12, top: 145 })).top, 16);
         holds("a view resting below the top: G at its end, on a stop",
             Page.moved("last", 0, onHeaded({ top: 16 })).top, 361);
+        // While a drawer's run is still laid a part a turn, a move that
+        // reaches past the line its laid run ends on lays the rest first,
+        // and one that comes near it lays more, so the cursor never lands
+        // on the acts under the run while its rest is still to come.
+        const edge = { off: 5, height: 300, top: 900 };
+        holds("a move past a run's laid end lays its rest whole",
+            Page.runReach({ line: 41, top: 0 }, 40, edge), "whole");
+        holds("one within scrolloff of it lays more",
+            Page.runReach({ line: 35, top: 0 }, 40, edge), "more");
+        holds("as does one whose view reaches past it",
+            Page.runReach({ line: 10, top: 601 }, 40, edge), "more");
+        holds("and one clear of it lays nothing",
+            Page.runReach({ line: 34, top: 600 }, 40, edge), "");
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",

@@ -844,6 +844,53 @@ QtObject {
             Presented.intoSaid({ key: "win:a\u2028b\u2029c\u0085d", from: 0, at: 20, laid: 1 }),
             'launcher: into the drawer for "win:a\\u2028b\\u2029c\\u0085d" presented 20 ms '
             + "from the key, 1 line laid first");
+        // Going back from the drawer's list of keys is a going-in under the
+        // same row, which read as a second of Emoji's with another count.
+        check(failures, "going in names the page it went into",
+            Presented.intoSaid({ key: "place:emoji", page: "The Drawer's Keys", from: 0,
+                at: 20, laid: 12 }),
+            'launcher: into the drawer for "place:emoji" on "The Drawer\'s Keys" presented '
+            + "20 ms from the key, 12 lines laid first");
+        check(failures, "and quotes the page, as a window's title may name it",
+            Presented.intoSaid({ key: "place:x", page: 'a "b"\nlauncher: x', from: 0, at: 20,
+                laid: 1 }),
+            'launcher: into the drawer for "place:x" on "a \\"b\\"\\nlauncher: x" presented '
+            + "20 ms from the key, 1 line laid first");
+        check(failures, "a drawer quotes its key too, so a title can't forge a line",
+            Presented.drawerSaid(Object.assign({}, drawer, { key: 'win:a "b"\nlauncher: x' }))
+                .startsWith('launcher: drawer for "win:a \\"b\\"\\nlauncher: x" presented 90 ms'),
+            true);
+        // j typed 0 to 480 ms after Ctrl+W l waited on the rest of Emoji's
+        // run being laid (2026-11-19), so a key in a drawer says its time
+        // from going in when it came soon after, which the drawer lab reads.
+        check(failures, "a key in a drawer says its time from the key and from going in",
+            Presented.keyInSaid({ act: "next", key: "place:emoji", from: 1040, into: 1000,
+                at: 1131, screen: "DP-4", refresh: 1000 / 59.997 }),
+            'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
+            + "131 from going in; on DP-4 at 60 Hz");
+        check(failures, "and the shell's share to its frame's swap",
+            Presented.keyInSaid({ act: "next", key: "place:emoji", from: 1040, into: 1000,
+                at: 1131, swapped: 1058.4 }),
+            'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
+            + "18 to the shell's swap, 131 from going in");
+        // Two minutes into a drawer, its time from going in would read as
+        // a fault, so a key long after says none.
+        check(failures, "and none from going in for a key long after it",
+            Presented.keyInSaid({ act: "previous", key: "place:emoji", from: 0, at: 60 }),
+            'launcher: previous in the drawer for "place:emoji" presented 60 ms from the key');
+        check(failures, "a key in a drawer quotes its key so a title can't forge a line",
+            Presented.keyInSaid({ act: "next", key: 'x "y"\nlauncher: z', from: 0, at: 60 }),
+            'launcher: next in the drawer for "x \\"y\\"\\nlauncher: z" presented 60 ms '
+            + "from the key");
+        // A window's row is keyed by its title, a mail's subject or a
+        // document's name, which a slow key would write once per key.
+        check(failures, "a window's key is said without its title unless reports are on",
+            Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
+            "window:org.gnome.Evolution");
+        check(failures, "and whole while they are",
+            Presented.keyShown("window:kitty:~/src", true), "window:kitty:~/src");
+        check(failures, "and any other row's key is said whole",
+            Presented.keyShown("place:emoji", false), "place:emoji");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

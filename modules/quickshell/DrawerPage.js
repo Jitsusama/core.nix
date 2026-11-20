@@ -118,6 +118,22 @@ function sought(page, pattern, forward, count) {
     };
 }
 
+// What a move needs laid of a run whose rest is still to come, so it never
+// lands on what follows the run while that rest would come between:
+// "whole" for one past the line the laid run ends on (`last`), as G's;
+// "more" for one that comes within `off` lines of it, or whose view, a
+// `height` tall from the move's top, reaches past that line's `top`; or
+// "" for one that stays clear of it.
+function runReach(landed, last, edge) {
+    if (landed.line > last) {
+        return "whole";
+    }
+    if (landed.line + edge.off >= last || landed.top + edge.height > edge.top) {
+        return "more";
+    }
+    return "";
+}
+
 // Whether a view's top cuts a line partway, which Vim's never does, its
 // topline always a whole line. An eyebrow or a title isn't a pitch tall,
 // so a pitch can fall inside one (VKCF3Z, 2026-11-05: "Deploy log" as
