@@ -70,6 +70,14 @@ function walked(shown, drawing, unseen, counted) {
     return { said, line };
 }
 
+// How many frames a walk began of its own, told as the shell has begun
+// `at` on its surface, having set off at `from`: those begun while it was
+// held under the launcher are left out, the holds past (`held`) and one
+// still open as it's told, from `openFrom` (null when none is).
+function begun(at, from, held, openFrom) {
+    return at - from - held - (openFrom === null ? 0 : at - openFrom);
+}
+
 function heldTimes(times) {
     return times === 1 ? "once" : `${times} times`;
 }

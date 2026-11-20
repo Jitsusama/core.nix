@@ -632,8 +632,11 @@ PanelWindow {
         sayWalked();
         telling = what;
         tellsAt = window.FramePresentation.framesBegun;
-        // A hold still open as it ends is left out as well as those past.
-        tellsBegun = tellsAt - begunAt - heldBegun - (Launched.up ? tellsAt - heldAt : 0);
+        // A hold still open as it ends is left out as well as those past,
+        // and counted with them.
+        tellsBegun = Shown.begun(tellsAt, begunAt, heldBegun, Launched.up ? heldAt : null);
+        if (Launched.up)
+            resumedAt = resumedAt.concat([shown.length]);
         tellsStepped = steps;
         answering.restart();
     }
@@ -1298,6 +1301,8 @@ PanelWindow {
             leaning: window.leaning,
             swatting: window.swatting,
             held: window.holding,
+            // Whether it's held still under the launcher's card.
+            stilled: window.stilled,
             landed: window.landedOn,
             yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
             walk: going === null || stepped === null ? null : {

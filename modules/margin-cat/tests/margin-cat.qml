@@ -434,6 +434,13 @@ QtObject {
             [heldShown.said.slowest, heldShown.said.held], [16.7, 1]);
         expect("and says it was held", heldShown.line.endsWith(
             "stepped 5 times, held under the launcher once"), true);
+        // Its own frames leave out those its surface began while held.
+        expect("a walk never held counts every frame since it set off",
+            Shown.begun(140, 100, 0, null), 40);
+        expect("a walk held and let go leaves the hold's frames out",
+            Shown.begun(140, 100, 6, null), 34);
+        expect("a walk told while still held leaves the open hold out too",
+            Shown.begun(140, 100, 6, 130), 24);
         // A walk done is told only once niri has answered for every
         // frame on its way as it sat, it having set off after frame 5
         // and the last begun as it sat being 40 (2026-11-19: told at

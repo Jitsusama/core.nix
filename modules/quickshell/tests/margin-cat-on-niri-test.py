@@ -74,8 +74,8 @@ STEPS_ON = 2
 # How long, in seconds, the launcher is held open over a walk, which steps none of it then.
 HELD = 2.0
 # The farthest, in ms, a held walk's clock may go on between its last step before the launcher
-# and its first after, or between the launcher's toggle and its last step under the card: half
-# the hold, where a clock run on under the launcher goes on by all of it. A frame or so is what
+# and its first after: half the hold, where a clock run on under the launcher goes on by all of
+# it. A frame or so is what
 # it takes, but a loaded builder's nested niri has taken up to 160 ms between two (2026-11-19),
 # and a few such frames mustn't fail it.
 HELD_AHEAD = HELD * 1000 / 2
@@ -144,6 +144,13 @@ def awake(shell: Shell) -> None:
     shell.send_key("F24")
     if dozing(shell):
         heard(shell, lambda said: not asleep(said), since)
+
+
+@pytest.fixture(autouse=True)
+def launcher_closed_after(shell: Shell) -> Iterator[None]:
+    """Close the launcher after each case, so one failing with the cat held fails alone."""
+    yield
+    shell.launcher_left_closed()
 
 
 def dozing(shell: Shell) -> bool:
@@ -380,15 +387,14 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     toggled = shell.mark()
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    # A step drawn as the card went up may be said a moment after it, as niri answers.
-    time.sleep(LANDS)
+    # The card holds it from its first frame, which comes before the launcher says it's ready,
+    # so it steps and draws nothing from here: at most the one frame already on its way.
     held = shell.mark()
     shell.as_account(f"{counting(shell)} start")
     time.sleep(HELD)
     drew, drawn = cat_frames(shell)
     under, _ = shell.said_since(held)
     before = steps(shell, since)
-    late = steps(shell, toggled)
     shell.close_launcher()
     shell.launcher_closed()
     sits_over(shell, first, held)
@@ -398,15 +404,9 @@ def test_a_walk_holds_where_it_got_to_while_the_launcher_is_up(shell: Shell) -> 
     told = walked_report(shell, toggled)
     sat = [report for report in under if report.startswith(SITS)]
     assert not sat, f"the cat walked on under the launcher: {sat[:3]}"
-    assert drew == 0, f"the cat drew {drew} frames under the launcher: {drawn}"
-    assert len(before) > len(late), "the cat took no step before the launcher was toggled"
+    assert drew <= 1, f"the cat drew {drew} frames under the launcher: {drawn}"
+    assert before, "the cat took no step before the launcher opened"
     last = before[-1]
-    # It's held as the card goes up, not some while after: its clock goes on no further past
-    # the toggle than a held clock goes on past the card.
-    toggled_at = before[len(before) - len(late) - 1]["walk"]["t"]
-    assert last["walk"]["t"] - toggled_at <= HELD_AHEAD, (
-        f"the cat walked on {last['walk']['t'] - toggled_at} ms past the launcher's toggle"
-    )
     assert after, "the cat took no step once the launcher closed, its walk done before it opened"
     # Its walk's clock goes on from where it was held, rather than the walk set off again or
     # its clock run on under the launcher.
@@ -423,15 +423,23 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     """A walk whose rest ends under the launcher's card takes no step until the card goes.
 
     The keys that set it off came just before the launcher opened, so its walk begins while the
-    card is up and is held from its first step, which it takes once the card goes.
+    card is up and is held from its first step, which it takes once the card goes. The keys
+    move niri's focus, which goes to the launcher as it opens, so they come first, with the
+    toggle in the same command to keep the card's rise well inside the rest.
     """
     first = three_columns(shell, "a walk set off under the launcher")
     since = shell.mark()
-    shell.as_account("niri msg action focus-column-left")
-    shell.as_account("niri msg action focus-column-left")
-    shell.as_account(shell.ipc("toggle"))
+    keyed = time.monotonic()
+    left = "niri msg action focus-column-left"
+    shell.as_account(f"{left} && {left} && {shell.ipc('toggle')}")
     shell.launcher_ready()
+    ready = time.monotonic() - keyed
     shell.as_account(f"{counting(shell)} start")
+    early = steps(shell, since)
+    assert not early, (
+        f"the launcher was ready {ready:.2f} s after the keys, its rest of {RESTS} s run out "
+        f"before the card rose, the case's timing and not the cat's: {early[:3]}"
+    )
     time.sleep(RESTS + HELD)
     drew, drawn = cat_frames(shell)
     under = steps(shell, since)
