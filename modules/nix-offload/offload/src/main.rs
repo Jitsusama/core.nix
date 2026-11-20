@@ -1435,7 +1435,8 @@ fn standing(dir: &Path) -> Option<String> {
 /// exits `NOT_TAKEN`, having run nothing, here or anywhere. A run that
 /// ends 0 is kept as passed at the commit, with its words and copies
 /// (`passed.rs`), which `nix-offload passed ran COMMIT` says, unless it
-/// went as files cut to its cones (`archived.rs`).
+/// went as files cut to its cones (`archived.rs`) or ran a suite in a
+/// warm target (`cargo::runs_warm`).
 fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let asked = match command::asked(arguments) {
         Ok(asked) => asked,
@@ -1532,12 +1533,14 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     );
     // What ran at the commit sent, kept by nix-offload alone, so a gate
     // (the harness's host tests) can take a pass from a fenced session,
-    // which can ask for a run but can't reach the keeper. A suite in a warm
-    // target keeps none, since any run before it could write what it reads
-    // (`cargo::runs_warm`).
-    if let Some(at) = &at
-        && !cargo::runs_warm(&asked.words)
-    {
+    // which can ask for a run but can't reach the keeper.
+    if let Some(at) = &at {
+        if status == Some(0) && cargo::runs_warm(&asked.words) {
+            eprintln!(
+                "nix-offload: a suite in a warm target keeps no pass, since an earlier run \
+                 there could have written what it read"
+            );
+        }
         passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
     match status {

@@ -19,7 +19,9 @@ if [ -n "${CARGO_TARGET_DIR-}" ]; then
 	echo "nix-offload: the builder names cargo's target itself, so this builds there" >&2
 elif ! command -v flock >/dev/null 2>&1; then
 	echo "nix-offload: the builder has no flock, so this builds cold" >&2
-elif ! mkdir -p "$root" 2>/dev/null; then
+# The copies kept beside the targets outlive their runs, so the account's
+# alone may read them.
+elif ! (umask 077 && mkdir -p "$root") 2>/dev/null; then
 	echo "nix-offload: no warm target can be made under $cache there, so this builds cold" >&2
 else
 	slot=
@@ -71,8 +73,11 @@ else
 		"$PWD") ;;
 		"" | /*)
 			top=${PWD%"$rest"}
-			rm -rf "${root:?}/$slot/src"
-			if mkdir -p "$root/$slot" && mv "$top" "$root/$slot/src" 2>/dev/null && cd "$root/$slot/src$rest"; then
+			rm -rf "${root:?}/$slot/src" 2>/dev/null
+			# A src the last run left that can't all go would take the copy
+			# inside it, and the suite would run on the old files.
+			if [ ! -e "$root/$slot/src" ] && mkdir -p "$root/$slot" &&
+				mv "$top" "$root/$slot/src" 2>/dev/null && cd "$root/$slot/src$rest"; then
 				echo "nix-offload: the copy runs from warm target $slot's own folder" >&2
 			else
 				echo "nix-offload: the copy can't move into warm target $slot, so crates" \

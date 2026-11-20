@@ -299,7 +299,8 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> ExitCode {
 /// `CARGO_TARGET_DIR` the builder's own environment sets, it builds as
 /// before, saying why. Its target replaces one a repository's own cargo
 /// config names, as a fresh copy's would be gone anyway; a `--target-dir`
-/// among the words still wins. When the disk has less than
+/// among the words still wins for what cargo puts out, though its build
+/// goes on in the warm target's own folder (`CARGO_BUILD_BUILD_DIR`). When the disk has less than
 /// `NIX_OFFLOAD_WARM_ROOM_KB` free (200 GiB), since it holds the builder's
 /// Nix store too, the targets no run holds are cleared, longest unused
 /// first, until it has; only then is the run's own begun afresh. Room it

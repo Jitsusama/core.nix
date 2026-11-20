@@ -486,8 +486,8 @@ fn a_run_with_every_target_held_builds_cold() {
 }
 
 // A builder's disk holds its Nix store too, so when it's short of room the
-// targets no run holds are cleared, other keys' first, and the run's own
-// begins afresh only when that isn't enough. On 19 November a disk short
+// targets no run holds are cleared, longest unused first, and the run's
+// own begins afresh only when that isn't enough. On 19 November a disk short
 // of room cleared only the run's own target, so every run built cold
 // while idle keys' targets kept the space.
 #[test]
