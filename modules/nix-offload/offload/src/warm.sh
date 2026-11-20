@@ -68,7 +68,7 @@ else
 		"" | /*)
 			top=${PWD%"$rest"}
 			rm -rf "${root:?}/$slot/src"
-			if mv "$top" "$root/$slot/src" 2>/dev/null && cd "$root/$slot/src$rest"; then
+			if mkdir -p "$root/$slot" && mv "$top" "$root/$slot/src" 2>/dev/null && cd "$root/$slot/src$rest"; then
 				echo "nix-offload: the copy runs from warm target $slot's own folder" >&2
 			else
 				echo "nix-offload: the copy can't move into warm target $slot, so crates" \
