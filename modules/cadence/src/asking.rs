@@ -114,7 +114,9 @@ pub struct Question {
 /// One tick: what to ask whom, given the snapshot and what was asked
 /// before. Each question to the watcher or the switcher is remembered by
 /// its key once it has gone, with [`State::asked_as`], so its answer can
-/// be waited on; only an answer from the one asked settles it.
+/// be waited on. An answer from the one asked settles it, and a held
+/// net's question is settled too once its hold is seen to end or pass to
+/// another.
 pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     let mut out = Vec::new();
     let mut escalate = |state: &mut State, key: String, text: String| {
@@ -151,12 +153,7 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         }
     }
 
-    // A held net's question ends with its hold, as ending it is the answer
-    // in deed, so a holder isn't named silent about a hold it has ended.
-    let alarms = breaches(s);
-    state.asked.retain(|key, _| {
-        !holding(key) || alarms.iter().any(|b| format!("alarm:{}", b.key) == *key)
-    });
+    forget_ended_holds(s, state);
     state.asked.retain(|_, q| {
         let answers = match &q.by {
             Some(by) => s.answered_by.get(by).map_or(&[][..], Vec::as_slice),
@@ -209,7 +206,7 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
             });
         }
     };
-    for breach in alarms {
+    for breach in breaches(s) {
         ask(
             state,
             format!("alarm:{}", breach.key),
@@ -222,6 +219,30 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     state.escalated.retain(|_, at| keep(at));
     state.asked.retain(|_, q| keep(&q.at));
     out
+}
+
+/// Ends each held net's question whose hold has ended, as ending it is the
+/// answer in deed, so a holder isn't named silent about a hold it has
+/// ended. Its key is forgotten with it, so a hold its sender sends again in
+/// the same stop is asked again. An alarm that only stopped standing, as
+/// its merges left the day, keeps its question while the hold does.
+fn forget_ended_holds(s: &Snapshot, state: &mut State) {
+    let ended: Vec<String> = state
+        .seen
+        .keys()
+        .chain(state.asked.keys())
+        .filter(|key| {
+            holding(key)
+                && key
+                    .strip_prefix("alarm:")
+                    .is_some_and(|alarm| crate::watch::held::ended(s, alarm))
+        })
+        .cloned()
+        .collect();
+    for key in &ended {
+        state.seen.remove(key);
+        state.asked.remove(key);
+    }
 }
 
 /// Whether an alarm's key says the machine isn't running what merged: a
@@ -382,6 +403,11 @@ mod tests {
         );
         let again = tick(&held_by(&held), &mut state);
         assert!(to_holder(&again).is_empty(), "asked again: {again:?}");
+        assert_eq!(
+            to_holder(&tick(&held, &mut state)),
+            std::slice::from_ref(&key),
+            "a holder back in the same stop wasn't asked of its new hold"
+        );
         // A holder silent while its hold stands is named as its sender.
         let mut state = State::default();
         let at = 100_000 - ANSWER_WITHIN - 300;
@@ -402,6 +428,16 @@ mod tests {
                 "a hold {case} still named its sender silent: {told:?}"
             );
         }
+        // A held.json the net hasn't rewritten lately says nothing ended.
+        let mut unread = held.clone();
+        unread.net_held = Some(unread.now - crate::watch::HELD_FRESH_S - 60);
+        let mut state = State::default();
+        state.asked_as(&key, "1-CADENCE-1-aa", at, "held.", Some("P9R1KI"));
+        let told = tick(&unread, &mut state);
+        assert!(
+            told.iter().any(|q| q.text.starts_with(named)),
+            "one stale read ended a silent holder's question: {told:?}"
+        );
     }
 
     #[test]
