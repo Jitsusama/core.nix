@@ -4220,6 +4220,40 @@ def test_each_eero_heads_the_devices_on_it(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
+    """The Home Network's list, a gap above each eero, ends on a whole row wherever it rests.
+
+    It's drawn in home's card, which keeps one shape, so its gaps left its last row cut at the
+    foot. Its view rests on a row's top and draws only the rows wholly in it, the clear room
+    under them less than a row's and drawn on by nothing (Y2YBTS, 2026-11-20 [95c35e88]).
+    """
+    shell.answer("eero")
+    shell.launcher_until(functools.partial(selecting, "Home Network"))
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Study" in shown["rows"])
+    shell.normal()
+
+    def rested(shown: Json) -> bool:
+        return bool(
+            shown["cut"] == []
+            and shown["restsOnARow"]
+            and len(shown["gutter"]["numbers"]) == shown["drawnRows"]
+        )
+
+    shell.launcher_until(rested)
+    count = shell.showing()["count"]
+    assert count > 2 * shell.showing()["drawnRows"], shell.showing()
+    for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
+
+        def landed(shown: Json, at: int = at) -> bool:
+            return shown["current"] == at and rested(shown)
+
+        shell.send_chars(key)
+        shell.launcher_until(landed)
+        assert landed(shell.showing()), shell.showing()
+    shell.close_launcher()
+
+
 def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shell) -> None:
     """The Home Network's row in Network has its own drawer: whose, a lead, then its figures.
 
