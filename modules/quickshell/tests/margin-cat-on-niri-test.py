@@ -149,21 +149,30 @@ def awake(shell: Shell) -> Iterator[None]:
     Nobody types here, so the cat dozes off without a key. A case that fails
     with the launcher up would leave the cat held for the next, so each
     closes it, to fail alone. The cat is held from the card's first frame,
-    while it's still opening, so the opening is waited out before the
-    launcher is asked whether it was left open.
+    while it's still opening, when the launcher doesn't yet say it's open,
+    so the opening is waited out first. One that never ends is closed as
+    it stands, a toggle unopening it, and the wait's failure is still said.
     """
     wake(shell)
     yield
-    shell.launcher_until(lambda shown: not shown["opening"])
-    shell.launcher_left_closed()
+    try:
+        shell.launcher_until(lambda shown: not shown["opening"])
+    finally:
+        if shell.showing()["opening"]:
+            print("the launcher was left opening, so it's closed for the next test")
+            shell.as_account(shell.ipc("toggle"))
+            shell.launcher_until(lambda shown: not shown["opening"] and not shown["open"])
+        shell.launcher_left_closed()
 
 
 def wake(shell: Shell) -> None:
     """Wake the cat with a key nobody hears, and wait until it says it's awake.
 
     Asleep, it keeps its place as a workspace goes, so a case that runs past
-    its 45 s doze on a loaded builder wakes it again before each move
-    (2026-11-20, cat-niri10).
+    its 45 s doze on a loaded builder wakes it again before each move it
+    watches (2026-11-20, cat-niri10). A move made only to reach a workspace,
+    and one made straight after another, goes without: the cat isn't
+    watched on the first, and has just moved before the second.
     """
     since = shell.mark()
     shell.send_key("F24")
