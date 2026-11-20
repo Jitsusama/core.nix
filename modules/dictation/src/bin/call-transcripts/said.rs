@@ -1,12 +1,12 @@
 //! What a call's words amount to. A take is what was said in it, without
 //! what a speech model writes of the sound itself, and a lone "No." or
-//! "Okay." is an answer kept like any other; a call of greetings and
-//! little else is too little to sum up, so no model is asked to make
-//! something of it.
+//! "Okay." is an answer kept like any other, though a lone "Mm." is a
+//! hesitation and no turn; a call of greetings and little else is too
+//! little to sum up, so no model is asked to make something of it.
 
 use std::collections::HashSet;
 
-use dictation::transcript;
+use dictation::{transcript, wer};
 
 /// What a call with too little said gets in place of a summary.
 pub const TOO_LITTLE: &str = "Too little was said to sum up.";
@@ -18,7 +18,8 @@ const LEAST_WORDS: usize = 6;
 
 /// Words that carry nothing a summary could use: greetings, thanks,
 /// short answers, and what Whisper wrote for a click or a breath ("You",
-/// "Thank you.").
+/// "Thank you."). They're kept in a transcript; only a call's summary
+/// leaves them out.
 const FILLER: [&str; 22] = [
     "bye", "cool", "go", "great", "hello", "hey", "hi", "hmm", "huh", "mm", "no", "oh", "ok",
     "okay", "so", "thank", "thanks", "uh", "um", "wow", "yeah", "you",
@@ -26,8 +27,10 @@ const FILLER: [&str; 22] = [
 
 /// What a take's words say, without what a speech model writes of the
 /// sound itself in brackets ("[static]", "(wind blowing)"); or nothing
-/// when that leaves no word. A take of filler alone is kept: Parakeet,
-/// unlike Whisper, writes nothing for a click or a breath, so a lone
+/// when that leaves no word but hesitations ("Mm.", "Uh, um."), which the
+/// meetings' score leaves out too. A take of filler alone is kept:
+/// Parakeet, unlike Whisper, writes nothing for the click, breath and
+/// cough `call-transcripts-writes-only-what-was-said` plays it, so a lone
 /// "Yeah." was said, and dropping it cost meetings' transcripts their
 /// short answers.
 pub fn spoken(text: &str) -> Option<String> {
@@ -42,7 +45,7 @@ pub fn spoken(text: &str) -> Option<String> {
         }
     }
     let said = said.split_whitespace().collect::<Vec<_>>().join(" ");
-    let any = words(&said).next().is_some();
+    let any = !wer::words(&said).is_empty();
     any.then_some(said)
 }
 
@@ -93,6 +96,14 @@ mod tests {
         assert_eq!(spoken(" "), None);
         assert_eq!(spoken("[static]"), None);
         assert_eq!(spoken("(wind blowing) [click] ."), None);
+    }
+
+    #[test]
+    fn a_take_of_hesitations_alone_is_no_turn() {
+        assert_eq!(spoken("Mm."), None);
+        assert_eq!(spoken("Uh, um."), None);
+        assert_eq!(spoken("Mm-hmm."), None);
+        assert_eq!(spoken("Um, no.").as_deref(), Some("Um, no."));
     }
 
     #[test]
