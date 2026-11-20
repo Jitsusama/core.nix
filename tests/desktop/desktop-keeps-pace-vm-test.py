@@ -1012,7 +1012,7 @@ def vm_threads(started: int) -> dict[int, bool]:
 
     They're QEMU's and the virtiofsd's beside it, which run the VM's work too. Each says whether
     the kernel lets it be held to processors, so one it refuses is passed over rather than
-    failing the hold or leaving the threads after it unheld, and is counted where it's said.
+    failing the hold or leaving the threads after it unheld, and the held subtest names it.
     """
     children: dict[int, list[int]] = {}
     for process in Path("/proc").iterdir():
@@ -1067,8 +1067,8 @@ def hold_thread(thread: int, processors: Sequence[int]) -> bool:
         # QEMU's workers come and go, and one gone is none to hold.
         return False
     except OSError as error:
-        # The kernel refuses some threads outright, and holdable_threads leaves out those it says
-        # it will, so one refused still is named.
+        # holdable_threads leaves out the threads whose flags say the kernel won't hold them, so
+        # a refusal here is one no flag foretold, and is named.
         name = "gone"
         with contextlib.suppress(OSError):
             name = Path(f"/proc/{thread}/comm").read_text().strip()
