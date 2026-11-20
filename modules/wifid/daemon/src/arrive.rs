@@ -280,7 +280,10 @@ mod tests {
         let other = arrivals.step("wlan1", "scanning", now + ms(10));
         let ours = arrivals.joined("wlan0", HALL, now + ms(90));
 
-        assert_eq!(other, None);
-        assert!(matches!(ours, Some(Arrival::Reached { .. })));
+        assert_eq!(other, None, "another card's step isn't this move's");
+        assert!(
+            matches!(ours, Some(Arrival::Reached { .. })),
+            "this card's move still arrives, but ended {ours:?}"
+        );
     }
 }
