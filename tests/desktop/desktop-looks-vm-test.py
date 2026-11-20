@@ -1013,8 +1013,17 @@ def a_landing_opens(desktop: Desktop, from_its_step: bool) -> None:
         desktop.follow()
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"] == ["Open", "Go To", "Talk"] and shown["selected"]["name"] == "Open"
+                shown["rows"] == ["Open", "Go To", "Talk"]
+                and (shown["selected"] or {}).get("name") == "Open"
             )
+        )
+        # The drawer follows into the step, which must not read the landing: a read one leaves
+        # To Try, taking the step Joel stands in with it. A read is a round trip, so it's waited.
+        stepped = desktop.showing()["held"]
+        time.sleep(PAST_THE_CLOSING)
+        held = desktop.showing()
+        assert held["held"] == stepped and held["rows"] == ["Open", "Go To", "Talk"], (
+            f"the landing's step went from under him: {held}"
         )
     desktop.machine.send_key("ret")
     desktop.launcher_until(
