@@ -1236,16 +1236,27 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.close_launcher()
     opened(shell)
     boss = {"busy": True, "state": "busy"}
-    at_top = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
+    full = {**boss, "usage": FULL}
+
+    def there_and_back() -> list[int]:
+        return [
+            made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, full)),
+            made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss)),
+        ]
+
+    at_top = there_and_back()
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    # The same row changing back costs no more held in Landed than it did at Agents' top.
-    inside = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss))
+    # The same row changing costs no more held in Landed than it did at Agents' top.
+    inside = there_and_back()
     # Agents' top is laid out once for each source that hears a change, Sessions and the agents
-    # daemon, and the two land in one pass or two as they fall, so a change costs up to twice
-    # what one pass did; remaking Landed's landings cost 26 to the top's 9.
-    assert inside <= 2 * at_top, f"a change made {inside} rows in Landed, {at_top} at Agents' top"
+    # daemon, and the two land in one pass or two as they fall, so one change can be measured
+    # as one pass at the top and two inside (9 to 4, 1 run in 4). Each side is measured twice,
+    # and Landed's fewer bound by the top's more; remaking Landed's landings cost 26 to 9.
+    assert min(inside) <= 2 * max(at_top), (
+        f"a change made {inside} rows in Landed, {at_top} at Agents' top"
+    )
 
 
 def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shell) -> None:
