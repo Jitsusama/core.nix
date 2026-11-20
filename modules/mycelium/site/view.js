@@ -40,6 +40,7 @@ import {
 import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, shownAndRest, splits } from "./spend.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
+import { drawnWidth } from "./lines.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -787,8 +788,14 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   let fedShapes = []; // each receptor's feeding of a cell, the last ten minutes
   let fedLayer = []; // those feedings, over the talk
   let cellLayer = []; // the cells, over everything else on the ground
-  let widest = 0; // the widest line the last frame stroked, in CSS px
-  let widestCarried = 0; // the same line's width before the zoom thinned it
+  // The widest line the last frame stroked and the widest any of them
+  // carried, in CSS px, and the same of a cell's marks, which never thin.
+  // A wider line is never drawn narrower, so the widest drawn is the widest
+  // carried as the zoom draws it.
+  let widest = 0;
+  let widestCarried = 0;
+  let cellWidest = 0;
+  let cellWidestCarried = 0;
   // Each network's ground, [key, x, y, r], so a click on it opens it.
   let groundsAt = [];
   const inks = new Map();
@@ -882,6 +889,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     g.clearRect(0, 0, w, h);
     widest = 0;
     widestCarried = 0;
+    cellWidest = 0;
+    cellWidestCarried = 0;
     const finding = world.classList.contains("finding");
     const base = finding ? RECEDED : 1;
     const hovered = hover ? `c:${current?.byId.get(hover)?.address}` : null;
@@ -902,11 +911,17 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
         }
         if (ink.stroke) {
           g.strokeStyle = ink.stroke;
-          const width = open.w || ink.width;
-          g.lineWidth = open.tag === "circle" ? width : thinOut(width);
-          if (open.tag !== "circle") {
+          // A cell's marks shrink with the zoom as cells do, its wall and
+          // dish with its rim, so only the lines between them thin.
+          const carried = open.w || ink.width;
+          const cell = layer === cellLayer || open.tag === "circle";
+          g.lineWidth = drawnWidth(carried, cell ? 1 : k, open.grows);
+          if (cell) {
+            cellWidest = Math.max(cellWidest, g.lineWidth);
+            cellWidestCarried = Math.max(cellWidestCarried, carried);
+          } else if (!open.grows) {
             widest = Math.max(widest, g.lineWidth);
-            widestCarried = Math.max(widestCarried, width);
+            widestCarried = Math.max(widestCarried, carried);
           }
           g.lineCap = ink.cap || "butt";
           g.setLineDash(ink.dash);
@@ -947,11 +962,12 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
         // would open is seen before it is clicked.
         // A line sized by what it carries still grows when lit.
         const carries = s.w && LIT.test(s.cls || "") ? Math.max(s.w, ink.width) : s.w;
-        const w = s.line && s.line === touched ? (carries || ink.width) + TOUCHED_GROWS : carries;
+        const grows = Boolean(s.line) && s.line === touched;
         // Discs are filled one by one, so overlapping grounds don't merge.
-        if (!open || open.ink !== ink || open.w !== w || s.tag === "circle") {
+        const joins = open && open.ink === ink && open.w === carries && open.grows === grows;
+        if (!joins || s.tag === "circle") {
           finish();
-          open = { ink, w, tag: s.tag, alpha };
+          open = { ink, w: carries, grows, tag: s.tag, alpha };
           g.beginPath();
         }
         shape();
@@ -976,7 +992,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   // checks: the lines across networks, the talk arcs, the talk held, the
   // talk with two ends to draw (talk inside one folded network has one),
   // the feedings, how many networks are folded into their grounds, and the
-  // widest line the last frame stroked, as drawn and as wide as it carries.
+  // widest line the last frame stroked and the widest mark of a cell, each
+  // as drawn and as wide as it carries.
   groundEl.painted = () => ({
     across: (groundLayers[1] || []).length,
     talk: talkLayer.length,
@@ -988,6 +1005,8 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
     folded: folded.size,
     widest,
     widestCarried,
+    cellWidest,
+    cellWidestCarried,
   });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
@@ -1021,16 +1040,6 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
   // over what comes after it. On a network's ground only the lines that
   // cross grounds count, so the ground itself still opens its network.
   const TOUCH_PX = 6;
-  const TOUCHED_GROWS = 2;
-  // Stepped out past its own size, the map thins each line with the zoom,
-  // as its cells shrink with it, so a line keeps the weight beside a cell
-  // it has at the map's own size: a cord drawn 4 px across beside cells
-  // 7 px across outweighed them on a laptop's whole map, and thinned only
-  // by the zoom's square root it still did. A line thicker for what it
-  // carries stays so, and none goes under a hairline, so no line is lost;
-  // a disc's rim keeps its width.
-  const HAIRLINE = 1;
-  const thinOut = (width) => (k >= 1 ? width : Math.max(Math.min(width, HAIRLINE), width * k));
   const LIT = /\blit\b/;
   let touched = null;
   const lineAt = (x, y, onGround) => {
@@ -4217,7 +4226,7 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
       // which is a curve of its own with its control `e` along p to c.
       air.globalAlpha = (t >= 1 ? 1 - Math.min((t - 1) / landing, 1) : 1) * trailInk.alpha;
       air.strokeStyle = trailInk.stroke;
-      air.lineWidth = trailInk.width;
+      air.lineWidth = drawnWidth(trailInk.width, k);
       air.lineCap = trailInk.cap || "round";
       air.beginPath();
       air.moveTo(X(p[0]), Y(p[1]));
@@ -4336,7 +4345,7 @@ import { ageOf as ageOfAt, heldFirst, heldWords, holdingFirst, holdWords as hold
         const [sx, sy] = [v.from[0] + ux * HUB_R, v.from[1] + uy * HUB_R];
         air.globalAlpha = (t >= 1 ? 1 - Math.min((t - 1) / landing, 1) : 1) * birthInk.alpha;
         air.strokeStyle = birthInk.stroke;
-        air.lineWidth = birthInk.width;
+        air.lineWidth = drawnWidth(birthInk.width, k);
         air.lineCap = birthInk.cap || "round";
         air.beginPath();
         air.moveTo(X(sx), Y(sy));

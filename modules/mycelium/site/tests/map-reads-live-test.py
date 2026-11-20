@@ -134,6 +134,7 @@ STEPPED_PX = 4
 # zoom far enough out that a line thins to well under what it carries.
 HAIRLINE_PX = 1
 THINNED_UNDER = 0.25
+THICKER_BY = 0.05  # px a thinned line is told from a hairline or its own width by
 # Two cells of Chart the Harbour who just told TERN03, of Mend the Sails,
 # something, so their talk runs between two networks: HERON1 three times, as
 # warm as view.js's second step (WARM_AT), and HERON2 once.
@@ -1090,6 +1091,9 @@ def test_a_line_thins_as_the_map_steps_out_past_its_own_size(mycelium_opened: Op
         assert nearer > k, f"the map stopped stepping in at {k:.3f}"
         k = nearer
     painted = page.evaluate(PAINTED)
+    assert painted["widestCarried"] > HAIRLINE_PX, (
+        f"at {k:.3f} the widest line carried {painted['widestCarried']} px, too few to tell"
+    )
     # A canvas holds a line's width at single precision, so widths match to
     # a hundredth rather than exactly.
     assert painted["widest"] == pytest.approx(painted["widestCarried"], abs=0.01), (
@@ -1104,10 +1108,17 @@ def test_a_line_thins_as_the_map_steps_out_past_its_own_size(mycelium_opened: Op
     painted = page.evaluate(PAINTED)
     carried, drawn = painted["widestCarried"], painted["widest"]
     assert carried > HAIRLINE_PX, f"the widest line carried {carried} px, too few to thin"
-    thinned = max(min(carried, HAIRLINE_PX), carried * k)
-    assert drawn == pytest.approx(thinned, abs=0.01), (
+    # How far each line thins is the unit cases' (lines.test.ts); here, that
+    # the drawing thins the heaviest under what it carries but over the
+    # hairline the lighter ones are drawn at, so it still reads heavier.
+    assert HAIRLINE_PX + THICKER_BY < drawn < carried - THICKER_BY, (
         f"stepped out to {k:.3f}, the widest line, {carried:.2f} px for what it carries,"
-        f" was drawn {drawn:.2f} px, not {thinned:.2f}"
+        f" was drawn {drawn:.2f} px, not thinned between a hairline and that"
+    )
+    cell, cell_carried = painted["cellWidest"], painted["cellWidestCarried"]
+    assert cell == pytest.approx(cell_carried, abs=0.01), (
+        f"stepped out to {k:.3f}, a cell's mark carrying {cell_carried:.2f} px was drawn"
+        f" {cell:.2f} px, though a cell's marks shrink with it and never thin"
     )
 
 

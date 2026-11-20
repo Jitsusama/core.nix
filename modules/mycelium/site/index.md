@@ -35,11 +35,12 @@ Nothing on it acts on the network.
   known only of this machine's cells for now, so each machine's map grows
   branches only from its own cells, and two machines' maps of one realm
   can differ.
-- **Lines thin as the map steps out past its own size.** Each line
-  thins with the zoom, as the cells shrink with it, so the cells read
-  first: a cord still reads thicker for what it carries, and none goes
-  under a hairline. At its own size or nearer, every line is as wide as
-  it carries.
+- **Lines thin as the map steps out past its own size.** What each line
+  carries past a hairline thins with the zoom, as the cells shrink with
+  it, so the cells read first: a heavier line still reads heavier than a
+  lighter one, none goes under a hairline, and the line under the pointer
+  still grows. A cell's own marks shrink with the cell. At its own size or
+  nearer, every line is as wide as it carries.
 - **Hyphae join a hub to its cells.** Each session is a cell, seeded round
   its hub like the seeds of a sunflower, and joined to it by fine hyphae.
 - **Dotted cross-hyphae join cells sharing something else**: sea glass
