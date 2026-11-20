@@ -271,12 +271,14 @@ impl State {
     /// for cadence: it waits out what a hold stops, a switch or a round,
     /// and counts from the hold's end, since on 13 November it said three
     /// merges weren't on and the net was six hours behind under a hold
-    /// that stopped both from 09:55 to 15:47.
+    /// that stopped both from 09:55 to 15:47. It keeps `since`, when this
+    /// hold was first seen standing (`held_since`), so cadence can say when
+    /// one has stopped the net too long while main moves.
     pub fn held(&self, why: &str) -> Result<(), String> {
-        write_json(
-            &self.root.join("held.json"),
-            &json!({ "at": now(), "why": why }),
-        )
+        let file = self.root.join("held.json");
+        let at = now();
+        let since = held_since(read_json(&file).as_ref(), why, at);
+        write_json(&file, &json!({ "at": at, "why": why, "since": since }))
     }
 
     /// The last head the quick look ran its checks at, if any.
@@ -566,6 +568,26 @@ fn remove(path: &Path) -> Result<(), String> {
         }
         _ => Ok(()),
     }
+}
+
+/// The longest the net goes between writing `held.json` while one hold
+/// stands: it writes each minute it looks, so a gap past this is a hold
+/// that ended and one that began.
+const HELD_GAP_S: u64 = 180;
+
+/// When the hold `why`, seen at `at`, began: when `prior`, the last
+/// `held.json`, first saw it, if it named the same hold no more than
+/// `HELD_GAP_S` before; otherwise `at`.
+fn held_since(prior: Option<&Value>, why: &str, at: u64) -> u64 {
+    prior
+        .filter(|prior| prior["why"] == why)
+        .filter(|prior| {
+            prior["at"]
+                .as_u64()
+                .is_some_and(|last| at.saturating_sub(last) <= HELD_GAP_S)
+        })
+        .and_then(|prior| prior["since"].as_u64())
+        .unwrap_or(at)
 }
 
 fn read_json(path: &Path) -> Option<Value> {
