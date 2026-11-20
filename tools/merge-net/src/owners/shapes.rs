@@ -382,6 +382,12 @@ fn a_value_checks_gives_reaches_what_the_tree_names() {
         tests("tests/desktop.nix"),
         Some(words("vm-desktop-captures vm-desktop-looks"))
     );
+    assert_eq!(
+        tests("tests/vm/keys/checks.nix"),
+        Some(words("vm-desktop-captures")),
+        "the area a call gives is part of its test, so a change to it names that test"
+    );
+    assert_eq!(tests("checks.nix"), Some(words("vm-desktop-looks")));
 }
 
 #[test]
@@ -392,14 +398,19 @@ fn a_vm_test_the_reading_cant_find_is_named_for_any_change() {
         "checks.nix",
         "vm-a = import ./tests/a.nix { };\n\
          vm-odd =\n  builtins.seq x (import ./tests/odd.nix { });\n\
-         vm-built = pkgs.callPackage ./built.nix { };",
+         vm-built = pkgs.callPackage ./built.nix { };\n\
+         ++ map (file: import file given) [\n  ./tests/vm/x/checks.nix\n]",
     );
     tree.file("tests/a.nix", "{ }");
+    tree.file(
+        "tests/vm/x/checks.nix",
+        "vm-far =\n  builtins.seq x (import ./far.nix { });",
+    );
     assert_eq!(
         in_tree(&tree.0, &words("modules/zsh/home.nix")),
         Some(Owning {
-            tests: words("vm-odd"),
-            unread: words("vm-odd"),
+            tests: words("vm-far vm-odd"),
+            unread: words("vm-far vm-odd"),
         }),
         "a test the reading drops would go unnamed and fail on main only"
     );
