@@ -70,6 +70,7 @@ mod reports;
 mod sessions;
 mod show;
 mod sign;
+mod signals;
 mod source;
 mod trials;
 mod typing;

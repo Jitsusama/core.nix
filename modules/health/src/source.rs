@@ -523,11 +523,35 @@ impl Drop for History {
 /// and the others, following a journal no line comes to, would otherwise
 /// wait for their next line, outliving it where no service manager ends
 /// them with it, as when `health follow` is run by hand. A signal that
-/// ends health unwinds nothing, so it ends none of them: a service
-/// manager's stop does, ending health's whole group.
+/// ends health unwinds nothing, so a signal that asks health to stop is
+/// caught and ends them first (`ender`, `signals.rs`).
 #[derive(Default)]
 pub struct Followers {
     children: Children,
+}
+
+impl Followers {
+    /// What ends every follower still running, and starts none after, from
+    /// another thread, as the one waiting for a signal that ends health.
+    pub fn ender(&self) -> impl FnOnce() + Send + 'static {
+        let children = self.children.clone();
+        move || children.end()
+    }
+
+    /// A follower started on `command`, which follows for as long as
+    /// health runs, for a test: its process's id.
+    #[cfg(test)]
+    pub(crate) fn following(&self, command: Command) -> u32 {
+        let (lines, _) = std::sync::mpsc::channel();
+        spawn_saying(command, lines, true, |_| {}, &self.children).expect("the follower starts");
+        *self
+            .children
+            .running()
+            .children
+            .keys()
+            .last()
+            .expect("the follower kept")
+    }
 }
 
 impl Drop for Followers {
