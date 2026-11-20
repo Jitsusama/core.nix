@@ -406,7 +406,10 @@ mod tests {
         refused("isn't a meeting and a speaker");
         // A whole first meeting, so only reading every reference and
         // recording before the model loads can refuse the second's.
-        let blank = |file: &str| std::fs::write(set.path().join(file), silence(2)).unwrap();
+        let silent = |file: &str, samples| {
+            std::fs::write(set.path().join(file), silence(samples)).unwrap();
+        };
+        let blank = |file: &str| silent(file, 32_000);
         write("M.ref", "0.50 1.00 A Okay\n");
         blank("M.mine.wav");
         blank("M.theirs.wav");
@@ -422,19 +425,26 @@ mod tests {
         ));
         write("N.mine.wav", "");
         refused("N.mine.wav: not a RIFF WAV");
-        std::fs::write(set.path().join("N.mine.wav"), silence(0)).unwrap();
+        // N's reference ends at 1 s, its 16,000th sample: a sample short
+        // is refused, and a recording ending just there is whole.
+        silent("N.mine.wav", 15_999);
         refused("N.mine.wav ends before its reference's last line");
-        blank("N.mine.wav");
-        refused("N.theirs.wav");
+        silent("N.mine.wav", 16_000);
+        refused(&format!(
+            "reading {}",
+            set.path().join("N.theirs.wav").display()
+        ));
+        silent("N.theirs.wav", 15_999);
+        refused("N.theirs.wav ends before its reference's last line");
         blank("N.theirs.wav");
         write("sides", "M A\nN A\nM A\n");
         refused("M is named twice");
     }
 
-    /// A WAV of `seconds` of silence, in the one format `wav` reads: PCM,
+    /// A WAV of `samples` of silence, in the one format `wav` reads: PCM,
     /// mono, 16 kHz, 16-bit.
-    fn silence(seconds: u32) -> Vec<u8> {
-        let data = seconds * 16_000 * 2;
+    fn silence(samples: u32) -> Vec<u8> {
+        let data = samples * 2;
         let mut bytes = b"RIFF".to_vec();
         bytes.extend_from_slice(&(36 + data).to_le_bytes());
         bytes.extend_from_slice(b"WAVEfmt ");
