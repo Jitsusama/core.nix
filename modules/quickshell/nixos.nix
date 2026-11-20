@@ -172,8 +172,9 @@ let
   # a key (qtdeclarative-room-after-every-sweep.patch). The heap module
   # leaves the room through it, so dropping it means changing the module.
   # An animation starting asks only the windows it changes for a frame
-  # while a timer advances animations, as it does with more than one
-  # window shown, since every window drew a frame showing nothing new:
+  # while Qt's system timer advances animations, as it does unless one
+  # window alone is shown on a vsync Qt trusts, since every window drew a
+  # frame showing nothing new:
   # about 230 of 347 of the launcher's first frames since a boot came
   # with four or five other windows' within 0.2 ms
   # (qtdeclarative-animations-wake-only-their-windows.patch).
