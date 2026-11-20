@@ -270,11 +270,13 @@ fn about_the_net(text: &str) -> bool {
     // sentence saying when its hold ends is read only for a word that holds
     // something beside the net's work, since its end is often a switch.
     let holds_its_work = lower.split(['.', ';', '!', '?']).any(|sentence| {
-        if TERMS
+        // Its own opening, as "the hold stays", holds nothing.
+        if let Some(term) = TERMS
             .iter()
-            .any(|term| sentence.trim_start().starts_with(term))
+            .find(|term| sentence.trim_start().starts_with(*term))
         {
-            return names(sentence, &TERM_HOLDS) && nets_work(sentence);
+            let rest = &sentence.trim_start()[term.len()..];
+            return names(rest, &TERM_HOLDS) && nets_work(rest);
         }
         // The net's name holds it in a sentence freeing nothing, and is
         // neutral in one freeing something, as "so merge-net and the
@@ -510,8 +512,20 @@ mod tests {
              reboots, uploads, pi host cuts or anything else. It stays until the quest-share \
              hotfix is live on both machines (about 20:45) and the restore of the 16 \
              set-aside quests is checked, on the laptop by about 21:30.",
+            "WCJQSG (renewing 8950e683): conclude or retire no quest, on either machine, \
+             until I end this hold. Concluding or retiring a document is fine. It stays until \
+             KP0L6A's restore of the set-aside quests is checked on both machines. The \
+             laptop's was checked at 22:51; the Mac's comes about 23:30, after the Mac's \
+             update lands. After that it narrows, not ends: no parent quest concluded or \
+             retired, and no concluded quest reopened, until Fri 20 18:00.",
+            "Conclude no quest. The hold stays until the Mac switches at 22:00.",
         ] {
             assert_eq!(still_held(&[saying(text)]), None, "held by: {text}");
+            // A renewal passes on what it restates, even once the hold it
+            // renews is gone, as it is after a reboot.
+            let mut renewal = saying(text);
+            renewal["supersedes"] = json!("gone");
+            assert_eq!(still_held(&[renewal]), None, "held as a renewal: {text}");
         }
     }
 
