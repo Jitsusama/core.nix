@@ -89,6 +89,17 @@
     command = "${lib.getExe pkgs.bash} ${../tests/uncached-pictures-let-go-on-niri.sh} quickshell logs";
   };
 
+  # A window standing still draws no frame as another's animation starts, in
+  # the shell's own Qt (qtdeclarative-animations-wake-only-their-windows.patch)
+  # through its threaded render loop
+  # (modules/quickshell/tests/still-windows-draw-nothing-as-animations-start-on-niri.sh).
+  still-windows-draw-nothing-as-animations-start-on-niri = shellOnNiri {
+    name = "still-windows-draw-nothing-as-animations-start-on-niri";
+    away = 3600;
+    root = ../tests/still-windows-draw-nothing-as-animations-start.qml;
+    command = "${lib.getExe pkgs.bash} ${../tests/still-windows-draw-nothing-as-animations-start-on-niri.sh} quickshell logs";
+  };
+
   # The wallpaper's picture is read at its screen's own pixels, by niri's scale
   # for the output, as modules/quickshell/tests/wallpaper.qml holds Wallpaper.js
   # to, in Qt's engine.
