@@ -609,10 +609,11 @@ impl<'a> Settler<'a> {
         // it's held rests again rather than being sent. Its day is moved on
         // by the rest, so a long hold doesn't use it up and leave one
         // unsent try after it told as a day with no Mac.
-        if let Some(why) = world.held() {
+        if let Some(held) = world.held() {
             state.say(&format!(
-                "{check} at {} waits while the net is held: {why}",
-                short(merge)
+                "{check} at {} waits while the net is held: {}",
+                short(merge),
+                held.why
             ));
             let since = since.saturating_add(RESTS.0).min(now());
             return rest(state, merge, check, since, RESTS.0);
