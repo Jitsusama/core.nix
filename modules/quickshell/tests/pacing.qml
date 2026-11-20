@@ -915,6 +915,8 @@ QtObject {
             Presented.keyShown("Call: Dr Smith", false), "");
         check(failures, "a row with neither key nor name is said as a row",
             Presented.rowShown({}, false), "row");
+        check(failures, "as is one missing, whether reports are on or off",
+            Presented.rowShown(null, true), "row");
         check(failures, "so its row is said only as a row with reports off",
             Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, false), "row");
         check(failures, "and whole while they're on",
