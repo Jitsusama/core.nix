@@ -43,8 +43,9 @@ pub fn read(held: &str) -> Option<NetHeld> {
 /// since it began, said once for each holder, keyed by when the net first
 /// found the stop and who holds it, and naming what it says. The net keeps
 /// one `since` while one hold follows another, so without its holder a
-/// second hold in the same stop would never be asked. Only a hold the net
-/// still finds counts.
+/// second hold in the same stop would never be asked. A hold the net names
+/// no sender for, as the pause file, is keyed `unnamed`, which no mesh
+/// address is. Only a hold the net still finds counts.
 pub fn stalled(s: &Snapshot) -> Option<Breach> {
     let hold = s.net_held_since.as_ref().filter(|_| still_found(s))?;
     let minutes = (s.now - hold.since) / 60;
@@ -62,7 +63,7 @@ pub fn stalled(s: &Snapshot) -> Option<Breach> {
         key: format!(
             "netheld:{}:{}",
             hold.since,
-            hold.from.as_deref().unwrap_or("pause")
+            hold.from.as_deref().unwrap_or("unnamed")
         ),
         text: format!(
             "the net has started nothing for {minutes} min while {merged} {noun} landed \
@@ -171,8 +172,8 @@ pub mod tests {
         s.net_held_since.as_mut().expect("a hold").from = Some("OSPHT4".into());
         let second = stalls(&s);
         s.net_held_since.as_mut().expect("a hold").from = None;
-        let paused = stalls(&s);
-        let keys: Vec<&str> = [&first, &second, &paused]
+        let unnamed = stalls(&s);
+        let keys: Vec<&str> = [&first, &second, &unnamed]
             .iter()
             .flat_map(|said| said.iter().map(|b| b.key.as_str()))
             .collect();
@@ -181,7 +182,7 @@ pub mod tests {
             [
                 format!("netheld:{since}:P9R1KI"),
                 format!("netheld:{since}:OSPHT4"),
-                format!("netheld:{since}:pause"),
+                format!("netheld:{since}:unnamed"),
             ],
             "a second holder in the same stop was keyed as the first, so never asked"
         );
