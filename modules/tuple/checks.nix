@@ -115,12 +115,15 @@ onLinux {
   # health's ready lines with is read from health's own source, so the two
   # can't drift apart; the words health's parser times after it, `X: ready
   # in N ms`, are pinned by health's own tests, as the test pins Tuple's.
+  # Health reads them only from notice to information priority
+  # (health/src/journal.rs), so the unit's lines must go out there.
   tuple-says-when-ready =
     let
       home = account graphical;
       service = home.systemd.user.services.tuple.Service;
       post = service.ExecStartPost;
       named = service.SyslogIdentifier or "";
+      level = service.SyslogLevel or "info";
       declared = ''^pub const READY_FOLLOWED: &str = r"(.*)";$'';
       lines = lib.splitString "\n" (builtins.readFile ../health/src/launches.rs);
       lost = "tuple-says-when-ready reads READY_FOLLOWED off one line of launches.rs, a raw string";
@@ -132,6 +135,13 @@ onLinux {
         echo "tuple.service names its lines "${lib.escapeShellArg named}", not tuple"
         exit 1
       fi
+      case ${lib.escapeShellArg level} in
+        notice | info) ;;
+        *)
+          echo "tuple.service logs at "${lib.escapeShellArg level}", where health doesn't read"
+          exit 1
+          ;;
+      esac
       ${lib.getExe pkgs.bash} ${./tests/tuple-says-when-ready.sh} ${
         lib.escapeShellArgs [
           (lib.removeSuffix " %n" (lib.removePrefix "-" post))
