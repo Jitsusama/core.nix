@@ -293,8 +293,11 @@ fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
 /// Words wrapped to `measure` cells: a run gives way at its items first,
 /// the dot going with the break, so no line ends or starts on one, and
 /// only an item too long for a line of its own breaks between its words,
-/// never parting what `held` keeps together. A piece longer than the
-/// measure is shortened in its middle, never broken across two: to the
+/// never parting what `held` keeps together. A held piece wider than
+/// the measure gives way at its words before any is shortened, since a
+/// figure cut to fit its unit loses the digits it's read for. A word
+/// longer than the measure is shortened in its middle, never broken
+/// across two: to the
 /// room left on its line where that's at least `SHARES` cells, so it
 /// doesn't leave the word before it alone, and otherwise on a line of
 /// its own.
@@ -312,7 +315,14 @@ pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
             // An item's first piece is still parted from the line by its
             // dot; the rest of its pieces by spaces.
             let mut between = ITEMS;
-            for piece in held(item) {
+            let pieces = held(item).into_iter().flat_map(|piece| {
+                if width(&piece) > measure && piece.contains(' ') {
+                    piece.split(' ').map(str::to_owned).collect()
+                } else {
+                    vec![piece]
+                }
+            });
+            for piece in pieces {
                 let left = measure.saturating_sub(width(&line) + width(between));
                 let piece = if width(&piece) > measure && !line.is_empty() && left >= SHARES {
                     shortened(&piece, left)
@@ -379,10 +389,6 @@ fn parted(line: &str, more: &str, between: &str) -> String {
 /// after a figure that isn't its unit can part from it.
 const UNIT: usize = 3;
 
-/// The most letters before a rate's `/s`, as `Mbit/s` and `kbit/s`
-/// have, so a word of more is a word, not a rate.
-const RATE: usize = 4;
-
 /// The short words English joins a sentence with, which follow a figure
 /// as often as a unit does (`Pro 6 on 5 GHz`) but never measure it, so a
 /// line may part a figure from them.
@@ -402,11 +408,12 @@ fn held(words: &str) -> Vec<String> {
     };
     let unit = |word: &str| {
         let bare = word.trim_end_matches(|last: char| last.is_ascii_punctuation());
-        // A rate is a unit a second, longer than a unit alone but as
-        // much the figure's. A bare `/s` is short enough to be a unit.
+        // A rate is a unit a second, however long its name (`Mb/s`,
+        // `requests/s`), and as much the figure's. A bare `/s` is short
+        // enough to be a unit.
         let rate = bare
             .strip_suffix("/s")
-            .is_some_and(|per| width(per) <= RATE && per.chars().all(char::is_alphabetic));
+            .is_some_and(|per| per.chars().all(char::is_alphabetic));
         !figure(word) && (width(bare) <= UNIT || rate) && !JOINING.contains(&bare)
     };
     let mut pieces: Vec<String> = Vec::new();
