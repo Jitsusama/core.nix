@@ -1565,23 +1565,24 @@ Scope {
     // `qs ipc call launcher newWork` asks (mycelium-link's sprout), the way the realm's map offers
     // work from a cell. The foot says a page offered it, and from which session by its quest's
     // name where one here has that address; any other is let go (Agents' newWorkFor). It starts
-    // nothing: the line holds Joel's first keys back and waits on one typed before Return (inUse,
-    // Prompt.qml's linked), and the act starts only on his own Return (Sprouting.fromJoel), so no
-    // walk or second link can start it. Like talkTo, it does nothing over a launcher in use. Says
-    // what it did as JSON, as talkTo does.
+    // nothing: the line holds Joel's first keys back, waits on one typed before Return, and
+    // takes Return only with the caret at the words' end, where he's read to (Prompt.qml's
+    // linked), and the act starts only on his own Return (Sprouting.fromJoel), so no walk or
+    // second link can start it. Like talkTo, it does nothing over a launcher in use, not even
+    // forget how his last start went. Says what it did as JSON, as talkTo does.
     function newWork(words, from) {
+        if (inUse())
+            return inUseSaid;
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const offer = agents ? agents.newWorkFor(words, from) : null;
         console.info(`launcher: asked from outside to start new work, ${offer === null
             ? "offering no plain words" : `from ${offer.from?.address ?? "no session here"}`}`);
         if (offer === null)
             return { error: "the link offered no plain words to start new work with" };
-        if (inUse())
-            return inUseSaid;
         const told = toldWhence(offer.said);
         into("agents");
         ask(offer.act, offer.words);
-        prompt.linked();
+        prompt.linked(true);
         offerHeld = { depth: held.length, told: JSON.stringify(told) };
         return { done: true, said: `${offer.act.name} \u203a ${offer.words}`,
             from: offer.from?.address ?? null };
@@ -3390,7 +3391,8 @@ Scope {
     // Where a page offered words (newWork), and what the foot says of it,
     // which stays while its line is held, past the keys Joel types, so he
     // reads where the words came from as he checks them and presses Return
-    // (Y2YBTS, 2026-11-20); something else said, or the line left, ends it.
+    // (Y2YBTS, 2026-11-20); something else said, the line left (onHeldChanged) or its words
+    // given (give) ends it, so it never stands over a line it didn't offer.
     property var offerHeld: null
     readonly property bool offerSaid: offerHeld !== null && held.length === offerHeld.depth
         && JSON.stringify(saying) === offerHeld.told
@@ -4211,6 +4213,12 @@ Scope {
     // so where the launcher is still says where the place left was left.
     onHeldChanged: {
         Qt.callLater(rowsPlaced);
+        // Leaving the line a page offered ends its foot and its Return's wait, so a line
+        // reached later at the same depth isn't said to be a page's.
+        if (offerHeld !== null && held.length !== offerHeld.depth) {
+            offerHeld = null;
+            prompt.endWaits = false;
+        }
         // A row to land on was for the place it opened into (intoOn).
         landOn = null;
         const left = placeHeld;
@@ -5641,6 +5649,9 @@ Scope {
         // alone, so a switch before then loses nothing.
         if (asking.draft)
             drafts.sent(asking.draft, words);
+        // Given, a page's words are his now, and what he types next is his own.
+        offerHeld = null;
+        prompt.endWaits = false;
         asking.given(words);
         prompt.text = "";
         searchNow();

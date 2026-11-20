@@ -257,8 +257,8 @@
         "unplaced": "that folder isn't a whole path",
         "busy": "still starting the last one; say it again once that's done",
         "outside": "new work starts only from your own Return in the launcher",
-        "offered": "a page offered this work; check it, then Return starts it",
-        "offeredFrom": "a page offered this work, saying it's from {cell}; check it, then Return starts it"
+        "offered": "a page offered this work; read it to its end, then Return starts it",
+        "offeredFrom": "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"
       }
     },
     {

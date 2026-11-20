@@ -18,8 +18,8 @@ QtObject {
         unread: "its node's answer couldn't be read",
         empty: "say what the work is",
         unplaced: "that folder isn't a whole path",
-        offered: "a page offered this work; check it, then Return starts it",
-        offeredFrom: "a page offered this work, saying it's from {cell}; check it, then Return starts it"
+        offered: "a page offered this work; read it to its end, then Return starts it",
+        offeredFrom: "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"
     })
 
     function cases() {
@@ -87,10 +87,10 @@ QtObject {
         Expect.same("the foot says a page offered it, from the session by its quest",
             Sprouting.offeredSaid({ words: "tidy", from: { address: "TERN02",
                 name: "Tidy the Rows" } }, said),
-            "a page offered this work, saying it's from Tidy the Rows; check it, then Return starts it");
+            "a page offered this work, saying it's from Tidy the Rows; read it to its end, then Return starts it");
         Expect.same("and only that a page offered it, from no session here",
             Sprouting.offeredSaid({ words: "tidy", from: null }, said),
-            "a page offered this work; check it, then Return starts it");
+            "a page offered this work; read it to its end, then Return starts it");
 
         // Why it asks nothing, said where Joel pressed.
         Expect.same("nothing said asks for the work",

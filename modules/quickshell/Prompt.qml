@@ -252,16 +252,24 @@ Item {
     // came inside it however late they landed. A press repeated because its release came late
     // is the same key, so it isn't counted.
     property int quietDropped: 0
-    function linked() {
+    // Whether Return waits for the caret at the line's end too: a line holding words a page
+    // offered (the launcher's newWork) starts them only once Joel has read through to their
+    // end, since a one-line field shows only part of what a page may offer, and stray keys
+    // type in at its start, leaving the caret there (council F40 and F41, 2026-11-20). Normal
+    // mode's caret rests on the last letter, so that counts as the end.
+    property bool endWaits: false
+    function linked(offered) {
         quietUntil = Date.now() + linkQuiet;
         quietDropped = 0;
         returnWaits = true;
+        endWaits = offered === true;
     }
     // A line opened any other way, or put away, holds nothing back.
     function unlinked() {
         quietUntil = 0;
         quietDropped = 0;
         returnWaits = false;
+        endWaits = false;
     }
     function heldForLink(event) {
         if (Date.now() < quietUntil) {
@@ -269,9 +277,12 @@ Item {
                 quietDropped += 1;
             return true;
         }
+        const returning = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+        if (endWaits && returning && input.cursorPosition < input.text.length - 1)
+            return true;
         if (!returnWaits)
             return false;
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+        if (returning)
             return true;
         // A modifier pressed alone is no key typed.
         if (![Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_Super_L,
