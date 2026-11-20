@@ -2727,8 +2727,8 @@ Scope {
             held[held.length - 1].through = true;
     }
 
-    // How tall the list is while the launcher's open: always its rows, and
-    // the gaps and headings among those it opens on (sizedFor).
+    // How tall the list is while the launcher's open: always home's rows,
+    // as tall as they stand (sizedFor), whatever place it opens on.
     // Set as it opens, from the rows the screen gives.
     property int tall: 8 * rowTall
 
@@ -10474,7 +10474,11 @@ Scope {
             prompt.text = "";
             matches = listed;
             current = 0;
-            tall = sizedFor(matches);
+            // Home's height, as the closed card already stands and as its
+            // fill leaves it (the open handler), so the place is drawn in
+            // its first frame at the size it was asked at and the foot
+            // never jumps, whatever gaps or headings the place's rows hold.
+            tall = sizedFor(homeKept);
         } finally {
             keeping = false;
         }
@@ -10971,10 +10975,10 @@ Scope {
             drawerResting.stop();
             drawerSettled();
             lap("drawer");
-            // Always the same height, eight rows and the headings among
-            // them, kept until it closes, so the card is the same shape
-            // however much home holds and its rows fill it to the foot,
-            // none held under the last.
+            // Always the same height, eight of home's rows, kept until it
+            // closes, so the card is the same shape however much home
+            // holds and its rows fill it to the foot, none held under the
+            // last.
             tall = sizedFor(homeFound ? matches : homeKept);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();

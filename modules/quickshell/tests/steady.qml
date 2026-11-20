@@ -351,7 +351,10 @@ QtObject {
                 3, 2, 48, 56],
             ["a heading the room leaves at the foot", [{}, { heading: true }, {}, {}], 3, 1, 16,
                 40],
-            ["fewer rows than room, two apart", [{ gap: true }, { gap: true }], 3, 2, 64]
+            ["fewer rows than room, two apart", [{ gap: true }, { gap: true }], 3, 2, 64],
+            ["rows that fill the room to the pixel", [{ gap: true }, { gap: true },
+                { gap: true }, {}], 3, 3, 72, 72],
+            ["a short list on a small screen", [{ gap: true }], 3, 1, 40, 40]
         ];
         for (const [what, shown, fit, shows, want, room] of sizings) {
             const sizes = Object.assign({}, rowSizes, room === undefined ? {} : { room: room });
