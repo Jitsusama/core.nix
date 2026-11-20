@@ -12737,22 +12737,31 @@ Scope {
     // nothing timed it. A key a program typed has no press, so it's timed
     // from when it was heard, which a key queued behind that lay is only
     // after it; the time from going in says it whole (Presented.keyInSaid).
+    // It's said from going in only within a second of it, which is what
+    // that time is read for: two minutes on, it would read as a fault.
+    readonly property int keyInSoon: 1000
     function keyInComing() {
         const pressed = KeyTimes.pressed();
-        return { from: pressed > 0 ? pressed : KeyTimes.now(), into: intoFrom };
+        const heard = KeyTimes.now();
+        const into = heard - intoFrom < keyInSoon ? intoFrom : undefined;
+        return { from: pressed > 0 ? pressed : heard, heard, into };
     }
     function keyInTimed(one, act) {
         if (!open || !drawerCard.keys)
             return;
         one.act = act;
-        one.key = drawerRow?.key || drawerRow?.name || "";
+        // A window's row is keyed by its title, which may be a mail's
+        // subject or a document's name: unless reports are on, only its
+        // app is said, as a slow key may be said for each one typed.
+        one.key = Presented.keyShown(drawerRow?.key || drawerRow?.name || "", Options.reports);
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
             Object.assign(one, { at, swapped: root.swappedOf(frame),
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
-            // Only one slow enough to feel, as a key in home is, but every
-            // one while reports are on, as the drawer lab times them.
-            if (Options.reports || at - one.from >= 50)
+            // Only one slow enough to feel from when the shell heard it,
+            // as a key in home is (actsDrawn), but every one while reports
+            // are on, as the drawer lab times them.
+            if (Options.reports || at - one.heard >= 50)
                 console.info(Presented.keyInSaid(one));
         });
     }
@@ -12764,6 +12773,9 @@ Scope {
         if (!open || !one)
             return;
         one.key = drawerRow?.key || drawerRow?.name || "";
+        // The page shown, so going back from the key list reads apart from
+        // going into the row's own page, under the same row.
+        one.page = drawerCard.title;
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
@@ -15882,12 +15894,13 @@ Scope {
             keys: QueryKeys.paged(prompt.mode)
             onKeysComing: root.intoComing()
             onKeysIn: root.intoTimed()
-            // Its whole run is laid once the frame the keys came in is
-            // drawn, not merely at the next turn, which comes before it;
-            // and once that frame's swap is heard, at the turn after, since
-            // laid in the swap's own handler it held the others and the
-            // swap's stamp behind it: the drawer lab read its swap some
-            // 390 ms after niri presented it (2026-11-19).
+            // The rest of its run is laid a part a turn from once the frame
+            // the keys came in is drawn, not merely at the next turn, which
+            // comes before it, and shown whole with its last part; and from
+            // once that frame's swap is heard, at the turn after, since laid
+            // in the swap's own handler it held the others and the swap's
+            // stamp behind it: the drawer lab read its swap some 390 ms
+            // after niri presented it (2026-11-19).
             // The going-in it's for, if any, is the one the keys coming made.
             afterFrame: then => {
                 const going = root.intoGoing;

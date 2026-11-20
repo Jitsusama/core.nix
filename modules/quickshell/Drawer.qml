@@ -972,12 +972,16 @@ Floating {
     }
     // The lines read as they're laid, with what they were read at, so a
     // relay asked as a part laid moves the view's end reads nothing again.
-    readonly property var laidAt: ({ shown: null, width: -1, height: -1 })
+    // Where the run's parts stood as they were read is kept too, so a read
+    // after the page is laid out moves their lines by what moved above them
+    // rather than reading them all again.
+    readonly property var laidAt: ({ shown: null, width: -1, height: -1, parts: null })
     function readLaid(kept = null) {
         laid = lines(kept);
         laidAt.shown = shown;
         laidAt.width = width;
         laidAt.height = view.contentHeight;
+        laidAt.parts = runQuiet ? null : runPartsBox.mapToItem(column, 0, 0);
     }
     // A run's head and where its rest begins, as the keys come in.
     function runBegin() {
@@ -1028,7 +1032,7 @@ Floating {
             return;
         if (first) {
             flow.forceLayout();
-            readLaid();
+            readLaid(partsMoved());
             keepCursor();
         }
         if (runNext < 0)
@@ -1039,13 +1043,36 @@ Floating {
         else
             Qt.callLater(() => runLaidOn(entry, false));
     }
+    // The parts already shown, as they were last read, moved by what moved
+    // above them since, as G or a search typed before the going-in frame
+    // leaves them: read again, every one of some 1,833 lines would be read
+    // on the shell's thread just after that frame. None with no part shown.
+    function partsMoved() {
+        const was = laidAt.parts;
+        const parts = runQuiet ? [] : runTexts();
+        if (!was || parts.length === 0)
+            return null;
+        const now = runPartsBox.mapToItem(column, 0, 0);
+        const dx = now.x - was.x;
+        const dy = now.y - was.y;
+        const kept = new Map();
+        for (const text of parts) {
+            const pieces = laidPieces.of.get(text);
+            if (!pieces)
+                return null;
+            kept.set(text, pieces.map(piece => Object.assign({}, piece,
+                { x: piece.x + dx, top: piece.top + dy, base: piece.base + dy })));
+        }
+        return kept;
+    }
     // The next `count` lines of its run, or all that's left given none, in
     // a text of their own under the last, and its lines read again: only
     // the part's and what follows the run, which it moves down, where
     // `keeping`. What follows is moved at once, not at the next frame's
     // polish, so its lines are read where they'll be drawn. Laid quietly,
-    // only the part's are read, aside, and nothing moves.
-    function layPart(count, keeping) {
+    // only the part's are read, aside, and nothing moves. Not `reading`,
+    // nothing is read, for whoever lays several to read them once.
+    function layPart(count, keeping, reading = true) {
         const wide = wordsBox.width;
         const width = widthIn(bodyFace);
         const part = Figure.runFrom({ items: runRest.items, from: runNext }, wide, width, count);
@@ -1061,6 +1088,8 @@ Floating {
                 runQuietRead.of.set(laidNow, piecesOf(laidNow));
             return;
         }
+        if (!reading)
+            return;
         flow.forceLayout();
         readLaid(keeping ? keptAbove() : null);
         keepCursor();
@@ -1106,14 +1135,25 @@ Floating {
         if (!keys)
             return;
         // A part at a time all the same, so only those near the view draw.
+        // Laid quietly, they're shown in one frame; once some are shown, as
+        // a move near the head's end shows them, the rest are read once, as
+        // they're laid in the same turn, rather than a sort of every line
+        // and a frame asked for each.
+        const shownAlready = !runQuiet && runNext >= 0;
         while (runNext >= 0)
-            layPart(runPart, true);
+            layPart(runPart, true, !shownAlready);
+        if (shownAlready) {
+            flow.forceLayout();
+            readLaid(keptAbove());
+            keepCursor();
+        }
         runShow();
     }
-    // The lines laid, those of parts laid quietly with them, which a
-    // going-in counts: a run laid whole before its frame counts whole.
+    // The lines laid, which a going-in counts: a run laid whole before its
+    // frame is read whole by runShow, and parts laid quietly after it are
+    // not yet on the page.
     function linesLaid() {
-        return laid.length + (runQuiet ? runPartsLines : 0);
+        return laid.length;
     }
     // The line the run's last part ends on, where what follows the run
     // begins under it, or -1 with no run: its head's, while the rest is
@@ -1135,13 +1175,16 @@ Floating {
             // At once, so the new page's first frame draws none of it.
             unflash();
             runCut();
+            // Said now, while the key that asked it is still held, so the
+            // launcher times it from that key rather than from this turn's
+            // end, which would leave out the new page's own lay.
+            keysComing();
             Qt.callLater(() => {
                 // Not once the keys have gone meanwhile, which would
                 // lay the run at rest.
                 if (!keys)
                     return;
                 scrolled = 0;
-                keysComing();
                 enter();
                 keysIn();
             });
@@ -1186,17 +1229,17 @@ Floating {
         // lays it all first, as G's does, and one that comes near its end,
         // or shows what's under it, shows the parts laid quietly or lays a
         // part more, and moves again, so it never lands on what follows the
-        // run while the run's rest is still to come.
+        // run while the run's rest is still to come (DrawerPage.runReach).
         for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
-            if (moved.line > end)
+            const reach = Page.runReach(moved, end,
+                { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top });
+            if (reach === "whole")
                 layWhole();
-            else if (moved.line + drawer.scrolloff >= end
-                || moved.top + drawer.viewRoom > laid[end].top) {
-                if (runQuiet)
-                    runShow();
-                else
-                    layPart(runPart, true);
-            } else
+            else if (reach === "more" && runQuiet)
+                runShow();
+            else if (reach === "more")
+                layPart(runPart, true);
+            else
                 break;
             moved = movedBy(act, count);
         }
