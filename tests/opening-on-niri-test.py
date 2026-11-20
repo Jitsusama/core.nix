@@ -1102,10 +1102,9 @@ def shared_after_a_kept_copy(
                 if len(late) == SHARES_TRIED:
                     break
                 unshared_and_closed(shell, stood)
-                # The fill that gave up kept the place as it stood, perhaps hidden, so it's kept
-                # again unshared.
-                if name != "home":
-                    kept_unshared(shell, name, copied)
+                # The try kept what it drew as it closed, under the share, perhaps hidden, so it's
+                # kept again unshared, as the first try found it.
+                kept_unshared(shell, name, copied)
                 opening, said, drawn, heard = shared_as_kept(shell, stood, asked, copied)
             # Asserted before it's put back, so a failure putting it back hides nothing.
             assert len(late) < SHARES_TRIED, (
@@ -1114,7 +1113,8 @@ def shared_after_a_kept_copy(
                 f"{late}"
             )
             assert opening.get("filledBy") == "share", (
-                f"{name} waited out a share heard at most {heard} ms after the chord: {opening}"
+                f"{name} waited out a share heard at most {heard} ms after the chord, after "
+                f"{len(late)} lost races {late}: {opening}"
             )
             filled = f"launcher: {name} filled in at once, as niri hasn't said its casts yet"
             assert filled in said, f"{name}'s fill wasn't said:\n{said}"
@@ -1183,7 +1183,7 @@ def test_only_a_fill_that_gave_up_before_its_share_could_be_heard_is_tried_again
         ({"filledBy": "unpresented"}, False),
         *(
             ({"filledBy": filler, "fillFrom": 300}, False)
-            for filler in sorted(FILLERS - {"unpresented"} | {"share"})
+            for filler in sorted(FILLERS - {"unpresented"} | {"share", "click"})
         ),
     ]
     judged = [(opening, heard_too_late(opening, 900)) for opening, _ in wanted]
@@ -1191,12 +1191,12 @@ def test_only_a_fill_that_gave_up_before_its_share_could_be_heard_is_tried_again
 
 
 def kept_unshared(shell: Shell, place: str, copied: str) -> None:
-    """Open the collection `place` and close it unshared, so it's kept as it stands.
+    """Open home or the collection `place` and close it unshared, so it's kept as it stands.
 
     It waits for home to be kept first, and for a clipboard to draw the copy before it's closed.
     """
     shell.launcher_until(lambda shown: shown.get("kept"))
-    shell.as_account(shell.ipc("collection", place))
+    shell.as_account(shell.ipc("toggle") if place == "home" else shell.ipc("collection", place))
     shell.launcher_ready()
     if place == "clipboard":
         drawn_until(shell, lambda texts: copied in texts, "drew the copy unshared")
