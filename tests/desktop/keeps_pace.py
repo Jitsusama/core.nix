@@ -21,6 +21,14 @@ held to two of the builder's processors on 19 November, in an earlier held subte
 froze and ran by turns as the timed subtests' does, the guest's frozen turn lost time too and
 the share read 1.27, too little for the four to six times the failing keys took. The held
 subtest that stayed counts with the load running alone, so it can't measure that again.
+
+The builders are cloud VMs, whose own host's taking of their processors they don't count as
+stolen, so the guest counts that time as its own and steal can't show it. On the net from 16 to
+20 November the frozen key took 15 to 31 ms, and each ms more frozen gave about 7 more under
+load, where the bar allows 2: 9ca37a94 failed keys at 122 ms against 30 on 20 November and
+passed its retry at 31 against 16, its launcher the same. So each subtest also times a fixed
+loop in the guest at the end of each turn, said beside the ticks and judged by nothing yet, to
+say how fast the builder ran the guest in each.
 """
 
 from __future__ import annotations
@@ -31,6 +39,9 @@ from __future__ import annotations
 PROCESSORS = 4
 # PF_NO_SETAFFINITY, the flag on a thread whose processors the kernel lets no one set.
 UNHOLDABLE = 0x04000000
+# The turns of the bash loop timed at the end of each turn: about 200 ms of a busy laptop's on 20
+# November, short beside a turn of keys.
+LOOPED = 50_000
 
 
 def builders_share(under: tuple[int, int], frozen: tuple[int, int]) -> float | None:
@@ -67,6 +78,12 @@ def ticks(stat: str) -> tuple[int, int]:
     return steal, user + nice + system + irq + softirq + steal
 
 
+def looped(said: str) -> float:
+    """Give the loop's time in ms from the guest's clock as it began and ended, in seconds."""
+    began, ended = (float(stamp) for stamp in said.split())
+    return (ended - began) * 1000
+
+
 def every_tick(stat: str) -> int:
     """Give every tick on /proc/stat's first line, idle and iowait with the busy.
 
@@ -83,6 +100,34 @@ def holdable(stat: str) -> bool:
     """
     flags = int(stat.rsplit(")", 1)[1].split()[6])
     return not flags & UNHOLDABLE
+
+
+class Gauge:
+    """The fixed loop's times in ms, one a turn, under load (True) and frozen (False)."""
+
+    def __init__(self) -> None:
+        """Start with no loop timed."""
+        self.times: dict[bool, list[float]] = {True: [], False: []}
+
+    def add(self, *, turn: bool, took: float) -> None:
+        """Keep a loop's time with the kind of turn it ended."""
+        self.times[turn].append(took)
+
+    def said(self) -> str:
+        """Say the middle loop of each kind of turn, the lower of two, and each loop's time."""
+
+        def middle(times: list[float]) -> str:
+            ranked = sorted(times)
+            return f"{ranked[(len(ranked) - 1) // 2]:.0f} ms" if ranked else "none"
+
+        def each(times: list[float]) -> list[int]:
+            return [round(took) for took in sorted(times)]
+
+        under, frozen = self.times[True], self.times[False]
+        return (
+            f"a fixed loop of {LOOPED} turns took a middle {middle(under)} under load against"
+            f" {middle(frozen)} frozen, each under load {each(under)} and frozen {each(frozen)}"
+        )
 
 
 class Ledger:
