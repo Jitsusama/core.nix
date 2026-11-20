@@ -8,10 +8,11 @@ render deadline by turns. `home.nix` gives the account its config:
 stand-ins in `tests/`. xwayland-satellite's package and script sit beside
 it, the program niri starts for X11 programs.
 
-Each `.patch` but one is one change to niri, said in its own header, and
+Each `.patch` but three is one change to niri, said in its own header, and
 `nixos.nix` lists them in the order they apply, with a paragraph for each
-saying why it's there. The one, `untitled-instance.patch`, changes
-xwayland-satellite, and `xwayland-satellite.nix` applies it. Many entries
+saying why it's there. The three, `untitled-instance.patch`,
+`newer-backend.patch` and `flush-when-full.patch`, change
+xwayland-satellite, and `xwayland-satellite.nix` applies them. Many entries
 because each patch keeps its own file beside the list that applies it: a
 patch is read, rebased and dropped on its own, and the lists name every
 one, so a folder of them would only add a level each is found through.

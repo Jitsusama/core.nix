@@ -1,0 +1,36 @@
+Takes wayland-backend 0.3.17, with the wayland-sys it needs, as upstream
+has since 0.8.3.
+
+Before 0.3.12 a client buffered at most 4 KB of requests the compositor's
+socket had no room for, and losing the connection once more came, so a
+compositor falling behind killed satellite however long it waited for
+room. From 0.3.12 the buffer grows, as libwayland's does, so what
+flush-when-full.patch leaves queued goes out once the compositor reads.
+
+diff --git a/Cargo.lock b/Cargo.lock
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1046,9 +1046,9 @@
+ 
+ [[package]]
+ name = "wayland-backend"
+-version = "0.3.11"
++version = "0.3.17"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "673a33c33048a5ade91a6b139580fa174e19fb0d23f396dca9fa15f2e1e49b35"
++checksum = "38a91b4eaddff87b1cd1074985e3713da4af2c49742d1b356b2c01670a67a078"
+ dependencies = [
+  "cc",
+  "downcast-rs",
+@@ -1169,9 +1169,9 @@
+ 
+ [[package]]
+ name = "wayland-sys"
+-version = "0.31.7"
++version = "0.31.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "34949b42822155826b41db8e5d0c1be3a2bd296c747577a43a3e6daefc296142"
++checksum = "d8eab23fefc9e41f8e841df4a9c707e8a8c4ed26e944ef69297184de2785e3be"
+ dependencies = [
+  "pkg-config",
+ ]
