@@ -148,6 +148,22 @@ QtObject {
         expect("nor a word with no held Return said",
             Arming.letsHeldGo([["q", "quit"]], []), false);
 
+        // A share ending lets go of any arm as well (Launcher.qml's unheld),
+        // as its start does (untold): one made on an ask's row in the paced
+        // refresh after a share began would let the first Return after it,
+        // no key between, release on a line read before the share.
+        const second = { keysTaken: 2, counted: 1, now: 1000, wait: 300 };
+        const armedOnAsk = Arming.pressed(Arming.rest(), "ask",
+            { keysTaken: 1, counted: 1, now: 0, wait: 300 }).armed;
+        expect("an arm made before a share ends would be done by the next Return",
+            Arming.pressed(armedOnAsk, "ask", second).act, "ends");
+        const ended = Arming.shareTurns(heldWord, heldWord);
+        expect("but the share's end lets go of it, so that Return only arms again",
+            Arming.pressed(ended.armed, "ask", second).act, "armed");
+        expect("and of the foot's word for a held Return", ended.quiet, true);
+        expect("though not of another word said since",
+            Arming.shareTurns([["q", "quit"]], heldWord).quiet, false);
+
         // Which places may be kept to draw at once at the next opening
         // (Launcher.qml's keepPlace): never one whose rows a share hides,
         // since a share starting while it's shut would leave the kept copy
