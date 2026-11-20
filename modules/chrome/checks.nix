@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -116,6 +117,54 @@ onLinux {
       else
         "touch $out"
     );
+
+  # The four profile folders Chrome writes through shared maps, its
+  # histograms and its GPU and Dawn caches, are links into the runtime
+  # folder once the account's command runs on a profile Chrome has already
+  # filled, its old files gone and the rest of the profile left alone; a
+  # second run, a boot's empty runtime folder and a lock Chrome left behind
+  # are each handled, a Chrome still quitting is waited for, and with
+  # Chrome running nothing in the profile is touched
+  # (tests/chrome-maps-land-in-memory.sh). The unit runs as the account's
+  # manager starts, before the session that starts Chrome, and again on
+  # each change in the profile's folder, as when Chrome quits; it doesn't
+  # stay active, which would leave the watch nothing to start, and has no
+  # start limit for Chrome's bursts of writes to reach.
+  chrome-maps-land-in-memory =
+    let
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        { home-manager.users.someone.imports = [ self.homeModules.chrome ]; }
+      ]);
+      unit =
+        home.systemd.user.services.chrome-maps-in-memory
+          or (throw "the account has no chrome-maps-in-memory service");
+      watch =
+        home.systemd.user.paths.chrome-maps-in-memory
+          or (throw "the account has no chrome-maps-in-memory watch");
+      command = pkgs.writeText "chrome-maps-in-memory" (toString unit.Service.ExecStart);
+    in
+    assert lib.assertMsg (lib.elem "default.target" (
+      unit.Install.WantedBy or [ ]
+    )) "chrome-maps-in-memory isn't started with the account's manager.";
+    assert lib.assertMsg (lib.elem "graphical-session-pre.target" (
+      unit.Unit.Before or [ ]
+    )) "chrome-maps-in-memory isn't ordered before the session that starts Chrome.";
+    assert lib.assertMsg (
+      !(unit.Service.RemainAfterExit or false)
+    ) "chrome-maps-in-memory stays active, so its watch can't start it again.";
+    assert lib.assertMsg (
+      unit.Unit.StartLimitIntervalSec or null == 0
+    ) "chrome-maps-in-memory keeps a start limit, so Chrome's writes can stop its watch.";
+    assert lib.assertMsg (
+      watch.Path.PathChanged or null == "%h/.config/google-chrome"
+      && watch.Path.Unit or null == "chrome-maps-in-memory.service"
+      && lib.elem "paths.target" (watch.Install.WantedBy or [ ])
+    ) "chrome-maps-in-memory isn't run again when the profile's folder changes, as Chrome quits.";
+    pkgs.runCommandLocal "chrome-maps-land-in-memory" { } ''
+      bash ${./tests/chrome-maps-land-in-memory.sh} ${command}
+      touch $out
+    '';
 
   # clippy finds nothing in what reads Chrome's open pages from its session
   # file, its tests included.

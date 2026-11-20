@@ -350,6 +350,36 @@ let
       lib.getExe (pkgs.callPackage ./open-tabs/host/package.nix { })
     else
       null;
+
+  # The profile's folders Chrome writes through shared maps of their files:
+  # its histograms, kept as it runs, and its GPU and Dawn caches. Every
+  # store into such a map is a page Chrome's browser IO thread may wait on
+  # while btrfs writes it back, and that thread carries every message
+  # between Chrome's processes, a call's camera frames included. In a test
+  # call under load it sat in btrfs's waits up to 47 times in 150 s,
+  # freezing the picture, and never with these folders in memory. Chrome
+  # takes no setting to move them, and turning histograms off still leaves
+  # the file mapped, so each folder is a link into the runtime folder, made
+  # as the account's manager starts and again whenever Chrome quits
+  # (maps-in-memory.sh). A cache Chrome finds broken, a link left pointing
+  # at nothing included, it makes again on the disk, until it next quits.
+  # Only the Default profile's caches move; a profile added later keeps its
+  # own on the disk, as all of them were before. The caches are Chrome's
+  # own size, tens of megabytes, against the runtime folder's gigabytes.
+  mappedFolders = [
+    "BrowserMetrics"
+    "Default/GPUCache"
+    "Default/DawnWebGPUCache"
+    "Default/DawnGraphiteCache"
+  ];
+  mapsInMemory = pkgs.writeShellApplication {
+    name = "chrome-maps-in-memory";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+    ];
+    text = builtins.readFile ./maps-in-memory.sh;
+  };
 in
 {
   imports = [
@@ -372,6 +402,45 @@ in
   };
 
   config = {
+    # As the session starts, before Chrome can, and never under a running
+    # Chrome, which a switch would otherwise find. It stays inactive once
+    # done, so the watch below can start it again, and has no limit on how
+    # often it starts: Chrome's own writes there come in bursts, and five
+    # starts in ten seconds would stop the watch before Chrome quits.
+    systemd.user.services.chrome-maps-in-memory = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Moves the folders Chrome writes through shared maps into memory";
+        Before = [ "graphical-session-pre.target" ];
+        StartLimitIntervalSec = 0;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.concatStringsSep " " (
+          [
+            (lib.getExe mapsInMemory)
+            "%h/.config/google-chrome"
+            "%t/chrome"
+          ]
+          ++ mappedFolders
+        );
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
+    # Each change in the profile's own folder, a lock Chrome drops as it
+    # quits among them, runs it again, so the links are made before Chrome
+    # is next started and not only at the next boot of an account that
+    # lingers. The folder is watched, not the lock: a watch on the lock
+    # follows the link to a file that never exists, and never fires. While
+    # Chrome runs, each of its writes there finds it holding the lock.
+    systemd.user.paths.chrome-maps-in-memory = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Moves Chrome's mapped folders into memory once it quits";
+      Path = {
+        PathChanged = "%h/.config/google-chrome";
+        Unit = "chrome-maps-in-memory.service";
+      };
+      Install.WantedBy = [ "paths.target" ];
+    };
+
     jitsusama.keys.chrome = keys;
     jitsusama.keys.github = import ./github-keys.nix;
 
