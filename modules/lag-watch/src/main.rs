@@ -28,6 +28,7 @@
 //! `--format` asks for, as every command of ours does (docs/commands.md).
 //! `lag-watch run` is the watch itself, as its service runs it.
 
+mod apps;
 mod kernel;
 mod now;
 mod report;
@@ -211,7 +212,7 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snaps
         // An app's thread its app lowered, a hidden tab's, is nobody's wait:
         // counted, not read. Its nice is read each window, since a tab
         // shown again is raised again.
-        if kernel::is_app(thread) {
+        if apps::is_app(thread) {
             let stat = thread.schedstat.with_file_name("stat");
             let nice = kernel::nice(&fs::read_to_string(stat).unwrap_or_default());
             if nice.is_some_and(|n| n > 0) {
@@ -418,7 +419,7 @@ fn run() -> Result<(), Failure> {
     };
     let proc = PathBuf::from("/proc");
     started();
-    let mut apps = kernel::Apps::default();
+    let mut apps = apps::Apps::default();
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
