@@ -66,6 +66,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -1273,8 +1274,17 @@ fn copier() -> Option<String> {
 }
 
 /// How long the copier has to say it's ready, and then that it holds
-/// the copy, before it's ended and the copy is refused.
+/// the copy, before it's ended and the copy is refused, unless
+/// `$PASSWORDS_COPIER_PATIENCE_MS` says otherwise.
 const COPIER_PATIENCE: Duration = Duration::from_secs(10);
+
+/// How long the copier has to say each thing it says.
+fn copier_patience() -> Duration {
+    std::env::var("PASSWORDS_COPIER_PATIENCE_MS")
+        .ok()
+        .and_then(|patience| patience.parse().ok())
+        .map_or(COPIER_PATIENCE, Duration::from_millis)
+}
 
 /// Puts a secret on the clipboard through wl-copy, marked sensitive so a
 /// clipboard history leaves it out, held by a wl-copy in the foreground
@@ -1299,8 +1309,9 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
         .recv()
         .map_err(|_| "couldn't copy: nothing is left to start a copier".to_owned())?
         .map_err(|why| format!("couldn't copy: {why}"))?;
+    let patience = copier_patience();
     let said = said_by(&mut child);
-    if said.recv_timeout(COPIER_PATIENCE).as_deref() != Ok("ready") {
+    if said.recv_timeout(patience).as_deref() != Ok("ready") {
         return Err(refused_by(child, "the copier never said it was ready"));
     }
     if let Some(mut input) = child.stdin.take()
@@ -1308,7 +1319,7 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     {
         return Err(refused_by(child, &why.to_string()));
     }
-    if said.recv_timeout(COPIER_PATIENCE).as_deref() != Ok("held") {
+    if said.recv_timeout(patience).as_deref() != Ok("held") {
         return Err(refused_by(child, "the copier never said it held the copy"));
     }
     // It says nothing more, and anything it says now has no one to hear.
@@ -1361,13 +1372,20 @@ fn said_by(child: &mut Child) -> Receiver<String> {
 /// Why a copier refused a copy: it's ended, and its reason is the first
 /// line it said on its standard error, or `otherwise` where it said none.
 /// A copier says nothing of the secret there, only why it couldn't hold it.
+/// Only what it said before it ended is read, so something of its own left
+/// running that holds the pipe can't hold the refusal.
 fn refused_by(mut child: Child, otherwise: &str) -> String {
+    drop(child.stdin.take());
     let _ = child.kill();
     let _ = child.wait();
-    let mut said = String::new();
-    if let Some(errors) = child.stderr.take() {
-        let _ = errors.take(4096).read_to_string(&mut said);
+    let mut said = Vec::new();
+    if let Some(mut errors) = child.stderr.take() {
+        // SAFETY: fcntl changes only the flags of a pipe this owns.
+        if unsafe { libc::fcntl(errors.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) } != -1 {
+            let _ = errors.by_ref().take(4096).read_to_end(&mut said);
+        }
     }
+    let said = String::from_utf8_lossy(&said);
     let why = said.lines().map(str::trim).find(|line| !line.is_empty());
     format!("couldn't copy: {}", why.unwrap_or(otherwise))
 }
