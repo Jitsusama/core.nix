@@ -1200,6 +1200,12 @@ impl<'a> Air<'a> {
                 self.cards.insert(path.to_string(), (card, step));
             }
         }
+        let scanning = changed.get("Scanning").map(|scanning| &**scanning);
+        if let Some(&zvariant::Value::Bool(scanning)) = scanning
+            && let Some(card) = self.named(bus, path).await
+        {
+            change(&self.state, |state| state.scanning(&card, scanning));
+        }
         if let Some(zvariant::Value::ObjectPath(said)) = point {
             // wpa_supplicant says only where a card's steps have got to when
             // it sends, so a move can come as a new point alone, the card

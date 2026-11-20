@@ -46,6 +46,7 @@ use crate::air::Heard;
 use crate::calling::Calling;
 use crate::choose::{self, Chooser};
 use crate::echo::{Class, Echoer, LOST, Late};
+use crate::fading;
 use crate::learn::{self, Here, Learned};
 use crate::moves;
 use crate::nl80211::{Nl80211, Station};
@@ -144,6 +145,12 @@ struct Point {
     echoes: VecDeque<(Instant, Echo)>,
     video: VecDeque<(Instant, Echo)>,
     counts: VecDeque<(Instant, Counts)>,
+    /// When each echo taken within `fading::LOOK` of its card beginning a
+    /// look for networks ended, so a call's fading is judged without them.
+    looking: VecDeque<(Instant, ())>,
+    /// The look the card was last seen in, by how many it had begun, and
+    /// when it was first seen in it.
+    look: Option<(u32, Instant)>,
 }
 
 impl Measures {
@@ -212,6 +219,22 @@ impl Measures {
         video(&echoes)
     }
 
+    /// Takes in that the echo sent then was taken while its card
+    /// was in this look for networks, by how many it had begun. It's left
+    /// out of a call's fading only within `fading::LOOK` of the look.
+    pub fn looked(&mut self, point: &str, at: Instant, look: u32) {
+        let kept = self.points.entry(point.to_owned()).or_default();
+        let began = match kept.look {
+            Some((seen, began)) if seen == look => began,
+            _ => at,
+        };
+        kept.look = Some((look, began));
+        if at.duration_since(began) <= fading::LOOK {
+            kept.looking.push_back((at, ()));
+            forget_before(&mut kept.looking, at);
+        }
+    }
+
     /// Takes in the station's counts, read on the access point.
     pub fn counted(&mut self, point: &str, at: Instant, counts: Counts) {
         let kept = self.points.entry(point.to_owned()).or_default();
@@ -219,17 +242,20 @@ impl Measures {
         forget_before(&mut kept.counts, at);
     }
 
-    /// How many best-effort echoes through the access point were lost within `within`
-    /// of now, and its signal as the kernel last said it, for whether a
-    /// call's link is fading (fading.rs).
+    /// How many best-effort echoes through the access point were lost
+    /// within `within` of now, those taken while its card looked for
+    /// networks aside, and its signal as the kernel last said it, for
+    /// whether a call's link is fading (fading.rs).
     pub fn lately(&self, point: &str, now: Instant, within: Duration) -> (usize, Option<i32>) {
         let Some(kept) = self.points.get(point) else {
             return (0, None);
         };
+        let looking = |at: &Instant| kept.looking.iter().any(|(looked, ())| looked == at);
         let lost = kept
             .echoes
             .iter()
             .filter(|(at, echo)| now.duration_since(*at) <= within && *echo == Echo::Lost)
+            .filter(|(at, _)| !looking(at))
             .count();
         let signal = kept.counts.back().and_then(|(_, counts)| counts.signal);
         (lost, signal)
@@ -332,7 +358,7 @@ pub async fn follow(
             _ = each.tick() => {
                 let joined = state.borrow().joined();
                 echoers.retain(|card, _| joined.iter().any(|on| on.card == *card));
-                measure(&joined, &mut echoers, &mut kernel, &mut measures).await;
+                measure(&joined, &mut echoers, &mut kernel, &mut measures, &state).await;
                 let now = Instant::now();
                 if calling.borrow().on(now) {
                     for on in &joined {
@@ -507,19 +533,25 @@ async fn echo_on(
 /// card's station. A socket that can't be opened, or errs, is passed over
 /// until the next second, and opened again then; a card best effort's echo
 /// couldn't be sent on goes unmeasured that second, its video echo and its
-/// station too, though late answers to earlier echoes still count.
+/// station too, though late answers to earlier echoes still count. A
+/// best-effort echo sent while its card looked for networks, or across a
+/// look begun and ended between the reads either side of it, is marked as
+/// taken in that look, for a call's fading.
 async fn measure(
     joined: &[Joined],
     echoers: &mut HashMap<String, Echoers>,
     kernel: &mut Option<Nl80211>,
     measures: &mut Measures,
+    state: &watch::Receiver<State>,
 ) {
     let mut echoing = JoinSet::new();
     let mut cards = HashMap::new();
+    let mut before = HashMap::new();
     let mut echoed_on = Vec::new();
     for on in joined {
         let mut sockets = echoers.remove(&on.card).unwrap_or_default();
         sockets.open(&on.card);
+        before.insert(on.card.clone(), state.borrow().looking(&on.card));
         let on = on.clone();
         let card = on.card.clone();
         let task = echoing.spawn(async move {
@@ -542,6 +574,17 @@ async fn measure(
         // The late answers are taken before a failing socket is let go, as
         // what it heard late before failing is heard all the same.
         if measures.took_in(&on.point, sockets.late(), &echoed) {
+            let after = state.borrow().looking(&on.card);
+            let looked = before
+                .get(&on.card)
+                .is_some_and(|before| before.looked_until(after));
+            let sent = echoed.iter().find_map(|(class, echoed)| match echoed {
+                Ok((at, _)) if *class == Class::BestEffort => Some(*at),
+                _ => None,
+            });
+            if let (true, Some(at)) = (looked, sent) {
+                measures.looked(&on.point, at, after.begun);
+            }
             echoed_on.push(on.clone());
         }
         for (class, echoed) in echoed {
@@ -904,6 +947,45 @@ pub(crate) mod tests {
             "those from 5 s on, and the kernel's signal"
         );
         assert_eq!(unmeasured, (0, None), "nothing of a point not measured");
+    }
+
+    #[test]
+    fn lately_leaves_out_the_echoes_lost_while_the_card_looked() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for second in 0..10 {
+            let at = start + Duration::from_secs(second);
+            kept.echoed(DESK, at, Echo::Lost);
+            if second != 4 {
+                kept.looked(DESK, at, 1);
+            }
+        }
+        let now = start + Duration::from_secs(9);
+
+        let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
+
+        // Seconds 0 to 3 and 5 and 6 are the look's first 6 s; 7 to 9 run
+        // past them, as a fading link's look does.
+        assert_eq!(
+            lost, 4,
+            "the one lost between and those past the look's first 6 s"
+        );
+    }
+
+    #[test]
+    fn each_look_has_its_own_first_seconds_left_out() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for second in 0..10 {
+            let at = start + Duration::from_secs(second);
+            kept.echoed(DESK, at, Echo::Lost);
+            kept.looked(DESK, at, if second < 5 { 1 } else { 2 });
+        }
+        let now = start + Duration::from_secs(9);
+
+        let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
+
+        assert_eq!(lost, 0, "two looks of 5 s each are both left out whole");
     }
 
     #[test]
