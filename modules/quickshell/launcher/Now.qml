@@ -2379,23 +2379,28 @@ Provider {
         }
     }
 
-    // The notices moved, as `why` says. While For You is held, and nothing
-    // below it, it's asked with For You's own, after the change
+    // The rows that show the notices themselves: Desktop's, Slack's while
+    // its piece can't speak (noticesRow), and what's on screen.
+    readonly property var noticesShown: ["on:waiting:desktop", "on:waiting:slack",
+        "on:waiting:screen"]
+
+    // The notices moved, as `why` says. While one of Now's rows is held, and
+    // nothing below it, it's asked with For You's own, after the change
     // (forYouMoved): said outright there, a session's notice updated as its
     // work turned just after Return into For You was drawn as Return's act,
     // though no row For You showed had moved (the niri case, 2026-11-18:
-    // "the notices' history, then the notices' rows"). What For You shows
-    // is rows of places, whose every drawn line changedTo compares.
-    // Elsewhere the notices themselves are shown, in Desktop, History or
-    // what's on screen (leadsTo), whose rows changedTo doesn't reach or
-    // whose hue and drawer it doesn't compare, so there, as with nothing
-    // held, it's said outright and the places a notice is listed in are
-    // made again. Desktop and what's on screen are right under Now while
-    // no critical notice waits (latelyInForYou), so it's For You's key,
-    // not the depth, that says which (round 7, F77).
+    // "the notices' history, then the notices' rows"). What such a step
+    // shows is rows of places or a thing's acts, whose every drawn line
+    // changedTo compares. Where the notices themselves are shown, in
+    // Desktop, History or what's on screen (leadsTo), changedTo doesn't
+    // reach their rows or compare their hue and drawer, so there, as with
+    // nothing held, it's said outright and the places a notice is listed
+    // in are made again. Desktop and what's on screen are right under Now
+    // while no critical notice waits (latelyInForYou), so it's the step's
+    // key that says which, not only its depth (rounds 7 and 8, F77, F80).
     function noticesMoved(why) {
         const held = heldKeys();
-        if (held.length === 1 && held[0].startsWith("on:waitingOnYou")) {
+        if (held.length === 1 && !noticesShown.includes(held[0])) {
             Qt.callLater(Hearing.putOff(forYouTold));
             return;
         }
