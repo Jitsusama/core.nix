@@ -441,6 +441,43 @@ import ./host-checks.nix args
       "pi's settings don't turn off the built-in codemode, so pi warns of it at every start."
       (leaves (account workstation) && leaves (account macWorkstation));
 
+  # The harness's config gets the settings a machine declares for it at
+  # every switch, beside what the harness and a person wrote there; a
+  # machine declaring none has its file left alone.
+  pi-harness-takes-its-settings =
+    let
+      settings.sections.quest-workflow.budgetWhenCapped = "a-budget";
+      home = account (
+        workstation.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.pi.harness = { inherit settings; }; } ];
+        }
+      );
+      program = lib.getExe (import ./settings.nix { inherit pkgs settings; });
+      activated = lib.getExe (
+        import ./settings.nix {
+          inherit (workstation) pkgs;
+          inherit settings;
+        }
+      );
+      script = home.home.activation.piHarnessTakesItsSettings.data or "";
+    in
+    assert lib.assertMsg (
+      lib.hasInfix (builtins.unsafeDiscardStringContext activated) script
+      && lib.hasInfix "/.config/pi/agentic-harness.pi/config.json" script
+    ) "The harness's activation doesn't run the settings program over its config file.";
+    assert lib.assertMsg (
+      !(account workstation).home.activation ? piHarnessTakesItsSettings
+    ) "A machine declaring no harness settings still has its config written.";
+    pkgs.runCommandLocal "pi-harness-takes-its-settings" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      file=$PWD/config.json
+      echo '{"version":1,"sections":{"review":{"a":1},"quest-workflow":{"kept":true}}}' > "$file"
+      ${program} "$file"
+      jq -e '.version == 1 and .sections.review == {"a": 1}
+        and .sections."quest-workflow" == {"kept": true, "budgetWhenCapped": "a-budget"}' "$file" \
+        || { echo "the harness's config lost a key or missed the declared one: $(cat "$file")"; exit 1; }
+      touch $out
+    '';
+
   # pi tells mycelium what its sessions start with in each realm: plain pi
   # at home, pi-claude in the plan's realm, plain pi alone on a machine on
   # the plan, and nothing for a machine in no realm.

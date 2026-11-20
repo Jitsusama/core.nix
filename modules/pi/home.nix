@@ -211,6 +211,20 @@ in
     '';
   };
 
+  options.jitsusama.pi.harness.settings = lib.mkOption {
+    type = lib.types.submodule { freeformType = (pkgs.formats.json { }).type; };
+    default = { };
+    example = {
+      sections.quest-workflow.budgetWhenCapped = "a-budget";
+    };
+    description = ''
+      Settings merged into the harness's own config file at every switch, as
+      `jitsusama.pi.settings` is into pi's: each wins over what the harness
+      or a person wrote there, and every other key is kept. Nothing is
+      written while none is declared.
+    '';
+  };
+
   options.jitsusama.pi.packages = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [ ];
@@ -625,6 +639,21 @@ in
     # did. pi's own folder is kept to its account alone, which closes every
     # file under it whatever mode pi writes it with; a umask for pi would
     # also make every file an agent writes private, which this doesn't.
+    # The harness keeps its config beside pi's and writes it itself, as
+    # its settings change, so it is merged as pi's is rather than linked.
+    home.activation.piHarnessTakesItsSettings = lib.mkIf (config.jitsusama.pi.harness.settings != { }) (
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        run ${
+          lib.getExe (
+            import ./settings.nix {
+              inherit pkgs;
+              inherit (config.jitsusama.pi.harness) settings;
+            }
+          )
+        } ${lib.escapeShellArg "${config.xdg.configHome}/pi/agentic-harness.pi/config.json"}
+      ''
+    );
+
     home.activation.piKeepsItsFolderPrivate = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       run mkdir -p ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/sessions"}
       run chmod 0700 ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent"} \
