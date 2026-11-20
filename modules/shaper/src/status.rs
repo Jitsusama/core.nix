@@ -68,9 +68,9 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
 /// set in `room` at the measure prose keeps to.
 fn said(link: &LinkStatus, room: Room) -> Vec<String> {
     let room = room.for_prose();
-    // The names come from the kernel and the router, so they're drawn
-    // through the kit's filter, which keeps a control from reaching the
-    // terminal.
+    // The names are the kernel's and iproute2's text, which the shaper
+    // doesn't control, so they're drawn through the kit's filter, which
+    // keeps a control from reaching the terminal.
     let mut lines = vec![format!(
         "{}  on {}",
         layout::one_line(&link.name),
@@ -553,14 +553,18 @@ mod tests {
                 .iter()
                 .position(|line| line.starts_with("  quiet round trips"))
                 .expect("the round trips are said");
+            let own: Vec<&String> = lines[at..]
+                .iter()
+                .take_while(|line| line.starts_with("  quiet") || line.starts_with("    "))
+                .collect();
             assert!(
-                lines[at + 1].starts_with("    "),
+                own.len() > 1,
                 "at {cells} columns the round trips didn't wrap: {lines:#?}"
             );
             for (host, ms) in held().baselines {
                 let trip = format!("{host} {ms:.0} ms");
                 assert!(
-                    lines.iter().any(|line| line.contains(&trip)),
+                    own.iter().any(|line| line.contains(&trip)),
                     "at {cells} columns {trip:?} was parted: {lines:#?}"
                 );
             }
@@ -683,6 +687,8 @@ mod tests {
     #[test]
     fn the_processor_s_lines_fit_the_room() {
         let (first, later) = spent();
+        let whole = first.said(&later, Room::Unbounded);
+        let words = |lines: &[String]| lines.join(" ").split_whitespace().collect::<String>();
         for cells in [40, 60] {
             let lines = first.said(&later, Room::Cells(cells));
             assert!(
@@ -693,7 +699,25 @@ mod tests {
                 lines.iter().all(|line| layout::width(line) <= cells),
                 "at {cells} columns a processor line ran past the edge: {lines:#?}"
             );
+            assert_eq!(
+                words(&lines),
+                words(&whole),
+                "at {cells} columns a processor line lost words"
+            );
+            // Each line begins one as said whole or hangs two cells under
+            // its first words.
+            assert!(
+                lines.iter().all(
+                    |line| whole.iter().any(|said| said.starts_with(line.as_str()))
+                        || (line.starts_with("  ") && !line.starts_with("   "))
+                ),
+                "at {cells} columns a wrapped line didn't hang: {lines:#?}"
+            );
         }
+        assert!(
+            first.said(&later, Room::Cells(40)).len() > whole.len(),
+            "at 40 columns no processor line wrapped"
+        );
     }
 
     #[test]

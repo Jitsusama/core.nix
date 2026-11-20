@@ -581,15 +581,36 @@ mod tests {
             wrapped("up 9.8 Mbit/s down", 11),
             ["up", "9.8 Mbit/s", "down"]
         );
-        // A word as long that isn't a rate still parts from a figure.
-        assert_eq!(wrapped("took 5 with it", 7), ["took 5", "with it"]);
-        // Nor is a word with a letter more before its "/s" than a
-        // rate has, or with anything but letters there.
+        // A rate says what it counts, however long its name, as a disk
+        // row's requests do.
         assert_eq!(
-            wrapped("took 5 flows/s now", 9),
-            ["took 5", "flows/s", "now"]
+            wrapped("took 5 requests/s now", 12),
+            ["took", "5 requests/s", "now"]
         );
+        // A stop after it doesn't hide it.
+        assert_eq!(
+            wrapped("it let 10.3 Mb/s. Then", 11),
+            ["it let", "10.3 Mb/s.", "Then"]
+        );
+        // Nor does a lone last word take it from its figure.
+        assert_eq!(
+            wrapped("it let 10.3 Mb/s through", 16),
+            ["it let 10.3 Mb/s", "through"]
+        );
+        // A word as long that isn't a rate still parts from a figure,
+        // as does one with anything but letters before its "/s".
+        assert_eq!(wrapped("took 5 with it", 7), ["took 5", "with it"]);
         assert_eq!(wrapped("took 5 a.b/s now", 7), ["took 5", "a.b/s", "now"]);
+    }
+
+    #[test]
+    fn a_figure_held_too_wide_for_its_line_parts_rather_than_shortens() {
+        // Shortened to fit, the figure would lose its digits, which are
+        // what the line is read for.
+        assert_eq!(
+            wrapped("up 9.8 Mbit/s down", 6),
+            ["up 9.8", "Mbit/s", "down"]
+        );
     }
 
     #[test]
