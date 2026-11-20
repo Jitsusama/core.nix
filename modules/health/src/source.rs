@@ -538,15 +538,18 @@ impl Followers {
         move || children.end()
     }
 
-    /// A follower started on `command`, its output unread, kept until the
-    /// followers are ended, for a test: its process's id.
+    /// A follower started on `command`, which says its end through `say`,
+    /// for a test: its process's id, and what it sends.
     #[cfg(test)]
-    pub(crate) fn following(&self, mut command: Command) -> u32 {
-        let started = self
-            .children
-            .start(&mut command)
-            .expect("the follower starts");
-        started.expect("the followers not ended").0
+    pub(crate) fn following(
+        &self,
+        command: Command,
+        say: impl Fn(&str) + Send + 'static,
+    ) -> (u32, std::sync::mpsc::Receiver<Option<String>>) {
+        let (lines, read) = std::sync::mpsc::channel();
+        let started = spawn_saying(command, lines, true, say, &self.children);
+        let id = started.expect("the follower starts");
+        (id.expect("the followers not ended"), read)
     }
 }
 
@@ -620,24 +623,25 @@ impl Children {
 /// (`follower_ended`).
 fn spawn(command: Command, lines: Sender<Option<String>>, children: &Children) -> io::Result<()> {
     let following = follows(&command);
-    spawn_saying(command, lines, following, warn, children)
+    spawn_saying(command, lines, following, warn, children).map(drop)
 }
 
 /// `spawn`, with what it says of its end said through `say`, before its
 /// `None`, sent if it `follows` for as long as health runs, or if it
 /// didn't end whole, so health starts again and reads it again. One that
 /// `children` ended, as health ends, says nothing and sends nothing, and
-/// one asked once they're ended isn't started.
+/// one asked once they're ended isn't started: the id of the process
+/// started, if one is.
 fn spawn_saying(
     mut command: Command,
     lines: Sender<Option<String>>,
     follows: bool,
     say: impl Fn(&str) + Send + 'static,
     children: &Children,
-) -> io::Result<()> {
+) -> io::Result<Option<u32>> {
     let name = named(&command);
     let Some((id, out)) = children.start(&mut command)? else {
-        return Ok(());
+        return Ok(None);
     };
     let children = children.clone();
     thread::spawn(move || {
@@ -670,7 +674,7 @@ fn spawn_saying(
             let _ = lines.send(None);
         }
     });
-    Ok(())
+    Ok(Some(id))
 }
 
 /// Whether `command` follows for as long as health runs: every follower,

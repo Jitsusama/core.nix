@@ -126,22 +126,25 @@ fn catch(signals: &[c_int]) -> io::Result<PipeReader> {
 
 /// The catch: the stop marked and its signal written for the thread
 /// waiting on it, as little else is safe within a catch; or, for a stop
-/// caught while one is under way, health ended at once by its signal.
+/// caught while one is under way, health ended by its signal as the catch
+/// returns.
 extern "C" fn heard(signal: c_int) {
     // SAFETY: errno is this thread's, and kept for the code the catch
     // interrupted, which may be about to read it.
     let kept = unsafe { *errno() };
     if STOPPED.swap(true, Ordering::SeqCst) {
         // SAFETY: both are safe within a catch; the signal's own action
-        // restored and raised ends the process.
+        // restored and raised ends the process once the catch returns, as
+        // the signal caught waits until then.
         unsafe {
             libc::signal(signal, libc::SIG_DFL);
             libc::raise(signal);
         }
+    } else {
+        let number = u8::try_from(signal).unwrap_or(0);
+        // SAFETY: write is safe within a catch, and a pipe full only fails it.
+        unsafe { libc::write(CAUGHT.load(Ordering::SeqCst), (&raw const number).cast(), 1) };
     }
-    let number = u8::try_from(signal).unwrap_or(0);
-    // SAFETY: write is safe within a catch, and a pipe full only fails it.
-    unsafe { libc::write(CAUGHT.load(Ordering::SeqCst), (&raw const number).cast(), 1) };
     // SAFETY: as above.
     unsafe { *errno() = kept };
 }
