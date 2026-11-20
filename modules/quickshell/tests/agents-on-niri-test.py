@@ -453,7 +453,9 @@ def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
     shell.close_launcher()
     found(shell, "listening quest", "Listening Quest")
     shell.step_in("ctrl-bracketright")
-    shell.launcher_until(lambda shown: shown["rows"][:2] == ["Talk", "Pause"])
+    # Its acts are its drawer's, as the agents daemon serves them: one held here has a
+    # window to go to, its kitty's, so Go To comes first.
+    shell.launcher_until(lambda shown: shown["rows"][:3] == ["Go To", "Talk", "Pause"])
     assert not shell.showing()["asking"], shell.showing()
 
 
