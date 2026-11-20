@@ -19,7 +19,8 @@ makes its set, shutting and a frame that changes nothing make none, opening agai
 set back, growing gives the set up for the next blur of its size, which going back takes, a size
 sharing only a width or an area with a kept set makes its own, the walk's second set is still
 kept after three newer sizes and once more after all of them, and the pool never says it keeps
-more than 64 MiB once it has let go.
+more than 64 MiB once it has let go, in lines whose sizes read whole, naming the walk's first
+size among those it let go past its cap.
 
 usage: keeps-a-blur-ready.py <niri's log>
 """
@@ -67,8 +68,11 @@ SAID = re.compile(
     r"a background effect sized (\d+) \S+ (\d+) made (\d+) textures and took (\d+) kept"
 )
 # niri's line for textures the pool let go, printed beside the step that made it say so, since
-# that tells a cap too small from an effect keeping its old set before taking its new one.
-LET_GO = re.compile(r"the texture pool let go of \d+ textures, keeping (\d+) MB")
+# that tells a cap too small from an effect keeping its old set before taking its new one. It
+# names each texture's size, so a log shows whether the launcher's own set was let go.
+# Its end is matched too, so a line niri is still writing is read only once it is whole.
+LET_GO = re.compile(r"the texture pool let go of (\d+) textures, keeping (\d+) MB: ([\dx ]+)\n")
+SIZE = re.compile(r"\d+x\d+")
 COLOURS = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -169,7 +173,7 @@ class Steps:
         self.log = log
         self.seen = len(said(log))
         self.let_go = len(LET_GO.findall(read(log)))
-        self.heard_let_go = False
+        self.named: list[str] = []
 
     def after(self, name: str, size: tuple[int, int], *, says: bool) -> tuple[int, int]:
         """How many textures niri made and took kept since the last step, adding up its lines.
@@ -197,15 +201,36 @@ class Steps:
         let_go = list(LET_GO.finditer(read(self.log)))[self.let_go :]
         self.let_go += len(let_go)
         for line in let_go:
-            print(f"{name}: {line[0]}")
-            self.heard_let_go = True
-            if int(line[1]) > MOST:
-                sys.exit(f"after {name}, the pool kept {line[1]} MB: its cap is over {MOST} MiB")
+            print(f"{name}: {line[0].rstrip()}")
+            named = line[3].split()
+            if len(named) != int(line[1]) or not all(SIZE.fullmatch(size) for size in named):
+                sys.exit(f"after {name}, a let-go line no longer reads as LET_GO expects")
+            self.named += named
+            if int(line[2]) > MOST:
+                sys.exit(f"after {name}, the pool kept {line[2]} MB: its cap is over {MOST} MiB")
         for width, height, made, kept in lines:
             print(f"{name}: a blur {width} x {height} made {made} and took {kept} kept")
             if (width, height) != size:
                 sys.exit(f"after {name}, niri spoke of a blur {width} x {height}, not {size}")
         return sum(line[2] for line in lines), sum(line[3] for line in lines)
+
+    def let_go_first(self) -> None:
+        """Fail unless the pool named the walk's first size among what it let go, never its second.
+
+        The walk never takes its first size back, so by its end the pool has let that set go. It
+        takes its second back whole at the end, so a line naming that size named a kept texture.
+        """
+        if not self.named:
+            sys.exit(
+                "niri never said its pool let go of textures: its cap is over about 97 MiB, "
+                "or its let-go line no longer reads as LET_GO expects"
+            )
+        first = f"{FILLING[0][0]}x{FILLING[0][1]}"
+        if first not in self.named:
+            sys.exit(f"niri never named {first} among what its pool let go, though none took it")
+        second = f"{FILLING[1][0]}x{FILLING[1][1]}"
+        if second in self.named:
+            sys.exit(f"niri named {second} among what its pool let go, though it was kept whole")
 
 
 def main() -> None:
@@ -283,11 +308,7 @@ def main() -> None:
         why="the pool let go of the oldest set it held whole: it keeps less than about 63 MiB, "
         "or kept the set given up before taking this one, or each set grew",
     )
-    if not steps.heard_let_go:
-        sys.exit(
-            "niri never said its pool let go of textures: its cap is over about 97 MiB, "
-            "or its let-go line no longer reads as LET_GO expects"
-        )
+    steps.let_go_first()
 
 
 def alike(launcher: Launcher, steps: Steps, whole: int) -> None:

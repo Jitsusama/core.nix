@@ -192,10 +192,10 @@ index 474437a..afce62f 100644
  /// A rendering context.
 diff --git a/src/render_helpers/texture_pool.rs b/src/render_helpers/texture_pool.rs
 new file mode 100644
-index 0000000..e7572cf
+index 0000000..ebca275
 --- /dev/null
 +++ b/src/render_helpers/texture_pool.rs
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,140 @@
 +//! Textures a background effect let go, kept for the next effect that needs them.
 +//!
 +//! smithay keeps a framebuffer effect's textures in its damage tracker only for the elements a
@@ -312,19 +312,26 @@ index 0000000..e7572cf
 +        }
 +        self.bytes += bytes;
 +        self.kept.extend(set);
-+        let mut let_go = 0;
++        // The sizes let go are said, so a log shows whether the launcher's own set went.
++        let mut let_go = Vec::new();
 +        while self.bytes > MOST {
 +            let Some(oldest) = self.kept.pop_front() else {
 +                break;
 +            };
 +            self.bytes -= bytes_of(&oldest);
-+            let_go += 1;
++            let_go.push(oldest.size());
 +        }
 +        // Said once a set, so a surface resizing each frame logs no more than its own line does.
-+        if let_go > 0 {
++        if !let_go.is_empty() {
 +            debug!(
-+                "the texture pool let go of {let_go} textures, keeping {} MB",
-+                self.bytes >> 20
++                "the texture pool let go of {} textures, keeping {} MB: {}",
++                let_go.len(),
++                self.bytes >> 20,
++                let_go
++                    .iter()
++                    .map(|size| format!("{}x{}", size.w, size.h))
++                    .collect::<Vec<_>>()
++                    .join(" ")
 +            );
 +        }
 +    }
