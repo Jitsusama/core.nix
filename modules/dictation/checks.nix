@@ -257,10 +257,10 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      # Keeping a lone "Yeah." or "No.", and cutting takes only where a
-      # voice is, took the rate from 19.3% to 18.8%; the ceiling sits
-      # between, so it fails the code from before it.
-      ceiling = "19.0";
+      # Waiting a second's quiet before cutting a take took the rate from
+      # 18.8% to 17.7%; the ceiling sits between, so it fails the code
+      # from before it.
+      ceiling = "18.2";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}

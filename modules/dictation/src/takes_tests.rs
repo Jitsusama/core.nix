@@ -194,13 +194,14 @@ fn a_pause_between_sentences_makes_two_takes_each_starting_just_before_its_speec
         "{:?}",
         takes.iter().map(|t| t.start).collect::<Vec<_>>()
     );
+    let edge = seconds(EDGE_FRAMES * FRAME);
     assert!(
-        (seconds(takes[0].start) - 1.8).abs() < 0.05,
+        (seconds(takes[0].start) - (2.0 - edge)).abs() < 0.05,
         "{}",
         seconds(takes[0].start)
     );
     assert!(
-        (seconds(takes[1].start) - 6.3).abs() < 0.05,
+        (seconds(takes[1].start) - (6.5 - edge)).abs() < 0.05,
         "{}",
         seconds(takes[1].start)
     );
