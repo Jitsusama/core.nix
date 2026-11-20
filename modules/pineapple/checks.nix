@@ -167,7 +167,10 @@ onLinux {
       unit = home.systemd.user.services.pineapple;
       socket = home.systemd.user.sockets.pineapple;
       command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
-      pause = builtins.fromJSON home.xdg.configFile."pineapple/pause.json".text;
+      # Read for its shape only, so the store paths it names needn't build.
+      pause = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext home.xdg.configFile."pineapple/pause.json".text
+      );
     in
     holds "pineapple-serves-the-launcher-from-its-socket"
       "pineapple lacks its socket, login start, serve command, notice, words or pause plan."
