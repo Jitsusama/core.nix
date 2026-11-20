@@ -88,8 +88,12 @@ impl Watch {
         fs::write(folder.join("Unplugged"), "pipewire\n").unwrap();
         fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
         fs::write(folder.join("Another"), "obs\n").unwrap();
-        // And one another camera's run is writing, saying this node too.
-        fs::write(devices.join("Plugged.123"), format!("{}\n", real.display())).unwrap();
+        // And one another camera's run is writing, saying this node too,
+        // as this test's own process, which runs, and a camera named for
+        // a version, which isn't being written, killed the same way.
+        let plugged = format!("Plugged.{}", std::process::id());
+        fs::write(devices.join(plugged), format!("{}\n", real.display())).unwrap();
+        fs::write(devices.join("Webcam 2.0"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -212,8 +216,14 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
         "another camera's node file was touched"
     );
     assert!(
-        devices.join("Plugged.123").exists(),
+        devices
+            .join(format!("Plugged.{}", std::process::id()))
+            .exists(),
         "a file being written was taken from its writer"
+    );
+    assert!(
+        !devices.join("Webcam 2.0").exists(),
+        "a camera named for a version was taken for a file being written"
     );
 }
 

@@ -194,8 +194,9 @@ fn say_device(output: &Path, node: Option<&Path>) {
 
 /// Removes each file in the folder but this one that says this node, and
 /// the holders file beside the folder that it's named for, as that camera
-/// is gone; one being written, its name ending in a dot and a pid, is left
-/// to its writer.
+/// is gone; one being written, its name ending in a dot and the pid of a
+/// process still running, is left to its writer, where a camera named for
+/// a version, as `Webcam 2.0`, is not.
 fn forget_node(folder: &Path, own: &Path, said: &str) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
@@ -205,7 +206,11 @@ fn forget_node(folder: &Path, own: &Path, said: &str) {
         let being_written = path
             .extension()
             .and_then(|end| end.to_str())
-            .is_some_and(|end| !end.is_empty() && end.bytes().all(|byte| byte.is_ascii_digit()));
+            .is_some_and(|end| {
+                !end.is_empty()
+                    && end.bytes().all(|byte| byte.is_ascii_digit())
+                    && Path::new("/proc").join(end).exists()
+            });
         if path == own || being_written || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }

@@ -1360,6 +1360,9 @@ fn who_reads_a_camera_through_pipewire_is_told_as_it_changes_with_no_file_writte
     for (pid, name) in [(100, "pipewire"), (102, "tuple"), (103, "chrome")] {
         std::fs::create_dir_all(root.join(format!("proc/{pid}"))).unwrap();
         std::fs::write(root.join(format!("proc/{pid}/comm")), format!("{name}\n")).unwrap();
+        // The program it runs, by which PipeWire's own are known.
+        std::os::unix::fs::symlink(format!("/bin/{name}"), root.join(format!("proc/{pid}/exe")))
+            .unwrap();
     }
     let mut client = running.client();
     let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "camera"}));

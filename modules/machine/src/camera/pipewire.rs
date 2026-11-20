@@ -19,7 +19,10 @@
 //! else of the program: it can't be named, so `PipeWire` stays named for
 //! it. A process's name is still its own to set, as it is for a camera's
 //! other holders, so the name says which program it says it is, and one
-//! that gives none counts as a reader that can't be named.
+//! that gives none counts as a reader that can't be named. Which nodes
+//! are `PipeWire`'s own is judged by the program their process runs, its
+//! `exe`, which no process can set, since one of those passes the camera
+//! on unnamed.
 //!
 //! Long because half of it is its tests, each a registry as pw-cli could
 //! list it, read through the rules above, which change with them.
@@ -71,8 +74,9 @@ const LONGEST: u64 = 4 << 20;
 /// Why a listing past `LONGEST` is refused, as it starts.
 const TOO_LONG: &str = "pw-cli listed more than";
 
-/// Why a listing that was written into is refused, said the same each
-/// time, whatever a client writes, so it's said once.
+/// Why a listing that was written into is refused, with the id it went
+/// wrong at, so `pw-cli ls` finds the client, and said the same each time
+/// that client's property stays, so it's said once.
 const WRITTEN_INTO: &str = concat!(
     "pw-cli's listing was refused, as an id falls back or a key is said twice in it, ",
     "as a client's property holding a line break makes it, or a pw-cli listing otherwise"
@@ -122,7 +126,7 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
             if let Some(last) = globals.last()
                 && id <= last.id
             {
-                return Err(WRITTEN_INTO.to_owned());
+                return Err(format!("{WRITTEN_INTO}, after id {}", last.id));
             }
             let kind = kind.strip_prefix("PipeWire:Interface:").unwrap_or(kind);
             let kind = kind.split_once('/').map_or(kind, |(kind, _)| kind);
@@ -143,7 +147,7 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
                 .insert(key.to_owned(), value.to_owned())
                 .is_some()
             {
-                return Err(WRITTEN_INTO.to_owned());
+                return Err(format!("{WRITTEN_INTO}, at id {}", global.id));
             }
         }
     }
@@ -169,13 +173,17 @@ pub(super) struct State {
     /// When the last read found `PipeWire` holding a camera.
     pub(super) held_at: Option<Instant>,
     /// When the registry was last listed whole.
-    listed_at: Option<Instant>,
+    pub(super) listed_at: Option<Instant>,
     /// Why the last listing failed, said once until one succeeds or
     /// `PipeWire` lets go.
     pub(super) failing: Option<String>,
     /// The cameras `PipeWire` holds that the last listing showed nothing
     /// of, said once until it shows them.
     pub(super) unfound: HashSet<String>,
+    /// When each camera `PipeWire` holds was first listed without it, so
+    /// one only a listing old, as a camera WirePlumber is still taking in
+    /// is, isn't said.
+    pub(super) missed: HashMap<String, Instant>,
 }
 
 impl PipeWire {
@@ -223,6 +231,7 @@ impl PipeWire {
             state.listed_at = None;
             state.failing = None;
             state.unfound.clear();
+            state.missed.clear();
             return;
         }
         let listed = self.listed().and_then(|text| registry(&text));
@@ -234,20 +243,21 @@ impl PipeWire {
                 state.failing = None;
             }
             Err(why) => {
+                let forced = why.starts_with(WRITTEN_INTO) || why.starts_with(TOO_LONG);
+                let kept = !forced && state.listed_at.is_some_and(|at| at.elapsed() < KEPT_FOR);
                 if state.failing.as_deref() != Some(why.as_str()) {
-                    let when = if state.listed_at.is_some() {
+                    let when = if kept {
                         format!("once the last listing is {KEPT_FOR:?} old")
                     } else {
-                        "now, as none came before".to_owned()
+                        "now".to_owned()
                     };
                     eprintln!(
                         "<4>PipeWire's registry gave no listing to go by, so a camera it \
                          holds is said held by it {when}: {why}"
                     );
                 }
-                let forced = why == WRITTEN_INTO || why.starts_with(TOO_LONG);
                 state.failing = Some(why);
-                if forced || state.listed_at.is_none_or(|at| at.elapsed() >= KEPT_FOR) {
+                if !kept {
                     state.graph = None;
                 }
             }
@@ -379,12 +389,23 @@ pub fn readers(
         // socket's pid is the portal's, not the program's.
         (!name.is_empty() && !name.starts_with(PORTAL)).then_some(name)
     };
+    // Whether a node's process runs `PipeWire` or WirePlumber, by the
+    // program it runs rather than the name it gives itself.
+    let pipewires = |node: u64| {
+        let client = nodes.get(&node).and_then(|node| node.number("client.id"));
+        let pid = client
+            .and_then(|client| clients.get(&client))
+            .and_then(|client| client.number("pipewire.sec.pid"));
+        pid.and_then(|pid| std::fs::read_link(root.path(&format!("/proc/{pid}/exe"))).ok())
+            .and_then(|exe| exe.file_name().map(|name| program(&name.to_string_lossy())))
+            .is_some_and(|name| PIPEWIRE.contains(&name.as_str()))
+    };
     let mut frontier: Vec<u64> = typed("Node")
         .filter(|global| {
             global
                 .number("device.id")
                 .is_some_and(|id| devices.contains(&id))
-                && process(global.id).is_some_and(|name| PIPEWIRE.contains(&name.as_str()))
+                && pipewires(global.id)
         })
         .map(|global| global.id)
         .collect();
@@ -414,7 +435,10 @@ pub fn readers(
                 continue;
             }
             match process(input) {
-                Some(name) if PIPEWIRE.contains(&name.as_str()) => frontier.push(input),
+                _ if pipewires(input) => frontier.push(input),
+                // One calling itself `PipeWire` would pass the camera on
+                // to another's node, and go unnamed.
+                Some(name) if PIPEWIRE.contains(&name.as_str()) => unknown = true,
                 Some(name) => once(&mut named, &name),
                 None => unknown = true,
             }
@@ -450,7 +474,8 @@ pub(crate) mod tests {
         Root::new(root)
     }
 
-    /// Each process the graph's clients are, by its pid, as /proc says.
+    /// Each process the graph's clients are, by its pid, as /proc says:
+    /// the name it gives itself and the program it runs.
     pub(crate) fn processes(root: &Root) {
         for (pid, name) in [
             (100, "pipewire"),
@@ -459,10 +484,19 @@ pub(crate) mod tests {
             (103, "chrome"),
             (104, "zoom"),
         ] {
-            let folder = root.path(&format!("/proc/{pid}"));
-            fs::create_dir_all(&folder).unwrap();
-            fs::write(folder.join("comm"), format!("{name}\n")).unwrap();
+            process(root, pid, name, name);
         }
+    }
+
+    /// A process, by its pid, giving itself one name and running a
+    /// program by another.
+    pub(crate) fn process(root: &Root, pid: u64, name: &str, runs: &str) {
+        let folder = root.path(&format!("/proc/{pid}"));
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("comm"), format!("{name}\n")).unwrap();
+        let exe = folder.join("exe");
+        let _ = fs::remove_file(&exe);
+        std::os::unix::fs::symlink(format!("/nix/store/x-{runs}/bin/{runs}"), exe).unwrap();
     }
 
     /// A registry as `pw-cli ls` lists one: the camera's device and its
@@ -775,15 +809,18 @@ pub(crate) mod tests {
         let root = machine("offered");
         let graph = registry(include_str!("offered.txt")).expect("it rises by id");
         let readers_of = || readers(&graph, Some("/dev/video34"), "Built-in Camera", &root);
-        fs::create_dir_all(root.path("/proc/2359")).unwrap();
-        fs::write(root.path("/proc/2359/comm"), "wireplumber\n").unwrap();
+        process(&root, 2359, "wireplumber", "wireplumber");
         assert_eq!(
             readers_of(),
             named(&["pipewire"]),
             "its node is WirePlumber's"
         );
-        fs::write(root.path("/proc/2359/comm"), "chrome\n").unwrap();
-        assert_eq!(readers_of(), None, "a node a reader made is no camera's");
+        process(&root, 2359, "wireplumber", "chrome");
+        assert_eq!(
+            readers_of(),
+            None,
+            "a node a reader made, named for WirePlumber, is no camera's"
+        );
     }
 
     #[test]
@@ -842,11 +879,26 @@ pub(crate) mod tests {
             named(&["chrome", "tuple"])
         );
         // And as its process is named for PipeWire, as one can name itself.
-        fs::write(root.path("/proc/103/comm"), "pipewire\n").unwrap();
+        process(&root, 103, "pipewire", "chrome");
         assert_eq!(
             readers(&graph, Some("/dev/video32"), "camera", &root),
             named(&["tuple", "pipewire"]),
-            "a node linked into the camera's is a reader not named"
+            "a reader named for PipeWire is a reader not named"
+        );
+        // Passing the camera on to Zoom's node, as PipeWire's own would.
+        let mut graph = self::graph(&root, "Built-in Camera", "/dev/video32");
+        process(&root, 103, "pipewire", "chrome");
+        graph.extend(
+            registry(
+                "\tid 34, type PipeWire:Interface:Link/3\n \t\tlink.output.node = \"14\"\n \
+                 \t\tlink.input.node = \"22\"\n",
+            )
+            .expect("it rises by id"),
+        );
+        assert_eq!(
+            readers(&graph, Some("/dev/video32"), "camera", &root),
+            named(&["tuple", "pipewire"]),
+            "a reader named for PipeWire hid behind Zoom"
         );
     }
 

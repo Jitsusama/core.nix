@@ -70,6 +70,7 @@ pub fn cameras(root: &Root, pipewire: &PipeWire) -> Vec<Value> {
         })
         .collect::<Vec<_>>();
     state.unfound.retain(|name| held.contains(name));
+    state.missed.retain(|name, _| held.contains(name));
     state.held_at = (!held.is_empty()).then(Instant::now);
     drop(state);
     named
@@ -89,13 +90,23 @@ pub fn cameras(root: &Root, pipewire: &PipeWire) -> Vec<Value> {
 /// nothing of, as one whose format has moved on or whose camera is offered
 /// under another path does, since it reads as `PipeWire` alone: said from
 /// a listing that came whole this time, not one kept through a failure,
-/// which says its own why, and once until the camera's shown or let go.
+/// which says its own why, once a later listing misses it too, as a
+/// camera just made may be held before WirePlumber offers it, and once
+/// until the camera's shown or let go.
 fn unseen(state: &mut State, name: &str, shown: bool) -> bool {
     if shown {
         state.unfound.remove(name);
+        state.missed.remove(name);
         return false;
     }
-    state.graph.is_some() && state.failing.is_none() && state.unfound.insert(name.to_owned())
+    let Some(at) = state
+        .listed_at
+        .filter(|_| state.graph.is_some() && state.failing.is_none())
+    else {
+        return false;
+    };
+    let first = *state.missed.entry(name.to_owned()).or_insert(at);
+    first < at && state.unfound.insert(name.to_owned())
 }
 
 /// Each camera's file, by name, sorted, with the programs it lists, each
@@ -284,6 +295,12 @@ mod tests {
         );
         pipewire.state().failing = None;
         assert_eq!(programs(), json!(["pipewire"]));
+        assert!(
+            pipewire.state().unfound.is_empty(),
+            "not said from the first listing to miss it"
+        );
+        listed_whole(&pipewire);
+        assert_eq!(programs(), json!(["pipewire"]));
         assert!(pipewire.state().unfound.contains("camera"), "said");
         assert!(
             !unseen(&mut pipewire.state(), "camera", false),
@@ -301,8 +318,10 @@ mod tests {
             "to be said again once it's shown"
         );
         fs::write(&listed, listing("Built-in Camera", "/dev/video40", 0)).unwrap();
-        listed_whole(&pipewire);
-        programs();
+        for _ in 0..2 {
+            listed_whole(&pipewire);
+            programs();
+        }
         assert!(pipewire.state().unfound.contains("camera"), "said again");
         write(&root, "other", "pipewire\n");
         write(&root, "camera", "");
@@ -371,9 +390,9 @@ mod tests {
                 "{why}: the camera reads on"
             );
             assert_eq!(
-                pipewire.state().unfound.contains("camera"),
+                pipewire.state().missed.contains_key("camera"),
                 why == "one that says nothing it can read",
-                "{why}: said to show no such camera only from a listing read"
+                "{why}: missed only in a listing read"
             );
             assert!(pipewire.due().is_some(), "{why}: read again");
         }
