@@ -171,11 +171,10 @@ fn answer_report(context: &Context, hours: u64) -> Result<(), Failure> {
     .map_err(|error| unwritten(&error))
 }
 
-/// The account's manager this runs under, from its own cgroup: the
-/// slices it watches are this account's.
-fn account(cgroups: &Path) -> Option<PathBuf> {
-    let own = fs::read_to_string("/proc/self/cgroup").ok()?;
-    Some(cgroups.join(manager(&own)?.trim_start_matches('/')))
+/// The cgroup folder of the account's manager this runs under, as
+/// [`manager`] names it: the slices it watches are this account's.
+fn account(cgroups: &Path, manager: &str) -> PathBuf {
+    cgroups.join(manager.trim_start_matches('/'))
 }
 
 /// The account's manager in a process's cgroup, as `/proc/<pid>/cgroup`
@@ -427,7 +426,10 @@ fn now(context: &Context) -> Result<(), Failure> {
 /// The watch, a window every ten seconds until it's stopped.
 fn run() -> Result<(), Failure> {
     let cgroups = PathBuf::from("/sys/fs/cgroup");
-    let Some(account) = account(&cgroups) else {
+    // One read of its own cgroup gives both the slices and the apps, so
+    // they can't disagree about whose they are.
+    let own = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let Some(manager) = manager(&own) else {
         return Err(
             Failure::new(Exit::Unavailable, "there are no slices to watch")
                 .because("it isn't running under an account's manager")
@@ -435,9 +437,9 @@ fn run() -> Result<(), Failure> {
         );
     };
     let proc = PathBuf::from("/proc");
+    let account = account(&cgroups, manager);
     started();
-    let own = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let mut apps = apps::Apps::of_account(manager(&own).unwrap_or_default());
+    let mut apps = apps::Apps::of_account(manager);
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
@@ -579,6 +581,39 @@ mod tests {
     }
 
     #[test]
+    fn a_hidden_tab_is_left_out_on_the_paths_the_watch_finds_its_threads_by() {
+        use kernel::tests::{ACCOUNT, opened, write};
+        let proc = std::env::temp_dir().join(format!("lag-watch-found-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&proc);
+        // A renderer whose main thread Chrome lowered, as it does a hidden
+        // tab's, found as the watch finds it, not as a test builds it.
+        opened(&proc, "72", "chrome");
+        write(&proc.join("72/cmdline"), "chrome\0--type=renderer\0");
+        write(
+            &proc.join("72/stat"),
+            "72 (chrome) S 1 1 1 0 -1 0 1 0 0 0 5 6 0 0 25 5 30 0 99\n",
+        );
+        for (tid, comm) in [("72", "chrome"), ("73", "Compositor")] {
+            write(
+                &proc.join(format!("72/task/{tid}/comm")),
+                &format!("{comm}\n"),
+            );
+            write(&proc.join(format!("72/task/{tid}/schedstat")), "10 20 3\n");
+        }
+        let mut apps = apps::Apps::of_account(ACCOUNT);
+        let threads = kernel::threads(&proc, None, &proc.join("tuple.service"), &mut apps);
+        assert_eq!(threads.len(), 2, "the renderer's two threads: {threads:?}");
+        let s = snapshot(&proc, &proc, &threads);
+        assert!(
+            s.threads.is_empty(),
+            "a hidden tab was read: {:?}",
+            s.threads
+        );
+        assert_eq!(s.lowered, BTreeMap::from([("chrome-ui".to_string(), 1)]));
+        fs::remove_dir_all(&proc).unwrap();
+    }
+
+    #[test]
     fn the_account_is_the_manager_in_the_watch_s_own_cgroup() {
         let own =
             "0::/user.slice/user-1000.slice/user@1000.service/session.slice/lag-watch.service\n";
@@ -595,8 +630,8 @@ mod tests {
         );
         assert_eq!(manager("0::/system.slice/lag-watch.service\n"), None);
         assert_eq!(
-            account(Path::new("/sys/fs/cgroup")).is_some(),
-            manager(&fs::read_to_string("/proc/self/cgroup").unwrap()).is_some()
+            account(Path::new("/sys/fs/cgroup"), manager(own).unwrap()),
+            Path::new("/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service")
         );
     }
 
