@@ -14528,8 +14528,9 @@ Scope {
                                 // Whose rows it spends on is said too, since
                                 // Joel's "aq" took 8 rows back in 112 ms, 14
                                 // a row, where the keys lab's take 0.9
-                                // (2026-11-18), and the lab holds none of his
-                                // agents, runs or people.
+                                // (2026-11-18), and the lab holds his agents
+                                // only given LAB_AGENTS, and none of his runs
+                                // or people.
                                 const laidBy = RowsKept.begunLaying(asideFrom);
                                 list.laidBy = laidBy;
                                 let aside = 0;

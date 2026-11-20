@@ -14,6 +14,7 @@
   noFonts,
   pkgs,
   qs,
+  self,
   shellFolderLint,
   singleton,
   timedQml,
@@ -141,8 +142,14 @@ in
             tests = ../tests/launcher-keys-lab-on-niri.py;
             # The profiler of the Qt the shell runs on, beside what the lab
             # is given, without which Emoji and Copies have no rows.
+            # And the realm's node and the agents daemon, which serve
+            # Agents' rows from the sessions LAB_AGENTS lays, as the
+            # account's units do.
             given = given ++ [
               "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
+              "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
+              "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
+              "WORDS=${(import ../launcher/words.nix).file}"
             ];
             # Joel's caret rather than the checks' steady one, since what
             # it draws while he types is part of what a key waits for
