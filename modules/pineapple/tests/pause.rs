@@ -387,6 +387,26 @@ fn work_started_or_thawed_while_it_stands_is_frozen_and_thawed_with_the_rest() {
 }
 
 #[test]
+fn work_the_sorter_thaws_is_frozen_again_though_nothing_is_new() {
+    let state = scratch("sorter");
+    let mut here = machine();
+    pause::stop(&plan(), &state, "stop-all-1", "here", 1, &mut here).expect("stops");
+    here.asked.clear();
+    // Every unit still reads frozen, as systemd says of a scope the sorter
+    // thawed through its cgroup, and systemd 262 writes the cgroup again on
+    // a second freeze.
+    let tended = tend(&state, 2, &mut here);
+    assert!(tended.froze.is_empty(), "nothing new is added: {tended:?}");
+    assert_eq!(
+        asked_with(&here, "--user freeze"),
+        vec![format!("systemctl --user freeze {FROZEN}")],
+        "what the stop froze is frozen again with nothing new: {:?}",
+        here.asked
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
 fn a_step_a_resume_cannot_take_is_tried_again_after_a_minute() {
     let state = scratch("retry");
     let mut here = machine();
