@@ -540,9 +540,9 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     retry(hears_the_second, timeout=timedelta(seconds=60))
     # wpa_supplicant keeps an access point through two looks that don't hear it, so the move
     # still finds the second after its own look over the channel, and is asked into nothing.
-    # The card gives up on it within tens of milliseconds, and wpa_supplicant is on its way
-    # to the Roadside Inn before wifid hears it gave up (2026-11-20), so the card can be on
-    # the Inn a moment before it's back: the bar is that it's back within a second.
+    # The card gives up on it within tens of milliseconds, and wpa_supplicant was on its way
+    # to the Roadside Inn before wifid heard it gave up (2026-11-20), so the card moves with
+    # its other networks off, and is back within a second, never on the Inn.
     machine.succeed("systemctl stop lantern-two")
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
@@ -558,8 +558,12 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
             " | grep -qE '^wlan2 reached 02:00:00:00:00:00 [0-9]+ ms after it was asked'",
             timeout=timedelta(seconds=30),
         )
-        # Sent back with its other networks off, it has them on again once there.
-        wifid.says("wlan2 is back, and may join its other networks again")
+        # Moved with its other networks off, it has them on again once back.
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qx 'wlan2 may join its other networks again'",
+            timeout=timedelta(seconds=30),
+        )
     finally:
         machine.log(
             machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'")
@@ -575,6 +579,8 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     )
     took = float(back.split()[0]) - float(moved.split()[0])
     assert took < 1, f"back {took:.3f} s after the move was asked"
+    inn = [line for line in said if "SSID='Roadside Inn'" in line]
+    assert not inn, f"tried the Inn on the way back: {inn}"
     machine.succeed(
         "s=$(wpa_cli -i wlan2 status)"
         ' && echo "$s" | grep -qx wpa_state=COMPLETED'
