@@ -191,6 +191,15 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
 
     retry(hears_the_second, timeout=timedelta(seconds=60))
+    # The fixture joined Lantern as the launcher does, which keeps the card's other networks
+    # off while it's on the network Joel picked; the subtest before took the card off it, so
+    # the Inn is on, and this move is the one to turn it off and on again.
+    networks = machine.succeed("wpa_cli -i wlan2 list_networks").splitlines()
+    inns = [row.split("\t")[0] for row in networks if row.split("\t")[1:2] == ["Roadside Inn"]]
+    assert len(inns) == 1, f"the Inn is saved once: {networks}"
+    inn = inns[0]
+    disabled = f"wpa_cli -i wlan2 get_network {inn} disabled"
+    assert machine.succeed(disabled).strip() == "0", "the Inn is on before the move"
     # wpa_supplicant keeps an access point through two looks that don't hear it, so the move
     # still finds the second after its own look over the channel, and is asked into nothing.
     # The card gives up on it within tens of milliseconds, and wpa_supplicant was on its way
@@ -205,9 +214,11 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     assert answer == {"id": 1, "done": True}, answer
     # The way back is timed by its journal, kept whether it comes or not.
     try:
-        wifid.says(
-            "wlan2 came off its network short of 02:00:00:00:05:00,"
-            " so goes back to 02:00:00:00:00:00"
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qxF 'wlan2 came off its network short of 02:00:00:00:05:00,"
+            " so goes back to 02:00:00:00:00:00'",
+            timeout=timedelta(seconds=30),
         )
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
@@ -236,10 +247,13 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         f"journalctl -k -o cat --after-cursor='{since}'"
         " | sed -n 's/^wlan2: .* rejected association temporarily;.* (\\([0-9]*\\) ms)$/\\1/p'"
     ).split()
+    # wifid gives a way back 2 s, room for one such wait and the join after it.
+    assert len(bidden) <= 1, f"bidden wait more than once: {bidden} ms"
     waited = sum(int(ms) for ms in bidden) / 1000
     assert took < 1 + waited, f"back {took:.3f} s after the move was asked, bidden wait {waited} s"
-    inn = [line for line in said if "SSID='Roadside Inn'" in line]
-    assert not inn, f"tried the Inn on the way back: {inn}"
+    tried = [line for line in said if "SSID='Roadside Inn'" in line]
+    assert not tried, f"tried the Inn on the way back: {tried}"
+    assert machine.succeed(disabled).strip() == "0", "the Inn is on again once back"
     machine.succeed(
         "s=$(wpa_cli -i wlan2 status)"
         ' && echo "$s" | grep -qx wpa_state=COMPLETED'
