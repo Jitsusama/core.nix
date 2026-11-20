@@ -394,6 +394,10 @@
     clippy finds nothing in asker-says, which says what a process asking for a password says of
     itself, or its tests
   '';
+  background-work-keeps-to-eight-processors = ''
+    background.slice declares a quota of eight processors' time, so the account's daemons are held
+    to it from every boot
+  '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';

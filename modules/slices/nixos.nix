@@ -467,13 +467,18 @@ in
       IOWeight = 1;
     };
     # The account's own daemons, 33 of them on 20 November (indexers, cadence,
-    # transcripts, models reading the screen), are held to eight processors'
-    # time, half the laptop's 16. Their weight of 30 only ranks them once every
-    # core is taken: a burst of theirs still lands on every idle core, and an
-    # app thread that wakes there waits for it to be preempted. The quota
-    # keeps half the cores clear of them. It rarely bites: from 13:35 to
-    # 14:00 on 20 November they had work in 14,952 tenths of a second and
-    # were held back in one. Set only at runtime before, a reset lost it.
+    # transcripts, models reading the screen), share eight processors' time
+    # at most, half the laptop's 16 and under a whole machine anywhere with
+    # more than eight. systemd's own weight for the slice, 30, only ranks them
+    # once every core is taken, so with cores idle a burst of theirs, a model
+    # loading say, could take all of them and leave each app thread that
+    # wakes waiting beside it. The quota bounds their time, not how many
+    # cores they run on: a burst wider than eight still spreads, and is
+    # stopped for the rest of its tenth of a second once it has spent eight
+    # processors' worth. That pause holds the launcher's daemons too, which
+    # is why it's no lower. It rarely bites: from 13:35 to 14:00 on 20
+    # November they had work in 14,952 tenths of a second and were held back
+    # in one. Set only at runtime before, a reset lost it.
     systemd.user.slices.background.sliceConfig = {
       IOWeight = 1;
       CPUQuota = "800%";
