@@ -202,6 +202,46 @@ struct Sent {
     at: Instant,
 }
 
+/// What a reply that came back is.
+#[derive(Clone, Copy)]
+enum Reply {
+    Timestamp,
+    Echo,
+}
+
+/// Take the probe a reply answers, if it is still on its way, the reply is
+/// the kind it asked for and it came `from` where it was sent: a timestamp
+/// from its reflector, or an echo from the `gateway`. Reflectors and the
+/// gateway share one run of numbers, so an echo could otherwise take a
+/// reflector's probe, or a timestamp the gateway's, and a stray reply from
+/// anywhere a reflector's; each would be written as what it isn't, and the
+/// real reply would then find nothing. Where a reply came from is only
+/// what its header says, so anyone who can write a reflector's address as
+/// their source and knows or guesses our id and next number is still
+/// taken: this keeps the kinds apart and turns away replies that say they
+/// come from elsewhere, not a forger who spoofs. The pool is chosen only
+/// from reflectors heard from the address they were asked at; one that
+/// later answers from another has those replies refused, and read as
+/// lost, and leaves the pool only at a choice that doesn't hear it from
+/// the address it was asked at.
+fn taken(
+    outstanding: &mut BTreeMap<u16, Sent>,
+    seq: u16,
+    reply: Reply,
+    from: Option<Ipv4Addr>,
+    gateway: Option<Ipv4Addr>,
+) -> Option<Sent> {
+    let asked = match (reply, outstanding.get(&seq)?.to) {
+        (Reply::Timestamp, Some((_, reflector))) => Some(reflector),
+        (Reply::Echo, None) => gateway,
+        _ => return None,
+    };
+    if from.is_none() || from != asked {
+        return None;
+    }
+    outstanding.remove(&seq)
+}
+
 /// The pool's line in the journal, which says when a choice `kept` it.
 fn pool_line(reflectors: &[(&'static str, Ipv4Addr)], kept: bool) -> Value {
     let mut line = json!({
@@ -315,7 +355,13 @@ impl Recorder<'_> {
         }
         let (rx, tx) = self.counted.read(&self.links, counters);
         if let Some(reply) = stamped
-            && let Some(sent) = self.outstanding.remove(&reply.seq)
+            && let Some(sent) = taken(
+                &mut self.outstanding,
+                reply.seq,
+                Reply::Timestamp,
+                icmp::source(packet),
+                self.gateway,
+            )
             && let Some((operator, address)) = sent.to
         {
             self.pool.heard(address);
@@ -334,8 +380,13 @@ impl Recorder<'_> {
             }
             self.journal.write(&line);
         } else if let Some(echoed) = icmp::echo_reply(packet, self.id)
-            && icmp::source(packet) == self.gateway
-            && let Some(sent) = self.outstanding.remove(&echoed)
+            && let Some(sent) = taken(
+                &mut self.outstanding,
+                echoed,
+                Reply::Echo,
+                icmp::source(packet),
+                self.gateway,
+            )
         {
             self.journal.write(&json!({
                 "at": now_ms(), "gateway": ms(arrived.duration_since(sent.at)),
@@ -509,6 +560,69 @@ mod tests {
             counted_links("eth0", names(&["wlan0"])),
             counted_links("eth0", Vec::new()),
             "a link leaving is a change"
+        );
+    }
+
+    #[test]
+    fn a_reply_takes_only_a_probe_of_its_own_kind_from_where_it_went() {
+        let reflector = ("Quad9", Ipv4Addr::new(9, 9, 9, 9));
+        let gateway = Some(Ipv4Addr::new(192, 168, 1, 1));
+        let beside = Some(Ipv4Addr::new(192, 168, 1, 23));
+        let at = Instant::now();
+        let mut outstanding = BTreeMap::from([
+            (
+                1,
+                Sent {
+                    to: Some(reflector),
+                    at,
+                },
+            ),
+            (2, Sent { to: None, at }),
+        ]);
+        let mut take = |seq, reply, from| taken(&mut outstanding, seq, reply, from, gateway);
+        assert!(
+            take(1, Reply::Echo, Some(reflector.1)).is_none(),
+            "an echo carrying a reflector's number was taken for its probe"
+        );
+        assert!(
+            take(1, Reply::Echo, gateway).is_none(),
+            "an echo from the gateway carrying a reflector's number was written as the gateway"
+        );
+        assert!(
+            take(2, Reply::Timestamp, gateway).is_none(),
+            "a timestamp carrying the gateway's number took its echo"
+        );
+        assert!(
+            take(1, Reply::Timestamp, beside).is_none(),
+            "a timestamp from beside us was written as the reflector"
+        );
+        assert!(
+            take(2, Reply::Echo, beside).is_none(),
+            "an echo from beside us was written as the gateway"
+        );
+        assert!(
+            take(1, Reply::Timestamp, None).is_none(),
+            "a timestamp from nowhere was written as the reflector"
+        );
+        assert!(
+            take(1, Reply::Timestamp, Some(reflector.1)).is_some_and(|s| s.to == Some(reflector)),
+            "the reflector's own reply found nothing"
+        );
+        assert!(
+            take(2, Reply::Echo, gateway).is_some_and(|sent| sent.to.is_none()),
+            "the gateway's own echo found nothing"
+        );
+        assert!(outstanding.is_empty(), "each probe is taken once");
+        assert!(
+            taken(
+                &mut BTreeMap::from([(3, Sent { to: None, at })]),
+                3,
+                Reply::Echo,
+                None,
+                None
+            )
+            .is_none(),
+            "with no gateway known, an echo from nowhere was taken"
         );
     }
 
