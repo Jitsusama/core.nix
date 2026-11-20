@@ -346,8 +346,12 @@ mod tests {
         let apps = Apps::of_account(ACCOUNT);
         let calls = |path: &str| apps.may_call(&format!("0::{path}\n"));
         let mine = format!("{ACCOUNT}/app.slice");
-        assert!(calls(&format!("{mine}/app-niri-a-70.scope")));
-        assert!(calls(&format!("{mine}/kitty-70-0.scope")));
+        for unit in ["app-niri-a-70.scope", "kitty-70-0.scope"] {
+            assert!(
+                calls(&format!("{mine}/{unit}")),
+                "{unit} carries Joel's call"
+            );
+        }
         for path in [
             // A terminal an agent's session opened, and one in a slice below.
             format!("{ACCOUNT}/agents.slice/kitty-70-0.scope"),
