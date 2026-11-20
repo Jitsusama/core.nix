@@ -7,7 +7,8 @@
 // have gone quiet, both squares start moving ten times. It fails, exiting
 // 2, if the still window drew any frame then, if either moving window drew
 // fewer than two frames for any start, or if the still window draws none
-// when its colour then changes, which shows its frames were heard at all.
+// when its colour then changes, which shows it's still shown and still
+// draws for a change of its own once the starts no longer ask it.
 import Quickshell
 import QtQuick
 
@@ -219,8 +220,10 @@ ShellRoot {
         heard.running = true;
     }
 
-    // A change of its own must draw, or its 0 above says only that its
-    // frames were never heard.
+    // A change of its own must draw: the settling already showed its frames
+    // are heard, and this shows that after ten starts it's still shown and
+    // still answers its own update, so the 0 above isn't a window niri hid
+    // or one the patch left deaf to its own changes.
     Timer {
         id: heard
 
@@ -228,7 +231,7 @@ ShellRoot {
         onTriggered: {
             if (root.stillDrawn === root.stillBefore) {
                 root.fail("The still window drew nothing when its colour changed, "
-                    + "so its frames weren't heard.");
+                    + "so it no longer draws for its own changes.");
                 return;
             }
             Qt.callLater(() => Qt.exit(0));
