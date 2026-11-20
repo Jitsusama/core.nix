@@ -17,7 +17,7 @@ by Tab as Joel goes into one given LAB_STEP_KEY=tab (Return, the default, starts
 Given LAB_BACK too, it steps back out of that place with - each round and prints that step's
 line, and given LAB_WINDOWS, it opens that many windows first, so Windows holds some. Given
 LAB_AGENTS, it lays that many live sessions and serves them through the realm's node and the
-agents daemon, so a step into Agents lays as many agent rows as Joel's. Given
+agents daemon (agents_served.py), so a step into Agents lays as many agent rows as Joel's. Given
 LAB_CHORD, a place's name as its chord asks for it, it opens that place from shut each round
 and steps out of it to home with nothing typed, as Joel's Super+Tab then - does.
 Given LAB_WITHIN too, names of the launcher's functions, it says what their calls took and what
@@ -31,27 +31,22 @@ LAB_PROFILE, or LAB_BACK without LAB_STEP.
 
 from __future__ import annotations
 
-import contextlib
-import json
 import os
 import re
-import socket
 import statistics
 import subprocess
 import time
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
 
 import launcher_on_niri
+from agents_served import agents_served
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     import pytest
-    from launcher_on_niri import Json, Shell
+    from launcher_on_niri import Shell
 
 # The words typed from home, each a letter at a time, as Joel typed them on 2026-11-11.
 WORDS = ("meet", "om")
@@ -100,161 +95,6 @@ while [ $i -lt {count} ]; do
 done
 sleep 3600
 """
-
-
-# The realm LAB_AGENTS' sessions are the node's in, and where pi lays each one's presence.
-REALM = "harbour"
-
-# How each of LAB_AGENTS' sessions stands, in turn, as Joel's Agents holds some of each.
-STANDINGS = ("busy", "listening", "paused", "busy", "listening")
-
-# What each session works on, about as long as a real one's summary, 290 letters.
-WORKING_ON = (
-    "{title}: A builder under the owner's plan, which keeps the launcher's agents quiet, told"
-    " and easy to read: every session says how it stands, what it does, what it spent and what"
-    " it needs from Joel, from the node, with nothing guessed and nothing said twice, held to"
-    " the launcher's family and its keys."
-)
-
-# How full each session's context is and its turns today, as the harness's usage keeps them.
-USAGE = {
-    "gen_ai.response.model": "claude-opus-5-5",
-    "last": {"gen_ai.usage.output_tokens": 4100},
-    "today": {
-        "gen_ai.usage.input_tokens": 786,
-        "gen_ai.usage.output_tokens": 272470,
-        "gen_ai.usage.cache_read.input_tokens": 124620036,
-        "gen_ai.usage.cache_creation.input_tokens": 1194960,
-    },
-    "context": {"used": 442000, "limit": 1000000},
-    "turns": {"today": 359, "last": {"duration_ms": 38000, "first_token_ms": 900}},
-}
-
-# How long the node and the agents daemon may take to listen, in seconds.
-LISTENING = 30
-
-
-def presence(state: Path, nth: int) -> Json:
-    """Give LAB_AGENTS' nth session as pi lays its presence, owned by this process, so alive."""
-    stat = Path("/proc/self/stat").read_text()
-    ticks = int(stat[stat.rindex(")") + 2 :].split()[19])
-    address = f"LAB{nth:03d}"
-    title = f"Lab Quest {nth}"
-    now = datetime.now(UTC)
-    landings = [
-        {"at": (now - timedelta(minutes=at)).isoformat(), "ref": f"core.nix#{4000 + at}",
-         "what": f"Lab change {at}", "person": "Press d on a session."}
-        for at in range(3)
-    ]  # fmt: skip
-    return {
-        "session": f"s-{address.lower()}",
-        "addresses": [address],
-        "title": f"\u03c0 - {title}",
-        "questInfo": {"id": f"QEST-20261120-{address}", "title": title, "short": address,
-                      "status": "active"},
-        "cwd": str(state / address.lower()),
-        "owner": {"pid": os.getpid(),
-                  "bootId": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
-                  "startTicks": ticks, "startedAt": int(time.time() * 1000)},
-        "at": now.isoformat(),
-        "state": STANDINGS[nth % len(STANDINGS)],
-        "busy": STANDINGS[nth % len(STANDINGS)] == "busy",
-        "repo": "core.nix",
-        "groups": ["#repo/core-nix", f"#lab-{nth}"],
-        "usage": {**USAGE, "day": datetime.now().astimezone().date().isoformat()},
-        "worksOn": WORKING_ON.format(title=title),
-        "landings": landings,
-    }  # fmt: skip
-
-
-def held_by_node(node: Path) -> int:
-    """Give how many sessions the node holds alive, asked over its daemon interface."""
-    with socket.socket(socket.AF_UNIX) as asked:
-        asked.connect(str(node))
-        asked.sendall(b'{"id": 1, "ask": "hello"}\n{"id": 2, "ask": "list", "kind": "session"}\n')
-        said = asked.makefile()
-        while True:
-            answer = json.loads(said.readline())
-            if answer.get("id") == 2:  # noqa: PLR2004
-                records = answer.get("records", [])
-                return sum(1 for record in records if record.get("state") != "ended")
-
-
-def listening(path: Path, process: subprocess.Popen[bytes], log: Path) -> None:
-    """Wait until a daemon listens on `path`, failing with its log if it ends first."""
-    deadline = time.monotonic() + LISTENING
-    while not path.exists():
-        if process.poll() is not None:
-            raise AssertionError(log.read_text(errors="replace"))
-        if time.monotonic() >= deadline:
-            refused = f"nothing listened on {path}"
-            raise AssertionError(refused)
-        time.sleep(launcher_on_niri.POLL)
-
-
-@contextlib.contextmanager
-def agents_served(count: int) -> Iterator[None]:
-    """Given LAB_AGENTS, lay that many sessions and serve them as Joel's Agents are served.
-
-    The realm's node reads their presence as pi lays it, and the agents daemon makes Agents'
-    rows from the node, as the account's units run them, so a step into Agents lays as many
-    agent rows as his: his took 9 in 10 to 37 ms, where a program's 9 take 2 to 5 (2026-11-20).
-    """
-    if count == 0:
-        yield
-        return
-    state = Path(os.environ["XDG_STATE_HOME"])
-    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
-    logs = Path(os.environ["LOGS"])
-    logs.mkdir(parents=True, exist_ok=True)
-    laid = state / "pi/agentic-harness.pi/mesh-workflow/presence"
-    laid.mkdir(parents=True, exist_ok=True)
-    for nth in range(count):
-        (laid / f"lab{nth:03d}.json").write_text(json.dumps(presence(state, nth)))
-    steer = state / "pi/agentic-harness.pi/steer"
-    steer.mkdir(parents=True, exist_ok=True)
-    serves = logs / "serves.json"
-    serves.write_text(json.dumps({"talk": {"talks": str(steer)}}))
-    node_socket = runtime / "mycelium" / f"{REALM}.sock"
-    rows = runtime / "daemons" / "agents.sock"
-    rows.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    spend = runtime / "spend-watch" / "collection.json"
-    spend.parent.mkdir(parents=True, exist_ok=True)
-    spend.write_text(json.dumps({"v": 2, "agentsToday": "$214"}))
-    with contextlib.ExitStack() as stack:
-        node_log = stack.enter_context((logs / "mycelium.log").open("wb"))
-        node = subprocess.Popen(
-            [os.environ["MYCELIUM"], "--realm", REALM, "node", "--serves", str(serves)],
-            stdout=node_log,
-            stderr=subprocess.STDOUT,
-        )
-        stack.callback(node.wait)
-        stack.callback(node.terminate)
-        listening(node_socket, node, logs / "mycelium.log")
-        deadline = time.monotonic() + LISTENING
-        while held_by_node(node_socket) < count:
-            if time.monotonic() >= deadline:
-                refused = f"the node holds {held_by_node(node_socket)}"
-                raise AssertionError(refused)
-            time.sleep(launcher_on_niri.POLL)
-        agents_log = stack.enter_context((logs / "agents.log").open("wb"))
-        workflow = state / "pi/agentic-harness.pi/quest-workflow"
-        served = subprocess.Popen(
-            [os.environ["AGENTS"], "--vocabulary", os.environ["WORDS"],
-             "--node", str(node_socket), "--to-do", str(rows.parent / "to-do.sock"),
-             "--windows", str(rows.parent / "windows.sock"), "--spend", str(spend),
-             "--orchestrators", str(workflow / "orchestrators.json"),
-             "--restore", str(state / "pi/restore.json"),
-             "--kept", str(state / "agents/reopen.json"),
-             "--landed", str(state / "agents/landed.json"), "--steer", str(steer),
-             "--shells", str(state / "quickshell/by-shell"), "--socket", str(rows)],
-            stdout=agents_log,
-            stderr=subprocess.STDOUT,
-        )  # fmt: skip
-        stack.callback(served.wait)
-        stack.callback(served.terminate)
-        listening(rows, served, logs / "agents.log")
-        yield
 
 
 def part(line: str, name: str) -> int | None:
@@ -344,12 +184,17 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
     Joel could feel (launcher/Trials.js's felt); one quicker gives none. Given LAB_BACK, it then
     steps back out with -, and gives that step's line second; else None. That step puts back
     the words typed to find the place, so it searches them as a key: Joel's out of Windows put
-    none back, which LAB_CHORD steps as.
+    none back, which LAB_CHORD steps as. Given LAB_STEP_BY=arrow, it reaches the place by arrows
+    from home with nothing typed, as Joel reaches Agents, which home builds no rows for until a
+    step or a letter wants them (launcher/Wanted.js).
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    shell.type_in(name.lower(), selecting=name)
+    if os.environ.get("LAB_STEP_BY") == "arrow":
+        shell.down_to(name)
+    else:
+        shell.type_in(name.lower(), selecting=name)
     since = shell.mark()
     shell.step_in(key)
     step = f"\u2192 {name}"

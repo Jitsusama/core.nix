@@ -579,6 +579,9 @@ as Joel's are served, so `LAB_STEP = "Agents"` lays agent rows. With 9,
 the step took 18 to 42 ms where Joel's took 59 to 171, and its 9 rows 7 to
 20 ms where his took 10 to 37; most of a row was its words laid out
 afresh, since a step reuses rows home held (2026-11-20).
+`LAB_STEP_BY = "arrow"` reaches the place by arrows from home with
+nothing typed, as Joel reaches Agents, whose rows home makes only once a
+letter or a step wants them; typed, they're made before the step.
 `LAB_COSTLIEST` says how many of the
 costliest bindings, handlers and functions each part lists.
 Given `LAB_WITHIN`, names of Launcher.qml's own functions split by spaces
