@@ -1131,6 +1131,19 @@ ShellRoot {
             now.waiting.side === "1 to do" && ForYouHolds.count === 1,
             JSON.stringify([now.waiting.side, ForYouHolds.count]));
         expect("and home's row names it", now.homeSays() === "Battery at 5%", now.homeSays());
+        // What's pressing leads For You, so Return, Return reaches it: a
+        // critical notice comes before a look waiting, never under it
+        // (42P0R4, 2026-11-20; Y2YBTS's ruling).
+        const beforeLook = now.lookTexts;
+        now.lookTexts = { "p.json": JSON.stringify({ v: 1, id: "p", kind: "page",
+            at: root.lookedAt, target: "https://example.com", title: "Read P",
+            why: "Because.", state: "waiting", session: "" }) };
+        const pressing = now.waitingRows();
+        expect("a critical notice unread leads For You, ahead of a look waiting",
+            pressing[0]?.forYou?.source === "desktop" && pressing.findIndex(row => row.key
+                === "on:waitingOnYou:kind:look") > 0,
+            JSON.stringify(pressing.map(row => [row.key, row.forYou?.source ?? ""])));
+        now.lookTexts = beforeLook;
         Notices.live = { "7": {} };
         expect("its card up, neither counts it",
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
