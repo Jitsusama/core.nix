@@ -195,9 +195,9 @@ fn die_by(signal: c_int) {
         libc::signal(signal, libc::SIG_DFL);
         libc::raise(signal);
     }
-    // Only reached when the signal didn't end health: a shell's exit status
-    // for an end by it.
-    std::process::exit(128 + signal);
+    // Only reached when the signal didn't end health: the table's end for
+    // an interrupt, the kit's way out of a thread that heard a signal.
+    terminal_kit::Exit::Interrupted.end_now();
 }
 
 #[cfg(test)]
