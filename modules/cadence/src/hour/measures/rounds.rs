@@ -3,20 +3,30 @@
 //! than from the count a landing note types, which is free text and which
 //! no note before 15:20 on 19 November carried. WCJQSG ruled then that past
 //! round 5 a round raises only what would mislead Joel or break something,
-//! and J7XHQN asked for the measure; no target is set yet, so it shows
-//! unjudged and names each merge past 5.
+//! and J7XHQN asked for the measure. At 18:48 WCJQSG set its target, a
+//! median of at most 3, and asked that each merge past 5 be named with
+//! what its rounds after the fifth caught, and filed as drag to the merge's
+//! owner when they caught nothing. What a round caught is read from the
+//! harness's record of the fixes committed for its findings.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use super::{Class, Measure, count, median, seconds};
+use super::{Class, Measure, count, median, seconds, short};
 
 /// The measure's key, from one hour to the next.
 pub const KEY: &str = "rounds-per-merge";
 
 /// The round past which WCJQSG's ruling narrows what a round may raise.
 pub const PAST: usize = 5;
+
+/// The median rounds per merge WCJQSG set as the target.
+pub const TARGET: f64 = 3.0;
+
+/// The key of a merge's own line when its rounds past five fixed
+/// nothing, before the change it names.
+pub const FRUITLESS: &str = "rounds-past-five-fixed-nothing:";
 
 /// How long before its merge a round still counts toward it. A branch's
 /// name can be cut again for a later change, so a round older than this
@@ -138,18 +148,56 @@ impl Reviewed {
     }
 }
 
+/// What each council's findings led to, by the council's id: the subject
+/// of each finding whose fix was committed, from `fixes`, each the text of
+/// one file of the harness's review fixes.
+fn caught(fixes: &[String]) -> BTreeMap<String, Vec<String>> {
+    let mut caught: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for text in fixes {
+        let Ok(record) = serde_json::from_str::<Value>(text) else {
+            continue;
+        };
+        for fix in record["fixes"].as_array().into_iter().flatten() {
+            let finding = &fix["subject"]["finding"];
+            let (Some(run), Some(subject)) = (
+                finding["origin"]["runId"].as_str(),
+                finding["subject"].as_str(),
+            ) else {
+                continue;
+            };
+            if fix["outcome"]["kind"].as_str() == Some("committed") {
+                caught
+                    .entry(run.to_owned())
+                    .or_default()
+                    .push(subject.to_owned());
+            }
+        }
+    }
+    caught
+}
+
 /// The median council rounds per change merged to `mains` in the day
 /// before `now`, from `records`, each the text of one file of the
-/// harness's review runs. A council counts toward a merge when it started
-/// in the `BEFORE` up to it, and once however many records hold it. A
-/// change with a record but no council counts nought; one with no record
-/// at all may be one the matching can't see, so it is counted apart
-/// rather than read as nought.
+/// harness's review runs, then a line of its own for each merge past five
+/// whose rounds after the fifth led to no fix in `fixes`, owned by whoever
+/// `landed` it, else `owner`. A council counts toward a merge when it
+/// started in the `BEFORE` up to it, and once however many records hold
+/// it. A change with a record but no council counts nought; one with no
+/// record at all may be one the matching can't see, so it is counted
+/// apart rather than read as nought.
 #[must_use]
-pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Measure {
+pub fn rounds(
+    mains: &[Main],
+    records: &[String],
+    fixes: &[String],
+    landed: &BTreeMap<String, String>,
+    now: i64,
+    owner: &str,
+) -> Vec<Measure> {
     let reviewed: Vec<Reviewed> = records.iter().filter_map(|r| Reviewed::read(r)).collect();
+    let caught = caught(fixes);
     let mut unrecorded = 0;
-    let mut each: Vec<(usize, String)> = mains
+    let mut each: Vec<(usize, String, Vec<String>)> = mains
         .iter()
         .flat_map(|main| merged(main, now))
         .filter_map(|m| {
@@ -158,25 +206,31 @@ pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Meas
                 unrecorded += 1;
                 return None;
             }
-            let councils: BTreeSet<&str> = about
+            let councils: BTreeSet<(i64, &str)> = about
                 .iter()
                 .flat_map(|r| &r.councils)
                 .filter(|(_, at)| *at <= m.at && *at >= m.at - BEFORE)
-                .map(|(id, _)| id.as_str())
+                .map(|(id, at)| (*at, id.as_str()))
+                .collect();
+            let after_fifth: Vec<String> = councils
+                .iter()
+                .skip(PAST)
+                .flat_map(|(_, id)| caught.get(*id).into_iter().flatten().cloned())
                 .collect();
             let label = m.repo.rsplit('/').next().unwrap_or(m.repo);
-            Some((councils.len(), format!("{label}#{}", m.number)))
+            Some((councils.len(), format!("{label}#{}", m.number), after_fifth))
         })
         .collect();
-    let mut figures: Vec<f64> = each.iter().map(|(n, _)| count(*n)).collect();
+    let mut figures: Vec<f64> = each.iter().map(|(n, _, _)| count(*n)).collect();
     figures.sort_by(f64::total_cmp);
     each.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    each.retain(|(n, _, _)| *n > PAST);
     let read = if reviewed.is_empty() {
         ", no review record read".to_owned()
     } else {
         format!(" with a review record, {unrecorded} with none")
     };
-    Measure {
+    let median = Measure {
         key: KEY.to_owned(),
         class: Class::Ship,
         says: format!(
@@ -184,14 +238,34 @@ pub fn rounds(mains: &[Main], records: &[String], now: i64, owner: &str) -> Meas
             figures.len()
         ),
         now: median(&figures),
-        target: None,
+        target: Some(TARGET),
         owner: owner.to_owned(),
         behind: each
-            .into_iter()
-            .filter(|(n, _)| *n > PAST)
-            .map(|(n, change)| format!("{change}: {n} rounds"))
+            .iter()
+            .map(|(n, change, fixed)| match fixed.as_slice() {
+                [] => format!("{change}: {n} rounds, those past five fixed nothing"),
+                [one] => format!("{change}: {n} rounds, past five fixed {}", short(one)),
+                [first, rest @ ..] => format!(
+                    "{change}: {n} rounds, past five fixed {} and {} more",
+                    short(first),
+                    rest.len()
+                ),
+            })
             .collect(),
-    }
+    };
+    let fruitless = each
+        .into_iter()
+        .filter(|(_, _, fixed)| fixed.is_empty())
+        .map(|(n, change, _)| Measure {
+            key: format!("{FRUITLESS}{change}"),
+            class: Class::Ship,
+            says: format!("council rounds on {change}, whose rounds past five fixed nothing"),
+            now: count(n),
+            target: Some(count(PAST)),
+            owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
+            behind: Vec::new(),
+        });
+    std::iter::once(median).chain(fruitless).collect()
 }
 
 #[cfg(test)]
@@ -303,17 +377,20 @@ mod tests {
                 &[started("council-yonder", 600)],
             ),
         ];
-        let m = rounds(
+        let all = rounds(
             &[Main {
                 repo: CORE,
                 log: &log,
             }],
             &records,
+            &[],
+            &BTreeMap::new(),
             NOW,
             "ORCH",
         );
+        let m = &all[0];
         assert_eq!(m.key, KEY);
-        assert_eq!(m.target, None, "no target is set yet");
+        assert_eq!(m.target, Some(3.0), "WCJQSG's target");
         // #14's only record is another repository's, so it has none; the
         // two reverts are no change of their own.
         assert_eq!(
@@ -323,7 +400,93 @@ mod tests {
         );
         // 0, 3 and 6.
         assert_eq!(m.now, 3.0, "rounds of #11 to #13");
-        assert_eq!(m.behind, ["core.nix#12: 6 rounds"]);
+        assert_eq!(
+            m.behind,
+            ["core.nix#12: 6 rounds, those past five fixed nothing"]
+        );
+        assert_eq!(all.len(), 2, "#12's rounds past five fixed nothing");
+    }
+
+    /// The harness's record of the fixes committed for findings, each by
+    /// the council that raised it, and one answered rather than fixed.
+    fn fixes(committed: &[(&str, &str)]) -> String {
+        let fixes: Vec<serde_json::Value> = committed
+            .iter()
+            .map(|(run, subject)| {
+                serde_json::json!({"subject": {"finding": {"subject": subject,
+                    "origin": {"runId": run}}}, "outcome": {"kind": "committed"}})
+            })
+            .chain(std::iter::once(serde_json::json!({"subject": {"finding": {
+                "subject": "answered", "origin": {"runId": "council-b-6"}}},
+                "outcome": {"kind": "answered"}})))
+            .collect();
+        serde_json::json!({ "fixes": fixes }).to_string()
+    }
+
+    #[test]
+    fn a_merge_past_five_says_what_its_later_rounds_fixed_or_goes_to_its_owner() {
+        let log = format!(
+            "aaaa {} Merge pull request #21 from Jitsusama/here/a\n\
+             bbbb {} Merge pull request #22 from Jitsusama/here/b\n\
+             cccc {} Merge pull request #23 from Jitsusama/here/c\n",
+            NOW - 60,
+            NOW - 120,
+            NOW - 180
+        );
+        // Seven rounds each, a minute apart, the sixth and seventh past five.
+        let seven = |change: &str| -> Vec<String> {
+            (0..7)
+                .map(|n| started(&format!("council-{change}-{n}"), 3600 - 60 * n))
+                .collect()
+        };
+        let records: Vec<String> = ["21", "22", "23"]
+            .iter()
+            .zip(["a", "b", "c"])
+            .map(|(number, change)| record("github", CORE, number, "elsewhere", &seven(change)))
+            .collect();
+        // #21's fifth round fixed one, which isn't past five; #23's seventh
+        // fixed two; #22's sixth was only answered.
+        let fixed = [fixes(&[
+            ("council-a-4", "in the fifth"),
+            ("council-c-6", "a test that never failed"),
+            ("council-c-6", "a second"),
+        ])];
+        let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
+        let all = rounds(
+            &[Main {
+                repo: CORE,
+                log: &log,
+            }],
+            &records,
+            &fixed,
+            &landed,
+            NOW,
+            "ORCH",
+        );
+        assert_eq!(
+            all[0].behind,
+            [
+                "core.nix#21: 7 rounds, those past five fixed nothing",
+                "core.nix#22: 7 rounds, those past five fixed nothing",
+                "core.nix#23: 7 rounds, past five fixed a test that never failed and 1 more",
+            ]
+        );
+        let fruitless: Vec<(&str, &str, f64)> = all[1..]
+            .iter()
+            .map(|m| (m.key.as_str(), m.owner.as_str(), m.now))
+            .collect();
+        assert_eq!(
+            fruitless,
+            [
+                ("rounds-past-five-fixed-nothing:core.nix#21", "ORCH", 7.0),
+                ("rounds-past-five-fixed-nothing:core.nix#22", "B8RBNW", 7.0),
+            ],
+            "a merge whose rounds past five fixed nothing goes to who landed it"
+        );
+        assert!(
+            all[1..].iter().all(|m| m.past().is_some()),
+            "each is past its target of five, so it's filed"
+        );
     }
 
     #[test]
@@ -332,15 +495,18 @@ mod tests {
             "aaaa {} Merge pull request #11 from Jitsusama/here\n",
             NOW - 60
         );
-        let m = rounds(
+        let all = rounds(
             &[Main {
                 repo: CORE,
                 log: &log,
             }],
             &[],
+            &[],
+            &BTreeMap::new(),
             NOW,
             "ORCH",
         );
+        let m = &all[0];
         assert!(
             m.says.ends_with("of 0, no review record read"),
             "{}",

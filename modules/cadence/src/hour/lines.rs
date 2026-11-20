@@ -43,15 +43,15 @@ fn line(m: &Measure) -> String {
 /// by owner, for the orchestrator to send on without reading the mesh.
 /// The spend measure's lines each end with a quest instead, in its own
 /// order, and are named though it is never judged, since they are what
-/// it is for. The merges past five rounds are named too while the
-/// measure waits for a target, as they are what WCJQSG's ruling is about.
+/// it is for. The merges past five rounds are named whatever the median
+/// reads, each with what its rounds past five fixed, as WCJQSG asked.
 fn behind(m: &Measure) -> Vec<String> {
     if m.key == spent::KEY {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
     }
-    let named_unjudged = m.key == rounds::KEY && m.target.is_none();
+    let named_within = m.key == rounds::KEY;
     if matches!(m.class, Class::Miss | Class::Clean)
-        || (m.past().is_none() && !named_unjudged)
+        || (m.past().is_none() && !named_within)
         || m.behind.is_empty()
     {
         return Vec::new();
@@ -145,10 +145,10 @@ mod tests {
     }
 
     #[test]
-    fn rounds_per_merge_names_its_merges_past_five_though_unjudged() {
+    fn rounds_per_merge_names_its_merges_past_five_though_within_target() {
         let mut rounds = measure(Class::Ship, 2.0, &["core.nix#12: 6 rounds"]);
         rounds.key = rounds::KEY.to_owned();
-        rounds.target = None;
+        rounds.target = Some(rounds::TARGET);
         assert_eq!(
             shown_lines(Class::Ship, &[&rounds])[1],
             "  core.nix#12: 6 rounds"

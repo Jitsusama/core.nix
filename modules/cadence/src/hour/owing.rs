@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, drag};
+use super::measures::{BLIND, Class, HELD, Measure, drag, rounds};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -194,7 +194,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// of every class that was filed before them, so while they lead it each
 /// of his apps' figures past its target goes to its own owner, as each
 /// miss does, and the drag the rest of the hour would have is filed too:
-/// his misses still reach their owners whatever his apps read.
+/// his misses still reach their owners whatever his apps read. So does a
+/// merge whose rounds past five fixed nothing, which WCJQSG asked be filed
+/// to whoever landed it, whatever else leads.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -226,6 +228,9 @@ pub fn file(
         );
         dragging.extend(drag(&rest));
     }
+    dragging.extend(measures.iter().filter(|m| {
+        m.key.starts_with(rounds::FRUITLESS) && m.key != lead.key && m.past().is_some()
+    }));
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -417,6 +422,27 @@ mod tests {
             "each figure past its target and the misses weren't filed"
         );
         assert_eq!(ledger[2].axis, Class::Miss.name(), "filed as a miss");
+    }
+
+    #[test]
+    fn a_merge_whose_rounds_past_five_fixed_nothing_goes_to_who_landed_it() {
+        let mut misses = measure("misses", Class::Miss, 1.0, Some(0.0));
+        misses.behind = vec!["History paused · RCTRF8".to_owned()];
+        let mut fruitless = measure(
+            &format!("{}core.nix#12", rounds::FRUITLESS),
+            Class::Ship,
+            7.0,
+            Some(5.0),
+        );
+        fruitless.owner = "B8RBNW".to_owned();
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[misses, fruitless], "2026-11-19", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["RCTRF8", "B8RBNW"],
+            "the merge's rounds weren't filed beside the miss that leads"
+        );
     }
 
     #[test]
