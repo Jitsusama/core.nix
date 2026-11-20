@@ -178,6 +178,8 @@ def test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps
         desktop.lid(shut=False)
         desktop.as_account("qs ipc call lock release && systemctl --user stop keep-awake.service")
         machine.wait_until_fails(HELD, timeout=timedelta(seconds=10))
+        # Unlocked first, so the lock after the sleep starts can only be the sleep's own.
+        machine.wait_until_succeeds(unlocked, timeout=timedelta(seconds=10))
         desktop.lid(shut=True)
         machine.wait_until_succeeds(ASLEEP, timeout=timedelta(minutes=1))
         # The sleep locks the screen before it starts, as it does before every one.
