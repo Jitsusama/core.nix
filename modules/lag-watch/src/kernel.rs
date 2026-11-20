@@ -472,7 +472,7 @@ pub mod tests {
         write(&proc.join("30/task/31/comm"), "WebRTC_Network\n");
         write(&proc.join("30/task/32/comm"), "ThreadPoolAudio\n");
         write(&proc.join("30/task/33/comm"), "AudioOutputDevi\n");
-        write(&proc.join("30/task/34/comm"), "Compositor\n");
+        write(&proc.join("30/task/34/comm"), "ThreadPoolForeg\n");
         let task = |pid: &str, tid: &str| proc.join(format!("{pid}/task/{tid}/schedstat"));
         // A tab with a peer connection playing sound is no call of
         // Chrome's until a page records the microphone, in any of its

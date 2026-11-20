@@ -18,62 +18,55 @@ use crate::kernel::{Thread, started, tasks, text};
 pub const APPS: [(&str, &str); 2] = [("chrome", "chrome-ui"), ("slack", "slack-ui")];
 
 /// The threads of an app's process that Joel waits on, by the kind of
-/// process its command line says it is: the browser's main thread, which
-/// takes his input; a renderer's main thread and its `Compositor`, which
-/// lay out and draw a page; and the GPU process's `VizCompositorThread`,
-/// cut to 15 bytes, which puts every frame on the screen. A main thread
-/// keeps the process's name. A utility process draws nothing. A zygote
-/// draws nothing either, but a renderer it has just forked says it is the
-/// zygote until it names itself, so one is taken as settled only when it
-/// still says so a look later.
+/// process its threads' names say it is, as Chromium names them: the
+/// browser, the one process with a `Chrome_IOThread`, whose main thread
+/// takes his input; a renderer, with a `Compositor`, whose main thread and
+/// compositor lay out and draw a page; and the GPU process, with a
+/// `VizCompositorThread` cut to 15 bytes, which puts every frame on the
+/// screen. A main thread keeps the process's name. Any other draws
+/// nothing: a utility process, with only a `Chrome_ChildIOThread`, or a
+/// zygote, with none. A renderer just forked has none of them either for
+/// a moment, so one is settled as drawing nothing only when it still has
+/// none a look later.
+///
+/// The names are read, not the command line, which takes the process's
+/// memory lock to read, and so could hold the watch behind a page that's
+/// faulting under the very pressure the watch records.
 #[derive(Debug, PartialEq, Eq)]
 enum Drawing {
     With {
         main: bool,
         drawer: Option<&'static str>,
     },
-    Nothing,
-    Zygote,
-    NotYet,
+    Unsure,
 }
 
-/// The kind of process a command line names, from its flags alone: those
-/// before the first word that isn't one, as a browser started for a link
-/// has the link there, and a link may carry `--type=` of its own. Each
-/// word is split at a NUL or a space, since Chromium rewrites a child's
-/// command line into one string.
-fn drawing(args: &str) -> Drawing {
-    let mut words = args
-        .split(|c: char| c == '\0' || c.is_ascii_whitespace())
-        .filter(|w| !w.is_empty());
-    // No command line is a process ending, or the kernel's.
-    if words.next().is_none() {
-        return Drawing::NotYet;
-    }
-    let kind = words
-        .take_while(|w| w.starts_with('-') && *w != "--")
-        .find_map(|w| w.strip_prefix("--type="));
-    match kind {
-        None => Drawing::With {
-            main: true,
-            drawer: None,
-        },
-        Some("zygote") => Drawing::Zygote,
-        Some("renderer") => Drawing::With {
-            main: true,
-            drawer: Some("Compositor"),
-        },
-        Some("gpu-process") => Drawing::With {
+/// The kind of process its threads, by name, say it is.
+fn drawing(threads: &[(String, PathBuf)]) -> Drawing {
+    let has = |kind: &str| threads.iter().any(|(name, _)| name == kind);
+    if has("VizCompositorTh") {
+        Drawing::With {
             main: false,
             drawer: Some("VizCompositorTh"),
-        },
-        Some(_) => Drawing::Nothing,
+        }
+    } else if has("Compositor") {
+        Drawing::With {
+            main: true,
+            drawer: Some("Compositor"),
+        }
+    } else if has("Chrome_IOThread") {
+        Drawing::With {
+            main: true,
+            drawer: None,
+        }
+    } else {
+        Drawing::Unsure
     }
 }
 
 /// A process of Joel's apps looked into: when it started, which tells it
 /// from a later process given its pid; its threads worth reading; and
-/// whether that's settled, or it said it was a zygote once and is looked
+/// whether that's settled, or it named none of its kind once and is looked
 /// into a second time.
 #[derive(Debug)]
 struct Known {
@@ -83,7 +76,7 @@ struct Known {
 }
 
 /// The apps' processes found so far, by pid. One of Joel's is looked into,
-/// its command line and its threads' names, only when it's new: its
+/// its threads' names, only when it's new: its
 /// threads are kept and only their schedstat and stat read after. Each
 /// minute its stat and cgroup are read again, to see it's still the same
 /// process and still Joel's. One is looked into again while it lacks what
@@ -116,12 +109,12 @@ impl Apps {
             self.known.remove(pid);
             return None;
         }
-        let mut zygote_before = false;
+        let mut unsure_before = false;
         match self.known.get(pid) {
             Some(known) if known.started == started && known.settled => {
                 return Some(known.threads.clone());
             }
-            Some(known) => zygote_before = known.started == started,
+            Some(known) => unsure_before = known.started == started,
             None => {}
         }
         let mut keep = |threads: Vec<Thread>, settled: bool| {
@@ -135,40 +128,27 @@ impl Apps {
             );
             Some(threads)
         };
-        let (main, drawer) = match drawing(&text(&process.join("cmdline"))) {
+        let threads = tasks(process);
+        let (main, drawer) = match drawing(&threads) {
             Drawing::With { main, drawer } => (main, drawer),
-            Drawing::Nothing => return keep(Vec::new(), true),
-            // A zygote still one a look later is one, and stays one.
-            Drawing::Zygote => return keep(Vec::new(), zygote_before),
-            Drawing::NotYet => return Some(Vec::new()),
+            // One that names none of its kind a look later draws nothing.
+            Drawing::Unsure => return keep(Vec::new(), unsure_before),
         };
-        let thread = |name: String, schedstat: PathBuf| Thread {
-            label,
-            name,
-            schedstat,
-            call: false,
-        };
-        let mut found = Vec::new();
-        if main {
-            let at = process.join("task").join(pid);
-            let name = text(&at.join("comm"));
-            if let Some(name) = name.strip_suffix('\n').filter(|n| !n.is_empty()) {
-                found.push(thread(name.to_string(), at.join("schedstat")));
-            }
-        }
-        if let Some(drawer) = drawer {
-            let before = found.len();
-            found.extend(
-                tasks(process)
-                    .into_iter()
-                    .filter(|(name, _)| name == drawer)
-                    .map(|(name, schedstat)| thread(name, schedstat)),
-            );
-            if found.len() == before {
-                return Some(found);
-            }
-        }
-        if found.is_empty() {
+        let main_thread = process.join("task").join(pid).join("schedstat");
+        let found: Vec<Thread> = threads
+            .into_iter()
+            .filter(|(name, schedstat)| {
+                (main && *schedstat == main_thread) || drawer == Some(name.as_str())
+            })
+            .map(|(name, schedstat)| Thread {
+                label,
+                name,
+                schedstat,
+                call: false,
+            })
+            .collect();
+        // Its main thread unread, as when it's ending, it's looked into again.
+        if main && !found.iter().any(|t| t.schedstat == main_thread) {
             return Some(found);
         }
         keep(found, true)
@@ -277,40 +257,28 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lag-watch-apps-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let proc = root.join("proc");
-        // The browser, which takes Joel's input on its main thread, started
-        // for a link that names a kind of its own, after a space.
+        // The browser, which takes Joel's input on its main thread, and
+        // draws its tiles on threads whose names only start alike.
         opened(&proc, "70", "chrome");
-        write(
-            &proc.join("70/cmdline"),
-            "/opt/google/chrome/chrome\0--enable-features=A\0https://a.test/a --type=zygote\0",
-        );
         write(&proc.join("70/task/70/comm"), "chrome\n");
         write(&proc.join("70/task/71/comm"), "Chrome_IOThread\n");
-        // A renderer, its command line rewritten into one string as
-        // Chromium rewrites it.
+        write(&proc.join("70/task/79/comm"), "CompositorTileW\n");
+        // A renderer.
         opened(&proc, "72", "chrome");
-        write(
-            &proc.join("72/cmdline"),
-            "/opt/google/chrome/chrome --type=renderer --renderer-client-id=7",
-        );
         write(&proc.join("72/task/72/comm"), "chrome\n");
         write(&proc.join("72/task/73/comm"), "Compositor\n");
-        write(&proc.join("72/task/74/comm"), "ThreadPoolForeg\n");
+        write(&proc.join("72/task/74/comm"), "Chrome_ChildIOT\n");
         // The GPU process: its compositor, not its main thread.
         opened(&proc, "75", "chrome");
-        write(&proc.join("75/cmdline"), "chrome\0--type=gpu-process\0");
         write(&proc.join("75/task/75/comm"), "chrome\n");
         write(&proc.join("75/task/76/comm"), "VizCompositorTh\n");
+        write(&proc.join("75/task/78/comm"), "Chrome_ChildIOT\n");
         // A utility process draws nothing.
         opened(&proc, "77", "chrome");
-        write(&proc.join("77/cmdline"), "chrome\0--type=utility\0");
         write(&proc.join("77/task/77/comm"), "chrome\n");
+        write(&proc.join("77/task/87/comm"), "Chrome_ChildIOT\n");
         // Slack's renderer, Electron's, named as Chromium names them.
         opened(&proc, "80", "slack");
-        write(
-            &proc.join("80/cmdline"),
-            "/opt/slack/slack\0--type=renderer\0",
-        );
         write(&proc.join("80/task/80/comm"), "slack\n");
         write(&proc.join("80/task/81/comm"), "Compositor\n");
         // Another session's browser, in a service of its own, isn't Joel's.
@@ -319,8 +287,8 @@ mod tests {
             &proc.join("92/cgroup"),
             &format!("0::{ACCOUNT}/app.slice/browser.service\n"),
         );
-        write(&proc.join("92/cmdline"), "chrome\0--headless\0");
         write(&proc.join("92/task/92/comm"), "chrome\n");
+        write(&proc.join("92/task/93/comm"), "Chrome_IOThread\n");
         // Neither an app nor a call: nothing of it is read.
         write(&proc.join("90/comm"), "bash\n");
         assert_eq!(
@@ -374,77 +342,91 @@ mod tests {
     }
 
     #[test]
+    fn a_chrome_carries_joel_s_call_from_his_apps_and_his_own_terminals_alone() {
+        let apps = Apps::of_account(ACCOUNT);
+        let calls = |path: &str| apps.may_call(&format!("0::{path}\n"));
+        let mine = format!("{ACCOUNT}/app.slice");
+        assert!(calls(&format!("{mine}/app-niri-a-70.scope")));
+        assert!(calls(&format!("{mine}/kitty-70-0.scope")));
+        for path in [
+            // A terminal an agent's session opened, and one in a slice below.
+            format!("{ACCOUNT}/agents.slice/kitty-70-0.scope"),
+            format!("{mine}/tests.slice/kitty-70-0.scope"),
+            // A test's Chrome, and another account's terminal.
+            format!("{mine}/apps-under-load.service"),
+            "/user.slice/user-1001.slice/user@1001.service/app.slice/kitty-70-0.scope".into(),
+        ] {
+            assert!(!calls(&path), "{path} carries no call of Joel's");
+        }
+    }
+
+    #[test]
     fn an_app_s_process_is_looked_into_only_while_it_is_new() {
         let root = std::env::temp_dir().join(format!("lag-watch-new-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let proc = root.join("proc");
         opened(&proc, "72", "chrome");
-        write(&proc.join("72/cmdline"), "chrome --type=renderer");
         write(&proc.join("72/task/72/comm"), "chrome\n");
         write(&proc.join("72/task/73/comm"), "Compositor\n");
-        // A renderer just forked, before it has started its compositor.
+        // A renderer just forked, before it has started its compositor,
+        // and a zygote, which never does.
         opened(&proc, "82", "chrome");
-        write(&proc.join("82/cmdline"), "chrome --type=renderer");
         write(&proc.join("82/task/82/comm"), "chrome\n");
-        // One so new it still says it is the zygote that forked it, and a
-        // zygote itself.
-        opened(&proc, "84", "chrome");
-        write(&proc.join("84/cmdline"), "chrome --type=zygote");
-        write(&proc.join("84/task/84/comm"), "chrome\n");
         opened(&proc, "88", "chrome");
-        write(&proc.join("88/cmdline"), "chrome --type=zygote");
         write(&proc.join("88/task/88/comm"), "chrome\n");
+        // A renderer whose main thread's name didn't read.
+        opened(&proc, "94", "chrome");
+        write(&proc.join("94/task/95/comm"), "Compositor\n");
         // A utility process, and a browser still in its launcher's cgroup.
         opened(&proc, "77", "chrome");
-        write(&proc.join("77/cmdline"), "chrome --type=utility");
         write(&proc.join("77/task/77/comm"), "chrome\n");
+        write(&proc.join("77/task/78/comm"), "Chrome_ChildIOT\n");
         write(&proc.join("86/comm"), "chrome\n");
         write(
             &proc.join("86/cgroup"),
             &format!("0::{ACCOUNT}/session.slice/niri.service\n"),
         );
-        write(&proc.join("86/cmdline"), "chrome\0--enable-features=A\0");
         write(&proc.join("86/task/86/comm"), "chrome\n");
+        write(&proc.join("86/task/87/comm"), "Chrome_IOThread\n");
         let mut apps = Apps::of_account(ACCOUNT);
         assert_eq!(
             drawing_threads(&proc, &mut apps),
             [
                 "chrome-ui Compositor 72/task/73/schedstat",
+                "chrome-ui Compositor 94/task/95/schedstat",
                 "chrome-ui chrome 72/task/72/schedstat",
-                "chrome-ui chrome 82/task/82/schedstat",
             ]
         );
         // A settled renderer isn't looked into again: a thread it starts
-        // later under the same name isn't read, though a new one's is. The
-        // utility process stays settled as drawing nothing, and the browser
-        // moved into its scope is found.
+        // later under the same name isn't read, though a new one's is, and
+        // the browser moved into its scope is found.
         write(&proc.join("72/task/74/comm"), "Compositor\n");
         write(&proc.join("82/task/83/comm"), "Compositor\n");
-        write(&proc.join("84/cmdline"), "chrome --type=renderer");
-        write(&proc.join("84/task/85/comm"), "Compositor\n");
-        write(&proc.join("77/cmdline"), "chrome --type=renderer");
-        write(&proc.join("77/task/78/comm"), "Compositor\n");
+        write(&proc.join("94/task/94/comm"), "chrome\n");
         opened(&proc, "86", "chrome");
         assert_eq!(
             drawing_threads(&proc, &mut apps),
             [
                 "chrome-ui Compositor 72/task/73/schedstat",
                 "chrome-ui Compositor 82/task/83/schedstat",
-                "chrome-ui Compositor 84/task/85/schedstat",
+                "chrome-ui Compositor 94/task/95/schedstat",
                 "chrome-ui chrome 72/task/72/schedstat",
                 "chrome-ui chrome 82/task/82/schedstat",
-                "chrome-ui chrome 84/task/84/schedstat",
                 "chrome-ui chrome 86/task/86/schedstat",
+                "chrome-ui chrome 94/task/94/schedstat",
             ]
         );
-        // A zygote still one at the second look is settled as one, its
-        // command line read no more.
-        write(&proc.join("88/cmdline"), "chrome --type=renderer");
+        // The zygote and the utility process, naming none of their kind
+        // at two looks, are settled as drawing nothing, and not looked
+        // into again.
         write(&proc.join("88/task/89/comm"), "Compositor\n");
+        write(&proc.join("77/task/79/comm"), "Compositor\n");
         let third = drawing_threads(&proc, &mut apps);
         assert!(
-            !third.iter().any(|t| t.contains(" 88/")),
-            "a settled zygote was looked into again: {third:?}"
+            !third
+                .iter()
+                .any(|t| t.contains(" 88/") || t.contains(" 77/")),
+            "a settled process was looked into again: {third:?}"
         );
         // One of Joel's moved out of his apps, as jobs-sorter moves a busy
         // group, is let go at the next look.
@@ -466,7 +448,6 @@ mod tests {
         let proc = root.join("proc");
         opened(&proc, "72", "chrome");
         write(&proc.join("72/stat"), &stat("72", 100));
-        write(&proc.join("72/cmdline"), "chrome --type=renderer");
         write(&proc.join("72/task/72/comm"), "chrome\n");
         write(&proc.join("72/task/73/comm"), "Compositor\n");
         let mut apps = Apps::of_account(ACCOUNT);
@@ -474,7 +455,7 @@ mod tests {
         // Between two looks the renderer ends and its pid goes to a utility
         // process, which draws nothing.
         write(&proc.join("72/stat"), &stat("72", 200));
-        write(&proc.join("72/cmdline"), "chrome --type=utility");
+        write(&proc.join("72/task/73/comm"), "Chrome_ChildIOT\n");
         assert_eq!(drawing_threads(&proc, &mut apps), Vec::<String>::new());
         // Then, gone at a look and let go, to a browser, whose main thread
         // alone is read.
@@ -483,9 +464,9 @@ mod tests {
         assert_eq!(apps.known.len(), 0, "an ended process is let go");
         opened(&proc, "72", "chrome");
         write(&proc.join("72/stat"), &stat("72", 300));
-        write(&proc.join("72/cmdline"), "chrome\0--enable-features=A\0");
         write(&proc.join("72/task/72/comm"), "chrome\n");
-        write(&proc.join("72/task/73/comm"), "Compositor\n");
+        write(&proc.join("72/task/73/comm"), "Chrome_IOThread\n");
+        write(&proc.join("72/task/74/comm"), "CompositorTileW\n");
         assert_eq!(
             drawing_threads(&proc, &mut apps),
             ["chrome-ui chrome 72/task/72/schedstat"]
