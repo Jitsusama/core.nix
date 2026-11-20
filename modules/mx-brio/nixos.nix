@@ -65,47 +65,51 @@ in
     ../v4l2loopback/nixos.nix
   ];
 
-  services.udev.packages = [ rules ];
+  # The relay is packaged for x86 machines alone, so elsewhere the Brio
+  # stays as it was, the seat's to open directly, one program at a time.
+  config = lib.mkIf (lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.v4l2-relayd) {
+    services.udev.packages = [ rules ];
 
-  # Who's on camera, from the loopback, under the Brio's own name.
-  jitsusama.v4l2loopback.holders.mx-brio = {
-    inherit device card;
-    file = card;
-    unit = "mx-brio.service";
-    ignoreUnits = [ "mx-brio.service" ];
-  };
-
-  systemd.services.mx-brio = {
-    description = "The MX Brio, as a camera every program can open at once";
-    # It goes when the Brio does, and starts again as it's plugged in.
-    bindsTo = [ "dev-mx\\x2dbrio.device" ];
-    after = [
-      "dev-mx\\x2dbrio.device"
-      "modprobe@v4l2loopback.service"
-    ];
-    wants = [ "modprobe@v4l2loopback.service" ];
-    environment.GST_PLUGIN_PATH = plugins;
-    serviceConfig = {
-      RuntimeDirectory = "mx-brio";
-      # It runs as root to make the loopback camera, as the built-in
-      # camera's relay does, and needs no network and no shared /tmp.
-      PrivateNetwork = true;
-      PrivateTmp = true;
-      Restart = "always";
-      RestartSec = 2;
-      # A call's picture is as live as its sound, so the relay comes first
-      # for the processor and the disk, and never waits on swap.
-      CPUWeight = 1000;
-      IOWeight = 1000;
-      MemorySwapMax = 0;
+    # Who's on camera, from the loopback, under the Brio's own name.
+    jitsusama.v4l2loopback.holders.mx-brio = {
+      inherit device card;
+      file = card;
+      unit = "mx-brio.service";
+      ignoreUnits = [ "mx-brio.service" ];
     };
-    # Four buffers keep the frame rate up, and exclusive capture lets Chrome
-    # list it as a camera. A loopback left from before is taken rather than
-    # added beside (../v4l2loopback/loopback.sh says why).
-    preStart = "${lib.getExe takeLoopback} ${lib.escapeShellArg card} ${device} -b 4 -x 1";
-    script = ''
-      exec ${lib.getExe relay} -i "${input}" -o "${output}"
-    '';
-    postStop = ''${lib.getExe' ctl "v4l2loopback-ctl"} delete "$(cat ${device})" || true'';
+
+    systemd.services.mx-brio = {
+      description = "The MX Brio, as a camera every program can open at once";
+      # It goes when the Brio does, and starts again as it's plugged in.
+      bindsTo = [ "dev-mx\\x2dbrio.device" ];
+      after = [
+        "dev-mx\\x2dbrio.device"
+        "modprobe@v4l2loopback.service"
+      ];
+      wants = [ "modprobe@v4l2loopback.service" ];
+      environment.GST_PLUGIN_PATH = plugins;
+      serviceConfig = {
+        RuntimeDirectory = "mx-brio";
+        # It runs as root to make the loopback camera, as the built-in
+        # camera's relay does, and needs no network and no shared /tmp.
+        PrivateNetwork = true;
+        PrivateTmp = true;
+        Restart = "always";
+        RestartSec = 2;
+        # A call's picture is as live as its sound, so the relay comes first
+        # for the processor and the disk, and never waits on swap.
+        CPUWeight = 1000;
+        IOWeight = 1000;
+        MemorySwapMax = 0;
+      };
+      # Four buffers keep the frame rate up, and exclusive capture lets Chrome
+      # list it as a camera. A loopback left from before is taken rather than
+      # added beside (../v4l2loopback/loopback.sh says why).
+      preStart = "${lib.getExe takeLoopback} ${lib.escapeShellArg card} ${device} -b 4 -x 1";
+      script = ''
+        exec ${lib.getExe relay} -i "${input}" -o "${output}"
+      '';
+      postStop = ''${lib.getExe' ctl "v4l2loopback-ctl"} delete "$(cat ${device})" || true'';
+    };
   };
 }
