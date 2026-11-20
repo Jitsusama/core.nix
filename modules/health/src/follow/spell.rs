@@ -26,7 +26,9 @@ const QUIET_FOR: Duration = SETTLED;
 /// whether it was said and the kinds of cause it was said for, and when a
 /// spell's end was last told. A cause is known by its kind, as a disk full
 /// or read-only, since its words name the day failing, which changes at
-/// midnight or once a day held from before is written.
+/// midnight or once a day held from before is written. The errors std
+/// leaves unnamed share one kind, so a change between two of them, both
+/// rare in writing a file, goes unsaid.
 #[derive(Debug, Default)]
 pub(super) struct Spell {
     since: Option<Instant>,
