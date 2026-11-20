@@ -537,7 +537,12 @@ It gives:
 
 - the shared flags (`--format`, `--json`, `--color`, `-h`, `--help`,
   `--version`), taken from the arguments before the command reads the
-  rest its own way;
+  rest its own way. They're taken wherever they stand before `--`, even
+  as the word after another flag, so shell-preview's `--check --format
+  json`, its check left out, still answers its error as JSON. Where a
+  flag's value may itself be one, as a secret-asks reason may, the
+  command reads past `--`, and the flag goes after it with its value,
+  as `ask -- --why --help`;
 - the ink decision above for each stream, and the theme's colours and marks;
 - help set in the levels from what the command declares, and the same
   declaration as JSON for the check;

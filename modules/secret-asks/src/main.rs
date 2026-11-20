@@ -119,6 +119,10 @@ fn ask_help() -> Help {
             "secret-asks ask --item REF --tree . --why WORDS",
             "ask for REF to the checker, for this tree",
         )
+        .example(
+            "secret-asks ask -- --item REF --tree . --why --help",
+            "the same, for a reason that is a flag every command reads",
+        )
         .option("--item REF", "the item asked for")
         .option("--tree PATH", "the tree the checker would run in")
         .option("--why WORDS", "the reason the row says")
@@ -297,7 +301,7 @@ fn fresh_id() -> std::io::Result<String> {
     }))
 }
 
-fn ask(context: &Context, args: &[String]) -> Result<(), Failure> {
+fn ask(context: &Context, args: &[String], out: &mut dyn std::io::Write) -> Result<(), Failure> {
     let given = given("ask", args, &ASK_FLAGS)?;
     let need = |at: usize| first(&given[at]).ok_or_else(|| missing("ask", ASK_FLAGS[at]));
     let (item, tree, why) = (need(0)?, need(1)?, need(2)?);
@@ -339,13 +343,7 @@ fn ask(context: &Context, args: &[String]) -> Result<(), Failure> {
                 .because(format!("{}: {why}", asks.display()))
         })?;
     let json = serde_json::json!({ "schema": "secret-asks.asked/1", "id": id });
-    answered(
-        context,
-        &mut std::io::stdout().lock(),
-        &format!("{id}\n"),
-        &json,
-    )
-    .map_err(|why| {
+    answered(context, out, &format!("{id}\n"), &json).map_err(|why| {
         Failure::new(Exit::Failed, "it couldn't print the ask's id").because(why.to_string())
     })
 }
@@ -405,27 +403,36 @@ fn lengths_json(counted: &[(String, usize)]) -> serde_json::Value {
     serde_json::json!({ "schema": "secret-asks.received/1", "received": received })
 }
 
-/// The checker, saying its variables' lengths and never what they hold.
-fn received(context: &Context, args: &[String]) -> Result<(), Failure> {
+/// The checker, saying the lengths of the variables it was given and
+/// never what they hold.
+fn received(
+    context: &Context,
+    args: &[String],
+    variables: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+    out: &mut dyn std::io::Write,
+) -> Result<(), Failure> {
     if let Some(word) = args.first() {
         return Err(unread("received", word, &[]));
     }
-    let counted = counted(std::env::vars_os());
-    answered(
-        context,
-        &mut std::io::stdout().lock(),
-        &lengths(&counted),
-        &lengths_json(&counted),
-    )
-    .map_err(|why| Failure::new(Exit::Failed, "it couldn't print").because(why.to_string()))
+    let counted = counted(variables);
+    answered(context, out, &lengths(&counted), &lengths_json(&counted))
+        .map_err(|why| Failure::new(Exit::Failed, "it couldn't print").because(why.to_string()))
 }
 
-/// The command's body, by its first word.
+/// The command's body, by its first word, answering on stdout.
 fn body(context: &Context) -> Result<(), Failure> {
+    body_to(context, &mut std::io::stdout().lock())
+}
+
+/// As `body`, answering into `out`, as the tests read what each command
+/// really answers.
+fn body_to(context: &Context, out: &mut dyn std::io::Write) -> Result<(), Failure> {
     match context.args.split_first() {
         Some((command, rest)) if command == "serve" => serve(rest),
-        Some((command, rest)) if command == "ask" => ask(context, rest),
-        Some((command, rest)) if command == "received" => received(context, rest),
+        Some((command, rest)) if command == "ask" => ask(context, rest, out),
+        Some((command, rest)) if command == "received" => {
+            received(context, rest, std::env::vars_os(), out)
+        }
         Some((command, _)) => {
             Err(flags::unknown_unsaid("command", command, &COMMANDS).try_this("secret-asks --help"))
         }
@@ -721,32 +728,64 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_is_text_into_a_pipe_and_json_when_asked() {
-        let json = serde_json::json!({ "schema": "secret-asks.asked/1", "id": "abc" });
-        let said = |shared: &[&str]| {
-            let args = shared.iter().map(|word| (*word).to_owned()).collect();
-            let context = Context::new(Environment::of([false; 3], &[]), args, &[])
-                .expect("the shared flags weren't taken");
+    fn an_ask_answers_the_id_of_the_ask_it_put_up_in_each_form() {
+        // Each form puts up its ask in a folder of its own, so the id it
+        // answers can only be that one ask's.
+        let asked = |form: &str, shared: &[&str]| -> (String, Vec<String>) {
+            let asks = std::env::temp_dir()
+                .join(format!("secret-asks-answer-{form}-{}", std::process::id()));
+            // A folder an earlier run left is cleared, so only this ask
+            // is found.
+            let _ = std::fs::remove_dir_all(&asks);
+            std::fs::create_dir_all(&asks).expect("the asks folder couldn't be made");
+            let folder = asks.display().to_string();
+            let line = ["ask", "--item", "op://V/I/p", "--tree", "/t", "--why", "w"];
+            let line = [shared, &line[..], &["--asks", folder.as_str()]].concat();
             let mut out = Vec::new();
-            answered(&context, &mut out, "abc\n", &json).expect("the answer wasn't written");
-            String::from_utf8(out).expect("the answer wasn't text")
+            body_to(&context_of(&line), &mut out).expect("the ask wasn't put up");
+            let ids = std::fs::read_dir(&asks)
+                .expect("the asks folder couldn't be read")
+                .filter_map(|entry| {
+                    let name = entry.ok()?.file_name().into_string().ok()?;
+                    secret_asks::ask::id_of(&name).map(str::to_owned)
+                })
+                .collect();
+            let _ = std::fs::remove_dir_all(&asks);
+            (String::from_utf8(out).expect("the answer wasn't text"), ids)
         };
-        let read = |line: &str| -> serde_json::Value {
-            serde_json::from_str(line).expect("the answer wasn't one JSON line")
+        let (piped, ids) = asked("pipe", &[]);
+        let [id] = ids.as_slice() else {
+            panic!("not one ask was put up into a pipe: {ids:?}");
         };
-        assert_eq!(said(&[]), "abc\n", "a pipe didn't get the id alone");
-        assert_eq!(
-            read(&said(&["--json"])),
-            json,
-            "--json didn't answer the id as JSON"
-        );
-        let mut line = json.clone();
-        line["type"] = "answer".into();
-        assert_eq!(
-            read(&said(&["--format", "jsonl"])),
-            line,
-            "jsonl didn't answer the id as one typed line"
-        );
+        assert_eq!(piped, format!("{id}\n"), "a pipe didn't get the id alone");
+        for (form, shared, kind) in [
+            ("json", &["--json"][..], None),
+            ("jsonl", &["--format", "jsonl"][..], Some("answer")),
+        ] {
+            let (said, ids) = asked(form, shared);
+            let [id] = ids.as_slice() else {
+                panic!("not one ask was put up under {form}: {ids:?}");
+            };
+            let mut meant = serde_json::json!({ "schema": "secret-asks.asked/1", "id": id });
+            if let Some(kind) = kind {
+                meant["type"] = kind.into();
+            }
+            assert!(
+                said.ends_with('\n') && said.matches('\n').count() == 1,
+                "{form} didn't answer on one line: {said:?}"
+            );
+            let said: serde_json::Value =
+                serde_json::from_str(&said).expect("the answer wasn't JSON");
+            assert_eq!(said, meant, "{form} didn't answer the ask's id alone");
+        }
+    }
+
+    /// A context for `line` with its shared flags taken, as a body gets
+    /// once the kit has answered help and refused any unknown word.
+    fn context_of(line: &[&str]) -> Context {
+        let args = line.iter().map(|word| (*word).to_owned()).collect();
+        Context::new(Environment::of([false; 3], &[]), args, &[])
+            .expect("the shared flags weren't taken")
     }
 
     #[test]
@@ -758,10 +797,21 @@ mod tests {
             ("LANG", "C"),
         ]
         .map(|(name, value)| (OsString::from(name), OsString::from(value)));
+        let answered = |line: &[&str]| {
+            let mut out = Vec::new();
+            received(&context_of(line), &[], given.clone().into_iter(), &mut out)
+                .expect("the checker couldn't answer");
+            String::from_utf8(out).expect("the answer wasn't text")
+        };
         assert_eq!(
-            lengths(&counted(given.into_iter())),
+            answered(&[]),
             "RELEASED: received 7 characters\n",
             "the checker didn't say the one length alone"
+        );
+        let said = answered(&["--json"]);
+        assert!(
+            !said.contains("hunter2"),
+            "the checker said a value: {said}"
         );
         assert_eq!(
             lengths(&[]),
@@ -769,7 +819,7 @@ mod tests {
             "the checker given nothing didn't say so"
         );
         assert_eq!(
-            lengths_json(&[("RELEASED".to_owned(), 7)]),
+            serde_json::from_str::<serde_json::Value>(&said).expect("the answer wasn't JSON"),
             serde_json::json!({
                 "schema": "secret-asks.received/1",
                 "received": [{ "name": "RELEASED", "characters": 7 }],
