@@ -1587,7 +1587,10 @@ in
         source = "cameras";
         weight = 0.9;
         viewfinder = config.jitsusama.camera.device;
-        cards = lib.mapAttrs (_: holder: holder.card) (osConfig.jitsusama.v4l2loopback.holders or { });
+        # By each camera's holders file, the name the shell knows it by.
+        cards = lib.mapAttrs' (_: holder: lib.nameValuePair holder.file holder.card) (
+          osConfig.jitsusama.v4l2loopback.holders or { }
+        );
       };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
@@ -1832,8 +1835,11 @@ in
         tier = "when";
         mark = "camera";
         # The cameras whose holders the machine names, as v4l2loopback
-        # writes them under /run/camera-holders.
-        holders = lib.attrNames (osConfig.jitsusama.v4l2loopback.holders or { });
+        # writes them under /run/camera-holders, by their files' names. One
+        # that comes and goes is listed only while its file is there.
+        holders = lib.mapAttrsToList (_: holder: holder.file) (
+          lib.filterAttrs (_: holder: !holder.comesAndGoes) (osConfig.jitsusama.v4l2loopback.holders or { })
+        );
       };
       # A timer running, paused or rung, or the stopwatch running, wearing
       # the mark Timers' place wears (VKCF3Z, 2026-11-08).

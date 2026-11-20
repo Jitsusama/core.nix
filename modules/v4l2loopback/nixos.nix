@@ -44,7 +44,9 @@ in
           {
             options = {
               file = lib.mkOption {
-                type = lib.types.str;
+                # One plain name, never a path, and never hidden, since the
+                # shell and the light skip a dotted one.
+                type = lib.types.strMatching "[^./][^/]*";
                 default = name;
                 defaultText = lib.literalMD "the camera's name in `holders`";
                 example = "MX Brio 705 for Business";
@@ -58,6 +60,18 @@ in
               device = lib.mkOption {
                 type = lib.types.str;
                 description = "The camera's node, or a file naming it.";
+              };
+              comesAndGoes = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = ''
+                  Whether the camera is there only while something is
+                  plugged in, as a USB camera's loopback is. Its file is
+                  then removed as its service stops, rather than emptied,
+                  and the shell lists it only while the file is there, as
+                  it does a USB camera's; otherwise the shell lists it
+                  always.
+                '';
               };
               unit = lib.mkOption {
                 type = lib.types.str;
@@ -114,9 +128,11 @@ in
   };
 
   config = {
-    boot.extraModulePackages = [ cfg.package ];
+    # Only where a camera is relayed, since a module that relays a camera
+    # only on some machines still imports this on all of them.
+    boot.extraModulePackages = lib.mkIf (cfg.holders != { }) [ cfg.package ];
     # Each relay makes the loopback it needs, so the module makes none.
-    boot.extraModprobeConfig = ''
+    boot.extraModprobeConfig = lib.mkIf (cfg.holders != { }) ''
       options v4l2loopback devices=0
     '';
 
@@ -161,14 +177,24 @@ in
             ]
           );
           # Stopped with its camera, or killed, it may not get to say nobody
-          # itself, nor take back the node it said the camera was.
+          # itself, nor take back the node it said the camera was; for a
+          # camera that comes and goes, its file goes too, to say it's gone.
           ExecStopPost = [
-            (lib.escapeShellArgs [
-              "${pkgs.coreutils}/bin/truncate"
-              "-s"
-              "0"
-              output
-            ])
+            (lib.escapeShellArgs (
+              if camera.comesAndGoes then
+                [
+                  "${pkgs.coreutils}/bin/rm"
+                  "-f"
+                  output
+                ]
+              else
+                [
+                  "${pkgs.coreutils}/bin/truncate"
+                  "-s"
+                  "0"
+                  output
+                ]
+            ))
             (lib.escapeShellArgs [
               "${pkgs.coreutils}/bin/rm"
               "-f"

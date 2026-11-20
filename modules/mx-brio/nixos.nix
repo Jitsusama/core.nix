@@ -39,10 +39,18 @@ let
   ];
 
   # One format end to end, so nothing converts or scales: the Brio's NV12
-  # at 1080p, the most a call sends. A leaky queue drops a stale frame
-  # rather than delaying the next one.
+  # at 1080p, the most a call sends, passed through untouched. Only a USB 2
+  # link, too narrow for it, takes the Brio's MJPEG instead, decoded here,
+  # so the Brio, hidden from everything else, never leaves Joel with no
+  # camera. A leaky queue drops a stale frame rather than delaying the next.
   caps = "video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1";
-  input = "v4l2src device=/dev/mx-brio ! ${caps}";
+  input = lib.concatStringsSep " ! " [
+    "v4l2src device=/dev/mx-brio"
+    "${caps};image/jpeg,width=1920,height=1080,framerate=30/1"
+    "decodebin3"
+    "videoconvert"
+    caps
+  ];
   output = lib.concatStringsSep " ! " [
     "appsrc name=appsrc caps=${caps}"
     "queue leaky=downstream max-size-buffers=3"
@@ -51,7 +59,10 @@ let
 
   # After systemd's 70-uaccess.rules, which hands every camera to whoever
   # sits at the seat, and before its 73-seat-late.rules, which does the
-  # handing, so the tag is gone by then. Every node of the Brio is marked
+  # handing, so the tag is gone by then; logind, as a session starts, hands
+  # only nodes still tagged. That keeps the Brio from Joel's programs and
+  # PipeWire, which runs as him, because the video group, which udev gives
+  # every camera, isn't his. Every node of the Brio is marked
   # relayed, for its watch to write apart; its capture node, the first,
   # gets a fixed name, for the relay to open and be bound to.
   rules = pkgs.writeTextDir "lib/udev/rules.d/71-mx-brio.rules" ''
@@ -74,6 +85,7 @@ in
     jitsusama.v4l2loopback.holders.mx-brio = {
       inherit device card;
       file = card;
+      comesAndGoes = true;
       unit = "mx-brio.service";
       ignoreUnits = [ "mx-brio.service" ];
     };
