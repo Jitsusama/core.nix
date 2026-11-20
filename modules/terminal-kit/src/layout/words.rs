@@ -572,8 +572,23 @@ mod tests {
             wrapped("read 12 KiB/s here", 8),
             ["read", "12 KiB/s", "here"]
         );
+        // As load-proof says a line's rate.
+        assert_eq!(
+            wrapped("up 9.8 Mbit/s down", 11),
+            ["up", "9.8 Mbit/s", "down"]
+        );
         // A word as long that isn't a rate still parts from a figure.
         assert_eq!(wrapped("took 5 with it", 7), ["took 5", "with it"]);
+        // Nor is a word with a letter more before its "/s" than a
+        // rate has, or with anything but letters there.
+        assert_eq!(
+            wrapped("took 5 flows/s now", 9),
+            ["took 5", "flows/s", "now"]
+        );
+        assert_eq!(
+            wrapped("took 5 a.b/s now", 7),
+            ["took 5", "a.b/s", "now"]
+        );
     }
 
     #[test]

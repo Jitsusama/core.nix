@@ -513,21 +513,33 @@ mod tests {
     fn a_figure_stays_beside_its_unit() {
         // As the router's queue said it on 19 November, when at 70
         // columns its rate's figure ended one line and its unit began
-        // the next.
+        // the next: the shaper's own words, not a copy of them.
+        let why = crate::why::say(
+            crate::why::Why::Router { plateau: 10_300.0 },
+            Some(9_800),
+            None,
+            4.0,
+        );
         let mut link = held();
         if let Some(heard) = link.heard.as_mut() {
-            heard.why = Some(
-                "Upload 9.8 Mb/s: held under the router's own queue, which let 10.3 Mb/s \
-                 through; held so for 4 s."
-                    .to_owned(),
-            );
+            heard.why = Some(why.clone());
         }
         for cells in 40..=80 {
             let lines = said(&link, Room::Cells(cells));
+            // The why's own lines, so a figure said elsewhere can't stand
+            // in for one the why parted.
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  Upload"))
+                .expect("the why is said");
+            let own: Vec<&String> = lines[at..]
+                .iter()
+                .take_while(|line| *line == &lines[at] || line.starts_with("    "))
+                .collect();
             for figure in ["9.8 Mb/s", "10.3 Mb/s", "4 s."] {
                 assert!(
-                    lines.iter().any(|line| line.contains(figure)),
-                    "at {cells} columns {figure:?} was parted: {lines:#?}"
+                    why.contains(figure) && own.iter().any(|line| line.contains(figure)),
+                    "at {cells} columns {figure:?} was parted: {own:#?}"
                 );
             }
         }
@@ -620,9 +632,12 @@ mod tests {
 
     #[test]
     fn names_and_a_why_from_outside_draw_no_escape() {
+        // The leader's name sits on a line that fits, so it reads the
+        // path a line set whole takes, as every line into a pipe does.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
             network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
+            follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
         // A why long enough to wrap at 60, so the hang's path is read.
@@ -632,13 +647,19 @@ mod tests {
                 .take()
                 .map(|why| format!("{why} \u{1b}[2J\u{7}cleared"));
         }
-        for cells in [60, 200] {
-            let lines = said(&link, Room::Cells(cells));
+        for room in [Room::Cells(60), Room::Cells(200), Room::Unbounded] {
+            let lines = said(&link, room);
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.starts_with("  at enp0") && line.contains("'s rate: both")),
+                "the leader wasn't said into {room:?}: {lines:#?}"
+            );
             assert!(
                 lines
                     .iter()
                     .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
-                "at {cells} columns a control was drawn: {lines:#?}"
+                "into {room:?} a control was drawn: {lines:#?}"
             );
         }
     }
