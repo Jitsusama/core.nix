@@ -80,16 +80,21 @@ pub fn on(runtime: &Path, now: u64, me: &str) -> Meeting {
         return call;
     }
     let before = signed_in(runtime);
+    let answered = before.is_some();
     let listed = meetings(&runtime.join("daemons/google.sock"));
-    // Asked again only when it can matter, so a daemon that doesn't answer
-    // holds a call's start for two asks rather than three.
+    // Asked again only when it can matter, and its Meet only when it
+    // answered at all, so a daemon that doesn't answer holds a call's
+    // start for two asks rather than four.
     let mut on = meeting(&listed, now)
         .map(|on| Meeting {
             account: before.filter(|before| signed_in(runtime).as_ref() == Some(before)),
             ..on
         })
         .unwrap_or_default();
-    if let Some(people) = crate::meet::on_meet_of(runtime, &listed, on.event.as_deref(), me) {
+    let met = answered
+        .then(|| crate::meet::on_meet_of(runtime, &listed, on.event.as_deref(), me))
+        .flatten();
+    if let Some(people) = met {
         on.people = people;
         on.known = Some(Known::Meet);
     }
@@ -630,11 +635,17 @@ mod tests {
                        {"name": "Bo", "email": "bo@example.com", "answer": "yes"}]});
         let meetings = json!({"records": [{"key": "meeting:e1", "kind": "meeting",
             "meeting": planning}]});
-        let calls = json!({"records": [{"key": "call:abc-defg-hij", "kind": "call",
-            "call": {"code": "abc-defg-hij", "granted": true, "known": true,
-                     "started": NOW - MINUTE,
-                     "people": [{"name": "Joel Gerber", "joined": NOW - MINUTE},
-                                {"name": "Ada Lovelace", "joined": NOW - MINUTE}]}}]});
+        // Another followed call comes first, so only the event's link
+        // finds the one it is.
+        let call = |code: &str, other: &str| {
+            json!({"key": format!("call:{code}"), "kind": "call",
+                "call": {"code": code, "granted": true, "known": true,
+                         "started": NOW - MINUTE,
+                         "people": [{"name": "Joel Gerber", "joined": NOW - MINUTE},
+                                    {"name": other, "joined": NOW - MINUTE}]}})
+        };
+        let calls = json!({"records": [call("kkk-llll-mmm", "Grace Hopper"),
+            call("abc-defg-hij", "Ada Lovelace")]});
         let whose = json!(["account:google"]);
         serving(
             &runtime.join("daemons/google.sock"),
@@ -645,11 +656,11 @@ mod tests {
                 ("list", "kind", json!("call"), calls),
             ],
         );
-        let on_it = on(&runtime, NOW, "Joel");
+        let on_it = on(&runtime, NOW, "Joel Gerber");
         assert_eq!(
             (on_it.people, on_it.known),
             (vec!["Ada Lovelace".to_owned()], Some(Known::Meet)),
-            "the Meet's one other person didn't stand for the two invited"
+            "the linked Meet's one other person didn't stand for the two invited"
         );
         assert_eq!(
             on_it.event.as_deref(),
