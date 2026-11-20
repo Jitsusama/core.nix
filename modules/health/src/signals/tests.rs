@@ -1,9 +1,20 @@
-use std::process::Command;
-use std::sync::mpsc;
-use std::time::Duration;
+use std::os::unix::process::ExitStatusExt as _;
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use super::*;
 use crate::source::Followers;
+
+/// Where the copy of these tests that's stopped says its follower, set
+/// only for that copy.
+const TOLD_IN: &str = "HEALTH_STOPPED_TELLS_IN";
+
+/// The test the stopped copy runs.
+const STOPPED_TEST: &str = "signals::tests::a_health_to_stop";
+
+/// How long any one step may take before the test fails rather than hangs.
+const WAITS: Duration = Duration::from_secs(10);
 
 /// Whether the process `id` is gone and waited on, so no signal reaches it.
 fn gone(id: u32) -> bool {
@@ -13,50 +24,108 @@ fn gone(id: u32) -> bool {
     asked == -1 && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
 }
 
-/// The signals the process `id` blocks and catches, as its status says.
-#[cfg(target_os = "linux")]
+/// Which of the stopping signals the process `id` blocks, and which it
+/// catches, as its status says; none on a Mac, which has no such status.
 fn blocking_and_catching(id: u32) -> (u64, u64) {
-    let status = std::fs::read_to_string(format!("/proc/{id}/status")).expect("its status");
+    let Ok(status) = std::fs::read_to_string(format!("/proc/{id}/status")) else {
+        return (0, 0);
+    };
+    let stops: u64 = STOPPING.iter().map(|&signal| 1 << (signal - 1)).sum();
     let mask = |name: &str| {
         status
             .lines()
             .find_map(|line| line.strip_prefix(name))
             .and_then(|mask| u64::from_str_radix(mask.trim(), 16).ok())
-            .expect("its mask")
+            .map_or(u64::MAX, |mask| mask & stops)
     };
     (mask("SigBlk:"), mask("SigCgt:"))
 }
 
+/// What `told` says once it's written: the follower's id, and which of
+/// the stops it blocks and catches.
+fn told(told: &Path, health: &mut Child) -> (u32, u64, u64) {
+    let since = Instant::now();
+    loop {
+        let said = std::fs::read_to_string(told).unwrap_or_default();
+        let words: Vec<u64> = said
+            .split_whitespace()
+            .filter_map(|word| word.parse().ok())
+            .collect();
+        if let [id, blocked, caught] = words[..] {
+            return (u32::try_from(id).expect("a process's id"), blocked, caught);
+        }
+        if let Ok(Some(ended)) = health.try_wait() {
+            panic!("the health to stop ended before it was stopped: {ended}");
+        }
+        assert!(
+            since.elapsed() < WAITS,
+            "the health to stop never said its follower"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// The health to stop, run only as the copy that
+/// `a_stop_ends_the_followers_then_health_by_its_signal` starts, which
+/// says where to say its follower: it catches health's stops, starts a
+/// follower and waits to be stopped.
 #[test]
-fn a_signal_that_stops_health_ends_its_followers_first() {
-    // SIGUSR2 stands in for the signals that stop health, which a test
-    // can't catch without ending the others' runs at their stop. A catch
-    // is the process's, so this is the one test that catches.
-    let caught = Caught::catch(&[libc::SIGUSR2]).expect("the signal caught");
+fn a_health_to_stop() {
+    let Some(told) = std::env::var_os(TOLD_IN) else {
+        return;
+    };
     let followers = Followers::default();
+    ending(followers.ender()).expect("the stops caught");
     let mut sleep = Command::new("sleep");
     sleep.arg("600");
     let follower = followers.following(sleep);
-    // Were the signal blocked rather than caught, every follower would
-    // block it, and a service manager's stop would wait out its timeout
-    // to kill each; a catch is undone as a follower starts its program.
-    #[cfg(target_os = "linux")]
+    let (blocked, caught) = blocking_and_catching(follower);
+    let saying = Path::new(&told).with_extension("saying");
+    std::fs::write(&saying, format!("{follower} {blocked} {caught}")).expect("said");
+    std::fs::rename(&saying, &told).expect("said");
+    thread::sleep(WAITS * 6);
+}
+
+#[test]
+fn a_stop_ends_the_followers_then_health_by_its_signal() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let said = folder.path().join("follower");
+    let mut health = Command::new(std::env::current_exe().expect("this test"))
+        .args([STOPPED_TEST, "--exact", "--quiet"])
+        .env(TOLD_IN, &said)
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("the health to stop starts");
+    let (follower, blocked, caught) = told(&said, &mut health);
+    // SAFETY: the health to stop is this test's child, not yet waited on.
+    unsafe {
+        libc::kill(
+            libc::pid_t::try_from(health.id()).expect("its id"),
+            libc::SIGTERM,
+        )
+    };
+    let since = Instant::now();
+    let ended = loop {
+        if let Some(ended) = health.try_wait().expect("the health to stop waited on") {
+            break ended;
+        }
+        if since.elapsed() > WAITS {
+            let _ = health.kill();
+            panic!("a stop left health running");
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
     assert_eq!(
-        blocking_and_catching(follower),
-        (0, 0),
-        "a follower started while health catches its stops blocks or catches a signal"
+        (ended.signal(), gone(follower)),
+        (Some(libc::SIGTERM), true),
+        "a stop didn't end health by its signal ({ended}), or left its follower running"
     );
-    let (ended, heard) = mpsc::channel();
-    let waiting = caught.on_one(followers.ender(), move |signal| {
-        let _ = ended.send((signal, gone(follower)));
-    });
-    // SAFETY: the signal is caught, so raising it only writes it down.
-    unsafe { libc::raise(libc::SIGUSR2) };
-    let heard = heard.recv_timeout(Duration::from_secs(10));
-    waiting.join().expect("the waiting thread ends");
+    // Were the stops blocked rather than caught, every follower would block
+    // them too, as a run that blocked them showed, and a service manager's
+    // stop would wait out its timeout to kill each.
     assert_eq!(
-        heard,
-        Ok((libc::SIGUSR2, true)),
-        "a signal that stops health went unheard, or left its follower running"
+        (blocked, caught),
+        (0, 0),
+        "a follower started while health catches its stops blocks or catches one"
     );
 }

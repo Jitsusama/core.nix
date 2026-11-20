@@ -577,8 +577,6 @@ fn start_of(at: i64, zone: &TimeZone) -> i64 {
 /// than `SETTLED` after health started and once the day is written, or
 /// when the day can't be written as health ends.
 pub fn follow(into: &Path) -> io::Result<()> {
-    // Before any follower starts, so none is left by a stop (`signals.rs`).
-    let stopping = signals::Caught::catch(&signals::STOPPING)?;
     let source = Source::here();
     let zone = TimeZone::system();
     // One moment for the day resumed and the day the journals replay, so a
@@ -642,11 +640,11 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let (lines, read) = mpsc::channel();
     // Dropped however this returns, ending every follower still running.
     let followers = Followers::default();
-    // A signal that stops health ends its followers first, then health.
-    stopping.on_one(followers.ender(), signals::die_by);
+    // A stop ends the followers first, then health (`signals.rs`).
+    signals::ending(followers.ender())?;
     let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
     drop(lines);
-    run(
+    let ran = run(
         &mut follower,
         &read,
         Instant::now,
@@ -654,7 +652,10 @@ pub fn follow(into: &Path) -> io::Result<()> {
         lid::look,
         &FAILS,
         &NOTICES,
-    )?;
+    );
+    // Once a stop is caught, health ends by it alone.
+    signals::await_stop();
+    ran?;
     Err(ended)
 }
 

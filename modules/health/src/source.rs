@@ -538,19 +538,15 @@ impl Followers {
         move || children.end()
     }
 
-    /// A follower started on `command`, which follows for as long as
-    /// health runs, for a test: its process's id.
+    /// A follower started on `command`, its output unread, kept until the
+    /// followers are ended, for a test: its process's id.
     #[cfg(test)]
-    pub(crate) fn following(&self, command: Command) -> u32 {
-        let (lines, _) = std::sync::mpsc::channel();
-        spawn_saying(command, lines, true, |_| {}, &self.children).expect("the follower starts");
-        *self
+    pub(crate) fn following(&self, mut command: Command) -> u32 {
+        let started = self
             .children
-            .running()
-            .children
-            .keys()
-            .last()
-            .expect("the follower kept")
+            .start(&mut command)
+            .expect("the follower starts");
+        started.expect("the followers not ended").0
     }
 }
 
@@ -662,6 +658,10 @@ fn spawn_saying(
             return;
         };
         let waited = child.wait();
+        // One the stop that ends health ended too says nothing either.
+        if crate::signals::stopping() {
+            return;
+        }
         let whole = matches!(&waited, Ok(status) if status.success());
         if let Some(said) = follower_ended(&name, waited, follows) {
             say(&said);
