@@ -1437,7 +1437,9 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # Once in, Install offers nothing more, so the launcher leaves the asking by itself, as
         # a held step whose row offers nothing now is left (launcher/Held.js), back to the
         # device's step: Install waits for the restart there, dimmed in place. Nothing is
-        # pressed, since a minus would leave the device's step too once the asking was left.
+        # pressed, since a minus would leave the device's step too once the asking was left;
+        # only a line the third Return wrote after the look above is let go.
+        desktop.normal()
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:1] == ["Install 1.13.0"]

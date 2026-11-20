@@ -698,18 +698,26 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Wait until what the launcher shows passes the test.
 
         The launcher reports its state each time it changes, so a wait reads it once and then
-        hears every change. One that never passes says what the launcher showed last, since
-        the shell's journal holds a showing line only for each change, and a launcher that
-        settled on the wrong state before the wait began says none.
+        hears every change. One that never passes says what it last heard the launcher show,
+        since the shell's journal holds a showing line only for each change, and a launcher
+        that settled on the wrong state before the wait began says none. That's kept as it's
+        heard rather than asked for again, since asking a shell that hung or went is what
+        would fail then, in place of the failure it's meant to explain.
         """
         since = self.mark()
-        if test(self.showing()):
+        heard = [self.showing()]
+        if test(heard[0]):
             return
+
+        def passes(said: str) -> object:
+            heard[0] = json.loads(said)
+            return test(heard[0])
+
         try:
-            self.reported("showing ", lambda said: test(json.loads(said)), since, timeout)
+            self.reported("showing ", passes, since, timeout)
         except AssertionError as never:
-            last = json.dumps(self.showing(), ensure_ascii=False)
-            message = f"{never}; the launcher showed, last: {last}"
+            last = json.dumps(heard[0], ensure_ascii=False)
+            message = f"{never}; the launcher showed, last heard: {last}"
             raise AssertionError(message) from never
 
     def launcher_ready(self) -> None:
