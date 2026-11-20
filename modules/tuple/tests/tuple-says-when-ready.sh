@@ -55,14 +55,13 @@ failed=0
 # Three of the post's looks, a tenth of a second apart, any of which would say
 # its line too early if it didn't wait for what the case holds back.
 THREE_LOOKS=0.3
-# Past the five seconds the post waits, which it counts in whole seconds, so
-# a case that must say nothing has seen the post give up, not just not look.
-# Those whole seconds can run up to one ahead, so five leave an ask systemd
-# never answers, which takes two, and the asks a case waits on before it lets
-# the unit be active, time to spare on a loaded machine.
-WAITED_OUT=5.5
+# The post waits five seconds, which it counts in whole seconds that can run
+# up to one ahead: five leave an ask systemd never answers, which takes two,
+# and the asks a case waits on before it lets the unit be active, time to
+# spare on a loaded machine.
 gave_up="tuple: its signaller hadn't connected 5 s after it started"
-# What modules/health takes for a ready line (launches.rs's READY_FOLLOWED).
+# What modules/health takes for a ready line (launches.rs's READY_FOLLOWED),
+# which journalctl matches whatever its case, as it's written in lower case.
 ready='\b(ready|loaded)\b.* in [0-9]+ ms\b'
 
 # Fails the case `what` when the post has said anything yet.
@@ -133,37 +132,49 @@ runs() {
   done
 }
 
-# The post's waiter, once the post has returned: the process running with the
-# case's log whose parent doesn't, as the waiter's own asks do.
+# Sets `waiters` to the post's waiters, once the post has returned: each
+# process running with the case's log whose parent doesn't, as the waiter's
+# own asks do.
 waiter() {
   local proc parent
+  waiters=()
   for proc in /proc/[0-9]*; do
     runs "${proc}"
     [[ -n ${running} ]] || continue
     read -r _ _ _ parent _ 2>/dev/null <"${proc}/stat" || continue
     runs "/proc/${parent}"
-    [[ -n ${running} ]] || echo "${proc#/proc/}"
+    [[ -n ${running} ]] || waiters+=("${proc#/proc/}")
   done
 }
 
-# Waits until the process `pid` has ended, and fails the case `what` when it
-# hasn't within two seconds.
+# Waits until the process `pid` has ended, looking `looks` times twenty times
+# a second, and fails the case `what` when it hasn't.
 gone() {
-  local pid=$1 what=$2
-  for _ in {1..40}; do
+  local pid=$1 what=$2 looks=$3 look
+  for ((look = 0; look < looks; look++)); do
     [[ -e /proc/${pid} ]] || return 0
-    # It ends on its next look, a tenth of a second on at most.
+    # It ends on one of its looks, each a tenth of a second from the last.
     sleep 0.05
   done
   echo "${what}: the waiter still runs"
   failed=1
 }
 
+# Waits until the case's waiters have ended, so whatever they'd say is said,
+# for ten seconds at most: past the five they wait and the two their last ask
+# of systemd may take.
+ended() {
+  local what=$1 pid
+  waiter
+  for pid in "${waiters[@]}"; do gone "${pid}" "${what}" 200; done
+}
+
 # Starts a case: the unit starting, or as named, already active (`up`), with
 # daemons systemd couldn't choose between (`many`), with no daemon but the
 # waiter (`alone`), or first asked about in vain (`hangs`), and what the post
-# says and asks from now in files of the case's own, so a post still waiting
-# from the case before can't speak into it.
+# says from now in a file of the case's own, so a post still waiting from the
+# case before can't speak into it. What it asks, and the stand-in's flags,
+# are read by path, so every case ends its waiter before the next.
 starts() {
   local each
   rm -f up many alone main hangs said asked
@@ -213,18 +224,20 @@ says "daemons systemd couldn't choose between" "tuple: ready in 250 ms"
 # The log already says the signaller connected, so only leaving at once
 # keeps it quiet.
 starts up alone
-main=$(waiter)
-if [[ ${main} =~ ^[0-9]+$ ]]; then
-  echo "${main}" >main
-  gone "${main}" "a start that forked no daemon"
+waiter
+if ((${#waiters[@]} == 1)); then
+  # Written whole before the stand-in can read it, so it never reads it empty.
+  echo "${waiters[0]}" >main.new
+  mv main.new main
+  gone "${waiters[0]}" "a start that forked no daemon" 40
 else
-  echo "a start that forked no daemon: found no one waiter, but '${main}'"
+  echo "a start that forked no daemon: found ${#waiters[@]} waiters, not one"
   failed=1
 fi
 quiet "a start that forked no daemon" "as the unit's main process"
 
 starts
-sleep "${WAITED_OUT}"
+ended "a unit never active"
 quiet "a unit never active" "at all"
 
 printf '%s\n' \
@@ -233,7 +246,7 @@ printf '%s\n' \
   '10:00:00.250|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up
-sleep "${WAITED_OUT}"
+ended "a clock stepped back"
 quiet "a clock stepped back" "at all"
 
 # Beside the clock stepped back, which the wrap past midnight turns into most
@@ -244,7 +257,7 @@ printf '%s\n' \
   '11:00:00.000|1|7|info|Signaler.cpp:181|signaler state changed: synchronizing -> connected' \
   >log.txt
 starts up
-sleep "${WAITED_OUT}"
+ended "a clock stepped forward"
 quiet "a clock stepped forward" "at all"
 
 # What a caller would name themselves to pose as the line, on a line with a
@@ -258,9 +271,9 @@ printf '%s\n' \
   "10:00:00.200|1|9|info|incoming call: x|${posing}" \
   >log.txt
 starts up
-sleep "${WAITED_OUT}"
+ended "a caller named like the line"
 says "a caller named like the line" "${gave_up}"
-if grep -qE "${ready}" said; then
+if grep -qiE "${ready}" said; then
   echo "a caller named like the line: health would read its giving up as ready"
   failed=1
 fi

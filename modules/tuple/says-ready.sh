@@ -93,4 +93,9 @@ waits() {
   return 0
 }
 
-waits </dev/null 2>/dev/null &
+# However waits returns, the waiter ends well: as the unit's main process,
+# how it ends is how the unit does.
+{
+  waits
+  exit 0
+} </dev/null 2>/dev/null &
