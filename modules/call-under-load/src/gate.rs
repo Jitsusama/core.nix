@@ -147,7 +147,10 @@ mod tests {
         let why = kept_clear(&soon, now, 4 * MIN).unwrap();
         assert_eq!(why, "Book club is within 10 minutes");
         let just_over = at(now, vec![meeting("1:1", now - 30 * MIN, now - 9 * MIN)]);
-        assert!(kept_clear(&just_over, now, 4 * MIN).is_some());
+        assert!(
+            kept_clear(&just_over, now, 4 * MIN).is_some(),
+            "a meeting that ended 9 minutes ago left the hour clear"
+        );
     }
 
     #[test]
@@ -186,7 +189,13 @@ mod tests {
 
     #[test]
     fn an_answer_without_its_read_time_or_with_an_error_is_refused() {
-        assert!(calendar(&json!({"records": []})).is_err());
-        assert!(calendar(&json!({"error": {"kind": "busy"}})).is_err());
+        assert!(
+            calendar(&json!({"records": []})).is_err(),
+            "an answer without its read time was taken"
+        );
+        assert!(
+            calendar(&json!({"error": {"kind": "busy"}})).is_err(),
+            "an error was taken for an answer"
+        );
     }
 }

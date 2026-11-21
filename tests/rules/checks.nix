@@ -304,6 +304,7 @@
         cadence = pkgs.callPackage ../../modules/cadence/package.nix { };
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;
+        call-under-load = pkgs.callPackage ../../modules/call-under-load/package.nix { };
         changed-checks = pkgs.callPackage ../../tools/changed-checks/package.nix { };
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };

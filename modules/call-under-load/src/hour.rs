@@ -198,9 +198,16 @@ mod tests {
         assert_eq!(all.len(), 8);
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         assert_eq!(named("call sent fps p10").now, Some(30.0));
-        assert!(!named("call sent fps p10").lower_is_better);
+        assert!(
+            !named("call sent fps p10").lower_is_better,
+            "frames sent read as lower is better"
+        );
         assert_eq!(named("Chrome CPU wait per wakeup p99 ms").now, Some(19.7));
-        assert!(named("Chrome CPU wait per wakeup p99 ms").behind[1].contains("12 windows"));
+        let behind = &named("Chrome CPU wait per wakeup p99 ms").behind;
+        assert!(
+            behind[1].contains("12 windows"),
+            "Chrome's wait doesn't say how many windows it read: {behind:?}"
+        );
         assert_eq!(named("Slack CPU wait per wakeup p99 ms").now, None);
         assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
         assert_eq!(named("launcher open ms p99").now, Some(31.0));

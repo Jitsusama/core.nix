@@ -62,7 +62,7 @@ pub fn layers(rows: &[Value]) -> f64 {
 pub struct Call {
     /// The camera's frames a second, its p10.
     pub camera: Option<f64>,
-    /// What optimus encoded and sent, its p10.
+    /// What the near end encoded and sent, its p10.
     pub sent: Option<f64>,
     /// What the far end decoded, its p10.
     pub got: Option<f64>,
@@ -73,7 +73,7 @@ pub struct Call {
     /// A click on the call's own tab to its next frame, in ms.
     pub clicks_p50: Option<f64>,
     pub clicks_p99: Option<f64>,
-    /// How many of optimus's samples were counted.
+    /// How many of the near end's samples were counted.
     pub samples: usize,
 }
 
@@ -185,12 +185,20 @@ mod tests {
         let rows: Vec<Value> = (0..6)
             .map(|t| at(t, 30.0 * count(usize::try_from(t).unwrap())))
             .collect();
-        assert!((layers(&rows) - 3.0).abs() < f64::EPSILON);
+        assert!(
+            (layers(&rows) - 3.0).abs() < f64::EPSILON,
+            "three layers sent, read as {}",
+            layers(&rows)
+        );
         assert_eq!(
             rates(&rows, "out", "framesEncoded", layers(&rows)),
             vec![30.0]
         );
-        assert!((layers(&[json!({"out": {}})]) - 1.0).abs() < f64::EPSILON);
+        let one = layers(&[json!({"out": {}})]);
+        assert!(
+            (one - 1.0).abs() < f64::EPSILON,
+            "a call with no layers named counts as one, read as {one}"
+        );
     }
 
     #[test]

@@ -77,6 +77,17 @@ impl Drop for Started {
     }
 }
 
+/// What the near end sends, as `page.html`'s offer takes it.
+fn sends() -> Value {
+    json!({
+        "width": WIDTH,
+        "height": HEIGHT,
+        "fps": FPS,
+        "maxBitrate": MAX_BITRATE,
+        "scaleDown": SCALE_DOWN,
+    })
+}
+
 /// Runs a call of `seconds` with `chrome`, on the page at `page`; `runtime`
 /// is Joel's runtime folder and `cache` the folder the profile goes in.
 pub fn run(
@@ -148,10 +159,7 @@ pub fn run(
         browser.call("Page.navigate", json!({"url": url}), WAIT)?;
         loaded(browser)?;
     }
-    let offered = near.eval(
-        &format!("offer({WIDTH}, {HEIGHT}, {FPS}, {MAX_BITRATE}, {SCALE_DOWN})"),
-        WAIT,
-    )?;
+    let offered = near.eval(&format!("offer({})", sends()), WAIT)?;
     let label = offered["label"].as_str().unwrap_or("");
     // Never a real camera: one whose label isn't Chrome's fake stops it here.
     if !label.contains("fake") {

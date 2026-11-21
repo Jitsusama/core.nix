@@ -195,7 +195,8 @@ in
   };
 
   # Each local site's page, its markup and the script in its head, read by
-  # biome as a browser reads them (modules/local-sites/site.nix builds them).
+  # biome as a browser reads them (modules/local-sites/site.nix builds them),
+  # and the page call-under-load's test call runs in.
   settings.formatter.site-html-lint = {
     command = pkgs.lib.getExe pkgs.biome;
     options = [
@@ -208,6 +209,7 @@ in
       "modules/*/site/*.html"
       "modules/mycelium/forage/*.html"
       "modules/mycelium/murmurs/*.html"
+      "modules/call-under-load/page.html"
     ];
   };
 
