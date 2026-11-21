@@ -13,11 +13,16 @@
 //! cut, so tidying each part leaves it out as tidying the whole did. A
 //! take split when the call was last told apart is joined again before
 //! it's split, so a rejoin's grouping decides its parts afresh.
+//!
+//! Joel's microphone hearing their take is left out against the take
+//! whole, before it's split: an echo of a take that runs across the cut
+//! holds too few of either part's words to be taken for its echo, so it
+//! would otherwise come back as a line of his.
 
 use std::collections::HashMap;
 
 use dictation::parakeet::Word;
-use dictation::transcript::Line;
+use dictation::transcript::{self, Line};
 
 use crate::said;
 
@@ -53,7 +58,8 @@ struct Whole {
 /// piece's, and splits one whose pieces fall in more than one voice where
 /// the voice changes, each part keeping the words written in it; the
 /// pieces and words then say which of the lines, split, they're of. A
-/// line with no pieces keeps the voice it has.
+/// line with no pieces keeps the voice it has, and a line of Joel's that
+/// echoes a whole take of theirs is left out.
 pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     let mut lines = Vec::with_capacity(heard.lines.len());
     let mut words = HashMap::new();
@@ -384,6 +390,49 @@ mod tests {
             words,
         };
         by_voice(&mut heard, voices);
+    }
+
+    #[test]
+    fn joels_echo_of_a_take_split_across_it_stays_left_out() {
+        // Ada's take runs into Bo's at 16 s, and Joel's microphone hears
+        // its end, across the cut.
+        let echo = Line {
+            side: Side::Mine,
+            ..theirs(13, 18, "It today, not yet.")
+        };
+        let mut lines = vec![
+            theirs(10, 19, "We could ship it today. Not yet."),
+            echo.clone(),
+        ];
+        let mut pieces = pieces_of(0, 0, &[10, 13, 16]);
+        let timed = [
+            ("We", 10),
+            ("could", 11),
+            ("ship", 12),
+            ("it", 13),
+            ("today.", 14),
+            ("Not", 16),
+            ("yet.", 17),
+        ];
+        let mut words = HashMap::from([(0, timed.map(|(text, at)| word(text, at)).into())]);
+        let mut heard = Heard {
+            lines: &mut lines,
+            pieces: &mut pieces,
+            words: &mut words,
+        };
+        by_voice(&mut heard, &[Some(0), Some(0), Some(1)]);
+        assert_eq!(
+            said(&lines),
+            [
+                ("We could ship it today.", Some(0), 10, 16),
+                ("Not yet.", Some(1), 16, 19)
+            ],
+            "Joel's echo of the take came back once it was split"
+        );
+        assert!(
+            !transcript::echoes(&echo, &lines),
+            "the echo is one of a part's, so this case doesn't show it's left out whole"
+        );
     }
 
     #[test]
