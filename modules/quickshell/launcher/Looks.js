@@ -134,6 +134,28 @@ function cellOf(one, running, parked) {
         ?? on[0] ?? null;
 }
 
+// The cell a look leads to as the agents daemon names it, `cells` being
+// its `agent-cell` records by key (modules/agents/src/cells.rs): the live
+// session the cell the look names (`cell`) goes to now, found among
+// `running` and `parked`, or null where the daemon says it goes nowhere.
+// A look naming no cell, or one the daemon hasn't served yet, falls back
+// to cellOf's search; that fallback goes once every look names its cell,
+// by Mon 23 Nov 2026.
+function cellFor(one, cells, running, parked) {
+    const cell = typeof one.cell === "string" ? one.cell : "";
+    const record = cell === "" ? undefined : cells?.[`agent-cell:agents:${cell}`];
+    if (record === undefined || record === null) {
+        return cellOf(one, running, parked);
+    }
+    const goes = typeof record.goes === "string" ? record.goes : "";
+    if (goes === "") {
+        return null;
+    }
+    const held = (Array.isArray(running) ? running : [])
+        .concat(Array.isArray(parked) ? parked : []);
+    return held.find(session => session.address === goes) ?? null;
+}
+
 // The label of the answer Joel gave a look still waiting, by `answered`'s
 // { [look id]: { label, at } }, while it may yet take, or "".
 function answering(one, answered, now) {
