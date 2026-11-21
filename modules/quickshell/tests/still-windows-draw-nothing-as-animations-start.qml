@@ -178,7 +178,9 @@ ShellRoot {
     }
 
     // Each animation ends well before the next starts, so every start is
-    // one the animation driver hears as animations starting again.
+    // one the animation driver hears as animations starting again. Each
+    // says so before it starts them, so the script can tell which of Qt's
+    // timer starts came in which of the case's starts.
     Timer {
         id: started
 
@@ -193,6 +195,7 @@ ShellRoot {
                 return;
             }
             root.starts += 1;
+            console.log(`The case starts its squares moving, start ${root.starts}.`);
             root.movingBefore = root.movingDrawn;
             root.slidingBefore = root.slidingDrawn;
             moving.restart();
