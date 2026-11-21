@@ -392,6 +392,19 @@ pub fn carried(header: &Value, brought: Option<&std::path::Path>) -> bool {
             .is_some_and(|parent| here(std::path::Path::new(parent), brought).is_file())
 }
 
+/// Whether a brought log names a parent that hasn't been brought yet.
+/// Logs arrive in whatever order whatever brings them keeps, so a copy can
+/// land before its parent; it's read whole meanwhile and checked again on
+/// each pass, to be read again for its own turns once the parent lands.
+pub fn awaits_parent(header: &Value, brought: Option<&std::path::Path>) -> bool {
+    brought.is_some()
+        && header.get("type").and_then(Value::as_str) == Some("session")
+        && header
+            .get("parentSession")
+            .and_then(Value::as_str)
+            .is_some_and(|parent| !here(std::path::Path::new(parent), brought).is_file())
+}
+
 /// Where a parent a log names is on this machine: where it says, or, for
 /// a brought log, its project folder and name under the brought sessions.
 fn here(parent: &std::path::Path, brought: Option<&std::path::Path>) -> std::path::PathBuf {
@@ -569,8 +582,9 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
         .to_owned();
     carry.session = Some(id.clone());
     carry.cwd = Some(cwd.clone());
-    carry.copies_known = true;
-    if carried(entry, carry.brought.as_deref().map(std::path::Path::new)) {
+    let brought = carry.brought.as_deref().map(std::path::Path::new);
+    carry.copies_known = !awaits_parent(entry, brought);
+    if carried(entry, brought) {
         carry.copied_until = at;
     }
     if carry.quest.is_none() {

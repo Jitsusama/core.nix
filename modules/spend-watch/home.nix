@@ -374,7 +374,9 @@ in
     machine = lib.mkOption {
       description = ''
         What this machine is called, which its own sessions' work is shown under
-        beside other machines'; its host name when null.
+        beside other machines'; its host name when null. A null name is told apart
+        from `machines` only once the daemon starts, since a build reads its
+        builder's host name rather than this machine's.
       '';
       type = lib.types.nullOr lib.types.str;
       default = osConfig.networking.hostName or null;

@@ -27,6 +27,9 @@ pub const VERSION: u32 = 2;
 /// How many of a cut's rows are shown before the rest are one row.
 const TOP: usize = 12;
 
+/// The least a cut shows as a row of its own, as the reports round it.
+const SHOWN: f64 = 0.005;
+
 /// The periods before today, most recent first, each a row of the first
 /// screen after the caps, so none is more than a step from it.
 const EARLIER: [Period; 6] = [
@@ -362,10 +365,13 @@ fn shown(id: &str, words: &str, report: &Report) -> Shown {
 fn cuts_for(picture: &Picture, period: Period) -> impl Iterator<Item = Cut> {
     let one_day = matches!(period, Period::Today | Period::Yesterday);
     let (from, to) = period.days(&picture.zone, picture.now);
+    // Spend another machine made, not just a turn of its: a turn on a plan
+    // costs nothing here, and a cut drops a row too small to show, which
+    // would leave this machine's work alone dressed as one of several.
     let others = picture
         .between(from, to)
         .iter()
-        .any(|piece| !piece.machine.is_empty());
+        .any(|piece| !piece.machine.is_empty() && piece.dollars >= SHOWN);
     Cut::ALL.into_iter().filter(move |cut| match cut {
         Cut::Day => !one_day,
         Cut::Machine => others,
@@ -2154,18 +2160,23 @@ mod tests {
     fn a_period_cuts_by_machine_only_once_another_spent() {
         let (history, config) = (busy(), config());
         let mut picture = Picture::read(&history, &config, NOW).unwrap();
-        let machine_lines = |picture: &Picture| {
+        let machine_lines = |picture: &Picture, period: Period| {
             let found = crate::detect::all(picture, &history, &config).unwrap();
-            let today = collection(picture, &found, &config).now[0].clone();
-            let row = today.rows.iter().any(|row| row.key == "today/machine");
-            let fact = today
+            let made = collection(picture, &found, &config);
+            let key = format!("period:{}", period.id());
+            let Some(line) = made.now.iter().find(|line| line.key == key) else {
+                return (false, false);
+            };
+            let cut = format!("{}/machine", period.id());
+            let row = line.rows.iter().any(|row| row.key == cut);
+            let fact = line
                 .drawn
                 .as_ref()
                 .is_some_and(|drawn| drawn.facts.iter().any(|fact| fact.id == "most-machine"));
             (row, fact)
         };
         assert_eq!(
-            machine_lines(&picture),
+            machine_lines(&picture, Period::Today),
             (false, false),
             "a machine bringing no logs cut its day by machine"
         );
@@ -2174,13 +2185,30 @@ mod tests {
         let piece = picture
             .pieces
             .iter_mut()
-            .find(|piece| piece.hour == first)
+            .find(|piece| piece.hour == first && piece.dollars >= 1.0)
             .unwrap();
         "teal".clone_into(&mut piece.machine);
+        let dollars = std::mem::replace(&mut piece.dollars, 0.0);
         assert_eq!(
-            machine_lines(&picture),
+            machine_lines(&picture, Period::Today),
+            (false, false),
+            "a day another machine only took turns on a plan in was cut by machine"
+        );
+        let piece = picture
+            .pieces
+            .iter_mut()
+            .find(|piece| piece.machine == "teal")
+            .unwrap();
+        piece.dollars = dollars;
+        assert_eq!(
+            machine_lines(&picture, Period::Today),
             (true, true),
             "a day another machine spent in wasn't cut by machine"
+        );
+        assert_eq!(
+            machine_lines(&picture, Period::Yesterday),
+            (false, false),
+            "a day before another machine spent was cut by machine"
         );
     }
 
