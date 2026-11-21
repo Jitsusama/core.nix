@@ -623,6 +623,18 @@ mod tests {
     }
 
     #[test]
+    fn a_word_that_fits_its_line_whole_is_never_cut_to_the_next_line_s_measure() {
+        // With 20 cells for the first line and 4 for the rest, the ten b's
+        // fit beside the a's, though not on a line under them, so nothing
+        // gives them cause to be shortened.
+        let lines = measured("aaaa bbbbbbbbbb ccccccccc", 20, 4);
+        assert!(
+            lines.iter().any(|line| line.split(' ').any(|word| word == "bbbbbbbbbb")),
+            "a word that fit its line was cut to the measure of the line under it: {lines:?}"
+        );
+    }
+
+    #[test]
     fn a_figure_parts_from_a_joining_word_after_it() {
         // "6 on" isn't a figure and its unit, so the name before it fits
         // whole and the line breaks after the figure.
