@@ -9,8 +9,10 @@
 //! reads every session the node holds, ended ones too, since a look's
 //! cell is most often one that has since ended. Where two sessions go by
 //! one name, the one that is it now wins: live and named by it first,
-//! then live and once named by it, then ended and named by it, then any
-//! other, so a session that lists another's address can't take its looks.
+//! then live and once named by it, then ended and named by it, then ended
+//! and once named by it. One that only lists a name counts only on the
+//! quest of the session named by it, if there is one, so a session that
+//! lists another's address on another quest never takes its looks.
 
 use std::collections::HashMap;
 
@@ -73,9 +75,14 @@ fn successor<'a>(on: &HashMap<&str, Vec<Session<'a>>>, quest: &str) -> Option<Se
 
 /// How strongly a session that goes by `name` is that cell: 0 live and
 /// named by it now, 1 live and once named by it, 2 ended and named by it,
-/// 3 ended and once named by it. The least wins.
-fn claim(one: Session<'_>, name: &str) -> u8 {
-    let own = u8::from(one.address() != name);
+/// 3 ended and once named by it, and 4 once named by it on another quest
+/// than the session named by it now (`owner`'s). The least wins.
+fn claim(one: Session<'_>, name: &str, owner: Option<&str>) -> u8 {
+    let own = one.address() == name;
+    if !own && owner.is_some_and(|quest| quest != quest_of(one)) {
+        return 4;
+    }
+    let own = u8::from(!own);
     if live(one) { own } else { 2 + own }
 }
 
@@ -86,6 +93,14 @@ pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
     let mut on: HashMap<&str, Vec<Session>> = HashMap::new();
     for one in sessions.iter().copied().filter(|one| live(*one)) {
         on.entry(quest_of(one)).or_default().push(one);
+    }
+    // The quest of the session each name is now, a live one's first.
+    let mut owners: HashMap<&str, &str> = HashMap::new();
+    for one in sessions.iter().copied() {
+        let name = one.address();
+        if !name.is_empty() && (live(one) || !owners.contains_key(name)) {
+            owners.insert(name, quest_of(one));
+        }
     }
     let mut order: Vec<&str> = Vec::new();
     let mut best: HashMap<&str, (u8, Option<&str>)> = HashMap::new();
@@ -99,7 +114,7 @@ pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
             .map(Session::address)
             .filter(|address| !address.is_empty());
         for cell in names(one) {
-            let rank = claim(one, cell);
+            let rank = claim(one, cell, owners.get(cell).copied());
             match best.get(cell) {
                 Some((held, _)) if *held <= rank => {}
                 Some(_) => {
@@ -214,7 +229,16 @@ mod tests {
         heir["presence"]["addresses"] = json!(["W", "V2"]);
         let mut moved = session("V", "closed", quest);
         moved["presence"]["addresses"] = json!(["V", "V2"]);
-        let served = goes(&[thief, session("V", "parked", quest), heir, moved]);
+        // The quest's own session, which the ended V2 would go to, so the
+        // heir's claim is what puts W there.
+        let own = session("HHHHHH", "parked", quest);
+        let served = goes(&[
+            thief.clone(),
+            session("V", "parked", quest),
+            heir,
+            moved,
+            own,
+        ]);
         assert!(
             served.contains(&"V>\"V\"".to_owned()),
             "a live session named V now keeps V's looks over one listing V: {served:?}"
@@ -222,6 +246,11 @@ mod tests {
         assert!(
             served.contains(&"V2>\"W\"".to_owned()),
             "a live session once named V2 holds it over an ended one: {served:?}"
+        );
+        let ended = goes(&[thief, session("V", "closed", quest)]);
+        assert!(
+            ended.contains(&"V>null".to_owned()),
+            "once V ends, one listing V on another quest still can't take it: {ended:?}"
         );
         assert_eq!(
             served.iter().filter(|one| one.starts_with("V>")).count(),
@@ -231,14 +260,45 @@ mod tests {
     }
 
     #[test]
-    fn an_ended_name_is_served_even_where_a_live_one_lists_it() {
-        let mut ended = session("E", "closed", "QEST-20261120-JJJJJJ");
+    fn a_live_session_once_named_e_on_its_quest_takes_its_looks_over_the_ended_e() {
+        let quest = "QEST-20261120-JJJJJJ";
+        let mut ended = session("E", "closed", quest);
         ended["presence"]["addresses"] = json!(["E"]);
-        let mut other = session("O", "running", "QEST-20261120-KKKKKK");
+        let mut other = session("O", "running", quest);
         other["presence"]["addresses"] = json!(["O", "E"]);
+        let mut owner = session("JJJJJJ", "parked", quest);
+        owner["presence"]["addresses"] = json!(["JJJJJJ"]);
         assert!(
-            goes(&[other, ended]).contains(&"E>\"O\"".to_owned()),
-            "a live session once named E is E now, over the ended one"
+            goes(&[ended, owner, other]).contains(&"E>\"O\"".to_owned()),
+            "O is E now, over the ended E, whose successor would be the quest's own"
+        );
+    }
+
+    #[test]
+    fn an_ended_session_with_no_quest_is_given_no_stranger() {
+        let mut lister = session("L", "closed", "QEST-20261120-LLLLLL");
+        lister["presence"]["addresses"] = json!(["L", "N"]);
+        assert_eq!(
+            goes(&[
+                session("N", "closed", ""),
+                lister,
+                session("R", "running", "QEST-20261120-LLLLLL"),
+            ])[0],
+            "N>null",
+            "N had no quest, so nothing on L's quest is N now"
+        );
+    }
+
+    #[test]
+    fn a_successor_comes_from_the_ended_cells_own_quest() {
+        assert_eq!(
+            goes(&[
+                session("E", "closed", "QEST-20261120-MMMMMM"),
+                session("X", "running", "QEST-20261120-OTHERS"),
+                session("S", "parked", "QEST-20261120-MMMMMM"),
+            ])[0],
+            "E>\"S\"",
+            "the parked one on E's quest, never the running one on another"
         );
     }
 
@@ -254,10 +314,8 @@ mod tests {
             .collect();
         assert_eq!(
             keys,
-            [
-                format!("{KIND}:{PLACE}:P"),
-                format!("{KIND}:{PLACE}:EAC01C97")
-            ]
+            ["agent-cell:agents:P", "agent-cell:agents:EAC01C97"],
+            "the keys the launcher's Looks.cellFor reads"
         );
     }
 }

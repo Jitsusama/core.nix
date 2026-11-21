@@ -703,8 +703,15 @@ QtObject {
             "BBBBBB");
         expect("or parked",
             Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
-        expect("ended with none to go to, none",
-            Looks.cellFor(naming("GGGGGG"), cells, [leaver], []), null);
+        expect("ended with none to go to, none where the lists hold none",
+            Looks.cellFor(naming("GGGGGG"), cells, [stranger], []), null);
+        expect("ended with none to go to, the lists' search, which may be ahead",
+            Looks.cellFor(naming("GGGGGG"), cells, [leaver], []).address, "AAAAAA");
+        expect("the address a cell goes to, keyed", Looks.cellGoes(naming("AAAAAA"), cells),
+            "BBBBBB");
+        expect("none for one going nowhere", Looks.cellGoes(naming("GGGGGG"), cells), "");
+        expect("none for one not served", Looks.cellGoes(naming("HHHHHH"), cells), "");
+        expect("none for one naming no cell", Looks.cellGoes(naming(7), cells), "");
         expect("going to a session not listed yet, cellOf's search",
             Looks.cellFor(naming("AAAAAA"), cells, [leaver], []).address, "AAAAAA");
         expect("not served yet, cellOf's search",

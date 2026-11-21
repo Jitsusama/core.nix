@@ -964,6 +964,20 @@ mod tests {
     }
 
     #[test]
+    fn every_session_ended_ones_too_is_served_as_a_cell() {
+        let served = served(&inputs());
+        assert_eq!(
+            served.get("agent-cell:agents:X").map(|one| &one["goes"]),
+            Some(&json!(null)),
+            "the closed X, which in_order leaves out, is a cell going nowhere"
+        );
+        assert_eq!(
+            served.get("agent-cell:agents:P").map(|one| &one["goes"]),
+            Some(&json!("P"))
+        );
+    }
+
+    #[test]
     fn each_session_here_is_served_with_its_window() {
         let mut inputs = inputs();
         inputs.sessions.took(&json!({"records": [
