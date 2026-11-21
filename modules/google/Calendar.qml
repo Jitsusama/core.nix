@@ -207,17 +207,19 @@ Singleton {
 
     // The calls call-transcripts serves, only to hear whether it records
     // one now. Where it isn't, its socket isn't there, and the daemon
-    // waits on it silently, holding none.
+    // waits on it silently, holding none; one that goes away mid-call
+    // has what it held let go, so a call it no longer records isn't
+    // followed as though it were.
     Daemon {
         id: transcripts
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/calls.sock`
         kind: "call"
+        keptThroughGap: false
     }
-    readonly property bool recording: transcripts.revision >= 0
-        && Following.recording(transcripts.held)
 
-    readonly property var following: Following.followed(calls, watchingCalls > 0, recording)
+    readonly property var following: transcripts.revision >= 0
+        ? Following.follows(calls, watchingCalls > 0, transcripts.held) : []
     // Said as the codes change, not each time niri's windows do.
     readonly property string followed: following.join(" ")
     onFollowedChanged: Google.follow(following)
