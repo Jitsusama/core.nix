@@ -17,6 +17,7 @@ budgets=2
 standing=5
 status=6
 config=7
+daemon=8
 work=$(mktemp -d)
 
 if ! bash "$check" "${files[@]}" 2>"$work/said"; then
@@ -70,6 +71,15 @@ refused attribute-split "$standing" \
 refused renamed-past-a-comment "$standing" \
   "$allowance_name"'    #[serde(rename = "id")]\n    // a comment
 }' "$attributes"
+# Split before its parenthesis, which Rust and serde read as one.
+refused attribute-split-before-its-parenthesis "$standing" \
+  "$allowance_name"'    #[serde\n        (rename = "id")]
+}' "$unread"
+refused serialized-by-hand "$standing" \
+  '1i impl serde::Serialize for Allowance {}' "writes Serialize by hand"
+refused written-elsewhere "$daemon" \
+  's/writer\.write(&config\.runtime()?,/writer.write(\&config.runtime()?.join("v2"),/' \
+  "$gone"
 refused attribute-inside-another "$standing" \
   "$allowance_name"'    #[cfg_attr(test, serde(rename = "id"))]
 }' "$unread"

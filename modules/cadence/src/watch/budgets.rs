@@ -174,6 +174,17 @@ pub fn standing(s: &Snapshot) -> Vec<Breach> {
         .collect()
 }
 
+/// A key for each allowance read in `s`, at its lowest level, so what's
+/// remembered of its window follows its reset on every read, not only
+/// while a level stands. None while no budget is watched.
+#[must_use]
+pub fn windows(s: &Snapshot) -> Vec<String> {
+    if s.budgets_unwatched.is_some() {
+        return Vec::new();
+    }
+    s.budgets.iter().map(|a| key(a, LEVELS[0])).collect()
+}
+
 /// The keys a breach at `key` stands for: an allowance's own and each
 /// level beneath it in the same window, so one told past 90% isn't told
 /// as new past 80% as it eases, and the unwatched alarm's own, so it's
@@ -204,11 +215,14 @@ const SAME_WINDOW_S: i64 = 5 * 60;
 /// keeps its window told.
 const ROUNDED_TO_HOUR_S: i64 = 30 * 60;
 
-/// Where `key`'s window is remembered under a reset read earlier, each
-/// key of that window in `remembered` beside the one it is remembered as
-/// now, so a window told once isn't told again as its reset drifts. Each
-/// read is matched to the last rather than the first, so a reset that
-/// creeps one way over a window's life stays its window. No rounding keeps
+/// Where `key`'s window is remembered under resets read earlier, each key
+/// of that window in `remembered`, under every reset that matches, beside
+/// the one it is remembered as now, so a window told once isn't told again
+/// as its reset drifts. Each read is matched to the last rather than the
+/// first, so a reset that creeps one way over a window's life stays its
+/// window while it is read; through a stretch nothing is read, as a
+/// sleep, a creep past `SAME_WINDOW_S` is told again, which a plan's feed,
+/// whose reset jitters by under a second, never does. No rounding keeps
 /// every drift to one side of an edge, wherever the edge falls, so the
 /// reset is matched instead. Empty where it is remembered as it reads, or
 /// isn't remembered.
@@ -237,13 +251,10 @@ pub fn moved<'a>(
             apart <= SAME_WINDOW_S || (was % 3600 == 0 && apart <= ROUNDED_TO_HOUR_S)
         })
     };
-    let Some(was) = windows.iter().map(|(_, _, was)| *was).find(same) else {
-        return Vec::new();
-    };
     windows
         .iter()
-        .filter(|(_, _, other)| *other == was)
-        .map(|(_, level, _)| {
+        .filter(|(_, _, was)| same(was))
+        .map(|(_, level, was)| {
             (
                 format!("budget:{allowance}{level}:{was}"),
                 format!("budget:{allowance}{level}:{resets}"),
@@ -411,6 +422,9 @@ mod tests {
             "budget:proxy:edge:80:2026-11-21T10:00:30Z",
             // As keys were written before resets were kept to the second.
             "budget:proxy:hour:80:2026-11-21T17:00:00Z",
+            // A window split across two hours by the old rounding.
+            "budget:proxy:split:80:2026-11-21T16:00:00Z",
+            "budget:proxy:split:90:2026-11-21T17:00:00Z",
         ];
         let moves = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
             pairs
@@ -462,6 +476,21 @@ mod tests {
                 )]),
             ),
             ("budget:proxy:hour:80:2026-11-21T17:30:01Z", none.clone()),
+            // Half an hour from each of its two hours exactly, every level
+            // under each moves.
+            (
+                "budget:proxy:split:80:2026-11-21T16:30:00Z",
+                moves(&[
+                    (
+                        "budget:proxy:split:80:2026-11-21T16:00:00Z",
+                        "budget:proxy:split:80:2026-11-21T16:30:00Z",
+                    ),
+                    (
+                        "budget:proxy:split:90:2026-11-21T17:00:00Z",
+                        "budget:proxy:split:90:2026-11-21T16:30:00Z",
+                    ),
+                ]),
+            ),
             ("budget:proxy:day:80:2026-11-22T05:00:00Z", none.clone()),
             ("budget:other:day:80:2026-11-21T05:00:00Z", none.clone()),
             ("budget:proxy:weekly:90:", none.clone()),

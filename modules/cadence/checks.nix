@@ -20,6 +20,7 @@ let
     "${../spend-watch/src/standing.rs}"
     "${../spend-watch/src/status.rs}"
     "${../spend-watch/src/config.rs}"
+    "${../spend-watch/src/daemon.rs}"
   ];
 in
 # cadence reads Linux's pressure files and systemd's journal, and builds

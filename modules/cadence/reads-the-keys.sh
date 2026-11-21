@@ -9,10 +9,12 @@
 # A field's serde attributes, and its struct's, are pinned with it, as
 # serde can rename the key cadence reads without touching the field, and
 # a serde attribute the check can't read whole, as one split over lines
-# or inside another, fails it rather than reading as none.
+# or inside another, fails it rather than reading as none, as does a
+# Serialize written by hand, which can write any key its fields don't say.
 # It takes cadence's unbilled.rs, unresolved.rs and watch/budgets.rs, then
-# spend-watch's collection.rs, detect.rs, standing.rs, status.rs and
-# config.rs. reads-the-keys-catches.sh shows it fails each rename it guards.
+# spend-watch's collection.rs, detect.rs, standing.rs, status.rs,
+# config.rs and daemon.rs. reads-the-keys-catches.sh shows it fails each
+# rename it guards.
 set -euo pipefail
 
 unbilled=$1
@@ -23,6 +25,7 @@ detect=$5
 standing=$6
 status=$7
 config=$8
+daemon=$9
 
 line() {
   grep -qxF -- "$2" "$1" || {
@@ -40,6 +43,7 @@ within() {
   got=$(awk -v open="pub struct $2 {" -v want="$3" '
     function said() { printf "found:%s", attrs; found = 1; exit }
     /serde\(/ && !/^[[:space:]]*(\/\/|#\[serde\(.*\)\][[:space:]]*$)/ { unread = 1; exit }
+    /#\[[[:space:]]*serde/ && !/^[[:space:]]*#\[serde\(.*\)\][[:space:]]*$/ { unread = 1; exit }
     $0 == open { if (want == "") said(); inside = 1; attrs = ""; next }
     inside && /^}/ { exit }
     /^[[:space:]]*(#\[|\/\/|$)/ {
@@ -79,8 +83,15 @@ line "$detect" 'pub const UNRESOLVED: &str = "unresolved";'
 line "$detect" '        format!("{UNRESOLVED}:{budget}"),'
 
 # budgets.json, written whole from spend-watch's Standing, of the version
-# cadence reads, in spend-watch's own folder of the runtime directory.
+# cadence reads, in spend-watch's own folder of the runtime directory,
+# where its daemon writes unless its config names another.
 line "$config" '                .map(|dir| PathBuf::from(dir).join("spend-watch"))'
+line "$daemon" '    writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;'
+if grep -Eq '^[[:space:]]*impl(<[^>]*>)?[[:space:]]+(serde::)?Serialize[[:space:]]+for[[:space:]]' \
+  "$standing"; then
+  echo "$standing writes Serialize by hand, whose keys this check can't read" >&2
+  exit 1
+fi
 line "$budgets" '    match std::fs::read_to_string(runtime.join("spend-watch/budgets.json")) {'
 line "$status" '        let path = runtime.join("budgets.json");'
 line "$status" '        budgets: Option<&Standing>,'
