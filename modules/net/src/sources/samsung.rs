@@ -38,6 +38,19 @@ pub const LONGEST: u64 = 64 * 1024;
 /// What a TV answers at `/api/v2/`: JSON, as its text.
 pub type Answer = String;
 
+/// What a box did when asked this minute. A TV asleep says nothing, so
+/// only a reply that isn't a TV's page (an error, a redirect or more than
+/// a TV says) counts as it answering as something else.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Reply {
+    /// It answered with a page, as its text.
+    Page(Answer),
+    /// It answered, but with no page: why.
+    Refused(String),
+    /// It didn't answer: why.
+    Silent(String),
+}
+
 /// What a Samsung TV calls itself, which a phone or a soundbar answering
 /// on the same port never does.
 const A_TV: &str = "Samsung SmartTV";
@@ -64,7 +77,7 @@ pub type Heard = BTreeMap<String, Answer>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Asked {
     pub mac: String,
-    pub answer: Result<Answer, String>,
+    pub reply: Reply,
     pub earlier: Option<Answer>,
 }
 
@@ -109,8 +122,8 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
 
 /// What `mac` answered this minute, beside its last answer as a TV; an
 /// answer that is a TV's becomes the one remembered.
-pub fn remember(heard: &mut Heard, mac: String, answer: Result<Answer, String>) -> Asked {
-    if let Ok(said) = &answer
+pub fn remember(heard: &mut Heard, mac: String, reply: Reply) -> Asked {
+    if let Reply::Page(said) = &reply
         && television(String::new(), said).is_ok()
     {
         heard.insert(mac.clone(), said.clone());
@@ -118,7 +131,7 @@ pub fn remember(heard: &mut Heard, mac: String, answer: Result<Answer, String>) 
     Asked {
         earlier: heard.get(&mac).cloned(),
         mac,
-        answer,
+        reply,
     }
 }
 
@@ -138,9 +151,10 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
     let mut answering = false;
     let mut odd = None;
     for one in asked {
-        let (heard, answered) = match one.answer {
-            Ok(answer) => (television(one.mac.clone(), &answer), true),
-            Err(why) => (Err(why), false),
+        let (heard, answered) = match one.reply {
+            Reply::Page(answer) => (television(one.mac.clone(), &answer), true),
+            Reply::Refused(why) => (Err(format!("its answer isn't a TV's: {why}")), true),
+            Reply::Silent(why) => (Err(why), false),
         };
         // A box that hasn't answered as a TV this minute is kept, saying
         // so, when it has before, and otherwise left out, so a box that
@@ -181,7 +195,9 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
         } else {
             SourceState::Unreachable
         },
-        read_at: failing.is_none().then_some(now),
+        // Read this minute only when a TV answered, so a night of standby
+        // isn't said as a reading just now.
+        read_at: answering.then_some(now),
         since: failing.is_some().then_some(now),
         reason: failing,
     };
@@ -255,7 +271,7 @@ pub mod tests {
 
     /// The contract's TV, asked once, as the daemon's first minute asks it.
     pub fn asked() -> Asked {
-        remember(&mut Heard::new(), MAC.into(), Ok(answer()))
+        remember(&mut Heard::new(), MAC.into(), Reply::Page(answer()))
     }
 
     /// The TV as eero lists it: by the name it gives when it takes an
@@ -270,13 +286,13 @@ pub mod tests {
         })
     }
 
-    fn silent() -> Result<Answer, String> {
-        Err("it didn't answer: timed out".into())
+    fn silent() -> Reply {
+        Reply::Silent("it didn't answer: timed out".into())
     }
 
     fn one(answer: Answer) -> (Option<Source>, Vec<Found>) {
         read(
-            vec![remember(&mut Heard::new(), MAC.into(), Ok(answer))],
+            vec![remember(&mut Heard::new(), MAC.into(), Reply::Page(answer))],
             NOW,
         )
     }
@@ -369,7 +385,7 @@ pub mod tests {
     fn a_samsung_that_isnt_a_tv_is_left_out_without_a_source() {
         let soundbar = answer().replace(A_TV, "Samsung Soundbar");
         let mut heard = Heard::new();
-        let asked = remember(&mut heard, MAC.into(), Ok(soundbar));
+        let asked = remember(&mut heard, MAC.into(), Reply::Page(soundbar));
         assert!(heard.is_empty(), "a soundbar is remembered as a TV");
         assert_eq!(
             read(vec![asked], NOW),
@@ -391,7 +407,7 @@ pub mod tests {
     #[test]
     fn a_tv_heard_once_keeps_its_name_while_silent() {
         let mut heard = Heard::new();
-        remember(&mut heard, MAC.into(), Ok(answer()));
+        remember(&mut heard, MAC.into(), Reply::Page(answer()));
         let asked = remember(&mut heard, MAC.into(), silent());
         let (source, found) = read(vec![asked], NOW);
         let [tv] = found.as_slice() else {
@@ -417,18 +433,42 @@ pub mod tests {
         );
         assert_eq!(tv.detail, None, "an old answer is kept as this minute's");
         assert_eq!(
+            source.map(|source| (source.state, source.read_at, source.reason)),
+            Some((SourceState::Answering, None, None)),
+            "a TV asleep reads as the source failing, or as read this minute"
+        );
+    }
+
+    #[test]
+    fn a_tv_heard_once_that_refuses_is_said_as_answering_oddly() {
+        let mut heard = Heard::new();
+        remember(&mut heard, MAC.into(), Reply::Page(answer()));
+        let asked = remember(&mut heard, MAC.into(), Reply::Refused("it says 403".into()));
+        let (source, found) = read(vec![asked], NOW);
+        let [tv] = found.as_slice() else {
+            panic!("the TV should be kept as one: {found:?}");
+        };
+        assert_eq!(
+            (tv.name.as_deref(), tv.television.answering),
+            (Some("Living Room"), false),
+            "a TV that refuses loses its name, or reads as answering"
+        );
+        assert_eq!(
             source.map(|source| (source.state, source.reason)),
-            Some((SourceState::Answering, None)),
-            "a TV asleep reads as the source failing"
+            Some((
+                SourceState::Unreachable,
+                Some("Living Room: its answer isn't a TV's: it says 403".into())
+            )),
+            "a refusal reads as the TV asleep"
         );
     }
 
     #[test]
     fn a_tv_heard_once_that_answers_as_something_else_keeps_its_name() {
         let mut heard = Heard::new();
-        remember(&mut heard, MAC.into(), Ok(answer()));
+        remember(&mut heard, MAC.into(), Reply::Page(answer()));
         let odd = answer().replace(A_TV, "Samsung Soundbar");
-        let asked = remember(&mut heard, MAC.into(), Ok(odd));
+        let asked = remember(&mut heard, MAC.into(), Reply::Page(odd));
         let (source, found) = read(vec![asked], NOW);
         let [tv] = found.as_slice() else {
             panic!("the TV should be kept as one: {found:?}");
@@ -460,8 +500,8 @@ pub mod tests {
     #[test]
     fn a_tv_eero_no_longer_lists_is_forgotten() {
         let mut heard = Heard::new();
-        remember(&mut heard, MAC.into(), Ok(answer()));
-        remember(&mut heard, OTHER.into(), Ok(answer()));
+        remember(&mut heard, MAC.into(), Reply::Page(answer()));
+        remember(&mut heard, OTHER.into(), Reply::Page(answer()));
         forget_unlisted(&mut heard, &[(OTHER.to_owned(), ADDRESS.to_owned())]);
         let kept = heard.keys().collect::<Vec<_>>();
         assert_eq!(kept, [OTHER], "a TV that left is still remembered");
@@ -470,26 +510,27 @@ pub mod tests {
     #[test]
     fn an_answer_that_isnt_json_is_never_remembered() {
         let mut heard = Heard::new();
-        remember(&mut heard, MAC.into(), Ok("<html>".into()));
+        remember(&mut heard, MAC.into(), Reply::Page("<html>".into()));
         assert!(heard.is_empty(), "a page is remembered as a TV");
     }
 
     #[test]
-    fn one_tv_answering_keeps_the_source_answering() {
+    fn an_odd_tv_beside_one_answering_leaves_the_source_answering() {
         let mut heard = Heard::new();
-        remember(&mut heard, OTHER.into(), Ok(answer()));
+        remember(&mut heard, OTHER.into(), Reply::Page(answer()));
+        let odd = answer().replace(A_TV, "Samsung Soundbar");
         let (source, found) = read(
             vec![
-                remember(&mut heard, OTHER.into(), silent()),
-                remember(&mut heard, MAC.into(), Ok(answer())),
+                remember(&mut heard, OTHER.into(), Reply::Page(odd)),
+                remember(&mut heard, MAC.into(), Reply::Page(answer())),
             ],
             NOW,
         );
         assert_eq!(found.len(), 2, "both TVs aren't said");
         assert_eq!(
-            source.map(|source| (source.state, source.reason)),
-            Some((SourceState::Answering, None)),
-            "one silent TV makes the source unreachable"
+            source.map(|source| (source.state, source.read_at, source.reason)),
+            Some((SourceState::Answering, Some(NOW), None)),
+            "one odd TV makes the source unreachable while another answers"
         );
     }
 
