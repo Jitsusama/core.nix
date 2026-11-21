@@ -101,6 +101,9 @@ struct Clock {
     line: Vec<u8>,
     written: u64,
     heard: Instant,
+    /// Why the net stopped the run, once it has: a stall's log says so,
+    /// since the runs after it on the same merge write on after it.
+    stopped: Option<&'static str>,
 }
 
 impl Clock {
@@ -116,6 +119,7 @@ impl Clock {
             line: Vec::new(),
             written,
             heard: now,
+            stopped: None,
         }
     }
 
@@ -207,13 +211,19 @@ impl Clock {
             self.waits = None;
             self.building.get_or_insert(now);
         }
-        self.taken.is_some_and(|taken| {
-            now.duration_since(self.heard) > SILENT
-                || match self.building {
-                    Some(building) => now.duration_since(building) > LONGEST,
-                    None => now.duration_since(taken) > WAITS_AT_MOST,
+        self.stopped = self.taken.and_then(|taken| {
+            if now.duration_since(self.heard) > SILENT {
+                return Some("it printed nothing for half an hour");
+            }
+            match self.building {
+                Some(building) => {
+                    (now.duration_since(building) > LONGEST).then_some("it built past two hours")
                 }
-        })
+                None => (now.duration_since(taken) > WAITS_AT_MOST)
+                    .then_some("it waited for a turn past three hours"),
+            }
+        });
+        self.stopped.is_some()
     }
 }
 
@@ -815,6 +825,17 @@ fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
             .open(log)
             .and_then(|mut kept| writeln!(kept, "merge-net: this compared nothing: {why}"));
     }
+    // A stall is marked where it ended, since the runs after it write on in
+    // the same log, and its owner reading from the end would find theirs.
+    if read.is_none() {
+        let why = clock
+            .stopped
+            .unwrap_or("something outside the net stopped it");
+        let _ = fs::OpenOptions::new()
+            .append(true)
+            .open(log)
+            .and_then(|mut kept| writeln!(kept, "merge-net: this run stopped unfinished: {why}"));
+    }
     read
 }
 
@@ -997,6 +1018,7 @@ fn ended(
             }
             Ok(Some(status)) => return status.code(),
             Ok(None) if dropped() || clock.overdue(log, Instant::now()) => {
+                clock.stopped.get_or_insert("the net let it go");
                 let _ = Command::new("kill")
                     .args(["-s", "KILL", "--", &format!("-{}", child.id())])
                     .stderr(Stdio::null())
@@ -2521,6 +2543,11 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             None,
             "a run whose turn came and that then hung was read as comparing nothing"
         );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this run stopped unfinished: it printed nothing for half an hour"),
+            "a stall is marked where it ended, since later runs write on after it"
+        );
         let _ = fs::remove_file(&log);
     }
 
@@ -2545,6 +2572,9 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         let _ = fs::remove_file(&log);
     }
 
+    // It reads `/proc`, which is Linux's alone, and a Mac's dev shell builds
+    // merge-net too, where every read would say the child was gone.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_run_stopped_is_stopped_with_what_it_started() {
         let folder = std::env::temp_dir().join(format!("merge-net-group-{}", std::process::id()));
