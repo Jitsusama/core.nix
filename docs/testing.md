@@ -199,7 +199,9 @@ passed, from nix-offload's record of what passed at each commit. It refuses
 one no review round read too, from the rounds the harness keeps, unless it
 is a clean rebase of a commit one read, by the same patch id taken with
 its context lines and whitespace, so a block moved within its file is
-another change. A rebase
+another change. A round over a range of commits stands for its head only
+when the range starts on main, and a squash or a reworded subject asks
+for a round again. A rebase
 needs no run of its own when that run passed at an earlier commit of the
 same change, by git's patch id of a diff without context lines, so an
 edit of main's beside the change leaves it the same, and main has since

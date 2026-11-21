@@ -18,10 +18,36 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// earlier commits are looked for among those the rounds read, so a
 /// reviewed commit with no pass of its own still counts. Why not, when not.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    let read = seen::witnessed(&seen::rounds_folder())?;
+    let read = in_full(
+        Path::new("."),
+        main,
+        seen::witnessed(&seen::rounds_folder())?,
+    );
     read_among(commit, &read, |witnessed| {
         same_change(commit, main, files, witnessed, read_patch_id)
     })
+}
+
+/// The commits of `rounds` read in full, in the repo at `repo`: each a
+/// change's round read, and each a range's whose base is on `main`, so a
+/// round over only a head's newest commit doesn't stand for the commits
+/// under it.
+fn in_full(repo: &Path, main: &str, rounds: HashSet<seen::Read>) -> HashSet<String> {
+    let mut on_main = std::collections::HashMap::new();
+    rounds
+        .into_iter()
+        .filter(|read| {
+            read.from.as_ref().is_none_or(|base| {
+                *on_main.entry(base.clone()).or_insert_with(|| {
+                    // One git would read as an option is no base.
+                    !base.is_empty()
+                        && !base.starts_with('-')
+                        && git_at(repo, &["merge-base", "--is-ancestor", base, main]).is_ok()
+                })
+            })
+        })
+        .map(|read| read.commit)
+        .collect()
 }
 
 /// Whether `commit` is among the commits the rounds `read`, or `earlier`,
@@ -194,6 +220,48 @@ mod tests {
             search(&moved).is_err(),
             "the read lines moved within their file kept its review"
         );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // A round over a range read only what lies between its ends, so its
+    // head counts as read in full only where the range starts on main: one
+    // over a head's newest commit alone doesn't stand for the one under it.
+    #[test]
+    fn a_range_round_reads_its_head_in_full_only_from_a_base_on_main() {
+        let repo = env::temp_dir().join(format!("merge-net-in-full-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        fs::write(repo.join("w"), "a\n").unwrap();
+        git_in(&repo, &["add", "w"]);
+        git_in(&repo, &["commit", "-qm", "base"]);
+        let main = git_in(&repo, &["rev-parse", "HEAD"]);
+        git_in(&repo, &["tag", "trunk"]);
+        let unread = commit(&repo, "b\n");
+        let head = commit(&repo, "c\n");
+        let read = |from: Option<&str>| seen::Read {
+            commit: head.clone(),
+            from: from.map(str::to_owned),
+        };
+        let full = |round| in_full(&repo, &main, HashSet::from([round]));
+        assert_eq!(
+            full(read(None)),
+            HashSet::from([head.clone()]),
+            "a change's round"
+        );
+        assert_eq!(
+            full(read(Some(&main))),
+            HashSet::from([head.clone()]),
+            "from main"
+        );
+        assert_eq!(
+            full(read(Some("trunk"))),
+            HashSet::from([head.clone()]),
+            "from a name"
+        );
+        for base in [unread.as_str(), "", "--all", "gone"] {
+            assert!(full(read(Some(base))).is_empty(), "from {base:?}");
+        }
         fs::remove_dir_all(&repo).unwrap();
     }
 
