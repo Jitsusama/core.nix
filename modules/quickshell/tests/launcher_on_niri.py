@@ -57,6 +57,8 @@ KEYS = {
     "up": ["-k", "Up"],
     "down": ["-k", "Down"],
     "ctrl-left": ["-M", "ctrl", "-k", "Left", "-m", "ctrl"],
+    "ctrl-i": ["-M", "ctrl", "-k", "i", "-m", "ctrl"],
+    "ctrl-o": ["-M", "ctrl", "-k", "o", "-m", "ctrl"],
     "ctrl-r": ["-M", "ctrl", "-k", "r", "-m", "ctrl"],
     "ctrl-u": ["-M", "ctrl", "-k", "u", "-m", "ctrl"],
     "ctrl-y": ["-M", "ctrl", "-k", "y", "-m", "ctrl"],
