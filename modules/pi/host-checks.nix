@@ -506,6 +506,8 @@ in
         && lib.elem ''"PI_HOST_STOP_USEC=150000000"'' environment
         # Every conversation it holds shares its codemode workers.
         && lib.elem ''"PI_CODEMODE_MAX_WORKERS=16"'' environment
+        # Its browser is Chromium, which no Chrome policy enrols.
+        && lib.elem ''"CHROME_PATH=${lib.getExe pkgs.chromium}"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
         # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
         && lib.elem ''"GREETING=say \"hi\" there"'' environment;
@@ -540,7 +542,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, browses in Google Chrome rather than Chromium, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         readsOptions
         && starts "attended"
