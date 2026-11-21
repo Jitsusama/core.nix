@@ -1502,6 +1502,73 @@ mod tests {
     }
 
     #[test]
+    fn a_networks_cells_sort_and_say_as_the_tree_marks_them() {
+        let mut inputs = inputs();
+        // Q, in P's team under O, asks Joel; T works; R is parked with his want open.
+        inputs.sessions.took(&json!({"changed": [
+            {"key": "session:q", "standing": "running", "here": true,
+             "presence": {"addresses": ["Q"], "session": "s-q", "orchestratedBy": "P",
+                          "wants": {"kind": "approval", "said": "May I push?"}}},
+            {"key": "session:t", "standing": "running", "here": true,
+             "presence": {"addresses": ["T"], "session": "s-t", "busy": true}},
+            {"key": "session:r", "standing": "running", "here": true,
+             "presence": {"addresses": ["R"], "session": "s-r", "state": "parked",
+                          "wants": {"kind": "approval", "said": "Run it?"}}}]}));
+        // The node counts each cell by its own standing: nobody here needs Joel.
+        let network = |name: &str, cells: [&str; 2]| {
+            json!({"key": format!("network:{name}"), "kind": "network", "name": name,
+                   "shape": "repository", "short": name, "title": name, "heard": 0,
+                   "cells": cells, "machines": [], "counts": {"moving": 2}})
+        };
+        inputs.networks.took(&json!({"records": [
+            network("repo.kelp", ["t", "p"]), network("repo.reef", ["t", "r"])]}));
+        let shown = served(&inputs);
+        let row = |key: &str| {
+            shown
+                .get(&format!("row:agents-top:network:{key}"))
+                .expect(key)["row"]
+                .clone()
+        };
+        let worn = |key: &str| format!("{}:{}", row(key)["glyph"], row(key)["hue"]);
+        let first = |name: &str| {
+            let parent = format!("row:agents-top:network:{name}");
+            shown
+                .all()
+                .filter(|one| one["row"]["parent"] == parent.as_str())
+                .min_by_key(|one| one["row"]["order"].as_i64())
+                .and_then(|one| one["row"]["key"].as_str())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        assert_eq!(
+            [
+                worn("repo.kelp:p"),
+                worn("repo.kelp:t"),
+                worn("repo.reef:r")
+            ],
+            [
+                "\"waitsOnJoel\":\"alert\"",
+                "\"agent\":\"program\"",
+                "\"waitsOnJoel\":\"alert\""
+            ],
+            "P wears Joel's mark for Q under it, R for its own open want, T none"
+        );
+        assert_eq!(
+            [first("repo.kelp"), first("repo.reef")],
+            [
+                "row:agents-top:network:repo.kelp:p",
+                "row:agents-top:network:repo.reef:r"
+            ],
+            "each network sorts first the cell wearing the mark, as the tree served it"
+        );
+        assert!(
+            row("repo.kelp")["side"].to_string().contains("1 needs you"),
+            "and its row says Joel's wanted: {}",
+            row("repo.kelp")["side"]
+        );
+    }
+
+    #[test]
     fn a_talk_waiting_in_an_inbox_is_served_with_its_sessions_talks_and_moves_them_alone() {
         let mut inputs = inputs();
         let mut shown = served(&inputs);

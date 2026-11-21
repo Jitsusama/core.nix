@@ -47,10 +47,19 @@ pub fn drawers(records: &[&Value], top: &[Value], words: &Words, spent: Spent) -
         .iter()
         .filter_map(|record| Some((record["name"].as_str()?, *record)))
         .collect();
+    // Said as its row says it, needing Joel for each cell wearing his mark.
     records
         .iter()
         .filter(|record| networks::shown(record))
-        .map(|record| drawer(record, &named, &rows, words, spent))
+        .map(|record| {
+            drawer(
+                &networks::as_marked(record, &rows),
+                &named,
+                &rows,
+                words,
+                spent,
+            )
+        })
         .collect()
 }
 

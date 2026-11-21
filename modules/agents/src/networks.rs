@@ -8,6 +8,9 @@
 //! At thousands of cells a heading folds worst first: the networks
 //! needing Joel and the stuck, then the busiest few, then one row
 //! holding the rest; a network's cells fold the same way.
+//!
+//! Long because over half of it is its cases: each fold and each count a
+//! heading says needs a mycelium of its own built beside it.
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -160,6 +163,34 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
         .collect()
 }
 
+/// `network` as Joel's mark has it: needing him at least once for each
+/// of its cells wearing the mark (top.rs's `anyWaitsOnJoel`), a team's
+/// lead waiting for a session under it too, which the node, counting a
+/// cell by its own standing alone, leaves out. So a network holding a
+/// marked cell sorts first, says it needs him and never folds away, as
+/// the cell does inside it.
+pub(crate) fn as_marked(network: &Value, rows: &HashMap<String, &Value>) -> Value {
+    let mut seen = network.clone();
+    if network["shape"] == "machines" {
+        return seen;
+    }
+    let marked = network["cells"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|name| {
+            rows.get(&name.to_lowercase())
+                .is_some_and(|row| row["held"]["anyWaitsOnJoel"] == true)
+        })
+        .count();
+    let marked = u64::try_from(marked).unwrap_or(u64::MAX);
+    if marked > count(network, "needs-you") {
+        seen["counts"]["needs-you"] = json!(marked);
+    }
+    seen
+}
+
 /// A cell of a network keyed `parent`: its session's row as the tree
 /// serves it, under the network, stepping into nothing more; none where
 /// the tree served none.
@@ -301,13 +332,16 @@ fn capitalised(word: &str) -> String {
 /// none where the node serves no network but orchestrations.
 pub fn rows(records: &[&Value], top: &[Value], words: &Words) -> Vec<Value> {
     let sessions = sessions(top);
+    let marked: Vec<Value> = records
+        .iter()
+        .map(|record| as_marked(record, &sessions))
+        .collect();
     let parent = key_of("networks");
     let mut rows = Vec::new();
     for (shape, heading, glyph) in HEADINGS {
         let each = ordered(
-            records
+            marked
                 .iter()
-                .copied()
                 .filter(|record| record["shape"] == shape)
                 .collect(),
         );
@@ -567,6 +601,38 @@ mod tests {
             ],
             "the order and the mark agree"
         );
+    }
+
+    #[test]
+    fn a_network_holding_a_marked_cell_needs_joel_however_the_node_counts_it() {
+        // KELP01's network counts it moving, the node judging it by its own
+        // standing, yet its row wears Joel's mark for a session in its team.
+        let mut team = session("KELP01", "working", "orchestration");
+        team["held"]["anyWaitsOnJoel"] = json!(true);
+        let top = [team];
+        let mut records: Vec<Value> = (0..20)
+            .map(|at| {
+                let moving = json!({"needs-you": 0, "stuck": 0, "moving": 3, "quiet": 0});
+                record(&format!("repo.r{at:02}"), "repository", &[], &moving, at)
+            })
+            .collect();
+        let moving = json!({"needs-you": 0, "stuck": 0, "moving": 1, "quiet": 0});
+        records.push(record("repo.world", "repository", &["kelp01"], &moving, 0));
+        let all: Vec<&Value> = records.iter().collect();
+        let made = rows(&all, &top, &words());
+        let world = made
+            .iter()
+            .find(|row| row["key"] == "row:agents-top:network:repo.world")
+            .expect("its row");
+        assert_eq!(
+            [&world["parent"], &made[2]["key"]],
+            [
+                "row:agents-top:networks",
+                "row:agents-top:network:repo.world"
+            ],
+            "it sorts first and never folds away, past twelve networks"
+        );
+        assert_eq!(said(world), ["1 needs you", "1 moving"], "and says so");
     }
 
     #[test]
