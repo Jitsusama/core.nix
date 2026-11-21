@@ -435,15 +435,16 @@
         && (daemon.Slice or "") == "machine.slice"
       );
 
-  # A VPN's service, which Joel's own traffic passes through, keeps its
-  # memory out of swap and under a hard floor, and comes ahead of the other
-  # system services for the disk, so agents' load can't leave it waiting on
-  # its own pages. The kernel keeps a floor only as far as every slice above
-  # claims one, so system.slice claims each VPN's floor, and none with no
-  # VPN named. A service whose command comes from its package's own unit,
-  # as tailscaled's does, is taken. A name no service has is refused, since
-  # it would make an empty unit rather than protect one, and so is a service
-  # the slices module defines itself, whose settings the VPN's would replace.
+  # A VPN's service, which Joel's own traffic passes through, keeps its memory
+  # out of swap and under a hard floor, and, where the disk shares by weight,
+  # comes ahead of the other system services for it, so agents' load can't
+  # leave it waiting on its own pages. The kernel keeps a floor only as far as
+  # every slice above claims one, so system.slice claims each VPN's floor, and
+  # none with no VPN named. A service whose command comes from its package's
+  # own unit, as tailscaled's does, is taken. A name no service has is
+  # refused, since it would make an empty unit rather than protect one, and so
+  # is a service the slices module defines itself, whose settings the VPN's
+  # would replace.
   a-vpn-service-keeps-its-memory =
     let
       machine =
@@ -477,8 +478,7 @@
         systemd.sockets.socketed.listenStreams = [ "/run/socketed.sock" ];
         systemd.timers.timed.timerConfig.OnCalendar = "hourly";
       };
-      ownRefusal =
-        unit: "jitsusama.slices.vpnServices names ${unit}, which the slices module sets itself.";
+      ownRefusal = unit: "jitsusama.slices.vpnServices names ${unit}, one the slices module sets.";
       twice = (machine [ "vpn" "vpn" ] both).systemd.slices.system.sliceConfig;
       both = {
         imports = [
