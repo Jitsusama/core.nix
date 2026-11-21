@@ -33,7 +33,6 @@ pub mod caps;
 pub mod cli;
 pub mod collection;
 pub mod config;
-pub mod copies;
 pub mod daemon;
 pub mod detect;
 pub mod drawers;
