@@ -3,6 +3,10 @@
 //! spread into, on one pitch and one type scale. The window draws it
 //! centred, so its margins are what the window leaves, and a window too
 //! narrow for that has the page set again to fit it.
+//!
+//! Long because the Typst template the page is set by is held here whole,
+//! half the file, as one program whose parts lean on each other's
+//! measures, and the type check (`type-is-set-by-level`) reads it here.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -236,7 +240,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // beside the letter, then the rest at the whole measure, a line under.
 // Its size is read from the title's own capitals, which an optical size
 // or another face sets apart from the words'.
-#let drop-size() = (pitch + cap) / (measure(text(..level.title.text, size: 100pt, top-edge: "cap-height", bottom-edge: "baseline", "H")).height / 100pt)
+#let drop-size() = (pitch + cap) / (measure(text(..level.title.text, top-edge: "cap-height", bottom-edge: "baseline", "H")).height / title-size)
 // A paragraph's pieces: each word and each space of its words alone, and
 // whatever else it holds whole, so it can be cut between two words.
 #let pieces-of(it) = if it.func() == [].func() {
