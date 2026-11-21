@@ -785,6 +785,10 @@ import {
   // Every line drawn, as a curve in map units, so names can keep off them.
   let lineShapes = [];
   let talkShapes = [];
+  // The talk and feeding lines as last painted, and a count bumped each
+  // time they change, which the names' placing is keyed on.
+  let linesSig = "";
+  let linesSeen = 0;
   // A bowed line as its three points, for the ground layer to paint.
   const curve = (p, q, by = 0.12) => {
     const line = [p, control(p, q, by), q];
@@ -1658,6 +1662,14 @@ import {
   const COMPASS_WAYS = 16;
   const COMPASS = Array.from({ length: COMPASS_WAYS }, (_, i) => [Math.cos((i * 2 * Math.PI) / COMPASS_WAYS), Math.sin((i * 2 * Math.PI) / COMPASS_WAYS)]);
   let labels = [];
+  // The labels as last written: their markup and what placing reads of
+  // each beyond its words. A reading comes every two seconds and most name
+  // the same things in the same places, so those keep the names written,
+  // measured and placed rather than parsing and placing them all again.
+  let labelsPlan = "";
+  // What the labels were last placed against, so a placing asked again
+  // over the same names, view and lines leaves them where they stand.
+  let labelsPlacedFor = null;
   const labelsFor = () => {
     const m = current;
     const out = [];
@@ -1768,8 +1780,7 @@ import {
     // them keep a name, after the machines' marks and what is open and
     // pointed at.
     if (near && out.length > NAMES_OPEN) out.length = Math.max(NAMES_OPEN, out.filter((l) => l.mark).length);
-    labels = out;
-    labelsEl.innerHTML = out
+    const html = out
       .map((l) => {
         const name = l.name.map((t, j) => `<tspan x="0" dy="${j ? LINE : 0}">${esc(t)}</tspan>`).join("");
         const below = (l.name.length - 1) * LINE + (l.mark ? MARK_SUB_Y : NAME_SUB_Y);
@@ -1785,6 +1796,12 @@ import {
         return `<g class="${cls}" data-mark="${esc(l.key)}"><g data-name="${esc(l.key)}"><rect class="t-plate" rx="0"/><rect class="t-box"/>${words}</g>${counts}</g>`;
       })
       .join("");
+    const placing = out.map((l) => [l.key, l.at, l.r, l.disc, l.out, l.rank, l.small]);
+    const plan = `${html}\n${JSON.stringify(placing)}`;
+    if (plan === labelsPlan) return;
+    labelsPlan = plan;
+    labels = out;
+    labelsEl.innerHTML = html;
     measureLabels();
   };
   // Every box is read before any plate is written: a read after a write
@@ -1795,7 +1812,11 @@ import {
   const boxCache = new Map();
   const BOX_CACHE_MAX = 4000;
   // A box taken in a fallback face is wrong once the real one arrives.
-  document.fonts?.addEventListener("loadingdone", () => boxCache.clear());
+  // The names written then are measured again with the next reading.
+  document.fonts?.addEventListener("loadingdone", () => {
+    boxCache.clear();
+    labelsPlan = "";
+  });
   const boxKey = (l) => `${l.kind}|${l.mono ? 1 : 0}|${l.strong ? 1 : 0}|${l.name.join("\n")}|${l.sub || ""}`;
   const measureLabels = () => {
     const nodes = labelsEl.children;
@@ -2008,6 +2029,12 @@ import {
   const placeLabels = () => {
     const nodes = labelsEl.children;
     const [w, h] = size();
+    // Placing reads the names, the view, every mark's place and size, and
+    // every line; with none of them moved, each name already stands where
+    // it would be put. A pan or zoom moves the view, so it always places.
+    const against = [labels, k, tx, ty, w, h, spots, sizes, lineShapes, linesSeen];
+    if (labelsPlacedFor?.every((v, i) => v === against[i])) return;
+    labelsPlacedFor = against;
     const taken = [];
     const cuts = [];
     const stacked = stackMarks();
@@ -4365,6 +4392,13 @@ import {
       const ends = [`c:${f.receptor}`, `c:${f.cell}`];
       const faint = near && !(own ? ends.includes(own) : ends.every(touches)) ? " faint" : "";
       fedLayer.push({ tag: "path", cls: `m-fed${faint}`, line });
+    }
+    // The lines a name keeps off, stamped once per paint rather than read
+    // by every placing: a pan places on every frame.
+    const seen = JSON.stringify([talkShapes, fedShapes]);
+    if (seen !== linesSig) {
+      linesSig = seen;
+      linesSeen++;
     }
     if (!paint) return;
     // The names keep off talk too, so they move when it does.

@@ -1140,6 +1140,9 @@ MARK_DRAWN = """() => {
   const legend = document.querySelector('#panel-body details[data-keep="legend"]');
   legend.open = true;
   legend.querySelector('summary').focus();
+  const mark = document.querySelector('.labels g.t-hub:not([display])');
+  mark.dataset.kept = 'yes';
+  mark.setAttribute('transform', 'translate(0.5,0.5)');
   document.addEventListener('mycelium:modelled', (e) => {
     window.tern = e.detail.model.cells.find((s) => s.address === 'TERN03') || null;
   });
@@ -1154,6 +1157,14 @@ STILL_DRAWN = """() => {
     !!legend?.open,
     document.activeElement === legend?.querySelector('summary')];
 }"""
+# Whether the first network's name shown is the one MARK_DRAWN marked, and
+# where it stands: placed again, it would stand by its network rather than
+# where MARK_DRAWN nudged it.
+LABEL_KEPT = """() => {
+  const mark = document.querySelector('.labels g.t-hub:not([display])');
+  return [mark?.dataset.kept === 'yes', mark?.getAttribute('transform')];
+}"""
+NUDGED = "translate(0.5,0.5)"
 # What TERN03 was in the reading last drawn, for a wait on the one told.
 TERN_USED = "window.tern?.usage?.context?.used === 12000"
 TERN_MOVING = "window.tern?.standing === 'moving'"
@@ -1190,6 +1201,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     assert kept_drawer, "a reading that left the drawer's words built the drawer again"
     assert kept_fold, "a reading that left the drawer's words shut the fold left open"
     assert kept_focus, "a reading that left the drawer's words took the focus off the fold"
+    label_kept, label_at = page.evaluate(LABEL_KEPT)
+    assert label_kept, "a reading that named the same things wrote the map's names again"
+    assert label_at == NUDGED, f"a reading that moved no name placed the names again: {label_at}"
     # TERN03 set moving beside TERN01, which already moves, keeps the shape
     # but not the inks: its nucleus is painted over the marks as drawn.
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
@@ -1203,6 +1217,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.wait_for_function(TERN_GONE, timeout=PACE_MS)
     kept_marks, *_ = page.evaluate(STILL_DRAWN)
     assert not kept_marks, "a cell gone left the map as it was drawn"
+    label_kept, label_at = page.evaluate(LABEL_KEPT)
+    assert not label_kept, "a cell gone left its network's count as it was written"
+    assert label_at != NUDGED, "the names written again stand where the old ones were nudged"
 
 
 # What node.json's cells spent today, as the Spent Today fold lists it under
