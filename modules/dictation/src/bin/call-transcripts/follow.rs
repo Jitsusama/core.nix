@@ -425,20 +425,8 @@ fn look_again(
     let Some(seen) = crate::meet::still_on(runtime, known, event.as_deref(), me) else {
         return;
     };
-    let mut book = book.lock();
-    book.present(key, &seen.present);
-    let Some(record) = book.record(key).cloned() else {
-        return;
-    };
-    let on = (seen.people, seen.known);
-    let (people, known) = meeting::came((record.people.clone(), record.known), on);
-    if (&people, known) != (&record.people, record.known) {
+    if book.lock().saw(key, seen, now()) {
         eprintln!("call-transcripts: who's on it changed, {key}");
-        book.put(Record {
-            people,
-            known,
-            ..record
-        });
     }
 }
 

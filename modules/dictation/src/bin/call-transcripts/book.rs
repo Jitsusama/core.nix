@@ -28,6 +28,7 @@ pub use dictation::daemon::now;
 use dictation::daemon::{self, Answers, VERSION, Watches, error};
 
 use crate::filed;
+use crate::meet::Seen;
 use crate::meeting::{self, Known};
 use crate::presence::Present;
 use crate::private::make_folder;
@@ -323,7 +324,16 @@ pub struct Book {
     /// the google daemon said while it was recorded (meet.rs). Held only
     /// here, never beside the call, since it's for naming its voices as
     /// it ends, and Meet says it again to a daemon restarted mid-call.
-    present: HashMap<String, Vec<Present>>,
+    present: HashMap<String, Attendance>,
+}
+
+/// Who was in a call's Meet as far as it was looked at: every time Meet
+/// gave for each of them, and when it was last looked at, in
+/// milliseconds since the epoch.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Attendance {
+    pub present: Vec<Present>,
+    pub looked: u64,
 }
 
 impl Book {
@@ -356,23 +366,40 @@ impl Book {
         }
     }
 
-    /// Keeps who `seen` says was in the Meet of the call `key`, in place
-    /// of what was seen before, since Meet gives each their first join
-    /// every time, and its leaves are newer, a rejoin clearing one. A
-    /// name it leaves out keeps what was seen of it.
-    pub fn present(&mut self, key: &str, seen: &[Present]) {
-        let held = self.present.remove(key).unwrap_or_default();
-        let mut kept = seen.to_vec();
-        let gone = held
-            .into_iter()
-            .filter(|held| !seen.iter().any(|person| person.name == held.name));
-        kept.extend(gone);
-        self.present.insert(key.to_owned(), kept);
+    /// Takes in what a look at the call `key`'s Tuple call or Meet `seen`
+    /// `at` that moment (meet.rs's `still_on`): each time Meet gave for
+    /// someone, beside every time it gave before, and who's on it, added
+    /// to its record as `meeting::came` says. Every time is kept, since
+    /// a rejoin into a new conference gives a later join, and holding
+    /// someone in for longer only makes a voice less sure to be another.
+    /// Whether who's on it changed is given back.
+    pub fn saw(&mut self, key: &str, seen: Seen, at: u64) -> bool {
+        let held = self.present.entry(key.to_owned()).or_default();
+        for person in seen.present {
+            if !held.present.contains(&person) {
+                held.present.push(person);
+            }
+        }
+        held.looked = at;
+        let Some(record) = self.record(key).cloned() else {
+            return false;
+        };
+        let on = (seen.people, seen.known);
+        let (people, known) = meeting::came((record.people.clone(), record.known), on);
+        if (&people, known) == (&record.people, record.known) {
+            return false;
+        }
+        self.put(Record {
+            people,
+            known,
+            ..record
+        });
+        true
     }
 
     /// Who was in the Meet of the call `key`, and when, as far as it
     /// was seen; nobody for a call whose Meet wasn't.
-    pub fn presence(&self, key: &str) -> Vec<Present> {
+    pub fn attendance(&self, key: &str) -> Attendance {
         self.present.get(key).cloned().unwrap_or_default()
     }
 

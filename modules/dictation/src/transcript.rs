@@ -360,6 +360,26 @@ mod tests {
     }
 
     #[test]
+    fn a_transcript_whose_every_voice_is_named_writes_again_with_its_notes() {
+        let lines = [
+            named(0, 0, "Ada", "Shall we start?"),
+            named(3, 1, "Bo", "Yes, go ahead."),
+        ];
+        let guesses = Some("Voice 3 may be Cy.");
+        let written = markdown_naming(&lines, "Joel", None, None, guesses);
+        assert!(
+            written.contains(NAMED_NOTE) && written.contains("Voice 3 may be Cy."),
+            "a transcript naming every voice lost the note or the guesses: {written}"
+        );
+        let back = read(&written, "Joel");
+        assert_eq!(
+            markdown_naming(&back, "Joel", None, None, guesses),
+            written,
+            "read back, names but no voice numbers lost the note on writing again"
+        );
+    }
+
+    #[test]
     fn a_voice_named_what_joel_is_or_what_reads_as_unnamed_keeps_its_number() {
         for name in ["Joel", "Others", "Voice 3", ""] {
             let written = markdown(&[named(0, 0, name, "Hello.")], "Joel", None, None);

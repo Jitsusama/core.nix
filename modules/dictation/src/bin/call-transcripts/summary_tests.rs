@@ -1,6 +1,16 @@
 use super::*;
 use dictation::transcript::{NAMED_NOTE, VOICES_NOTE};
 
+/// The summary of a call where Joel isn't told, so he's guessed.
+fn summarize(
+    ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
+    title: &str,
+    them: Option<&str>,
+    transcript: &str,
+) -> Result<String, String> {
+    summarize_as(ask, title, None, them, transcript)
+}
+
 const CALL: &str = "# Transcript\n\n**Joel**, 0:13: Hi there.\n\n\
      **Others**, 0:19: I think we should move the review to Thursday, you know, because \
      the release slipped.\n\n\
@@ -207,6 +217,11 @@ fn a_call_opening_on_a_voice_is_summed_up_with_joel_as_joel_and_every_note() {
     assert!(
         model.asked[0].contains("a call between Joel and the others on it, whose voices"),
         "the model is told the voices are the others: {}",
+        model.asked[0]
+    );
+    assert!(
+        !model.asked[0].contains("called by name"),
+        "the model is told voices are called by name where none is: {}",
         model.asked[0]
     );
 }

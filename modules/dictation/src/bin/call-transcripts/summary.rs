@@ -144,29 +144,16 @@ fn notes(transcript: &str) -> Vec<&str> {
 
 /// The summary of the call `transcript` writes down, titled `title`,
 /// asking `ask` each question with the most tokens its answer may take.
-/// The others on it are called `them` where the call knows who they are,
-/// and Others where it doesn't.
+/// Joel is called `me` where that's known, as it is to the daemon that
+/// wrote the transcript, so a voice of theirs named by who was in the
+/// Meet is never taken for him; where it isn't, he's guessed. The others
+/// on it are called `them` where the call knows who they are, and Others
+/// where it doesn't.
 ///
 /// # Errors
 ///
 /// When `ask` fails, as it does once it's stopped; nothing is written
 /// then, since a summary of part of a call reads as the whole.
-pub fn summarize(
-    ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
-    title: &str,
-    them: Option<&str>,
-    transcript: &str,
-) -> Result<String, String> {
-    summarize_as(ask, title, None, them, transcript)
-}
-
-/// `summarize`, with Joel called `me` where that's known, as it is to the
-/// daemon that wrote the transcript, so a voice of theirs named by who was
-/// in the Meet is never taken for him; where it isn't, he's guessed.
-///
-/// # Errors
-///
-/// As `summarize`.
 pub fn summarize_as(
     ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
     title: &str,

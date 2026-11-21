@@ -18,9 +18,8 @@
 //! down whole the takes are grouped by voice (voices.rs), unless the
 //! record already names their side, and each voice is named where who
 //! was in the Meet as it spoke says so (presence.rs). Only the
-//! embeddings are kept, never
-//! the sound, and only in memory: the last few calls' stay once they end,
-//! so a call rejoined is told apart whole.
+//! embeddings are kept, never the sound, and only in memory: the last
+//! few calls' stay once they end, so a call rejoined is told apart whole.
 //!
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
@@ -37,7 +36,7 @@ use dictation::transcript::{self, Line, Side, markdown_naming};
 use dictation::voices::{self, Heard, Voices};
 
 use crate::Settings;
-use crate::book::{self, Record, Shared, TRANSCRIPT, write_whole};
+use crate::book::{self, Attendance, Record, Shared, TRANSCRIPT, write_whole};
 use crate::filed;
 use crate::presence::{self, Present, Spoke, Who};
 use crate::{notices, said};
@@ -294,29 +293,64 @@ fn embed(settings: &Settings, speakers: &mut Speakers, samples: &[f32]) -> Optio
 /// they're grouped anew, each voice is named where who was in the Meet
 /// says so.
 fn tell_apart(book: &Shared, key: &str, writing: &mut Writing, me: &str) {
-    let (record, present) = {
+    let (record, seen) = {
         let book = book.lock();
         let Some(record) = book.record(key).cloned() else {
             return;
         };
-        (record, book.presence(key))
+        (record, book.attendance(key))
     };
     if let TheirSide::Unnamed { people } = their_side(&record, me)
         && give_voices(writing, people)
     {
-        writing.guesses = give_names(&mut writing.lines, record.started, &present);
+        writing.guesses = give_names(&mut writing.lines, &record, &seen);
+        // Counts alone, never names, so the log holds nothing of the call.
+        let voices = |named: bool| {
+            let theirs = writing.lines.iter().filter(|line| line.voice.is_some());
+            let chosen = theirs.filter(|line| line.name.is_some() || !named);
+            chosen
+                .filter_map(|line| line.voice)
+                .collect::<HashSet<_>>()
+                .len()
+        };
+        eprintln!(
+            "call-transcripts: {} of {} voices named from {} seen in the Meet, {key}",
+            voices(true),
+            voices(false),
+            seen.present.len(),
+        );
     }
 }
 
-/// Gives each line of theirs whose voice was `present` for certain that
-/// person's name, for a call that `started` then, in milliseconds since
-/// the epoch, as Meet says when each was in; what can be said of the
-/// voices left numbered is given back, for the transcript's note.
-fn give_names(lines: &mut [Line], started: u64, present: &[Present]) -> Option<String> {
-    if present.is_empty() {
+/// Gives each line of theirs whose voice is someone for certain that
+/// person's name, by who the `record` has on the call and when Meet was
+/// `seen` to have each in; what can be said of the voices left numbered
+/// is given back, for the transcript's note.
+fn give_names(lines: &mut [Line], record: &Record, seen: &Attendance) -> Option<String> {
+    // A call whose Meet was never seen, a Tuple call or a Meet in a
+    // browser's tab, says nothing of who was in when.
+    if seen.present.is_empty() {
         return None;
     }
-    let at = |sample: usize| started + u64::try_from(sample * 1000 / RATE).unwrap_or(u64::MAX);
+    // Someone on the call Meet gave no time for counts as in throughout,
+    // so a voice of theirs is never put under another's name.
+    let mut present = seen.present.clone();
+    for name in &record.people {
+        if !present.iter().any(|person| &person.name == name) {
+            let name = name.clone();
+            present.push(Present {
+                name,
+                joined: 0,
+                left: None,
+            });
+        }
+    }
+    let at = |sample: usize| {
+        let since = u64::try_from(sample * 1000 / RATE).unwrap_or(u64::MAX);
+        record.started.saturating_add(since)
+    };
+    // What was said after the Meet was last looked at is left out, since
+    // someone may have joined since.
     let spoke: Vec<Spoke> = lines
         .iter()
         .filter(|line| line.side == Side::Theirs)
@@ -327,9 +361,10 @@ fn give_names(lines: &mut [Line], started: u64, present: &[Present]) -> Option<S
                 to: at(line.end),
             })
         })
+        .filter(|take| take.to <= seen.looked)
         .collect();
-    let voices = spoke.iter().map(|take| take.voice + 1).max()?;
-    let who = presence::who(present, &spoke, voices);
+    let voices = lines.iter().filter_map(|line| line.voice).max()? + 1;
+    let who = presence::who(&present, &spoke, voices);
     for line in lines.iter_mut() {
         if let Some(Who::Is(name)) = line.voice.map(|voice| &who[voice]) {
             line.name = Some(name.clone());
@@ -494,255 +529,5 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::*;
-    use crate::meeting::Known;
-
-    const SECOND: usize = 16_000;
-
-    fn line(side: Side, at: usize, voice: Option<usize>) -> Line {
-        Line {
-            side,
-            start: at * SECOND,
-            end: (at + 5) * SECOND,
-            text: "Said.".to_owned(),
-            voice,
-            name: None,
-        }
-    }
-
-    const ADA: [f32; 2] = [1.0, 0.0];
-    const BO: [f32; 2] = [0.0, 1.0];
-
-    /// Hears each take into `writing`, a line of theirs for each said.
-    fn hear_takes(writing: &mut Writing, takes: &[([f32; 2], bool)]) {
-        for &(voice, said) in takes {
-            let at = writing.lines.len();
-            let line_at = said.then_some(at);
-            writing.heard(voice.to_vec(), 5 * SECOND, line_at);
-            if said {
-                writing.lines.push(line(Side::Theirs, 20 + 5 * at, None));
-            }
-        }
-    }
-
-    /// A call heard in one sitting: Ada, Bo, Joel, Ada again, a take of
-    /// Bo's Parakeet heard no words in, and Bo again.
-    fn sitting(earlier: Vec<Line>, whole: bool) -> Writing {
-        let mut writing = Writing {
-            lines: earlier,
-            whole,
-            ..Writing::default()
-        };
-        hear_takes(&mut writing, &[(ADA, true), (BO, true)]);
-        writing.lines.push(line(Side::Mine, 10, None));
-        hear_takes(&mut writing, &[(ADA, true), (BO, false), (BO, true)]);
-        writing
-    }
-
-    fn voices(writing: &Writing) -> Vec<Option<usize>> {
-        writing.lines.iter().map(|line| line.voice).collect()
-    }
-
-    #[test]
-    fn each_line_heard_is_given_its_takes_voice() {
-        let mut writing = sitting(Vec::new(), true);
-        give_voices(&mut writing, None);
-        assert_eq!(
-            voices(&writing),
-            [Some(0), Some(1), None, Some(0), Some(1)],
-            "Ada's and Bo's lines weren't given their own voices, or Joel's was given one"
-        );
-    }
-
-    /// A take whose embedding is `degrees` round from the first axis.
-    fn at(degrees: f32) -> [f32; 2] {
-        let radians = degrees.to_radians();
-        [radians.cos(), radians.sin()]
-    }
-
-    #[test]
-    fn a_take_with_no_words_helps_tell_the_voices_apart() {
-        // Ada's two lines are 0.62 apart, too far to be one voice alone,
-        // but a take of hers between them with no words is 0.17 from
-        // each, and joined to one it brings the other within 0.6.
-        let (first, between, second, bo) = (at(0.0), at(33.8), at(67.67), at(180.0));
-        let mut helped = Writing::default();
-        hear_takes(
-            &mut helped,
-            &[(first, true), (between, false), (second, true), (bo, true)],
-        );
-        give_voices(&mut helped, None);
-        let mut unhelped = Writing::default();
-        hear_takes(&mut unhelped, &[(first, true), (second, true), (bo, true)]);
-        give_voices(&mut unhelped, None);
-        assert_eq!(
-            voices(&helped),
-            [Some(0), Some(0), Some(1)],
-            "Ada's lines weren't one voice with her wordless take between them"
-        );
-        assert_eq!(
-            voices(&unhelped),
-            [Some(0), Some(1), Some(2)],
-            "Ada's lines were one voice without the wordless take, so it proved nothing"
-        );
-    }
-
-    #[test]
-    fn a_call_rejoined_in_this_run_is_told_apart_whole() {
-        let mut writing = sitting(Vec::new(), true);
-        give_voices(&mut writing, None);
-        hear_takes(&mut writing, &[(BO, true), (ADA, true)]);
-        give_voices(&mut writing, None);
-        assert_eq!(
-            voices(&writing),
-            [Some(0), Some(1), None, Some(0), Some(1), Some(1), Some(0)],
-            "the lines after a rejoin weren't given the voices the call already had"
-        );
-    }
-
-    #[test]
-    fn a_call_taken_up_again_keeps_the_voices_it_had_and_its_new_lines_stay_others() {
-        let earlier = vec![
-            line(Side::Theirs, 0, Some(0)),
-            line(Side::Theirs, 5, Some(1)),
-        ];
-        let mut writing = sitting(earlier, false);
-        give_voices(&mut writing, None);
-        let voices: Vec<Option<usize>> = writing.lines.iter().map(|line| line.voice).collect();
-        assert_eq!(
-            &voices[..2],
-            [Some(0), Some(1)],
-            "the voices told apart before the rejoin were wiped"
-        );
-        assert!(
-            voices[2..].iter().all(Option::is_none),
-            "lines after a restart were numbered anew beside the old voices: {voices:?}"
-        );
-    }
-
-    const STARTED: u64 = 1_800_000_000_000;
-
-    fn present(name: &str, joined_s: u64) -> Present {
-        Present {
-            name: name.to_owned(),
-            joined: STARTED + joined_s * 1000,
-            left: None,
-        }
-    }
-
-    fn names(lines: &[Line]) -> Vec<Option<&str>> {
-        lines.iter().map(|line| line.name.as_deref()).collect()
-    }
-
-    #[test]
-    fn a_voice_heard_only_while_one_other_was_in_takes_that_name_and_the_rest_are_guessed() {
-        let mut lines = vec![
-            line(Side::Theirs, 10, Some(0)),
-            line(Side::Mine, 30, None),
-            line(Side::Theirs, 60, Some(0)),
-            line(Side::Theirs, 600, Some(1)),
-            line(Side::Theirs, 620, None),
-        ];
-        let present = [present("Ada", 0), present("Bo", 300)];
-        let guesses = give_names(&mut lines, STARTED, &present);
-        assert_eq!(
-            names(&lines),
-            [Some("Ada"), None, Some("Ada"), None, None],
-            "Ada's voice wasn't named for her, or Joel's line or Bo's or Others' was named"
-        );
-        assert_eq!(
-            guesses.as_deref(),
-            Some("Voice 2 is likely Bo."),
-            "the voice heard while both were in wasn't said only likely Bo"
-        );
-    }
-
-    #[test]
-    fn with_nobody_seen_in_the_meet_no_voice_is_named_or_guessed() {
-        let mut lines = vec![line(Side::Theirs, 10, Some(0))];
-        assert_eq!(give_names(&mut lines, STARTED, &[]), None);
-        assert_eq!(names(&lines), [None], "a voice was named with nobody seen");
-    }
-
-    #[test]
-    fn a_call_taken_up_again_keeps_the_names_it_had() {
-        let named = Line {
-            name: Some("Ada".to_owned()),
-            ..line(Side::Theirs, 0, None)
-        };
-        let mut writing = sitting(vec![named], false);
-        assert!(
-            !give_voices(&mut writing, None),
-            "a call taken up again was grouped anew beside the voices it had"
-        );
-        assert_eq!(
-            writing.lines[0].name.as_deref(),
-            Some("Ada"),
-            "the name given before a restart was lost"
-        );
-    }
-
-    fn record(people: &[&str], known: Option<Known>) -> Record {
-        Record {
-            key: "call:e1".to_owned(),
-            title: "Planning".to_owned(),
-            started: 0,
-            ended: None,
-            event: Some("e1".to_owned()),
-            person: None,
-            account: None,
-            people: people.iter().map(|&someone| someone.to_owned()).collect(),
-            known,
-            folder: PathBuf::new(),
-            transcript: None,
-            opening: None,
-            summary: None,
-            transcribing: false,
-        }
-    }
-
-    #[test]
-    fn voices_are_told_apart_only_where_their_side_is_unnamed_and_no_more_than_were_on() {
-        assert_eq!(
-            their_side(&record(&["Ada"], Some(Known::Invitation)), "Joel"),
-            TheirSide::Named,
-            "voices were told apart on a call whose one other person is named"
-        );
-        assert_eq!(
-            their_side(&record(&["Ada", "Bo"], Some(Known::Tuple)), "Joel"),
-            TheirSide::Unnamed { people: Some(2) },
-            "with two others known, the voices weren't held to two"
-        );
-        assert_eq!(
-            their_side(&record(&[], None), "Joel"),
-            TheirSide::Unnamed { people: None },
-            "with nobody known, the voices were held to a count"
-        );
-    }
-
-    #[test]
-    fn a_speaker_model_that_wont_load_is_tried_once_until_let_go() {
-        let mut speakers = Speakers::default();
-        let mut tries = 0;
-        for _ in 0..3 {
-            let model = speakers.get(|| {
-                tries += 1;
-                Err("no model".to_owned())
-            });
-            assert!(model.is_none(), "a model that won't load was given");
-        }
-        assert_eq!(
-            tries, 1,
-            "a model that won't load was read again for each take"
-        );
-        speakers = Speakers::default();
-        let _ = speakers.get(|| {
-            tries += 1;
-            Err("no model".to_owned())
-        });
-        assert_eq!(tries, 2, "a model let go wasn't tried again");
-    }
-}
+#[path = "hear_tests.rs"]
+mod tests;
