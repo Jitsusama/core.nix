@@ -211,7 +211,7 @@ mod tests {
     }
 
     /// Who else is in the call `which` names, by name alone.
-    fn people(said: &Value, which: &Which, me: &str) -> Option<Vec<String>> {
+    fn who_in(said: &Value, which: &Which, me: &str) -> Option<Vec<String>> {
         in_meet(said, which, me).map(|(people, _)| people)
     }
 
@@ -302,24 +302,24 @@ mod tests {
             call("kkk-llll-mmm", &[JOEL, "Grace Hopper"]),
         ]);
         assert_eq!(
-            people(&said, &Which::Code("abc-defg-hij".into()), JOEL),
+            who_in(&said, &Which::Code("abc-defg-hij".into()), JOEL),
             Some(vec!["Ada Lovelace".to_owned(), "Bo Diddley".to_owned()]),
             "the call its code names wasn't read, or Joel was left in"
         );
         assert_eq!(
-            people(&said, &Which::Only, JOEL),
+            who_in(&said, &Which::Only, JOEL),
             None,
             "one of two calls under way was taken for the one Joel is on"
         );
         let alone = listed(&[call("abc-defg-hij", &["joel  gerber", "Voice 1"])]);
         assert_eq!(
-            people(&alone, &Which::Only, JOEL),
+            who_in(&alone, &Which::Only, JOEL),
             Some(vec!["\"Voice 1\"".to_owned()]),
             "Joel's name in another case wasn't his, or a voice's name wasn't quoted"
         );
         let namesake = listed(&[call("abc-defg-hij", &[JOEL, "Joel Smith"])]);
         assert_eq!(
-            people(&namesake, &Which::Only, JOEL),
+            who_in(&namesake, &Which::Only, JOEL),
             Some(vec!["Joel Smith".to_owned()]),
             "someone of Joel's first name was taken for him"
         );
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn a_meet_is_untold_where_joel_cant_be_told_or_meet_hasnt_said() {
         let unknown = |me: &str, people: &[&str]| {
-            people(&listed(&[call("abc-defg-hij", people)]), &Which::Only, me)
+            who_in(&listed(&[call("abc-defg-hij", people)]), &Which::Only, me)
         };
         assert_eq!(
             unknown(JOEL, &[JOEL, JOEL, "Ada"]),
@@ -384,26 +384,26 @@ mod tests {
         let mut gone = call("abc-defg-hij", &[JOEL, "Ada"]);
         gone["people"][0]["left"] = json!(AT + 60_000);
         assert_eq!(
-            people(&listed(&[gone]), &Which::Only, JOEL),
+            who_in(&listed(&[gone]), &Which::Only, JOEL),
             None,
             "a Meet Joel has left was taken for the call he's on"
         );
         let mut not_yet = call("abc-defg-hij", &[JOEL, "Ada"]);
         not_yet["known"] = json!(false);
         assert_eq!(
-            people(&listed(&[not_yet]), &Which::Only, JOEL),
+            who_in(&listed(&[not_yet]), &Which::Only, JOEL),
             None,
             "a call Meet hasn't said is under way was taken as one"
         );
         let mut ungranted = call("abc-defg-hij", &[JOEL, "Ada"]);
         ungranted["granted"] = json!(false);
         assert_eq!(
-            people(&listed(&[ungranted]), &Which::Only, JOEL),
+            who_in(&listed(&[ungranted]), &Which::Only, JOEL),
             None,
             "a call the sign-in can't read was taken as one"
         );
         assert_eq!(
-            people(&listed(&[]), &Which::Code("abc-defg-hij".into()), JOEL),
+            who_in(&listed(&[]), &Which::Code("abc-defg-hij".into()), JOEL),
             None,
             "a call that isn't followed"
         );
