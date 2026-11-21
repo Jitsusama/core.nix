@@ -213,6 +213,19 @@ QVariantMap Heap::weigh() const {
     };
 }
 
+QVariantMap Heap::standing() const {
+    const QV4::MemoryManager *manager = engine->handle()->memoryManager;
+    const std::size_t chunkSlots =
+        manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    return {
+        {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
+        {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
+        {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
+        {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
+        {QStringLiteral("collecting"), manager->gcStateMachine->inProgress()},
+    };
+}
+
 void Heap::leaveRoom(double megabytes) {
     // A room that isn't a number is none, and any other is held to the most.
     const double asked = std::isnan(megabytes) ? 0.0 : std::clamp(megabytes, 0.0, MOST_ROOM_MB);
