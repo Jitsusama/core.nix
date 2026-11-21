@@ -317,7 +317,7 @@ fn went_back(
                 "at this hour"
             };
             let after = if kept {
-                format!("{spurned}, having gone back from it once already")
+                format!("{spurned} unless {to} fails, having gone back from it once already")
             } else {
                 format!("; it may try {} again once settled", on.point)
             };
@@ -896,7 +896,7 @@ mod tests {
         );
         assert!(
             usually_again.ends_with(&format!(
-                "{}{kept}, having gone back from it once already",
+                "{}{kept} unless {DESK} fails, having gone back from it once already",
                 usual_line("at this hour")
             )),
             "a second back on the usual says it keeps off the point: {usually_again}"

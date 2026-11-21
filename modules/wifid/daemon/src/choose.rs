@@ -34,7 +34,7 @@
 //! Long because its cases, near two thirds of it, stay beside the private
 //! rules they prove one by one, as every module in wifid keeps them.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use tokio::time::{Duration, Instant};
 
@@ -229,14 +229,11 @@ pub struct Chooser {
     again: Option<Instant>,
     trial: Option<Trial>,
     /// Each access point kept off and until when.
-    spurned: HashMap<String, Instant>,
+    spurned: HashMap<String, Kept>,
     /// Each move, from one access point to another, that went back for
     /// carrying worse only than the usual, and when, so a second within
     /// `SPURNED` keeps the point tried off.
     usually: HashMap<(String, String), Instant>,
-    /// The access points `spurned` keeps off only for a second back on
-    /// the usual, which a failing link may still leave for.
-    kept_on_usual: HashSet<String>,
     /// Why the last choice sent the card back, for the journal to say once.
     went_back: Option<Against>,
     /// The access point a move on trial never reached, kept off from the
@@ -258,6 +255,14 @@ pub struct Chooser {
     /// went unsent: after a resume, a join or a roam wpa_supplicant made
     /// itself, the first choice or two read 0 to about 108 echoes.
     joined: Option<(String, Instant)>,
+}
+
+/// An access point kept off, until when, and whether a failing link may
+/// still leave for it: one kept off for carrying worse only than the
+/// usual carried better than the point left did, so it may.
+struct Kept {
+    until: Instant,
+    yields: bool,
 }
 
 /// Why a trial went back.
@@ -397,8 +402,7 @@ impl Chooser {
         let may_narrow = queued && !used(measured);
         let untried = others.iter().filter(|other| {
             other.point != point
-                && (!self.spurned.contains_key(&other.point)
-                    || (failing && self.kept_on_usual.contains(&other.point)))
+                && self.may_try(&other.point, failing)
                 && (wide(other.frequency) || !holds_wide)
                 && ((bad && !queued)
                     || resting
@@ -575,14 +579,20 @@ impl Chooser {
 
     /// Forgets each access point kept off whose hour is over.
     fn forget_kept_off(&mut self, now: Instant) {
-        self.spurned.retain(|_, until| now < *until);
-        let spurned = &self.spurned;
-        self.kept_on_usual.retain(|kept| spurned.contains_key(kept));
+        self.spurned.retain(|_, kept| now < kept.until);
+    }
+
+    /// Whether the card may try this access point, kept off or not, its
+    /// own link failing or not.
+    fn may_try(&self, point: &str, failing: bool) -> bool {
+        self.spurned
+            .get(point)
+            .is_none_or(|kept| failing && kept.yields)
     }
 
     /// Whether the card keeps off this access point now.
     pub fn keeps_off(&self, point: &str, now: Instant) -> bool {
-        self.spurned.get(point).is_some_and(|until| now < *until)
+        self.spurned.get(point).is_some_and(|kept| now < kept.until)
     }
 
     /// The narrower access point the last choice began keeping a wider band
@@ -618,8 +628,11 @@ impl Chooser {
         // judge nothing: the tried point is kept off rather than tried again
         // each settle, and the card isn't sent back to where it may be.
         if point != trial.to {
-            self.spurned.insert(trial.to.clone(), now + SPURNED);
-            self.kept_on_usual.remove(&trial.to);
+            let kept = Kept {
+                until: now + SPURNED,
+                yields: false,
+            };
+            self.spurned.insert(trial.to.clone(), kept);
             self.unreached = Some(trial.to);
             return None;
         }
@@ -673,8 +686,10 @@ impl Chooser {
         let moved = (trial.from.clone(), point.to_owned());
         // A trial that stands carried well, so a back on the usual before it
         // is no longer the first of a repeat.
+        // It ends any keep-off a failing link took it through, too.
         let Some(why) = why else {
             self.usually.remove(&moved);
+            self.spurned.remove(point);
             return None;
         };
         // A trial worse only than what the point left usually carries isn't
@@ -691,13 +706,12 @@ impl Chooser {
             .retain(|_, at| now.saturating_duration_since(*at) < SPURNED);
         let usual = matches!(why, Against::Usually(_));
         let again = usual && self.usually.insert(moved, now).is_some();
-        if again {
-            self.kept_on_usual.insert(point.to_owned());
-        } else if !usual {
-            self.kept_on_usual.remove(point);
-        }
         if again || !usual {
-            self.spurned.insert(point.to_owned(), now + SPURNED);
+            let kept = Kept {
+                until: now + SPURNED,
+                yields: again,
+            };
+            self.spurned.insert(point.to_owned(), kept);
         }
         self.moved = Some(now);
         self.went_back = Some(why);
@@ -2410,6 +2424,95 @@ pub(crate) mod tests {
             failing,
             Choice::Try(HALL.into()),
             "a desk failing may still leave for the hall, which carried better"
+        );
+    }
+
+    /// What a card idle at the desk hears: the desk, which usually carries
+    /// 14 ms, and the hall.
+    fn around_the_desk() -> [Other; 2] {
+        let usual = Measured {
+            moving: None,
+            ..carried(14, 0.0)
+        };
+        [desk_at(-50, Some(usual)), hall(-45, Some(20), None)]
+    }
+
+    /// A chooser gone back from the hall to the desk twice within the hour
+    /// for carrying worse only than the desk usually does, so keeping the
+    /// hall off, and when the second back has settled.
+    fn hall_kept_off_on_the_usual(start: Instant) -> (Chooser, Instant) {
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let (slow, there) = (unloaded(76), unloaded(50));
+        let around = around_the_desk();
+        let mut chooser = after_a_bad_minute(DESK);
+        let mut on = |at, point, measured: &Measured| {
+            chooser.choose(at, (point, measured, -50, CH52), &around, false)
+        };
+        let back = start + TRIAL;
+        let again = back + SETTLE + TRIAL;
+        let primed = SETTLE.saturating_sub(Duration::from_secs(60));
+        on(start, DESK, &slow);
+        on(back, HALL, &there);
+        on(back + primed, DESK, &slow);
+        on(back + SETTLE, DESK, &slow);
+        on(again, HALL, &there);
+        assert!(chooser.keeps_off(HALL, again), "the hall is kept off");
+        (chooser, again + SETTLE)
+    }
+
+    #[test]
+    fn a_failing_link_may_leave_for_a_point_kept_off_only_on_the_usual() {
+        let start = Instant::now();
+        let around = around_the_desk();
+        let failing = Measured {
+            moving: None,
+            ..carried(400, 15.0)
+        };
+        let minute = Duration::from_secs(60);
+        let desk = |chooser: &mut Chooser, at| {
+            chooser.choose(at, (DESK, &failing, -50, CH52), &around, false)
+        };
+        let hall = |chooser: &mut Chooser, at, measured: &Measured| {
+            chooser.choose(at, (HALL, measured, -45, CH52), &around, false)
+        };
+
+        let (mut stood, settled) = hall_kept_off_on_the_usual(start);
+        let tried = desk(&mut stood, settled);
+        let quick = Measured {
+            moving: None,
+            ..carried(20, 0.0)
+        };
+        let judged = hall(&mut stood, settled + TRIAL, &quick);
+        let still_kept = stood.keeps_off(HALL, settled + TRIAL);
+
+        let (mut worse, settled) = hall_kept_off_on_the_usual(start);
+        desk(&mut worse, settled);
+        let gone_bad = Measured {
+            moving: None,
+            ..carried(600, 40.0)
+        };
+        let back = hall(&mut worse, settled + minute, &gone_bad);
+        let retried = desk(&mut worse, settled + minute * 2);
+
+        assert_eq!(
+            tried,
+            Choice::Try(HALL.into()),
+            "a desk failing leaves for the hall, which carried better than it"
+        );
+        assert_eq!(judged, Choice::Stay, "the hall at 20 ms stands");
+        assert!(!still_kept, "and is no longer kept off");
+        assert_eq!(
+            back,
+            Choice::Back(DESK.into()),
+            "the hall failing worse goes back"
+        );
+        assert_ne!(
+            retried,
+            Choice::Try(HALL.into()),
+            "kept off now for carrying worse than the failing desk, the hall isn't tried again"
         );
     }
 
