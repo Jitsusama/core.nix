@@ -496,7 +496,7 @@ fn a_coming_back_after_a_gap_says_how_long_at_least() {
         &[one("yonder", Reading::Ready, false)],
     );
     assert_eq!(
-        back.iter().map(|one| one.notice()).collect::<Vec<_>>(),
+        back.iter().map(Tell::notice).collect::<Vec<_>>(),
         ["Back after at least 15 min, and its work carries on."],
         "a coming back counted this machine's own sleep as time down"
     );
