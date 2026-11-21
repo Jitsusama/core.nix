@@ -240,18 +240,50 @@ pub fn letter(said: &str) -> Option<char> {
 
 /// Where a file opens: the block the view's top is in, how far into it,
 /// how tall the block stood when kept, and whether at the page's end.
-pub type Opening = (usize, f64, Option<f64>, bool);
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Opens {
+    pub block: usize,
+    pub into_pt: f64,
+    pub block_pt: Option<f64>,
+    pub at_end: bool,
+}
+
+impl Opens {
+    /// Where on a page whose blocks start at `starts` the view opens, in
+    /// points. Kept at the end, it opens at the end, however the window or
+    /// the page has changed since: the first frame clamps it there.
+    pub fn at(self, starts: &[(usize, f64)]) -> Option<f64> {
+        if self.at_end {
+            Some(f64::INFINITY)
+        } else {
+            pt_of(starts, self.block, self.into_pt, self.block_pt)
+        }
+    }
+}
 
 /// Where a file opens, from the mark kept under `letter` when one is
 /// asked for, or else where it was left; and the letter asked for, when
 /// no mark is kept under it, to be said.
-pub fn opening(kept: Option<&Place>, letter: Option<char>) -> (Option<Opening>, Option<char>) {
-    let left = kept.map(|place| (place.block, place.into_pt, place.block_pt, place.at_end));
+pub fn opening(kept: Option<&Place>, letter: Option<char>) -> (Option<Opens>, Option<char>) {
+    let left = kept.map(|place| Opens {
+        block: place.block,
+        into_pt: place.into_pt,
+        block_pt: place.block_pt,
+        at_end: place.at_end,
+    });
     let Some(letter) = letter else {
         return (left, None);
     };
     match kept.and_then(|place| place.marks.iter().find(|mark| mark.letter == letter)) {
-        Some(mark) => (Some((mark.block, mark.into_pt, mark.block_pt, false)), None),
+        Some(mark) => (
+            Some(Opens {
+                block: mark.block,
+                into_pt: mark.into_pt,
+                block_pt: mark.block_pt,
+                at_end: false,
+            }),
+            None,
+        ),
         None => (left, Some(letter)),
     }
 }
@@ -268,7 +300,9 @@ pub fn now() -> Option<u64> {
 /// block. Kept where the block stood `block_pt` tall, and set now at
 /// another height, as a page set at another width sets it, the distance
 /// is taken as far through it, so a place on its fourth line of eight
-/// lands on the middle of it however its lines wrap now.
+/// lands on the middle of it however its lines wrap now. A distance less
+/// than nothing is a heading's line standing over its capitals, which its
+/// type sets and no wrapping changes, so it's kept as it is.
 pub fn pt_of(
     starts: &[(usize, f64)],
     block: usize,
@@ -277,18 +311,28 @@ pub fn pt_of(
 ) -> Option<f64> {
     let top = starts.iter().find(|(b, _)| *b == block)?.1;
     let into_pt = match (block_pt, height_of(starts, block)) {
-        (Some(was), Some(now)) if was > 0.0 && (now - was).abs() >= 0.01 => into_pt * now / was,
+        (Some(was), Some(now))
+            if was >= LEAST_BLOCK_PT && into_pt > 0.0 && (now - was).abs() >= 0.01 =>
+        {
+            into_pt * now / was
+        }
         _ => into_pt,
     };
     Some(top + into_pt)
 }
 
+/// The least height a kept block is believed to have stood: a line of the
+/// smallest type is taller, so one kept less is a file gone wrong, whose
+/// share would throw the place far down the page.
+const LEAST_BLOCK_PT: f64 = 1.0;
+
 /// How tall a block stands, from its top to the next block's; the page's
-/// last block, or one the page lacks, says none.
+/// last block, or one the page lacks, says none, as does one standing at
+/// its next's top, with nothing to be through.
 pub fn height_of(starts: &[(usize, f64)], block: usize) -> Option<f64> {
     let at = starts.iter().position(|(b, _)| *b == block)?;
     let next = starts.get(at + 1)?;
-    Some(next.1 - starts[at].1)
+    Some(next.1 - starts[at].1).filter(|pt| *pt >= LEAST_BLOCK_PT)
 }
 
 /// Where a point on a page set `before` lands on the same page set again
@@ -369,7 +413,7 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
 fn block_pt_of(kept: &serde_json::Value) -> Option<f64> {
     kept.get("block_pt")
         .and_then(serde_json::Value::as_f64)
-        .filter(|pt| pt.is_finite() && *pt > 0.0)
+        .filter(|pt| pt.is_finite() && *pt >= LEAST_BLOCK_PT)
 }
 
 /// What a place or a mark says of where it is, whatever of it was kept.

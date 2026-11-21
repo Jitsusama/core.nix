@@ -354,18 +354,6 @@ struct Scaling;
 /// Which frame a presentation feedback is for.
 struct Feedback(u64);
 
-/// Where on the first page the view opens for a place kept, in points.
-/// Kept at the end, it opens at the end, however the window or the page
-/// has changed since: the first frame clamps it there.
-fn start_at(kept: place::Opening, starts: &[(usize, f64)]) -> Option<f64> {
-    let (block, into_pt, block_pt, at_end) = kept;
-    if at_end {
-        Some(f64::INFINITY)
-    } else {
-        place::pt_of(starts, block, into_pt, block_pt)
-    }
-}
-
 /// What a place kept says of its marks, as the page takes them back.
 fn kept_marks(place: &place::Place) -> Vec<KeptMark> {
     place
@@ -382,7 +370,7 @@ type KeptMark = (char, usize, f64, Option<f64>);
 /// Where the view opens: the mark asked for, or where the file was left.
 /// A letter with no mark kept says so, as Vim does, and opens where the
 /// file was left, as a file opened plainly does.
-fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<place::Opening> {
+fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<place::Opens> {
     let (opens, unmarked) = place::opening(kept, letter);
     if let Some(letter) = unmarked {
         eprintln!("reader: E20: Mark not set: {letter}");
@@ -504,13 +492,13 @@ fn show(
     let conn = Connection::connect_to_env()?;
     // SAFETY: the connection, and so its display, outlives the join below.
     let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
-    let first = page::set_first(file, opens_at.map(|(block, ..)| block), width);
+    let first = page::set_first(file, opens_at.map(|opens| opens.block), width);
     if let Some(warming) = warming {
         let _ = warming.join();
     }
     let first = first?;
     let starts = place::starts(&first.page.frame);
-    let start_pt = opens_at.and_then(|kept| start_at(kept, &starts));
+    let start_pt = opens_at.and_then(|opens| opens.at(&starts));
     let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
     let page::First {
         page,

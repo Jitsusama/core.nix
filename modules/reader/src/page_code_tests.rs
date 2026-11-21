@@ -195,7 +195,7 @@ fn a_span_of_short_flags_still_breaks_between_them() {
 }
 
 #[test]
-fn a_piece_wider_than_two_thirds_of_the_measure_breaks_where_it_can_and_keeps_to_the_page() {
+fn a_piece_wider_than_two_thirds_of_the_measure_breaks_where_it_can() {
     let name = ["a-name"; 30].join("-");
     let lines = lines_from(
         "wide-piece",
@@ -309,6 +309,12 @@ fn code_in_a_narrow_column_keeps_to_it() {
     // One kept whole; one long enough to break, whose widest run is the
     // triple's longest name held to the short pieces beside it; and a name
     // too wide to box, with nowhere to break, which the column must hold.
+    let hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    assert_eq!(
+        held(&format!("sha256 {hash} here"), 2560.0),
+        format!("|sha256 |{hash}! |here"),
+        "the hash is too wide to box, so the column holds it unboxed"
+    );
     for (i, code) in [
         "cargo build --release",
         "cargo build --release --features a-wide-column --target x86_64-unknown-linux-gnu -o out",

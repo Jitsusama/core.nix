@@ -251,17 +251,25 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   }
   text(top-edge: line-top(), code-pieces(s).map(set-piece).join())
 }
+// What an unboxed piece can't break inside: a run up to a space, or up
+// to and taking a hyphen, after which a line may break.
+#let unbroken = regex("[^ -]*-+|[^ -]+")
 // The least room a table's column needs for a span: its widest run of
 // pieces held together, since only between those can it break. A piece
-// too wide to box counts whole, with what's held to it, as a cell sets
-// it unhyphenated and a name with nowhere to break can't.
+// too wide to box is unboxed, so it breaks where its words or a hyphen
+// let it, and counts its widest stretch between those: a name with
+// nowhere to break counts whole, as the cell can't break it either.
 #let least-code(s) = context {
   let widest = 0pt
   let run = 0pt
   for p in code-pieces(s) {
-    let width = measure(raw(p.piece)).width
     let by = if p.by == " " { measure(raw(" ")).width } else { 0pt }
-    run = if p.held { run + by + width } else { width }
+    if p.whole {
+      let width = measure(raw(p.piece)).width
+      run = if p.held { run + by + width } else { width }
+    } else {
+      run = calc.max(0pt, ..p.piece.matches(unbroken).map(m => measure(raw(m.text)).width))
+    }
     widest = calc.max(widest, run)
   }
   box(width: widest)
@@ -803,7 +811,7 @@ impl Rest {
 /// Sets the file's first blocks, up to about two screens of source, as a
 /// page of their own; the rest comes back to set, unless that was all.
 /// Given a block to open at, it sets as far as that block and about two
-/// screens past it. The rest is set at the same `width`.
+/// screens past it, and always the block after it. The rest is set at the same `width`.
 pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First, String> {
     let start = Instant::now();
     let mut parts = Vec::new();
@@ -838,7 +846,10 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
         if i >= from {
             chars += block.len();
         }
-        if chars > FIRST_CHARS {
+        // At least the block after the one it opens at, whose top says how
+        // tall that one stands, so a place kept in a long block lands as
+        // far through it.
+        if chars > FIRST_CHARS && i > from {
             all = i + 1 == blocks.len();
             break;
         }

@@ -121,6 +121,34 @@ fn a_page_set_for_a_wide_window_is_its_widened_measure_wide() {
 }
 
 #[test]
+fn the_first_screen_sets_the_block_after_a_long_one_it_opens_at() {
+    // A paragraph longer than the first screen sets, opened at: the block
+    // after it says how tall it stands, so a place in it lands as far
+    // through it at any width.
+    let long = "Words enough to run on. ".repeat(400);
+    let markdown = format!("# Title\n\nThe lede.\n\n{long}\n\nAfter it.\n\nAnd more.\n");
+    let dir = std::env::temp_dir().join(format!("reader-first-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, &markdown).expect("the file");
+    let path = file.to_str().expect("a path");
+    let whole = crate::place::starts(&Setter::new(path).set().expect("set").0.frame);
+    let long_block = whole
+        .iter()
+        .map(|(block, _)| *block)
+        .find(|block| crate::place::height_of(&whole, *block).is_some_and(|pt| pt > 500.0))
+        .expect("the long paragraph is a tall block");
+    let first = super::set_first(path, Some(long_block), Width::for_window(720.0)).expect("set");
+    std::fs::remove_dir_all(&dir).expect("cleaned");
+    let starts = crate::place::starts(&first.page.frame);
+    assert!(first.rest.is_some(), "the first screen sets the whole page");
+    assert!(
+        crate::place::height_of(&starts, long_block).is_some(),
+        "the first screen ends on the long block: {starts:?}"
+    );
+}
+
+#[test]
 fn the_first_page_is_set_for_the_kept_window_or_else_the_one_niri_has_yet_to_name() {
     let (unnamed, _) = crate::app::UNNAMED_SIZE;
     assert_eq!(

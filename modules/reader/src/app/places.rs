@@ -277,15 +277,21 @@ impl App {
     }
 
     /// Takes back the marks kept from the last time whose blocks the page
-    /// shown has.
+    /// shown has. The first screen's page often ends on a mark's block,
+    /// whose height is known only once the next is set, so a mark kept
+    /// with its block's height waits for the whole page there.
     pub(crate) fn take_kept_marks(&mut self) {
         if self.kept_marks.is_empty() {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
+        let whole = self.whole;
         let marks = &mut self.marks;
         self.kept_marks
             .retain(|(letter, block, into_pt, block_pt)| {
+                if !whole && block_pt.is_some() && place::height_of(&starts, *block).is_none() {
+                    return true;
+                }
                 match place::pt_of(&starts, *block, *into_pt, *block_pt) {
                     Some(pt) => {
                         marks.entry(*letter).or_insert(pt);

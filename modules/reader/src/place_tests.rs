@@ -1,6 +1,6 @@
 use super::{
-    Block, Mark, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in, mark,
-    moved, opening, pt_of, read_in, through, window_in, write_in,
+    Block, Mark, Opens, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in,
+    mark, moved, opening, pt_of, read_in, through, window_in, write_in,
 };
 
 /// A block of a page, a heading's words given.
@@ -127,23 +127,39 @@ fn a_file_opens_at_the_mark_asked_for_or_where_it_was_left() {
     };
     assert_eq!(
         opening(Some(&place), Some('a')),
-        (Some((3, 7.0, Some(20.0), false)), None)
+        (Some(opens(3, 7.0, Some(20.0), false)), None)
     );
     assert_eq!(
         opening(Some(&place), Some('b')),
-        (Some((9, 4.0, None, true)), Some('b')),
+        (Some(opens(9, 4.0, None, true)), Some('b')),
         "no mark b, so where it was left, saying so"
     );
     assert_eq!(
         opening(Some(&place), None),
-        (Some((9, 4.0, None, true)), None)
+        (Some(opens(9, 4.0, None, true)), None)
     );
+    // Where each opens on a page whose block 3 now stands 40 pt tall,
+    // twice what it was: the mark half again as far in, and the place
+    // left at the end at the end, however the page has changed.
+    let starts = [(3, 100.0), (4, 140.0), (9, 300.0)];
+    assert_eq!(opens(3, 7.0, Some(20.0), false).at(&starts), Some(114.0));
+    assert_eq!(opens(9, 4.0, None, true).at(&starts), Some(f64::INFINITY));
     assert_eq!(opening(None, Some('a')), (None, Some('a')), "nothing kept");
     assert_eq!(letter("a"), Some('a'));
     assert_eq!(letter("Q"), Some('Q'));
     assert_eq!(letter("ab"), None, "one letter alone");
     assert_eq!(letter("1"), None);
     assert_eq!(letter(""), None);
+}
+
+/// Where a file opens, written short.
+fn opens(block: usize, into_pt: f64, block_pt: Option<f64>, at_end: bool) -> Opens {
+    Opens {
+        block,
+        into_pt,
+        block_pt,
+        at_end,
+    }
 }
 
 #[test]
@@ -285,6 +301,16 @@ fn a_place_kept_at_another_width_lands_as_far_through_its_block() {
         pt_of(&starts, 1, 70.0, None),
         Some(190.0),
         "kept before heights were, the distance stands"
+    );
+    assert_eq!(
+        pt_of(&starts, 1, -6.0, Some(140.0)),
+        Some(114.0),
+        "a heading's line over its capitals is its type's, and stands"
+    );
+    assert_eq!(
+        pt_of(&starts, 1, 70.0, Some(1e-9)),
+        Some(190.0),
+        "a height no block stands is a file gone wrong, and the distance stands"
     );
     let after = [(0, 36.0), (1, 120.0), (2, 260.0)];
     assert_eq!(
