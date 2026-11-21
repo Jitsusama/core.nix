@@ -433,6 +433,18 @@ fn a_lost_packet_adds_no_hiss_to_a_take() {
 }
 
 #[test]
+fn a_soft_answer_on_a_line_idling_on_a_faint_hum_is_a_take() {
+    // A line idling on a hum far under any speech, at -83 dB, dips
+    // under nothing's size for a millisecond at each crossing, yet its
+    // frames are its floor, not nothing cut into: a soft answer after
+    // its talk, 20 dB under it, is speech.
+    let hum = |seconds| tone(seconds, 0.0001, std::f32::consts::TAU * 60.0 / RATE as f32);
+    let soft: Vec<f32> = voice(0.3, 150.0).iter().map(|sample| sample * 0.1).collect();
+    let sound = [hum(2.0), voice(2.0, 150.0), hum(1.0), soft, hum(1.0)].concat();
+    assert_eq!(cut(&sound).len(), 2, "the talk and the soft answer");
+}
+
+#[test]
 fn words_with_nothing_between_are_a_take() {
     // A far end that gates its line sends nothing between words, so
     // the words alone mustn't set the floor they're heard against, nor
