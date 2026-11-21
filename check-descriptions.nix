@@ -5144,7 +5144,7 @@
   a-meter-stays-its-moment-once-drawn-on-niri = ''
     the screen's brightness picked while the nested niri is held stopped for 2.5 s, longer than
     a meter's moment, has the brightness meter drawn once niri goes on, and gone between 1.3
-    and 3 s after it was drawn, so its moment ran from its frame and not from its cap
+    and 3 s after niri showed its frame, so its moment ran from that frame and not from its cap
   '';
   the-shells-list-names-what-it-runs = ''
     the list of the shell's files its companion compares after a switch also names the command
