@@ -76,13 +76,15 @@ Scope {
     // search spent its time on, and then `frame`, how long it waited for the
     // frame that drew it and how long drawing it took, and last what the
     // shell's thread did while it searched. A key slow enough to
-    // feel is said in the journal too, with what was typed, so what's slow
-    // can be read as Joel types. Nothing asked for, such as a password, is
-    // ever timed.
+    // feel is said in the journal too, with what was typed while reports
+    // are on and how many letters otherwise (Presented.typedShown), so
+    // what's slow can be read as Joel types. Nothing asked for, such as a
+    // password, is ever timed.
     function timed(searched, drawn, parts, typed, frame) {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
-            console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
+            console.info(`launcher: ${Presented.typedShown(typed, Options.reports)} took`
+                + ` ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts
                     ? ` (lists ${parts.lists}${Stepped.slowest(parts.each, parts)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`

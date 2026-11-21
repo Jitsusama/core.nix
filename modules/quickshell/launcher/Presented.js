@@ -305,7 +305,10 @@ const appsUnnamed = ["null", "undefined"];
 // title, which may be a mail's subject. The launcher's own ids are said
 // whole, and a window's app, `window:<app>:<title>` said as
 // `window:<app>`, or as `window` where its app isn't a program's id or
-// nothing follows it. A new kind says nothing more until it's named here,
+// nothing follows it. An act's verb is its daemon's own word, so
+// `verb:<name>:<more>` is said as `verb:<name>`, what follows it, as an
+// agent's id, left out, and as `verb` where its name isn't a kind's
+// word. A new kind says nothing more until it's named here,
 // and a first part that isn't a kind's word, lower case, as a record's
 // name with a colon in it, says nothing at all. A daemon's key may come
 // as a number, so it's read as text first.
@@ -319,6 +322,10 @@ function keyShown(key, whole) {
         const app = end < 0 ? "" : text.slice("window:".length, end);
         const named = appWord.test(app) && !appsUnnamed.includes(app);
         return named ? `window:${app}` : "window";
+    }
+    if (text.startsWith("verb:")) {
+        const name = text.slice("verb:".length).split(":")[0];
+        return kindWord.test(name) ? `verb:${name}` : "verb";
     }
     const kind = text.indexOf(":");
     const said = kind < 0 ? "" : text.slice(0, kind);
@@ -343,6 +350,25 @@ function rowShown(row, whole) {
         said = "answer";
     }
     return said ? String(said) : "row";
+}
+
+// Words typed as a line in the journal may say them: quoted where
+// `whole`, as while reports are on, so they can't end the line early or
+// forge another; otherwise only how many letters, since what's typed may
+// be anything Joel searches for, and how many is what a search's time
+// turns on.
+function typedShown(typed, whole) {
+    if (whole) {
+        return quoted(String(typed));
+    }
+    const letters = [...String(typed)].length;
+    return letters === 1 ? "1 letter" : `${letters} letters`;
+}
+
+// Words typed inside a row's step (ready-rows.md's within) as a line may
+// say them, the row by its key as a drawer's is, both quoted.
+function typedInSaid(typed, within, whole) {
+    return `${typedShown(typed, whole)} typed in ${quoted(rowShown({ key: within }, whole))}`;
 }
 
 // The drawers presented since the launcher opened, a line a place, as a

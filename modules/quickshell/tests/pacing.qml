@@ -955,6 +955,28 @@ QtObject {
         check(failures, "a row's key is what's said of a row that has one",
             Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
             "window:kitty");
+        // An act's lines name it by its key, whose verb is its daemon's own
+        // word, but what follows may be an agent's id or a calendar's words.
+        check(failures, "an act's key keeps its verb with reports off",
+            Presented.keyShown("verb:wifi-join", false), "verb:wifi-join");
+        check(failures, "but not what follows it",
+            Presented.keyShown("verb:agent:7f3a", false), "verb:agent");
+        check(failures, "and a verb that isn't a kind's word is said as verb",
+            Presented.keyShown("verb:Join Harbour House", false), "verb");
+        // A slow key's line and a typed answer's say what was typed, which
+        // may be anything Joel searches for.
+        check(failures, "words typed are said by how many letters with reports off",
+            Presented.typedShown("pirate", false), "6 letters");
+        check(failures, "an emoji counting as one",
+            Presented.typedShown("\ud83d\ude00", false), "1 letter");
+        check(failures, "and quoted while they're on, so they can't forge a line",
+            Presented.typedShown('say "hi"\nlauncher: x', true), '"say \\"hi\\"\\nlauncher: x"');
+        check(failures, "words typed in a row say the row by its kind with reports off",
+            Presented.typedInSaid("door", "wifi:Harbour House", false),
+            '4 letters typed in "wifi"');
+        check(failures, "and both whole while they're on",
+            Presented.typedInSaid("door", "wifi:Harbour House", true),
+            '"door" typed in "wifi:Harbour House"');
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so
