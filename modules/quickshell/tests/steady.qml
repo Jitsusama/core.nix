@@ -371,9 +371,11 @@ QtObject {
         // An open card keeps its height while the screen's room holds it,
         // however much the room grows, and is sized again by tallFor's rule
         // once the room drops below it, whole rows to the foot, home or none.
+        // The heights kept are ones tallFor wouldn't give in that room (32
+        // and 48), so a refit that always sized again would fail them.
         const refits = [
-            ["a room that still holds the card", 32, [{}, {}, {}], 2, 32, 32],
-            ["a room grown under the card", 32, [{}, {}, {}], 2, 1000, 32],
+            ["a room that just holds the card", 40, [{}, {}, {}], 3, 40, 40],
+            ["a room grown under the card", 32, [{}, {}, {}], 3, 1000, 32],
             ["a room shrunk below the card", 48, [{}, {}, {}], 3, 40, 32],
             ["a room shrunk with home not yet found", 48, [], 3, 40, 32],
             ["a room too small for a row", 48, [{}, {}, {}], 3, 10, 0]

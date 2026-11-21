@@ -601,6 +601,13 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     settled(shell)
+    # The selection on the card's last whole row, which the shorter card leaves below its
+    # foot unless it's shown again.
+    opened = shell.showing()
+    last = opened["inView"]["bottom"]
+    for _ in range(last - opened["current"]):
+        shell.send_key("down")
+    shell.launcher_until(lambda shown: shown["current"] == last)
     before = shell.showing()["card"]
     since = shell.mark()
     shell.as_account("niri msg output winit scale 2")
@@ -627,6 +634,12 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
         assert fitted["foot"] <= fitted["screen"], shown
         assert shown["restsOnARow"], shown
         assert shown["cut"] == [], shown
+        seen = shown["inView"]
+        assert seen["bottom"] - seen["top"] < last - opened["inView"]["top"], (
+            f"the card shrank to no fewer rows, so nothing shows the selection again: {shown}"
+        )
+        assert shown["current"] == last, shown
+        assert seen["top"] <= last <= seen["bottom"], f"the selection fell out of view: {seen}"
         warned = shell.log.read_text(errors="replace")[since:].splitlines()
         looped = [line for line in warned if "Binding loop" in line]
         assert not looped, f"refitting, it looped: {looped}"
