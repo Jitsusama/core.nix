@@ -642,5 +642,52 @@ pub fn now() -> u64 {
         .map_or(0, |since| since.as_secs())
 }
 
+/// A state of a test's own, in a folder taken away when the test passes.
+/// A run of the tests made over a hundred and kept them all: by 20
+/// November one temporary folder held 3,800 of them. A failing test keeps
+/// its folder and says where, so what it wrote can be read.
+#[cfg(test)]
+pub struct Scratch(State);
+
+#[cfg(test)]
+impl Scratch {
+    /// A fresh state named `name`. The tests run side by side, so a number
+    /// counted for each keeps two that chose the same name from emptying
+    /// each other's folder.
+    pub fn named(name: &str) -> Self {
+        static MADE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let made = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("merge-net-{name}-{}-{made}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let state = State::at(root);
+        state.make().expect("a test's state folder");
+        Self(state)
+    }
+}
+
+#[cfg(test)]
+impl std::ops::Deref for Scratch {
+    type Target = State;
+
+    fn deref(&self) -> &State {
+        &self.0
+    }
+}
+
+#[cfg(test)]
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!(
+                "the failing test's state is kept in {}",
+                self.0.root.display()
+            );
+        } else {
+            let _ = fs::remove_dir_all(&self.0.root);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;
