@@ -72,7 +72,8 @@ pub fn names(
     for meeting in &meetings {
         let (heard, cuts) = apart::cut(meeting, &mut speaker)?;
         let length = meeting.sounds[index(Side::Theirs)].len();
-        let named = name(&heard, &cuts, length);
+        let (named, voices) = name(&heard, &cuts, length);
+        println!("{}: {voices}", meeting.name);
         println!("{}", report(meeting.name, &named));
         all.add(named);
     }
@@ -107,8 +108,9 @@ pub fn names(
 
 /// A meeting's far end, `heard` and cut into `cuts` over `length` samples,
 /// joined one speaker at a time, its voices named and held to the
-/// reference.
-fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> Names {
+/// reference; and who each voice was taken to be beside whose speech it
+/// holds, so a meeting naming little can be seen to.
+fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> (Names, String) {
     let joins = joins(cuts, length);
     let kept: Vec<&Cut> = cuts
         .iter()
@@ -158,15 +160,49 @@ fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> Names {
     let voices = voice_of.iter().flatten().max().map_or(0, |most| most + 1);
     let who = presence::who(&present, &spoke, voices);
     let mut named = Names::default();
+    let mut held: Vec<HashMap<&str, usize>> = vec![HashMap::new(); voices];
     for (cut, voice) in kept.iter().zip(&voice_of) {
         let speech: usize = cut.speakers.values().sum();
         named.speech += speech;
+        if let Some(voice) = *voice {
+            for (speaker, &samples) in &cut.speakers {
+                *held[voice].entry(speaker.as_str()).or_default() += samples;
+            }
+        }
         if let Some(Who::Is(name)) = voice.map(|voice| &who[voice]) {
             named.named += speech;
             named.right += cut.speakers.get(name).copied().unwrap_or(0);
         }
     }
-    named
+    (named, described(&who, &held))
+}
+
+/// Who each voice was taken to be, and whose speech it holds, by share.
+fn described(who: &[Who], held: &[HashMap<&str, usize>]) -> String {
+    if who.is_empty() {
+        return "no voices".to_owned();
+    }
+    let voices: Vec<String> = who
+        .iter()
+        .zip(held)
+        .enumerate()
+        .map(|(at, (who, held))| {
+            let taken = match who {
+                Who::Is(name) => format!("is {name}"),
+                Who::MayBe(names) if names.is_empty() => "may be nobody".to_owned(),
+                Who::MayBe(names) => format!("may be {}", names.join(" or ")),
+            };
+            let all: usize = held.values().sum();
+            let mut speakers: Vec<(&str, usize)> = held.iter().map(|(n, &s)| (*n, s)).collect();
+            speakers.sort_unstable();
+            let holds: Vec<String> = speakers
+                .iter()
+                .map(|(name, samples)| format!("{name} {}", percent(tenths(*samples, all))))
+                .collect();
+            format!("Voice {} {taken}, holding {}", at + 1, holds.join(", "))
+        })
+        .collect();
+    voices.join("; ")
 }
 
 /// When each far-end speaker joins, in samples: in the order they first
@@ -268,7 +304,7 @@ mod tests {
             ("A", 25),
             ("C", 27),
         ]);
-        let named = name(&heard, &cuts, 30 * MINUTE);
+        let (named, _) = name(&heard, &cuts, 30 * MINUTE);
         assert_eq!(
             (named.right, named.named, named.speech),
             (35 * SECOND, 35 * SECOND, 35 * SECOND),
@@ -280,7 +316,7 @@ mod tests {
     fn a_voice_mixing_two_speakers_is_right_only_for_its_name() {
         let (heard, mut cuts) = meeting(&[("A", 0), ("B", 12), ("A", 14)]);
         cuts[2].speakers.insert("B".to_owned(), SECOND);
-        let named = name(&heard, &cuts, 20 * MINUTE);
+        let (named, _) = name(&heard, &cuts, 20 * MINUTE);
         assert_eq!(
             (named.right, named.named),
             (15 * SECOND, 16 * SECOND),
