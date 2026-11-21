@@ -97,7 +97,7 @@ use service::{Ask, Refused, Stage, Wifi};
 use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
-use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
+use supplicant::{InterfaceProxy, JoinableProxy, Others, Step, SupplicantProxy};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
@@ -1602,9 +1602,10 @@ struct Wifid<'a> {
     /// does. Its networks stay as they were until then, so a way back's
     /// next try is to the network he left rather than any it hears; a card
     /// with every network on, as one that fell off with no move, can still
-    /// reach another for the moment before the disconnect lands. Held in
-    /// memory alone,
-    /// so a wifid started again before that try forgets it, and the card
+    /// reach another for the moment before the disconnect lands. One left
+    /// with no network on, as when a failed join forgets the one it was
+    /// trying, begins no try and stays off. Held in memory alone, so a
+    /// wifid started again before that try forgets it, and the card
     /// rejoins.
     leaving: RefCell<HashMap<String, Instant>>,
 }
@@ -1863,11 +1864,22 @@ impl Wifid<'_> {
         // off, and is marked alone so they come on then (`leaving`).
         let picked = self.picked.borrow().contains(&card.name);
         let alone = self.alone.borrow().contains(&card.name);
-        if !alone && self.leaving.borrow().contains_key(&card.name) {
-            self.alone.borrow_mut().insert(card.name.clone());
-        } else if !alone && !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
-            for (_, network) in &joinable {
-                self.joinable(network).await?.set_enabled(true).await?;
+        let leaving = self.leaving.borrow().contains_key(&card.name);
+        // The step is read only where it can change what's done.
+        let step = if alone || leaving {
+            String::new()
+        } else {
+            interface.state().await?
+        };
+        match supplicant::others_given(alone, leaving, picked, &step) {
+            Others::Kept => {}
+            Others::KeptTillTakenOff => {
+                self.alone.borrow_mut().insert(card.name.clone());
+            }
+            Others::On => {
+                for (_, network) in &joinable {
+                    self.joinable(network).await?.set_enabled(true).await?;
+                }
             }
         }
         Ok(joinable)
@@ -2362,10 +2374,12 @@ impl Wifid<'_> {
                 // asked to join, so the others are turned on whatever step
                 // the card is at, unless Joel left it between the join's
                 // tries: they then wait for its next to be taken off.
-                if self.leaving.borrow().contains_key(card) {
-                    self.alone.borrow_mut().insert(card.clone());
-                } else {
-                    self.turn_on_networks(card).await;
+                let leaving = self.leaving.borrow().contains_key(card);
+                match supplicant::others_given(false, leaving, false, "") {
+                    Others::KeptTillTakenOff => {
+                        self.alone.borrow_mut().insert(card.clone());
+                    }
+                    Others::Kept | Others::On => self.turn_on_networks(card).await,
                 }
             }
         }

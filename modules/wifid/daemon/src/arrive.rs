@@ -782,8 +782,9 @@ mod tests {
     fn a_move_put_back_after_a_failed_ask_keeps_its_way_and_time() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
-        // Another card's move, due after this one's so `due` stays its.
-        arrivals.asked("wlan1", Some(HALL), DESK, now + ms(500));
+        // Another card's move, asked late enough to fall due after this
+        // one's way back could, so `due` stays this one's.
+        arrivals.asked("wlan1", Some(HALL), DESK, now + BACK_FOR + ms(500));
         arrivals.asked("wlan0", Some(DESK), HALL, now);
         arrivals.step("wlan0", "authenticating", now + ms(20));
         let due = arrivals.due();
