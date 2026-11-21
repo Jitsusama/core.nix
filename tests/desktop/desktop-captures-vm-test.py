@@ -160,9 +160,13 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
         held = desktop.as_account(f"wpctl inspect @DEFAULT_AUDIO_{default}@ | grep -F node.name")
         assert node in held, f"the recording moved the default {default.lower()}: {held}"
     # Nothing it records from reads as a call to a-call-is-on, which would hold uploads back.
-    recording = callers(json.loads(desktop.as_account("pw-dump")))
+    dump = json.loads(desktop.as_account("pw-dump"))
+    recording = callers(dump)
     assert "recording-sound" in recording, f"the mix's loops aren't seen: {sorted(recording)}"
     assert not recording - NO_CALL, f"the recording reads as a call from {sorted(recording)}"
+    # Its mix says it's a recording's, which Sound reads to list it as no output.
+    marks = mixes_marked(dump)
+    assert marks == [True], f"whether each mix says it's a recording's: {marks}"
     # What the desktop plays goes in too: a tone the microphone has nothing near.
     tone = "/run/user/1000/tone.wav"
     machine.succeed(
@@ -200,6 +204,18 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     # before it.
     mixes = desktop.as_account(MIXES)
     assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
+
+
+def mixes_marked(dump: list[Json]) -> list[bool]:
+    """Say of each recording's mix in pw-dump's objects whether it says it's a recording's."""
+    marked = []
+    for thing in dump:
+        props = (thing.get("info") or {}).get("props", {})
+        if thing.get("type") == "PipeWire:Interface:Node" and re.fullmatch(
+            r"recording-[0-9]+", str(props.get("node.name", ""))
+        ):
+            marked.append(str(props.get("recording-sound.mix", "")).lower() == "true")
+    return marked
 
 
 def callers(dump: list[Json]) -> set[str]:

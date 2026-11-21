@@ -356,12 +356,17 @@ pub(crate) fn percent(share: f64) -> String {
     format!("{}%", (share * 100.0).round())
 }
 
-/// Every row Sound lists, outputs first and each way by name.
+/// Every row Sound lists, outputs first and each way by name. A smart
+/// filter isn't a device of its own, nor is the mix a recording makes of
+/// the microphone and the desktop's sound, which nothing plays through and
+/// which lives only while it records (modules/quickshell's
+/// recording-sound.sh marks it).
 pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
     let devices: Vec<Device> = records
         .iter()
         .filter_map(Device::of)
         .filter(|device| device.property("filter.smart") != "true")
+        .filter(|device| device.property("recording-sound.mix") != "true")
         .filter(|device| !device.unplugged() || device.chosen())
         .collect();
     let named: Vec<String> = devices
