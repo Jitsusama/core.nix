@@ -43,7 +43,7 @@ def test_a_wait_that_hears_nothing_says_the_state_it_first_read() -> None:
     assert str(never.value) == wanted, f"the wait that heard nothing said: {never.value}"
 
 
-def test_a_change_that_passes_is_told_so() -> None:
+def test_a_wait_stops_at_the_change_that_passes_and_gives_it_back() -> None:
     # What hears stops at the first change the wait says passed, as reported does, so this
     # holds that the wait says so of the change that passes and of no other.
     heard: list[str] = []
@@ -72,6 +72,30 @@ def test_a_test_that_trips_keeps_its_error_and_says_the_last_state_heard() -> No
         until_heard({"rows": ["Install"]}, lambda now: now["rows"][0] == "Restart", hear, "it")
     notes = getattr(tripped.value, "__notes__", [])
     assert notes == ['it, last heard: {"rows": []}'], f"the tripped wait noted: {notes}"
+
+
+def test_a_test_that_trips_on_the_first_read_says_it() -> None:
+    def hear(_passes: Callable[[str], object]) -> None:
+        message = "heard though the first read tripped"
+        raise AssertionError(message)
+
+    with pytest.raises(IndexError) as tripped:
+        until_heard({"rows": []}, lambda now: now["rows"][0] == "Restart", hear, "it")
+    notes = getattr(tripped.value, "__notes__", [])
+    assert notes == ['it, last heard: {"rows": []}'], f"the first read's trip noted: {notes}"
+
+
+def test_a_line_that_isnt_json_is_said_as_it_came() -> None:
+    # A journal can split a long line, and the half heard is what explains the failure, not
+    # the state before it.
+    def hear(passes: Callable[[str], object]) -> None:
+        passes('{"rows": ["Inst')
+
+    with pytest.raises(ValueError, match="Unterminated") as broke:
+        until_heard({"rows": ["Install"]}, lambda now: now["rows"] == ["Restart"], hear, "it")
+    notes = getattr(broke.value, "__notes__", [])
+    wanted = ['it, last heard, not as JSON: \'{"rows": ["Inst\'']
+    assert notes == wanted, f"the split line noted: {notes}"
 
 
 def test_a_state_passing_at_first_read_hears_nothing() -> None:

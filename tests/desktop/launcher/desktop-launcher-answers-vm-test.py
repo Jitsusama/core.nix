@@ -1450,11 +1450,16 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # Escape lets go; nothing else closes a line, so the Escape can't land on the step
         # instead. It's banged where the asking still showed, and plain where the step back
         # came first, as on the builders' runs of 20 Nov. Only that one Return can write one,
-        # so a second line fails the wait for the step back, and a Return taken only after the
-        # step back is seen, over 3 s late, isn't.
+        # so a second line fails the wait for the step back. Its line can open after the step
+        # back is seen too, so the screen is let stand still and read again before the shot.
+        # The plain line is the launcher's fault, as a gone row should write none; once it
+        # writes none, this asserts that no line opens.
         shown = desktop.launcher_until(
             lambda shown: shown["command"] is not None or stepped_back(shown)
         )
+        if shown["command"] is None:
+            desktop.held_still()
+            shown = desktop.showing()
         if shown["command"] is not None:
             assert shown["command"].get("line") in {"install", "install!"}, shown["command"]
             # Said so the net's logs count how often the late line comes.

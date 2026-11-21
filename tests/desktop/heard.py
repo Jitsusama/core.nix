@@ -33,23 +33,32 @@ def until_heard(
     hung or went is what would fail then, in place of the failure it's meant to explain.
 
     Anything else raised on the way, a test tripping on a state shaped other than it expects or
-    a line the journal split, keeps its own kind, with a note saying what was last heard.
+    a line the journal split, keeps its own kind, with a note saying what was last heard: the
+    first read too, and a line that isn't JSON as it came, since the state before it explains
+    nothing.
     """
     heard = [first]
-    if test(first):
-        return first
+    unread: list[str] = []
 
     def passes(said: str) -> object:
+        unread[:] = [said]
         heard[0] = json.loads(said)
+        unread.clear()
         return test(heard[0])
 
+    def last() -> str:
+        if unread:
+            return f"last heard, not as JSON: {unread[0]!r}"
+        return f"last heard: {json.dumps(heard[0], ensure_ascii=False)}"
+
     try:
+        if test(first):
+            return first
         hear(passes)
     except AssertionError as never:
-        last = json.dumps(heard[0], ensure_ascii=False)
-        message = f"{never}; {who}, last heard: {last}"
+        message = f"{never}; {who}, {last()}"
         raise AssertionError(message) from never
     except Exception as broke:
-        broke.add_note(f"{who}, last heard: {json.dumps(heard[0], ensure_ascii=False)}")
+        broke.add_note(f"{who}, {last()}")
         raise
     return heard[0]
