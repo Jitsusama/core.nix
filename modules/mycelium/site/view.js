@@ -53,6 +53,7 @@ import {
   onScreen,
   overlap,
   paintOf,
+  quadAt,
   saidLines,
 } from "./canvas.js";
 import {
@@ -1718,14 +1719,12 @@ import {
   // a name can ask which it would lie over.
   const linesOnScreen = (w, h) => {
     const grid = new Map();
-    const on = ([x, y]) => [x * k + tx, y * k + ty];
-    for (const [p0, c0, q0] of [...lineShapes, ...talkShapes, ...fedShapes]) {
-      const [p, c, q] = [on(p0), on(c0), on(q0)];
-      let a = p;
+    const view = { k, tx, ty };
+    for (const shape of [...lineShapes, ...talkShapes, ...fedShapes]) {
+      const line = onScreen(shape, view);
+      let a = line[0];
       for (let i = 1; i <= LINE_PIECES; i++) {
-        const t = i / LINE_PIECES;
-        const u = 1 - t;
-        const b = [u * u * p[0] + 2 * u * t * c[0] + t * t * q[0], u * u * p[1] + 2 * u * t * c[1] + t * t * q[1]];
+        const b = quadAt(line, i / LINE_PIECES);
         const [x0, x1] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
         const [y0, y1] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
         if (x1 >= 0 && y1 >= 0 && x0 <= w && y0 <= h)
@@ -4229,10 +4228,7 @@ import {
     }
     if (flights.length && !flying) flying = requestAnimationFrame(fly);
   };
-  const along = ({ p, c, q }, t) => {
-    const u = 1 - t;
-    return [u * u * p[0] + 2 * u * t * c[0] + t * t * q[0], u * u * p[1] + 2 * u * t * c[1] + t * t * q[1]];
-  };
+  const along = ({ p, c, q }, t) => quadAt([p, c, q], t);
   // What flies is painted on a canvas of its own above the ground, so a
   // frame costs the flights alone however many cells lie under them, and
   // a page with nothing in flight draws nothing at all.
