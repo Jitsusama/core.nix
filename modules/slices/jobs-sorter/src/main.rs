@@ -43,7 +43,7 @@
 //! out, as `src/oom.rs` says.
 //!
 //! The threads of each `--quick-name` program under a `--quick` cgroup,
-//! Joel's Chrome and Slack in his apps' slice, ask for a short slice, so a
+//! Joel's Chrome and Slack in his programs' slice, ask for a short slice, so a
 //! woken drawing thread runs sooner under load, as `src/quick.rs` says why
 //! and how.
 //!
@@ -1886,6 +1886,17 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
     if settings.homes.is_empty() {
         settings.homes.push("kitty-".into());
     }
+    paired(settings)
+}
+
+/// The settings, refused when a flag is given without the one it needs.
+fn paired(settings: Settings) -> Result<Settings, Failure> {
+    let wrongly = |why: &str| cli::wrongly("jobs-sorter", why);
+    if settings.quick.is_empty() != settings.quick_names.is_empty() {
+        return Err(wrongly(
+            "--quick names where programs ask for a short slice, and --quick-name which",
+        ));
+    }
     if settings.sessions.is_some() && settings.weigh.is_empty() {
         return Err(wrongly(
             "--sessions names a session's scope by a --weigh prefix, and none is given",
@@ -1932,6 +1943,24 @@ mod settings_tests {
                     "jobs-sorter's help names {flag}, but it refuses it as unknown"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn quick_takes_its_cgroups_and_names_and_neither_alone() {
+        let got = settings(
+            "--quick app.slice --quick-name chrome --quick-name slack"
+                .split_whitespace()
+                .map(str::to_owned),
+        )
+        .expect("both are given");
+        assert_eq!(got.quick, ["app.slice"], "where they ask");
+        assert_eq!(got.quick_names, ["chrome", "slack"], "who asks");
+        for alone in ["--quick app.slice", "--quick-name chrome"] {
+            assert!(
+                settings(alone.split_whitespace().map(str::to_owned)).is_err(),
+                "{alone} alone is refused"
+            );
         }
     }
 
@@ -2189,6 +2218,41 @@ struct Looking<'a> {
 /// Puts each pi and each piece of work where it goes for the kernel's
 /// OOM killer, by tier, keeping orchestrators' windows, and takes real
 /// time from work.
+/// Whether the kernel holds the slices asked, and whether a failure to
+/// ask was said, apart from the sorter's other failures so one can't hide
+/// another.
+struct Quick {
+    heard: bool,
+    warned: bool,
+}
+
+/// Has Joel's `--quick-name` programs ask for a short slice, until the
+/// kernel is found to hold none.
+fn ask_quick(
+    settings: &Settings,
+    root: &Path,
+    manager: &str,
+    windows: &[String],
+    quick: &mut Quick,
+) {
+    if !quick.heard {
+        return;
+    }
+    for cgroup in &settings.quick {
+        let asking = quick::Asking {
+            quick: cgroup,
+            dir: &root.join(cgroup),
+            manager,
+            names: &settings.quick_names,
+            windows,
+        };
+        quick.heard &= quick::ask(&asking, &mut quick.warned);
+    }
+    if !quick.heard {
+        eprintln!("This kernel holds no slice a thread asks for, so none is asked again.");
+    }
+}
+
 fn rank_for_memory(looking: &Looking, ranks: &mut Ranks, warned: &mut bool) {
     let settings = looking.settings;
     if let Some(dir) = &settings.orchestrators {
@@ -2253,6 +2317,10 @@ fn run(settings: &Settings) -> Result<(), String> {
         ..Sorter::default()
     };
     let mut warned = false;
+    let mut quick = Quick {
+        heard: true,
+        warned: false,
+    };
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
     let mut weights = weights_from(settings);
     let mut pass: u32 = 0;
@@ -2317,9 +2385,7 @@ fn run(settings: &Settings) -> Result<(), String> {
             rank_for_memory(&looking, &mut ranks, &mut warned);
         }
         if pass.is_multiple_of(quick::EVERY) {
-            for cgroup in &settings.quick {
-                quick::ask(&root.join(cgroup), &settings.quick_names, &mut warned);
-            }
+            ask_quick(settings, &root, &manager, &windows, &mut quick);
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         brake_for_calls(&mut doorway, &root);
