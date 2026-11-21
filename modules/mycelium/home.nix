@@ -316,8 +316,10 @@ let
   # work realm lost its Mac. IdentitiesOnly=no lets it offer what that
   # agent holds rather than only the config's IdentityFile. ForwardAgent=no
   # keeps that key, which asks nothing, from being lent to the machine it
-  # dials, whatever the config says for it. A node with no
-  # key, and a Mac's, which is given its own options, is given neither.
+  # dials, whatever the config says for it, and AddKeysToAgent=no keeps a
+  # key file the config names from being added to the agent agents reach.
+  # A node with no key, and a Mac's, which is given its own options, is
+  # given none of them.
   ownAgent =
     key:
     lib.optionals (isLinux && key != null) (
@@ -328,6 +330,7 @@ let
         ])
         [
           "IdentityAgent=SSH_AUTH_SOCK"
+          "AddKeysToAgent=no"
           "IdentitiesOnly=no"
           "ForwardAgent=no"
         ]
