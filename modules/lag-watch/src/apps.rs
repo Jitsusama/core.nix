@@ -363,7 +363,9 @@ impl Apps {
 
     /// Whether a parent in the cgroup `parents` is his: his user manager,
     /// his session, or a unit in his app.slice but those `NOT_HIS` names
-    /// and those made as they're run.
+    /// and those made as they're run. A launcher's `app-*.scope` is made as
+    /// it's run too, and is his: his Slack or 1Password opening a link with
+    /// no browser open starts one (5FWIUS 9a142177).
     fn his_parent(&self, parents: &str) -> bool {
         let account = self.slice.trim_end_matches("/app.slice");
         parents
@@ -374,8 +376,11 @@ impl Apps {
                 rest == "/init.scope"
                     || rest.starts_with("/session.slice/")
                     || rest.strip_prefix("/app.slice/").is_some_and(|unit| {
+                        let launched = unit
+                            .strip_prefix("app-")
+                            .is_some_and(|rest| rest.strip_suffix(".scope").is_some());
                         !NOT_HIS.iter().any(|name| unit.starts_with(name))
-                            && !self.transient.join(unit).exists()
+                            && (launched || !self.transient.join(unit).exists())
                     })
             })
     }
@@ -667,10 +672,13 @@ mod tests {
         let proc = root.join("proc");
         let transient = root.join("transient");
         write(&transient.join("brio-night-2.service"), "[Unit]\n");
-        // One a declared service of his started, and one an agent's
-        // systemd-run made in his app.slice did.
+        write(&transient.join("app-slack-4.scope"), "[Unit]\n");
+        // One a declared service of his started, one his Slack did from the
+        // scope his launcher made for it, and one an agent's systemd-run
+        // made in his app.slice did.
         for (pid, parent, unit) in [
             ("20", "2", "onepassword.service"),
+            ("24", "4", "app-slack-4.scope"),
             ("30", "3", "brio-night-2.service"),
         ] {
             let scope = format!("{ACCOUNT}/app.slice/app-com.google.Chrome-{pid}.scope");
@@ -693,7 +701,10 @@ mod tests {
         let mut apps = Apps::of_account(ACCOUNT).reading_transient_units_from(transient);
         assert_eq!(
             drawing_threads(&proc, &mut apps),
-            ["chrome-ui chrome 20/task/20/schedstat"]
+            [
+                "chrome-ui chrome 20/task/20/schedstat",
+                "chrome-ui chrome 24/task/24/schedstat",
+            ]
         );
         assert!(
             !apps.may_call(&text(&proc.join("30/cgroup")), &proc),
