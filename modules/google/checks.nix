@@ -86,12 +86,14 @@ onLinux {
   # Which meeting is next, when it is in words, or was once it's over, and
   # whether it's about to start are Calendar.js's, and which Meet call a
   # window is, which held meetings Meet's Recent lists and who each was with
-  # Meet.js's, and which calls the program follows Following.js's, run in Qt's own engine over meetings like the program's
-  # (tests/calendar.qml).
+  # Meet.js's, and which calls the program follows Following.js's, run in
+  # Qt's own engine over meetings like the program's (tests/calendar.qml).
   the-desktop-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it or sets the
+    # engine's surroundings, and what it proves is in tests/calendar.qml.
     pkgs.runCommandLocal "the-desktop-tells-the-next-meeting" { } ''
       cp ${./tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
