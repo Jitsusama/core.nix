@@ -10,6 +10,7 @@ cameras' names are Nix's, given as the `values` fixture.
 
 from __future__ import annotations
 
+import shlex
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -58,7 +59,8 @@ REPLAYED = "Replayed the MX Brio's arrival, so its relay has it."
 def the_run_said(machine: BaseMachine, words: str) -> None:
     """Wait for the take-hold's last run to have said `words`, read from that run alone."""
     try:
-        machine.wait_until_succeeds(f"{SAID} | grep -qF '{words}'", timeout=FILING)
+        # Quoted for the shell, since the run's words hold apostrophes.
+        machine.wait_until_succeeds(f"{SAID} | grep -qF {shlex.quote(words)}", timeout=FILING)
     except RequestedAssertionFailed:
         text = machine.execute(SAID)[1]
         # Every run's lines and how the unit stands, on one line, since a failed build keeps
