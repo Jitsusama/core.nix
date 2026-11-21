@@ -21,8 +21,8 @@
 //! Only Joel's own ask. An agent's Chrome moves itself into his programs'
 //! slice as his does, and the sorter sends back only one started from
 //! jobs, so a program is his only when what started its first process
-//! there is his user manager, his session, or another of his programs,
-//! never a terminal or a pi session, where agents work. A program of the
+//! there is his user manager or his session, directly or through others
+//! of his programs, never a terminal or a pi session, where agents work. A program of the
 //! name that isn't his is given the kernel's default back, so a slice it
 //! inherited goes. A terminal's own programs don't ask either: the sorter
 //! moves a terminal's busy work to jobs, where a short slice would run
@@ -65,7 +65,8 @@ const SYS_SCHED_SETATTR: c_long = 274;
 #[cfg(target_arch = "aarch64")]
 const SYS_SCHED_GETATTR: c_long = 275;
 
-/// How far up a program's own processes its starter is looked for.
+/// How far up a program's own processes, and his programs' that started
+/// it, its starter is looked for.
 const DEEPEST: usize = 64;
 
 /// A thread's scheduling attributes, as the kernel's `struct sched_attr`
@@ -187,15 +188,13 @@ fn a_window(cgroup: &str, windows: &[String]) -> bool {
         .any(|prefix| unit.starts_with(prefix.as_str()))
 }
 
-/// Whether a program is Joel's to ask, from its own cgroup and the one of
-/// what started its first process outside its own, both as
-/// /proc/<pid>/cgroup gives them below the user manager's.
-fn his(quick: &str, own: &str, starter: &str, windows: &[String]) -> bool {
-    let programs = format!("/{}/", quick.trim_matches('/'));
+/// Whether a program is Joel's to ask, from its own cgroup and the one its
+/// starter's walk ends in, both as /proc/<pid>/cgroup gives them below the
+/// user manager's.
+fn his(own: &str, starter: &str, windows: &[String]) -> bool {
     let from_his = starter == "/init.scope"
         || starter == "/session.slice"
-        || starter.starts_with("/session.slice/")
-        || starter.starts_with(&programs);
+        || starter.starts_with("/session.slice/");
     from_his && !a_window(own, windows) && !a_window(starter, windows)
 }
 
@@ -218,21 +217,33 @@ fn seen(pid: u32, manager: &str) -> Option<Seen> {
 }
 
 /// The cgroup of what started a program's first process: up through its
-/// parents of the same name, to the first of another, each read by
-/// `read`. None when one can't be read, the walk reaches no other, or
-/// what started it is outside the user manager.
-fn starter(pid: u32, names: &[String], read: impl Fn(u32) -> Option<Seen>) -> Option<String> {
-    let mut at = pid;
+/// parents of the same name, and those in another of his programs that
+/// isn't a window, to the first that is neither, each read by `read`. So a
+/// program one of his started is judged by what started that one, and one
+/// a link's handler opened under an agent's Chrome in his programs' slice
+/// by the agent. None when one can't be read, the walk reaches no end, or
+/// it ends outside the user manager.
+fn starter(
+    pid: u32,
+    quick: &str,
+    names: &[String],
+    windows: &[String],
+    read: impl Fn(u32) -> Option<Seen>,
+) -> Option<String> {
+    let programs = format!("/{}/", quick.trim_matches('/'));
+    let mut at = read(pid)?;
     for _ in 0..DEEPEST {
-        let parent = read(at)?.parent;
-        if parent == 0 {
+        if at.parent == 0 {
             return None;
         }
-        let above = read(parent)?;
+        let above = read(at.parent)?;
         if !named(&above.comm, names) {
-            return above.cgroup;
+            let cgroup = above.cgroup.as_deref()?;
+            if !cgroup.starts_with(&programs) || a_window(cgroup, windows) {
+                return Some(cgroup.to_owned());
+            }
         }
-        at = parent;
+        at = above;
     }
     None
 }
@@ -265,11 +276,13 @@ pub fn ask(asking: &Asking, warned: &mut bool) -> bool {
         // One whose parents can't be read is left as it is this pass.
         let (Some(own), Some(from)) = (
             crate::cgroup_of(pid, asking.manager),
-            starter(pid, asking.names, |pid| seen(pid, asking.manager)),
+            starter(pid, asking.quick, asking.names, asking.windows, |pid| {
+                seen(pid, asking.manager)
+            }),
         ) else {
             continue;
         };
-        let slice = if his(asking.quick, &own, &from, asking.windows) {
+        let slice = if his(&own, &from, asking.windows) {
             SLICE_NS
         } else {
             0
@@ -423,14 +436,10 @@ mod tests {
     }
 
     #[test]
-    fn a_program_started_by_his_manager_session_or_programs_is_his() {
+    fn a_program_started_by_his_manager_or_session_is_his() {
         let own = "/app.slice/app-com.google.Chrome-20682.scope";
-        for starter in [
-            "/init.scope",
-            "/session.slice/niri.service",
-            "/app.slice/app-launcher.scope",
-        ] {
-            assert!(his("app.slice", own, starter, &windows()), "from {starter}");
+        for starter in ["/init.scope", "/session.slice/niri.service"] {
+            assert!(his(own, starter, &windows()), "from {starter}");
         }
     }
 
@@ -443,21 +452,18 @@ mod tests {
             "/app.slice/kitty-12-0.scope",
             "/app.slice/mycelium-pi-4.scope",
             "/app.slicex/app-a.scope",
+            // The walk goes on through his programs, so one it ends in is
+            // never taken as his on its own say.
+            "/app.slice/app-launcher.scope",
         ] {
-            assert!(
-                !his("app.slice", own, starter, &windows()),
-                "from {starter}"
-            );
+            assert!(!his(own, starter, &windows()), "from {starter}");
         }
     }
 
     #[test]
     fn a_terminals_own_program_is_not_his_to_ask() {
         let own = "/app.slice/kitty-12-0.scope";
-        assert!(
-            !his("app.slice", own, "/init.scope", &windows()),
-            "a terminal's"
-        );
+        assert!(!his(own, "/init.scope", &windows()), "a terminal's");
     }
 
     fn process(parent: u32, comm: &str, cgroup: &str) -> Seen {
@@ -469,7 +475,7 @@ mod tests {
     }
 
     /// A renderer, its zygote and its browser, each a chrome, started by
-    /// `starter` in `at`.
+    /// `parent`, a `comm` in `at`.
     fn browser(parent: u32, comm: &str, at: &str) -> impl Fn(u32) -> Option<Seen> {
         let comm = comm.to_owned();
         let at = at.to_owned();
@@ -493,7 +499,15 @@ mod tests {
     #[test]
     fn a_program_is_judged_by_what_started_its_first_process() {
         let names = ["chrome".to_owned()];
-        let from = |parent, comm, at| starter(30, &names, browser(parent, comm, at));
+        let from = |parent, comm, at| {
+            starter(
+                30,
+                "app.slice",
+                &names,
+                &windows(),
+                browser(parent, comm, at),
+            )
+        };
         assert_eq!(
             from(9, "systemd", "/init.scope").as_deref(),
             Some("/init.scope"),
@@ -510,6 +524,53 @@ mod tests {
             "one with no starter is left as it is"
         );
         assert_eq!(from(8, "", ""), None, "a starter it can't read is left too");
+    }
+
+    #[test]
+    fn a_program_another_program_started_is_judged_by_what_started_that() {
+        let names = ["chrome".to_owned(), "slack".to_owned()];
+        // A Slack a link's handler opened, in the scope of the Chrome or the
+        // service it ran under.
+        let from = |handler: &str, parent, comm, at| {
+            let handler = handler.to_owned();
+            let chrome = browser(parent, comm, at);
+            starter(40, "app.slice", &names, &windows(), move |pid| match pid {
+                40 => Some(process(41, "slack", "/app.slice/app-niri-slack-5.scope")),
+                41 if handler.is_empty() => Some(process(
+                    10,
+                    "xdg-open",
+                    "/app.slice/app-com.google.Chrome-10.scope",
+                )),
+                41 => Some(process(9, "op", &handler)),
+                _ => chrome(pid),
+            })
+        };
+        assert_eq!(
+            from("", 9, "systemd", "/init.scope").as_deref(),
+            Some("/init.scope"),
+            "his Chrome's, up to his user manager"
+        );
+        assert_eq!(
+            from("", 9, "pi", "/agents.slice/pi-host-work-attended.service").as_deref(),
+            Some("/agents.slice/pi-host-work-attended.service"),
+            "an agent's Chrome's, up to the pi host that started it"
+        );
+        assert_eq!(
+            from(
+                "/app.slice/onepassword.service",
+                0,
+                "systemd",
+                "/init.scope"
+            )
+            .as_deref(),
+            Some("/init.scope"),
+            "his service's, up to his user manager"
+        );
+        assert_eq!(
+            from("/app.slice/kitty-3-0.scope", 0, "systemd", "/init.scope").as_deref(),
+            Some("/app.slice/kitty-3-0.scope"),
+            "a terminal's ends the walk there"
+        );
     }
 
     #[test]

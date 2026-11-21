@@ -818,7 +818,7 @@ in
             # Joel's Chrome and Slack ask for a half-millisecond slice, so a
             # woken drawing thread runs sooner under load. An agent's Chrome
             # that moves itself into his programs' slice is judged by what
-            # started it, so it isn't asked.
+            # started it, so it isn't asked while its launcher lives.
             "--quick"
             "app.slice"
             "--quick-name"
