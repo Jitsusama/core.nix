@@ -385,17 +385,7 @@ fn rounds_per_merge(
             root: state_home.join("pi/agentic-harness.pi"),
         };
         let notes = mesh.sent_since((now - DAY) * 1000);
-        let presences = mesh.all();
-        let mut landed = BTreeMap::new();
-        for (quest, changes) in measures::spent::landed_by(
-            notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
-            |address| measures::spent::quest_of(&presences, address),
-        ) {
-            for change in changes {
-                landed.insert(change, quest.clone());
-            }
-        }
-        landed
+        landed_by_session(notes.iter().map(|m| (m.from.as_str(), m.text.as_str())))
     };
     let mains = [
         Main {
@@ -583,6 +573,23 @@ fn today(now: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Each change the mesh's landing notes, given as sender and text, say
+/// landed, beside the session that merged it, which the mesh sends the
+/// note from. A merge's rounds are that session's rather than its quest's:
+/// a quest's short id reaches the quest's first session, not the one that
+/// ran them.
+fn landed_by_session<'a>(
+    notes: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> BTreeMap<String, String> {
+    let mut landed = BTreeMap::new();
+    for (session, changes) in measures::spent::landed_by(notes, str::to_owned) {
+        for change in changes {
+            landed.insert(change, session.clone());
+        }
+    }
+    landed
+}
+
 /// A measure for the card's and the owing's tests, said as "`key` said"
 /// and owned by `OWNER`.
 #[cfg(test)]
@@ -634,6 +641,18 @@ mod tests {
             tail(&root.path().join("none"), 12),
             "",
             "none read is nothing"
+        );
+    }
+
+    #[test]
+    fn a_merges_rounds_go_to_the_session_that_merged_it_not_its_quest() {
+        // 6EAC3DA6 works on a quest whose short id is another session's.
+        let note = "6EAC3DA6 landed core.nix#6020, Keep the Shaper's Queues. \
+                    Said by the mesh; feedback to 6EAC3DA6.";
+        assert_eq!(
+            landed_by_session([("6EAC3DA6", note)]),
+            BTreeMap::from([("core.nix#6020".to_owned(), "6EAC3DA6".to_owned())]),
+            "a merge's rounds went to someone other than the session that merged it"
         );
     }
 
