@@ -507,10 +507,11 @@ fn a_laugh_or_a_held_s_on_a_gated_line_keeps_it_gated() {
     // loud and has no voice, as hiss hasn't, but a laugh or a cough
     // rises and falls as hiss doesn't, and an "s" ends sooner: none may
     // be taken for the line's own sound and set a floor the words after
-    // it are lost under. The laugh's level steps 6 dB from one frame to
-    // the next; the "s" is steady, as loud as the words, for 0.4 s.
+    // it are lost under. The laugh lasts 0.8 s, longer than the line's
+    // own sound must, and its level steps 6 dB from one frame to the
+    // next; the "s" is steady, as loud as the words, for 0.4 s.
     for (what, sound) in [
-        ("laugh", stepping(&noise(0.3, 0.045, false), 0.5)),
+        ("laugh", stepping(&noise(0.8, 0.045, false), 0.5)),
         ("held s", noise(0.4, 0.045, false)),
     ] {
         let long = 1.5 + seconds(sound.len());
@@ -543,7 +544,7 @@ fn a_short_answer_on_a_rumbling_line_after_a_mute_is_a_take() {
         rumble(3.0, 0.01),
         vec![0.0; RATE],
         rumble(4.0, 0.01),
-        voice(0.25, 150.0),
+        voice(0.3, 150.0),
         rumble(4.0, 0.01),
         quiet(1.0),
     ]
@@ -552,11 +553,11 @@ fn a_short_answer_on_a_rumbling_line_after_a_mute_is_a_take() {
     let takes = cut(&sound);
     let take = takes
         .iter()
-        .find(|take| take.start <= answer && take.start + take.samples.len() >= answer + RATE / 4)
+        .find(|take| take.start <= answer && take.start + take.samples.len() >= answer + RATE * 3 / 10)
         .expect("the answer in the rumble");
     assert!(
         seconds(take.samples.len()) < 2.0,
-        "{} s of take for a 0.25 s answer",
+        "{} s of take for a 0.3 s answer",
         seconds(take.samples.len())
     );
 }
