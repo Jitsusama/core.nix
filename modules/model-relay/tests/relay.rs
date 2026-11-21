@@ -92,16 +92,17 @@ const SIZED: &[u8] = b"whole";
 const SMALL_FRAME: &[u8] = &[b'x'; 64];
 const SMALL_FRAMES: usize = 16 * 1024;
 /// How many `/small-frames` answers pi leaves unread at once on the
-/// relay's one connection, as a machine under load leaves them: enough
-/// that a stream window four times the relay's spends h2's allowance (48
-/// MiB of a 32 MiB allowance at 256 KiB), while at the relay's own they
-/// cost 12 MiB of it.
-const STALLED_ANSWERS: usize = 64;
+/// relay's one connection, as a machine under load leaves them: about the
+/// ninety requests sixty sessions hold, all on one connection as retired
+/// connections can leave them. At the relay's windows they cost 18 MiB of
+/// h2's 32 MiB allowance; a 16 MiB connection window allows 8 MiB, and a
+/// 256 KiB stream window would cost 72 MiB, so either fails.
+const STALLED_ANSWERS: usize = 96;
 /// The relay's stream window in `/small-frames` pieces: the least the
-/// origin sends of each answer before pi reads any, once the windows fill.
+/// origin must have sent of each answer for the relay's windows to fill.
 const WINDOW_PIECES: usize = 64 * 1024 / SMALL_FRAME.len();
-/// How long the origin sends nothing more before the relay's windows count
-/// as full.
+/// How long the origin sends nothing more before the test takes it to be
+/// held back.
 const SETTLES_FOR: Duration = Duration::from_secs(1);
 /// How often the test reads how much the origin has sent.
 const SENT_READ_EVERY: Duration = Duration::from_millis(100);
@@ -863,8 +864,8 @@ async fn answers_in_small_frames_pass_whole_while_pi_reads_late() {
     );
     assert!(
         sent >= STALLED_ANSWERS * WINDOW_PIECES,
-        "the origin sent {sent} pieces before pi read any, short of every answer's window, \
-         so the relay's windows never filled"
+        "the origin sent {sent} pieces before pi read any, fewer than every answer's window, \
+         so the relay's windows can't have filled"
     );
     assert!(
         sent < STALLED_ANSWERS * SMALL_FRAMES,

@@ -207,7 +207,9 @@ const STREAM_WINDOW: u32 = 64 * 1024;
 /// 32 MiB, about 170 stalled answers in 64-byte frames. That is past the
 /// ninety or so requests sixty sessions hold, even when retired connections
 /// leave them all on one, all stalled at once on a machine under load.
-/// Unread memory stays at most 64 KiB an answer, about 6 MiB for ninety.
+/// Unread payload stays at most 64 KiB an answer, about 6 MiB for ninety;
+/// h2 adds a record for each frame held, and small frames can keep the
+/// buffers they were read into alive, so the memory held is more than that.
 /// hyper's adaptive window started it at 64 KiB, an allowance of 32 KiB,
 /// which about 300 unread frames of 150 bytes spent.
 const CONNECTION_WINDOW: u32 = 64 * 1024 * 1024;
