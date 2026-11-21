@@ -5,11 +5,14 @@
 //! doesn't answer or isn't there. A budget nearing its allowance is told
 //! to the orchestrator alone, as a finding nothing waits on.
 
+mod budgets;
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::watch::{Snapshot, breaches};
+use crate::watch::Snapshot;
+use budgets::{budgeting, standing};
 
 /// The card is overdue when neither the watcher nor cadence sent one this
 /// long, in seconds; cadence then sends its own, since asking the watcher
@@ -22,16 +25,6 @@ pub const ANSWER_WITHIN: i64 = 20 * 60;
 pub const DOWN_FOR: i64 = 10 * 60;
 /// How long a key is remembered, so a target missed all day is said once.
 const REMEMBER: i64 = 2 * 86_400;
-/// How long a budget's alarm is remembered once it stops standing: one is
-/// told again only once it has stood clear this long, so a share hovering
-/// at a level isn't told at each crossing, while a rolling window that
-/// eased overnight is told when it climbs back, and a spend-watch stopped
-/// again the next day is told again.
-const BUDGET_REST: i64 = 6 * 3600;
-/// How long no budget may go watched before the orchestrator is told:
-/// spend-watch times its passes by a clock that stops while the machine
-/// sleeps, so after a wake it may take five minutes to write again.
-const UNWATCHED_FOR: i64 = 10 * 60;
 
 /// A question cadence asked, waiting on its answer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -64,6 +57,9 @@ pub struct State {
     /// couldn't be read.
     #[serde(default)]
     pub unwatched_since: Option<i64>,
+    /// When cadence last ticked, so a gap past a tick's is read as a sleep.
+    #[serde(default)]
+    pub ticked: Option<i64>,
 }
 
 /// Who a question goes to.
@@ -231,50 +227,28 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
             format!("alarm:{}", breach.key),
             format!("Cadence alarm: {}.", breach.text),
         );
-        remember_budget(state, &breach.key, s.now);
+        budgets::remember(state, &breach.key, s.now);
     }
 
     forget(s, state);
     out
 }
 
-/// Forgets what's older than `REMEMBER`, and a budget's alarm `BUDGET_REST`
-/// after it last stood. A budget's memory ages only while its standing can
-/// be read: the first tick after a night's sleep reads the file from before
-/// it, and a level still standing would otherwise be told again each
-/// morning.
+/// Forgets what's older than `REMEMBER`, but a budget's alarm by
+/// [`budgets::rests`] alone: the first tick after a sleep reads the file
+/// from before it, and a level still standing would otherwise be told
+/// again on waking, after a weekend as after a night.
 fn forget(s: &Snapshot, state: &mut State) {
     let keep = |at: &i64| s.now - *at < REMEMBER;
-    let rests = |at: &i64| s.budgets_unwatched.is_some() || s.now - *at < BUDGET_REST;
-    state
-        .seen
-        .retain(|key, at| keep(at) && (!budgeting(key) || rests(at)));
+    state.seen.retain(|key, at| {
+        if budgeting(key) {
+            budgets::rests(s, *at)
+        } else {
+            keep(at)
+        }
+    });
     state.escalated.retain(|_, at| keep(at));
     state.asked.retain(|_, q| keep(&q.at));
-}
-
-/// Remembers a budget's alarm while it stands, a level with those beneath
-/// it, so a week past 90% is told once however long it stays, and isn't
-/// told as new past 80% as it eases.
-fn remember_budget(state: &mut State, key: &str, now: i64) {
-    for key in crate::watch::budgets::stands_for(key) {
-        state.seen.insert(format!("alarm:{key}"), now);
-    }
-}
-
-/// The breaches standing now, but for no budget watched until it has stood
-/// for `UNWATCHED_FOR`, so a machine just woken isn't told of it.
-fn standing(s: &Snapshot, state: &mut State) -> Vec<crate::watch::Breach> {
-    let unwatched_for = if s.budgets_unwatched.is_some() {
-        s.now - *state.unwatched_since.get_or_insert(s.now)
-    } else {
-        state.unwatched_since = None;
-        0
-    };
-    breaches(s)
-        .into_iter()
-        .filter(|b| b.key != crate::watch::budgets::UNWATCHED || unwatched_for >= UNWATCHED_FOR)
-        .collect()
 }
 
 /// Ends each held net's question whose hold has ended, as ending it is the
@@ -308,13 +282,6 @@ fn switching(key: &str) -> bool {
     ["alarm:noton:", "alarm:failing:", "alarm:heldfor:"]
         .iter()
         .any(|alarm| key.starts_with(alarm))
-}
-
-/// Whether an alarm's key says a budget passed a share of an allowance,
-/// which only the orchestrator can act on, by moving work to another
-/// budget or asking Joel, as it asked to be told on 20 November.
-fn budgeting(key: &str) -> bool {
-    key.starts_with("alarm:budget:")
 }
 
 /// Whether an alarm's key says the net is held by a hold on the machine,
@@ -432,136 +399,7 @@ mod tests {
         assert_eq!(asked[0].to, To::Switcher, "the switcher named");
     }
 
-    #[test]
-    fn a_budget_past_a_level_is_told_to_the_orchestrator_once_and_waits_on_no_answer() {
-        let mut s = calm(100_000);
-        s.budgets = vec![crate::watch::budgets::Allowance {
-            budget: "proxy".into(),
-            label: "Your AI proxy token".into(),
-            name: "weekly".into(),
-            window: "Week".into(),
-            share: 0.91,
-            standing: "$36,261 of $40,000".into(),
-            resets: None,
-        }];
-        let mut state = State::default();
-        let told = tick(&s, &mut state);
-        assert_eq!(
-            told,
-            [Question {
-                to: To::Orchestrator,
-                key: None,
-                text: "Cadence alarm: Your AI proxy token's Week allowance stands at \
-                       $36,261 of $40,000, 91%: past 90%, the last level it's told."
-                    .into(),
-            }],
-            "a budget at 91% wasn't told to the orchestrator, or was waited on"
-        );
-        s.now += 5 * 60;
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "one standing was told twice"
-        );
-        // It stands past 90% all week, then eases past 80%.
-        for _ in 0..4 {
-            s.now += REMEMBER;
-            assert!(
-                tick(&s, &mut state).is_empty(),
-                "a week standing past 90% was told again as it stood"
-            );
-        }
-        s.budgets[0].share = 0.85;
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "a budget easing from past 90% to past 80% was told as nearing its allowance"
-        );
-        // Hovering at a level isn't told at each crossing, but a rolling
-        // window that eased for longer than BUDGET_REST is told as it
-        // climbs back.
-        s.budgets[0].share = 0.92;
-        s.now += 3600;
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "a share back past 90% an hour after easing was told again"
-        );
-        s.budgets[0].share = 0.85;
-        s.now += BUDGET_REST + 60;
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "a share standing past 80% was told"
-        );
-        s.budgets[0].share = 0.92;
-        assert_eq!(
-            told_whom(&tick(&s, &mut state)),
-            [(To::Orchestrator, false)],
-            "a rolling window climbing back past 90% after a night's easing went untold"
-        );
-
-        s.budgets.clear();
-        for stop in 1..=2 {
-            s.budgets_unwatched = Some("is missing".into());
-            // spend-watch may take five minutes after a wake to write.
-            for _ in 0..2 {
-                assert!(
-                    tick(&s, &mut state).is_empty(),
-                    "a spend-watch not yet written after a wake was told as stopped"
-                );
-                s.now += 5 * 60;
-            }
-            assert_eq!(
-                told_whom(&tick(&s, &mut state)),
-                [(To::Orchestrator, false)],
-                "stop {stop}: no budget watched for ten minutes wasn't told to the \
-                 orchestrator, or was waited on"
-            );
-            s.now += REMEMBER;
-            assert!(
-                tick(&s, &mut state).is_empty(),
-                "stop {stop}: a standing stop was told again"
-            );
-            s.budgets_unwatched = None;
-            s.now += BUDGET_REST + 60;
-            tick(&s, &mut state);
-        }
-    }
-
-    #[test]
-    fn a_level_standing_through_a_night_asleep_isnt_told_again_on_waking() {
-        let mut s = calm(100_000);
-        s.budgets = vec![crate::watch::budgets::Allowance {
-            budget: "proxy".into(),
-            label: "Your AI proxy token".into(),
-            name: "weekly".into(),
-            window: "Week".into(),
-            share: 0.92,
-            standing: "$36,800 of $40,000".into(),
-            resets: None,
-        }];
-        let mut state = State::default();
-        assert_eq!(
-            told_whom(&tick(&s, &mut state)),
-            [(To::Orchestrator, false)],
-            "a budget at 92% wasn't told"
-        );
-        let standing = std::mem::take(&mut s.budgets);
-        // The first tick after eight hours asleep reads the file from
-        // before the sleep, and spend-watch writes again minutes later.
-        s.now += 8 * 3600;
-        s.budgets_unwatched = Some("was last written 480 min ago".into());
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "a stale file on waking was told at once"
-        );
-        s.now += 5 * 60;
-        s.budgets_unwatched = None;
-        s.budgets = standing;
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "a level standing through the night was told again on waking"
-        );
-    }
-
-    fn told_whom(questions: &[Question]) -> Vec<(To, bool)> {
+    pub(in crate::asking) fn told_whom(questions: &[Question]) -> Vec<(To, bool)> {
         questions.iter().map(|q| (q.to, q.key.is_some())).collect()
     }
 

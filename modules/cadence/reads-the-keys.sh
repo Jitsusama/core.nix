@@ -7,7 +7,9 @@
 # comment holding the same key can't stand in for one, and a field is
 # found in its own struct, as two of spend-watch's share a field's name.
 # A field's serde attributes, and its struct's, are pinned with it, as
-# serde can rename the key cadence reads without touching the field.
+# serde can rename the key cadence reads without touching the field, and
+# a serde attribute the check can't read whole, as one split over lines
+# or inside another, fails it rather than reading as none.
 # It takes cadence's unbilled.rs, unresolved.rs and watch/budgets.rs, then
 # spend-watch's collection.rs, detect.rs, standing.rs and status.rs.
 set -euo pipefail
@@ -30,22 +32,28 @@ line() {
 # A line of one struct's body, between its opening line and the first
 # line that closes it, with the serde attributes just above it, each ended
 # by a semicolon; an empty line stands for the struct's own opening line.
+# A comment or a blank line between an attribute and its line keeps it.
 within() {
-  local got
+  local got rc=0
   got=$(awk -v open="pub struct $2 {" -v want="$3" '
     function said() { printf "found:%s", attrs; found = 1; exit }
+    /serde\(/ && !/^[[:space:]]*(\/\/|#\[serde\(.*\)\][[:space:]]*$)/ { unread = 1; exit }
     $0 == open { if (want == "") said(); inside = 1; attrs = ""; next }
     inside && /^}/ { exit }
-    /^[[:space:]]*(#\[|\/\/\/)/ {
-      if ($0 ~ /#\[serde/) { a = $0; sub(/^[[:space:]]+/, "", a); attrs = attrs a ";" }
+    /^[[:space:]]*(#\[|\/\/|$)/ {
+      if ($0 ~ /^[[:space:]]*#\[serde/) { a = $0; sub(/^[[:space:]]+/, "", a); attrs = attrs a ";" }
       next
     }
     inside && $0 == want { said() }
     { attrs = "" }
-    END { if (!found) exit 3 }' "$1") || {
+    END { if (unread) exit 4; if (!found) exit 3 }' "$1") || rc=$?
+  if ((rc == 4)); then
+    echo "$1 has a serde attribute this check can't read whole, split or inside another" >&2
+    exit 1
+  elif ((rc != 0)); then
     echo "$1's $2 no longer has the line: $3" >&2
     exit 1
-  }
+  fi
   [[ $got == "found:${4-}" ]] || {
     echo "$1's $2 has serde attributes '${got#found:}' on '${3:-its opening}', not '${4-}'" >&2
     exit 1
@@ -68,8 +76,14 @@ line "$detect" '        format!("{UNBILLED_HELD}:{feed}"),'
 line "$detect" 'pub const UNRESOLVED: &str = "unresolved";'
 line "$detect" '        format!("{UNRESOLVED}:{budget}"),'
 
-# budgets.json, written whole from spend-watch's Standing.
+# budgets.json, written whole from spend-watch's Standing, of the version
+# cadence reads.
 line "$status" '        let path = runtime.join("budgets.json");'
+line "$status" '        budgets: Option<&Standing>,'
+line "$status" \
+  '            let text = serde_json::to_string(budgets).map_err(|error| error.to_string())?;'
+line "$standing" 'pub const VERSION: u32 = 1;'
+line "$budgets" 'const VERSION: u32 = 1;'
 within "$standing" Standing ''
 within "$standing" Standing '    pub at: String,'
 line "$budgets" '    let written = file["at"]'

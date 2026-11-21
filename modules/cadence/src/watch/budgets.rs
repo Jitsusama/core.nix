@@ -19,6 +19,9 @@ pub const LEVELS: [u32; 2] = [80, 90];
 /// from ahead of the clock is no more a sign of life.
 pub const FRESH_S: i64 = 30 * 60;
 
+/// The version of spend-watch's standing cadence reads, its `v`.
+const VERSION: u32 = 1;
+
 /// The key of the alarm that no budget is watched.
 pub const UNWATCHED: &str = "budget:unwatched";
 
@@ -71,6 +74,12 @@ pub fn gather(runtime: Option<&Path>, now: i64) -> Result<Vec<Allowance>, String
 pub fn read(text: &str, now: i64) -> Result<Vec<Allowance>, String> {
     let file = serde_json::from_str::<serde_json::Value>(text)
         .map_err(|_| "isn't spend-watch's standing".to_owned())?;
+    // A version marks a change in what a field means, which no pin on its
+    // name sees, so one cadence wasn't written for is told as unwatched
+    // rather than read as false levels.
+    if file["v"] != VERSION {
+        return Err("is of a version cadence doesn't read".to_owned());
+    }
     let written = file["at"]
         .as_str()
         .and_then(|at| at.parse::<jiff::Timestamp>().ok())
@@ -376,7 +385,14 @@ mod tests {
             (at_95(&at(NOW + FRESH_S + 1)), "is dated ahead of the clock"),
             (at_95("not a time"), "says no time it was written"),
             (String::new(), "isn't spend-watch's standing"),
-            (json!({"at": at(NOW)}).to_string(), "holds no budgets"),
+            (
+                json!({"v": 1, "at": at(NOW)}).to_string(),
+                "holds no budgets",
+            ),
+            (
+                json!({"v": 2, "at": at(NOW), "budgets": []}).to_string(),
+                "is of a version cadence doesn't read",
+            ),
         ] {
             assert_eq!(read(&file, NOW), Err(why.to_owned()), "{file}");
         }
