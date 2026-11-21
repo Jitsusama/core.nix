@@ -45,6 +45,12 @@ const EVERY: Duration = Duration::from_secs(60);
 /// in a fraction of this.
 const PAGE: Duration = Duration::from_secs(2);
 
+/// How old, in seconds, the record a daemon before this one wrote may be
+/// and still say how each source stood: a restart on a switch takes
+/// seconds, and five minutes missed is long enough for a source to have
+/// answered and failed again unseen.
+const LATELY: u64 = 5 * 60;
+
 pub fn run() -> Result<(), String> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -96,10 +102,12 @@ pub fn run() -> Result<(), String> {
     let mut tvs = samsung::Heard::new();
     // Each source as the last record said it, starting from the record a
     // daemon before this one wrote, so a restart doesn't make an outage
-    // begin again.
+    // begin again. A record older than a few minutes says nothing of what
+    // happened since it was written, so it carries nothing over.
     let mut before = fs::read_to_string(&record)
         .ok()
         .and_then(|text| serde_json::from_str::<Network>(&text).ok())
+        .filter(|network| time::now().saturating_sub(network.collected_at) <= LATELY)
         .map(|network| network.sources)
         .unwrap_or_default();
     loop {
