@@ -171,21 +171,23 @@ impl Reader {
     /// Follow the folder an ask names for a new client, or say why not.
     pub fn follow(self: &Arc<Self>, ask: &Ask) -> Result<Following, String> {
         let folder = self.allowed(&ask.folder)?;
-        let key = (folder.clone(), ask.suffix.clone());
+        let key = (folder, ask.suffix.clone());
+        // Held until the client is in, so the folder's thread, which takes
+        // this lock to let an unasked folder go, never sees it empty first.
         let mut folders = locked(&self.folders);
-        let said = match folders.get(&key) {
-            Some(said) => Arc::clone(said),
-            None => {
-                let said = Arc::new(Mutex::new(Said::default()));
-                folders.insert(key.clone(), Arc::clone(&said));
-                let reader = Arc::clone(self);
-                let theirs = Arc::clone(&said);
-                thread::Builder::new()
-                    .name("folder".into())
-                    .spawn(move || reader.keep(&key, &theirs))
-                    .map_err(|error| format!("it couldn't follow the folder: {error}"))?;
-                said
-            }
+        let said = if let Some(said) = folders.get(&key) {
+            Arc::clone(said)
+        } else {
+            let said = Arc::new(Mutex::new(Said::default()));
+            let reader = Arc::clone(self);
+            let theirs = Arc::clone(&said);
+            let followed = key.clone();
+            thread::Builder::new()
+                .name("folder".into())
+                .spawn(move || reader.keep(&followed, &theirs))
+                .map_err(|error| format!("it couldn't follow the folder: {error}"))?;
+            folders.insert(key, Arc::clone(&said));
+            said
         };
         let mut said = locked(&said);
         let (queue, lines) = sync_channel(said.files.len() + ROOM);
@@ -300,12 +302,12 @@ impl Reader {
 
 /// Answer one client: read its ask, then send it what its folder holds
 /// and each change, until it goes or is let go.
-pub fn serve(reader: &Arc<Reader>, stream: UnixStream) {
+pub fn serve(reader: &Arc<Reader>, stream: &UnixStream) {
     let Ok(mut writer) = stream.try_clone() else {
         return;
     };
     let mut asked = String::new();
-    let mut lines = BufReader::new((&stream).take(LONGEST_ASK as u64));
+    let mut lines = BufReader::new(stream.take(LONGEST_ASK as u64));
     if lines.read_line(&mut asked).is_err() {
         return;
     }

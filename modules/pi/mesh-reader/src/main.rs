@@ -104,7 +104,7 @@ fn serve(listener: &UnixListener, reader: &Arc<Reader>) {
                 };
                 let reader = Arc::clone(reader);
                 let started = thread::Builder::new().name("client".into()).spawn(move || {
-                    reader::serve(&reader, stream);
+                    reader::serve(&reader, &stream);
                     drop(place);
                 });
                 if let Err(error) = started {

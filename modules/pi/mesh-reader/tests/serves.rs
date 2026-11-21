@@ -36,7 +36,7 @@ fn here(name: &str) -> Here {
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let reader = Arc::clone(&serving);
-            thread::spawn(move || reader::serve(&reader, stream));
+            thread::spawn(move || reader::serve(&reader, &stream));
         }
     });
     Here {

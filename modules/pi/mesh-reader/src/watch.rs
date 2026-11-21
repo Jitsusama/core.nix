@@ -51,6 +51,9 @@ const MASK: u32 = libc::IN_CLOSE_WRITE
     | libc::IN_MOVE_SELF
     | libc::IN_ONLYDIR;
 
+/// The most a read of the watch takes at once: a few thousand events.
+const READ_AT_ONCE: usize = 64 * 1024;
+
 /// The fixed part of an inotify event: wd, mask, cookie and len.
 const EVENT_HEADER: usize = 16;
 
@@ -88,7 +91,7 @@ impl Watch {
         let millis = i32::try_from(within.as_millis()).unwrap_or(i32::MAX);
         // SAFETY: poll reads and writes the one pollfd given, which
         // outlives the call.
-        let ready = unsafe { libc::poll(&mut poll, 1, millis) };
+        let ready = unsafe { libc::poll(&raw mut poll, 1, millis) };
         if ready < 0 {
             let error = io::Error::last_os_error();
             if error.kind() == io::ErrorKind::Interrupted {
@@ -100,7 +103,7 @@ impl Watch {
             return Ok(Vec::new());
         }
         let mut heard = Vec::new();
-        let mut buffer = [0u8; 64 * 1024];
+        let mut buffer = vec![0u8; READ_AT_ONCE];
         loop {
             // SAFETY: read writes at most the buffer's length into the
             // buffer, which outlives the call.
@@ -216,7 +219,7 @@ pub fn read(dir: &Path, name: &str) -> io::Result<Option<String>> {
 fn gone(error: &io::Error) -> bool {
     matches!(
         error.raw_os_error(),
-        Some(libc::ENOENT) | Some(libc::ENOTDIR) | Some(libc::ELOOP) | Some(libc::EISDIR)
+        Some(libc::ENOENT | libc::ENOTDIR | libc::ELOOP | libc::EISDIR)
     )
 }
 
@@ -241,7 +244,7 @@ mod tests {
         fs::write(dir.join("a.json.tmp"), "half").unwrap();
         fs::write(dir.join("b.txt"), "no").unwrap();
         fs::create_dir(dir.join("c.json")).unwrap();
-        fs::write(dir.join("big.json"), vec![b'x'; LARGEST_FILE as usize + 1]).unwrap();
+        fs::write(dir.join("big.json"), vec![b'x'; usize::try_from(LARGEST_FILE).unwrap() + 1]).unwrap();
         fs::write(dir.join("bytes.json"), [0xff, 0xfe]).unwrap();
         let listed = list(&dir, ".json").unwrap();
         assert_eq!(listed.keys().collect::<Vec<_>>(), vec!["a.json"]);
@@ -306,7 +309,7 @@ mod tests {
             bytes.extend(1i32.to_ne_bytes());
             bytes.extend(mask.to_ne_bytes());
             bytes.extend(0u32.to_ne_bytes());
-            bytes.extend((padded as u32).to_ne_bytes());
+            bytes.extend(u32::try_from(padded).unwrap().to_ne_bytes());
             bytes.extend(name);
             bytes.extend(vec![0u8; padded - name.len()]);
         };
