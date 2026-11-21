@@ -99,6 +99,18 @@ function seenByLetter(text, byCase) {
     return { letters, starts, ends };
 }
 
+// A place in a text searched as it stands, taking in the whole of a pair
+// of units it begins or ends inside, as a text read letter by letter
+// does, or half a pair found would be washed alone and drawn broken.
+function pairsWhole(text, start, end) {
+    const high = unit => unit >= highFirst && unit <= highLast;
+    const low = unit => unit >= lowFirst && unit <= lowLast;
+    const from = low(text.charCodeAt(start)) && high(text.charCodeAt(start - 1))
+        ? start - 1 : start;
+    const to = high(text.charCodeAt(end - 1)) && low(text.charCodeAt(end)) ? end + 1 : end;
+    return [from, to];
+}
+
 // Whether a pattern is matched by its case: only once it has a capital.
 function cased(pattern) {
     return pattern !== pattern.toLowerCase();
@@ -123,11 +135,11 @@ function found(pattern, text) {
     while (from >= 0) {
         // Its end is where its last letter ends, so a joiner after the
         // place found isn't taken into it.
+        const last = from + sought.length - 1;
+        const span = plain.starts === null ? pairsWhole(text, from, last + 1)
+            : [plain.starts[from], plain.ends[last]];
         // One that begins inside a letter the last place took, as two
         // can where a letter lowers longer, is no place of its own.
-        const last = from + sought.length - 1;
-        const span = plain.starts === null ? [from, last + 1]
-            : [plain.starts[from], plain.ends[last]];
         // The next is looked for past a place kept, but just past one
         // dropped, as one that begins inside it can begin in a letter of
         // its own (\u0307i\u0307i in six İ).
