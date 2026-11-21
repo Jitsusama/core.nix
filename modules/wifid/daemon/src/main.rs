@@ -210,10 +210,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
 }
 
 /// The account holding wpa_supplicant's name, asked of the bus itself,
-/// which starts nothing; none while it isn't running.
+/// which starts nothing; none while it isn't running, or where the bus
+/// can't say, which is said.
 async fn supplicant_owner(owners: &DBusProxy<'_>) -> Option<String> {
-    let owner = owners.get_name_owner(SUPPLICANT.into()).await.ok()?;
-    Some(owner.to_string())
+    match owners.get_name_owner(SUPPLICANT.into()).await {
+        Ok(owner) => Some(owner.to_string()),
+        Err(zbus::fdo::Error::NameHasNoOwner(_)) => None,
+        Err(error) => {
+            eprintln!("<4>can't ask the bus who runs wpa_supplicant: {error}");
+            None
+        }
+    }
 }
 
 /// Joins the bus, gives wpa_supplicant the cards and follows them, and
@@ -258,16 +265,12 @@ async fn serve(
     // Followed before the access points are first read, so none heard
     // meanwhile is missed. Any account on the laptop may send a signal
     // under wpa_supplicant's path, as the system bus lets any broadcast
-    // one through, and a card's steps are taken all the same rather than
-    // only from its name, since the VM test says a card is scanning so,
-    // no radio there ever hanging a look (2026-11-20). Such an account
-    // could end a look early, so a move is sent back after its second, or
-    // say a card came off its network mid-move, so wifid itself sends it
-    // back to the point it left. It moves the card no further than its
-    // own networks. The access point a card is at, and a card gone, are
-    // taken only from wpa_supplicant as it runs now, so a forger can't
-    // say where a move landed, which channel is kept for the network, or
-    // have wifid drop a hold it would lift later.
+    // one through, so each is taken only from wpa_supplicant as it runs
+    // now (`Air::take_in`), but for a card beginning to look, since the VM
+    // test says a card is scanning so, no radio there ever hanging a look
+    // (2026-11-20). Such an account could have a move wait on a look it
+    // made up, up to `LOOK_ENDS`, or a card it says has looked too long be
+    // told to join a network it saved, and nothing more.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -799,8 +802,23 @@ impl Air<'_> {
         if sender.is_some_and(|sender| self.departed.contains(sender)) {
             return;
         }
-        let own = said_by(sender, self.owner.as_deref());
         let body = message.body();
+        // Another account's signal is taken only as a card beginning to
+        // look (`serve`), and only its step.
+        if !self.own(bus, sender).await {
+            let changed = body.deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>();
+            if member.as_str() == "PropertiesChanged"
+                && header
+                    .interface()
+                    .is_some_and(|interface| interface == "org.freedesktop.DBus.Properties")
+                && let Ok((interface, mut changed, _)) = changed
+                && begins_looking(&interface, &changed)
+            {
+                changed.retain(|property, _| property == "State");
+                self.card_changed(bus, path, &changed).await;
+            }
+            return;
+        }
         match member.as_str() {
             "BSSAdded" => {
                 if let Ok((point, properties)) = body.deserialize::<(OwnedObjectPath, _)>() {
@@ -817,19 +835,6 @@ impl Air<'_> {
                 let Ok(card) = body.deserialize::<OwnedObjectPath>() else {
                     return;
                 };
-                // Any account may send this signal, under any path, a
-                // parent's naming every card, so it's taken only from
-                // wpa_supplicant as it runs now. Its name going forgets
-                // every card anyway (`owner_changed`).
-                if !own {
-                    let sender = sender.unwrap_or("nobody named");
-                    let owner = self.owner.as_deref().unwrap_or("nobody");
-                    println!(
-                        "<6>{card} was said gone by {sender}, where wpa_supplicant is {owner}, \
-                         so kept"
-                    );
-                    return;
-                }
                 self.gone_under(&format!("{}/", card.as_str()));
             }
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
@@ -883,7 +888,7 @@ impl Air<'_> {
                         change(&self.state, |state| state.heard(path.as_str(), heard));
                     }
                     "fi.w1.wpa_supplicant1.Interface" => {
-                        self.card_changed(bus, path, &changed, own).await;
+                        self.card_changed(bus, path, &changed).await;
                     }
                     _ => {}
                 }
@@ -892,21 +897,41 @@ impl Air<'_> {
         }
     }
 
+    /// Whether a signal from this sender is wpa_supplicant's own. One
+    /// from another account has the bus asked again, as a wpa_supplicant
+    /// started since may speak before the change of hands is read, and an
+    /// ask that failed as wifid started knows nobody; that costs a round
+    /// trip for each signal another account sends.
+    async fn own(&mut self, bus: &Connection, sender: Option<&str>) -> bool {
+        if said_by(sender, self.owner.as_deref()) {
+            return true;
+        }
+        if sender.is_none() {
+            return false;
+        }
+        let Ok(owners) = DBusProxy::new(bus).await else {
+            return false;
+        };
+        if let Some(owner) = supplicant_owner(&owners).await {
+            self.owner = Some(owner);
+        }
+        said_by(sender, self.owner.as_deref())
+    }
+
     /// Takes in what wpa_supplicant says changed of the card at this path:
     /// how far it's got joining a network, the access point it's at, and
-    /// any status that ends its join. The access point is taken only from
-    /// wpa_supplicant itself, `own`, and only one of the card's own.
+    /// any status that ends its join. The access point is taken only as
+    /// one of the card's own.
     async fn card_changed(
         &mut self,
         bus: &Connection,
         path: &ObjectPath<'_>,
         changed: &HashMap<String, OwnedValue>,
-        own: bool,
     ) {
         let point = changed
             .get("CurrentBSS")
             .map(|point| &**point)
-            .filter(|point| own && of_card(path.as_str(), point));
+            .filter(|point| of_card(path.as_str(), point));
         // Taken as wifid reads the signal, before it asks the bus anything,
         // so the time a move took isn't the time wifid took to ask what it
         // reached. Anything wifid was busy with as the signal came still
@@ -1103,6 +1128,16 @@ fn said_by(sender: Option<&str>, owner: Option<&str>) -> bool {
     sender
         .zip(owner)
         .is_some_and(|(sender, owner)| sender == owner)
+}
+
+/// Whether another account's signal says only what wifid takes from any:
+/// a card beginning to look, among whatever else it says.
+fn begins_looking(interface: &str, changed: &HashMap<String, OwnedValue>) -> bool {
+    interface == "fi.w1.wpa_supplicant1.Interface"
+        && matches!(
+            changed.get("State").map(|step| &**step),
+            Some(zvariant::Value::Str(step)) if step.as_str() == "scanning"
+        )
 }
 
 /// Whether a point wpa_supplicant says a card is at is one of that card's,
@@ -2330,7 +2365,9 @@ impl Wifid<'_> {
             if self.on_its_way(&card, bssid, &step) {
                 println!("<7>{card} is {step} on its own, held to {bssid}");
                 // Held, wherever it joins is judged by this point.
-                if step != "completed" {
+                // One already in a move to it keeps that move, and with it
+                // the way back.
+                if step != "completed" && !self.arrivals.borrow().moving(&card) {
                     self.arrivals
                         .borrow_mut()
                         .heading(&card, bssid, Instant::now());
@@ -2593,8 +2630,8 @@ impl Wifid<'_> {
     /// every signal it sent before, so a join completed as the time ran
     /// out, its signal not yet read, is seen. One that is ends its move as
     /// any arrival does. Where wpa_supplicant can't say, it isn't. A way
-    /// back already handed back as stranded is said as reached so long
-    /// after it was sent, `going`, as any other arrival.
+    /// back already handed back as stranded is said found there as its
+    /// time, `going`, ran out, since when it got there isn't known.
     async fn arrived(&self, card: &str, to: &str, free: bool, going: Option<Duration>) -> bool {
         let there = async {
             let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
@@ -2615,7 +2652,7 @@ impl Wifid<'_> {
         match (arrived, going) {
             (Some(arrived), _) => println!("{}", arrived.said(card)),
             (None, Some(going)) => println!(
-                "<6>{card} reached {to} {} ms after it was asked",
+                "<6>{card} was found at {to} as its {} ms ran out, so isn't let go",
                 going.as_millis()
             ),
             (None, None) => println!("<6>{card} reached {to} as its time ran out"),
@@ -2948,6 +2985,34 @@ mod tests {
             credited(Some(&zvariant::Value::U32(4)), None),
             None,
             "with none said either, wpa_supplicant is asked"
+        );
+    }
+
+    #[test]
+    fn another_account_is_heard_only_saying_a_card_begins_to_look() {
+        let step = |step: &str| {
+            HashMap::from([(
+                "State".to_owned(),
+                OwnedValue::from(zvariant::Str::from(step.to_owned())),
+            )])
+        };
+        let interface = "fi.w1.wpa_supplicant1.Interface";
+
+        assert!(
+            begins_looking(interface, &step("scanning")),
+            "a card beginning to look"
+        );
+        assert!(
+            !begins_looking(interface, &step("completed")),
+            "not a card said joined, which would end a move"
+        );
+        assert!(
+            !begins_looking("fi.w1.wpa_supplicant1.BSS", &step("scanning")),
+            "nor anything said of an access point"
+        );
+        assert!(
+            !begins_looking(interface, &HashMap::new()),
+            "nor a change saying no step"
         );
     }
 
