@@ -722,6 +722,12 @@ QtObject {
         expect("none for one naming no cell", Looks.cellGoes(naming(7), cells), "");
         expect("going to a session not listed yet, cellOf's search",
             Looks.cellFor(naming("AAAAAA"), cells, [leaver], []).address, "AAAAAA");
+        const listing = { address: "TTTTTT",
+            presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "AAAAAA"] } };
+        expect("going to a session not listed yet, never one on another quest listing it",
+            Looks.cellFor(naming("AAAAAA"), cells, [listing], []), null);
+        expect("going to a session not listed yet, one on its quest",
+            Looks.cellFor(naming("AAAAAA"), cells, [listing], [resting]).address, "CCCCCC");
         expect("not served yet, cellOf's search",
             Looks.cellFor(naming("HHHHHH"), cells, [heir], [leaver]).address,
             "AAAAAA");

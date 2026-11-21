@@ -149,21 +149,29 @@ function cellGoes(one, cells) {
 
 // The cell a look leads to as the agents daemon names it (cellGoes): the
 // live session found among `running` and `parked` by the address it goes
-// to. Where the daemon names none, or a session those lists don't hold
-// yet, cellOf's search decides, since the daemon and the lists each read
-// the node and either can be a beat behind. Where the daemon says it goes
-// nowhere, only the cell itself, back in the lists, is found: the search
-// would find a session on another quest that merely lists its address,
-// which cells.rs refuses. The search for a look naming no cell goes once
-// every look names its cell, by Mon 23 Nov 2026.
+// to. Where the daemon names none, cellOf's search decides. Where it names
+// a session those lists don't hold yet, since the daemon and the lists each
+// read the node and either can be a beat behind, the search decides among
+// the cell itself and the sessions on the look's quest alone. Where it says
+// the cell goes nowhere, only the cell itself, back in the lists, is found.
+// Either way a session on another quest that merely lists the cell's
+// address is never found, as cells.rs refuses it. The search for a look
+// naming no cell goes once every look names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
     const goes = cellGoes(one, cells);
-    const held = goes === "" ? [] : (Array.isArray(running) ? running : [])
-        .concat(Array.isArray(parked) ? parked : []);
-    if (goes === null) {
-        return held.find(session => session.address === one.cell) ?? null;
+    if (goes === "") {
+        return cellOf(one, running, parked);
     }
-    return held.find(session => session.address === goes) ?? cellOf(one, running, parked);
+    const held = (Array.isArray(running) ? running : [])
+        .concat(Array.isArray(parked) ? parked : []);
+    const itself = session => session.address === one.cell;
+    if (goes === null) {
+        return held.find(itself) ?? null;
+    }
+    const quest = typeof one.quest === "string" ? one.quest : "";
+    const ours = held.filter(session => itself(session)
+        || (quest !== "" && session.presence?.quest === quest));
+    return held.find(session => session.address === goes) ?? cellOf(one, ours, []);
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s

@@ -1133,14 +1133,6 @@ Provider {
         return Looks.cellFor(one, cellsDaemon.held, Sessions.running, Sessions.parked);
     }
 
-    // The address the daemon says a look's cell goes to, "null" where it
-    // says nowhere, or "" (Looks.js's cellGoes), read through its revision
-    // as lookCell is.
-    function lookGoes(one) {
-        void cellsDaemon.revision;
-        return String(Looks.cellGoes(one, cellsDaemon.held));
-    }
-
     // Goes to the window of the cell a look leads to, as it stands when
     // pressed, waking it first where it's parked, as a want's Go To does.
     function goToCell(one) {
@@ -1408,11 +1400,11 @@ Provider {
             return lookRow(one, now);
         looksWeighed.times += 1;
         return keptAlike(looksKept, one.file,
-            // Kept by the cell it leads to too, so Talk goes to the cell
-            // it is now rather than the one it was when the row was made.
-            // A keyed read, cheaper than lookCell's search, which For You's
-            // cell headings already run for every look (cellsTold).
-            [text, lookSide(one, now, forYouSaid(now)), lookAsker(one), lookGoes(one)],
+            // Kept by the session it leads to too, the one Talk was made
+            // for, so Talk goes to the cell it is now rather than the one it
+            // was when the row was made, the lists a beat behind included.
+            [text, lookSide(one, now, forYouSaid(now)), lookAsker(one),
+                lookCell(one)?.address ?? ""],
             () => lookRow(one, now));
     }
 
