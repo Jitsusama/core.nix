@@ -4366,7 +4366,8 @@
     main process and the old one ended; while niri is yet to say its casts, a chord into On and
     home each open afresh, the journal saying why, and a share begun as home, On or the
     clipboard is drawn from what was kept fills it in at once, the kept copy's text gone from
-    the card
+    the card; and once a share begins, Ctrl+I forward into a clipboard left showing a copy before
+    it goes nowhere, saying the place is let go, and draws no copy
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
