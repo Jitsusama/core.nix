@@ -77,7 +77,14 @@ feed speaks.
   machines were is this machine's. The by-machine cut shows each machine
   by its name, this one by the config's `machine` or else its host name,
   pi spend no log explains as elsewhere, and another tool's bill as its
-  tool's, since a bill names no machine.
+  tool's, since a bill names no machine. It shows only for a period in
+  which another machine spent. Only another machine's logs are read: its
+  subagent runs and quest workspaces stay there, so its runs' spend
+  beyond their logs is elsewhere. A brought log's parent is looked for
+  among that machine's logs, and each machine's folder stands apart from
+  every other's, so nothing is counted twice. The logs are read as they
+  grow in place, and a new project folder is watched once it holds a
+  log, which whatever brings them has to keep to.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each
   turn's budget is worked out: the budget claiming its provider, since

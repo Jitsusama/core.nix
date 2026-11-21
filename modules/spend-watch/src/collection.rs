@@ -356,12 +356,21 @@ fn shown(id: &str, words: &str, report: &Report) -> Shown {
 }
 
 /// A period's day reports cut by day say nothing a period of a day
-/// doesn't.
-fn cuts_for(period: Period) -> impl Iterator<Item = Cut> {
+/// doesn't, and its machines say nothing until another machine spent in
+/// it: this one's work beside elsewhere and other tools' bills would
+/// otherwise read as machines on a machine that brings no logs.
+fn cuts_for(picture: &Picture, period: Period) -> impl Iterator<Item = Cut> {
     let one_day = matches!(period, Period::Today | Period::Yesterday);
-    Cut::ALL
-        .into_iter()
-        .filter(move |cut| !(one_day && *cut == Cut::Day))
+    let (from, to) = period.days(&picture.zone, picture.now);
+    let others = picture
+        .between(from, to)
+        .iter()
+        .any(|piece| !piece.machine.is_empty());
+    Cut::ALL.into_iter().filter(move |cut| match cut {
+        Cut::Day => !one_day,
+        Cut::Machine => others,
+        _ => true,
+    })
 }
 
 /// The row standing for a period's spend cut one way: how many it's cut
@@ -403,7 +412,7 @@ fn period_line(
     if matches!(period, Period::Today | Period::Yesterday) {
         "date".clone_into(&mut made.mark);
     }
-    made.rows = cuts_for(period)
+    made.rows = cuts_for(picture, period)
         .filter_map(|cut| {
             let id = format!("{}/{}", period.id(), cut.id());
             cut_line(&id, cut, &reports.get(&id)?.0)
@@ -457,7 +466,7 @@ fn period_drawn(
         };
         facts.push(Fact::of("rebuilding", said, false));
     }
-    facts.extend(cuts_for(period).filter_map(|cut| {
+    facts.extend(cuts_for(picture, period).filter_map(|cut| {
         let (report, _) = reports.get(&format!("{}/{}", period.id(), cut.id()))?;
         most(cut, report)
     }));
@@ -2136,6 +2145,43 @@ mod tests {
         picture.rebuilt.insert("this-week", 0.05);
         let found = crate::detect::all(&picture, &history, &config).unwrap();
         collection(&picture, &found, &config)
+    }
+
+    // A machine that brings no other machine's logs has no machines to
+    // tell apart, so its periods say none; once another machine spent in
+    // a period, that period's row and drawer cut by machine.
+    #[test]
+    fn a_period_cuts_by_machine_only_once_another_spent() {
+        let (history, config) = (busy(), config());
+        let mut picture = Picture::read(&history, &config, NOW).unwrap();
+        let machine_lines = |picture: &Picture| {
+            let found = crate::detect::all(picture, &history, &config).unwrap();
+            let today = collection(picture, &found, &config).now[0].clone();
+            let row = today.rows.iter().any(|row| row.key == "today/machine");
+            let fact = today
+                .drawn
+                .as_ref()
+                .is_some_and(|drawn| drawn.facts.iter().any(|fact| fact.id == "most-machine"));
+            (row, fact)
+        };
+        assert_eq!(
+            machine_lines(&picture),
+            (false, false),
+            "a machine bringing no logs cut its day by machine"
+        );
+        let (from, to) = Period::Today.days(&picture.zone, picture.now);
+        let first = picture.between(from, to)[0].hour;
+        let piece = picture
+            .pieces
+            .iter_mut()
+            .find(|piece| piece.hour == first)
+            .unwrap();
+        "teal".clone_into(&mut piece.machine);
+        assert_eq!(
+            machine_lines(&picture),
+            (true, true),
+            "a day another machine spent in wasn't cut by machine"
+        );
     }
 
     // The largest of a cut is said with its share, or "all" when it's the

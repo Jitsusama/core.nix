@@ -582,9 +582,14 @@ impl Inputs {
         }
         // A piece is shown under the session that spent it or started its
         // run, which ran where its log was written, so its machine is
-        // that session's, whichever way the piece was priced.
+        // that session's, whichever way the piece was priced. Spend no
+        // session claims, under no id or elsewhere, is no machine's, even
+        // should a brought log name itself so.
         if !self.machines.is_empty() {
             for piece in &mut out {
+                if piece.session.is_empty() || piece.session == crate::config::ELSEWHERE {
+                    continue;
+                }
                 if let Some(machine) = self.machines.get(&piece.session) {
                     piece.machine.clone_from(machine);
                 }
@@ -1160,6 +1165,31 @@ mod tests {
         assert_eq!(at(H), [("delta".into(), 12.0)]);
         assert_eq!(at(H + 1), [("cistern".into(), 1.0), ("delta".into(), 4.0)]);
         assert_eq!(at(H + 2), [("proxy".into(), 12.0)]);
+    }
+
+    // A run's agents and its total beyond their logs are shown under the
+    // session that started it, so they ran on that session's machine,
+    // though no agent's own log was brought from there.
+    #[test]
+    fn a_run_s_agents_take_their_session_s_machine() {
+        let history = history();
+        budgeted(&history, "me", H, "anthropic", None, 10.0);
+        budgeted(&history, "r1", H + 1, "anthropic", None, 4.0);
+        budgeted(&history, "here", H + 1, "anthropic", None, 1.0);
+        run(&history, "council", "me", H, 9.0, &["r1"]);
+        history
+            .db
+            .execute("UPDATE sessions SET machine = 'teal' WHERE id = 'me'", [])
+            .unwrap();
+        let pieces = Inputs::read(&history, &declared(), H, H + 2)
+            .unwrap()
+            .pieces(&Ratios::default());
+        let machines = by(&pieces, |piece| piece.machine.clone());
+        assert_eq!(
+            machines,
+            vec![("teal".into(), 19.0), (String::new(), 1.0)],
+            "a run's agents weren't counted on their session's machine"
+        );
     }
 
     fn turn(

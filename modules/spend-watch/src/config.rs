@@ -5,6 +5,26 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+/// The host name, read once: a machine renamed while the daemon runs
+/// would otherwise show its work under two names, and the name checked
+/// against other machines' at load would no longer be the one shown.
+fn host_name() -> &'static str {
+    static NAME: OnceLock<String> = OnceLock::new();
+    NAME.get_or_init(|| {
+        let name = rustix::system::uname()
+            .nodename()
+            .to_string_lossy()
+            .trim()
+            .to_owned();
+        if name.is_empty() {
+            "this machine".into()
+        } else {
+            name
+        }
+    })
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -20,9 +40,9 @@ pub struct Config {
     #[serde(default)]
     machine: Option<String>,
     /// Other machines whose logs are brought here, each read as this
-    /// machine's are and its work shown under its name, so a machine
-    /// elsewhere is counted whole rather than as a bill nobody here
-    /// explains.
+    /// machine's are and its work shown under its name, rather than as a
+    /// bill nobody here explains. Only its logs: its runs and workspaces
+    /// stay there.
     #[serde(default)]
     pub machines: Vec<MachineLogs>,
     /// Where the harness gives each quest a workspace, a directory named
@@ -384,6 +404,9 @@ impl Config {
     fn check_machines(&self) -> Result<(), String> {
         let here = self.machine();
         let mut names: Vec<&str> = vec![here.as_str(), ELSEWHERE];
+        // A folder inside another's would have its logs found twice, under
+        // two machines, and so counted twice.
+        let mut folders: Vec<&Path> = vec![&self.sessions];
         for machine in &self.machines {
             if machine.name.trim().is_empty() {
                 return Err("a machine has no name".into());
@@ -401,7 +424,17 @@ impl Config {
                     machine.sessions.display()
                 ));
             }
+            if let Some(taken) = folders.iter().find(|folder| {
+                folder.starts_with(&machine.sessions) || machine.sessions.starts_with(folder)
+            }) {
+                return Err(format!(
+                    "a machine's logs are in a folder of their own, apart from {}: {}",
+                    taken.display(),
+                    machine.sessions.display()
+                ));
+            }
             names.push(&machine.name);
+            folders.push(&machine.sessions);
         }
         Ok(())
     }
@@ -412,13 +445,7 @@ impl Config {
         self.machine
             .clone()
             .filter(|name| !name.trim().is_empty())
-            .or_else(|| {
-                std::fs::read_to_string("/proc/sys/kernel/hostname")
-                    .ok()
-                    .map(|name| name.trim().to_owned())
-                    .filter(|name| !name.is_empty())
-            })
-            .unwrap_or_else(|| "this machine".into())
+            .unwrap_or_else(|| host_name().to_owned())
     }
 
     /// What budgets can't mean: none or two to fall back on, a provider
@@ -690,7 +717,8 @@ mod tests {
     // count one's work as the other's.
     #[test]
     fn each_machine_has_a_name_of_its_own() {
-        let machine = |name: &str| serde_json::json!({"name": name, "sessions": "/m/s"});
+        let machine =
+            |name: &str| serde_json::json!({"name": name, "sessions": format!("/m/{name}")});
         let two = serde_json::json!([machine("teal"), machine("ochre")]);
         assert_eq!(
             with_machines(&two),
@@ -717,6 +745,37 @@ mod tests {
         assert!(
             with_machines(&walked).is_err(),
             "a machine's agents' logs walked a tree"
+        );
+    }
+
+    // A machine's logs found inside another's folder, or this machine's,
+    // would be read under both, and their spend counted twice.
+    #[test]
+    fn each_machine_s_logs_are_in_a_folder_of_their_own() {
+        let at =
+            |name: &str, sessions: &str| serde_json::json!({"name": name, "sessions": sessions});
+        for (sessions, over) in [
+            ("/s", "this machine's"),
+            ("/s/teal", "inside this machine's"),
+            ("/", "over this machine's"),
+        ] {
+            assert!(
+                with_machines(&serde_json::json!([at("teal", sessions)])).is_err(),
+                "a machine's logs {over} folder were taken"
+            );
+        }
+        for (first, second) in [("/m/a", "/m/a"), ("/m/a", "/m/a/b"), ("/m/a/b", "/m/a")] {
+            assert!(
+                with_machines(&serde_json::json!([at("teal", first), at("ochre", second)]))
+                    .is_err(),
+                "logs at {second} were taken beside logs at {first}"
+            );
+        }
+        let apart = serde_json::json!([at("teal", "/m/a"), at("ochre", "/m/ab")]);
+        assert_eq!(
+            with_machines(&apart),
+            Ok(()),
+            "folders sharing only a prefix were refused"
         );
     }
 
