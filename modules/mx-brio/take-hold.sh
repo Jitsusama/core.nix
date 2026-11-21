@@ -18,9 +18,12 @@
 # removal however the run ends, since a removal alone leaves a Brio nobody
 # can open and no later run can find. The old watch is let end before the
 # add, since as it ends it removes the camera's holders file, which the
-# relay's own watch writes under the same name. Once replayed, each node is
-# read again, and the run fails, saying why, if one isn't held or the seat
-# can still open it.
+# loopback's watch, mx-brio-holders, writes under the same name once the
+# relay starts. Once replayed, each node is read again, and a warning says
+# why if one isn't held or the seat can still open it. The run doesn't fail
+# for it: a machine that updates itself goes back a generation when a unit
+# fails, undoing every other change, and the one before reads the same rules,
+# so going back would leave the Brio as it is.
 
 # Whether the facts udev gives a node say the seat may be handed it.
 the_seats() {
@@ -48,10 +51,27 @@ the_seat_can_open() {
   grep -q '^user:[^:]' <<<"$acl"
 }
 
-# Replays the Brio's arrival, the half of the replay that must come.
-add_back() {
-  udevadm trigger --settle --action=add "${paths[@]}"
-  removed=no
+# The Brio's devices still there, since one unplugged mid-run can't be
+# replayed, and the kernel's own removal has already done what's needed.
+still_there() {
+  local path
+  for path in "${paths[@]}"; do
+    if [ -e "$path" ]; then
+      echo "$path"
+    fi
+  done
+}
+
+# Replays to what's still there an `$1` of the Brio's devices, waiting on
+# udev with the rest of `$@`.
+replay() {
+  local action=$1 there
+  shift
+  there=$(still_there)
+  if [ -n "$there" ]; then
+    mapfile -t there <<<"$there"
+    udevadm trigger "$@" --action="$action" "${there[@]}"
+  fi
 }
 
 nodes=()
@@ -62,7 +82,7 @@ removed=no
 for node in /dev/video*; do
   # A node can go as it's read, the Brio unplugged mid-loop; it's skipped.
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
-  # A Brio as mx-brio's rule knows one, so the two can't drift apart.
+  # The same match as mx-brio's rule in nixos.nix; change both together.
   grep -qx 'ID_USB_DRIVER=uvcvideo' <<<"$facts" || continue
   grep -qx 'ID_VENDOR_ID=046d' <<<"$facts" || continue
   grep -qx 'ID_MODEL_ID=091d' <<<"$facts" || continue
@@ -76,43 +96,43 @@ for node in /dev/video*; do
 done
 
 if [ "${#nodes[@]}" = 0 ]; then
-  echo "No MX Brio is plugged in, so there's nothing to take hold of."
+  echo "No MX Brio is plugged in, or udev hasn't read one yet," \
+    "so there's nothing to take hold of."
   exit 0
 fi
 for node in "${nodes[@]}"; do
   take_back "$node"
 done
 if [ "$held" = no ]; then
-  # Stopped, timed out or failed past here, the run still adds the Brio back.
-  trap '[ "$removed" = no ] || add_back' EXIT
+  # Stopped, timed out or failed past here, the run still adds the Brio
+  # back. That add doesn't wait on udev, since a timeout is a udev that
+  # stopped answering; the add is queued for when it answers again.
+  trap '[ "$removed" = no ] || replay add' EXIT
+  echo "Replaying the MX Brio's arrival."
   removed=yes
-  udevadm trigger --settle --action=remove "${paths[@]}"
+  replay remove --settle
   # A watch already gone with its device is what's wanted, so its stop
   # failing for that is no failure.
   systemctl stop "${watches[@]}" || true
-  add_back
+  replay add --settle
+  removed=no
   echo "Replayed the MX Brio's arrival, so its relay has it."
 else
-  udevadm trigger --settle --action=change "${paths[@]}"
+  replay change --settle
   echo "The MX Brio was already held; its rules were read again."
 fi
 
-loose=0
 for node in "${nodes[@]}"; do
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
   if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || the_seats "$facts"; then
-    echo "The MX Brio at $node isn't held:" \
+    # <4> has the journal keep it as a warning.
+    echo "<4>The MX Brio at $node isn't held:" \
       "udev didn't mark it relayed and keep it from the seat." \
       "Replugging it replays its arrival; journalctl -u systemd-udevd says why it wasn't." >&2
-    loose=1
   fi
   take_back "$node"
   if the_seat_can_open "$node"; then
-    echo "The seat can still open the MX Brio at $node: its access couldn't be taken back." \
+    echo "<4>The seat can still open the MX Brio at $node: its access couldn't be taken back." \
       "getfacl -p $node shows who holds it." >&2
-    loose=1
   fi
 done
-if [ "$loose" = 1 ]; then
-  exit 1
-fi

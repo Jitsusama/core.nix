@@ -54,6 +54,8 @@ RUN = "$(systemctl show -p InvocationID --value mx-brio-take-hold.service)"
 SAID = f"journalctl _SYSTEMD_INVOCATION_ID={RUN} -o cat --no-pager"
 # The line a run that replayed the Brio's arrival ends with.
 REPLAYED = "Replayed the MX Brio's arrival, so its relay has it."
+# The line a run says just before it replays the Brio's removal.
+REPLAYING = "Replaying the MX Brio's arrival."
 
 
 def the_run_said(machine: BaseMachine, words: str) -> None:
@@ -133,8 +135,9 @@ def test_the_seat_loses_the_brio_before_its_arrival_is_replayed(
     lines = machine.succeed(SAID).splitlines()
     took = f"Took back the seat's access to {switched}."
     assert took in lines, f"the run never took the seat's access back first: {lines}"
-    assert lines.index(took) < lines.index(REPLAYED), (
-        f"the seat's access was taken back only after the replay: {lines}"
+    assert REPLAYING in lines, f"the run never said it was replaying: {lines}"
+    assert lines.index(took) < lines.index(REPLAYING), (
+        f"the seat's access was taken back only once the replay began: {lines}"
     )
 
 

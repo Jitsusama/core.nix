@@ -114,8 +114,8 @@ in
     };
 
     # A switch starts it as it's new, and again whenever the rules change. It
-    # runs at every boot too, where udev's first look has already done this:
-    # it finds the Brio held, or none, and waits only on the Brio's events.
+    # runs at every boot too, where udev's first look does this: it finds the
+    # Brio held, or one udev hasn't read yet, whose own add the rules take.
     systemd.services.mx-brio-take-hold = {
       description = "Take hold of an MX Brio already plugged in";
       wantedBy = [ "multi-user.target" ];
