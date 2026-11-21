@@ -815,6 +815,16 @@ in
             "jobs.slice/jobs-work.slice"
             "--no-real-time"
             "jobs.slice/jobs-timed.slice"
+            # Joel's Chrome and Slack ask for a half-millisecond slice, so a
+            # woken drawing thread runs sooner under load. An agent's Chrome
+            # that moves itself into his programs' slice is judged by what
+            # started it, so it isn't asked while its launcher lives.
+            "--quick"
+            "app.slice"
+            "--quick-name"
+            "chrome"
+            "--quick-name"
+            "slack"
             # An agent's command for a quest goes in that quest's slice under
             # jobs-work.slice, at the weight pi's sessions give the quest by
             # its priority, so a quest Joel drives gets more of what agents'
