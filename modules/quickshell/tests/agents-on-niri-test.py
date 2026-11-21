@@ -189,7 +189,8 @@ def landed_today() -> str:
 
 
 # How full a session's context is, and its turns today, as the harness's usage keeps them by
-# gen_ai's names, counted on the day the sandbox's clock says.
+# gen_ai's names, counted on the day the sandbox's clock says as the file loads, which a case
+# reading its figures lays again once the day has turned (usage_dated_today).
 FULL = {
     "day": datetime.now().astimezone().date().isoformat(),
     "gen_ai.response.model": "claude-opus-5-5",
@@ -239,9 +240,42 @@ def lay(address: str, title: str, said: Json, *, closed: bool = False) -> None:
         "at": datetime.now(UTC).isoformat(),
         **said,
     }  # fmt: skip
+    laid_whole(address, record)
+
+
+def laid_whole(address: str, record: Json) -> None:
+    """Write a session's presence record whole, by rename, as pi does."""
     laid = PRESENCE / f"{address.lower()}.json.tmp"
     laid.write_text(json.dumps(record))
     laid.rename(PRESENCE / f"{address.lower()}.json")
+
+
+def laid_record(address: str) -> Json:
+    """Give a session's presence record as it was last laid."""
+    return cast("Json", json.loads((PRESENCE / f"{address.lower()}.json").read_text()))
+
+
+def usage_dated_today(address: str) -> None:
+    """Lay a session's usage again on today's date, once the day has turned since it was laid.
+
+    The daemon says a day's figures only on their day (modules/agents/src/figures.rs), and the
+    builders run on UTC, so a run begun before midnight would find none in a case after it, as
+    one at 00:02Z did (XY9H5C, 1b5eff6c). A session's next turn lays its usage on the new day,
+    as this does.
+    """
+    record = laid_record(address)
+    usage = cast("Json", record["usage"])
+    today = datetime.now().astimezone().date().isoformat()
+    if usage["day"] != today:
+        dated = {**usage, "day": today}
+        laid_whole(address, {**record, "usage": dated, "at": datetime.now(UTC).isoformat()})
+
+
+def closed_side(address: str) -> str:
+    """Say when a closed session ended as Recent's row does: its time today, else its day too."""
+    ended = datetime.fromisoformat(str(laid_record(address)["at"])).astimezone()
+    today = ended.date() == datetime.now().astimezone().date()
+    return f"closed {ended:%H:%M}" if today else f"closed {ended:%a %H:%M}"
 
 
 def held_by_node() -> list[str]:
@@ -771,6 +805,7 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
     shell: Shell,
 ) -> None:
     """Past 80% of its context, a row says how full before how it stands, in the warning's hue."""
+    usage_dated_today("LISTEN")
     row = found(shell, "listening quest", "Listening Quest")
     # Found by typing, whom it's under leads, before what's its own.
     assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
@@ -828,6 +863,7 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
     VKCF3Z's order (2b03e43c); the rest, its quest and machine among them, is folded under
     z a after its figures, so none is lost.
     """
+    usage_dated_today("LISTEN")
     found(shell, "listening quest", "Listening Quest")
     glance = ["Last Turn", "Context"]
     shell.launcher_until(
@@ -2316,8 +2352,12 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     # Only the one closed: the last boot's are Sessions to Reopen's, and the closed
     # orchestrators stand at the tree's end.
     shell.launcher_until(lambda shown: shown["rows"] == ["Closed Quest"])
+    # When it closed, by its time alone only on the day it closed, since a run begun before
+    # midnight reads it after, saying its day too (XY9H5C, 1b5eff6c); either, should the day
+    # turn as it's read.
+    before = closed_side("CLOSED")
     row = shell.showing()["selected"]
-    assert re.fullmatch(r"closed \d\d:\d\d", row["side"]), row
+    assert row["side"] in {before, closed_side("CLOSED")}, row
     # Its note never says its name again, but where it ran.
     assert row["note"].endswith("\u00b7 tidepool"), row
     assert (row["verb"], row["told"][:1]) == ("reopen", ["\u21b5 reopen"]), row
