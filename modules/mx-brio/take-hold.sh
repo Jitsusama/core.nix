@@ -9,34 +9,33 @@
 # as at every boot after the first, only has its rules read again, so its
 # relay keeps running. What logind handed the seat stays on the node, since
 # nothing takes an ACL back as a tag goes, so it's taken back here; a program
-# that opened the Brio before keeps what it holds until it lets go. The Brio
-# is replayed by its model alone, since udevadm takes a device matching any
-# one of the properties given it; the rules check its vendor too.
-replay=(--settle --subsystem-match=video4linux --property-match=ID_MODEL_ID=091d)
-
-brios=0
+# that opened the Brio before keeps what it holds until it lets go. The
+# Brio's devices are replayed by their paths as found, since a removal drops
+# the properties a match by its ids would read, and the add would find none.
+brios=()
 held=yes
 for node in /dev/video*; do
   # A node can go as it's read, the Brio unplugged mid-loop; it's skipped.
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
   grep -qx 'ID_VENDOR_ID=046d' <<<"$facts" || continue
   grep -qx 'ID_MODEL_ID=091d' <<<"$facts" || continue
-  brios=$((brios + 1))
+  path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
+  brios+=("/sys$path")
   if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || grep -q '^TAGS=.*:uaccess:' <<<"$facts"; then
     held=no
   fi
 done
 
-if [ "$brios" = 0 ]; then
+if [ "${#brios[@]}" = 0 ]; then
   echo "No MX Brio is plugged in, so there's nothing to take hold of."
   exit 0
 fi
 if [ "$held" = no ]; then
-  udevadm trigger --action=remove "${replay[@]}"
-  udevadm trigger --action=add "${replay[@]}"
+  udevadm trigger --settle --action=remove "${brios[@]}"
+  udevadm trigger --settle --action=add "${brios[@]}"
   echo "Replayed the MX Brio's arrival, so its relay has it."
 else
-  udevadm trigger --action=change "${replay[@]}"
+  udevadm trigger --settle --action=change "${brios[@]}"
   echo "The MX Brio was already held; its rules were read again."
 fi
 
