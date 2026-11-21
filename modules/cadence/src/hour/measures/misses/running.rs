@@ -224,6 +224,7 @@ fn judge(
             .map(str::to_owned)
             .collect(),
         unit: files.lines().any(|file| file == HOST_UNIT),
+        program: false,
     };
     // A fix to how core builds its runtime can't be seen in a runtime built
     // elsewhere, which copies only its patches, so it isn't told fixed;
