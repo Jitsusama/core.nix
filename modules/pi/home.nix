@@ -542,9 +542,12 @@ in
     home.file.".pi/agent/extensions/claude-code" = lib.mkIf onClaude {
       source = "${import ./claude-provider.nix { inherit pkgs; }}/src";
     };
-    home.sessionVariables = lib.mkIf onClaude {
-      PI_CLAUDE_CODE_COMMAND = lib.getExe claude;
-    };
+    home.sessionVariables = lib.mkMerge [
+      (lib.mkIf onClaude { PI_CLAUDE_CODE_COMMAND = lib.getExe claude; })
+      # A pi started by hand browses in Chromium, as a hosted one does
+      # (host.nix says why).
+      (lib.mkIf pkgs.stdenv.hostPlatform.isLinux { CHROME_PATH = lib.getExe pkgs.chromium; })
+    ];
     #
     # Off the plan every pi starts on Opus 5.5 at high thinking, the one
     # model its sessions run on. pi rewrites these keys when a model is
