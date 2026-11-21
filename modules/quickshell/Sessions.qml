@@ -1946,6 +1946,15 @@ Singleton {
         const served = session !== null && Array.isArray(session.attach)
             && session.attach.length > 0 && viewerOf(session.presence) !== "";
         const named = served ? viewerOf(session.presence) : viewerNamed(id);
+        // A viewer an earlier walk opened to wait for its host is found by
+        // its app id alone, since no record runs for it yet, and the row
+        // stays offered until the host serves it: asked again, the walk
+        // would open a second one beside it.
+        if (!served && named !== "" && (niriWindows.opened[named] ?? []).length > 0) {
+            console.info(`sessions: ${id}'s viewer not opened, since it is open, waiting`);
+            reopenNext();
+            return;
+        }
         const waiting = served || named === "" ? null : Viewers.waitingWords(next.one);
         const joelThere = Niri.workspaces[into.workspace]?.is_focused === true;
         if ((!served && waiting === null) || joelThere) {
@@ -1958,17 +1967,30 @@ Singleton {
             return;
         }
         reopening.begun.push(id);
+        const asked = served ? view(session, into)
+            : viewWith(waiting, named, into, Viewers.viewerTitle("", next.one.title, next.one.cwd));
+        // One asked of moments ago, by Go To or viewKept, is opening it:
+        // that window is the one niri lists, so the walk doesn't wait on it.
+        if (!asked) {
+            console.info(`sessions: ${id}'s viewer not opened, since one asked for is opening`);
+            reopenNext();
+            return;
+        }
         console.info(`sessions: reopening ${id}'s viewer${served ? "" : " to wait for its host"}, `
             + `kept at ${root.keptSaid(at)}, `
             + `asked on ${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
+        // A place kept for it before, by a walk Joel was there for or by
+        // the cutover, would have viewKept open a second viewer by itself
+        // once its host serves it, as on 20 November.
+        if (!served && keptPlaces[id] !== undefined) {
+            const kept = Object.assign({}, keptPlaces);
+            delete kept[id];
+            keepPlaces(kept);
+        }
         reopening.waiting = { classed: named, at, opened: null, said: false,
             away: next.at?.away ?? null, kept: next.kept ?? null, quiet: true,
             quest: next.one.quest ?? "", from: next.one.from ?? "", id,
             orchestratedBy: next.one.orchestratedBy ?? "" };
-        if (served)
-            view(session, into);
-        else
-            viewWith(waiting, named, into, Viewers.viewerTitle("", next.one.title, next.one.cwd));
         paceFromNow(id);
         reopenPatience.restart();
     }
@@ -2447,18 +2469,20 @@ Singleton {
     // node's words, once until niri lists its window, as `attach` does;
     // `into` a place kept for it (viewKept, reopenViewer), which opens
     // without the focus, or, for Go To, where goesTo says, focused, since
-    // Joel asked for it.
+    // Joel asked for it. Said true once it is asked for.
     function view(session, into) {
         const words = session.attach;
         const named = viewerOf(session.presence);
         if (!Array.isArray(words) || words.length === 0 || named === "") {
             unhosted(session);
-            return;
+            return false;
         }
         const title = Viewers.viewerTitle(session.presence?.title, session.title,
             session.presence?.cwd);
-        if (viewWith(words.map(String), named, into, title))
+        const asked = viewWith(words.map(String), named, into, title);
+        if (asked)
             Report.say(`viewing hosted session ${session.address}`);
+        return asked;
     }
     // Opens a viewer, `named`, running `words` in a window titled `title`
     // from its first moment, `into` a place or where niri opens one; or

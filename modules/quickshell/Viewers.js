@@ -188,8 +188,9 @@ function controlCharacter(c) {
 
 // The words a hosted session's viewer runs while its host isn't serving
 // it yet, as the harness's restore entry says them (`view`): its join,
-// which finds the host the roster names and waits for it, saying so in
-// the window. None where the entry says none whole, as one an older
+// whose attach fails while the host the roster names is away, and which
+// looks again, saying so in the window, until the host shows the
+// conversation. None where the entry says none whole, as one an older
 // harness wrote doesn't.
 function waitingWords(one) {
     const words = one?.view;
