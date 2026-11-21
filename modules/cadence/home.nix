@@ -34,8 +34,8 @@
 # within the hour before, on mains power with a session on it busy, and
 # has read unreachable for ten minutes since, with a desktop notice to
 # Joel, once, and again once it's back: its owner is the one `owners`
-# names for `down:<machine>`. A machine with no work, or on battery with
-# its lid shut, sleeps unsaid. With none ready, this machine may be the
+# names for `down:<machine>`. A machine with no work, or on battery or a
+# Mac with its lid shut, sleeps unsaid. With none ready, this machine may be the
 # one cut off, so nothing is told unless every network its node probes
 # for it reads reached and no two machines down were last heard within
 # minutes of each other; where it can't tell, as when a realm doesn't

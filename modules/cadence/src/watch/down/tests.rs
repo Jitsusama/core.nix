@@ -54,7 +54,8 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
         r#"{"Ok":{"Machines":[{"name":"here","state":"ready"},"#,
         r#"{"name":"yonder","state":"unreachable","measured_at":"2026-11-21T08:32:49Z"},"#,
         r#"{"name":"far","state":"ready","power":{"on_battery":true}},"#,
-        r#"{"name":"near","state":"ready"},{"name":"odd","state":"starting"}]}}"#,
+        r#"{"name":"near","state":"ready","system":"macos","power":{"on_battery":false}},"#,
+        r#"{"name":"odd","state":"starting"}]}}"#,
         "\n",
         r#"{"Ok":{"Builders":[]}}"#,
     );
@@ -73,6 +74,7 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
                 ..one("far", Reading::Ready, false)
             },
             Seen {
+                battery: true,
                 heard: None,
                 ..one("near", Reading::Ready, false)
             },
@@ -81,7 +83,8 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
                 ..one("odd", Reading::Unread, false)
             },
         ],
-        "the machines weren't read as the node says, or this one wasn't left out"
+        "the machines weren't read as the node says, a Mac on mains as one a lid \
+         shut sleeps, or this one wasn't left out"
     );
     assert!(
         seen("work", machines, r#"{"Err":"timed out"}"#, "here")

@@ -6,7 +6,9 @@
 //! powered off by itself and no one heard for minutes; the node knows each
 //! link's state, so the tick reads it rather than wait on another session
 //! to. A machine with no work sleeps as its node lets it, and one on battery
-//! sleeps when its lid shuts whatever it holds, so neither is news. With
+//! or a Mac sleeps when its lid shuts whatever it holds, so neither is news,
+//! though a laptop shut and then unplugged sleeps before its node hears
+//! the battery, which only a node saying it's going to sleep can tell. With
 //! none ready, this machine may be the one cut off: unless every network
 //! its node probes for it reads reached, and no two machines down were
 //! last heard within minutes of each other, as a lost link loses every
@@ -68,12 +70,16 @@ pub struct Seen {
     /// Whether a session on it is busy, so its node keeps it awake; none
     /// when the node didn't say which sessions are.
     pub working: Option<bool>,
-    /// Whether it runs on battery, where a lid shut sleeps it however busy;
-    /// for one down, as its node last heard.
+    /// Whether a lid shut sleeps it however busy: on battery, or a Mac,
+    /// whose lid sleeps it on any power; for one down, as its node last
+    /// heard.
     pub battery: bool,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
 }
+
+/// What a node names a Mac's system.
+const MAC: &str = "macos";
 
 /// The probe every node adds to say whether a call is on here, which says
 /// nothing of what this machine reaches.
@@ -130,7 +136,8 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
                 realm: realm.to_owned(),
                 reading,
                 working: working.as_ref().map(|busy| busy.contains(name)),
-                battery: machine["power"]["on_battery"].as_bool() == Some(true),
+                battery: machine["power"]["on_battery"].as_bool() == Some(true)
+                    || machine["system"] == MAC,
                 heard: machine["measured_at"]
                     .as_str()
                     .and_then(|at| at.parse::<jiff::Timestamp>().ok())
@@ -161,8 +168,8 @@ pub struct Spell {
     /// When a realm last said whether a session on it was busy.
     #[serde(default)]
     pub said_at: Option<i64>,
-    /// Whether it ran on battery when it last read ready, or as its node
-    /// last heard while it reads down.
+    /// Whether a lid shut sleeps it, as `Seen::battery` says, when it last
+    /// read ready, or as its node last heard while it reads down.
     #[serde(default)]
     pub battery: bool,
     /// When it was last read ready or down.
