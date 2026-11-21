@@ -155,7 +155,11 @@ fn there() -> Help {
     )
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
     .option("--takes", "names a word each for what this there takes")
-    .exit(Exit::Failed, "nix failed, as an evaluation does")
+    .exit(
+        Exit::Failed,
+        "nix failed, as an evaluation does; or, with --run, what it sends ran out of \
+         time going to a builder that answered, so nothing ran, as it says",
+    )
     .exit(
         Exit::Unavailable,
         "part of it was left unbuilt, owed for when a machine that builds it \

@@ -8,7 +8,9 @@
 //! does, in a checkout of the same commit, with the store paths it names
 //! by `--copy` sent first and `WORK_RUNS_ELSEWHERE=1` set, so it knows it
 //! runs on a builder. Its output streams back and its status is this
-//! one's.
+//! one's. A `--copy` that ran out of time while the builder still
+//! answered ends the run with 1, since sending it again would only run
+//! out again; a builder lost mid-copy ends it with 75, to try again.
 //!
 //! It goes only to the two lent builders, never a nearby machine, an
 //! evaluator or a VM builder, so work code stays on the account's own
@@ -237,9 +239,13 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
 }
 
 /// Runs `sending` for `asked` on the lent builder `store` names, as the run
-/// `run`, its paths sent first, and gives its status, or none when ssh
-/// couldn't reach it or its paths couldn't go. `[ssh, nix]` are the
-/// programs run, and `cuts` the run's copies up its keepalive cut.
+/// `run`, its paths sent first, and gives its status; none when ssh
+/// couldn't reach it, or its paths didn't go for a reason another builder,
+/// or this one standing again, may get past; or why its paths ran out of
+/// time going to a builder that answered all along, which a copy sent
+/// again over the same uplink runs into again.
+/// `[ssh, nix]` are the programs run, and `cuts` the run's copies up its
+/// keepalive cut.
 pub fn on(
     store: &str,
     sending: &Sending,
@@ -248,7 +254,7 @@ pub fn on(
     scratch: &Path,
     [ssh, nix]: [&str; 2],
     cuts: &there::Cuts,
-) -> Option<i32> {
+) -> Option<Result<i32, String>> {
     let lent = there::builder(store.lines().next()?.trim())?;
     if !asked.copies.is_empty() {
         eprintln!(
@@ -260,7 +266,7 @@ pub fn on(
         if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
         {
             eprintln!("nix-offload: {why}");
-            return None;
+            return why.late.then_some(Err(why.why));
         }
     }
     eprintln!("nix-offload: building on the lent builder {}", lent.host);
@@ -272,7 +278,7 @@ pub fn on(
     };
     let out = || Box::new(std::io::stdout()) as Box<dyn Write + Send>;
     match link.followed(sending, run, &out, &mut std::io::stderr()) {
-        Ok(status) if status != there::UNREACHED => Some(status),
+        Ok(status) if status != there::UNREACHED => Some(Ok(status)),
         Ok(_) => {
             eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
             None
