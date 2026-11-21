@@ -354,6 +354,48 @@ fn one_done_with_a_day_ago_is_historys_row_but_no_record_the_shell_watches() {
     assert!(!history.is_null(), "the read one is still History's");
 }
 
+/// A watch asked while the daemon is still taking the bus name is told the
+/// history kept, never none: it once listened on its socket, and answered
+/// there, before making its first records, which waited on the bus. Its
+/// bus here never answers, so taking the name never ends and the watch is
+/// always asked in what was that gap, whatever the builder's load. It
+/// starts by hand, as when it's run from a terminal; under systemd the
+/// socket is handed to it already listening, and what waits is accepting.
+#[test]
+fn a_watch_asked_while_the_bus_is_taken_is_told_the_kept_history() {
+    let folder = folder("first");
+    let bus = Bus::start(&folder);
+    let kept = json!({"next": 2, "notices": [
+        {"id": 1, "at": notices::bus::now_ms(), "app": "mail", "summary": "Waiting"},
+    ]});
+    std::fs::create_dir_all(folder.join("state")).expect("the state folder is made");
+    std::fs::write(folder.join("state/notices.json"), kept.to_string())
+        .expect("the history is written");
+    // A bus that takes the connection and never says a word, so the
+    // daemon waits on it for as long as the test runs.
+    let stalled = folder.join("stalled.sock");
+    let _silent = std::os::unix::net::UnixListener::bind(&stalled).expect("the silent bus listens");
+    let daemon = Daemon::start(
+        notices(&folder, &bus).env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}", stalled.display()),
+        ),
+        folder.join("notices.sock"),
+        folder.join("state"),
+    );
+    let mut client = daemon.client();
+    client.ask(&json!({"id": 1, "ask": "hello"}));
+    let watched = client.ask(&json!({"id": 2, "ask": "watch", "kind": "notice"}));
+    drop(daemon);
+    let keys: Vec<&Value> = watched["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| &record["key"])
+        .collect();
+    assert_eq!(keys, ["notice:1"], "the kept one, at once: {watched}");
+}
+
 #[test]
 fn the_front_is_served_as_one_comes_and_leaves_once_its_read() {
     let folder = folder("front");
