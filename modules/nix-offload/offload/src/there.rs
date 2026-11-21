@@ -5170,19 +5170,22 @@ mod tests {
 
     #[test]
     fn runs_send_to_one_builder_one_at_a_time_and_to_two_at_once() {
+        // A folder of the turns' own making, since a temporary folder
+        // made under a umask of 022 is one other accounts can reach.
         let folder = tempfile::tempdir().unwrap();
-        let first = sending_to(folder.path(), "hook@builder-1");
+        let turns = folder.path().join("turns");
+        let first = sending_to(&turns, "hook@builder-1");
         assert!(
             first.is_some(),
             "the first run sending to a builder got no turn"
         );
         assert!(
-            sending_to(folder.path(), "hook@builder-2").is_some(),
+            sending_to(&turns, "hook@builder-2").is_some(),
             "a run sending to another builder waited on the first's turn"
         );
         let (said, heard) = mpsc::channel();
         let (asking, asked) = mpsc::channel();
-        let path = folder.path().to_owned();
+        let path = turns.clone();
         let second = std::thread::spawn(move || {
             asking.send(()).unwrap();
             let turn = sending_to(&path, "hook@builder-1");
