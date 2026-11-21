@@ -70,6 +70,13 @@ PanelWindow {
     Moment {
         id: moment
         showing: meter.visible
+        // Said to the desktop test as its moment begins, at niri's frame,
+        // which can come a second or more after the frame Qt hands it
+        // ("drawn") on a screen slow to draw.
+        onSeenChanged: {
+            if (seen)
+                Report.say(`seen ${meter.name}`);
+        }
         onSpent: wasSeen => {
             if (!wasSeen)
                 console.warn(`meter: ${meter.name} went unseen, no frame of it said shown`);
