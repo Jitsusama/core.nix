@@ -4,7 +4,8 @@ Here a switch of the home onto the sessions' kitty kept through a switch leaves 
 every session's window in it. The machine boots on the unit as it was before, with no switch
 method, so a change restarted it and closed every session's window, as at 06:46 on 2026-11-09.
 Its specialisation is the unit as modules/quickshell keeps it, with a changed command line as a
-new kitty brings, so only the switch method keeps it.
+new kitty brings, so only the switch method keeps it. A session's window opened in it isn't told
+the kitty's own runtime folder, which systemd tells the kitty, as its own.
 
 And a switch changing the shell beside a unit slow to stop leaves the shell running until that
 stop is done, then hands it over to a new one, so it's never gone. Stopped with the slow unit,
@@ -141,6 +142,40 @@ def test_a_switch_keeps_the_sessions_kitty_and_its_windows(desktop: Desktop) -> 
             if window["title"] in TITLES:
                 desktop.close(window)
         machine.succeed(f"{booted}/bin/switch-to-configuration test")
+
+
+def test_a_sessions_window_is_given_no_runtime_folder_of_the_kittys(desktop: Desktop) -> None:
+    """A program in a session's window isn't told the kitty's runtime folder is its own.
+
+    systemd tells a unit with a RuntimeDirectory where it is, and the kitty passed it on to
+    every window's shell, so a program reading it, as warp-cli does, took the sessions' socket
+    folder as its own, and Joel's VPN diagnostics from a session's window broke (OSPHT4,
+    2026-11-20).
+    """
+    machine = desktop.machine
+    desktop.as_account("systemctl --user start sessions-kitty")
+    machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active sessions-kitty"), timeout=STARTING
+    )
+    said = "/run/user/1000/in-a-session.env"
+    title = "Session told"
+    desktop.as_account(f"rm -f {said}")
+    try:
+        desktop.as_account(
+            f"niri msg action spawn -- {IN_SESSIONS} --os-window-class kitty --title '{title}'"
+            f" sh -c 'env > {said}.part && mv {said}.part {said} && exec sleep infinity'"
+        )
+        machine.wait_until_succeeds(desktop.in_session(f"test -s {said}"), timeout=STARTING)
+        told = desktop.as_account(f"cat {said}").splitlines()
+        assert any(line.startswith("XDG_RUNTIME_DIR=") for line in told), (
+            f"the window's shell was told nothing of where it runs: {told}"
+        )
+        folders = [line for line in told if line.startswith("RUNTIME_DIRECTORY=")]
+        assert not folders, f"a session's window is told the kitty's runtime folder: {folders}"
+    finally:
+        for window in desktop.windows():
+            if window["title"] == title:
+                desktop.close(window)
 
 
 def test_a_switch_hands_the_shell_over_once_a_slow_stop_is_done(desktop: Desktop) -> None:
