@@ -64,6 +64,13 @@ pub enum Own {
     /// the branch it follows by fast-forward alone, by the checkout's
     /// absolute path.
     Pull(String),
+    /// Forget Gone Trees on a repository's row (`tend.rs`): git's record
+    /// of the trees cut from its checkout whose folders are gone, taken,
+    /// by the checkout's absolute path.
+    Forget(String),
+    /// Gather Its Store on a repository's row (`tend.rs`): git's own
+    /// upkeep of its checkout's store, by the checkout's absolute path.
+    Gather(String),
     /// Edit Here on a repository's row (`code_rows.rs`): Neovim started
     /// on its checkout, by the folder's absolute path.
     Edit(String),
@@ -176,6 +183,14 @@ pub fn own_of(said: &Value) -> Option<Own> {
             let folder = text_of(said, "path");
             folder.starts_with('/').then_some(Own::Pull(folder))
         }
+        "code:forget" => {
+            let folder = text_of(said, "path");
+            folder.starts_with('/').then_some(Own::Forget(folder))
+        }
+        "code:gather" => {
+            let folder = text_of(said, "path");
+            folder.starts_with('/').then_some(Own::Gather(folder))
+        }
         "code:edit" => {
             let folder = text_of(said, "path");
             folder.starts_with('/').then_some(Own::Edit(folder))
@@ -246,6 +261,25 @@ mod tests {
             None,
             "a pull of a folder relative to nothing was taken"
         );
+    }
+
+    #[test]
+    fn a_repositorys_tending_names_the_checkout_it_tends() {
+        assert_eq!(
+            own_of(&json!({"ask": "code:forget", "path": "/home/j/src/core.nix"})),
+            Some(Own::Forget("/home/j/src/core.nix".into()))
+        );
+        assert_eq!(
+            own_of(&json!({"ask": "code:gather", "path": "/home/j/src/core.nix"})),
+            Some(Own::Gather("/home/j/src/core.nix".into()))
+        );
+        for ask in ["code:forget", "code:gather"] {
+            assert_eq!(
+                own_of(&json!({"ask": ask, "path": "src/core.nix"})),
+                None,
+                "{ask} of a folder relative to nothing was taken"
+            );
+        }
     }
 
     #[test]

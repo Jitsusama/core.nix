@@ -1,6 +1,7 @@
 use super::*;
 use repos::model::{
     Change, Checks, ChecksState, Count, Head, Remote, Review, SCHEMA, Tree, TreeKind, Upstream,
+    Weight,
 };
 
 fn words() -> Words {
@@ -139,7 +140,10 @@ fn a_repository_is_one_row_said_by_its_trees_and_when_it_was_written() {
 
 #[test]
 fn return_opens_its_page_and_copy_a_terminal_and_an_editor_take_the_checkout_written_to_last() {
-    let rows = rows(&record(vec![core()]), None, &words());
+    // With no tree gone, which would offer Forget Gone Trees too.
+    let mut repository = core();
+    repository.checkouts[0].trees.retain(|tree| tree.present);
+    let rows = rows(&record(vec![repository]), None, &words());
     assert_eq!(
         rows[0]["acts"],
         json!([
@@ -369,6 +373,64 @@ fn pull_is_offered_last_on_a_checkout_whose_branch_follows_another_and_only_ther
     assert!(
         !offered(&repository),
         "Pull was offered on a checkout with no files of its own"
+    );
+}
+
+#[test]
+fn forget_and_gather_are_offered_only_where_the_checkout_wants_them() {
+    let acts = |repository: &Repository| -> Vec<Value> {
+        rows(&record(vec![repository.clone()]), None, &words())[0]["acts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|act| act["key"] == "verb:code:forget" || act["key"] == "verb:code:gather")
+            .cloned()
+            .collect()
+    };
+    // core.nix's checkout lists /t/c, whose folder is gone.
+    let mut repository = core();
+    assert_eq!(
+        acts(&repository),
+        vec![json!({"key": "verb:code:forget", "streams": true,
+            "ask": {"ask": "code:forget", "path": "/home/j/src/core.nix"}})],
+        "Forget Gone Trees isn't offered where a tree's folder is gone"
+    );
+    repository.checkouts[0].trees.retain(|tree| tree.present);
+    assert_eq!(
+        acts(&repository),
+        Vec::<Value>::new(),
+        "offered with nothing to do"
+    );
+    let weight = |due| Weight {
+        loose: 7000,
+        estimated: true,
+        loose_bytes: 1,
+        packs: 1,
+        packed_bytes: 1,
+        due,
+    };
+    repository.checkouts[0].weight = Some(weight(false));
+    assert_eq!(
+        acts(&repository),
+        Vec::<Value>::new(),
+        "gathered where none is due"
+    );
+    repository.checkouts[0].weight = Some(weight(true));
+    assert_eq!(
+        acts(&repository),
+        vec![json!({"key": "verb:code:gather", "streams": true,
+            "ask": {"ask": "code:gather", "path": "/home/j/src/core.nix"}})],
+        "Gather Its Store isn't offered where upkeep is due"
+    );
+    // A bare checkout is told to git another way, so neither is asked of it.
+    repository.checkouts[0].bare = true;
+    repository.checkouts[0].head = None;
+    repository.checkouts[0].trees.push(tree("/t/e", false));
+    repository.checkouts.truncate(1);
+    assert_eq!(
+        acts(&repository),
+        Vec::<Value>::new(),
+        "tended a bare checkout"
     );
 }
 

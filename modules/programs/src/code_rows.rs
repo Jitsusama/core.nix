@@ -10,7 +10,9 @@
 //! its owner and its key. Return opens its page where a remote keeps it on
 //! GitHub or GitLab, else copies its checkout's path; inside are Open Its
 //! Page, Open Its Open Changes (while any are), Copy Its Path, New
-//! Terminal Here and Edit Here,
+//! Terminal Here and Edit Here, Forget Gone Trees where git lists trees
+//! whose folders are gone and Gather Its Store where upkeep is due
+//! (tend.rs), then Pull,
 //! which ask this daemon to start kitty in it, with Neovim on it for Edit
 //! Here (code.rs), and shut the
 //! launcher as they're asked so the new window takes the keys, then, as a row
@@ -371,6 +373,28 @@ fn follows(checkout: &Checkout) -> bool {
             .is_some_and(|head| head.upstream.is_some())
 }
 
+/// Forget Gone Trees and Gather Its Store, each offered only where the
+/// checkout read wants it, and asking only of a checkout's own folder, as
+/// Pull does, saying in the row's foot how it went (tend.rs).
+fn tending(checkout: &Checkout) -> Vec<Value> {
+    if checkout.bare {
+        return Vec::new();
+    }
+    let gone = checkout.trees.iter().any(|tree| !tree.present);
+    let due = checkout.weight.is_some_and(|weight| weight.due);
+    [("forget", gone), ("gather", due)]
+        .into_iter()
+        .filter(|(_, wanted)| *wanted)
+        .map(|(act, _)| {
+            json!({
+                "key": format!("verb:code:{act}"),
+                "ask": {"ask": format!("code:{act}"), "path": checkout.path},
+                "streams": true,
+            })
+        })
+        .collect()
+}
+
 fn row(
     repository: &Repository,
     home: Option<&Path>,
@@ -444,6 +468,9 @@ fn row(
             "ask": {"ask": "code:edit", "path": path},
             "closes": true,
         }));
+    }
+    if let Some(checkout) = checkout {
+        acts.extend(tending(checkout));
     }
     // Pull asks only of a checkout's own folder, never a tree cut from it,
     // and says in the row's foot how it went (pull.rs).

@@ -100,6 +100,10 @@ use runs::{claim, read_claimed, start};
 /// How many of the last answers' times health says.
 const TIMES: usize = 32;
 
+/// The asks that run git in a checkout, which may take minutes, so each is
+/// answered on a thread of its own and holds up no ask after it.
+const SLOW: [&str; 4] = ["code:pull", "code:switch", "code:forget", "code:gather"];
+
 /// What a command a source runs is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Run {
@@ -307,7 +311,7 @@ fn serve(given: &[String]) -> Result<(), Failure> {
         let shared = Arc::downgrade(&shared);
         move || shared.upgrade().map_or(json!({}), |shared| health(&shared))
     }));
-    shared.served().slow(&["code:pull", "code:switch"]);
+    shared.served().slow(&SLOW);
     hear(&shared, &socket);
     accept(shared.served(), listener);
     loop {
@@ -659,6 +663,8 @@ fn own(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
         Own::Tab(tab) => tabs::act(&id, tab),
         Own::Terminal(folder) => code::terminal(&id, &folder),
         Own::Pull(folder) => code::pull(shared, &id, &folder),
+        Own::Forget(folder) => code::tend(shared, &id, programs::tend::Act::Forget, &folder),
+        Own::Gather(folder) => code::tend(shared, &id, programs::tend::Act::Gather, &folder),
         Own::Edit(folder) => code::edit(&id, &folder),
         Own::Switch { folder, branch } => code::switch(shared, &id, &folder, &branch),
         Own::Settings(settings) => settle(shared, settings),
