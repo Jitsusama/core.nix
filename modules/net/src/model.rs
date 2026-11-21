@@ -168,14 +168,27 @@ pub struct Source {
     pub reason: Option<String>,
 }
 
-/// Keeps what each source said a minute before that this minute can't
+/// How long, in seconds, a source as a minute said it still says how it
+/// stands: a restart on a switch, or a minute eero doesn't answer, takes
+/// less, and five minutes unseen is long enough for a source to have
+/// answered and failed again.
+pub const LATELY: u64 = 5 * 60;
+
+/// A source as a minute said it, and that minute, in seconds since the
+/// epoch.
+pub type Kept = (u64, Source);
+
+/// Keeps what each source said in a minute before that this minute can't
 /// know: a source still in the same state it wasn't answering in has been
 /// so since the earlier minute said, and one that didn't answer last
 /// answered when the earlier minute said. Each source reads only this
 /// minute, so without this net would say every outage began just now.
-pub fn carry_over(sources: &mut [Source], earlier: &[Source]) {
+pub fn carry_over(sources: &mut [Source], earlier: &[Kept]) {
     for source in sources {
-        let Some(before) = earlier.iter().find(|before| before.name == source.name) else {
+        let Some((_, before)) = earlier
+            .iter()
+            .find(|(_, before)| before.name == source.name)
+        else {
             continue;
         };
         if source.state != SourceState::Answering
@@ -188,6 +201,18 @@ pub fn carry_over(sources: &mut [Source], earlier: &[Source]) {
             source.read_at = before.read_at;
         }
     }
+}
+
+/// Keeps each source as the minute at `now` said it, and one it didn't
+/// name as it was last said, until that's older than `LATELY`: a minute
+/// eero doesn't answer names none of the devices it lists, and their
+/// sources shouldn't start over the minute it's back.
+pub fn keep(kept: &mut Vec<Kept>, sources: &[Source], now: u64) {
+    kept.retain(|(at, earlier)| {
+        now.saturating_sub(*at) <= LATELY
+            && sources.iter().all(|source| source.name != earlier.name)
+    });
+    kept.extend(sources.iter().map(|source| (now, source.clone())));
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -531,7 +556,7 @@ mod tests {
 
     #[test]
     fn an_outage_keeps_the_minute_it_began_and_the_last_answer() {
-        let earlier = [source(SourceState::Unreachable, Some(100), Some(160))];
+        let earlier = [(160, source(SourceState::Unreachable, Some(100), Some(160)))];
         let mut now = [source(SourceState::Unreachable, None, Some(220))];
         carry_over(&mut now, &earlier);
         assert_eq!(
@@ -543,7 +568,7 @@ mod tests {
 
     #[test]
     fn a_new_state_starts_its_own_since_and_an_answer_its_own_time() {
-        let earlier = [source(SourceState::SignedOut, Some(100), Some(160))];
+        let earlier = [(160, source(SourceState::SignedOut, Some(100), Some(160)))];
         let mut now = [
             source(SourceState::Unreachable, None, Some(220)),
             Source {
@@ -563,6 +588,39 @@ mod tests {
             answering[0].read_at,
             Some(220),
             "an answer this minute keeps the earlier reading"
+        );
+    }
+
+    #[test]
+    fn a_source_missing_a_minute_is_kept_only_lately() {
+        let tv = |read_at| Source {
+            name: "samsung".into(),
+            ..source(SourceState::Answering, read_at, None)
+        };
+        let mut kept = vec![
+            (100, tv(Some(100))),
+            (100, source(SourceState::Answering, None, None)),
+        ];
+        keep(
+            &mut kept,
+            &[source(SourceState::Unreachable, None, Some(160))],
+            160,
+        );
+        let mut back = [tv(None)];
+        carry_over(&mut back, &kept);
+        let names: Vec<(u64, &str)> = kept
+            .iter()
+            .map(|(at, source)| (*at, source.name.as_str()))
+            .collect();
+        assert_eq!(
+            (names, back[0].read_at),
+            (vec![(100, "samsung"), (160, "modem")], Some(100)),
+            "a source missing a minute starts over, or a source named twice is kept twice"
+        );
+        keep(&mut kept, &[], 160 + LATELY + 1);
+        assert!(
+            kept.is_empty(),
+            "a source unseen past lately is still carried: {kept:?}"
         );
     }
 
