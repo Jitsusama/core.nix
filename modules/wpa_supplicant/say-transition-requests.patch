@@ -1,0 +1,248 @@
+Say each BSS Transition Management request over D-Bus.
+
+An access point asks a station to move with an 802.11v BSS Transition
+Management request, naming candidate BSSes with a preference each, and
+can warn that it will disassociate the station after a timer. Upstream
+answers the request itself and tells a program on the bus only the
+status it answered with, as the BSSTMStatus property. The candidates go
+to the debug log alone, and the warning to the control socket.
+
+A program choosing access points itself, holding a card to one BSSID,
+then can't follow a warned request: with a fixed BSSID set, upstream
+rejects any request whose candidates it didn't hear in its last scan,
+and the access point drops the station when the timer runs out.
+
+This adds a signal on the Interface, BSSTransitionRequested, sent as
+each request is parsed and before it's answered: whether it warns of a
+disassociation from the BSS or the whole ESS, in how many ms, how long
+its candidate list holds in ms, and each candidate as its BSSID and its
+preference, or -1 where the access point gave none, in the order given.
+How upstream answers the request is left as it was.
+diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -18,6 +18,7 @@
+ #include "../wpa_supplicant_i.h"
+ #include "../bss.h"
+ #include "../wpas_glue.h"
++#include "../wnm_sta.h"
+ #include "dbus_new_helpers.h"
+ #include "dbus_dict_helpers.h"
+ #include "dbus_new.h"
+@@ -1159,6 +1160,86 @@
+ }
+ 
+ 
++/**
++ * wpas_dbus_signal_bss_tm_request - Signals a BSS Transition Management
++ * request from the access point
++ * @wpa_s: %wpa_supplicant network interface data
++ * @disassociating: Whether the request warns the station is about to be
++ *	disassociated, from this BSS or from the whole ESS
++ * @disassociation_ms: In how long, where it warns
++ * @valid_ms: How long the candidate list holds
++ * @candidates: The candidates, in the order the access point gave them
++ * @num_candidates: How many there are
++ *
++ * Each candidate is its BSSID and its preference, or -1 where the access
++ * point gave none.
++ */
++void wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
++				     bool disassociating,
++				     unsigned int disassociation_ms,
++				     unsigned int valid_ms,
++				     const struct neighbor_report *candidates,
++				     unsigned int num_candidates)
++{
++	struct wpas_dbus_priv *iface;
++	DBusMessage *msg;
++	DBusMessageIter iter, array, entry, bssid;
++	dbus_bool_t warns = disassociating;
++	dbus_uint32_t in_ms = disassociation_ms, for_ms = valid_ms;
++	unsigned int i;
++
++	iface = wpa_s->global->dbus;
++
++	/* Do nothing if the control interface is not turned on */
++	if (!iface || !wpa_s->dbus_new_path)
++		return;
++
++	msg = dbus_message_new_signal(wpa_s->dbus_new_path,
++				      WPAS_DBUS_NEW_IFACE_INTERFACE,
++				      "BSSTransitionRequested");
++	if (!msg)
++		return;
++
++	dbus_message_iter_init_append(msg, &iter);
++	if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_BOOLEAN, &warns) ||
++	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &in_ms) ||
++	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &for_ms) ||
++	    !dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "(ayn)",
++					      &array))
++		goto fail;
++	for (i = 0; i < num_candidates; i++) {
++		const struct neighbor_report *candidate = &candidates[i];
++		const u8 *address = candidate->bssid;
++		dbus_int16_t preference = candidate->preference_present ?
++			candidate->preference : -1;
++
++		if (!dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT,
++						      NULL, &entry) ||
++		    !dbus_message_iter_open_container(&entry, DBUS_TYPE_ARRAY,
++						      DBUS_TYPE_BYTE_AS_STRING,
++						      &bssid) ||
++		    !dbus_message_iter_append_fixed_array(&bssid, DBUS_TYPE_BYTE,
++							  &address,
++							  ETH_ALEN) ||
++		    !dbus_message_iter_close_container(&entry, &bssid) ||
++		    !dbus_message_iter_append_basic(&entry, DBUS_TYPE_INT16,
++						    &preference) ||
++		    !dbus_message_iter_close_container(&array, &entry))
++			goto fail;
++	}
++	if (!dbus_message_iter_close_container(&iter, &array))
++		goto fail;
++
++	dbus_connection_send(iface->con, msg, NULL);
++	dbus_message_unref(msg);
++	return;
++
++fail:
++	wpa_printf(MSG_ERROR, "dbus: Failed to construct signal");
++	dbus_message_unref(msg);
++}
++
++
+ void wpas_dbus_signal_sae_password_mismatch(struct wpa_supplicant *wpa_s)
+ {
+ 	struct wpas_dbus_priv *iface;
+@@ -4472,6 +4553,15 @@
+ 		  END_ARGS
+ 	  }
+ 	},
++	{ "BSSTransitionRequested", WPAS_DBUS_NEW_IFACE_INTERFACE,
++	  {
++		  { "disassociating", "b", ARG_OUT },
++		  { "disassociation_ms", "u", ARG_OUT },
++		  { "valid_ms", "u", ARG_OUT },
++		  { "candidates", "a(ayn)", ARG_OUT },
++		  END_ARGS
++	  }
++	},
+ 	{ "StaAuthorized", WPAS_DBUS_NEW_IFACE_INTERFACE,
+ 	  {
+ 		  { "name", "s", ARG_OUT },
+diff -ru a/wpa_supplicant/dbus/dbus_new.h b/wpa_supplicant/dbus/dbus_new.h
+--- a/wpa_supplicant/dbus/dbus_new.h
++++ b/wpa_supplicant/dbus/dbus_new.h
+@@ -18,6 +18,7 @@
+ struct wpa_ssid;
+ struct wpa_cred;
+ struct wpa_bss;
++struct neighbor_report;
+ struct wps_event_m2d;
+ struct wps_event_fail;
+ struct wps_credential;
+@@ -258,6 +259,12 @@
+ void wpas_dbus_signal_eap_status(struct wpa_supplicant *wpa_s,
+ 				 const char *status, const char *parameter);
+ void wpas_dbus_signal_psk_mismatch(struct wpa_supplicant *wpa_s);
++void wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
++				     bool disassociating,
++				     unsigned int disassociation_ms,
++				     unsigned int valid_ms,
++				     const struct neighbor_report *candidates,
++				     unsigned int num_candidates);
+ void wpas_dbus_signal_sae_password_mismatch(struct wpa_supplicant *wpa_s);
+ void wpas_dbus_signal_sta_authorized(struct wpa_supplicant *wpa_s,
+ 				     const u8 *sta);
+@@ -621,6 +628,16 @@
+ {
+ }
+ 
++static inline void
++wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
++				bool disassociating,
++				unsigned int disassociation_ms,
++				unsigned int valid_ms,
++				const struct neighbor_report *candidates,
++				unsigned int num_candidates)
++{
++}
++
+ static inline void wpas_dbus_signal_psk_mismatch(struct wpa_supplicant *wpa_s)
+ {
+ }
+diff -ru a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -944,6 +944,22 @@
+ }
+ 
+ 
++void wpas_notify_bss_tm_request(struct wpa_supplicant *wpa_s,
++				bool disassociating,
++				unsigned int disassociation_ms,
++				unsigned int valid_ms,
++				const struct neighbor_report *candidates,
++				unsigned int num_candidates)
++{
++	if (wpa_s->p2p_mgmt)
++		return;
++
++	wpas_dbus_signal_bss_tm_request(wpa_s, disassociating,
++					disassociation_ms, valid_ms,
++					candidates, num_candidates);
++}
++
++
+ void wpas_notify_sae_password_mismatch(struct wpa_supplicant *wpa_s)
+ {
+ 	wpas_dbus_signal_sae_password_mismatch(wpa_s);
+diff -ru a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -17,6 +17,7 @@
+ struct tls_cert_data;
+ struct wpa_cred;
+ struct rsn_pmksa_cache_entry;
++struct neighbor_report;
+ enum nan_de_reason;
+ enum nan_service_protocol_type;
+ struct nan_discovery_result;
+@@ -151,6 +152,12 @@
+ 			    const char *parameter);
+ void wpas_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code);
+ void wpas_notify_psk_mismatch(struct wpa_supplicant *wpa_s);
++void wpas_notify_bss_tm_request(struct wpa_supplicant *wpa_s,
++				bool disassociating,
++				unsigned int disassociation_ms,
++				unsigned int valid_ms,
++				const struct neighbor_report *candidates,
++				unsigned int num_candidates);
+ void wpas_notify_sae_password_mismatch(struct wpa_supplicant *wpa_s);
+ void wpas_notify_network_bssid_set_changed(struct wpa_supplicant *wpa_s,
+ 					   struct wpa_ssid *ssid);
+diff -ru a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1656,6 +1656,19 @@
+ 				     &num_valid_candidates) < 0)
+ 		goto reset;
+ 
++	/*
++	 * Told before the request is answered or acted on, so a program
++	 * choosing access points itself can follow a warned one in time.
++	 */
++	wpas_notify_bss_tm_request(
++		wpa_s,
++		disassoc_imminent ||
++		(wpa_s->wnm_mode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT),
++		wpa_s->wnm_disassoc_timer * beacon_int * 128 / 125,
++		valid_int * beacon_int * 128 / 125,
++		wpa_s->wnm_neighbor_report_elements,
++		wpa_s->wnm_num_neighbor_report);
++
+ 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED) {
+ 		if (!wpa_s->wnm_num_neighbor_report) {
+ 			wpa_printf(MSG_DEBUG,
