@@ -1321,9 +1321,8 @@ pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
 
 /// Whether switching from `old` to `new` restarts an account's unit:
 /// home-manager restarts one whose file or drop-ins changed, or that only
-/// one system has, unless the new unit says `X-RestartIfChanged=false`, or
-/// `X-SwitchMethod=keep-old`, which sd-switch keeps running as it was, as
-/// the sessions' kitty holding every session's window is (2026-11-21).
+/// one system has, unless sd-switch keeps the new unit running as it was,
+/// as the sessions' kitty holding every session's window is (2026-11-21).
 /// Each system's `home-manager-<account>.service` names the generation
 /// whose home holds the unit's file.
 pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) -> bool {
@@ -1338,17 +1337,37 @@ pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) 
         )
     };
     let (before, after) = (unit(old), unit(new));
-    let kept = after.0.as_deref().is_some_and(|file| {
-        let says = |key| unit_says(file, &after.1, key);
-        says("X-RestartIfChanged").as_deref() == Some("false")
-            || says("X-SwitchMethod").as_deref() == Some("keep-old")
-    });
+    let kept = after
+        .0
+        .as_deref()
+        .is_some_and(|file| keeps_old(file, &after.1));
     before != after && !kept
 }
 
-/// What a unit's `[Unit]` section says `key` is, as systemd reads it: the
-/// file, then its `.conf` drop-ins in name order, the last saying it
-/// winning, so a drop-in setting another method is heard.
+/// Whether sd-switch keeps a changed unit running as it was, read in its
+/// order (sd-switch 0.6.4's `UnitFile::switch_method`): a unit refusing a
+/// manual start is stopped; a set `X-SwitchMethod` decides; else the legacy
+/// keys, where `X-ReloadIfChanged=true` reloads before
+/// `X-RestartIfChanged=false` keeps.
+fn keeps_old(file: &str, drop_ins: &BTreeMap<String, Option<String>>) -> bool {
+    const YES: &[&str] = &["1", "yes", "y", "true", "t", "on"];
+    const NO: &[&str] = &["0", "no", "n", "false", "f", "off"];
+    let says = |key| unit_says(file, drop_ins, key);
+    let is = |key, truth: &[&str]| {
+        says(key).is_some_and(|value| truth.contains(&value.to_ascii_lowercase().as_str()))
+    };
+    if is("RefuseManualStart", YES) {
+        return false;
+    }
+    match says("X-SwitchMethod") {
+        Some(method) => method == "keep-old",
+        None => !is("X-ReloadIfChanged", YES) && is("X-RestartIfChanged", NO),
+    }
+}
+
+/// What a unit's `[Unit]` section says `key` is, as sd-switch reads it, as
+/// systemd does: the file, then its `.conf` drop-ins in name order, the
+/// last saying it winning, so a drop-in setting another method is heard.
 fn unit_says(file: &str, drop_ins: &BTreeMap<String, Option<String>>, key: &str) -> Option<String> {
     let mut said = None;
     let read = std::iter::once(file).chain(
