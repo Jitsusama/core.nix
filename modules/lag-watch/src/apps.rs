@@ -17,6 +17,11 @@ use crate::kernel::{Thread, parent, started, tasks, text};
 /// processes are Chromium's, named alike.
 pub const APPS: [(&str, &str); 2] = [("chrome", "chrome-ui"), ("slack", "slack-ui")];
 
+/// What the hourly test call's units in Joel's app.slice are named from,
+/// `call-under-load.service` and any run of it by hand: its Chrome stands
+/// in for his, with a fake camera and microphone, so it's never his.
+const TEST_CALL: &str = "call-under-load";
+
 /// The threads of an app's process that Joel waits on, by the kind of
 /// process its threads' names say it is, as Chromium names them: the
 /// browser, the one process with a `Chrome_IOThread`, whose main thread
@@ -271,16 +276,21 @@ impl Apps {
     /// `app.slice`, `app-com.google.Chrome-<pid>` for the browser's pid,
     /// whoever started it: jobs-sorter moves an agent's back about half a
     /// second later, which a minute's look can land in (5FWIUS 6f812ab4),
-    /// and one a service or an agent's session started stays. So the scope
-    /// is his only when its process's parent is his: his user manager, his
-    /// session, one of his apps or his terminal. That's judged once and
-    /// kept for the scope's life, since a parent moved later, as
-    /// jobs-sorter moves a terminal's busy work, didn't change who opened
-    /// it. A scope whose named process is gone, a launcher's wrapper that
-    /// ended, or whose pid now names a process elsewhere, is left to its
-    /// unit's name, as any app's. An agent's browser whose launcher ended
-    /// before the first look is the user manager's child, as his is, and
-    /// reads as his; browser tools keep their launcher, so it's rare.
+    /// and one an agent's session started stays. So the scope is his only
+    /// when its process's parent is his: his user manager, his session, or
+    /// any unit in his app.slice, where his own services (1Password's,
+    /// Tuple's, the launcher's opener) open links too (5FWIUS 72d972c9),
+    /// but the hourly test call's, whose Chrome stands in for his. That's
+    /// judged once and kept while the watch runs, since a parent moved
+    /// later, as jobs-sorter moves a terminal's busy work, didn't change
+    /// who opened it; a restart judges again. A scope whose named process
+    /// is gone, a launcher's wrapper that ended, whose pid now names a
+    /// process elsewhere, or whose parent ended before its cgroup was
+    /// read, is left to its unit's name, as any app's, and judged again at
+    /// the next look. A Chrome that's a service's own process, or an
+    /// agent's whose launcher ended before the first look, is the user
+    /// manager's child, as his is, and reads as his: nothing about its
+    /// parent tells them apart, and browser tools keep their launcher.
     fn opened_by_joel(&mut self, cgroup: &str, proc: &Path) -> bool {
         if !self.launched_by_joel(cgroup) {
             return false;
@@ -300,14 +310,17 @@ impl Apps {
             return true;
         };
         let parents = text(&proc.join(parent).join("cgroup"));
+        let Some(path) = parents.lines().find_map(|line| line.strip_prefix("0::")) else {
+            return true;
+        };
         let account = self.slice.trim_end_matches("/app.slice");
-        let his = self.launched_by_joel(&parents)
-            || self.in_his_terminal(&parents)
-            || parents
-                .lines()
-                .filter_map(|line| line.strip_prefix("0::"))
-                .filter_map(|path| path.strip_prefix(account))
-                .any(|rest| rest == "/init.scope" || rest.starts_with("/session.slice/"));
+        let his = path.strip_prefix(account).is_some_and(|rest| {
+            rest == "/init.scope"
+                || rest.starts_with("/session.slice/")
+                || rest
+                    .strip_prefix("/app.slice/")
+                    .is_some_and(|unit| !unit.starts_with(TEST_CALL))
+        });
         self.own_scopes.insert(scope.to_string(), his);
         his
     }
@@ -485,13 +498,27 @@ mod tests {
                 "chrome\n",
             );
         };
-        // Joel's browser, which his user manager started.
-        own("20", "20", "2");
-        write(&proc.join("20/task/21/comm"), "Chrome_IOThread\n");
-        write(
-            &proc.join("2/cgroup"),
-            &format!("0::{ACCOUNT}/init.scope\n"),
-        );
+        // Joel's browsers: one his user manager started, one the portal
+        // opened for a link, one Slack opened, one his terminal started,
+        // and one 1Password's service opened.
+        for (pid, parent, unit) in [
+            ("20", "2", "init.scope"),
+            ("22", "4", "session.slice/xdg-desktop-portal.service"),
+            ("24", "8", "app.slice/app-niri-slack-8.scope"),
+            ("26", "10", "app.slice/kitty-70-0.scope"),
+            ("28", "12", "app.slice/onepassword.service"),
+        ] {
+            own(pid, pid, parent);
+            write(&proc.join(pid).join("task/99/comm"), "Chrome_IOThread\n");
+            write(
+                &proc.join(parent).join("cgroup"),
+                &format!("0::{ACCOUNT}/{unit}\n"),
+            );
+        }
+        // One whose parent ended before its cgroup was read, which is left
+        // to its unit's name until the next look.
+        own("36", "36", "14");
+        write(&proc.join("36/task/37/comm"), "Chrome_IOThread\n");
         // An agent's browser in the moment before jobs-sorter moves it back,
         // and its renderer, whose own parent is the zygote in that scope.
         own("30", "30", "3");
@@ -502,10 +529,10 @@ mod tests {
         );
         own("32", "30", "30");
         write(&proc.join("32/task/33/comm"), "Compositor\n");
-        // Browsers a service, an agent's shared run and a pi host started,
-        // which nothing moves back.
+        // Browsers the hourly test call, an agent's shared run and a pi host
+        // started, which nothing moves back.
         for (pid, parent, unit) in [
-            ("50", "5", "app.slice/apps-under-load.service"),
+            ("50", "5", "app.slice/call-under-load.service"),
             ("60", "6", "shared.slice/run-u1.scope"),
             ("70", "7", "agents.slice/pi-host-work-attended.service"),
         ] {
@@ -530,23 +557,46 @@ mod tests {
             "40 (bash) S 3 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0 9\n",
         );
         let mut apps = Apps::of_account(ACCOUNT);
-        let his = [
-            "chrome-ui chrome 20/task/20/schedstat",
-            "chrome-ui chrome 42/task/42/schedstat",
-        ];
+        let his = ["20", "22", "24", "26", "28", "36", "42"]
+            .map(|pid| format!("chrome-ui chrome {pid}/task/{pid}/schedstat"));
         assert_eq!(drawing_threads(&proc, &mut apps), his);
         let mut calls = |pid: &str| apps.may_call(&text(&proc.join(pid).join("cgroup")), &proc);
-        assert!(calls("20"), "Joel's browser carries his call");
+        for pid in ["20", "22", "24", "26", "28"] {
+            assert!(calls(pid), "Joel's browser {pid} carries his call");
+        }
         assert!(!calls("32"), "an agent's renderer carries no call of his");
-        assert!(!calls("50"), "a service's browser carries no call of his");
+        assert!(
+            !calls("50"),
+            "the test call's browser carries no call of his"
+        );
         assert!(!calls("70"), "a pi host's browser carries no call of his");
         // Who started it is judged once: a parent moved later, as
-        // jobs-sorter moves a terminal's busy work, changes nothing.
-        write(
-            &proc.join("2/cgroup"),
-            &format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n"),
+        // jobs-sorter moves a terminal's busy work, changes nothing. One
+        // left to its unit's name for want of a parent is judged again.
+        let jobs = format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n");
+        write(&proc.join("2/cgroup"), &jobs);
+        write(&proc.join("14/cgroup"), &jobs);
+        let kept: Vec<_> = his
+            .iter()
+            .filter(|line| !line.contains(" 36/"))
+            .cloned()
+            .collect();
+        // Pass after pass, so a verdict kept only by the look just made
+        // wouldn't do.
+        for _ in 0..2 {
+            assert_eq!(drawing_threads(&proc, &mut apps), kept);
+        }
+        // A scope that empties is forgotten: a browser started again in it
+        // is judged by its own parent.
+        fs::remove_dir_all(proc.join("20")).unwrap();
+        drawing_threads(&proc, &mut apps);
+        own("20", "20", "2");
+        write(&proc.join("20/task/21/comm"), "Chrome_IOThread\n");
+        let again = drawing_threads(&proc, &mut apps);
+        assert!(
+            !again.iter().any(|line| line.contains(" 20/")),
+            "a browser started again in an emptied scope kept the last one's verdict: {again:?}"
         );
-        assert_eq!(drawing_threads(&proc, &mut apps), his);
         fs::remove_dir_all(&root).unwrap();
     }
 
