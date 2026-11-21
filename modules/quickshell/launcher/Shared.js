@@ -47,16 +47,18 @@ function why(heard, casts, recording) {
 }
 
 // What a copy's row is made with beyond what it holds, as Copies' made()
-// makes it. Made showing, it names `source`, the one that hides it once a
-// share starts, so no way back goes to a place holding it then
-// (Steady.hiddenGone). Made hidden, it draws nothing of the copy, only
-// `name` saying it's hidden, and names no source, since a place holding it
-// shows nothing a share would hide, so it stays.
+// makes it. Made showing, it names `source` itself, never a copy of it,
+// since Steady.hiddenGone reads its hiding later, once a share starts, to
+// let a way back to a place holding it go. Made hidden, it names no
+// source, since a place holding it draws nothing a share would hide, so it
+// stays; it blanks what the row would draw of the copy, its name saying
+// only that it's hidden, asked of `name()` then alone. What Copy and Paste
+// read stays on the row, undrawn.
 function made(hiding, source, name) {
     if (!hiding) {
         return { shownBy: source };
     }
-    return { name, note: "", reads: "", picture: "" };
+    return { name: name(), note: "", reads: "", picture: "" };
 }
 
 // A copy as the history `served` it, saying only its kind and when it was

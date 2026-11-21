@@ -164,7 +164,7 @@ Provider {
         // Made showing, it says so, so no way back goes to a place holding
         // it once a share hides copies (Steady.hiddenGone).
         const hidden = Shared.made(hiding, provider,
-            Words.name(picture ? "copies:hidden:picture" : "copies:hidden:text"));
+            () => Words.name(picture ? "copies:hidden:picture" : "copies:hidden:text"));
         const readied = ready.thing(shown, key, Object.assign(fields, kept, hidden));
         if (readied === null)
             return null;
