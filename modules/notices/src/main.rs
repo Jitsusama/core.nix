@@ -417,8 +417,10 @@ fn serve_notices(args: &Args) -> Result<(), Failure> {
         told
     };
     // The first records, the history kept, are made before the socket is
-    // listened on: a watch answered between listening and this making was
-    // told no records at all, the history as if it were empty (bus.rs's
+    // listened on, or under systemd before what it handed over is accepted
+    // on: an ask answered before this making, a watch or a get, was told
+    // no records at all, the history as if it were empty, for as long as
+    // taking the bus name took (bus.rs's
     // one_done_with_a_day_ago_is_historys_row_but_no_record_the_shell_watches,
     // failing on a builder, 2026-11-21). A notice sent on the bus is kept
     // in `state` and told by the loop below, whenever it comes.
