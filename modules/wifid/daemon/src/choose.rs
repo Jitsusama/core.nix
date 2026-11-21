@@ -2654,11 +2654,8 @@ pub(crate) mod tests {
         let spanned = back + SPAN;
         let hall_only = chooser.choose(spanned, (DESK, &badly, -50, CH52), &hall_alone, false);
         let next = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
-        assert_ne!(
-            hall_only,
-            Choice::Try(HALL.into()),
-            "the hall it missed is kept off"
-        );
+        // Exactly a stay, which moves nothing `next` is chosen from.
+        assert_eq!(hall_only, Choice::Stay, "the hall it missed is kept off");
 
         assert_eq!(
             waits,

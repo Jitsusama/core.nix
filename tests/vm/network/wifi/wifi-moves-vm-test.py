@@ -12,6 +12,7 @@ and may not find what an earlier one set up. wifid as the tests reach it is wifi
 
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,13 @@ SCAN_COLUMNS = 5
 # kernel keeps what it knew, and nothing learning it again hides that it was forgotten.
 NEIGHBOUR = "10.42.0.99"
 NEIGHBOUR_ADDRESS = "02:00:00:00:42:99"
+
+# How long wifid holds a card to its way back before letting it join any network, in seconds.
+WAY_BACK = 2
+# How late a loaded builder's guest may be to wake wifid at the end of a wait, in seconds.
+LOADED_SLACK = 1.5
+# How long after its way back's time begins wifid may say it sent the card back, in seconds.
+SAID_LATE = 0.1
 
 
 def knows_a_neighbour(machine: BaseMachine) -> None:
@@ -55,6 +63,19 @@ def inn_is_on(machine: BaseMachine) -> bool:
     inns = [row.split("\t")[0] for row in networks if row.split("\t")[1:2] == ["Roadside Inn"]]
     assert len(inns) == 1, f"the Inn is saved once: {networks}"
     return machine.succeed(f"wpa_cli -i wlan2 get_network {inns[0]} disabled").strip() == "0"
+
+
+def inn_stays_off(machine: BaseMachine) -> bool:
+    """Say whether the Inn stays off for two seconds, longer than wifid takes to end a move.
+
+    On the network Joel picked, wifid says nothing as a move ends, so no line marks the moment
+    the Inn would be turned on.
+    """
+    for _ in range(10):
+        if inn_is_on(machine):
+            return False
+        time.sleep(0.2)
+    return True
 
 
 def rejoined_unpicked(machine: BaseMachine) -> None:
@@ -207,7 +228,7 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
         " | grep -qE '^wlan2 reached 02:00:00:00:05:00 [0-9]+ ms after it was asked'",
         timeout=timedelta(seconds=30),
     )
-    assert not inn_is_on(machine), "still on the network Joel picked, the Inn stays off"
+    assert inn_stays_off(machine), "still on the network Joel picked, the Inn stays off"
     # The card still knows the neighbour after the move, so it asks no one
     # where the router went, and the router answers through the second.
     still = machine.succeed(f"ip -4 neighbour show {NEIGHBOUR} dev wlan2")
@@ -306,9 +327,10 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     )
     stranded = [line for line in said if "so may join any network" in line]
     assert not stranded, f"stranded on the way back: {stranded}"
-    assert returned < 2 + waited, f"back {returned:.3f} s after it was sent, wait {waited} s"
-    if not late:
-        assert took < 2 + waited, f"back {took:.3f} s after the move was asked, wait {waited} s"
+    assert returned < WAY_BACK + waited, f"back {returned:.3f} s after it was sent, wait {waited} s"
+    # Sent back late, it's sent once the move's 2 s are up, and has its own 2 s from then.
+    asked_for = WAY_BACK + WAY_BACK if late else WAY_BACK
+    assert took < asked_for + waited, f"back {took:.3f} s after the move was asked, wait {waited} s"
     tried = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn on the way back: {tried}"
     assert inn_is_on(machine), "the Inn is on again once back"
@@ -350,8 +372,24 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
         wifid.joined("Roadside Inn")
         assert inn_is_on(machine), "the Inn is on once the card is let go"
     finally:
-        machine.succeed("systemctl kill -s CONT lantern")
+        # wpa_supplicant ignores the first point a while for the joins it refused, which would
+        # keep the card off it below.
+        machine.succeed("systemctl kill -s CONT lantern && wpa_cli -i wlan2 bssid_ignore clear")
         machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
+    said = machine.succeed(
+        f"journalctl -o short-unix -u wifid -u wpa_supplicant --after-cursor='{since}'"
+    ).splitlines()
+    sent = next(i for i, line in enumerate(said) if ", so goes back to 02:00:00:00:00:00" in line)
+    let_go = next(i for i, line in enumerate(said) if "so may join any network" in line)
+    # Held to its way back for wifid's 2 s, it's let go then, not before, and never tries the
+    # Inn meanwhile. The line sending it back is said a moment after its 2 s begin, and a
+    # loaded builder can be slow to wake wifid as they end.
+    held = float(said[let_go].split()[0]) - float(said[sent].split()[0])
+    assert WAY_BACK - SAID_LATE <= held < WAY_BACK + LOADED_SLACK, (
+        f"let go {held:.3f} s after it was sent back"
+    )
+    tried = [line for line in said[:let_go] if "SSID='Roadside Inn'" in line]
+    assert not tried, f"tried the Inn before it was let go: {tried}"
     rejoined_unpicked(machine)
 
 
