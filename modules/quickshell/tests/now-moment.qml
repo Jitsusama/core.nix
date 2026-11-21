@@ -283,8 +283,46 @@ ShellRoot {
     // The cases that hold once what a change deferred has run, then once
     // the looks the to-do daemon's stream tells at once are taken,
     // together: each taken alone parsed every look and banded For You
-    // afresh, 166 times in each of Joel's openings (2026-11-10).
+    // afresh, 166 times in each of Joel's openings (2026-11-10). They run
+    // in heardOut, once tellWaited has waited for Now's tell.
     function afterwards() {
+        tellWaited.began = Date.now();
+        tellWaited.toldAt = 0;
+        tellWaited.start();
+    }
+
+    // A loaded builder found Now had said nothing yet as the case looked,
+    // [[],false] (21 November), its cause not traced. Queued calls can't
+    // wait for it, since Qt runs those queued while it runs them in one
+    // pass, so this waits in time: until a tell has stood 250 ms, long
+    // enough for a second to be counted, which heldHears refuses, or 5 s
+    // with none. The clock can turn a minute meanwhile, which this waits
+    // past and heldHears tells apart.
+    Timer {
+        id: tellWaited
+
+        property real began: 0
+        property real toldAt: 0
+
+        interval: 25
+        repeat: true
+        onTriggered: {
+            const at = Date.now();
+            if (tellWaited.toldAt === 0
+                && root.nowSaid.some(said => said.why !== "" && !said.retimed))
+                tellWaited.toldAt = at;
+            const told = tellWaited.toldAt > 0;
+            if ((told && at - tellWaited.toldAt < 250)
+                || (!told && at - tellWaited.began < 5000))
+                return;
+            tellWaited.stop();
+            root.tellWaitedFor = at - tellWaited.began;
+            root.heardOut();
+        }
+    }
+    property real tellWaitedFor: 0
+
+    function heardOut() {
         if (tried(() => {
             heldHears();
             bandedAtReads = now.bandsKept.times;
@@ -917,12 +955,14 @@ ShellRoot {
     // What Now said moved, the last time it said so (Provider.qml's
     // changedWhy).
     property string nowMoved: ""
-    // What it said moved each time, in order, since the case set it
-    // going cleared them.
+    // What it said moved each time, in order, since the case set it going
+    // cleared them: whether Now had placed its time again by then, since
+    // heldHears' change, and whether tellWaited was waiting for it.
     property var nowSaid: []
-    // The minute heldHears' change was made in, so a turn of the real clock
-    // before it's heard is told from a second change of For You's.
-    property real heldMinute: -1
+    // The time Now had placed as heldHears' change was made, so a turn of
+    // the real clock, which places it again, is told from a second change
+    // of For You's however late it's heard.
+    property var heldTimeRow: null
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
     // How many times what For You lists from moved (Now.qml's forYouHeard).
@@ -937,7 +977,8 @@ ShellRoot {
 
         function onChanged() {
             root.nowChanged += 1;
-            root.nowSaid.push(now.changedWhy);
+            root.nowSaid.push({ why: now.changedWhy, retimed: now.timeRow !== root.heldTimeRow,
+                waited: tellWaited.running });
             root.nowMoved = now.changedWhy;
             root.nowUnseen = now.changedUnseen;
         }
@@ -2440,7 +2481,7 @@ ShellRoot {
         now.changedTo(now.everything());
         root.nowChanged = 0;
         root.nowSaid = [];
-        root.heldMinute = now.minuteNow();
+        root.heldTimeRow = now.timeRow;
         WaitingOnYou.now = [toDo("Sign In Again")];
         expect("a to-do said otherwise, its count the same, keeps For You's own row",
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
@@ -2487,15 +2528,22 @@ ShellRoot {
         // every change read 2 on loaded builders (train run 23a23e5d and
         // three more, 16 and 17 November), as it does with the notices'
         // rows changed just after the case. A minute turning while the
-        // cases held the thread remakes the location row, which reads the
-        // clock, before For You is asked, and that change tells it as Now's
-        // own rows.
+        // cases held the thread places the time again, and told in one with
+        // For You's change, Now tells both as its own rows. While the case waits for the tell the clock can also
+        // turn beside it, a tell of its own as Now's own rows with the time
+        // placed again, which is set aside once. A turn told alone stands
+        // for For You's only when told before the wait began, as the turn
+        // and the ask told in one; told during the wait, it's a turn that
+        // found For You saying nothing.
         const moved = root.nowSaid;
-        const told = moved.filter(why => why !== "");
-        const turned = now.minuteNow() !== root.heldMinute;
-        expect("and For You held hears it once the change is done", told.length === 1
-            && (told[0] === "the rows it holds" || turned && told[0] === "its own rows"),
-            JSON.stringify([moved, turned]));
+        const told = moved.filter(said => said.why !== "");
+        const turnedAt = told.findIndex(said => said.why === "its own rows" && said.retimed);
+        const turned = turnedAt >= 0;
+        const others = told.filter((said, at) => at !== turnedAt);
+        const heard = (others.length === 1 && others[0].why === "the rows it holds")
+            || (turned && others.length === 0 && !told[turnedAt].waited);
+        expect("and For You held hears it once the change is done", heard,
+            `${JSON.stringify(moved)} after ${root.tellWaitedFor} ms`);
         // Said last with nothing held, Now stepped into For You since
         // compares what For You shows, as the launcher made it stepping
         // in: Joel's journal timed For You drawn again as Return's act
