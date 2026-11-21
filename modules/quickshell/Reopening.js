@@ -86,25 +86,47 @@ function mayBegin(text, now) {
 // How Reopen Them All brings back a session the boot took (Joel,
 // 2026-11-20 13:24, after the machine reset at 13:15: crash-taken windows
 // come back where they were, unfocused, and windowless sessions come back
-// windowless). One kept somewhere had a window as the boot ended, so it
-// opens there (`window`), at its kept place rather than its
-// orchestrator's workspace (`home` false), which moved one kept on the
-// second workspace to its orchestrator's third. One kept nowhere had no
-// window, as one an orchestrator started in the background has none, so
-// it comes back held without one, for Go To to join. That holds only
-// within the walk (`walk`), whose places are the boot's own, and only
-// while the boot's places are known (`arranged`): with none, as when the
-// agents daemon kept nothing, every session reads as kept nowhere, so
-// each opens as before. Anything else, handed over or started alone,
-// opens as it always did, going home first.
-function broughtBack(walk, kept, arranged) {
+// windowless). One kept somewhere had a window in the boot, so it opens
+// there (`window`), at its kept place rather than its orchestrator's
+// workspace (`home` false), which moved one kept on the second workspace
+// to its orchestrator's third. One kept nowhere had no window, as one an
+// orchestrator started in the background has none, so it comes back held
+// without one, for Go To to join; should it open a window all the same,
+// as a parked one woken does, it goes home as before. That holds only
+// within the walk (`walk`), whose places are the boot's own; only for one
+// that sat here in that boot (`satHere`), since one carried from another
+// machine or given back by a host was never kept here; and only while
+// the boot's places are known (`arranged`): with none, as when the agents
+// daemon kept nothing, every session reads as kept nowhere, so each opens
+// as before. Anything else, handed over or started alone, opens as it
+// always did, going home first.
+//
+// Its limits, as the daemon keeps places: a place outlives its window
+// within a boot, so one whose window Joel closed comes back in a window;
+// and a window floating, or opened in the last still moment before the
+// crash, was never kept, so its session comes back without one.
+function broughtBack(walk, kept, arranged, satHere) {
     if (!walk) {
         return { window: true, home: true };
     }
     if (kept !== null && kept !== undefined) {
         return { window: true, home: false };
     }
-    return arranged ? { window: false, home: false } : { window: true, home: true };
+    return { window: !(arranged && satHere), home: true };
+}
+
+// How long a session started without a window is taken as begun, though
+// its pi hasn't said so yet, in milliseconds: nothing on screen says it
+// started, so Reopen Them All pressed again meanwhile would begin a second
+// pi on its log, each writing over the other. Five minutes covers a pi
+// starting on a machine just back from a crash.
+const startedHeldFor = 5 * 60 * 1000;
+
+// Whether `id` was started without a window in the last startedHeldFor,
+// as `started` (ids to when, in milliseconds) records it, at `now`.
+function startedHeldLately(started, id, now) {
+    const at = started?.[id];
+    return typeof at === "number" && now - at < startedHeldFor;
 }
 
 // Reopen Them All's queue, `{ one, kept }` each, with those whose kept
