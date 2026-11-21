@@ -1006,18 +1006,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_viewer_holds_a_conversation_only_where_no_host_is_known_to_run_it() {
-        // After a crash the launcher opens each hosted conversation's
-        // viewer to wait for its host, inside a shell titling its window,
-        // so one whose host stays down has a holder running a viewer and
-        // nothing else, its window open.
+    /// After a crash the launcher opens each hosted conversation's viewer
+    /// to wait for its host, inside a shell titling its window, so one
+    /// whose host stays down has a holder running a viewer and nothing
+    /// else, its window open: that holder, the conversation hosted, and
+    /// the same one no host runs.
+    fn viewed() -> (Vec<Holder>, Seen, Seen) {
         let all = holders(concat!(
             r#"{"command":["sh","-c","exec \"$@\"","Reef","node","/lasts/scripts/host-join.ts","#,
             r#""--view","--session","s-A-1"],"pid":7,"windows":"#,
             r#"[{"terminal":"kitty","id":"4","within":"unix:@kitty-1"}]}"#
         ));
-        let viewer = |pid: u32| pid == 7;
         let hosted = Seen {
             hosted: Some(Hosting {
                 host: "work-background".into(),
@@ -1026,7 +1025,13 @@ mod tests {
             }),
             ..seen("A", None, false, "1")
         };
-        let plain = seen("A", None, false, "1");
+        (all, hosted, seen("A", None, false, "1"))
+    }
+
+    #[test]
+    fn a_viewer_holds_a_conversation_only_where_no_host_is_known_to_run_it() {
+        let (all, hosted, _) = viewed();
+        let viewer = |pid: u32| pid == 7;
         let pi = |pid: u32| pid == 9;
         // Where the node can't be asked, the viewer is the process here
         // naming the session.
@@ -1071,6 +1076,14 @@ mod tests {
             Held::Not,
             "nor where the node can't be asked"
         );
+    }
+
+    #[test]
+    fn a_conversations_own_holder_or_a_pi_still_holds_it() {
+        let (all, hosted, plain) = viewed();
+        let viewer = |pid: u32| pid == 7;
+        let pi = |pid: u32| pid == 9;
+        let here = |counts: &dyn Fn(u32) -> bool| counts(7);
         // A hosted conversation's own holder, parked or here, still holds
         // it.
         let parked = holders(r#"{"command":["pi","--session","s-A-1"],"pid":0,"parked":true}"#);
