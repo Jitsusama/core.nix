@@ -177,6 +177,7 @@ mod tests {
             Worst {
                 thread: "AudioEncoder".to_string(),
                 wait_us: 30.0,
+                doubted: 0,
             },
         );
         let text = text(&window, 0, &Pen::plain(), Room::Unbounded);

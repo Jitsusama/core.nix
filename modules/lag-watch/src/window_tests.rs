@@ -345,14 +345,16 @@ fn a_call_s_worst_thread_is_named_with_its_wait_a_run_each_program_apart() {
                 "chrome".to_string(),
                 Worst {
                     thread: "AudioOutputDevi".into(),
-                    wait_us: 0.5
+                    wait_us: 0.5,
+                    doubted: 0,
                 }
             ),
             (
                 "tuple".to_string(),
                 Worst {
                     thread: "Signaling".into(),
-                    wait_us: 200.0
+                    wait_us: 200.0,
+                    doubted: 0,
                 }
             ),
         ])
@@ -442,13 +444,32 @@ fn a_timer_s_sleep_booked_as_one_read_s_wait_is_left_out_and_counted() {
     // 2 s read gained its timer's 4 s sleep, which unguarded reads as
     // 1,333 ms a run, as Chrome's did at 02:47 on 21 Nov.
     ran(&mut now, "chrome-ui", "chrome", 4_000_300_000, 3);
+    // A call's audio encoder ran twice for 100 us of waiting, and one read
+    // gained the same kind of sleep.
+    ran(&mut then, "tuple", "AudioEncoder", 0, 0);
+    ran(&mut now, "tuple", "AudioEncoder", 4_000_100_000, 3);
     let chrome = now.threads.keys().find(|t| t.name == "chrome").unwrap();
-    let before = BTreeMap::from([(chrome.clone(), sched(100_000, 1))]);
-    let after = BTreeMap::from([(chrome.clone(), sched(4_000_200_000, 2))]);
+    let encoder = now
+        .threads
+        .keys()
+        .find(|t| t.name == "AudioEncoder")
+        .unwrap();
+    let before = BTreeMap::from([
+        (chrome.clone(), sched(100_000, 1)),
+        (encoder.clone(), sched(50_000, 1)),
+    ]);
+    let after = BTreeMap::from([
+        (chrome.clone(), sched(4_000_200_000, 2)),
+        (encoder.clone(), sched(4_000_050_000, 2)),
+    ]);
+    let asleep = BTreeSet::from([chrome.clone(), encoder.clone()]);
     let mut booked = BTreeMap::new();
-    book(&mut booked, &before, &after, 2.0);
+    book(&mut booked, &before, &asleep, &after, 2.0);
     now.booked = booked;
     let w = between(&then, &now, quiet_niri(), 0, "gen");
+    let call = &w.call["tuple"];
+    assert!((call.wait_us - 50.0).abs() < 1e-9, "{call:?}");
+    assert_eq!(call.doubted, 1, "the call's booked read wasn't counted");
     let waits = &w.waits["chrome-ui"];
     // The main thread keeps 200 us over two runs; the compositor's
     // 300 us a run is the worst.
@@ -476,24 +497,42 @@ fn only_a_read_that_waited_longer_than_the_time_between_is_booked() {
     };
     let before = BTreeMap::from([
         (thread("starved"), sched(0, 0)),
+        (thread("waited"), sched(0, 0)),
         (thread("drifted"), sched(0, 0)),
         (thread("slept"), sched(0, 0)),
+        (thread("unread"), sched(0, 0)),
     ]);
+    // Ready at the read before were starved and unread, whose state
+    // wasn't read; the rest slept.
+    let asleep = BTreeSet::from([thread("waited"), thread("drifted"), thread("slept")]);
     let after = BTreeMap::from([
-        // Waited nearly all of a 2 s read: a real starvation, kept.
-        (thread("starved"), sched(1_990_000_000, 1)),
+        // Ready at the read before and given a CPU 3 s later, which the
+        // kernel adds all at once: a real starvation, kept.
+        (thread("starved"), sched(3_000_000_000, 1)),
+        // Woke and waited nearly all of a 2 s read: kept.
+        (thread("waited"), sched(1_990_000_000, 1)),
         // Past it by less than a read's drift: kept.
         (thread("drifted"), sched(2_040_000_000, 1)),
         // A 10 s timer's sleep: booked.
         (thread("slept"), sched(9_999_000_000, 1)),
+        // With no state read before, nothing says it slept: kept.
+        (thread("unread"), sched(9_999_000_000, 1)),
         // New since the read before: nothing to compare, so kept.
         (thread("new"), sched(9_999_000_000, 1)),
     ]);
     let mut booked = BTreeMap::new();
-    book(&mut booked, &before, &after, 2.0);
+    book(&mut booked, &before, &asleep, &after, 2.0);
     let names: Vec<&str> = booked.keys().map(|t| t.name.as_str()).collect();
     assert_eq!(names, ["slept"], "{booked:?}");
     assert_eq!(booked[&thread("slept")], sched(9_999_000_000, 1));
+    // A second booked read in the same window adds to the first.
+    let later = BTreeMap::from([(thread("slept"), sched(13_999_000_000, 3))]);
+    book(&mut booked, &after, &asleep, &later, 2.0);
+    assert_eq!(
+        booked[&thread("slept")],
+        sched(13_999_000_000, 3),
+        "{booked:?}"
+    );
 }
 
 #[test]

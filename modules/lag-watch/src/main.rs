@@ -35,7 +35,7 @@ mod now;
 mod report;
 mod window;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -259,16 +259,41 @@ fn snapshot(
     s
 }
 
-/// Each thread's schedstat now, for a tick's look at whether a read
-/// booked rather than waited.
-fn reads(threads: &[kernel::Thread]) -> BTreeMap<kernel::Thread, kernel::Sched> {
+/// A read of the threads for `window::book`: when it began, each one's
+/// schedstat, and which were asleep just before theirs was read.
+struct Read {
+    at: f64,
+    sched: BTreeMap<kernel::Thread, kernel::Sched>,
+    asleep: BTreeSet<kernel::Thread>,
+}
+
+/// Seconds since lag-watch started, which reads are timed by.
+fn clock() -> f64 {
+    started().elapsed().as_secs_f64()
+}
+
+/// The threads asleep now, each by its `stat`, read before its schedstat
+/// so a wait that began after it can't be taken for one before it.
+fn asleep(threads: &[kernel::Thread]) -> BTreeSet<kernel::Thread> {
     threads
+        .iter()
+        .filter(|t| kernel::asleep(&kernel::text(&t.schedstat.with_file_name("stat"))))
+        .cloned()
+        .collect()
+}
+
+/// A tick's read of the threads: which are asleep, then each schedstat.
+fn reads(threads: &[kernel::Thread]) -> Read {
+    let at = clock();
+    let asleep = asleep(threads);
+    let sched = threads
         .iter()
         .filter_map(|t| {
             let text = fs::read_to_string(&t.schedstat).ok()?;
             Some((t.clone(), kernel::sched(&text)?))
         })
-        .collect()
+        .collect();
+    Read { at, sched, asleep }
 }
 
 /// A snapshot's reads of its threads, hidden tabs' included, as a tick's.
@@ -476,10 +501,17 @@ fn run() -> Result<(), Failure> {
         env_dir("XDG_RUNTIME_DIR", ".cache").join("systemd/transient"),
     );
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
+    let (at, sleeping) = (clock(), asleep(&threads));
     let mut then = snapshot(&cgroups, &account, &threads, apps.unwatched());
     // Each tick's read of the threads, and what those reads booked rather
-    // than waited, since the window began (`window::book`).
-    let mut read = (then.at, read_of(&then));
+    // than waited, since the window began (`window::book`). Two reads are
+    // timed from before the first began to after the second ended, so they
+    // never seem closer than they were.
+    let mut read = Read {
+        at,
+        sched: read_of(&then),
+        asleep: sleeping,
+    };
     let mut booked = BTreeMap::new();
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
@@ -494,17 +526,23 @@ fn run() -> Result<(), Failure> {
         }
         tick += 1;
         if tick < TICKS_A_WINDOW {
-            let at = started().elapsed().as_secs_f64();
             let after = reads(&threads);
-            window::book(&mut booked, &read.1, &after, at - read.0);
-            read = (at, after);
+            let passed = clock() - read.at;
+            window::book(&mut booked, &read.sched, &read.asleep, &after.sched, passed);
+            read = after;
             continue;
         }
         tick = 0;
+        let (at, sleeping) = (clock(), asleep(&threads));
         let mut now = snapshot(&cgroups, &account, &threads, apps.unwatched());
-        let after = read_of(&now);
-        window::book(&mut booked, &read.1, &after, now.at - read.0);
-        read = (now.at, after);
+        let after = Read {
+            at,
+            sched: read_of(&now),
+            asleep: sleeping,
+        };
+        let passed = clock() - read.at;
+        window::book(&mut booked, &read.sched, &read.asleep, &after.sched, passed);
+        read = after;
         now.booked = std::mem::take(&mut booked);
         let mut w = window::between(
             &then,
@@ -523,8 +561,13 @@ fn run() -> Result<(), Failure> {
         // minute, with the snapshot taken again so no window spans two.
         if windows.is_multiple_of(6) {
             threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
+            let (at, sleeping) = (clock(), asleep(&threads));
             then = snapshot(&cgroups, &account, &threads, apps.unwatched());
-            read = (then.at, read_of(&then));
+            read = Read {
+                at,
+                sched: read_of(&then),
+                asleep: sleeping,
+            };
         } else {
             then = now;
         }

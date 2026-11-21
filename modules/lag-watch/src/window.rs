@@ -9,7 +9,7 @@
 
 use crate::kernel::{CALLERS, Group, Sched, Stall, Thread};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Nanoseconds, microseconds or a tally, as a float. Exact: every one here
 /// is far below 2⁵³.
@@ -63,21 +63,24 @@ pub struct Snapshot {
 }
 
 /// How far past the time between two reads a thread's wait may run and
-/// still be one: each thread's schedstat is read a moment after the clock
-/// the reads are timed by, and a read of a few dozen files under load can
-/// take a few milliseconds, so this is far more than they ever drift.
+/// still be one. The reads are timed from before the first is taken to
+/// after the second is, so they can only seem further apart than they
+/// were; this is room besides for a clock read between files.
 const DRIFT_NS: u64 = 50_000_000;
 
 /// Books into `booked` what each thread's schedstat gained between the
-/// reads `before` and `after`, `seconds` apart, when its wait grew by more
-/// than that time: a thread can't wait longer than the time that passed.
-/// The kernel sometimes books a timer's whole sleep, 4 or 10 s, as wait
-/// on one thread at once while its neighbours ran at once; read every
-/// tick, such a jump outruns the tick, where across a ten-second window it
-/// would pass as a wait.
+/// reads `before` and `after`, `seconds` apart, when the thread was asleep
+/// at `before` (`asleep`) and its wait grew by more than that time. The
+/// kernel adds a wait when it ends, so a thread ready at `before` may
+/// truly have waited longer than the time between: that one is kept. One
+/// asleep at `before` began any wait since, so it can't have waited
+/// longer; yet the kernel sometimes books a timer's whole sleep, 4 or
+/// 10 s, as one read's wait, which across a ten-second window would pass
+/// as a wait. A thread with no state read at `before` is kept.
 pub fn book(
     booked: &mut BTreeMap<Thread, Sched>,
     before: &BTreeMap<Thread, Sched>,
+    asleep: &BTreeSet<Thread>,
     after: &BTreeMap<Thread, Sched>,
     seconds: f64,
 ) {
@@ -88,7 +91,7 @@ pub fn book(
     )]
     let passed = (seconds.max(0.0) * 1e9) as u64;
     for (key, s) in after {
-        let Some(old) = before.get(key) else {
+        let Some(old) = before.get(key).filter(|_| asleep.contains(key)) else {
             continue;
         };
         let wait = s.wait_ns.saturating_sub(old.wait_ns);
@@ -144,6 +147,10 @@ fn is_zero(n: &u64) -> bool {
 pub struct Worst {
     pub thread: String,
     pub wait_us: f64,
+    /// How many of the program's call threads had a read left out as
+    /// booked, not waited (`book`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub doubted: u64,
 }
 
 /// How long niri took to answer, in milliseconds.
@@ -413,6 +420,7 @@ fn turns_waited(
 ) -> (BTreeMap<String, Wait>, BTreeMap<String, Worst>) {
     let mut waits: BTreeMap<String, (u64, u64, f64, u64)> = BTreeMap::new();
     let mut call: BTreeMap<String, Worst> = BTreeMap::new();
+    let mut call_doubted: BTreeMap<&str, u64> = BTreeMap::new();
     for (key, s) in &now.threads {
         // A tab shown in the window starts from where it rested hidden.
         let Some(old) = then.threads.get(key).or_else(|| then.resting.get(key)) else {
@@ -427,7 +435,9 @@ fn turns_waited(
                 .saturating_sub(old.slices)
                 .saturating_sub(booked.slices),
         );
+        let doubted = u64::from(booked != Sched::default());
         if CALLERS.contains(&key.label) {
+            *call_doubted.entry(key.label).or_default() += doubted;
             let per_run = float(wait) / float(slices.max(1)) / 1000.0;
             let worst = call.get(key.label).map_or(-1.0, |w| w.wait_us);
             if slices > 0 && per_run > worst {
@@ -436,6 +446,7 @@ fn turns_waited(
                     Worst {
                         thread: key.name.clone(),
                         wait_us: per_run,
+                        doubted: 0,
                     },
                 );
             }
@@ -447,7 +458,12 @@ fn turns_waited(
         if slices > 0 {
             entry.2 = entry.2.max(float(wait) / float(slices) / 1000.0);
         }
-        entry.3 += u64::from(booked != Sched::default());
+        entry.3 += doubted;
+    }
+    for (label, doubted) in call_doubted {
+        if let Some(worst) = call.get_mut(label) {
+            worst.doubted = doubted;
+        }
     }
     let waits: BTreeMap<String, Wait> = waits
         .into_iter()
