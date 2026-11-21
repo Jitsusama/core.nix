@@ -44,6 +44,10 @@ UNITS_OWN = frozenset(
         "MANAGERPID",
         "MEMORY_PRESSURE_WATCH",
         "MEMORY_PRESSURE_WRITE",
+        "CPU_PRESSURE_WATCH",
+        "CPU_PRESSURE_WRITE",
+        "IO_PRESSURE_WATCH",
+        "IO_PRESSURE_WRITE",
     }
 )
 
