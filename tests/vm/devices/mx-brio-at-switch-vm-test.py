@@ -61,7 +61,17 @@ def the_run_said(machine: BaseMachine, words: str) -> None:
         machine.wait_until_succeeds(f"{SAID} | grep -qF '{words}'", timeout=FILING)
     except RequestedAssertionFailed:
         text = machine.execute(SAID)[1]
-        pytest.fail(f"the take-hold's last run didn't say {words!r}: {text}")
+        # Every run's lines and how the unit stands, on one line, since a failed build keeps
+        # only its last lines.
+        runs = machine.execute(
+            "systemctl show -p ActiveState,SubState,Result,ExecMainStatus,NRestarts "
+            "mx-brio-take-hold; journalctl -b -u mx-brio-take-hold -o short-monotonic "
+            "--no-hostname --no-pager"
+        )[1]
+        pytest.fail(
+            f"the take-hold's last run didn't say {words!r}: {text} RUNS: "
+            + " | ".join(runs.splitlines())
+        )
 
 
 def the_seat_can_open(machine: BaseMachine, node: str) -> bool:
