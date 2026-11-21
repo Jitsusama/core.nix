@@ -38,7 +38,15 @@ lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
         "%t/mycelium/${realm}.sock"
         "--socket"
         "%t/daemons/quests.sock"
+        # What the agents ask of each quest, as the orchestrator keeps it,
+        # read for what moved; and where what Joel was last shown of it is
+        # kept, so a restart doesn't say it all again.
+        "--asks"
+        "%S/mission/asks.jsonl"
+        "--looked"
+        "%S/quests/looked"
       ];
+      StateDirectory = "quests";
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";

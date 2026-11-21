@@ -128,7 +128,12 @@
         "empty": "empty",
         "open": "{open} open",
         "driving": "{open} open, {driving} driving",
-        "unsearched": "open quests only: Quests isn't answering"
+        "unsearched": "open quests only: Quests isn't answering",
+        "moved-landed": "landed: {words}",
+        "moved-landed-more": "landed: {words}, and {more} more",
+        "moved-dated": "date moved: {words}",
+        "moved-taken": "taken on: {words}",
+        "moved-next": "next due {time}"
       }
     },
     {
