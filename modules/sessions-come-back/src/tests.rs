@@ -807,12 +807,12 @@ fn mac_reads(
 }
 
 /// What a Mac's three boot reads answer when each does.
-fn answered(program: &str) -> Result<String, Unheard> {
-    Ok(match program {
+fn answered(program: &str) -> String {
+    match program {
         "/usr/sbin/sysctl" => "40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned(),
         "/usr/bin/who" => WHO.to_owned(),
         _ => "someone\n".to_owned(),
-    })
+    }
 }
 
 #[test]
@@ -820,7 +820,7 @@ fn a_macs_boot_read_that_stalls_names_its_program() {
     let stalled = Unheard::Late(LOOK_WITHIN);
     let said = mac_era(&mac_reads(|program| match program {
         "/usr/bin/who" => Err(stalled.clone()),
-        _ => answered(program),
+        _ => Ok(answered(program)),
     }))
     .expect_err("a stalled read fails")
     .to_string();
@@ -829,7 +829,7 @@ fn a_macs_boot_read_that_stalls_names_its_program() {
         "said {said:?}, not which read stalled"
     );
     assert_eq!(
-        mac_era(&mac_reads(answered)).ok(),
+        mac_era(&mac_reads(|program| Ok(answered(program)))).ok(),
         Some("40DCF87A-79B7-469D-80E0-C06F4FAACF06 Nov 19 12:42".to_owned()),
         "three answers read as the boot and login"
     );
@@ -841,7 +841,7 @@ fn a_macs_boot_read_that_fails_names_its_program_and_keeps_its_words() {
         "/usr/sbin/sysctl" => Err(Unheard::Failed(
             "sysctl: unknown oid 'kern.bootsessionuuid'".into(),
         )),
-        _ => answered(program),
+        _ => Ok(answered(program)),
     }))
     .expect_err("a failed read fails")
     .to_string();
@@ -851,7 +851,7 @@ fn a_macs_boot_read_that_fails_names_its_program_and_keeps_its_words() {
     );
     let said = mac_era(&mac_reads(|program| match program {
         "/usr/bin/id" => Err(Unheard::Failed("exit status: 1".into())),
-        _ => answered(program),
+        _ => Ok(answered(program)),
     }))
     .expect_err("the last read failing fails")
     .to_string();
