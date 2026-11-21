@@ -26,6 +26,10 @@ onLinux {
     inherit self pkgs;
     area = "joins-when-asked";
   };
+  vm-wifi-moves = import ./wifi.nix {
+    inherit self pkgs;
+    area = "moves";
+  };
   # What an account's services make of the network coming late, changing
   # and networkd restarting shows only with both managers running.
   vm-network-revives-units = import ./network-revive.nix { inherit self pkgs; };

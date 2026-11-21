@@ -6299,6 +6299,13 @@
     radios; a stuck look is nudged, a silent access point passed, and the card dozes only on
     battery
   '';
+  vm-wifi-moves = ''
+    the card moves between the access points of one network: on at once from one that doesn't
+    answer, to another when an account asks, keeping its neighbours, and back within wifid's
+    2 s for a way back past any wait the point bids, its other networks off, from one gone
+    since it was heard, or free to join any network when it can't get back either; another
+    network forgets them
+  '';
   vms-reach-the-launcher = ''
     a workstation with a desktop gives its launcher the VMs, read through the daemon's own virsh,
     under a hidden program the launcher lists only while one exists, and one without the shell
