@@ -678,6 +678,32 @@ QtObject {
             [hosted("moved", laid(4, 3))], 10, gone(screens, { away: false })),
             { open: [], kept: {} });
 
+        // One Reopen Them All kept while Joel was on its workspace, with
+        // words to wait for its host by, opens by them once he isn't
+        // there, its host serving it or not, him away or not, since he
+        // asked for it; not where he is, nor if kept before this shell
+        // started (20 November: kept for its host alone, it opened by
+        // itself nearly two hours later).
+        const words = ["node", "/lasting/scripts/host-join.ts", "--view", "--session", "held"];
+        const keptAsked = (workspace, more) => ({ held: Object.assign({ workspace, column: 2,
+            at: 0, waiting: words, named: "pi-hosted.held", title: "\u03c0 - Reef" },
+            more ?? {}) });
+        expect("its host away and Joel elsewhere, it opens by its words",
+            Viewers.viewersDue(keptAsked(4), [], 10, gone(screens, { away: false })),
+            { open: [{ id: "held", place: keptAsked(4).held, into: { workspace: 4, column: 2 } }],
+                kept: {} });
+        expect("on Joel's workspace it waits", Viewers.viewersDue(keptAsked(9), [], 10,
+            gone(screens)), { open: [], kept: keptAsked(9) });
+        expect("kept before the shell started, it waits", Viewers.viewersDue(keptAsked(4), [], 10,
+            gone(screens, { since: 5 })), { open: [], kept: keptAsked(4) });
+        expect("words that aren't all words, it waits for its host",
+            Viewers.viewersDue(keptAsked(4, { waiting: ["node", 7] }), [], 10, gone(screens)),
+            { open: [], kept: keptAsked(4, { waiting: ["node", 7] }) });
+        expect("its host serving it, it opens as any served one",
+            Viewers.viewersDue(keptAsked(4), [hosted("held")], 10, gone(screens)).open
+                .map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+
         // A viewer never opens where Joel is, so it never takes his focus
         // or flashes beside him: on the workspace he's on it waits until he
         // leaves, and one whose workspace went with its window waits rather
