@@ -1801,8 +1801,10 @@ ShellRoot {
         // A look done with, as the to-do daemon serves it to History and
         // held in no file of the shell's, leads to its cell as well, by
         // the cell its row names alone: Open, then Talk, then Go To. One
-        // naming none, or a cell that's ended with no answer for it, keeps
-        // Open only, never Talk to a session that merely lists its name.
+        // written before looks named their cell leads by its address, the
+        // session that left it; one whose cell has ended with no answer
+        // for it keeps Open only, never Talk to a session on another quest
+        // that merely lists its name.
         const historyActs = held => now.lookServed({ held: Object.assign({ id: "h",
             kind: "page", title: "Read H", target: "https://example.com", state: "opened" },
             held) }, "row:looks-history:h").verbs().map(act => act.key)
@@ -1815,12 +1817,17 @@ ShellRoot {
             JSON.stringify(servedActs) === JSON.stringify(["verb:on:look:open:h",
                 "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
             JSON.stringify(servedActs));
-        const unnamedActs = historyActs({});
-        expect("a look done with that names no cell offers Open alone, from History",
-            JSON.stringify(unnamedActs) === JSON.stringify(["verb:on:look:open:h"]),
+        const unnamedActs = historyActs({ session: "s-old", address: "ACTED", quest: "QEST-E" });
+        expect("a look done with naming no cell leads to the session that left it",
+            JSON.stringify(unnamedActs) === JSON.stringify(["verb:on:look:open:h",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
             JSON.stringify(unnamedActs));
         Sessions.running = [windowed(Object.assign({}, acted, { presence: Object.assign({},
-            acted.presence, { addresses: ["ACTED", "GONEGO"] }) }))];
+            acted.presence, { quest: "QEST-2", addresses: ["ACTED", "GONEGO"] }) }))];
+        const listedActs = historyActs({ session: "s-old", address: "GONEGO", quest: "QEST-G" });
+        expect("a look done with naming no cell, never one on another quest listing it",
+            JSON.stringify(listedActs) === JSON.stringify(["verb:on:look:open:h"]),
+            JSON.stringify(listedActs));
         const endedActs = historyActs({ cell: "GONEGO", address: "GONEGO", quest: "QEST-G" });
         expect("a look done with whose cell has ended offers Open alone, never its lister",
             JSON.stringify(endedActs) === JSON.stringify(["verb:on:look:open:h"]),

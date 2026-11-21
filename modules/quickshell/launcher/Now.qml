@@ -1612,7 +1612,8 @@ Provider {
     // does, the look as the shell holds it, so one gone quiet is written
     // opened, and its drawer says who it's from. Its acts hold Open, then
     // Talk, Go To and Explain It on the cell behind it (cellActs), as a
-    // waiting look's do, so a look done with still leads to who sent it.
+    // waiting look's do, so a look done with still leads to the cell that
+    // sent it, as it is now; one naming no cell, by its address (doneWith).
     function lookServed(row, key) {
         const held = row.held ?? {};
         const one = () => provider.lookHeld(held);
@@ -1625,7 +1626,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openServed(one())
-        })].concat(provider.cellActs(one()));
+        })].concat(provider.cellActs(Looks.doneWith(one())));
         return {
             key: `on:look:${held.id}`,
             look: held.id,

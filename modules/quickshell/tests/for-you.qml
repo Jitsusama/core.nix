@@ -764,6 +764,13 @@ QtObject {
             Looks.cellFor(naming("GGGGGG"), {}, [listing], []), null);
         expect("naming no cell, cellOf's search over every quest",
             Looks.cellFor(lookLeft, {}, [listing], []).address, "TTTTTT");
+        expect("done with, naming no cell, never one on another quest listing its address",
+            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing], []), null);
+        expect("done with, naming no cell, the session that left it by its address",
+            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing, leaver], []).address,
+            "AAAAAA");
+        expect("done with, naming its cell, that cell kept",
+            Looks.doneWith({ cell: "BBBBBB", address: "AAAAAA" }).cell, "BBBBBB");
         expect("naming no cell, cellOf's search",
             Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
         expect("nothing served, cellOf's search",

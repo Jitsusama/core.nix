@@ -186,6 +186,17 @@ function cellFor(one, cells, running, parked) {
     return cellOf(one, held.filter(session => questOf(session) === quest), []);
 }
 
+// A look done with, as History leads it to its cell: one written before
+// looks named their cell names it by its address, the session that left
+// it, so cellFor holds it to that cell, the daemon's answer for it and its
+// own quest, never the open search, which History, keeping every look done
+// with, would otherwise keep past Mon 23 Nov 2026.
+function doneWith(one) {
+    const named = typeof one.cell === "string" && one.cell !== "";
+    return named || typeof one.address !== "string" || one.address === "" ? one
+        : Object.assign({}, one, { cell: one.address });
+}
+
 // The label of the answer Joel gave a look still waiting, by `answered`'s
 // { [look id]: { label, at } }, while it may yet take, or "".
 function answering(one, answered, now) {
