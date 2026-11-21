@@ -1164,14 +1164,20 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     assert page.evaluate(REPEAT_HELD, "KeyS"), "another key coming up let a held s go"
     page.locator("#map-view").focus()
     page.keyboard.up("s")
-    assert not page.evaluate(REPEAT_HELD, "KeyS"), "s coming up off the line didn't let it go"
-    # The page losing the keys lets a held s go too.
+    field.focus()
+    page.keyboard.down("s")
+    page.keyboard.down("s")
+    page.keyboard.up("s")
+    expect(field, "s coming up off the line didn't let it go").to_have_value("ss")
+    field.fill("")
+    # A key still held as the page gets the keys back, its press unheard,
+    # repeats nowhere.
     page.locator("#map-view").focus()
     page.keyboard.press("Escape")
-    for _ in range(2):
-        page.keyboard.down("s")
+    page.keyboard.down("s")
     page.evaluate("window.dispatchEvent(new Event('blur'))")
-    assert not page.evaluate(REPEAT_HELD, "KeyS"), "the page losing the keys didn't let s go"
+    page.keyboard.down("s")
+    expect(field, "a key held as the keys came back typed").to_have_value("")
     page.keyboard.up("s")
     field.focus()
     page.keyboard.down("x")

@@ -3759,15 +3759,21 @@ import {
   // held, so a held s types nothing, a held Return sends once and never
   // reopens the line, and a held Escape lets go of nothing more. Each is
   // held until it comes up, another key's rolling over leaving it held,
-  // or until the page loses the keys, where it can come up unheard.
+  // or until the page loses the keys, where it can come up unheard. A key
+  // pressed afresh is down now, whatever keyup went unheard before; one
+  // repeating that the page never heard go down, held as the keys came
+  // back, is held off too, so a Return still held from the Launcher never
+  // reopens the line nor sends the kept words.
   function holdKeysDown() {
     sproutHeld = new Set(keysDown);
   }
   document.addEventListener(
     "keydown",
     (e) => {
-      if (!e.repeat) keysDown.add(e.code);
-      else if (sproutHeld.has(e.code)) {
+      if (!e.repeat) {
+        sproutHeld.delete(e.code);
+        keysDown.add(e.code);
+      } else if (sproutHeld.has(e.code) || !keysDown.has(e.code)) {
         e.preventDefault();
         e.stopPropagation();
       }
