@@ -391,11 +391,18 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
         .filter(|run| run.chars.len() > 2)
         .map(|run| run.size_pt)
         .fold(0.0, f64::max);
-    let letter = runs
+    let (letter, letter_baseline, letter_cap) = runs
         .iter()
         .find(|run| run.size_pt > 2.0 * words)
+        .map(|run| {
+            (
+                run.chars.iter().map(|c| c.0).collect::<String>(),
+                run.baseline_pt,
+                run.cap_pt,
+            )
+        })
         .expect("no letter was dropped");
-    assert_eq!(letter.chars.iter().map(|c| c.0).collect::<String>(), "T");
+    assert_eq!(letter, "T");
     // Past the eyebrow, the opening's lines, read as they were written.
     let lines: Vec<_> = crate::text::lines(runs)
         .into_iter()
@@ -410,15 +417,13 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
     // baseline, on which it sits.
     let pitch = super::pitch_pt();
     assert!(
-        (letter.baseline_pt - lines[1].baseline_pt).abs() < 0.01,
-        "the letter sits on {} pt, not the second line's {} pt",
-        letter.baseline_pt,
+        (letter_baseline - lines[1].baseline_pt).abs() < 0.01,
+        "the letter sits on {letter_baseline} pt, not the second line's {} pt",
         lines[1].baseline_pt
     );
     assert!(
-        (letter.cap_pt - (pitch + lines[0].cap_pt)).abs() < 1.0,
-        "its capitals stand {} pt, not two lines' {} pt",
-        letter.cap_pt,
+        (letter_cap - (pitch + lines[0].cap_pt)).abs() < 1.0,
+        "its capitals stand {letter_cap} pt, not two lines' {} pt",
         pitch + lines[0].cap_pt
     );
     let steps = steps(

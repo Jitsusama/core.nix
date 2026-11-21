@@ -160,9 +160,8 @@ pub fn program(
         base,
         pictures: 0,
         blocks: 0,
-        after_title: false,
+        head: Head::Headings,
         titled: false,
-        begun: false,
         after_box: false,
         caption: None,
         source: markdown.lines().collect(),
@@ -232,6 +231,19 @@ fn collapse(text: &str) -> String {
     s
 }
 
+/// How far into its head the page has been walked: what the next
+/// paragraph is.
+#[derive(Clone, Copy, PartialEq)]
+enum Head {
+    /// Only headings so far, if anything: the next paragraph opens it.
+    Headings,
+    /// The title was the block just walked: the next paragraph is its
+    /// lede.
+    Titled,
+    /// The words have begun: the next paragraph is any other.
+    Begun,
+}
+
 struct Walker<'a> {
     pieces: &'a Pieces,
     world: &'a PageWorld,
@@ -243,14 +255,11 @@ struct Walker<'a> {
     pictures: usize,
     /// How many blocks the page has, to number the next.
     blocks: usize,
-    /// Whether the block just walked was the title, so the next paragraph
-    /// is its lede.
-    after_title: bool,
+    /// How far into its head the page is, so the next paragraph is its
+    /// lede, its opening or any other.
+    head: Head,
     /// Whether the page opens with its title.
     titled: bool,
-    /// Whether the page's words have begun: any block but its title, its
-    /// lede and its headings, so the next paragraph isn't its opening.
-    begun: bool,
     /// Whether a task's box was just passed over, so the space after it
     /// goes.
     after_box: bool,
@@ -503,19 +512,24 @@ impl Walker<'_> {
         }
         // The paragraph right after the title is its lede, and a title
         // opening the page sits under the eyebrow.
-        let lede = top && self.after_title && name == "p";
+        let lede = top && self.head == Head::Titled && name == "p";
         let opening = top && self.blocks == 1 && name == "h1";
         if opening {
             self.titled = true;
         }
         // The page's first paragraph of words opens it, on a drop cap when
         // it's long enough for one, with nothing before it but headings.
-        let first_words = top && name == "p" && !lede && !self.begun && !lone_picture(node);
+        let first_words =
+            top && name == "p" && !lede && self.head != Head::Begun && !lone_picture(node);
         if top && BLOCKS.contains(&name.as_str()) {
-            self.after_title = opening;
-            if !lede && !matches!(name.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
-                self.begun = true;
-            }
+            let heading = matches!(name.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
+            self.head = if opening {
+                Head::Titled
+            } else if (lede || heading) && self.head != Head::Begun {
+                Head::Headings
+            } else {
+                Head::Begun
+            };
         }
         match name.as_str() {
             "html" | "body" | "span" | "section" | "picture" | "thead" | "tbody" => {
