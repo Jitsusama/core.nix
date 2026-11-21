@@ -1896,6 +1896,73 @@ ShellRoot {
                 ["verb:agent:talk", "verb:on:waiting:go:on:look:e"],
                 ["verb:on:waiting:go:on:look:e"]]),
             JSON.stringify([actingLook, askingLook]));
+        // A look done with, as the to-do daemon serves it to History and
+        // held in no file of the shell's, leads to its cell as well, by
+        // the cell its row names alone: Open, then Talk, then Go To. One
+        // written before looks named their cell still leads to the session
+        // that left it, by its address; one whose cell has ended with no
+        // answer for it keeps Open only. What holds an unnamed one to its
+        // address (doneWith) is the two cases with a session on another
+        // quest that merely lists its name: served, and made by the shell.
+        const historyActs = held => now.lookServed({ held: Object.assign({ id: "h",
+            kind: "page", title: "Read H", target: "https://example.com", state: "opened" },
+            held) }, "row:looks-history:h").verbs().map(act => act.key)
+            .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:")
+                || key.startsWith("verb:on:look:open:"));
+        Sessions.running = [windowed(acted)];
+        Sessions.wanting = [windowed(acted)];
+        const servedActs = historyActs({ cell: "ACTED" });
+        expect("a look done with offers Open, then Talk to its cell and Go To, from History",
+            JSON.stringify(servedActs) === JSON.stringify(["verb:on:look:open:h",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
+            JSON.stringify(servedActs));
+        const unnamedActs = historyActs({ session: "s-old", address: "ACTED", quest: "QEST-E" });
+        expect("a look done with naming no cell leads to the session that left it",
+            JSON.stringify(unnamedActs) === JSON.stringify(["verb:on:look:open:h",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
+            JSON.stringify(unnamedActs));
+        Sessions.running = [windowed(Object.assign({}, acted, { presence: Object.assign({},
+            acted.presence, { quest: "QEST-2", addresses: ["ACTED", "GONEGO"] }) }))];
+        const listedActs = historyActs({ session: "s-old", address: "GONEGO", quest: "QEST-G",
+            cell: null });
+        expect("a look done with naming no cell, never one on another quest listing it",
+            JSON.stringify(listedActs) === JSON.stringify(["verb:on:look:open:h"]),
+            JSON.stringify(listedActs));
+        // A terminal look's Open is its only way to its cell, so it is held
+        // the same way.
+        Sessions.wentTo = null;
+        now.lookServed({ held: { id: "t", kind: "terminal", title: "Read T", target: "",
+            state: "opened", session: "s-old", address: "GONEGO", quest: "QEST-G",
+            cell: null } }, "row:looks-history:t").run();
+        expect("a terminal look done with naming no cell opens no session listing it",
+            Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
+        Sessions.wentTo = null;
+        // As the shell makes one itself, the daemon not serving it.
+        const textsBefore = now.lookTexts;
+        const apartActs = address => {
+            now.lookTexts = { "o.json": JSON.stringify({ v: 1, id: "o", kind: "page",
+                at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
+                title: "Read O", why: "Because.", state: "opened", session: "s-old",
+                address: address, quest: address === "ACTED" ? "QEST-E" : "QEST-G" }) };
+            const row = now.historyRows().find(each => each.key === "on:look:o");
+            return row === undefined ? null : row.verbs().map(act => act.key)
+                .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:")
+                    || key.startsWith("verb:on:look:open:"));
+        };
+        const apartListed = apartActs("GONEGO");
+        const apartLeft = apartActs("ACTED");
+        now.lookTexts = textsBefore;
+        expect("a look done with the shell makes itself, never one on another quest listing it",
+            JSON.stringify(apartListed) === JSON.stringify(["verb:on:look:open:o"]),
+            JSON.stringify(apartListed));
+        expect("and leads to the session that left it, by its address",
+            JSON.stringify(apartLeft) === JSON.stringify(["verb:on:look:open:o",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:o"]),
+            JSON.stringify(apartLeft));
+        const endedActs = historyActs({ cell: "GONEGO", address: "GONEGO", quest: "QEST-G" });
+        expect("a look done with whose cell has ended offers Open alone, never its lister",
+            JSON.stringify(endedActs) === JSON.stringify(["verb:on:look:open:h"]),
+            JSON.stringify(endedActs));
         Sessions.running = [acted];
         Sessions.wanting = [acted];
         WaitingOnYou.sessionOf = { "Sign The Form": acted };

@@ -1558,8 +1558,9 @@ Provider {
         // doesn't serve: one answered while its session hasn't written it
         // so (Looks.js's taken), or settled while the daemon hasn't told it
         // yet, and every one while the daemon serves none. Few, they're made
-        // here and sorted with what else the shell holds.
-        const apart = from === undefined ? lookedApart(looked) : [];
+        // here and sorted with what else the shell holds, each led to its
+        // cell as a served one is (doneWith).
+        const apart = from === undefined ? lookedApart(looked).map(Looks.doneWith) : [];
         const ours = from === undefined ? apart.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
@@ -1659,10 +1660,15 @@ Provider {
     // A served look's row, its key the one the shell's own gave it, so
     // the launcher keeps its place: Return opens it as the shell's own
     // does, the look as the shell holds it, so one gone quiet is written
-    // opened, and its drawer says who it's from.
+    // opened, and its drawer says who it's from. Its acts hold Open, then
+    // Talk, Go To and Explain It on the cell behind it (cellActs), as a
+    // waiting look's do, so a look done with still leads to the cell that
+    // sent it, as it is now; one naming no cell, by its address (doneWith).
     function lookServed(row, key) {
         const held = row.held ?? {};
-        const one = () => provider.lookHeld(held);
+        // Open and Return lead where Talk does, a terminal look's Open being
+        // its only way to its cell (doneWith).
+        const one = () => Looks.doneWith(provider.lookHeld(held));
         const opens = held.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
         const inside = () => [thing({
             key: `verb:on:look:open:${held.id}`,
@@ -1672,7 +1678,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openServed(one())
-        })];
+        })].concat(provider.cellActs(one()));
         return {
             key: `on:look:${held.id}`,
             look: held.id,
