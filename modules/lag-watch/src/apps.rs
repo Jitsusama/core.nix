@@ -3,6 +3,9 @@
 //! process of an app he opened, and kept, so each window reads only those
 //! threads' own files.
 //!
+//! Long because more than half of it is tests, which replay each kind of
+//! opener against one made-up /proc and read best beside the rules they pin.
+//!
 //! What they waited goes into each window's `waits`, and from the history
 //! into the hourly apps-under-load measure that cadence judges. No trouble
 //! line reads them yet: a threshold waits on what that measure shows.
@@ -375,7 +378,10 @@ impl Apps {
             .any(|rest| {
                 rest == "/init.scope"
                     || rest.starts_with("/session.slice/")
-                    || rest.strip_prefix("/app.slice/").is_some_and(|unit| {
+                    || rest.strip_prefix("/app.slice/").is_some_and(|path| {
+                        // A run's own cgroups under it, a delegated one's,
+                        // are the run's.
+                        let unit = path.split('/').next().unwrap_or(path);
                         let launched = unit
                             .strip_prefix("app-")
                             .is_some_and(|rest| rest.strip_suffix(".scope").is_some());
@@ -680,6 +686,7 @@ mod tests {
             ("20", "2", "onepassword.service"),
             ("24", "4", "app-slack-4.scope"),
             ("30", "3", "brio-night-2.service"),
+            ("32", "5", "brio-night-2.service/payload"),
         ] {
             let scope = format!("{ACCOUNT}/app.slice/app-com.google.Chrome-{pid}.scope");
             write(&proc.join(pid).join("comm"), "chrome\n");
@@ -709,6 +716,10 @@ mod tests {
         assert!(
             !apps.may_call(&text(&proc.join("30/cgroup")), &proc),
             "a run's Chrome carries no call of his"
+        );
+        assert!(
+            !apps.may_call(&text(&proc.join("32/cgroup")), &proc),
+            "a Chrome from a run's own cgroup carries no call of his"
         );
         assert!(apps.unwatched().is_empty(), "{:?}", apps.unwatched());
         fs::remove_dir_all(&root).unwrap();
