@@ -221,7 +221,12 @@ or launchd, and [`home.nix`][2] the account's.
   journal` shows the account's guard and the machine's together, by time,
   each line saying whose: the machine's guard owns the store and what lies
   outside every home, so the account's alone never said where most of a
-  disk's room went. Any account may pass through the machine's state
+  disk's room went. A pass's line says what set it going (`reach`,
+  `upkeep`, `garbage`, `producers`, `clear` or `collect`), how many things
+  it was offered, and how long the survey that offered them took, which
+  its own seconds leave out, so a pass that freed nothing can be told from
+  one with nothing to take: half of them on 20 November freed nothing,
+  and their lines couldn't say which. Any account may pass through the machine's state
   folder to its journal but not list it, and every other file there is
   saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
