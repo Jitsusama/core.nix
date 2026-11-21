@@ -249,10 +249,13 @@ async fn serve(
     // wpa_supplicant's path, and they're taken all the same rather than
     // only from its name, since the VM test says a card is scanning so,
     // no radio there ever hanging a look (2026-11-20). A program forging
-    // them could say a move reached its point, turning the card's other
-    // networks on as it moves, or that one fell off, sending it back; it
-    // would already be running on the laptop, and moves no further than
-    // the card's own networks.
+    // them would already be running on the laptop, and could: say a move
+    // reached a point of its choosing, so the move isn't sent back and
+    // that point's channel is kept; name the point a move goes back to;
+    // end a look early, so a move is sent back after its second; or say a
+    // card is gone, so wifid forgets the hold and the networks it kept
+    // off while wpa_supplicant keeps them, until wpa_supplicant starts
+    // again. It moves the card no further than its own networks.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -1625,16 +1628,26 @@ impl Wifid<'_> {
     /// Turns on every network the card holds, the others a join from the
     /// launcher left off among them, so a card come off its network can
     /// join whichever it hears.
+    /// Each is turned on alone, so one that won't doesn't leave the rest
+    /// off.
     async fn turn_on_networks(&self, card: &str) {
-        let turned = async {
+        let listed = async {
             let at = self.supplicant.get_interface(card).await?;
-            for network in interface(self.bus, at).await?.networks().await? {
-                self.joinable(&network).await?.set_enabled(true).await?;
-            }
-            zbus::Result::Ok(())
+            interface(self.bus, at).await?.networks().await
         };
-        if let Err(error) = turned.await {
-            eprintln!("<4>can't turn {card}'s networks on again: {error}");
+        let networks = match listed.await {
+            Ok(networks) => networks,
+            Err(error) => {
+                eprintln!("<4>can't turn {card}'s networks on again: {error}");
+                return;
+            }
+        };
+        for network in networks {
+            let on = async { self.joinable(&network).await?.set_enabled(true).await };
+            if let Err(error) = on.await {
+                let network = network.as_str();
+                eprintln!("<4>can't turn {card}'s {network} on again: {error}");
+            }
         }
     }
 
@@ -1732,7 +1745,10 @@ impl Wifid<'_> {
                     let _ = done.send(found);
                 });
             }
-            ask => self.answer(ask).await,
+            ask => {
+                let joining = joining.as_ref().map(|joining| joining.card.as_str());
+                self.answer(ask, joining).await;
+            }
         }
     }
 
@@ -2075,7 +2091,7 @@ impl Wifid<'_> {
 
     /// Changes the saved networks as asked, and says how it went once
     /// networkd and wpa_supplicant have every network as it now stands.
-    async fn answer(&self, ask: Ask) {
+    async fn answer(&self, ask: Ask, joining: Option<&str>) {
         let (changed, done) = match ask {
             Ask::Join { .. } | Ask::Lookup { .. } => {
                 unreachable!("the main loop answers joins and lookups itself")
@@ -2089,7 +2105,7 @@ impl Wifid<'_> {
                 return;
             }
             Ask::Roam { bssid, done } => {
-                let _ = done.send(self.roam(&bssid).await);
+                let _ = done.send(self.roam(&bssid, joining).await);
                 return;
             }
             Ask::Leave { name, done } => {
@@ -2177,8 +2193,18 @@ impl Wifid<'_> {
     /// Held, wpa_supplicant can take the card there itself on what it
     /// hears, and a card on its way or there already isn't asked again,
     /// which would join it over.
-    async fn roam(&self, bssid: &str) -> Result<(), Refused> {
+    ///
+    /// A card on its way back isn't moved: the way back would follow the
+    /// new point, and a card reaching the one it went back to would be
+    /// counted elsewhere and let go. A card in the join the shell asked
+    /// for, `joining`, has its networks turned on by the join as it ends.
+    async fn roam(&self, bssid: &str, joining: Option<&str>) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
+        if self.arrivals.borrow().going_back(&card) {
+            return Err(Refused::Failed {
+                reason: format!("{card} is on its way back to the point it left"),
+            });
+        }
         let roamed = async {
             let interface =
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
@@ -2225,7 +2251,7 @@ impl Wifid<'_> {
             }
         };
         if let Err(error) = roamed.await {
-            self.together(&card, true).await;
+            self.together(&card, joining != Some(card.as_str())).await;
             self.let_go(&card, false).await;
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
@@ -2346,6 +2372,7 @@ impl Wifid<'_> {
     /// card handed over again holds new networks, which a move it no
     /// longer makes would keep off.
     fn gone(&self, card: &str) {
+        self.astray.borrow_mut().remove(card);
         self.alone.borrow_mut().remove(card);
         self.held.borrow_mut().remove(card);
         self.picked.borrow_mut().remove(card);

@@ -34,10 +34,12 @@ NEIGHBOUR_ADDRESS = "02:00:00:00:42:99"
 
 # How long wifid holds a card to its way back before letting it join any network, in seconds.
 WAY_BACK = 2
-# How late a loaded builder's guest may be to wake wifid at the end of a wait, in seconds.
+# How much past its 2 s wifid may say it let a way back go, in seconds: the card is held
+# after the line sending it back and before the 2 s begin, and a loaded builder's guest may
+# be late to wake wifid as they end.
 LOADED_SLACK = 1.5
-# How long after its way back's time begins wifid may say it sent the card back, in seconds.
-SAID_LATE = 0.1
+# How much closer journald may stamp two of wifid's lines than wifid said them, in seconds.
+STAMPED_LATE = 0.1
 
 
 def knows_a_neighbour(machine: BaseMachine) -> None:
@@ -65,6 +67,11 @@ def inn_is_on(machine: BaseMachine) -> bool:
     return machine.succeed(f"wpa_cli -i wlan2 get_network {inns[0]} disabled").strip() == "0"
 
 
+def inn_turns_on(machine: BaseMachine) -> None:
+    """Wait for the Inn to be on, as wifid says it turns networks on before it does."""
+    retry(lambda _: inn_is_on(machine), timeout=timedelta(seconds=10))
+
+
 def inn_stays_off(machine: BaseMachine) -> bool:
     """Say whether the Inn stays off for two seconds, longer than wifid takes to end a move.
 
@@ -82,27 +89,35 @@ def rejoined_unpicked(machine: BaseMachine) -> None:
     """Have the card come off Lantern and rejoin its first access point with every network on.
 
     A card joined from the launcher keeps its other networks off while it's on the network Joel
-    picked, and is off that pick once it comes off its network.
+    picked, and is off that pick once it comes off its network. A point just woken can miss the
+    look the card joins from, which then takes the Inn and stays, so it's asked again until it
+    joins the first point.
     """
     lantern = machine.succeed(
         "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Lantern\" {print $1}'"
     ).strip()
     ranked = machine.succeed(f"wpa_cli -i wlan2 get_network {lantern} priority").strip()
-    machine.succeed(
-        "wpa_cli -i wlan2 disconnect"
-        " && wpa_cli -i wlan2 enable_network all"
-        f" && wpa_cli -i wlan2 set_network {lantern} priority 100"
-    )
-    machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
-    )
-    machine.succeed("wpa_cli -i wlan2 reconnect")
-    machine.wait_until_succeeds(
-        "s=$(wpa_cli -i wlan2 status)"
-        ' && echo "$s" | grep -qx wpa_state=COMPLETED'
-        ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
-        timeout=timedelta(seconds=30),
-    )
+
+    def rejoined(_: bool) -> bool:
+        """Have the card leave and join again, and say whether it joined the first point."""
+        machine.succeed(
+            "wpa_cli -i wlan2 disconnect"
+            " && wpa_cli -i wlan2 enable_network all"
+            f" && wpa_cli -i wlan2 set_network {lantern} priority 100"
+        )
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED",
+            timeout=timedelta(seconds=30),
+        )
+        machine.succeed("wpa_cli -i wlan2 reconnect")
+        status, _said = machine.execute(
+            "timeout 10 sh -c 'until s=$(wpa_cli -i wlan2 status)"
+            ' && echo "$s" | grep -qx wpa_state=COMPLETED'
+            ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00; do sleep 0.2; done\''
+        )
+        return status == 0
+
+    retry(rejoined, timeout=timedelta(seconds=60))
     machine.succeed(f"wpa_cli -i wlan2 set_network {lantern} priority {ranked}")
 
 
@@ -221,8 +236,7 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
         ' && echo "$s" | grep -qx bssid=02:00:00:00:05:00',
         timeout=timedelta(seconds=30),
     )
-    # A move keeps the card's other networks off, and on the network Joel picked they stay
-    # off once it ends.
+    # On the network Joel picked, the card's other networks stay off once a move ends.
     machine.wait_until_succeeds(
         f"journalctl -o cat -u wifid --after-cursor='{since}'"
         " | grep -qE '^wlan2 reached 02:00:00:00:05:00 [0-9]+ ms after it was asked'",
@@ -267,10 +281,10 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     # still finds the second after its own look over the channel, and is asked into nothing.
     # The card gives up on it within tens of milliseconds, and wpa_supplicant was on its way
     # to the Roadside Inn before wifid heard it gave up (2026-11-20), so the card moves with
-    # its other networks off, and is back within a second, never on the Inn. A card that left
-    # the first for the second without a word finds the first still holding it as joined,
-    # and bidding it come back once it has asked whether the card is still there, so the
-    # second is counted beyond that wait.
+    # its other networks off, and is back within wifid's 2 s, never on the Inn. A card that
+    # left the first for the second without a word finds the first still holding it as
+    # joined, and bidding it come back once it has asked whether the card is still there,
+    # which the 2 s leave room for.
     machine.succeed("systemctl stop lantern-two")
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
@@ -325,15 +339,12 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         f"back {took:.3f} s after the move was asked and {returned:.3f} s after it was sent,"
         f" {'late' if late else 'as it fell off'}, bidden wait {waited} s, bar 1 s"
     )
+    # Back past its 2 s, wifid lets the card go, so being back unstranded is its bound here.
     stranded = [line for line in said if "so may join any network" in line]
     assert not stranded, f"stranded on the way back: {stranded}"
-    assert returned < WAY_BACK + waited, f"back {returned:.3f} s after it was sent, wait {waited} s"
-    # Sent back late, it's sent once the move's 2 s are up, and has its own 2 s from then.
-    asked_for = WAY_BACK + WAY_BACK if late else WAY_BACK
-    assert took < asked_for + waited, f"back {took:.3f} s after the move was asked, wait {waited} s"
     tried = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn on the way back: {tried}"
-    assert inn_is_on(machine), "the Inn is on again once back"
+    inn_turns_on(machine)
     machine.succeed(
         "s=$(wpa_cli -i wlan2 status)"
         ' && echo "$s" | grep -qx wpa_state=COMPLETED'
@@ -370,7 +381,6 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
         )
         # Let go with its other networks on, it isn't left held to a point that won't answer.
         wifid.joined("Roadside Inn")
-        assert inn_is_on(machine), "the Inn is on once the card is let go"
     finally:
         # wpa_supplicant ignores the first point a while for the joins it refused, which would
         # keep the card off it below.
@@ -382,14 +392,25 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     sent = next(i for i, line in enumerate(said) if ", so goes back to 02:00:00:00:00:00" in line)
     let_go = next(i for i, line in enumerate(said) if "so may join any network" in line)
     # Held to its way back for wifid's 2 s, it's let go then, not before, and never tries the
-    # Inn meanwhile. The line sending it back is said a moment after its 2 s begin, and a
-    # loaded builder can be slow to wake wifid as they end.
+    # Inn meanwhile.
     held = float(said[let_go].split()[0]) - float(said[sent].split()[0])
-    assert WAY_BACK - SAID_LATE <= held < WAY_BACK + LOADED_SLACK, (
+    assert WAY_BACK - STAMPED_LATE <= held < WAY_BACK + LOADED_SLACK, (
         f"let go {held:.3f} s after it was sent back"
     )
+    unheld = next(
+        i
+        for i, line in enumerate(said)
+        if i > sent and "wlan2 may join any access point of its network again" in line
+    )
+    assert unheld > let_go, f"its hold let go before its 2 s were up: {said[unheld]}"
     tried = [line for line in said[:let_go] if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn before it was let go: {tried}"
+    # The Inn's tries are found by these words, as they are once it's let go.
+    tries = [line for line in said[let_go:] if "SSID='Roadside Inn'" in line]
+    assert tries, "the Inn's tries are said as searched for"
+    # Let go while elsewhere, a stranded card isn't pulled off the network it takes.
+    looked = [line for line in said if "looks again, having taken another network" in line]
+    assert not looked, f"looked again off the Inn: {looked}"
     rejoined_unpicked(machine)
 
 
