@@ -12,7 +12,9 @@
 //! then live and once named by it, then ended and named by it, then ended
 //! and once named by it. One that only lists a name counts only on the
 //! quest of the session named by it, if there is one, so a session that
-//! lists another's address on another quest never takes its looks.
+//! lists another's address on another quest never takes its looks. A name
+//! no session goes by first, only lists, goes nowhere where its listers
+//! sit on more than one quest, since which of them it was can't be told.
 
 use std::collections::HashMap;
 
@@ -102,6 +104,21 @@ pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
             owners.insert(name, quest_of(one));
         }
     }
+    // Each name only listed: the one quest its listers share, or none.
+    let mut listed: HashMap<&str, Option<&str>> = HashMap::new();
+    for one in sessions.iter().copied() {
+        let quest = quest_of(one);
+        for name in names(one).filter(|name| !owners.contains_key(name)) {
+            listed
+                .entry(name)
+                .and_modify(|shared| {
+                    if *shared != Some(quest) {
+                        *shared = None;
+                    }
+                })
+                .or_insert(Some(quest));
+        }
+    }
     let mut order: Vec<&str> = Vec::new();
     let mut best: HashMap<&str, (u8, Option<&str>)> = HashMap::new();
     for one in sessions.iter().copied() {
@@ -130,7 +147,11 @@ pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
     order
         .into_iter()
         .map(|cell| {
-            let goes = best.get(cell).and_then(|(_, goes)| *goes);
+            let contested = listed.get(cell).is_some_and(Option::is_none);
+            let goes = best
+                .get(cell)
+                .and_then(|(_, goes)| *goes)
+                .filter(|_| !contested);
             json!({
                 "key": format!("{KIND}:{PLACE}:{cell}"), "kind": KIND,
                 "cell": cell, "goes": goes,
@@ -216,7 +237,7 @@ mod tests {
                 session("N", "closed", ""),
             ]),
             ["E>null", "N>null"],
-            "it says it goes nowhere, so the launcher says the cell has ended"
+            "it says it goes nowhere, so the launcher sends its looks to no stranger"
         );
     }
 
@@ -276,16 +297,35 @@ mod tests {
 
     #[test]
     fn an_ended_session_with_no_quest_is_given_no_stranger() {
-        let mut lister = session("L", "closed", "QEST-20261120-LLLLLL");
+        let mut lister = session("L", "running", "QEST-20261120-LLLLLL");
         lister["presence"]["addresses"] = json!(["L", "N"]);
         assert_eq!(
             goes(&[
                 session("N", "closed", ""),
                 lister,
                 session("R", "running", "QEST-20261120-LLLLLL"),
+                session("Z", "running", ""),
             ])[0],
             "N>null",
-            "N had no quest, so nothing on L's quest is N now"
+            "N had no quest, so neither the live L listing it nor Z, on no quest, is N now"
+        );
+    }
+
+    #[test]
+    fn a_name_only_listed_on_two_quests_goes_nowhere() {
+        let mut ended = session("E", "closed", "QEST-20261120-AAAAAA");
+        ended["presence"]["addresses"] = json!(["E", "OLD"]);
+        let mut stranger = session("T", "running", "QEST-20261120-BBBBBB");
+        stranger["presence"]["addresses"] = json!(["T", "OLD"]);
+        assert!(
+            goes(&[ended.clone(), stranger]).contains(&"OLD>null".to_owned()),
+            "which of them OLD was can't be told, so neither takes its looks"
+        );
+        let mut heir = session("H", "running", "QEST-20261120-AAAAAA");
+        heir["presence"]["addresses"] = json!(["H", "OLD"]);
+        assert!(
+            goes(&[ended, heir]).contains(&"OLD>\"H\"".to_owned()),
+            "listed on one quest alone, the live one there is OLD now"
         );
     }
 
