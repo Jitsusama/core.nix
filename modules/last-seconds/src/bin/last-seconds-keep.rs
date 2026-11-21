@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn a_boot_id_that_couldnt_name_a_folder_the_reader_lists_is_refused() {
-        let root = env::temp_dir().join(format!("last-seconds-keep-id-{}", std::process::id()));
+        let root = last_seconds::scratch::Folder::make("keep-id").expect("a folder of its own");
         let file = root.join("proc/sys/kernel/random/boot_id");
         fs::create_dir_all(file.parent().expect("its folder")).expect("the folders");
         let mut read = Vec::new();
@@ -358,7 +358,6 @@ mod tests {
             fs::write(&file, id).expect("a stand-in id");
             read.push(boot(&root).ok());
         }
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             read,
             [

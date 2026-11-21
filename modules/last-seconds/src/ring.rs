@@ -25,9 +25,9 @@
 
 use crate::record::{self, Record, crc32};
 use std::fs::{File, OpenOptions};
-use std::io;
+use std::io::{self, Read};
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::FileExt;
+use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::Path;
 
 /// What opens a ring's header.
@@ -144,11 +144,16 @@ impl Ring {
     /// The boot's ring at `path`, going on after its newest record, or
     /// made anew where there is none or it was made to another layout.
     pub fn open(path: &Path, header: &Header) -> io::Result<Self> {
+        // Never through a link, as the reader never reads through one: a
+        // ring written through one would read as no ring, and be made anew
+        // over the boot's records at each start.
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(path)?;
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(linked)?;
         held(&file)?;
         // A ring cut short while being made is made again, so no record
         // is written past what was made whole.
@@ -269,14 +274,23 @@ fn sent(file: &File, at: u64) -> io::Result<()> {
 /// What a ring holds: its header, and every whole record in it, oldest
 /// first. A slot never written, or one a cut left half written, is passed
 /// over by its CRC.
+///
+/// A ring of more slots than this reader's is refused rather than read
+/// short, since the slots past its end hold seconds from all through the
+/// boot, its newest among them.
 pub fn read(path: &Path) -> io::Result<(Header, Vec<Record>)> {
-    let bytes = std::fs::read(path)?;
-    let not_a_ring = || io::Error::new(io::ErrorKind::InvalidData, "it isn't a ring");
+    let bytes = whole(path)?;
     let header: &[u8; HEADER] = bytes
         .get(..HEADER)
         .and_then(|bytes| bytes.try_into().ok())
         .ok_or_else(not_a_ring)?;
     let header = Header::decode(header).ok_or_else(not_a_ring)?;
+    if header.slots > SLOTS {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "it holds more seconds than this reader reads",
+        ));
+    }
     let mut records: Vec<Record> = bytes
         .get(PAGE..)
         .unwrap_or_default()
@@ -290,9 +304,47 @@ pub fn read(path: &Path) -> io::Result<(Header, Vec<Record>)> {
     Ok((header, records))
 }
 
+fn not_a_ring() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, "it isn't a ring")
+}
+
+/// What refusing a link at the ring's name says. The kernel's word for it
+/// reads as a loop of links, where there is one, refused on purpose.
+const LINKED: &str = "it's a link, and a link isn't followed";
+
+/// `error`, said as a link where it is one refused.
+fn linked(error: io::Error) -> io::Error {
+    if error.raw_os_error() == Some(libc::ELOOP) {
+        io::Error::new(io::ErrorKind::InvalidData, LINKED)
+    } else {
+        error
+    }
+}
+
+/// The bytes of the ring at `path`, up to a whole ring's.
+///
+/// The folder is the recorder's account's and this runs as whoever asks,
+/// so the ring is read only as a plain file, never through a link at its
+/// own name, and never past a whole ring: a pipe put there can't hold the
+/// reader waiting, nor an endless file fill its memory.
+fn whole(path: &Path) -> io::Result<Vec<u8>> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(linked)?;
+    if !file.metadata()?.is_file() {
+        return Err(not_a_ring());
+    }
+    let mut bytes = Vec::new();
+    file.take(length(SLOTS)).read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Folder;
 
     fn header(slots: u32) -> Header {
         Header {
@@ -305,12 +357,11 @@ mod tests {
         }
     }
 
-    fn ring_path(name: &str) -> std::path::PathBuf {
-        let folder =
-            std::env::temp_dir().join(format!("last-seconds-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        std::fs::create_dir_all(&folder).expect("a folder");
-        folder.join("ring")
+    /// A ring's path in a folder of its own, kept while the folder is.
+    fn ring_path(name: &str) -> (Folder, std::path::PathBuf) {
+        let folder = Folder::make(name).expect("a folder");
+        let path = folder.join("ring");
+        (folder, path)
     }
 
     fn put(ring: &mut Ring, at_ms: i64) {
@@ -329,7 +380,7 @@ mod tests {
 
     #[test]
     fn the_ring_keeps_its_newest_seconds_and_writes_over_the_oldest() {
-        let path = ring_path("wraps");
+        let (_folder, path) = ring_path("wraps");
         let mut ring = Ring::open(&path, &header(4)).expect("a ring");
         for second in 0..6 {
             put(&mut ring, second);
@@ -372,7 +423,7 @@ mod tests {
 
     #[test]
     fn a_garbled_page_loses_one_second_in_nineteen_never_the_last_few() {
-        let path = ring_path("garbled");
+        let (_folder, path) = ring_path("garbled");
         let mut ring = Ring::open(&path, &header(SLOTS)).expect("a ring");
         for second in 0..700 {
             put(&mut ring, second);
@@ -401,7 +452,7 @@ mod tests {
 
     #[test]
     fn a_ring_cut_short_while_made_is_made_again() {
-        let path = ring_path("short");
+        let (_folder, path) = ring_path("short");
         Ring::open(&path, &header(4)).expect("a ring");
         let file = OpenOptions::new()
             .write(true)
@@ -420,7 +471,7 @@ mod tests {
 
     #[test]
     fn a_record_a_cut_left_half_written_is_passed_over() {
-        let path = ring_path("torn");
+        let (_folder, path) = ring_path("torn");
         let mut ring = Ring::open(&path, &header(4)).expect("a ring");
         for second in 0..3 {
             put(&mut ring, second);
@@ -443,7 +494,7 @@ mod tests {
 
     #[test]
     fn a_ring_opened_again_goes_on_after_its_newest_record() {
-        let path = ring_path("again");
+        let (_folder, path) = ring_path("again");
         let mut ring = Ring::open(&path, &header(4)).expect("a ring");
         put(&mut ring, 10);
         put(&mut ring, 11);
@@ -460,7 +511,7 @@ mod tests {
 
     #[test]
     fn a_second_recorder_is_refused_the_ring_one_is_writing() {
-        let path = ring_path("held");
+        let (_folder, path) = ring_path("held");
         let mut ring = Ring::open(&path, &header(4)).expect("a ring");
         put(&mut ring, 10);
         let second = Ring::open(&path, &header(4))
@@ -478,7 +529,7 @@ mod tests {
 
     #[test]
     fn a_ring_of_another_layout_is_made_anew() {
-        let path = ring_path("anew");
+        let (_folder, path) = ring_path("anew");
         let mut ring = Ring::open(&path, &header(4)).expect("a ring");
         put(&mut ring, 10);
         drop(ring);
@@ -489,9 +540,153 @@ mod tests {
 
     #[test]
     fn a_file_that_isnt_a_ring_is_said_as_one() {
-        let path = ring_path("not");
+        let (_folder, path) = ring_path("not");
         std::fs::write(&path, b"not a ring").expect("a file");
         let error = read(&path).expect_err("it read as a ring");
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            error.kind(),
+            io::ErrorKind::InvalidData,
+            "a file too short for a ring wasn't said as no ring"
+        );
+    }
+
+    /// A whole ring of `SLOTS`, holding one second, at `path`.
+    fn a_whole_ring(path: &Path) {
+        let mut ring = Ring::open(path, &header(SLOTS)).expect("a ring");
+        put(&mut ring, 1_795_241_514_000);
+    }
+
+    /// What reading `path` comes to, or nothing when the read is still
+    /// held waiting after five seconds: long enough for any builder's
+    /// thread to run, short against a reader held for good.
+    fn read_within(path: &Path) -> Option<Result<(), io::ErrorKind>> {
+        let (said, heard) = std::sync::mpsc::channel();
+        let reading = path.to_path_buf();
+        std::thread::spawn(move || {
+            let _ = said.send(read(&reading).map(|_| ()).map_err(|error| error.kind()));
+        });
+        heard.recv_timeout(std::time::Duration::from_secs(5)).ok()
+    }
+
+    #[test]
+    fn a_pipe_where_the_ring_goes_is_refused_at_once() {
+        let (_folder, path) = ring_path("pipe");
+        let named = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).expect("a path");
+        // SAFETY: it reads a path this owns, ended by its nul.
+        let made = unsafe { libc::mkfifo(named.as_ptr(), 0o600) };
+        assert_eq!(made, 0, "no pipe could be made to try it with");
+        assert_eq!(
+            read_within(&path),
+            Some(Err(io::ErrorKind::InvalidData)),
+            "a pipe no one had open held the reader, or wasn't said as no ring"
+        );
+        // Held open at its other end, as by a recorder that never writes,
+        // so a read of it would fail as having nothing yet rather than end.
+        let _held = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .expect("the pipe's other end");
+        assert_eq!(
+            read_within(&path),
+            Some(Err(io::ErrorKind::InvalidData)),
+            "a pipe held open was read from rather than said as no ring"
+        );
+    }
+
+    #[test]
+    fn a_link_where_the_ring_goes_is_said_and_not_followed() {
+        let (_folder, path) = ring_path("linked");
+        let real = path.with_file_name("elsewhere");
+        a_whole_ring(&real);
+        std::os::unix::fs::symlink(&real, &path).expect("a link");
+        assert!(
+            read(&real).is_ok(),
+            "the ring the link names couldn't be read, so this proves nothing"
+        );
+        let error = read(&path).expect_err("the reader followed a link to a ring");
+        assert_eq!(
+            (error.kind(), error.to_string()),
+            (io::ErrorKind::InvalidData, LINKED.to_owned()),
+            "a link where the ring goes wasn't said as one"
+        );
+    }
+
+    #[test]
+    fn the_recorder_writes_through_no_link() {
+        let (_folder, path) = ring_path("written-linked");
+        let real = path.with_file_name("elsewhere");
+        a_whole_ring(&real);
+        std::os::unix::fs::symlink(&real, &path).expect("a link");
+        let refused = Ring::open(&path, &header(SLOTS))
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            refused.as_deref(),
+            Some(LINKED),
+            "the recorder opened its ring through a link, or didn't say it was one"
+        );
+        let (_, records) = read(&real).expect("the ring the link names");
+        assert_eq!(records.len(), 1, "the ring behind a link was made anew");
+    }
+
+    #[test]
+    fn no_more_than_a_whole_ring_is_read() {
+        let (_folder, path) = ring_path("grown");
+        a_whole_ring(&path);
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("the ring");
+        file.set_len(length(SLOTS) + u64::try_from(PAGE).unwrap_or(0))
+            .expect("a page more");
+        let bytes = whole(&path).expect("a ring with a page past its end");
+        assert_eq!(
+            u64::try_from(bytes.len()).ok(),
+            Some(length(SLOTS)),
+            "the read went past a whole ring"
+        );
+    }
+
+    #[test]
+    fn a_ring_of_more_slots_than_the_readers_is_refused_not_read_short() {
+        let (_folder, path) = ring_path("larger");
+        let mut ring = Ring::open(&path, &header(SLOTS + PER_PAGE)).expect("a larger ring");
+        put(&mut ring, 1_795_241_514_000);
+        let error = read(&path).expect_err("a larger ring was read short");
+        assert_eq!(
+            error.kind(),
+            io::ErrorKind::InvalidData,
+            "a larger ring wasn't said as unreadable: {error}"
+        );
+    }
+
+    #[test]
+    fn two_test_folders_are_apart_empty_and_the_accounts_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let one = Folder::make("twice").expect("a folder");
+        let two = Folder::make("twice").expect("another folder");
+        assert_ne!(*one, *two, "two asked for by one name shared a folder");
+        for folder in [&one, &two] {
+            let mode = std::fs::metadata(folder)
+                .expect("the folder")
+                .permissions()
+                .mode();
+            assert_eq!(
+                mode & 0o777,
+                0o700,
+                "another account could open a test's folder"
+            );
+            assert!(
+                std::fs::read_dir(folder)
+                    .expect("its listing")
+                    .next()
+                    .is_none(),
+                "a new test folder already held something"
+            );
+        }
+        let gone = one.to_path_buf();
+        drop(one);
+        assert!(!gone.exists(), "a test's folder outlived it");
     }
 }

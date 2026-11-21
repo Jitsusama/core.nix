@@ -611,6 +611,7 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
     use last_seconds::ring::Ring;
+    use last_seconds::scratch::Folder;
 
     fn ring_in(state: &Path, boot: &str, records: &[Record]) {
         ring_begun(state, boot, 1_795_241_514, records);
@@ -631,12 +632,8 @@ mod tests {
         }
     }
 
-    fn state(name: &str) -> PathBuf {
-        let state =
-            env::temp_dir().join(format!("last-seconds-reader-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&state);
-        fs::create_dir_all(&state).expect("a state folder");
-        state
+    fn state(name: &str) -> Folder {
+        Folder::make(&format!("reader-{name}")).expect("a state folder")
     }
 
     #[test]
@@ -690,7 +687,6 @@ mod tests {
             ("6bcc".to_owned(), "quiet"),
             "a recorder that stopped writing was said to be recording"
         );
-        let _ = fs::remove_dir_all(&state);
     }
 
     #[test]
@@ -703,7 +699,6 @@ mod tests {
         };
         ring_in(&state, "949a397ceafb4b789dd6b3d0e50c92e9", &[asleep]);
         let kept = kept_in(&state, "6bccd85d80714583afd805c687f0cdb6", 0, None).expect("the boots");
-        let _ = fs::remove_dir_all(&state);
         assert_eq!(kept[0].end, End::Asleep);
         let said = kept[0].end.words(Some("22:10:00"));
         assert!(
@@ -739,7 +734,6 @@ mod tests {
                 .any(|boot| matches!(boot.end, End::Unreadable(_))),
             "a ring that couldn't be read wasn't said unreadable"
         );
-        let _ = fs::remove_dir_all(&state);
     }
 
     #[test]
