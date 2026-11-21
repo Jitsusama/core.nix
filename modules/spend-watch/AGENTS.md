@@ -87,16 +87,20 @@ feed speaks.
   stands apart from every other's where it really is, links passed over
   inside, so nothing is counted twice. A session copied to another
   machine and gone on there keeps its id, so its logs share the turns
-  from before the copy: each turn, refusal and unresolved budget is kept
-  once by its session, time and model, whichever log said it. Such a
-  session is this machine's if a log of it is here, else the machine's
-  whose log was last read from its start, so a machine renamed, or its
-  logs brought somewhere new, takes its sessions along. Forgetting one
-  log forgets its session whole and reads its other logs again. A
-  finding on another machine's session offers no terminal to go to.
-  The logs are read as they grow in place, which whatever brings them
-  has to keep to: a log replaced on each copy is
-  read again whole every time. A brought folder is trusted as fully as
+  from before the copy: each turn is kept once by its session, time,
+  model, kind and tokens, and each refusal and unresolved budget by its
+  session, time and model or budget, whichever log said it first. A
+  session once read from a log here stays this machine's, as this
+  machine says it; one only elsewhere is the machine's whose log was
+  last read from its start, so a machine renamed, or its logs brought
+  somewhere new, takes its sessions along. A log replaced or shrunk is
+  read again from its start. When it's its session's only log, what it
+  no longer says is no longer counted; when it's one of several, its
+  session's turns stay, since which log said what isn't kept. A finding
+  on another machine's session offers no terminal to go to. The logs
+  are read as they grow in place, which whatever brings them has to
+  keep to: a log replaced on each copy is read again whole every time.
+  A brought folder is trusted as fully as
   this machine's own: its refusals, budgets and workspaces count here.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each

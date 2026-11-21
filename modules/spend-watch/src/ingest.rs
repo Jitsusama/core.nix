@@ -326,10 +326,19 @@ fn scan_slice(
         // is marked as checked.
         let header = header(path);
         let brought = found.brought.as_deref();
-        if header
+        if let Some(header) = header
             .as_ref()
-            .is_some_and(|header| crate::logs::copies::carried(header, brought))
+            .filter(|header| crate::logs::copies::carried(header, brought))
         {
+            // What was counted before its header is its parent's.
+            let session = header.get("id").and_then(serde_json::Value::as_str);
+            let until = header
+                .get("timestamp")
+                .and_then(serde_json::Value::as_str)
+                .and_then(crate::time::parse);
+            if let (Some(session), Some(until)) = (session, until) {
+                history.forget_copied(session, until)?;
+            }
             history.forget_file(&name)?;
             offset = 0;
             carry = Carry::default();
@@ -456,11 +465,24 @@ mod tests {
         let history = History::memory();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 2);
-        // Written anew, as a rewrite of the session would.
-        std::fs::remove_file(&path).unwrap();
-        std::fs::write(&path, format!("{HEADER}\n{TURN}\n")).unwrap();
+        // Written anew, as a rewrite of the session would, and longer, so
+        // only noticing it's another file reads it from its start. It's
+        // written beside the old and moved over it, so the two can't share
+        // a freed inode's number.
+        let anew = [turn_at(3), turn_at(4), turn_at(5)].join("\n");
+        let beside = dir.path().join("project/2026_s1.jsonl.new");
+        std::fs::write(&beside, format!("{HEADER}\n{anew}\n")).unwrap();
+        std::fs::rename(&beside, &path).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
-        assert_eq!(turns(&history), 1);
+        let first: f64 = history
+            .db
+            .query_row("SELECT MIN(at) FROM turns", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            (turns(&history), Some(first)),
+            (3, crate::time::parse("2026-10-14T10:03:00Z")),
+            "a log written anew wasn't read again from its start alone"
+        );
     }
 
     // A log written anew keeps no budget it couldn't draw on from before,
@@ -571,6 +593,49 @@ mod tests {
             turns(&history),
             2,
             "a brought copy's copied turn was counted again once its parent landed"
+        );
+    }
+
+    // A copy brought to two machines before its parent is held by two logs,
+    // so its rows stay when one is read again; what it was counted for
+    // before its header still goes once the parent lands beside either.
+    #[test]
+    fn a_copy_two_machines_hold_counts_once_when_its_parent_lands() {
+        let dir = tempfile::tempdir().unwrap();
+        let header = serde_json::json!({
+            "type": "session", "id": "s2", "timestamp": "2026-10-14T10:30:00Z",
+            "cwd": "/y", "parentSession": "/home/elsewhere/sessions/project/2026_s1.jsonl",
+        });
+        let later = TURN.replace("10:01:00", "10:31:00");
+        for machine in ["teal", "ochre"] {
+            let project = dir.path().join(machine).join("project");
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(
+                project.join("2026_s2.jsonl"),
+                format!("{header}\n{TURN}\n{later}\n"),
+            )
+            .unwrap();
+        }
+        let history = History::memory();
+        let (teal, ochre) = ("teal".to_owned(), "ochre".to_owned());
+        let logs = || -> Vec<Found> {
+            machine_logs(&dir.path().join("teal"), &[], Some(&teal))
+                .chain(machine_logs(&dir.path().join("ochre"), &[], Some(&ochre)))
+                .collect()
+        };
+        scan(&history, &logs(), Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a copy two machines hold was counted twice"
+        );
+        let parent = dir.path().join("teal/project/2026_s1.jsonl");
+        std::fs::write(parent, format!("{HEADER}\n{TURN}\n")).unwrap();
+        scan(&history, &logs(), Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a copy two machines hold kept its parent's turn once the parent landed"
         );
     }
 
@@ -887,7 +952,7 @@ mod tests {
     // A session copied to another machine and gone on there keeps its id,
     // so both logs hold the turns from before the copy and each its own
     // after. Read together, each turn counts once, whichever log was read
-    // first, and the session stays this machine's.
+    // first, and the session stays this machine's, as this machine says.
     #[test]
     fn a_session_gone_on_elsewhere_counts_each_turn_once() {
         let dir = tempfile::tempdir().unwrap();
@@ -895,7 +960,13 @@ mod tests {
             let project = dir.path().join(folder).join("project");
             std::fs::create_dir_all(&project).unwrap();
             let body = lines.join("\n");
-            std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{body}\n")).unwrap();
+            // The copy says it ran in another folder.
+            let header = if folder == "teal" {
+                HEADER.replace(r#""cwd":"/x""#, r#""cwd":"/y""#)
+            } else {
+                HEADER.to_owned()
+            };
+            std::fs::write(project.join("2026_s1.jsonl"), format!("{header}\n{body}\n")).unwrap();
         };
         for teal_first in [false, true] {
             write("here", &[turn_at(1), turn_at(2)]);
@@ -933,22 +1004,34 @@ mod tests {
                 None,
                 "a session with a log here wasn't this machine's (teal first: {teal_first})"
             );
+            let cwd: String = history
+                .db
+                .query_row("SELECT cwd FROM sessions WHERE id = 's1'", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(
+                cwd, "/x",
+                "a brought log rewrote what this machine says of its session (teal first: {teal_first})"
+            );
         }
     }
 
-    // A session's turns are forgotten whole when one of its logs is
-    // replaced, so its other logs are read again to put back what only
-    // they hold.
+    // A session's turns stay when one of its several logs is replaced,
+    // since which log said what isn't kept: nothing the others hold is
+    // lost, and the replacement counts only the turns not held already.
     #[test]
     fn a_log_replaced_keeps_the_turns_its_session_s_other_logs_hold() {
         let dir = tempfile::tempdir().unwrap();
         let write = |folder: &str, lines: &[String]| {
             let project = dir.path().join(folder).join("project");
             std::fs::create_dir_all(&project).unwrap();
-            let path = project.join("2026_s1.jsonl");
-            let _ = std::fs::remove_file(&path);
+            // Written beside and moved over, so a log written anew is
+            // always another file, never one reusing a freed inode.
+            let beside = project.join("2026_s1.jsonl.new");
             let body = lines.join("\n");
-            std::fs::write(path, format!("{HEADER}\n{body}\n")).unwrap();
+            std::fs::write(&beside, format!("{HEADER}\n{body}\n")).unwrap();
+            std::fs::rename(beside, project.join("2026_s1.jsonl")).unwrap();
         };
         write("here", &[turn_at(1), turn_at(2)]);
         write("teal", &[turn_at(1), turn_at(3)]);
@@ -963,8 +1046,8 @@ mod tests {
         scan(&history, &logs, Reading::default()).unwrap();
         assert_eq!(
             turns(&history),
-            3,
-            "a log replaced lost the turns only its session's other log holds"
+            4,
+            "a log replaced lost turns, or counted again the ones already held"
         );
     }
 
