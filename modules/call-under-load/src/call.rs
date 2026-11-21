@@ -89,10 +89,9 @@ impl Drop for Started {
             let _ = child.wait();
         }
         let profiles: Vec<&Path> = self.profiles.iter().map(PathBuf::as_path).collect();
-        if unenrolled(&profiles, &self.state).is_err() && managed::stays_off(&self.state).is_none()
-        {
+        if let Err(Enrolled { kept: false, .. }) = unenrolled(&profiles, &self.state) {
             // An enrolment that couldn't be kept stays where it is, for
-            // the next run's sweep to find, rather than going unread.
+            // `run` and the next run's sweep to find, rather than going.
             return;
         }
         for folder in &self.folders {
@@ -220,7 +219,7 @@ pub fn run(
     runtime: &Path,
     cache: &Path,
     state: &Path,
-) -> Result<Ended, String> {
+) -> Result<Ended, Fault> {
     let watch = Watch::start();
     let folders = Folders {
         runtime,
@@ -228,13 +227,37 @@ pub fn run(
         state,
     };
     let ended = settled(steps(chrome, page, seconds, &folders, &watch), &watch);
+    // An enrolment that couldn't be kept was left in its profile by the
+    // call's clean-up; looking again keeps it if it now can.
+    let id = std::process::id();
+    let mine = [
+        cache.join(format!("profile-{id}")),
+        cache.join(format!("far-{id}")),
+    ];
+    let left = unenrolled(&[mine[0].as_path(), mine[1].as_path()], state);
+    if let Err(Enrolled { why, kept }) = left {
+        if kept {
+            for profile in &mine {
+                let _ = fs::remove_dir_all(profile);
+            }
+        }
+        return Err(Fault::Enrolled(why));
+    }
     // The run starts only with nothing kept, so anything kept now was
     // found by this run, perhaps only as its clean-up looked, and this
     // run says so rather than the next hour.
     match managed::stays_off(state) {
-        Some(why) => Err(why),
-        None => ended,
+        Some(why) => Err(Fault::Enrolled(why)),
+        None => ended.map_err(Fault::Failed),
     }
+}
+
+/// Why a call gave no figures: a test browser enrolled, which refuses the
+/// run as every later hour is refused, or the call couldn't be made.
+#[derive(Debug)]
+pub enum Fault {
+    Enrolled(String),
+    Failed(String),
 }
 
 /// The folders a call is made in, as `run` names them.
@@ -281,7 +304,8 @@ impl From<Ended> for Step {
 
 /// Removes what earlier runs ended without their cleanup left in
 /// `runtime` and `cache`, looking in each profile first (`sweep`). It's
-/// run before the hour's gates, so a skipped hour still looks.
+/// run before the hour's gates, so a skipped hour still looks. An error
+/// is always an enrolment.
 pub fn swept(runtime: &Path, cache: &Path, state: &Path) -> Result<(), String> {
     sweep(runtime, "call-under-load-", state)?;
     sweep(cache, "profile-", state)?;
@@ -309,8 +333,8 @@ fn sweep(folder: &Path, prefix: &str, state: &Path) -> Result<(), String> {
             // What it was given is copied into `state` before the folder
             // goes, and a folder whose enrolment couldn't be kept stays.
             let looked = unenrolled(&[left.as_path(), far.as_path()], state);
-            if let Err(Step::Refused(why)) = looked {
-                if managed::stays_off(state).is_some() {
+            if let Err(Enrolled { why, kept }) = looked {
+                if kept {
                     let _ = fs::remove_dir_all(&left);
                 }
                 return Err(why);
@@ -468,21 +492,53 @@ fn lay_out(memory: &Path, profile: &Path, config: &Path) -> std::io::Result<()> 
 /// `Policy/Enrollment`. Chromium reads no enrolment token, so it never
 /// should; this is the alarm behind that, since an enrolled test browser
 /// shows up in the machine owner's management as one of Joel's.
-/// What it was given is kept in `state` first, which keeps the test off
-/// until someone has read it (`managed::keep`).
-fn unenrolled(profiles: &[&Path], state: &Path) -> Result<(), Step> {
+/// What each profile was given is kept in `state` first, which keeps the
+/// test off until someone has read it (`managed::keep`).
+fn unenrolled(profiles: &[&Path], state: &Path) -> Result<(), Enrolled> {
+    let mut found: Option<Enrolled> = None;
     for profile in profiles {
         let enrolment = profile.join("Policy/Enrollment");
-        if fs::read_dir(&enrolment).is_ok_and(|mut tokens| tokens.next().is_some()) {
-            let why = format!(
-                "a test browser enrolled with a management service, in {}",
-                enrolment.display()
-            );
-            managed::keep(state, &why, profile);
-            return Err(Step::Refused(why));
+        if !fs::read_dir(&enrolment).is_ok_and(|mut tokens| tokens.next().is_some()) {
+            continue;
         }
+        let kept = managed::kept_from(state, profile);
+        let said = format!(
+            "a test browser enrolled with a management service; what it was given is kept in {}",
+            kept.display()
+        );
+        let kept = managed::keep(state, &said, profile);
+        let why = if kept {
+            said
+        } else {
+            format!(
+                "a test browser enrolled with a management service and it couldn't be kept, \
+                 so its profile stays at {}",
+                profile.display()
+            )
+        };
+        found = Some(match found {
+            None => Enrolled { why, kept },
+            Some(earlier) => Enrolled {
+                why: format!("{}; {why}", earlier.why),
+                kept: earlier.kept && kept,
+            },
+        });
     }
-    Ok(())
+    found.map_or(Ok(()), Err)
+}
+
+/// What `unenrolled` found: why the call ends, and whether every enrolled
+/// profile's evidence was kept, which alone lets the profiles go.
+#[derive(Debug)]
+struct Enrolled {
+    why: String,
+    kept: bool,
+}
+
+impl From<Enrolled> for Step {
+    fn from(enrolled: Enrolled) -> Self {
+        Step::Refused(enrolled.why)
+    }
 }
 
 /// Refuses a camera that isn't Chromium's fake one, as `end`'s page named it.

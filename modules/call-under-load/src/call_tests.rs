@@ -185,12 +185,25 @@ fn a_browser_that_enrolled_ends_the_call_and_keeps_the_test_off() {
         "an empty enrolment folder stopped the call"
     );
     fs::write(profile.join("Policy/Enrollment/token"), "t").expect("the token is written");
-    let stopped = unenrolled(&[Path::new("/nonexistent"), profile.as_path()], &state);
+    let far = profile.join("far");
+    fs::create_dir_all(far.join("Policy/Enrollment")).expect("the far folder is made");
+    fs::write(far.join("Policy/Enrollment/token"), "f").expect("the far token is written");
+    let stopped = unenrolled(
+        &[Path::new("/nonexistent"), profile.as_path(), far.as_path()],
+        &state,
+    );
     let off = managed::stays_off(&state);
+    let far_kept = managed::kept_from(&state, &far)
+        .join("Policy/Enrollment/token")
+        .exists();
     let _ = (fs::remove_dir_all(&profile), fs::remove_dir_all(&state));
     assert!(
-        matches!(stopped, Err(Step::Refused(ref why)) if why.contains("enrolled")),
-        "an enrolled browser's call went on"
+        matches!(stopped, Err(Enrolled { ref why, kept: true }) if why.contains("enrolled")),
+        "an enrolled browser's call went on, or its enrolment wasn't kept"
+    );
+    assert!(
+        far_kept,
+        "a second browser's enrolment wasn't kept beside the first's"
     );
     assert!(
         off.is_some_and(|why| why.contains("enrolled")),

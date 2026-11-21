@@ -267,14 +267,16 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .because("share/call-under-load/page.html isn't beside the program")
                 .try_this("nix build .#call-under-load")
         })?;
-    let ended = call::run(&chrome, &page, SECONDS, &runtime, &cache, &state()).map_err(|why| {
-        if managed::stays_off(&state()).is_some() {
-            return enrolled(why);
-        }
-        Failure::new(Exit::Failed, "the test call couldn't be made")
-            .because(why)
-            .try_this("journalctl --user -u call-under-load")
-    })?;
+    let ended = call::run(&chrome, &page, SECONDS, &runtime, &cache, &state()).map_err(
+        |fault| match fault {
+            call::Fault::Enrolled(why) => enrolled(why),
+            call::Fault::Failed(why) => {
+                Failure::new(Exit::Failed, "the test call couldn't be made")
+                    .because(why)
+                    .try_this("journalctl --user -u call-under-load")
+            }
+        },
+    )?;
     let (mine, far, clicks) = match ended {
         call::Ended::Stopped(why) => return skip(why),
         call::Ended::Ran { mine, far, clicks } => (mine, far, clicks),
