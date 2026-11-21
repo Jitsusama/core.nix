@@ -868,6 +868,34 @@ fn a_macs_boot_read_that_fails_names_its_program_and_keeps_its_words() {
         said.contains("/usr/bin/id: exit status: 1"),
         "said {said:?}"
     );
+    assert!(
+        !said.contains("after"),
+        "a read failing at once says no time: {said:?}"
+    );
+}
+
+#[test]
+fn a_macs_boot_read_that_fails_slowly_says_how_long_it_took() {
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/bin/who" => {
+                thread::sleep(SLOW_READ + Duration::from_millis(300));
+                Err(Unheard::Failed("exit status: 1".into()))
+            }
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
+    .expect_err("a failed read fails")
+    .to_string();
+    let took = said
+        .split("/usr/bin/who: exit status: 1, after ")
+        .nth(1)
+        .and_then(|rest| rest.split(" s").next()?.parse::<f64>().ok());
+    assert!(
+        took.is_some_and(|took| took >= SLOW_READ.as_secs_f64()),
+        "a slow failure says its time: {said:?}"
+    );
 }
 
 #[test]

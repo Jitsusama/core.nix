@@ -96,7 +96,10 @@ pub(super) const SLOW_READ: Duration = Duration::from_secs(1);
 /// that fails names its program, since a Mac's three each answer at once
 /// by hand, and only the name says which one a busy Mac held up. One that
 /// answered but took `SLOW_READ` or longer is told to `slow`, with how
-/// long it took.
+/// long it took; one that failed after as long says so in its failure,
+/// since a stall that ends in failure is told apart from a read refused
+/// at once only by its time. A stall stopped at its limit says its time
+/// already.
 pub(super) fn mac_era(
     look: &dyn Fn(&mut Command) -> Result<String, Unheard>,
     slow: &dyn Fn(&str),
@@ -107,7 +110,15 @@ pub(super) fn mac_era(
     let ran = |command: &mut Command| {
         let program = command.get_program().display().to_string();
         let asked = Instant::now();
-        let answer = look(command).map_err(|e| unread(format!("{program}: {e}")))?;
+        let answer = look(command).map_err(|e| {
+            let took = asked.elapsed();
+            unread(match e {
+                Unheard::Failed(_) if took >= SLOW_READ => {
+                    format!("{program}: {e}, after {:.1} s", took.as_secs_f64())
+                }
+                _ => format!("{program}: {e}"),
+            })
+        })?;
         let took = asked.elapsed();
         if took >= SLOW_READ {
             slow(&format!(
