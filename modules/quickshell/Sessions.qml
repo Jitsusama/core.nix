@@ -1507,8 +1507,7 @@ Singleton {
         // Whether the boot being restored kept its places at all, so one
         // kept nowhere had no window rather than went unrecorded
         // (Reopening.broughtBack).
-        const arranged = keptAt !== undefined
-            || Object.keys(boots.restored ?? {}).length > 0;
+        const arranged = true;
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
         lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf, arranged));
