@@ -5,6 +5,10 @@
 //! Held under that pace, the queue stays in the CAKE, which sends his
 //! first. The link's own rate is left alone, so agents' direct lane
 //! borrows what the VPN no longer takes.
+//!
+//! The same hold, a second one, holds agents' direct lane instead while
+//! they send beside the VPN's wait (src/oneway.rs): there what they send
+//! is what the VPN's flow may wait behind, and they yield first.
 
 use crate::oneway::{ELSEWHERE_S, FAR_CUTS, FAR_MOST_S, FAR_S, VPN_MARGIN_MS};
 
@@ -65,6 +69,12 @@ impl Hold {
     /// The wait inside the tunnel that set the last cut, in ms.
     pub fn waited_ms(&self) -> f64 {
         self.waited_ms
+    }
+
+    /// Whether a wait at `at` is heeded: not while one its cuts didn't
+    /// lower goes unheeded.
+    pub fn heeding(&self, at: f64) -> bool {
+        at >= self.unheeded_until
     }
 
     /// Steps the hold `dt` seconds on to `at`, with the VPN's wait past

@@ -374,6 +374,10 @@ pub struct Ours {
     #[serde(default)]
     pub link_wait_ms: u64,
     pub waiting: bool,
+    /// Whether agents straight on the connection had something waiting
+    /// to go, so a wait only the VPN's flow meets may be theirs to yield.
+    #[serde(default)]
+    pub agents_straight: bool,
     /// What TCP sent again over the last second, in kbit/s. A router held
     /// past what it carries drops the rest flow by flow, and what it
     /// dropped crosses our link twice, so it's no part of the line.
@@ -418,6 +422,8 @@ impl Ours {
             vpn_queued: stood(vpn),
             link_wait_ms,
             waiting,
+            // The lanes say this, not the queues' reads.
+            agents_straight: false,
             resent,
             dropped,
             sent: None,
@@ -1503,6 +1509,9 @@ pub struct Controller {
     last_cut: LastCut,
     /// The hold on the VPN's own queue, for a wait inside its tunnel.
     tunnel: crate::tunnel::Hold,
+    /// The hold on agents' direct lane, for a wait only the VPN's flow
+    /// meets while they send beside it.
+    agents: crate::tunnel::Hold,
     /// Since when the upload's acks have come late, through the
     /// download's queue, unbroken.
     acks_late_since: Option<f64>,
@@ -1534,6 +1543,7 @@ impl Controller {
             why_since: None,
             last_cut: LastCut::default(),
             tunnel: crate::tunnel::Hold::default(),
+            agents: crate::tunnel::Hold::default(),
             acks_late_since: None,
         }
     }
@@ -1570,6 +1580,12 @@ impl Controller {
     /// while it waits inside its tunnel with the line to spare.
     pub fn tunnel_share(&self) -> f64 {
         self.tunnel.share()
+    }
+
+    /// The share of their split agents' direct lane is held to: under one
+    /// while the VPN's flow waits beside what they send.
+    pub fn agents_share(&self) -> f64 {
+        self.agents.share()
     }
 
     /// Anchors the upload to its network's declared rate, in kbit/s, or to
@@ -1687,6 +1703,47 @@ impl Controller {
         (vpn - base - probes - link - VPN_MARGIN_MS).max(0.0)
     }
 
+    /// Answer a wait only the VPN's round trip meets, by holding agents
+    /// straight, the VPN's own queue, or neither. Gives the wait met, and
+    /// what's left of it for the upload to be cut for, if any.
+    fn answer_far(&mut self, seen: &Seen, dt: f64) -> (f64, Option<f64>) {
+        let at = seen.at_s;
+        let met = self.hidden(seen);
+        // Under the line, a wait only the VPN's round trip meets is the
+        // VPN's own, or its far path's: at 02:05 on 16 November it read
+        // over 100 ms while the link carried half its line. It's said,
+        // and no cut is made for it.
+        // That wait the VPN's own queue is held for instead, so it
+        // stands in the VPN's CAKE, where Joel's packets go first, rather
+        // than inside its tunnel, where they wait alike with agents'.
+        let far = self.far.heed(at, met);
+        // Agents sending straight yield first: the VPN's flow may wait
+        // behind what they send, past our queues, as on 20 November, when
+        // the upload ran full beside the VPN's wait and cuts of the whole
+        // of it went back with the guard. While they wait their lane is
+        // held for the wait, and neither the upload nor the VPN's own
+        // queue is. A wait their hold doesn't lower is let go a while, and
+        // answered as before. They don't yield while the VPN's own hold
+        // works, which given nothing would read the wait as drained and
+        // let go, nor while the upload has no limit, whose lanes main
+        // doesn't hold.
+        let yields = seen.up_ours.is_some_and(|ours| ours.agents_straight)
+            && self.agents.heeding(at)
+            && self.tunnel.share() >= 1.0
+            && self.up.limit().is_some();
+        self.agents
+            .step(at, dt, far.filter(|_| yields), self.up.tuning.late_ms);
+        let far = far.filter(|_| !yields);
+        let heeded = far.filter(|_| self.may_fill_the_line(seen.up_kbit));
+        self.tunnel.step(
+            at,
+            dt,
+            far.filter(|_| heeded.is_none()),
+            self.up.tuning.late_ms,
+        );
+        (met, heeded)
+    }
+
     /// Take in a cut for a queue only the VPN's round trip met, made with
     /// the upload's plateau at `plateau` before, and take back what the
     /// cuts for it did once they show it's the far path's.
@@ -1732,6 +1789,7 @@ impl Controller {
         // VPN within it at its whole share, since no wait is judged.
         if self.given_up() || unanswered {
             self.tunnel = crate::tunnel::Hold::default();
+            self.agents = crate::tunnel::Hold::default();
         }
         if self.given_up() || unanswered {
             // A spell of late acks the controller didn't judge through is
@@ -1750,22 +1808,7 @@ impl Controller {
                 down: None,
             };
         }
-        let met = self.hidden(seen);
-        // Under the line, a wait only the VPN's round trip meets is the
-        // VPN's own, or its far path's: at 02:05 on 16 November it read
-        // over 100 ms while the link carried half its line. It's said,
-        // and no cut is made for it.
-        // That wait the VPN's own queue is held for instead, so it
-        // stands in the VPN's CAKE, where Joel's packets go first, rather
-        // than inside its tunnel, where they wait alike with agents'.
-        let far = self.far.heed(at, met);
-        let heeded = far.filter(|_| self.may_fill_the_line(seen.up_kbit));
-        self.tunnel.step(
-            at,
-            dt,
-            far.filter(|_| heeded.is_none()),
-            self.up.tuning.late_ms,
-        );
+        let (met, heeded) = self.answer_far(seen, dt);
         let up = seen.up_delay_ms.map(|d| (d - air).max(0.0));
         let down = seen.down_delay_ms.map(|d| (d - air).max(0.0));
         let idle_up = self.up.idle(seen.up_kbit);
@@ -1801,6 +1844,7 @@ impl Controller {
         }
         if self.given_up() {
             self.tunnel = crate::tunnel::Hold::default();
+            self.agents = crate::tunnel::Hold::default();
             self.gave_up_at.get_or_insert(at);
             self.judge(at, Why::GaveUp);
             return Limits {
@@ -1811,7 +1855,8 @@ impl Controller {
         let cut = self.up.last_cut > cuts;
         let guarded = self.guard_the_anchor(at, fed, cut);
         self.up.under_the_ceiling();
-        let why = self.reason(at, guarded, met, heeded);
+        let waiting = seen.up_ours.is_some_and(|ours| ours.agents_straight);
+        let why = self.reason(at, guarded, met, (heeded, waiting));
         self.judge(at, why);
         Limits {
             up: self.up.limit(),
@@ -1933,7 +1978,8 @@ impl Controller {
 
     /// What set the upload's rate this moment: `met` is the queue only the
     /// VPN's flow meets, and `heeded` it while cuts still heed it.
-    fn reason(&self, at: f64, guarded: bool, met: f64, heeded: Option<f64>) -> Why {
+    fn reason(&self, at: f64, guarded: bool, met: f64, heard: (Option<f64>, bool)) -> Why {
+        let (heeded, agents_wait) = heard;
         let up = &self.up;
         let cut_lately = at - up.last_cut < CEILING_S;
         let since = self.why_since.unwrap_or(at);
@@ -1947,7 +1993,18 @@ impl Controller {
         if !up.rate.is_finite() {
             return Why::Unmeasured;
         }
+        // The VPN's own hold is named first: agents don't yield while it
+        // works, so theirs is then only climbing back. Agents' hold is
+        // named only while they wait straight, since the lanes cap nothing
+        // otherwise.
         let share = self.tunnel.share();
+        let held = self.agents.share();
+        if heeded.is_none() && agents_wait && share >= 1.0 && held < 1.0 {
+            return Why::Agents {
+                delay_ms: self.agents.waited_ms(),
+                share: held,
+            };
+        }
         if heeded.is_none() && share < 1.0 {
             return Why::Tunnel {
                 delay_ms: self.tunnel.waited_ms(),
@@ -5576,12 +5633,13 @@ mod tests {
     /// `tunnel(at)` kbit/s: what the VPN's CAKE sends past that waits in
     /// the tunnel, where the round trip through it meets it. Answers the
     /// upload's lowest limit, and the tunnel's mean wait over the last
-    /// half of the run, in ms.
+    /// half of the run, in ms. With `agents_straight`, agents straight on
+    /// the connection have something waiting to go too.
     fn filling_a_tunnel(
         c: &mut Controller,
-        from: f64,
-        seconds: f64,
+        (from, seconds): (f64, f64),
         tunnel: impl Fn(f64) -> f64,
+        agents_straight: bool,
         queued_bits: &mut f64,
     ) -> (f64, f64) {
         const BASE_MS: f64 = 30.0;
@@ -5602,6 +5660,7 @@ mod tests {
                     in_vpn: true,
                     vpn_queued: true,
                     waiting: true,
+                    agents_straight,
                     ..Ours::default()
                 }),
                 vpn_ms: Some(BASE_MS + wait_ms),
@@ -5626,7 +5685,8 @@ mod tests {
     fn a_wait_inside_the_tunnel_holds_the_vpn_s_own_queue_not_the_upload() {
         let mut c = anchored(12_000.0);
         let mut queued = 0.0;
-        let (lowest, waited) = filling_a_tunnel(&mut c, 0.0, 120.0, |_| 7_500.0, &mut queued);
+        let (lowest, waited) =
+            filling_a_tunnel(&mut c, (0.0, 120.0), |_| 7_500.0, false, &mut queued);
         assert!(
             lowest >= 10_799.0,
             "the upload was cut to {lowest} for the tunnel's own queue"
@@ -5643,18 +5703,246 @@ mod tests {
     fn the_vpn_s_own_queue_climbs_back_once_the_tunnel_delivers_again() {
         let mut c = anchored(12_000.0);
         let mut queued = 0.0;
-        filling_a_tunnel(&mut c, 0.0, 60.0, |_| 7_500.0, &mut queued);
+        filling_a_tunnel(&mut c, (0.0, 60.0), |_| 7_500.0, false, &mut queued);
         let held = c.tunnel_share();
         assert!(
             held < 0.95,
             "a full tunnel left the VPN's share at {held:.2}"
         );
-        filling_a_tunnel(&mut c, 60.0, 60.0, |_| 20_000.0, &mut queued);
+        filling_a_tunnel(&mut c, (60.0, 60.0), |_| 20_000.0, false, &mut queued);
         assert!(
             c.tunnel_share() > 0.99,
             "a clear tunnel left the VPN's share at {:.2}, from {held:.2}",
             c.tunnel_share()
         );
+    }
+
+    /// Steps an anchored controller for `seconds` whose agents send
+    /// `agents` kbit/s straight on the connection beside the VPN's `vpn`,
+    /// each held to its share, past our queues to a line that carries
+    /// `line`: what they send past it waits there, where the round trip
+    /// through the VPN meets it and the probes don't. Answers the upload's
+    /// lowest limit, and the mean wait over the last half of the run, in
+    /// ms.
+    fn beside_agents(
+        c: &mut Controller,
+        (from, seconds): (f64, f64),
+        (agents, vpn, line): (f64, f64, f64),
+        queued_bits: &mut f64,
+    ) -> (f64, f64) {
+        const BASE_MS: f64 = 30.0;
+        const DT: f64 = 0.1;
+        let (mut lowest, mut waited, mut heard) = (f64::INFINITY, 0.0, 0.0_f64);
+        let mut at = from;
+        while at < from + seconds {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let sent = (vpn * c.tunnel_share() + agents * c.agents_share()).min(rate);
+            *queued_bits = (*queued_bits + (sent - line) * 1_000.0 * DT).max(0.0);
+            let wait_ms = *queued_bits / line;
+            let limits = c.step(&Seen {
+                at_s: at,
+                up_kbit: sent,
+                up_ours: Some(Ours {
+                    queued: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    agents_straight: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(BASE_MS + wait_ms),
+                ..quiet(0.0, 300.0)(at)
+            });
+            lowest = lowest.min(limits.up.map_or(f64::INFINITY, crate::rate::float));
+            if at >= from + seconds / 2.0 {
+                waited += wait_ms;
+                heard += 1.0;
+            }
+            at += DT;
+        }
+        (lowest, waited / heard.max(1.0))
+    }
+
+    // As on 20 November: builders' copies straight on the connection
+    // filled the upload beside the VPN, whose round trip rose past 100 ms
+    // with the probes clear. Cuts of the whole upload held Joel's own low
+    // and went back with the guard; holding agents' lane drains the wait.
+    #[test]
+    fn a_wait_beside_agents_straight_holds_their_lane_not_the_upload_or_the_vpn() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        let (lowest, waited) = beside_agents(
+            &mut c,
+            (0.0, 120.0),
+            (7_000.0, 3_000.0, 9_000.0),
+            &mut queued,
+        );
+        assert!(
+            lowest >= 10_799.0,
+            "the upload was cut to {lowest} for agents' own uploads"
+        );
+        assert!(
+            c.tunnel_share() > 0.99,
+            "agents' own uploads held the VPN to {:.2} of its lane",
+            c.tunnel_share()
+        );
+        assert!(
+            waited < 30.0,
+            "the VPN waited {waited:.0} ms on average beside agents held to {:.2}",
+            c.agents_share()
+        );
+        assert!(
+            c.agents_share() < 0.95,
+            "agents straight sent at {:.2} of their share",
+            c.agents_share()
+        );
+        assert!(c.why().contains("agents' own uploads"), "{}", c.why());
+    }
+
+    // Held agents are let go with the rest when the reflectors stop
+    // answering, so a hold never outlasts the controller's judging.
+    #[test]
+    fn agents_held_are_let_go_when_no_reflector_answers() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        beside_agents(
+            &mut c,
+            (0.0, 30.0),
+            (7_000.0, 3_000.0, 9_000.0),
+            &mut queued,
+        );
+        assert!(c.agents_share() < 0.95, "agents weren't held");
+        c.step(&Seen {
+            at_s: 30.0 + UNANSWERED_S,
+            ..Seen::default()
+        });
+        assert!(
+            c.agents_share() >= 1.0,
+            "agents stayed held at {:.2} with no reflector answering",
+            c.agents_share()
+        );
+    }
+
+    // Once agents stop waiting straight their lanes cap nothing, so a
+    // share still climbing back isn't named as a hold.
+    #[test]
+    fn agents_who_stopped_waiting_aren_t_said_to_be_held() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        beside_agents(
+            &mut c,
+            (0.0, 30.0),
+            (7_000.0, 3_000.0, 9_000.0),
+            &mut queued,
+        );
+        c.step(&Seen {
+            at_s: 30.0,
+            up_kbit: 3_000.0,
+            up_ours: Some(Ours::default()),
+            vpn_ms: Some(30.0),
+            ..quiet(0.0, 300.0)(30.0)
+        });
+        assert!(c.agents_share() < 1.0, "agents' share was whole at once");
+        assert!(!c.why().contains("agents' own uploads"), "{}", c.why());
+    }
+
+    // An upload with no limit has no lanes main holds, so agents aren't
+    // asked to yield on it. The controller would soon limit an upload
+    // this full, so its rate is let go before each step.
+    #[test]
+    fn agents_on_an_unlimited_upload_aren_t_asked_to_yield() {
+        let mut c = anchored(12_000.0);
+        let (mut queued, mut at) = (0.0_f64, 0.0);
+        while at < 60.0 {
+            c.up.rate = f64::INFINITY;
+            queued += 1_000.0 * 100.0;
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: 10_000.0,
+                up_ours: Some(Ours {
+                    queued: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    agents_straight: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(30.0 + queued / 9_000.0),
+                ..quiet(0.0, 300.0)(at)
+            });
+            assert!(
+                c.agents_share() >= 1.0,
+                "agents on an unlimited upload were held to {:.2} at {at:.1} s",
+                c.agents_share()
+            );
+            at += 0.1;
+        }
+    }
+
+    // Agents who don't wait straight are never held, whatever the VPN
+    // waits for: checked through the run, since a hold let go as futile
+    // would leave the share whole again by its end.
+    #[test]
+    fn agents_not_waiting_straight_are_never_held() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        let mut at = 0.0;
+        while at < 60.0 {
+            // Just under half a second, so each call makes five steps.
+            filling_a_tunnel(&mut c, (at, 0.45), |_| 7_500.0, false, &mut queued);
+            assert!(
+                c.agents_share() >= 1.0,
+                "agents not waiting were held to {:.2} at {at:.1} s",
+                c.agents_share()
+            );
+            at += 0.5;
+        }
+    }
+
+    // A wait inside the tunnel isn't agents' to drain, though they wait
+    // beside it: their hold lowers nothing, so it's let go, and the VPN's
+    // own queue is held as before. Run past the time agents' hold is let
+    // go for, it isn't taken back from the VPN's while that works.
+    #[test]
+    fn a_wait_agents_holding_back_doesn_t_drain_goes_back_to_the_vpn_s_hold() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        let (mut lowest, mut least_share) = (f64::INFINITY, 1.0_f64);
+        let mut first_share = 1.0_f64;
+        let (mut waited, mut heard) = (0.0, 0.0);
+        let mut at = 0.0;
+        while at < 400.0 {
+            // Just under a second, so each call makes ten steps.
+            let (low, wait) = filling_a_tunnel(&mut c, (at, 0.95), |_| 7_500.0, true, &mut queued);
+            lowest = lowest.min(low);
+            if at < 8.0 {
+                first_share = first_share.min(c.agents_share());
+            } else if at >= 20.0 {
+                least_share = least_share.min(c.agents_share());
+            }
+            if at >= 200.0 {
+                waited += wait;
+                heard += 1.0;
+            }
+            at += 1.0;
+        }
+        let waited = waited / heard;
+        assert!(
+            first_share < 0.95,
+            "agents straight were never held first, at least {first_share:.2}"
+        );
+        assert!(
+            least_share > 0.99,
+            "a wait inside the tunnel held agents straight to {least_share:.2} after 20 s"
+        );
+        assert!(
+            lowest >= 10_799.0,
+            "the upload was cut to {lowest} for the tunnel's own queue"
+        );
+        assert!(
+            waited < 30.0,
+            "the tunnel held {waited:.0} ms on average from 200 s, at a share of {:.2}",
+            c.tunnel_share()
+        );
+        assert!(c.why().contains("inside its tunnel"), "{}", c.why());
     }
 
     // A wait no hold drains is the far path's, as on 15 November, and

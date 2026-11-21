@@ -29,6 +29,10 @@ pub enum Why {
     /// The VPN waited this long, in ms, inside its own tunnel, under a
     /// line with room, so its own queue is held to `share` of its lane.
     Tunnel { delay_ms: f64, share: f64 },
+    /// The VPN waited this long, in ms, past our queues while agents sent
+    /// straight on the connection, so their lane is held to `share` of
+    /// what it's split.
+    Agents { delay_ms: f64, share: f64 },
     /// Held under what got through a router that queues flow by flow, in
     /// kbit/s, where only data waiting shows its queue.
     Router { plateau: f64 },
@@ -89,6 +93,14 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
         Why::Tunnel { delay_ms, share } => format!(
             "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
              is held to {:.0}% of its lane; {held}.",
+            share * 100.0
+        ),
+        // The lanes never hold agents under their floor, which the
+        // controller doesn't know, so the share is said as at most.
+        Why::Agents { delay_ms, share } => format!(
+            "Upload {rate}: the VPN waited {delay_ms:.0} ms past our queues beside agents' own \
+             uploads, so their lane is held to {:.0}% of its share, or its floor if more; \
+             {held}.",
             share * 100.0
         ),
         Why::Router { plateau } => format!(
@@ -242,6 +254,23 @@ mod tests {
             ),
             "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
              held to 72% of its lane; held so for 8 s."
+        );
+    }
+
+    #[test]
+    fn agents_held_for_the_vpn_say_the_share_their_lane_is_held_to() {
+        assert_eq!(
+            say(
+                Why::Agents {
+                    delay_ms: 96.2,
+                    share: 0.614
+                },
+                Some(10_800),
+                Some(12_000.0),
+                14.0
+            ),
+            "Upload 10.8 Mb/s: the VPN waited 96 ms past our queues beside agents' own uploads, \
+             so their lane is held to 61% of its share, or its floor if more; held so for 14 s."
         );
     }
 
