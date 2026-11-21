@@ -100,6 +100,18 @@ impl Said {
     /// Take in a whole listing, saying what changed, and on the first
     /// one, the listing itself to everyone waiting for it.
     fn take_all(&mut self, listed: BTreeMap<String, String>) {
+        // The first listing is said whole to each client waiting for it,
+        // never file by file as well.
+        if !self.ready {
+            self.files = listed;
+            self.ready = true;
+            let clients = std::mem::take(&mut self.clients);
+            self.clients = clients
+                .into_iter()
+                .filter(|client| self.tell_all(client))
+                .collect();
+            return;
+        }
         let gone: Vec<String> = self
             .files
             .keys()
@@ -111,14 +123,6 @@ impl Said {
         }
         for (name, text) in listed {
             self.take(&name, Some(text));
-        }
-        if !self.ready {
-            self.ready = true;
-            let clients = std::mem::take(&mut self.clients);
-            self.clients = clients
-                .into_iter()
-                .filter(|client| self.tell_all(client))
-                .collect();
         }
     }
 }
