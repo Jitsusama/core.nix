@@ -359,11 +359,26 @@ mod tests {
     #[test]
     fn uptime_reads_as_seconds() {
         assert_eq!(uptime("226h:33m:39s"), Some(815_619), "the uptime misread");
+        let hours = u64::MAX / 3600;
         assert_eq!(
-            uptime(&format!("{}h:0m:0s", u64::MAX / 3600 + 1)),
-            None,
-            "an uptime past what seconds can hold was read as one"
+            uptime(&format!("{hours}h:0m:0s")),
+            Some(hours * 3600),
+            "the most hours seconds can hold weren't read"
         );
+        // Each step that could pass what seconds can hold: the hours, the
+        // minutes, then adding the minutes, then the seconds.
+        for said in [
+            format!("{}h:0m:0s", hours + 1),
+            format!("0h:{}m:0s", u64::MAX / 60 + 1),
+            format!("{hours}h:60m:0s"),
+            format!("{hours}h:0m:3600s"),
+        ] {
+            assert_eq!(
+                uptime(&said),
+                None,
+                "{said} is past what seconds can hold, yet read as an uptime"
+            );
+        }
     }
 
     #[test]

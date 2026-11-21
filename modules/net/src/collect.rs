@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
+use crate::model::{self, Device, Kept, LinkState, Medium, Network, SCHEMA};
 use crate::room;
 use crate::sources::{airplay, eero, hp, modem, samsung, sony, switch};
 
@@ -25,6 +25,16 @@ pub struct Said {
     /// What each Samsung box eero lists that could be a TV answered, and
     /// its last answer as a TV.
     pub televisions: Vec<samsung::Asked>,
+}
+
+/// One minute's record, each source carried over from the minutes `kept`
+/// before it. They're carried at the record's own time, the clock each
+/// source stamps a new outage with, since an outage carries only from a
+/// source whose since is that minute.
+pub fn carried(said: Said, now: u64, kept: &mut Vec<Kept>) -> Network {
+    let mut network = network(said, now);
+    model::carry_over(&mut network.sources, kept, network.collected_at);
+    network
 }
 
 pub fn network(said: Said, now: u64) -> Network {
@@ -600,20 +610,23 @@ mod tests {
         // The daemon carries each minute over at the record's own time, so
         // a source this minute stamps as down since now takes the earlier
         // minute's since only if the two clocks agree.
-        let down = |now| {
+        let mut kept = Vec::new();
+        let mut down = |now| {
             let said = Said {
                 modem: Err("timed out".into()),
                 ..contract()
             };
-            network(said, now)
+            carried(said, now, &mut kept)
         };
-        let mut kept = Vec::new();
-        let mut before = down(NOW - 60);
-        crate::model::carry_over(&mut before.sources, &mut kept, before.collected_at);
-        let mut now = down(NOW);
-        crate::model::carry_over(&mut now.sources, &mut kept, now.collected_at);
+        down(NOW - 60);
+        let now = down(NOW);
+        let modem = now
+            .sources
+            .iter()
+            .find(|source| source.name == "modem")
+            .expect("the record names the modem's source");
         assert_eq!(
-            now.sources[1].since,
+            modem.since,
             Some(NOW - 60),
             "the modem's outage began again at the minute it was collected"
         );

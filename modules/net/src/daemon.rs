@@ -140,8 +140,7 @@ pub fn run() -> Result<(), String> {
             apple_tvs,
             televisions,
         };
-        let mut network = collect::network(said, time::now());
-        model::carry_over(&mut network.sources, &mut kept, network.collected_at);
+        let mut network = collect::carried(said, time::now(), &mut kept);
         let earlier = history::read(&day, network.collected_at);
         history::recall(&mut network, &earlier);
         room::work_out(&mut network);

@@ -622,39 +622,46 @@ mod tests {
 
     #[test]
     fn a_restart_in_the_last_minute_is_seen_by_its_counts() {
-        // The modem started thirty seconds ago, so every count reads 0. The
-        // day's lines still outvote now's new start, so the counts falling
-        // against now alone are what show it.
-        let mut now = network();
-        let day = [
-            earlier(&now, 5 * HOUR, 800, 41),
-            earlier(&now, 3 * HOUR, 840, 41),
-        ];
-        let modem_now = now
-            .devices
-            .iter_mut()
-            .find(|device| device.id == "modem")
-            .expect("the record has the modem");
-        modem_now.up_s = Some(30);
-        for channel in &mut modem_now
-            .modem
-            .as_mut()
-            .expect("the modem has its channels")
-            .downstream
-        {
-            channel.uncorrectable = Some(0);
+        // The modem says it started thirty seconds ago. The day's lines
+        // still outvote now's new start, so only every count falling to 0
+        // against now alone shows it: with the same uptime and counts that
+        // kept climbing, the day reads on.
+        for (restarted, lately_s) in [(true, None), (false, Some(5 * HOUR))] {
+            let mut now = network();
+            let day = [
+                earlier(&now, 5 * HOUR, 800, 41),
+                earlier(&now, 3 * HOUR, 840, 41),
+            ];
+            let modem_now = now
+                .devices
+                .iter_mut()
+                .find(|device| device.id == "modem")
+                .expect("the record has the modem");
+            modem_now.up_s = Some(30);
+            if restarted {
+                for channel in &mut modem_now
+                    .modem
+                    .as_mut()
+                    .expect("the modem has its channels")
+                    .downstream
+                {
+                    channel.uncorrectable = Some(0);
+                }
+            }
+            let network = recalled(now, &day);
+            assert_eq!(
+                modem(&network).lately_s,
+                lately_s,
+                "a restart was judged wrongly when its counts fell: {restarted}"
+            );
+            if restarted {
+                assert_eq!(
+                    sixteen(&network).lost_lately,
+                    None,
+                    "channel 16 counted across a restart"
+                );
+            }
         }
-        let network = recalled(now, &day);
-        assert_eq!(
-            modem(&network).lately_s,
-            None,
-            "a restart in the last minute was walked past"
-        );
-        assert_eq!(
-            sixteen(&network).lost_lately,
-            None,
-            "channel 16 counted across a restart"
-        );
     }
 
     #[test]
@@ -790,7 +797,7 @@ mod tests {
         // minutes of it, since one later would cover less than the
         // stretch a warning names.
         let now = network();
-        for (after, ofdm_lately) in [(FIRST_READINGS, Some(0)), (FIRST_READINGS + 1, None)] {
+        for (after, ofdm_lately) in [(180, Some(0)), (181, None)] {
             let mut old = earlier(&now, 5 * HOUR, 800, 41);
             for lost in &mut old.lost {
                 lost.frequency_hz = None;
