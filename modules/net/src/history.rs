@@ -48,20 +48,24 @@ pub struct Lost {
 }
 
 impl Lost {
-    /// Whether this is the count of that channel: channels are told apart
-    /// by kind, number and frequency, since an OFDM channel has no number
-    /// and a modem locks to more than one.
+    /// Whether this is the count of that channel.
     pub fn of(&self, channel: &Channel) -> bool {
-        self.kind == channel.kind
-            && self.channel == channel.channel
-            && self.frequency_hz == channel.frequency_hz
+        self.is(&channel.kind, channel.channel, channel.frequency_hz)
     }
 
     /// Whether this and `other` count the same channel.
     fn same(&self, other: &Self) -> bool {
-        self.kind == other.kind
-            && self.channel == other.channel
-            && self.frequency_hz == other.frequency_hz
+        self.is(&other.kind, other.channel, other.frequency_hz)
+    }
+
+    /// A numbered channel is told apart by its kind and number, so a line
+    /// kept before net kept frequencies still counts it. An OFDM channel
+    /// has no number and a modem locks to more than one, so only its
+    /// frequency tells it apart, and an old line counts none of them.
+    fn is(&self, kind: &str, channel: Option<u32>, frequency_hz: Option<u64>) -> bool {
+        self.kind == kind
+            && self.channel == channel
+            && (channel.is_some() || self.frequency_hz == frequency_hz)
     }
 }
 
@@ -191,17 +195,24 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 
 /// What each downstream channel lost since the day's earliest reading
 /// after the modem last started: a start sets every count back to zero,
-/// so the walk back stops at the first reading higher than the one after
-/// it.
+/// so the walk back stops at the first reading where every channel that
+/// had counted any reads higher than in the one after it. One channel
+/// reading lower alone is the page misreading it, which it does now and
+/// then, often as a zero.
 fn lately(modem: &mut Modem, day: &[Moment], now: u64) {
     let mut later: Vec<Lost> = Moment::lost_of(modem);
     let mut base: Option<&Moment> = None;
     for moment in day.iter().rev().filter(|moment| moment.at < now) {
-        let started_since = moment.lost.iter().any(|earlier| {
-            later
-                .iter()
-                .any(|each| each.same(earlier) && earlier.uncorrectable > each.uncorrectable)
-        });
+        let mut counted = moment
+            .lost
+            .iter()
+            .filter(|earlier| earlier.uncorrectable > 0)
+            .filter_map(|earlier| {
+                let each = later.iter().find(|each| each.same(earlier))?;
+                Some(earlier.uncorrectable > each.uncorrectable)
+            })
+            .peekable();
+        let started_since = counted.peek().is_some() && counted.all(|fell| fell);
         if started_since {
             break;
         }
@@ -411,18 +422,99 @@ mod tests {
         );
     }
 
+    /// Sets what the channel at `frequency_hz` had lost in a moment.
+    fn ofdm(moment: &mut Moment, frequency_hz: u64, uncorrectable: u64) {
+        moment
+            .lost
+            .iter_mut()
+            .find(|lost| lost.frequency_hz == Some(frequency_hz))
+            .expect("the moment has the OFDM channel")
+            .uncorrectable = uncorrectable;
+    }
+
     #[test]
     fn lately_counts_only_since_the_modem_last_started() {
-        // 900 five hours ago is more than 878 now, so the modem started
-        // again since; it counts from 860 two hours ago.
+        // Five hours ago every channel that had counted any read higher
+        // than two hours ago, so the modem started again between; it
+        // counts from 860 two hours ago.
         let now = network();
+        let mut before = earlier(&now, 5 * HOUR, 900, 41);
+        ofdm(&mut before, 455_600_000, 30);
+        ofdm(&mut before, 635_600_000, 30);
+        let day = [before, earlier(&now, 2 * HOUR, 860, 41)];
+        let network = recalled(now, &day);
+        assert_eq!(
+            modem(&network).lately_s,
+            Some(2 * HOUR),
+            "the walk back went past the start"
+        );
+        assert_eq!(
+            sixteen(&network).lost_lately,
+            Some(18),
+            "channel 16 counted from the wrong reading"
+        );
+    }
+
+    #[test]
+    fn one_channel_reading_low_is_no_start() {
+        // The page misreads an OFDM channel's 18 as 0 now and then. Only
+        // that channel fell, so the modem didn't start: lately still
+        // reaches five hours back.
+        let now = network();
+        let mut misread = earlier(&now, 2 * HOUR, 850, 41);
+        ofdm(&mut misread, 455_600_000, 0);
         let day = [
-            earlier(&now, 5 * HOUR, 900, 41),
-            earlier(&now, 2 * HOUR, 860, 41),
+            earlier(&now, 5 * HOUR, 800, 41),
+            earlier(&now, 3 * HOUR, 840, 41),
+            misread,
         ];
         let network = recalled(now, &day);
-        assert_eq!(modem(&network).lately_s, Some(2 * HOUR));
-        assert_eq!(sixteen(&network).lost_lately, Some(18));
+        assert_eq!(
+            modem(&network).lately_s,
+            Some(5 * HOUR),
+            "a misread channel was taken as the modem starting"
+        );
+        assert_eq!(
+            sixteen(&network).lost_lately,
+            Some(78),
+            "channel 16 counted from the wrong reading"
+        );
+    }
+
+    #[test]
+    fn a_day_kept_before_frequencies_still_counts_a_numbered_channel() {
+        // A line written before net kept frequencies has none, so it can't
+        // tell the two OFDM channels apart, but channel 16's number still
+        // names it: its loss lately is said, and the OFDM channels' isn't.
+        let now = network();
+        let mut old = earlier(&now, 5 * HOUR, 800, 41);
+        for lost in &mut old.lost {
+            lost.frequency_hz = None;
+        }
+        let line = serde_json::to_string(&old).expect("a moment writes");
+        assert!(
+            !line.contains("frequency_hz"),
+            "the old line still names a frequency: {line}"
+        );
+        let old: Moment = serde_json::from_str(&line).expect("an old line reads");
+        let network = recalled(now, &[old]);
+        assert_eq!(
+            sixteen(&network).lost_lately,
+            Some(78),
+            "an old line no longer counts channel 16"
+        );
+        assert!(
+            modem(&network)
+                .downstream
+                .iter()
+                .filter(|channel| channel.kind == "ofdm")
+                .all(|channel| channel.lost_lately.is_none()),
+            "an old line was taken for one OFDM channel or the other"
+        );
+        assert!(
+            says(&network, ConcernKind::Lost).contains("78 of them in the last 5 hours"),
+            "the concern lost what channel 16 lost lately"
+        );
     }
 
     #[test]
