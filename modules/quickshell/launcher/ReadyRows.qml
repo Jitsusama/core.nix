@@ -19,6 +19,7 @@ import "Found.js" as Found
 import "ReadyRows.js" as Ready
 import "ActForms.js" as Forms
 import "Moved.js" as Moved
+import "Presented.js" as Presented
 import "Beneath.js" as Beneath
 import "../Confirm.js" as Confirm
 import "../Fuzzy.js" as Fuzzy
@@ -493,12 +494,13 @@ Scope {
         if (typedAsking !== `${within}\n${words}`)
             return;
         typedAsking = "";
-        console.info(`launcher: ${place} answered "${words}" typed in ${within} `
+        const typed = Presented.typedInSaid(words, within, Options.reports);
+        console.info(`launcher: ${place} answered ${typed} `
             + `${Date.now() - typedAt} ms after its key`);
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
-            console.warn(`launcher: ${place}'s daemon didn't answer "${words}" typed in `
-                + `${within}: ${JSON.stringify(answer?.error ?? null)}`);
+            console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `
+                + `${JSON.stringify(answer?.error ?? null)}`);
         const records = refused ? {} : answer.rows ?? {};
         for (const key of Object.keys(typedHeld)) {
             if (!(key in records) && !(key in held))
@@ -535,7 +537,8 @@ Scope {
                 out.push(row);
             } else if (!(key in unserved)) {
                 unserved[key] = true;
-                console.warn(`launcher: ${place}'s search found ${key}, which isn't served yet`);
+                console.warn(`launcher: ${place}'s search found `
+                    + `${Presented.rowShown({ key }, Options.reports)}, which isn't served yet`);
             }
         }
         return out;
@@ -856,7 +859,7 @@ Scope {
             const why = Forms.misformed(one);
             if (why !== "" && !(one.key in misformed)) {
                 misformed[one.key] = true;
-                console.info(`launcher: ${one.key} refused: ${why}`);
+                console.info(`launcher: ${actSaid(one)} refused: ${why}`);
             }
         }
         const named = {};
@@ -978,10 +981,18 @@ Scope {
     // An open whose program went between its rows being listed and Return opens nothing and says
     // so as a refused ask does, on the next opening, since the launcher has gone by then; nothing
     // was done, so nothing else it asks is sent.
+    // An act as its lines in the journal say it: by its key with reports on, said
+    // bare since an act's key is its daemon's own and the desktop's tests read it so,
+    // and otherwise by its verb alone (Presented.keyShown), since what follows may be
+    // an agent's id or a calendar's words.
+    function actSaid(one) {
+        return Presented.rowShown({ key: one.key }, Options.reports);
+    }
+
     function notOpened(key, one, why) {
         const row = served(key);
         const shown = row?.thing ?? key;
-        console.info(`launcher: ${one.key} opened nothing, its ${Ready.openedIn(one)} gone`);
+        console.info(`launcher: ${actSaid(one)} opened nothing, its ${Ready.openedIn(one)} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
         maker?.refused(shown, why);
     }
@@ -1015,7 +1026,7 @@ Scope {
         const name = toldName(key);
         const yanked = launcher?.yankedAlone;
         if (launcher && (launcher.open !== true || Array.isArray(launcher.walkTold))) {
-            console.info(`launcher: ${one.key} asked nothing: walked, or the launcher's shut`);
+            console.info(`launcher: ${actSaid(one)} asked nothing: walked, or the launcher's shut`);
             launcher.toldNot(name, "copy", words.onlyOpen ?? "");
             return;
         }
@@ -1028,16 +1039,16 @@ Scope {
             copyWait.stop();
             copyWaiting = null;
             if (launcher && launcher.open !== true) {
-                console.info(`launcher: ${one.key} copied nothing: the launcher closed first`);
+                console.info(`launcher: ${actSaid(one)} copied nothing: the launcher closed first`);
                 launcher.toldNot(name, "copy", words.closedFirst ?? "");
                 return;
             }
             if (launcher && Forms.movedOn(stood, Forms.standing(launcher, clipped))) {
-                console.info(`launcher: ${one.key} copied nothing: moved on first`);
+                console.info(`launcher: ${actSaid(one)} copied nothing: moved on first`);
                 launcher.toldNot(name, "copy", words.movedOn ?? "");
                 return;
             }
-            console.info(`launcher: ${one.key} copied`);
+            console.info(`launcher: ${actSaid(one)} copied`);
             Quickshell.clipboardText = copy;
             alsoAsked(one);
             if (typeof yanked === "function")
@@ -1049,7 +1060,7 @@ Scope {
             copyWaiting = null;
             const why = Ready.refusal(answer, words);
             const code = answer?.error?.code ?? "no answer";
-            console.info(`launcher: ${one.key} refused: ${code}`);
+            console.info(`launcher: ${actSaid(one)} refused: ${code}`);
             launcher?.toldNot(name, "copy", why);
         });
         // Ended at once, as with no connection, it has no wait left to end.
@@ -1099,7 +1110,7 @@ Scope {
         link.ask(also, answer => {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "")
-                console.info(`launcher: ${one.key}'s also refused: ${why}`);
+                console.info(`launcher: ${actSaid(one)}'s also refused: ${why}`);
         });
     }
 
@@ -1110,7 +1121,7 @@ Scope {
     function withheld(key, one) {
         const why = (typeof whyWithheld === "function" ? whyWithheld(key) : undefined)
             ?? Words.field.becoming?.keyed ?? "";
-        console.info(`launcher: ${one.key} withheld: ${why}`);
+        console.info(`launcher: ${actSaid(one)} withheld: ${why}`);
         maker?.launcher?.toldNot(toldName(key), one.ask.act ?? verbOf(one), why);
     }
 
@@ -1121,7 +1132,7 @@ Scope {
     function shut(key, one) {
         const name = toldName(key);
         const refused = why => {
-            console.info(`launcher: ${one.key} refused: ${why}`);
+            console.info(`launcher: ${actSaid(one)} refused: ${why}`);
             maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
         };
         const words = Words.field.becoming ?? {};
@@ -1221,7 +1232,7 @@ Scope {
             const why = Ready.refusal(answer, words);
             if (why !== "") {
                 const code = answer?.error?.refused ?? answer?.error?.code ?? "no answer";
-                console.info(`launcher: ${one.key} refused: ${code}`);
+                console.info(`launcher: ${actSaid(one)} refused: ${code}`);
                 said(key, why);
                 return;
             }
