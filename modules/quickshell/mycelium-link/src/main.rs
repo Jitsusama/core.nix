@@ -37,6 +37,10 @@
 //! the last is let go too, so a page can't open the launcher over his work
 //! again and again; where when the last was followed can't be kept, none
 //! is followed at all.
+//!
+//! Long because its cases are over half of it: each kind of link a page
+//! may write has its own shapes to take and to refuse, and they're read
+//! beside the one reading that judges them all.
 
 use std::env;
 use std::fs::{File, OpenOptions};
