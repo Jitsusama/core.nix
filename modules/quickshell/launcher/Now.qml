@@ -1509,8 +1509,9 @@ Provider {
         // doesn't serve: one answered while its session hasn't written it
         // so (Looks.js's taken), or settled while the daemon hasn't told it
         // yet, and every one while the daemon serves none. Few, they're made
-        // here and sorted with what else the shell holds.
-        const apart = from === undefined ? lookedApart(looked) : [];
+        // here and sorted with what else the shell holds, each led to its
+        // cell as a served one is (doneWith).
+        const apart = from === undefined ? lookedApart(looked).map(Looks.doneWith) : [];
         const ours = from === undefined ? apart.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
