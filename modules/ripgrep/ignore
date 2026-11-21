@@ -1,0 +1,19 @@
+# What a search of a Mac's home folder never walks into, for ripgrep and fd
+# alike: other programs' data, the cloud's folders, and the Desktop,
+# Documents and Downloads folders, the ones macOS asked about. A search that
+# reaches one makes macOS ask whether the searcher may read it, again for every build
+# of the searcher, so an agent's search of the home folder asked over and over.
+# The cloud's folders are here too, since a search reading one downloads
+# each file the Mac doesn't hold yet. A search that names one of them, or
+# starts inside one, still searches it. So does one told to skip ignore
+# files (-u, --no-ignore), or given a glob matching a folder's name, such
+# as rg -g '*': no ignore file can stop those, and macOS's prompt is then
+# all that's left. A search following links (--follow) walks a link into
+# one under the link's own name, which no line here matches.
+/Library/Containers/
+/Library/Group Containers/
+/Library/Mobile Documents/
+/Library/CloudStorage/
+/Desktop/
+/Documents/
+/Downloads/

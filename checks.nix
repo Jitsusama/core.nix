@@ -667,6 +667,7 @@ gather {
     ./modules/receptor-say/checks.nix
     ./modules/repos/checks.nix
     ./modules/rhythm/checks.nix
+    ./modules/ripgrep/checks.nix
     ./modules/sccache/checks.nix
     ./modules/screen-text/checks.nix
     ./modules/sd-switch/checks.nix

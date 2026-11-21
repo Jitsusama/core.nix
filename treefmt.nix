@@ -95,6 +95,7 @@ in
     "modules/ghostty/config"
     "modules/gimp/gimprc"
     "modules/gimp/shortcutsrc"
+    "modules/ripgrep/ignore"
     # polkit's rules are JavaScript and udev's their own lines; the nft,
     # bpftrace and jq programs are read only by their own tools as they run.
     "*.rules"
