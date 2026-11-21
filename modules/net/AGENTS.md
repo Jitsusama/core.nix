@@ -33,8 +33,9 @@ TV are net's alone, and `eero` keeps only what's eero's.
   out, and why. A source reads only the minute it's in, so the daemon
   carries each over from the last minute that named it. One still not
   answering in the same way keeps when that began, if that minute was in
-  the last five, so no outage carries across a suspend; eero's says when
-  its own state began, from eero's record, so it keeps that. One that
+  the last five, so no outage carries across a suspend longer than that;
+  eero's says when its own state began, from eero's record, so it keeps
+  that. One that
   didn't answer keeps when it last did, however long ago, since that
   stays true while net isn't looking. So a minute eero doesn't answer,
   naming none of its devices, loses nothing. A daemon starting carries

@@ -220,8 +220,9 @@ pub fn carry_over(sources: &mut [Source], kept: &mut Vec<Kept>, now: u64) {
 
 /// Each source the record `text` names, at the minute it was collected, so
 /// a daemon starting carries over what the one before it last said. A
-/// record of another schema, or no record, carries nothing; one too old is
-/// dropped by `carry_over`. Only the sources are read, so a record whose
+/// record of another schema, or no record, carries nothing; one too old to
+/// carry an outage still carries when each source last answered, as
+/// `carry_over` says. Only the sources are read, so a record whose
 /// devices a newer net reads differently still carries them.
 pub fn kept_from(text: &str) -> Vec<Kept> {
     #[derive(Deserialize)]
