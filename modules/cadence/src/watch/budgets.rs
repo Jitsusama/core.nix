@@ -193,34 +193,63 @@ pub fn stands_for(key: &str) -> Vec<String> {
         .collect()
 }
 
-/// How far apart two resets of one allowance may read and still name one
-/// window: a plan's feed works out each reset at its read, so one window's
-/// drifts by seconds, while an allowance's windows are hours apart.
+/// How far one read of an allowance's reset may stand from the last and
+/// still name one window: a plan's feed works out each reset at its read,
+/// so one window's drifts by seconds, while an allowance's windows are
+/// hours apart.
 const SAME_WINDOW_S: i64 = 5 * 60;
+/// How far a reset may stand from a remembered whole hour and name its
+/// window: keys written before resets were kept to the second named a
+/// window by its reset rounded to the hour, so one standing at an upgrade
+/// keeps its window told.
+const ROUNDED_TO_HOUR_S: i64 = 30 * 60;
 
-/// `key` with its window named as a key in `remembered` names it, where
-/// that one is of the same allowance and resets within `SAME_WINDOW_S` of
-/// it, so a window told once isn't told again as its reset drifts. No
-/// rounding keeps every drift to one side of an edge, wherever the edge
-/// falls, so the reset is matched to the one told instead.
+/// Where `key`'s window is remembered under a reset read earlier, each
+/// key of that window in `remembered` beside the one it is remembered as
+/// now, so a window told once isn't told again as its reset drifts. Each
+/// read is matched to the last rather than the first, so a reset that
+/// creeps one way over a window's life stays its window. No rounding keeps
+/// every drift to one side of an edge, wherever the edge falls, so the
+/// reset is matched instead. Empty where it is remembered as it reads, or
+/// isn't remembered.
 #[must_use]
-pub fn as_remembered<'a>(key: &str, remembered: impl IntoIterator<Item = &'a str>) -> String {
-    let Some((allowance, level, resets)) = parts(key) else {
-        return key.to_owned();
+pub fn moved<'a>(
+    key: &str,
+    remembered: impl IntoIterator<Item = &'a str>,
+) -> Vec<(String, String)> {
+    let Some((allowance, _, resets)) = parts(key) else {
+        return Vec::new();
     };
     let Some(at) = instant(resets) else {
-        return key.to_owned();
+        return Vec::new();
     };
-    remembered
+    let windows: Vec<(&str, u32, &str)> = remembered
         .into_iter()
         .filter_map(parts)
-        .find(|(other, _, was)| {
-            *other == allowance && instant(was).is_some_and(|was| (was - at).abs() <= SAME_WINDOW_S)
+        .filter(|(other, _, _)| *other == allowance)
+        .collect();
+    if windows.iter().any(|(_, _, was)| *was == resets) {
+        return Vec::new();
+    }
+    let same = |was: &&str| {
+        instant(was).is_some_and(|was| {
+            let apart = (was - at).abs();
+            apart <= SAME_WINDOW_S || (was % 3600 == 0 && apart <= ROUNDED_TO_HOUR_S)
         })
-        .map_or_else(
-            || key.to_owned(),
-            |(_, _, was)| format!("budget:{allowance}{level}:{was}"),
-        )
+    };
+    let Some(was) = windows.iter().map(|(_, _, was)| *was).find(same) else {
+        return Vec::new();
+    };
+    windows
+        .iter()
+        .filter(|(_, _, other)| *other == was)
+        .map(|(_, level, _)| {
+            (
+                format!("budget:{allowance}{level}:{was}"),
+                format!("budget:{allowance}{level}:{resets}"),
+            )
+        })
+        .collect()
 }
 
 /// A budget's key read from the left, as a reset time holds colons of its
@@ -244,7 +273,7 @@ fn instant(resets: &str) -> Option<i64> {
 }
 
 /// An allowance's key at a level. Its window is named by when it resets,
-/// to the second, which `as_remembered` matches to the window already told
+/// to the second, which `moved` matches to the window already told
 /// as a plan's feed works it out afresh at each read. A colon in a
 /// budget's or an allowance's name reads as a dot, as `stands_for` splits
 /// the key on colons.
@@ -370,40 +399,77 @@ mod tests {
             keys(&said(&[(
                 "day",
                 Some(0.95),
-                Some("2026-11-21T04:59:59.902Z")
+                Some("2026-11-21T04:59:58.6Z")
             )])),
-            ["budget:proxy:day:90:2026-11-21T05:00:00Z"],
-            "a reset wasn't keyed to its second"
+            ["budget:proxy:day:90:2026-11-21T04:59:59Z"],
+            "a reset wasn't keyed to its nearest second"
         );
-        // A window's reset drifting across the hour or the half hour, and
-        // a level past the one told, keep the window told.
         let told = [
             "budget:proxy:day:80:2026-11-21T04:59:59Z",
+            "budget:proxy:day:90:2026-11-21T04:59:59Z",
             "budget:proxy:five:80:2026-11-21T16:29:59Z",
+            "budget:proxy:edge:80:2026-11-21T10:00:30Z",
+            // As keys were written before resets were kept to the second.
+            "budget:proxy:hour:80:2026-11-21T17:00:00Z",
         ];
-        for (key, window) in [
+        let moves = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .map(|(was, now)| ((*was).to_owned(), (*now).to_owned()))
+                .collect()
+        };
+        let none = moves(&[]);
+        for (key, moved_as) in [
+            // A reset drifting across the hour or the half hour moves its
+            // window's every level, a level past the one told included.
             (
                 "budget:proxy:day:80:2026-11-21T05:00:01Z",
-                "budget:proxy:day:80:2026-11-21T04:59:59Z",
+                moves(&[
+                    (
+                        "budget:proxy:day:80:2026-11-21T04:59:59Z",
+                        "budget:proxy:day:80:2026-11-21T05:00:01Z",
+                    ),
+                    (
+                        "budget:proxy:day:90:2026-11-21T04:59:59Z",
+                        "budget:proxy:day:90:2026-11-21T05:00:01Z",
+                    ),
+                ]),
             ),
             (
                 "budget:proxy:five:90:2026-11-21T16:30:01Z",
-                "budget:proxy:five:90:2026-11-21T16:29:59Z",
+                moves(&[(
+                    "budget:proxy:five:80:2026-11-21T16:29:59Z",
+                    "budget:proxy:five:80:2026-11-21T16:30:01Z",
+                )]),
             ),
+            ("budget:proxy:day:80:2026-11-21T04:59:59Z", none.clone()),
+            // Five minutes is one window, a second past it the next.
             (
-                "budget:proxy:day:80:2026-11-22T05:00:00Z",
-                "budget:proxy:day:80:2026-11-22T05:00:00Z",
+                "budget:proxy:edge:80:2026-11-21T10:05:30Z",
+                moves(&[(
+                    "budget:proxy:edge:80:2026-11-21T10:00:30Z",
+                    "budget:proxy:edge:80:2026-11-21T10:05:30Z",
+                )]),
             ),
+            ("budget:proxy:edge:80:2026-11-21T10:05:31Z", none.clone()),
+            // A window remembered by its hour stays told within half an
+            // hour of it.
             (
-                "budget:other:day:80:2026-11-21T05:00:00Z",
-                "budget:other:day:80:2026-11-21T05:00:00Z",
+                "budget:proxy:hour:90:2026-11-21T16:30:01Z",
+                moves(&[(
+                    "budget:proxy:hour:80:2026-11-21T17:00:00Z",
+                    "budget:proxy:hour:80:2026-11-21T16:30:01Z",
+                )]),
             ),
-            ("budget:proxy:weekly:90:", "budget:proxy:weekly:90:"),
-            (UNWATCHED, UNWATCHED),
+            ("budget:proxy:hour:80:2026-11-21T17:30:01Z", none.clone()),
+            ("budget:proxy:day:80:2026-11-22T05:00:00Z", none.clone()),
+            ("budget:other:day:80:2026-11-21T05:00:00Z", none.clone()),
+            ("budget:proxy:weekly:90:", none.clone()),
+            (UNWATCHED, none.clone()),
         ] {
             assert_eq!(
-                as_remembered(key, told),
-                window,
+                moved(key, told),
+                moved_as,
                 "{key} was matched to the wrong window: a drift would tell one again, or \
                  the next window or another budget's would go untold"
             );

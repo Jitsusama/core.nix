@@ -84,20 +84,14 @@ onLinux {
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or
   # near its allowance rather than as an error: reads-the-keys.sh finds
-  # each copy on both sides. It reads the files alone, so neither package
-  # rebuilds for the other.
+  # each copy on both sides. It passes only by finding each line, so one
+  # whose parser broke would pass while proving nothing:
+  # reads-the-keys-catches.sh runs it on the files as they are, then on
+  # copies renamed as each guard means, and each must be refused by its
+  # own guard. It reads the files alone, so neither package rebuilds for
+  # the other.
   cadence-reads-the-keys-spend-watch-writes =
     pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
-      ''
-        bash ${./reads-the-keys.sh} ${keysRead}
-        touch "$out"
-      '';
-  # The keys check passes only by finding each line, so one whose parser
-  # broke would pass while proving nothing: reads-the-keys-catches.sh
-  # gives it copies of spend-watch's files renamed as each guard means,
-  # and each must be refused.
-  cadence-keys-check-refuses-each-rename =
-    pkgs.runCommand "cadence-keys-check-refuses-each-rename" { }
       ''
         bash ${./reads-the-keys-catches.sh} ${./reads-the-keys.sh} ${keysRead}
         touch "$out"

@@ -551,18 +551,14 @@
     journal and history reads charge, no hard limit, whose kill would lose the card, and a
     half-hour timeout, so a throttled hour can't hold back the next
   '';
-  cadence-keys-check-refuses-each-rename = ''
-    the keys check refuses spend-watch's files with a field, a struct, its version, its
-    folder or a serde attribute renamed as each guard means, so a parser that broke can't
-    pass while proving nothing
-  '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
   '';
   cadence-reads-the-keys-spend-watch-writes = ''
     each finding key cadence's budget measures copy from spend-watch, and each field of
-    budgets.json its budget alarm reads, and the folder it's in, is still the one
-    spend-watch writes, and is a line of cadence's own rather than of a test's fixture
+    budgets.json its budget alarm reads, with its file and folder, is still the one
+    spend-watch writes, and is a line of cadence's own rather than of a test's fixture;
+    and copies renamed as each guard means are refused by that guard
   '';
   cadence-spec-passes-clippy = ''
     clippy finds nothing in cadence-spec or its tests

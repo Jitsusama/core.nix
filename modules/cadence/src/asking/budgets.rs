@@ -61,7 +61,9 @@ pub(super) fn remember(state: &mut State, key: &str, now: i64) {
 
 /// The breaches standing now, but for no budget watched until it has stood
 /// for `UNWATCHED_FOR` of waking time, so a machine just woken isn't told
-/// of it, each keyed by the window already told where its reset drifted.
+/// of it. Where a window's reset drifted, what's remembered of it moves to
+/// the reset read now, its times kept, so it stays told and the next read
+/// is matched to this one.
 pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
     let since = s.now - state.ticked.unwrap_or(s.now);
     let (slept, waking_ms) = match (&state.asleep, &s.asleep) {
@@ -83,22 +85,29 @@ pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
         state.unwatched_ms = None;
         0
     };
-    let told = || {
-        state
-            .seen
-            .keys()
-            .filter_map(|key| key.strip_prefix("alarm:"))
-    };
-    breaches(s)
+    let standing: Vec<Breach> = breaches(s)
         .into_iter()
         .filter(|b| {
             b.key != crate::watch::budgets::UNWATCHED || unwatched_ms >= UNWATCHED_FOR * 1000
         })
-        .map(|b| Breach {
-            key: crate::watch::budgets::as_remembered(&b.key, told()),
-            ..b
+        .collect();
+    let moves: Vec<(String, String)> = standing
+        .iter()
+        .flat_map(|b| {
+            let told = state
+                .seen
+                .keys()
+                .filter_map(|key| key.strip_prefix("alarm:"));
+            crate::watch::budgets::moved(&b.key, told)
         })
-        .collect()
+        .collect();
+    for (was, now) in moves {
+        if let Some(at) = state.seen.remove(&format!("alarm:{was}")) {
+            let kept = state.seen.entry(format!("alarm:{now}")).or_insert(at);
+            *kept = (*kept).max(at);
+        }
+    }
+    standing
 }
 
 #[cfg(test)]
@@ -213,16 +222,24 @@ mod tests {
             resets: Some(at.into()),
             ..week(0.91, "91% of five hours")
         };
-        s.budgets = vec![resets("2026-11-21T16:29:59.9Z")];
+        s.budgets = vec![resets("2026-11-21T16:29:59Z")];
         let mut state = State::default();
         assert_eq!(
             tick(&s, &mut state).len(),
             1,
             "a window past 90% wasn't told"
         );
-        for at in ["2026-11-21T16:30:00.1Z", "2026-11-21T16:31:02Z"] {
+        // It crosses the half hour, then creeps two minutes a read, past
+        // five minutes from the reset first told.
+        let creeping = (33..=53)
+            .step_by(2)
+            .map(|minute| format!("2026-11-21T16:{minute:02}:02Z"));
+        for at in ["2026-11-21T16:30:01Z".to_owned()]
+            .into_iter()
+            .chain(creeping)
+        {
             s.now += 5 * 60;
-            s.budgets = vec![resets(at)];
+            s.budgets = vec![resets(&at)];
             assert!(
                 tick(&s, &mut state).is_empty(),
                 "a window whose reset drifted to {at} was told again"
@@ -234,6 +251,26 @@ mod tests {
             tick(&s, &mut state).len(),
             1,
             "the next window past 90% went untold"
+        );
+    }
+
+    #[test]
+    fn a_window_told_before_resets_were_kept_to_the_second_isnt_told_again() {
+        let mut s = calm(100_000);
+        s.budgets = vec![crate::watch::budgets::Allowance {
+            resets: Some("2026-11-21T16:20:00Z".into()),
+            ..week(0.92, "92% of five hours")
+        }];
+        let mut state = State::default();
+        for level in [80, 90] {
+            state.seen.insert(
+                format!("alarm:budget:proxy:weekly:{level}:2026-11-21T16:00:00Z"),
+                s.now - 600,
+            );
+        }
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a window told past 90% under its hour was told again once kept to the second"
         );
     }
 
