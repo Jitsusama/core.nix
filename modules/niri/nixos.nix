@@ -216,7 +216,9 @@
     # ended at whatever margin, so it gives up a few milliseconds of the
     # gain while the GPU stays busy. A long hold's margin sits at its floor
     # nearly all the time, so a burst within one keeps the margin it climbs
-    # to for a minute at most, and the steady need's hold then grows back.
+    # to for about a minute, longer if it levels off just above the
+    # margin its own last miss left, at whatever level, and the steady
+    # need's hold then grows back.
     # One soon after a hold ended can't be told from a need that came
     # back, so it keeps its margin for up to ten minutes, which costs a few
     # milliseconds but no misses.
