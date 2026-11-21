@@ -34,9 +34,9 @@ impl App {
 
     /// Asks the page set again for the window's width, when that width
     /// takes another page than the one asked for last: a window narrower
-    /// than the whole page's 540 pt, or one widened back past it. The page
-    /// shown stays until the new one is set, with the view on the same
-    /// words.
+    /// than the whole page's 540 pt, or one wider, whose measure widens
+    /// with it up to 80 characters. The page shown stays until the new one
+    /// is set, with the view on the same words.
     pub(crate) fn fit_window(&mut self) {
         let width = page::Width::for_window(f64::from(self.size.0) * PT_A_PX);
         if width == self.width {

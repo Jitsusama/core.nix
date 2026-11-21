@@ -234,7 +234,9 @@ fn wrongly(command: &str, what: impl Into<String>) -> Failure {
     Failure::new(Exit::Usage, what).try_this(format!("shaper {command} --help"))
 }
 
-/// Runs a command, saying what it said when it fails.
+/// Runs a command, saying what it said when it fails, on one line: the
+/// journal splits at each newline, and a line of the command's own apart
+/// from what the shaper made of it reads as a failure of its own.
 fn sh(words: &[String]) -> Result<String, String> {
     let out = Command::new(&words[0])
         .args(&words[1..])
@@ -247,8 +249,34 @@ fn sh(words: &[String]) -> Result<String, String> {
         Err(format!(
             "{}: {}",
             words.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
+            String::from_utf8_lossy(&out.stderr)
+                .trim()
+                .replace('\n', " ")
         ))
+    }
+}
+
+/// A device's queues, as `tc -j qdisc show` gives them, or nothing when
+/// the read says nothing of them, which is said, since a read failing
+/// every time would otherwise leave a queue unrepaired without a word.
+fn queues_of(device: &str) -> Option<String> {
+    let read = sh(&words(&format!("tc -j qdisc show dev {device}")));
+    let seen = seen_queues(read.clone());
+    if let (None, Err(e)) = (&seen, &read) {
+        eprintln!("{e}: {device}'s queues are left as they are");
+    }
+    seen
+}
+
+/// A device that isn't there has no queues, which reads as none. Any other
+/// failure, a `tc` killed partway or one that couldn't start, says nothing
+/// of them: taken for none, it put the VPN's turn on again over the one
+/// there, and matchall refused it.
+fn seen_queues(read: Result<String, String>) -> Option<String> {
+    match read {
+        Ok(json) => Some(json),
+        Err(e) if e.contains("Cannot find device") => Some(String::new()),
+        Err(_) => None,
     }
 }
 
@@ -466,7 +494,7 @@ fn sent_kbit(then: Option<(u64, Instant)>, now: Option<(u64, Instant)>) -> Optio
 /// next when it changes, until stopped.
 fn recording(folder: &Path) -> Result<(), Failure> {
     loop {
-        let first = uplinks().into_iter().find(|u| {
+        let first = uplinks().unwrap_or_default().into_iter().find(|u| {
             u.gateway
                 .as_ref()
                 .is_some_and(|g| g.parse::<std::net::Ipv4Addr>().is_ok())
@@ -482,7 +510,7 @@ fn recording(folder: &Path) -> Result<(), Failure> {
         // record start over under that name. A router whose entry has gone
         // stale for a moment is still the same router.
         let still = || {
-            uplinks().iter().find(|u| {
+            uplinks().unwrap_or_default().iter().find(|u| {
                 u.gateway
                     .as_ref()
                     .is_some_and(|g| g.parse::<std::net::Ipv4Addr>().is_ok())
@@ -493,6 +521,7 @@ fn recording(folder: &Path) -> Result<(), Failure> {
         // connection, so what they carry counts with this one's.
         let beside = || {
             uplinks()
+                .unwrap_or_default()
                 .iter()
                 .filter(|u| u.name != uplink.name)
                 .filter(|u| router_of(u).is_some_and(|router| router == network))
@@ -612,7 +641,11 @@ fn start(
     let (up, down) = (held_up.rate, held_down.rate);
     let mut lanes = lanes::Lanes::default();
     let split = lanes.at(float(up));
-    install(&uplink.name, &ifb, (up, &split), down, false);
+    // A read that failed leaves the link as it is, to be taken up once one
+    // answers.
+    if !install(&uplink.name, &ifb, (up, &split), down, false) {
+        return None;
+    }
     eprintln!(
         "shaping {} on {network} at {up} kbit/s up, {down} down",
         uplink.name
@@ -661,10 +694,19 @@ fn start(
 /// a turn already there stays, since matchall refuses to replace its one
 /// filter. Otherwise what was there goes first, since HTB can't change
 /// where it sends what nothing claims: a link's own queue from the kernel
-/// can't be taken away, and says so, which is nothing to tell.
-fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, straight: bool) {
-    let held = sh(&words(&format!("tc -j qdisc show dev {link}"))).unwrap_or_default();
-    let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
+/// can't be taken away, and says so, which is nothing to tell. A read that
+/// failed says nothing of what is there, so nothing is changed, and it
+/// gives false.
+fn install(
+    link: &str,
+    ifb: &str,
+    (up, split): (u64, &lanes::Split),
+    down: u64,
+    straight: bool,
+) -> bool {
+    let (Some(held), Some(back)) = (queues_of(link), queues_of(ifb)) else {
+        return false;
+    };
     let turned = if lanes::laned(&held) && qdisc::ours(&back) {
         eprintln!("taking back the queues {link} kept through a restart");
         // tc complains of a queue with no filters to take off, which is
@@ -688,6 +730,7 @@ fn install(link: &str, ifb: &str, (up, split): (u64, &lanes::Split), down: u64, 
     } else if straight && turned {
         let _ = sh(&qdisc::unturn(link));
     }
+    true
 }
 
 /// Runs each command, saying what failed, and gives whether all went.
@@ -707,10 +750,29 @@ fn run_all(commands: Vec<Vec<String>>) -> bool {
     fine
 }
 
-fn uplinks() -> Vec<links::Uplink> {
-    let v4 = sh(&words("ip -4 -j route show default")).unwrap_or_default();
-    let v6 = sh(&words("ip -6 -j route show default")).unwrap_or_default();
-    links::uplinks(&v4, &v6)
+/// The uplinks the default routes name, or what failed when a read of
+/// them did.
+fn uplinks() -> Result<Vec<links::Uplink>, String> {
+    let routes = |family: &str| sh(&words(&format!("ip {family} -j route show default")));
+    routes_seen(routes("-4"), routes("-6"))
+}
+
+/// The uplinks two reads of the default routes name, IPv4's and IPv6's. A
+/// read that failed says nothing of the links: taken for no routes, it let
+/// every link go, and a restart's sweep took their queues.
+fn routes_seen(
+    v4: Result<String, String>,
+    v6: Result<String, String>,
+) -> Result<Vec<links::Uplink>, String> {
+    Ok(links::uplinks(&v4?, &v6?))
+}
+
+/// Whether a restart's sweep of the old shaper's queues may run: once the
+/// routes were read, `order`, every VPN there was taken up, `read`, and so
+/// was every link the routes name. Anything not taken up yet would go with
+/// the rest, as would every link while none is.
+fn may_sweep<V>(read: bool, order: Option<&[String]>, shaped: &BTreeMap<String, V>) -> bool {
+    read && !shaped.is_empty() && order.is_some_and(|o| o.iter().all(|n| shaped.contains_key(n)))
 }
 
 /// The links the shaper holds and what each reaches without the router.
@@ -897,13 +959,22 @@ fn run(options: &Options) -> Result<(), Failure> {
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
             let order = look(&mut shaped, options, &send);
-            follow_leaders(&mut shaped, &order);
-            primary = order.first().cloned();
+            // A read of the routes that failed leaves the links as they
+            // are, and the VPNs on the link they rode, as does a first link
+            // not taken up yet, since letting them go would tear them down.
+            if let Some(order) = &order {
+                follow_leaders(&mut shaped, order);
+                primary = order
+                    .first()
+                    .filter(|f| shaped.contains_key(*f))
+                    .cloned()
+                    .or(primary);
+            }
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-            follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
+            let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
             // A restart left the old shaper's queues; once this one has
             // taken up the links and VPNs it shapes, the rest go.
-            if !swept {
+            if !swept && may_sweep(read, order.as_deref(), &shaped) {
                 swept = true;
                 sweep(&held(&shaped, &vpns.0));
             }
@@ -1035,6 +1106,18 @@ fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String
     }
 }
 
+/// Takes a VPN's queues away, and its IFB, once it's gone or has no link
+/// to ride; a device that's gone took its own queues with it.
+fn let_vpn_go(applied: &mut BTreeMap<String, Vpn>, name: &str, dir: &Path) {
+    if let Some(gone) = applied.remove(name) {
+        if dir.exists() {
+            let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
+            let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
+        }
+        let _ = sh(&words(&format!("ip link del {}", gone.ifb)));
+    }
+}
+
 /// What the shaper holds a VPN to each way, in kbit/s, the IFB its
 /// downloads are turned round through, and the firewall mark its own
 /// packets carry, when it routes by one.
@@ -1126,13 +1209,15 @@ type Vpns = (BTreeMap<String, Vpn>, cost::Cost);
 /// from what was sent inside the VPNs, `inside`, and what their bulk
 /// holds. Lets go of one that's gone or has no uplink to ride. What a VPN
 /// receives goes straight in, past its IFB, while the uplink's does. Read
-/// at `t` seconds.
+/// at `t` seconds. Gives whether every VPN there was taken up: one whose
+/// read failed is left as it was, and one with no link to ride is let go.
 fn follow_vpns(
     (applied, spent): &mut Vpns,
     names: &[String],
     primary: Option<&mut Shaped>,
     (inside, t): (Option<qdisc::Tins>, f64),
-) {
+) -> bool {
+    let mut every_read = true;
     let read: Vec<String> = applied
         .keys()
         .map(|name| sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default())
@@ -1180,13 +1265,10 @@ fn follow_vpns(
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
         let (Some((up, down, straight)), Some(index)) = (base, index) else {
-            if let Some(gone) = applied.remove(name) {
-                if dir.exists() {
-                    let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
-                    let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
-                }
-                let _ = sh(&words(&format!("ip link del {}", gone.ifb)));
-            }
+            // A VPN that is there isn't taken up, with no link to ride or
+            // its index unread.
+            every_read &= !dir.exists();
+            let_vpn_go(applied, name, &dir);
             continue;
         };
         let ifb = qdisc::ifb(index);
@@ -1199,8 +1281,12 @@ fn follow_vpns(
         }
         let same_ifb = was.is_some_and(|v| v.ifb == ifb);
         let (was_up, was_down) = (was.map(|v| v.up), was.map(|v| v.down).filter(|_| same_ifb));
-        let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
-        let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
+        // A read that failed leaves the VPN's queues as they are until one
+        // answers.
+        let (Some(json), Some(back)) = (queues_of(name), queues_of(&ifb)) else {
+            every_read = false;
+            continue;
+        };
         let mut kept = Vpn {
             up: was_up.unwrap_or(0),
             down: was_down.unwrap_or(0),
@@ -1234,17 +1320,26 @@ fn follow_vpns(
         }
         applied.insert(name.clone(), kept);
     }
+    every_read
 }
 
 /// Follows the uplinks: shapes a new one, lets a gone one go, and puts back
 /// queues somebody took away or a link that came back without. Returns the
-/// uplinks in the routes' order, the first being the one VPNs ride.
+/// uplinks in the routes' order, the first being the one VPNs ride, or
+/// nothing when the routes couldn't be read, which leaves every link as it
+/// is rather than taking each for gone.
 fn look(
     shaped: &mut BTreeMap<String, Shaped>,
     options: &Options,
     send: &std::sync::mpsc::Sender<Echo>,
-) -> Vec<String> {
-    let now: Vec<links::Uplink> = uplinks();
+) -> Option<Vec<String>> {
+    let now = match uplinks() {
+        Ok(now) => now,
+        Err(e) => {
+            eprintln!("{e}: the links are left as they are until a read answers");
+            return None;
+        }
+    };
     let order: Vec<String> = now.iter().map(|u| u.name.clone()).collect();
     let gone: Vec<String> = shaped
         .keys()
@@ -1273,24 +1368,28 @@ fn look(
                 }
             }
             Some(s) => {
-                let json = sh(&words(&format!("tc -j qdisc show dev {}", s.uplink.name)))
-                    .unwrap_or_default();
-                let ifb =
-                    sh(&words(&format!("tc -j qdisc show dev {}", s.ifb))).unwrap_or_default();
-                let turned = s.download.straight() || qdisc::turned(&json);
-                if !lanes::laned(&json) || !turned || !qdisc::ours(&ifb) {
+                // A read that failed leaves the link's queues as they are
+                // until one answers, rather than taking them down to put
+                // them back.
+                let seen = queues_of(&s.uplink.name).zip(queues_of(&s.ifb));
+                if let Some((json, ifb)) = seen
+                    && (!lanes::laned(&json)
+                        || !(s.download.straight() || qdisc::turned(&json))
+                        || !qdisc::ours(&ifb))
+                {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
                     s.split = s.lanes.at(float(s.up.rate));
-                    install(
+                    if install(
                         &s.uplink.name,
                         &s.ifb,
                         (s.up.rate, &s.split),
                         s.down.rate,
                         s.download.straight(),
-                    );
-                    s.applied = (s.up.rate, s.down.rate);
-                    s.joel_told = None;
+                    ) {
+                        s.applied = (s.up.rate, s.down.rate);
+                        s.joel_told = None;
+                    }
                 }
                 if !s.probes.running() {
                     s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send);
@@ -1318,7 +1417,7 @@ fn look(
             }
         }
     }
-    order
+    Some(order)
 }
 
 /// Follows whether real-time traffic crosses each link, from the packets
@@ -1770,8 +1869,9 @@ fn heed_stopping() {
 /// before this shaper gives it one. A restart keeps the queues for the
 /// next shaper to take back, and one that never tells the CAKE a rate, as
 /// before this, would keep the last one held for as long as it ran. Every
-/// link is told, whatever `joel_told` says: the stop's SIGTERM reaches a
-/// `tc` running then too, which may have set a rate before it was killed.
+/// link is told, whatever `joel_told` says, since telling a CAKE with no
+/// rate costs nothing, and a rate set by a `tc` whose answer was lost
+/// would otherwise stay.
 fn unshape_joel(shaped: &BTreeMap<String, Shaped>) {
     for s in shaped.values() {
         if let Err(why) = sh(&lanes::joel_rate(&s.uplink.name, lanes::Cake::Unlimited)) {
@@ -1812,7 +1912,10 @@ fn sweep(kept: &BTreeSet<String>) {
             let _ = sh(&words(&format!("ip link del {name}")));
             continue;
         }
-        let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
+        // A read that failed leaves the device's queues, and says so.
+        let Some(json) = queues_of(&name) else {
+            continue;
+        };
         if qdisc::ours(&json) || lanes::laned(&json) || qdisc::vpn_ours(&json) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
             let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
@@ -2207,5 +2310,82 @@ mod tests {
         let floor = asked(Some(10), Some(10));
         let spell = spell("eth0", (true, false), floor, MOST, &holds(10));
         assert_eq!(spell.held, FLOOR);
+    }
+
+    // Only a device that isn't there reads as having no queues; a tc that
+    // failed any other way, as one killed partway answers, reads as
+    // nothing known, so its queues are left as they are.
+    #[test]
+    fn only_a_missing_device_reads_as_no_queues() {
+        let json = r#"[{"kind":"cake","handle":"2:"}]"#;
+        assert_eq!(
+            seen_queues(Ok(json.to_string())).as_deref(),
+            Some(json),
+            "a read that went"
+        );
+        let missing = r#"tc -j qdisc show dev shaper4: Cannot find device "shaper4""#;
+        assert_eq!(
+            seen_queues(Err(missing.to_string())).as_deref(),
+            Some(""),
+            "a device that isn't there"
+        );
+        assert_eq!(
+            seen_queues(Err("tc -j qdisc show dev wg0: ".to_string())),
+            None,
+            "a tc killed partway"
+        );
+        assert_eq!(
+            seen_queues(Err("tc: Cannot allocate memory (os error 12)".to_string())),
+            None,
+            "a tc that couldn't start"
+        );
+    }
+
+    // A read of the routes that failed says nothing of the links, where an
+    // empty one says there are none.
+    #[test]
+    fn a_failed_read_of_the_routes_names_no_links() {
+        let killed = || Err::<String, _>("ip -6 -j route show default: ".to_string());
+        assert!(
+            routes_seen(Ok("[]".into()), killed()).is_err(),
+            "IPv6's failed"
+        );
+        assert!(
+            routes_seen(killed(), Ok("[]".into())).is_err(),
+            "IPv4's failed"
+        );
+        assert_eq!(
+            routes_seen(Ok("[]".into()), Ok("[]".into())).map(|u| u.len()),
+            Ok(0),
+            "none routed"
+        );
+    }
+
+    // A restart's sweep waits for the routes, every VPN there and every
+    // link the routes name, since any not taken up yet would go with it.
+    #[test]
+    fn a_sweep_waits_for_every_link_the_routes_name() {
+        let order = ["eth0".to_string(), "wlan0".to_string()];
+        let shaped = |names: &[&str]| -> BTreeMap<String, u8> {
+            names.iter().map(|n| ((*n).to_string(), 0)).collect()
+        };
+        let both = shaped(&["eth0", "wlan0"]);
+        assert!(
+            may_sweep(true, Some(&order[..]), &both),
+            "every link taken up"
+        );
+        assert!(
+            !may_sweep(true, Some(&order[..]), &shaped(&["eth0"])),
+            "a link whose read failed"
+        );
+        assert!(
+            !may_sweep(false, Some(&order[..]), &both),
+            "a VPN not taken up"
+        );
+        assert!(!may_sweep(true, None, &both), "the routes unread");
+        assert!(
+            !may_sweep(true, Some(&[][..]), &shaped(&[])),
+            "no link taken up"
+        );
     }
 }

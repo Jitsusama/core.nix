@@ -436,13 +436,12 @@ fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>,
 
 /// The width the first screen is set at: the window's when the reader last
 /// closed, which niri most likely opens it at again, so the first screen
-/// seldom sets twice. Measuring sets the whole page each time.
+/// seldom sets twice; measuring, or with none kept, the one a window has
+/// until niri names it.
 fn first_width(measuring: bool) -> page::Width {
-    if measuring {
-        page::Width::whole()
-    } else {
-        place::window_pt().map_or_else(page::Width::whole, page::Width::for_window)
-    }
+    let unnamed = f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX;
+    let kept = if measuring { None } else { place::window_pt() };
+    page::Width::for_window(kept.unwrap_or(unnamed))
 }
 
 fn help() -> Help {

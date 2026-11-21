@@ -1756,8 +1756,9 @@
     sleep; and the recorder refuses no seconds, a boot id no folder the reader lists could hold,
     and a stand-in's rings among the machine's own, ends a rest at once when its end has come,
     and lets in signals held back through a second that overran, a sleep and its wake together
-    read as awake; and asking for one boot
-    answers that boot alone
+    read as awake; run whole and signalled as the sleep's hook does, records the next sleep after
+    a wake with no sleep before it and after a sleep let go once sixty reads' time had passed,
+    not before and not past half as long again; and asking for one boot answers that boot alone
   '';
   last-seconds-passes-clippy = ''
     clippy finds nothing in last-seconds or its tests
@@ -3762,6 +3763,11 @@
   system-passes-clippy = ''
     clippy finds nothing in system or its tests
   '';
+  system-reads-its-machines-realm = ''
+    the system daemon's unit names the realm its account's sessions are in, on Linux and on a Mac
+    running nodes for two realms, where mycelium refuses a command naming none, and on a machine in
+    no realm names none
+  '';
   system-serves-where-its-node-reads = ''
     the system daemon serves where its machine's mycelium node reads how it stands: on Linux
     the socket systemd holds in the runtime folder, and on a Mac a launchd agent, in the
@@ -5169,10 +5175,11 @@
     first frame shown of it, or after the last change once one has been, at its most unseen,
     and never once hidden, waiting anew for a frame when shown again
   '';
-  a-meter-stays-its-moment-once-drawn-on-niri = ''
+  a-meter-stays-its-moment-from-niris-frame = ''
     the screen's brightness picked while the nested niri is held stopped for 2.5 s, longer than
-    a meter's moment, has the brightness meter drawn once niri goes on, and gone between 1.3
-    and 3 s after it was drawn, so its moment ran from its frame and not from its cap
+    a meter's moment, has the brightness meter drawn once niri goes on, its moment begun at
+    niri's presented frame and not Qt's swapped one, and gone between 1.2 and 3 s after, so it
+    ran from niri's frame and not from its cap
   '';
   the-shells-list-names-what-it-runs = ''
     the list of the shell's files its companion compares after a switch also names the command
@@ -6191,9 +6198,10 @@
     to read, where an administrator reads the boot as still recorded and another account is
     refused, and reads what the kernel gives through its sandbox, every rest state it lists
     included; a stop writes a record saying so and a restart goes on after it, a kill restarts
-    it by itself, a sleep waits until the recorder's record says it and a wake has it go on
-    within seconds without counting the sleep, a power off stops it after a service that stops
-    late, a machine reset asleep leaves its boot said asleep, and a machine killed as a reset
+    it by itself, a sleep, as far as the kernel's own test of one freezes every process, waits
+    until the recorder's record says it and a wake has it go on within seconds without counting
+    the sleep, a power off stops it after a service that stops late, a machine reset while frozen
+    in a sleep leaves its boot said asleep, and a machine killed as a reset
     kills it leaves its boot said cut short, its last second read kept
   '';
   vm-root-builds-only-where-it-trusts = ''
