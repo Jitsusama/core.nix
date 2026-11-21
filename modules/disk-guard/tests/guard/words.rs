@@ -11,6 +11,7 @@ fn room(path: &str, band: Band, free: u64, full_in: Option<f64>) -> Room<'_> {
         free,
         size: 1000 * GIB,
         full_in,
+        nix_floor: None,
         cleared_all: false,
     }
 }
@@ -49,6 +50,21 @@ fn a_forecast_whose_moment_has_passed_says_nothing() {
         "The disk is filling, with 104.0 GiB free. \
          The guard is clearing builds and caches nobody has used lately.",
         "a disk with room left hasn't filled, whatever an old forecast said"
+    );
+}
+
+#[test]
+fn a_disk_above_nixs_floor_says_when_it_reaches_it_not_when_it_fills() {
+    assert_eq!(
+        filesystem(
+            &Room {
+                nix_floor: Some(50 * GIB),
+                ..room("/", Band::Healthy, 170 * GIB, Some(22.0 * 3600.0))
+            },
+            None
+        ),
+        "The disk has 170.0 GiB free. At this rate it reaches the 50.0 GiB Nix keeps free \
+         in 22 h, when Nix starts collecting its own garbage."
     );
 }
 

@@ -1109,6 +1109,8 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         forecast,
         fill_per_hour: Some(fill),
         full_at: Some(now + full_in),
+        nix_floor: None,
+        floor_at: None,
         says: says.to_string(),
         exhausted: false,
     };
@@ -1337,6 +1339,8 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         forecast: Some(60.0),
         fill_per_hour: Some(36_000.0),
         full_at: Some(1960.0),
+        nix_floor: None,
+        floor_at: None,
         says: String::new(),
         exhausted: false,
     };
@@ -1404,6 +1408,8 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
         forecast: Some(60.0),
         fill_per_hour: Some(36_000.0),
         full_at: Some(1960.0),
+        nix_floor: None,
+        floor_at: None,
         says: String::new(),
         exhausted: false,
     };
@@ -1420,6 +1426,56 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
     assert!(
         !status.says.contains("fills in"),
         "said no fill once its moment passed: {}",
+        status.says
+    );
+}
+
+/// Above the free space Nix keeps, Nix collects before the disk fills, so
+/// a fresh measure says when it reaches that floor; one at or under it
+/// has reached it, and when it's full wasn't worked out.
+#[test]
+fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    let bands = Bands {
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let space = |free| Space {
+        total: 1000,
+        free,
+        btrfs: None,
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast: None,
+        fill_per_hour: Some(36_000.0),
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    status.measured(&space(490), &bands, 1900.0, None);
+    assert_eq!(
+        status.says,
+        "The disk has 490 B free. At this rate it reaches the 100 B Nix keeps free in 1 m, \
+         when Nix starts collecting its own garbage.",
+        "above the floor, when it reaches it"
+    );
+    status.measured(&space(300), &bands, 1900.0, None);
+    status.measured(&space(100), &bands, 1900.0, None);
+    assert!(
+        !status.says.contains("At this rate"),
+        "at the floor, neither it nor when it fills: {}",
         status.says
     );
 }

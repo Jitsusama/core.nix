@@ -644,8 +644,15 @@ pub struct FilesystemStatus {
     /// watched it ten minutes.
     pub fill_per_hour: Option<f64>,
     /// When it's full at the fill's trend, in wall seconds, if it's
-    /// filling, both over the trend and now.
+    /// filling, both over the trend and now. None while it's above
+    /// `nix_floor`, since Nix collects there before it fills.
     pub full_at: Option<f64>,
+    /// The free space Nix keeps here by collecting its own garbage, its
+    /// `min-free`, when Nix's store is on this filesystem and Nix does.
+    pub nix_floor: Option<u64>,
+    /// When it reaches `nix_floor` at the fill's trend, in wall seconds,
+    /// if it's above it and filling.
+    pub floor_at: Option<f64>,
     pub says: String,
     /// Whether the last pass here, in this band or a worse one, found
     /// nothing more it may clear.
@@ -684,17 +691,31 @@ impl FilesystemStatus {
         if self.full_at.is_some_and(|at| at <= now) {
             self.full_at = None;
         }
-        let full_in = self.full_at.map(|at| at - now);
-        self.says = crate::words::filesystem(&self.room(full_in), home);
+        // A fresh measure at or under Nix's floor has reached it, and when
+        // it's full wasn't worked out, so neither is told.
+        let above = self.nix_floor.is_some_and(|floor| space.free > floor);
+        let room = match self.floor_at {
+            Some(at) if above => self.ahead(Some(at - now), true),
+            Some(_) => self.ahead(None, false),
+            None => self.ahead(self.full_at.map(|at| at - now), false),
+        };
+        self.says = crate::words::filesystem(&room, home);
     }
 
     fn room(&self, full_in: Option<f64>) -> crate::words::Room<'_> {
+        self.ahead(full_in, false)
+    }
+
+    /// Its room, with `next` seconds until it's full, or until it reaches
+    /// Nix's floor when `to_floor`.
+    fn ahead(&self, next: Option<f64>, to_floor: bool) -> crate::words::Room<'_> {
         crate::words::Room {
             path: &self.path,
             band: self.band,
             free: self.free,
             size: self.size,
-            full_in,
+            full_in: next,
+            nix_floor: self.nix_floor.filter(|_| to_floor),
             cleared_all: self.exhausted,
         }
     }
@@ -2225,6 +2246,13 @@ impl Guard {
         self.min_free = Some((now, garbage::min_free(&self.config.nix.bin)));
     }
 
+    /// The filesystem Nix's store is on and the free space Nix keeps there,
+    /// its own `min-free`, when Nix collects by itself.
+    fn nix_floor(&self) -> Option<(u64, u64)> {
+        let min_free = self.min_free?.1.filter(|&min| min > 0)?;
+        Some((pool(&self.config.nix.store).ok()?, min_free))
+    }
+
     /// Whether the store's free space is short of `ABOVE_MIN_FREE` over
     /// Nix's own `min-free`, under which Nix soon collects by itself. A
     /// `min-free` of nothing is Nix never collecting by itself.
@@ -3103,10 +3131,11 @@ impl Guard {
     pub fn status(&self, now: f64) -> Status {
         let bands = &self.config.bands;
         let home = self.home.as_deref();
+        let nix_floor = self.nix_floor();
         let filesystems = self
             .watched
-            .values()
-            .filter_map(|watched| {
+            .iter()
+            .filter_map(|(&device, watched)| {
                 let space = watched.space?;
                 let thresholds = Thresholds::new(bands, space.total);
                 let next = match watched.band {
@@ -3118,7 +3147,13 @@ impl Guard {
                 // What a person is told comes from the trend, not the
                 // two-minute rate passes are planned by, which a churning
                 // disk swings either way by tens of gigabytes an hour.
-                let full_in = watched.fill.steady_until(space.free, 0);
+                // Nix's store's disk counts to the floor Nix keeps while
+                // above it: a straight line to empty told a Mac's builds
+                // filled it in a day while Nix collected at 50 GiB.
+                let floor = nix_floor
+                    .filter(|&(on, _)| on == device)
+                    .map(|(_, floor)| floor);
+                let ahead = watched.fill.ahead(space.free, floor);
                 let mut status = FilesystemStatus {
                     path: watched.path.clone(),
                     band: watched.band,
@@ -3128,7 +3163,9 @@ impl Guard {
                     used: space.total.saturating_sub(space.free),
                     forecast: next.and_then(|start| watched.fill.steady_until(space.free, start)),
                     fill_per_hour: watched.fill.trend().map(|trend| trend * 3600.0),
-                    full_at: full_in.map(|seconds| now + seconds),
+                    full_at: ahead.full_in.map(|seconds| now + seconds),
+                    nix_floor: floor,
+                    floor_at: ahead.floor_in.map(|seconds| now + seconds),
                     says: String::new(),
                     exhausted: self.last.as_ref().is_some_and(|last| {
                         last.path == watched.path
@@ -3141,7 +3178,10 @@ impl Guard {
                             && last.band >= watched.band
                     }),
                 };
-                status.says = crate::words::filesystem(&status.room(full_in), home);
+                status.says = crate::words::filesystem(
+                    &status.ahead(ahead.floor_in.or(ahead.full_in), ahead.floor_in.is_some()),
+                    home,
+                );
                 Some(status)
             })
             .collect::<Vec<_>>();
@@ -3404,6 +3444,7 @@ pub fn news(written: &Status, status: &Status, now: f64) -> bool {
                 forecast: was.forecast,
                 fill_per_hour: was.fill_per_hour,
                 full_at: was.full_at,
+                floor_at: was.floor_at,
                 ..is.clone()
             })
             .collect(),
