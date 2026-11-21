@@ -26,14 +26,14 @@ ln -s "$home/store/style.json" "$home/linked/.config/style.json"
 ln -s /nowhere/left "$home/linked/gone"
 # A file may write a colour in either case, so one written in the other
 # case from the theme's is kept all the same: a theme's colour in capitals
-# written small, and one written small in capitals, since --smart-case
-# would find only the second.
+# written small, or one written small in capitals, each where the theme has
+# one. rg's --smart-case reads the whole list case-sensitively once any
+# colour in it has a capital, so the first catches it; with none, it's
+# --ignore-case by another name.
+written=()
 cased() {
   local lettered flipped
-  if ! lettered=$(grep -m 1 "$2" "$colours"); then
-    echo "No colour in $colours holds a letter in $2 to write in the other case."
-    exit 1
-  fi
+  lettered=$(grep -m 1 "$2" "$colours") || return 0
   flipped=$(printf '%s' "$lettered" | tr 'A-Fa-f' 'a-fA-F')
   if grep -q -x -F "$flipped" "$colours"; then
     echo "$flipped is a colour of its own in $colours, so it can't show case is let go."
@@ -41,9 +41,14 @@ cased() {
   fi
   mkdir "$home/$1"
   echo "{\"color\":\"$flipped\"}" > "$home/$1/style.json"
+  written+=("$1")
 }
 cased small '[A-F]'
 cased capitals '[a-f]'
+if [ "${#written[@]}" = 0 ]; then
+  echo "No colour in $colours holds a letter to write in the other case."
+  exit 1
+fi
 : > "$home/none"
 # An rg that ends in error without a word.
 printf '#!%s\nexit 2\n' "$BASH" > "$home/silent/rg"
@@ -75,11 +80,11 @@ fails "$colours" "$home/kept/"
 fails "$colours" "$home/linked/"
 # Each home in the other case fails for the colour it keeps, not for some
 # other reason.
-for written in small capitals; do
-  fails "$colours" "$home/$written/"
+for case in "${written[@]}"; do
+  fails "$colours" "$home/$case/"
   if ! grep -q "kept Osaka Jade's colours" "$home/said"; then
     cat "$home/said"
-    echo "A colour written in $written wasn't what failed it: is rg reading with --ignore-case?"
+    echo "The home written in $case failed, but not for the colour it keeps; it said the above."
     exit 1
   fi
 done
