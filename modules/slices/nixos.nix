@@ -299,6 +299,32 @@ let
     };
   };
   systemFloor = lib.foldl' (sum: floor: sum + floor.mib) 0 (lib.attrValues systemFloors);
+
+  # A VPN's service, which Joel's own traffic passes through, never swaps,
+  # keeps a hard floor, and, where the disk shares by weight, comes ahead of
+  # the other system services for it. From 13 to 21 November WARP's daemon
+  # stalled its main loop 343 times, and more often the more memory stalled:
+  # 0.75 times an hour under half a percent, 3.0 over ten. Five of its 13 lost
+  # connections came within a minute of the journal flushing under memory
+  # pressure, against 4% of moments at random, while the VPN's own loss told
+  # nothing. On 21 November it held 122 of its 156 MB in swap, and in four
+  # hours had read 24,551 pages back from the disk and stalled 15.5 s on it.
+  # CPU didn't follow the stalls, so it keeps its weight. The floor covers its
+  # working set, about 180 MB, file pages too, which swap alone wouldn't keep:
+  # about one fault in eight was a file's.
+  # Each once, so one named twice isn't claimed twice in system.slice.
+  vpnServices = lib.unique config.jitsusama.slices.vpnServices;
+  vpnFloor = 256;
+  # The services this module's folder defines itself. A VPN's settings would
+  # replace theirs rather than join them, so none may be named a VPN.
+  ownServices = [
+    "cgroups-favor-moves"
+    "efficient-cores-held@"
+    "memory-swap-in@"
+    "user@"
+  ]
+  ++ lib.attrNames systemFloors
+  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks);
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -337,6 +363,19 @@ in
         ]
       )
     );
+  };
+
+  options.jitsusama.slices.vpnServices = lib.mkOption {
+    description = ''
+      The system services Joel's own traffic passes through, each VPN's
+      daemon, by their names without .service. Each never swaps, keeps a
+      hard memory floor of ${toString vpnFloor} MiB, and comes ahead of the
+      other system services for the disk, where the disk shares by weight,
+      so agents' load can't leave it waiting on its own pages.
+    '';
+    default = [ ];
+    example = [ "tailscaled" ];
+    type = lib.types.listOf lib.types.str;
   };
 
   options.jitsusama.slices.disks = lib.mkOption {
@@ -389,14 +428,42 @@ in
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.
-    assertions = lib.mapAttrsToList (unit: _: {
-      assertion =
-        builtins.match "[A-Za-z0-9:_.@\\-]+\\.(service|socket|timer|path|mount|target)" unit != null
-        && builtins.match "run-.*" unit == null;
-      message =
-        "jitsusama.slices.agentsMayRepeat names ${unit}, "
-        + "which isn't one system unit's whole name, or is one run0 makes.";
-    }) config.jitsusama.slices.agentsMayRepeat;
+    assertions =
+      lib.mapAttrsToList (unit: _: {
+        assertion =
+          builtins.match "[A-Za-z0-9:_.@\\-]+\\.(service|socket|timer|path|mount|target)" unit != null
+          && builtins.match "run-.*" unit == null;
+        message =
+          "jitsusama.slices.agentsMayRepeat names ${unit}, "
+          + "which isn't one system unit's whole name, or is one run0 makes.";
+      }) config.jitsusama.slices.agentsMayRepeat
+      # The floor below makes the service whatever it's named, so a name no
+      # service runs would make an empty unit and protect nothing.
+      ++ map (name: {
+        assertion = !lib.hasSuffix ".service" name;
+        message = "jitsusama.slices.vpnServices names ${name}; name it without .service.";
+      }) vpnServices
+      ++ map (name: {
+        # A packaged service, as nixpkgs' tailscaled is, has its command in
+        # its package's unit and only what starts it here, which may be its
+        # own socket or timer. A name with .service is told so above alone.
+        assertion =
+          let
+            service = config.systemd.services.${name};
+          in
+          lib.hasSuffix ".service" name
+          || service.serviceConfig ? ExecStart
+          || service.script != ""
+          || service.wantedBy != [ ]
+          || service.requiredBy != [ ]
+          || config.systemd.sockets ? ${name}
+          || config.systemd.timers ? ${name};
+        message = "jitsusama.slices.vpnServices names ${name}, which no system service runs.";
+      }) vpnServices
+      ++ map (name: {
+        assertion = !lib.elem name ownServices;
+        message = "jitsusama.slices.vpnServices names ${name}, one the slices module sets.";
+      }) vpnServices;
 
     # A unit an agent starts with systemd-run stays in the agent's slice,
     # rather than landing among Joel's apps, as systemd-run.sh says.
@@ -507,7 +574,12 @@ in
     # it the unit is skipped, and a disk that comes later wants it itself.
     # Its stop reaches the unit without the unit requiring it, since a
     # requirement would have boot wait out the device's timeout.
-    systemd.slices.system.sliceConfig.MemoryLow = "${toString systemFloor}M";
+    systemd.slices.system.sliceConfig = {
+      MemoryLow = "${toString systemFloor}M";
+    }
+    // lib.optionalAttrs (vpnServices != [ ]) {
+      MemoryMin = "${toString (vpnFloor * lib.length vpnServices)}M";
+    };
 
     # Every move of a process between cgroups, which the sorter makes for
     # each piece of work, takes the hierarchy's write lock, and without
@@ -681,7 +753,16 @@ in
           ];
         };
       }
-    ) disks;
+    ) disks
+    # A VPN is never one of the services above, which the assertions refuse,
+    # since its settings would replace theirs here rather than join them.
+    // lib.genAttrs vpnServices (_: {
+      serviceConfig = {
+        MemorySwapMax = 0;
+        MemoryMin = "${toString vpnFloor}M";
+        IOWeight = 1000;
+      };
+    });
 
     # The cgroup work is moved into. A cgroup holds only while something is
     # in it, so this one holds a process of its own, and its delegation says
