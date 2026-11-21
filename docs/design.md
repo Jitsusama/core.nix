@@ -1531,7 +1531,17 @@ works the same way everywhere.
   inside it. A live session past 80% of its context says how full first
   ("84% full · working · $4.20"), its mark in the warning's hue, the
   figure kept longest while room runs short and the money giving way
-  before how it stands, since its drawer says the spend. Its drawer's
+  before how it stands, since its drawer says the spend. One waiting on
+  Joel, parked with his want still open as much as at work, since For
+  You lists both, wears the waiting mark, the person with a clock in the alert's
+  hue, in place of the agent's mark or its network's shape and ahead of
+  the warning's, since the word saying so is the first a narrow row cuts
+  (Joel, 2026-11-20: "no clue how to see from that view that a thing is
+  waiting"). An orchestration's row wears it while any session in it
+  waits, and so does a session a step in while any under it waits, so
+  the map's shape gives way only then. For You keeps each session's own
+  mark and hue, the warning's as its limit nears, since every row there
+  waits and the person with a clock is a to-do's. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
   2026-11-07), as a glance of six facts at most (VKCF3Z, 2b03e43c):
   Needs You For where it needs him, else Doing, its step alone ("edit

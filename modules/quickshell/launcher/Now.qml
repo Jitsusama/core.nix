@@ -1879,7 +1879,8 @@ Provider {
             })),
             putOffWant(address, key, known)
         ].filter(row => row !== null);
-        const row = member(Object.assign({}, made, {
+        // The mark and hue it wears not waiting (SessionRow.unwaited).
+        const row = member(Object.assign({}, made, SessionRow.unwaited(made), {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
             // Its Return is stepping in, not Agents' own act on the session.
@@ -1997,7 +1998,7 @@ Provider {
             run: () => Sessions.wakeToGo(resting, session())
         })), putOffWant(address, key, known)].filter(row => row !== null));
         const count = answers.choices.length;
-        const row = member(Object.assign({}, made, {
+        const row = member(Object.assign({}, made, SessionRow.unwaited(made), {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
             side: count === 1 ? said.answerOne ?? ""

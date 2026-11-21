@@ -191,7 +191,8 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     let acts: Vec<Value> = row.acts.iter().map(|id| row.act(id)).collect();
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "doing": row.doing,
-        "rank": crate::standing::rank(row.state),
+        "mark": row.mark, "markHue": row.mark_hue, "waitsOnJoel": row.waits_on_joel,
+        "rank": crate::standing::rank(if row.waits_on_joel { "needs" } else { row.state }),
         "gone": row.gone,
         "orchestrates": row.orchestrates,
         "returns": format!("verb:agent:{}", row.returns),
@@ -366,6 +367,8 @@ mod tests {
             name: address.to_owned(),
             also: String::new(),
             glyph: "agent",
+            mark: "agent",
+            mark_hue: "program",
             hue: "program",
             side: side.to_owned(),
             side_items: vec![Item {
@@ -376,6 +379,7 @@ mod tests {
             depth: 0,
             orchestrates: false,
             gone: false,
+            waits_on_joel: false,
             state: "working",
             doing: "working".to_owned(),
             returns: "switch",
@@ -436,6 +440,35 @@ mod tests {
             "it says how it stands and where that comes, second after needing Joel"
         );
         assert_eq!(row["order"], SPACING);
+        // One waiting on Joel wears his mark, and holds its own for For You (Now.qml);
+        // parked with his want open, it ranks first all the same.
+        let mut waiting = self::row("W", "parked");
+        if let Shown::Session(one) = &mut waiting {
+            (one.waits_on_joel, one.state) = (true, "parked");
+            (one.glyph, one.hue) = ("waitsOnJoel", "alert");
+            (one.mark, one.mark_hue) = ("shapeSquare", "warning");
+        }
+        let mut other = Served::default();
+        other.take(made(&[waiting], "1 needs you"));
+        let worn = &other.get("row:agents:W").expect("its row")["row"];
+        assert_eq!(
+            [
+                &worn["glyph"],
+                &worn["hue"],
+                &worn["held"]["mark"],
+                &worn["held"]["markHue"]
+            ],
+            ["waitsOnJoel", "alert", "shapeSquare", "warning"],
+            "Agents draws Joel's mark; For You reads its own from held"
+        );
+        assert_eq!(
+            (
+                worn["held"]["state"].as_str(),
+                worn["held"]["rank"].as_u64()
+            ),
+            (Some("parked"), Some(0)),
+            "parked with his want open, it ranks with those needing him"
+        );
         assert_eq!(
             served
                 .get(SUMMARY)

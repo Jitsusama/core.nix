@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use crate::figures::Item;
 use crate::row::{Row, Shown, Words};
 use crate::said::Said;
+use crate::standing::{self, Stands};
 use crate::talks::{self, Talk};
 
 /// The launcher's place for the top level.
@@ -99,7 +100,7 @@ fn orchestrations(shown: &[Shown]) -> Vec<&[Shown]> {
 /// Each part is left out where it would say none.
 fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
     let count = |state: &str| all.iter().filter(|row| row.state == state).count();
-    let needing = count("needs");
+    let needing = all.iter().filter(|row| row.waits_on_joel).count();
     let working = count("working");
     let needs = match needing {
         0 => String::new(),
@@ -149,6 +150,8 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     if !members.is_empty() {
         acts.push(more());
     }
+    let under_waits = members.iter().any(|one| one.waits_on_joel);
+    let (glyph, hue) = worn(row, under_waits);
     acts.extend(
         row.acts
             .iter()
@@ -160,12 +163,49 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
         json!({
             "key": key_of(address), "thing": row.key, "place": PLACE,
             "kind": if members.is_empty() { "session" } else { "orchestration" },
-            "name": row.name, "glyph": row.glyph, "hue": row.hue, "depth": 0,
+            "name": row.name, "glyph": glyph, "hue": hue, "depth": 0,
             "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
-            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
+            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
+                "waitsOnJoel": row.waits_on_joel,
+                "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
+}
+
+/// The mark and hue a row with sessions under it wears: Joel's where any
+/// of them waits on him, as its own waiting does, since the row is all he
+/// sees of them folded; its own otherwise, so a team's shape gives way
+/// only then.
+fn worn(row: &Row, under_waits: bool) -> (&'static str, &'static str) {
+    if under_waits {
+        (
+            standing::glyph(Stands::Needs, None),
+            standing::hue(Stands::Needs, false),
+        )
+    } else {
+        (row.glyph, row.hue)
+    }
+}
+
+/// Whether a row laid in `shown` waits on Joel: a session that does
+/// (row.rs `waits_on_joel`). A fold never holds one, since tree.rs folds
+/// only those standing as listening or quieter, and one waiting on Joel
+/// stands there as needing him (`Session::stands_to_joel`), so its row keeps its
+/// own mark.
+fn waits(one: &Shown) -> bool {
+    match one {
+        Shown::Session(row) => row.waits_on_joel,
+        Shown::Fold(_) => false,
+    }
+}
+
+/// How deep a row is laid in `shown`.
+fn depth_of(one: &Shown) -> usize {
+    match one {
+        Shown::Session(row) => row.depth,
+        Shown::Fold(fold) => fold.depth,
+    }
 }
 
 /// The `entry` with the talk its session's row holds, where one waits.
@@ -213,9 +253,9 @@ fn act_rows<'a>(
 }
 
 /// The acts a session inside an orchestration offers: Talk and Go To only
-/// where it needs Joel.
+/// where it waits on Joel.
 fn member_acts(row: &Row) -> impl Iterator<Item = &str> {
-    let needs = row.state == "needs";
+    let needs = row.waits_on_joel;
     row.acts
         .iter()
         .copied()
@@ -253,19 +293,23 @@ fn talks_inside(head: &Row, members: &[&Row], known: &Known, words: &Words, rows
 /// A session inside an orchestration: a look at its drawer first, gone to
 /// or talked to only where it needs Joel (VKCF3Z: he acts at a leaf only
 /// where it needs his own hands there), then what pauses, wakes or ends
-/// it.
-fn member(row: &Row, parent: &str, depth: usize) -> Value {
+/// it. One with sessions under it wears Joel's mark while any of them
+/// waits (`worn`), as the orchestration's row does.
+fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
     let address = address(row);
+    let (glyph, hue) = worn(row, under_waits);
     let mut acts = vec![peek()];
     acts.extend(member_acts(row).map(|id| row.act(id)));
     talking(
         row,
         json!({
             "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
-            "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
+            "kind": "session", "name": row.name, "glyph": glyph, "hue": hue,
             "depth": depth, "side": items(&row.side_items), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
-            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
+            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
+                "waitsOnJoel": row.waits_on_joel,
+                "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
 }
@@ -276,7 +320,7 @@ fn member(row: &Row, parent: &str, depth: usize) -> Value {
 /// laid from depth 0 again (tree.rs), stay under the fold.
 fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
     let mut stack = above.to_vec();
-    for one in shown {
+    for (at, one) in shown.iter().enumerate() {
         let (depth, key) = match one {
             Shown::Session(row) => (row.depth, key_of(address(row))),
             Shown::Fold(fold) => (fold.depth, key_of(fold.key.trim_start_matches("agents:"))),
@@ -289,7 +333,13 @@ fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
             .map_or_else(String::new, |(_, key)| key.clone());
         let steps = stack.len();
         match one {
-            Shown::Session(row) => rows.push(member(row, &parent, steps)),
+            Shown::Session(row) => {
+                let under_waits = shown[at + 1..]
+                    .iter()
+                    .take_while(|below| depth_of(below) > row.depth)
+                    .any(waits);
+                rows.push(member(row, &parent, steps, under_waits));
+            }
             Shown::Fold(fold) => {
                 rows.push(json!({
                     "key": key, "place": PLACE, "parent": parent, "kind": "fold",
@@ -321,7 +371,7 @@ pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
             };
             let mut all = Vec::new();
             gathered(&entries[1..], &mut all);
-            let needs = head.state == "needs" || all.iter().any(|row| row.state == "needs");
+            let needs = head.waits_on_joel || all.iter().any(|row| row.waits_on_joel);
             let mut rows = vec![orchestration(head, &all, known, said)];
             if !all.is_empty() {
                 rows.extend(acts_inside(head, words));
@@ -415,6 +465,8 @@ mod tests {
             name: format!("{address}'s quest"),
             also: address.to_owned(),
             glyph: "agent",
+            mark: "agent",
+            mark_hue: "program",
             hue: "program",
             side: state.to_owned(),
             side_items: vec![Item {
@@ -425,6 +477,7 @@ mod tests {
             depth,
             orchestrates: false,
             gone: false,
+            waits_on_joel: state == "needs",
             state,
             doing: state.to_owned(),
             returns: "switch",
@@ -692,6 +745,87 @@ mod tests {
         );
     }
 
+    /// `shown`'s session row wearing `glyph` in `hue`, as row.rs dresses a
+    /// team's lead or one waiting on Joel.
+    fn wearing(mut shown: Shown, glyph: &'static str, hue: &'static str) -> Shown {
+        if let Shown::Session(row) = &mut shown {
+            row.glyph = glyph;
+            row.hue = hue;
+        }
+        shown
+    }
+
+    #[test]
+    fn an_orchestration_wears_joels_mark_while_any_session_in_it_waits_on_him() {
+        let mark = |shown: &[Shown], key: &str| {
+            let rows = top(shown);
+            let head = found(&rows, key);
+            format!("{}:{}", head["glyph"], head["hue"])
+        };
+        let lead = || wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning");
+        let asking =
+            |at: &str, depth| wearing(row(at, "needs", depth, LIVE), "waitsOnJoel", "alert");
+        // Parked with his want still open, as For You lists it waiting (stands_to_joel).
+        let parked_asking = |at: &str| {
+            let mut shown = row(at, "parked", 1, &["wake", "talk"]);
+            if let Shown::Session(row) = &mut shown {
+                row.waits_on_joel = true;
+            }
+            shown
+        };
+        let head = "row:agents-top:O";
+        assert_eq!(
+            [
+                mark(&[lead(), asking("A", 1)], head),
+                mark(&[lead(), parked_asking("A")], head),
+                mark(&[lead(), row("A", "working", 1, LIVE)], head),
+            ],
+            [
+                "\"waitsOnJoel\":\"alert\"",
+                "\"waitsOnJoel\":\"alert\"",
+                "\"shapeSquare\":\"warning\"",
+            ],
+            "a session inside waiting, at work or parked, marks the folded row; none waiting \
+             leaves its own shape and hue"
+        );
+        let team = |deepest: Shown| {
+            [
+                row("O", "listening", 0, LIVE),
+                wearing(row("S", "working", 1, LIVE), "shapeCircle", "program"),
+                deepest,
+            ]
+        };
+        assert_eq!(
+            [
+                mark(&team(asking("T", 2)), "row:agents-top:S"),
+                mark(&team(row("T", "working", 2, LIVE)), "row:agents-top:S"),
+            ],
+            ["\"waitsOnJoel\":\"alert\"", "\"shapeCircle\":\"program\""],
+            "a session two steps in waiting marks the one it sits under, a step in, too"
+        );
+        // Only what's under a session marks it, never what's under the sibling after it.
+        let siblings = [
+            row("O", "listening", 0, LIVE),
+            wearing(row("S", "working", 1, LIVE), "shapeCircle", "program"),
+            row("T", "working", 2, LIVE),
+            wearing(row("U", "working", 1, LIVE), "shapeCircle", "program"),
+            asking("V", 2),
+        ];
+        assert_eq!(
+            [
+                mark(&siblings, "row:agents-top:S"),
+                mark(&siblings, "row:agents-top:U"),
+                mark(&siblings, head),
+            ],
+            [
+                "\"shapeCircle\":\"program\"",
+                "\"waitsOnJoel\":\"alert\"",
+                "\"waitsOnJoel\":\"alert\"",
+            ],
+            "V waiting marks U, which it sits under, and the orchestration, but not S beside U"
+        );
+    }
+
     #[test]
     fn a_session_inside_is_gone_to_only_where_it_needs_joel() {
         let rows = top(&[
@@ -724,6 +858,44 @@ mod tests {
             found(&rows, "row:agents-top:B")["side"][0]["said"],
             "working",
             "a session inside says what its own row says"
+        );
+    }
+
+    #[test]
+    fn a_session_parked_with_joels_want_open_talks_counts_and_sorts_as_waiting() {
+        // Its state stays "parked"; only waits_on_joel says he's wanted.
+        let made = |waits| {
+            let mut parked = row("A", "parked", 1, &["wake", "talk"]);
+            if let Shown::Session(row) = &mut parked {
+                row.waits_on_joel = waits;
+            }
+            top(&[
+                row("P", "working", 0, LIVE),
+                row("O", "listening", 0, LIVE),
+                parked,
+            ])
+        };
+        let (asking, resting) = (made(true), made(false));
+        let talks =
+            |rows: &[Value]| acts(found(rows, "row:agents-top:A")).contains(&"verb:agent:talk");
+        let counted = |rows: &[Value]| {
+            sides(found(rows, "row:agents-top:O"))
+                .iter()
+                .any(|said| said.contains("needs you"))
+        };
+        let first = |rows: &[Value]| {
+            rows.iter()
+                .find(|row| row["depth"] == 0)
+                .map(|row| row["key"].clone())
+        };
+        assert_eq!(
+            [&asking, &resting].map(|rows| (talks(rows), counted(rows), first(rows))),
+            [
+                (true, true, Some(json!("row:agents-top:O"))),
+                (false, false, Some(json!("row:agents-top:P"))),
+            ],
+            "waiting on Joel, it keeps Talk, its team says it needs him and sorts first; \
+             at rest, none of those"
         );
     }
 

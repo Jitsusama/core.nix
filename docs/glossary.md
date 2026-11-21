@@ -126,6 +126,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
 | Doing | the step a session is on now: thinking, or a tool and what it's on | | `stepDetail` |
 | Needs You For | what a session wants of Joel, said on it: an answer, a yes or an unblock | | `agents:wants` |
+| waiting mark | the person with a clock, in the alert's hue, that a session's row wears in place of its own mark while it waits on Joel, so a row cut narrow still says so | | `standing.rs`'s `glyph` and `hue`, `waitsOnJoel` |
 | turn | one round of a session's work, from the message or key that starts it to the answer it ends on | | `attention: "turn"`, for a mesh message that starts one at once |
 | peer | another session on the same machine, reached over the mesh | instance, swarm | |
 | mesh | how sessions on one machine message each other | | `mesh_send` |

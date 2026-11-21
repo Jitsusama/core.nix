@@ -205,7 +205,9 @@ fn cells(
             .filter_map(|name| cell(name, parent, depth, rows))
             .collect()
     };
-    made.sort_by_key(|cell| cell["held"]["state"] != "needs");
+    // Waiting on Joel, as the tree has it and its mark says: it or a session
+    // under it, parked with his want open too.
+    made.sort_by_key(|cell| cell["held"]["anyWaitsOnJoel"] != true);
     if made.len() <= CELLS_FOLD_PAST {
         return made;
     }
@@ -380,7 +382,8 @@ mod tests {
             "hue": "program", "depth": 0, "side": [], "note": "",
             "drawer": format!("drawer:{PLACE}:{address}"),
             "acts": [{"key": "verb:talk"}, {"key": "verb:details", "step": "drawer"}, more()],
-            "held": {"address": address, "state": state},
+            "held": {"address": address, "state": state, "waitsOnJoel": state == "needs",
+                "anyWaitsOnJoel": state == "needs"},
         })
     }
 
@@ -509,6 +512,60 @@ mod tests {
             names,
             ["needs", "stuck", "busy", "moving", "calm", "late"],
             "needing Joel, stuck, the most moving, then the one heard from last"
+        );
+    }
+
+    #[test]
+    fn a_cell_parked_with_joels_want_open_comes_first_as_one_needing_him() {
+        let mut asking = session("REEF02", "parked", "session");
+        asking["held"]["waitsOnJoel"] = json!(true);
+        asking["held"]["anyWaitsOnJoel"] = json!(true);
+        let top = [
+            session("KELP01", "working", "orchestration"),
+            session("TERN03", "parked", "session"),
+            asking,
+        ];
+        let repo = record(
+            "repo.world",
+            "repository",
+            &["kelp01", "tern03", "reef02"],
+            &quiet(),
+            1,
+        );
+        let made = rows(&[&repo], &top, &words());
+        assert_eq!(
+            keys(&made[3..]),
+            [
+                "row:agents-top:network:repo.world:reef02",
+                "row:agents-top:network:repo.world:kelp01",
+                "row:agents-top:network:repo.world:tern03",
+            ],
+            "its state stays parked, yet waiting on Joel it comes first, as the tree has it"
+        );
+    }
+
+    #[test]
+    fn a_cell_wearing_joels_mark_for_one_under_it_comes_first() {
+        // KELP01 works, but a session in its team waits on Joel, so its row
+        // wears his mark (top.rs's worn) and sorts with those needing him.
+        let mut team = session("KELP01", "working", "orchestration");
+        team["held"]["anyWaitsOnJoel"] = json!(true);
+        let top = [session("TERN03", "working", "session"), team];
+        let repo = record(
+            "repo.world",
+            "repository",
+            &["tern03", "kelp01"],
+            &quiet(),
+            1,
+        );
+        let made = rows(&[&repo], &top, &words());
+        assert_eq!(
+            keys(&made[3..]),
+            [
+                "row:agents-top:network:repo.world:kelp01",
+                "row:agents-top:network:repo.world:tern03",
+            ],
+            "the order and the mark agree"
         );
     }
 

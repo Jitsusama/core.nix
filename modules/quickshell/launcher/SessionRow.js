@@ -100,8 +100,13 @@ function offered(rowActs, returns, fallback) {
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name
-// stays in text and the far-end word says how it stands.
+// stays in text and the far-end word says how it stands. One waiting on
+// Joel is in the alert's, ahead of a nearing limit, as the agents daemon
+// serves its row (modules/agents/src/standing.rs's hue; Joel, 2026-11-20).
 function hue(stands, warns) {
+    if (stands === "needs") {
+        return "alert";
+    }
     if (["paused", "parked", "off"].includes(stands)) {
         return "muted";
     }
@@ -161,4 +166,16 @@ function closedAt(endedAt, now, said, day) {
     const today = ended.toDateString() === now.toDateString();
     return String(said[today ? "closedAt" : "closedOn"] ?? "").replace("{time}", time)
         .replace("{day}", today ? "" : day(ended));
+}
+
+// The glyph and hue a session's row wears in For You, from Agents' row
+// `made`: its mark and hue as it'd stand not waiting (the agents daemon's
+// held mark and markHue), since every session here waits and the person
+// with a clock is a to-do's here, so they aren't all alert and a nearing
+// limit still warns. With none served, the row's own.
+function unwaited(made) {
+    return {
+        glyph: made?.mark ?? made?.glyph,
+        hue: made?.markHue ?? made?.hue
+    };
 }

@@ -225,6 +225,18 @@ impl<'a> Session<'a> {
             in_line(jobs, self.id()).is_some(),
         )
     }
+
+    /// How it stands as Joel looks for what waits on him: parked with its
+    /// want his still open, it needs him, as For You lists it (wants.rs),
+    /// so it wears his mark, counts, ranks and sorts first and is never
+    /// folded away, though its acts stay a parked one's
+    /// (`standing::acts`); else as it stands.
+    pub fn stands_to_joel(self, joel_can: &JoelCan, jobs: &[Value]) -> Stands {
+        match self.stands(joel_can, jobs) {
+            Stands::Parked if asks_joel(self.presence(), joel_can) => Stands::Needs,
+            stands => stands,
+        }
+    }
 }
 
 /// A window's label, "π - ", its quest's name and " - " its folder, split

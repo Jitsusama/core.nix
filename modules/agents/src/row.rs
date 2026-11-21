@@ -3,6 +3,10 @@
 //! glyph's and hue's roles, how deep it sits, what Return does and its
 //! acts by id, and itself as it reads ranked flat. The launcher draws it
 //! and maps each act's id to what it does; it works nothing out.
+//!
+//! Long because its cases are near two fifths of it: each part of a row
+//! (its words, mark, folding and acts) is built by the same helpers from
+//! a session's record, so the cases stay beside what they check.
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -109,6 +113,14 @@ pub struct Row {
     /// and quest, and what the harness lists an orchestrator as.
     pub also: String,
     pub glyph: &'static str,
+    /// The mark it wears while it doesn't wait on Joel, its team's shape
+    /// or the agent's, which For You's rows keep: every session there
+    /// waits on him, and the person with a clock is a to-do's there
+    /// (ForYou.js).
+    pub mark: &'static str,
+    /// The hue it wears while it doesn't wait on Joel, the warning's as its
+    /// limit nears, which For You keeps with its mark.
+    pub mark_hue: &'static str,
     pub hue: &'static str,
     pub side: String,
     pub side_items: Vec<Item>,
@@ -119,6 +131,10 @@ pub struct Row {
     pub orchestrates: bool,
     /// Out of reach, so it does nothing.
     pub gone: bool,
+    /// Whether it waits on Joel: it needs him, or it parked with its want
+    /// his still open, which For You lists as waiting too, so its row and
+    /// those over it wear his mark either way.
+    pub waits_on_joel: bool,
     pub state: &'static str,
     /// How it stands in words, among its side's items too: For You's
     /// heading over the cell says it alone, without its figures.
@@ -321,12 +337,15 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
     let items = figures::side(&doing_said, &figure, &full);
     let windowed = (known.windowed)(session);
     // An orchestrator's row wears the shape its network is drawn by in
-    // place of the agent's mark, so the row and the map agree.
-    let glyph = place
+    // place of the agent's mark, so the row and the map agree, until it
+    // waits on Joel (standing::glyph).
+    let shape = place
         .orchestrates
         .then(|| (known.shape)(session.id()))
-        .flatten()
-        .unwrap_or("agent");
+        .flatten();
+    let wears = session.stands_to_joel(known.joel_can, known.jobs);
+    let waits_on_joel = wears == Stands::Needs;
+    let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
         keep: 1,
@@ -339,13 +358,16 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         name: title,
         also: format!("{address} {folder} {quest}{known_as}"),
         glyph,
-        hue: standing::hue(stands, !full.is_empty()),
+        mark: shape.unwrap_or("agent"),
+        mark_hue: standing::unwaited_hue(stands, !full.is_empty()),
+        hue: standing::hue(wears, !full.is_empty()),
         side: said_of(&items),
         side_items: items,
         note: noted.clone(),
         depth: place.depth,
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
+        waits_on_joel,
         state: stands.id(),
         doing: doing_said,
         // One standing at the top is gone to to be told something, the
@@ -455,7 +477,7 @@ pub fn rows(sessions: &[Session], known: &Known, words: &Words) -> Vec<Shown> {
         .map(|session| Member {
             address: session.address(),
             under: session.under(),
-            stands: session.stands(known.joel_can, known.jobs),
+            stands: session.stands_to_joel(known.joel_can, known.jobs),
             at_top: session.at_top().is_some(),
         })
         .collect();
@@ -628,6 +650,83 @@ mod tests {
     }
 
     #[test]
+    fn a_session_waiting_on_joel_is_told_from_one_working_by_its_mark_alone() {
+        let asking = json!({"presence": {"addresses": ["P"], "session": "s-lead",
+            "busy": true, "wants": {"kind": "approval", "said": "May I push?"},
+            "usage": {"context": {"used": 90, "limit": 100}}}});
+        let orchestrating = Place {
+            depth: 0,
+            orchestrates: true,
+        };
+        assert!(
+            made(&asking, Place::default(), &given())
+                .side
+                .contains("90% full"),
+            "its limit nears, so the warning's hue would apply"
+        );
+        let marks = |record: &Value, place: Place| {
+            let row = made(record, place, &given());
+            format!("{}:{}:{}", row.state, row.glyph, row.hue)
+        };
+        assert_eq!(
+            [
+                marks(&asking, Place::default()),
+                marks(&asking, orchestrating),
+                marks(&working(), Place::default()),
+            ],
+            [
+                "needs:waitsOnJoel:alert",
+                "needs:waitsOnJoel:alert",
+                "working:agent:program",
+            ],
+            "one waiting on Joel wears his mark in the alert's hue, over a team's shape and a \
+             nearing limit, so a row cut narrow still says it waits on him (Joel, 2026-11-20)"
+        );
+        assert_eq!(
+            [
+                made(&asking, Place::default(), &given()).mark,
+                made(&asking, orchestrating, &given()).mark
+            ],
+            ["agent", "shapeSquare"],
+            "the mark it wears when it doesn't wait is kept for For You"
+        );
+        assert_eq!(
+            [
+                made(&asking, Place::default(), &given()).mark_hue,
+                made(&working(), Place::default(), &given()).mark_hue
+            ],
+            ["warning", "program"],
+            "and the hue, so For You's rows aren't all alert, its nearing limit still warned"
+        );
+    }
+
+    #[test]
+    fn one_parked_with_its_want_joels_still_wears_his_mark() {
+        let parked = |wants: Value| {
+            json!({"presence": {"addresses": ["P"], "session": "s-1", "state": "parked",
+                "wants": wants}})
+        };
+        let asking = parked(json!({"kind": "approval", "said": "May I push?"}));
+        let marks = |record: &Value| {
+            let row = made(record, Place::default(), &given());
+            let acts = row.acts.join(",");
+            format!(
+                "{}:{}:{}:{}:{}:{acts}",
+                row.state, row.glyph, row.hue, row.mark_hue, row.waits_on_joel
+            )
+        };
+        assert_eq!(
+            [marks(&asking), marks(&parked(Value::Null))],
+            [
+                "parked:waitsOnJoel:alert:muted:true:wake,talk",
+                "parked:agent:muted:muted:false:wake,talk",
+            ],
+            "For You lists one parked with his want open as waiting, so Agents marks it too, its \
+             acts still a parked one's; one parked wanting nothing stays muted"
+        );
+    }
+
+    #[test]
     fn a_want_that_is_joels_leads_its_note() {
         let record = json!({"presence": {"addresses": ["P"],
             "wants": {"kind": "approval", "said": "May I push?"}, "worksOn": "x"}});
@@ -745,6 +844,53 @@ mod tests {
         );
         let held: Vec<_> = fold.held.iter().map(Shown::key).collect();
         assert_eq!(held, ["agent:A", "agent:B"]);
+    }
+
+    #[test]
+    fn one_parked_with_joels_want_open_is_never_folded_and_counts_as_needing_him() {
+        let records = [
+            json!({"presence": {"addresses": ["O"], "busy": true}}),
+            json!({"presence": {"addresses": ["B"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["C"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["A"], "orchestratedBy": "O", "state": "parked",
+                "session": "s-1", "wants": {"kind": "approval", "said": "May I push?"}}}),
+        ];
+        let sessions: Vec<_> = records.iter().map(Session).collect();
+        let given = given();
+        let none = |_: &str| None::<String>;
+        let unlisted = |_: &str| None::<(String, String)>;
+        let windowed = |_: Session| false;
+        let known = Known {
+            joel_can: &given.joel_can,
+            jobs: &given.jobs,
+            spent: &none,
+            family: &none,
+            listed: &unlisted,
+            windowed: &windowed,
+            sharing: false,
+            needs: &|_| 0,
+            shape: &|_| None,
+        };
+        let shown = rows(&sessions, &known, &words());
+        let keys: Vec<_> = shown.iter().map(Shown::key).collect();
+        assert_eq!(
+            keys,
+            ["agent:O", "agent:A", "agents:fold:O"],
+            "parked with his want open, it sorts first and stays out of the fold"
+        );
+        // Home's summary counts it from the same answer (inputs.rs).
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|one| one.stands_to_joel(&given.joel_can, &given.jobs))
+                .collect::<Vec<_>>(),
+            [
+                Stands::Working,
+                Stands::Paused,
+                Stands::Paused,
+                Stands::Needs
+            ]
+        );
     }
 
     #[test]

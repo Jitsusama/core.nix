@@ -13,7 +13,9 @@ use crate::standing::Stands;
 /// "1 needs you · 1 answer · 3 working" (Joel, 2026-11-11). With none
 /// needing him nor working, it names how the rest stand in the fold's
 /// words and order, "3 listening, 1 paused", the parked not among them,
-/// and nothing for what isn't there.
+/// and nothing for what isn't there. `states` are as Joel looks for what
+/// waits on him (`Session::stands_to_joel`), so one parked with his want
+/// open counts as needing him, as its row says.
 pub fn summary(states: &[Stands], answers: usize, spent: &str, said: &Said) -> String {
     let count = |stands: Stands| states.iter().filter(|one| **one == stands).count();
     let filled = |key: &str, many: usize| said.fill(key, &[("count", &many.to_string())]);

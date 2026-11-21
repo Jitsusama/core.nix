@@ -584,7 +584,7 @@ impl Inputs {
         );
         let states: Vec<_> = sessions
             .iter()
-            .map(|one| one.stands(&joel_can, &jobs))
+            .map(|one| one.stands_to_joel(&joel_can, &jobs))
             .collect();
         let mut rows = row::rows(&sessions, &known, &self.words);
         let answers = self.answers();
@@ -1356,6 +1356,22 @@ mod tests {
         assert_eq!(
             summary_of(&shown),
             "1 needs you \u{b7} 1 working \u{b7} $214 today"
+        );
+    }
+
+    #[test]
+    fn a_session_parked_with_joels_want_open_counts_him_needed_in_the_summary() {
+        let mut inputs = inputs();
+        inputs
+            .sessions
+            .took(&json!({"changed": [{"key": "session:o",
+            "presence": {"addresses": ["O"], "session": "s-o", "owns": ["QEST-O"],
+                "state": "parked", "wants": {"kind": "question"}}}]}));
+        let summary = summary_of(&served(&inputs));
+        let said = summary.as_str().unwrap_or_default();
+        assert!(
+            said.starts_with("1 needs you"),
+            "parked, its open question is still Joel's: {said}"
         );
     }
 
