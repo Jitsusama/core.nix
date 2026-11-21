@@ -185,8 +185,10 @@ pub fn read(transcript: &str, me: &str) -> Vec<Line> {
         .collect()
 }
 
-/// Whether `line` is Joel's microphone hearing one of the others' lines.
-fn echoes(line: &Line, lines: &[Line]) -> bool {
+/// Whether `line` is Joel's microphone hearing one of the others' lines,
+/// and so left out of the transcript; the meetings check says which of
+/// Joel's lines it leaves out (score.rs).
+pub fn echoes(line: &Line, lines: &[Line]) -> bool {
     if line.side != Side::Mine {
         return false;
     }
