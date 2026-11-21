@@ -40,7 +40,7 @@ fn served(records: &[Value], name: &str) -> Vec<Value> {
     let sendable = Sendable {
         devices: devices
             .iter()
-            .filter(|each| each.sink == device.sink && each.property("filter.smart") != "true")
+            .filter(|each| each.sink == device.sink && each.own())
             .map(|each| (each, each.name.to_owned()))
             .collect(),
     };
