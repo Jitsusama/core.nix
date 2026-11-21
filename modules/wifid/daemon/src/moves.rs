@@ -814,7 +814,11 @@ mod tests {
 
         let worse = line(&Against::Worse(before));
         let usually = line(&Against::Usually(usual));
-        let slowed = line(&Against::Slowed(52));
+        let cut = Measured {
+            moving: Some(30),
+            ..carried(50)
+        };
+        let slowed = went_back(&on, &cut, DESK, Some(&Against::Slowed(52)));
         let badly = line(&Against::Badly);
 
         let carried =
@@ -835,7 +839,7 @@ mod tests {
         );
         assert!(
             slowed.ends_with(&format!(
-                "goes back to {DESK}, as {HALL} moved 200 Mbit/s under load, where {DESK} \
+                "goes back to {DESK}, as {HALL} moved 30 Mbit/s under load, where {DESK} \
                  moved 52{kept}"
             )),
             "a download cut says what each moved: {slowed}"
