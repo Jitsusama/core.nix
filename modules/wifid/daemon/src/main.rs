@@ -263,6 +263,7 @@ async fn serve(
         held: RefCell::default(),
         astray: RefCell::default(),
         alone: RefCell::default(),
+        stopped: RefCell::default(),
     };
     wifid.add_cards().await;
 
@@ -274,7 +275,8 @@ async fn serve(
     // test says a card is scanning so, no radio there ever hanging a look
     // (2026-11-20). That's taken only of a card holding no network and in
     // no move, so such an account can have a card it says has looked too
-    // long told to join a network it saved, and nothing more.
+    // long told to join a network it saved, and nothing more: not one Joel
+    // took off its network, which `nudge` leaves be until it joins again.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -807,28 +809,10 @@ impl Air<'_> {
         if sender.is_some_and(|sender| self.departed.iter().any(|gone| gone == sender)) {
             return;
         }
-        let body = message.body();
-        // Another account's signal is taken only as a card beginning to
-        // look (`serve`), and only its step, of a card holding no network
-        // and in no move, so it can't end a move, lift a hold or let a
-        // card's other networks on.
         if !self.own(bus, sender).await {
-            let changed = body.deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>();
-            if member.as_str() == "PropertiesChanged"
-                && header
-                    .interface()
-                    .is_some_and(|interface| interface == "org.freedesktop.DBus.Properties")
-                && let Ok((interface, mut changed, _)) = changed
-                && begins_looking(&interface, &changed)
-                && self.cards.get(path.as_str()).is_some_and(|(card, step)| {
-                    may_be_said_looking(step, self.arrivals.borrow().moving(card))
-                })
-            {
-                changed.retain(|property, _| property == "State");
-                self.card_changed(bus, path, &changed).await;
-            }
-            return;
+            return self.said_by_another(bus, message).await;
         }
+        let body = message.body();
         match member.as_str() {
             "BSSAdded" => {
                 if let Ok((point, properties)) = body.deserialize::<(OwnedObjectPath, _)>() {
@@ -904,6 +888,40 @@ impl Air<'_> {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Takes in another account's signal only as a card beginning to look
+    /// (`serve`), and only its step, of a card holding no network and in
+    /// no move, so it can't end a move, lift a hold or let a card's other
+    /// networks on.
+    async fn said_by_another(&mut self, bus: &Connection, message: &zbus::Message) {
+        let header = message.header();
+        let Some(path) = header.path() else { return };
+        let changed = message
+            .body()
+            .deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>();
+        if header
+            .member()
+            .is_some_and(|member| member == "PropertiesChanged")
+            && header
+                .interface()
+                .is_some_and(|interface| interface == "org.freedesktop.DBus.Properties")
+            && let Ok((interface, mut changed, _)) = changed
+            && begins_looking(&interface, &changed)
+        {
+            let card = self.cards.get(path.as_str());
+            if card.is_some_and(|(card, step)| {
+                may_be_said_looking(step, self.arrivals.borrow().moving(card))
+            }) {
+                changed.retain(|property, _| property == "State");
+                self.card_changed(bus, path, &changed).await;
+            } else {
+                // Said, so a look passed over as its card still held a
+                // network, or was moving, shows why nothing followed.
+                let card = card.map_or(path.as_str(), |(card, _)| card.as_str());
+                println!("<7>passed over a look another account said of {card}");
+            }
         }
     }
 
@@ -1523,6 +1541,9 @@ struct Wifid<'a> {
     /// The cards moving with their other networks off, until they've
     /// joined again, or are let join whatever they hear.
     alone: RefCell<HashSet<String>>,
+    /// The cards Joel took off their network, never nudged to join one
+    /// until they've joined again.
+    stopped: RefCell<HashSet<String>>,
 }
 
 impl Wifid<'_> {
@@ -2148,6 +2169,12 @@ impl Wifid<'_> {
     /// first, rather than this naming one: a network still heard of may
     /// have gone, and joining only it would hold the card there.
     async fn nudge(&self, name: &str, looked: Duration, air: &Air<'_>) {
+        // A card Joel left looks only as another account says it does, as
+        // wpa_supplicant joins nothing after a disconnect, so that's no
+        // stall to end.
+        if self.stopped.borrow().contains(name) {
+            return println!("<7>{name} was taken off its network, so isn't asked to join one");
+        }
         let listing = match self.store.networks() {
             Ok(listing) => listing,
             Err(error) => return eprintln!("<4>can't list the saved networks: {error}"),
@@ -2346,6 +2373,7 @@ impl Wifid<'_> {
             left.map_err(|error| Refused::Failed {
                 reason: format!("{card} didn't leave {name}: {error}"),
             })?;
+            self.stopped.borrow_mut().insert(card.clone());
             println!("<6>{card} left {name}, as asked");
         }
         Ok(())
@@ -2376,6 +2404,10 @@ impl Wifid<'_> {
                 reason: format!("{card} is on its way back to the point it left"),
             });
         }
+        // A move already under way is kept whole if this ask fails, so its
+        // timer still sends the card back, other networks off, should it
+        // reach neither point.
+        let moving = self.arrivals.borrow().moving(&card);
         let roamed = async {
             let interface =
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
@@ -2418,15 +2450,17 @@ impl Wifid<'_> {
                 let roamed = interface.roam(bssid).await;
                 // Forgotten only here, since a failure before the ask is
                 // none of a move already on its way.
-                if roamed.is_err() {
+                if roamed.is_err() && !moving {
                     self.arrivals.borrow_mut().forget(&card);
                 }
                 roamed
             }
         };
         if let Err(error) = roamed.await {
-            self.together(&card, joining != Some(card.as_str())).await;
-            self.let_go(&card, false).await;
+            if !moving {
+                self.together(&card, joining != Some(card.as_str())).await;
+                self.let_go(&card, false).await;
+            }
             return Err(Refused::Failed {
                 reason: format!("{card} didn't move to {bssid}: {error}"),
             });
@@ -2865,6 +2899,7 @@ impl Wifid<'_> {
     /// way back is still followed past a join elsewhere: it ends that, as
     /// the card reaches its point or is stranded.
     async fn settled(&self, card: &str, free: bool) {
+        self.stopped.borrow_mut().remove(card);
         if !self.arrivals.borrow().moving(card) {
             self.together(card, free).await;
         }

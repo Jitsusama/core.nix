@@ -31,6 +31,34 @@ def wifid(machine: BaseMachine) -> Wifid:
     return wifid
 
 
+WIFID_SAYS = "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+
+
+def journal_now(machine: BaseMachine) -> str:
+    """Give the journal's cursor now, to read only what's said after it."""
+    return machine.succeed("journalctl -n 1 -o export | sed -n 's/^__CURSOR=//p'").strip()
+
+
+def say_wlan2_is_looking(machine: BaseMachine, since: str) -> None:
+    """Say wlan2 began looking, as any account may, once wifid has heard it's off its network.
+
+    wifid takes another account's look only of a card holding no network, as wpa_supplicant
+    itself last said, so this waits for wifid to have heard that since the cursor given.
+    """
+    machine.wait_until_succeeds(
+        f"{WIFID_SAYS} --after-cursor='{since}' | grep -qx 'wlan2 is disconnected'",
+        timeout=timedelta(seconds=30),
+    )
+    card = machine.succeed(
+        "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1"
+        " fi.w1.wpa_supplicant1 GetInterface s wlan2"
+    ).split('"')[1]
+    machine.succeed(
+        f"busctl emit {card} org.freedesktop.DBus.Properties PropertiesChanged"
+        " 'sa{sv}as' fi.w1.wpa_supplicant1.Interface 1 State s scanning 0"
+    )
+
+
 def test_signing_in_at_the_inn_is_noticed_when_asked_and_the_shell_told(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
@@ -174,13 +202,20 @@ def test_leaving_the_inn_from_the_shell_keeps_the_card_off_it_until_its_joined(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """Leaving the Inn from the shell keeps the card off it until it's joined."""
+    since = journal_now(machine)
     wifid.ask("Leave", {"name": "Roadside Inn"})
     machine.wait_until_succeeds(
         "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
     retry(lambda _: not wifid.on_network("Roadside Inn"), timeout=timedelta(seconds=30))
     wifid.refused("Leave", {"name": "Roadside Inn"}, "NotJoined")
-    machine.sleep(timedelta(seconds=10))
+    # Another account saying the card has looked too long doesn't undo
+    # the leave, as it would a card stopped by any other hand.
+    say_wlan2_is_looking(machine, since)
+    machine.wait_until_succeeds(
+        f"{WIFID_SAYS} | grep -qx 'wlan2 was taken off its network, so isn.t asked to join one'",
+        timeout=timedelta(seconds=40),
+    )
     machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")
     status, _, said = wifid.joining({"name": "Roadside Inn"})
     assert status == 0, said
@@ -308,18 +343,12 @@ def test_a_card_scanning_too_long_with_a_saved_network_in_range_is_told_to_join_
     machine: BaseMachine,
 ) -> None:
     """A card scanning too long with a saved network in range is told to join it."""
+    since = journal_now(machine)
     machine.succeed("wpa_cli -i wlan2 disconnect")
     machine.wait_until_succeeds(
         "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
-    held = machine.succeed(
-        "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1"
-        " fi.w1.wpa_supplicant1 GetInterface s wlan2"
-    ).split('"')[1]
-    machine.succeed(
-        f"busctl emit {held} org.freedesktop.DBus.Properties PropertiesChanged"
-        " 'sa{sv}as' fi.w1.wpa_supplicant1.Interface 1 State s scanning 0"
-    )
+    say_wlan2_is_looking(machine, since)
     # Nothing else joins it: a card stopped so stays stopped.
     machine.sleep(timedelta(seconds=10))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")

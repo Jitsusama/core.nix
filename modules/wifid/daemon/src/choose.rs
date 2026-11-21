@@ -2678,7 +2678,9 @@ pub(crate) mod tests {
     #[test]
     fn a_move_ending_on_a_third_point_still_settles() {
         let mut chooser = after_a_bad_minute(DESK);
-        let start = Instant::now();
+        // A settle on, so a span's hold can't fall before the host's boot
+        // and pass as a full settle.
+        let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let hall_alone = [hall(-53, Some(20), None)];
         chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
@@ -2708,7 +2710,9 @@ pub(crate) mod tests {
     #[test]
     fn a_move_that_stood_then_ended_where_it_began_still_settles() {
         let mut chooser = after_a_bad_minute(DESK);
-        let start = Instant::now();
+        // A settle on, so a span's hold can't fall before the host's boot
+        // and pass as a full settle.
+        let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let well = carried(15, 0.0);
         let hall_alone = [hall(-53, Some(20), None)];
@@ -2722,9 +2726,16 @@ pub(crate) mod tests {
         let waits = chooser.choose(rejoined, (DESK, &badly, -50, CH52), &near, false);
         let spanned = rejoined + SPAN;
         let held = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
+        let settled = start + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, (DESK, &badly, -50, CH52), &near, false);
 
         assert_eq!(stood, Choice::Stay, "on trial on the hall");
         assert_eq!(held, Choice::Stay, "held past a span, as a settle");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "and tries once settled"
+        );
         assert_eq!(
             waits,
             Choice::Stay,

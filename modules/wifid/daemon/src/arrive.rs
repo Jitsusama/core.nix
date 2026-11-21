@@ -721,6 +721,33 @@ mod tests {
     }
 
     #[test]
+    fn a_move_aimed_elsewhere_on_its_way_keeps_its_way_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(FAR), HALL, now);
+        arrivals.step("wlan0", "authenticating", now + ms(20));
+        let before = arrivals.due();
+
+        arrivals.heading("wlan0", DESK, now + ms(50));
+        let due = arrivals.due();
+        arrivals.step("wlan0", "disconnected", now + ms(90));
+        let off = arrivals.fell_off("wlan0");
+
+        assert!(before.is_some(), "a move with a way back is due to take it");
+        assert_eq!(due, before, "aimed elsewhere, still due when it was");
+        assert_eq!(
+            off,
+            Some(Unreached {
+                card: "wlan0".into(),
+                from: FAR.into(),
+                to: DESK.into(),
+                why: Short::Off
+            }),
+            "falling off, sent back to the point it left, missing the newer one"
+        );
+    }
+
+    #[test]
     fn a_card_moving_doesnt_answer_for_another() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
