@@ -93,8 +93,9 @@ struct Known {
 /// its compositor. A process outside his apps has only its cgroup read,
 /// each minute, since one starts in its launcher's cgroup in the moment
 /// before it's moved into its scope. One started from his terminal, in its
-/// kitty scope, is counted by its label, so a gap in what's watched shows
-/// rather than reads as quiet; a test's, an agent's or a service's isn't.
+/// kitty scope or a scope of its own that his terminal started, is counted
+/// by its label, so a gap in what's watched shows rather than reads as
+/// quiet; a test's, an agent's or a service's isn't.
 /// The count is as of the minute's look, so one that ends or starts is
 /// seen at the next.
 #[derive(Debug)]
@@ -102,10 +103,25 @@ pub struct Apps {
     slice: String,
     known: BTreeMap<String, Known>,
     outside: BTreeMap<String, &'static str>,
-    /// Whether each scope named for a process is Joel's, judged once by
-    /// who started its process, and kept while any of its processes is.
-    own_scopes: BTreeMap<String, bool>,
+    /// Who opened each scope named for a process, judged once by who
+    /// started its process, and kept while any of its processes is.
+    own_scopes: BTreeMap<String, Opener>,
     scopes_looked: BTreeSet<String>,
+    /// Where systemd keeps the units made as they're run, such as a
+    /// `systemd-run`'s, which none of his own services is.
+    transient: PathBuf,
+}
+
+/// Who opened an app's process, as its cgroup and its parent's say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Opener {
+    /// Joel, from his desktop, his session or a service of his.
+    Joel,
+    /// Joel's terminal, whose work isn't watched but is counted, and whose
+    /// Chrome may carry his call.
+    HisTerminal,
+    /// A test, an agent, a service or another account.
+    Other,
 }
 
 impl Apps {
@@ -118,14 +134,23 @@ impl Apps {
             outside: BTreeMap::new(),
             own_scopes: BTreeMap::new(),
             scopes_looked: BTreeSet::new(),
+            transient: PathBuf::from("/nonexistent"),
         }
     }
 
+    /// The same, taking a unit in his app.slice whose file is in
+    /// `transient`, such as `$XDG_RUNTIME_DIR/systemd/transient`, as made by
+    /// a `systemd-run` there, an agent's or a test's, and so not his.
+    #[must_use]
+    pub fn reading_transient_units_from(mut self, transient: PathBuf) -> Self {
+        self.transient = transient;
+        self
+    }
+
     /// How many processes of each app's label Joel started from his
-    /// terminal, which go unwatched, as of the minute's last look. A
-    /// Chrome moves itself into a scope of its own within about half a
-    /// second, and is then watched as his, since his terminal started it;
-    /// what stays is Slack's, or a Chrome caught in that moment. One
+    /// terminal, which go unwatched, as of the minute's last look: one in
+    /// its kitty scope, or a Chrome in the scope of its own it moves into
+    /// within about half a second, which his terminal started. One
     /// jobs-sorter has since moved to the jobs slice can't be told from an
     /// agent's there, and isn't counted.
     pub fn unwatched(&self) -> BTreeMap<String, usize> {
@@ -144,9 +169,10 @@ impl Apps {
         // read.
         let cgroup = text(&process.join("cgroup"));
         let proc = process.parent().unwrap_or(process);
-        if !self.opened_by_joel(&cgroup, proc) {
+        let opener = self.opener(&cgroup, proc);
+        if opener != Opener::Joel {
             self.known.remove(pid);
-            if self.in_his_terminal(&cgroup) {
+            if opener == Opener::HisTerminal {
                 self.outside.insert(pid.to_string(), label);
             } else {
                 self.outside.remove(pid);
@@ -261,7 +287,8 @@ impl Apps {
     }
 
     /// Whether a Chrome in `cgroup` may carry Joel's call: one of his apps,
-    /// or one he started from a terminal, in its kitty scope. A call is his
+    /// or one he started from a terminal, in its kitty scope or the scope of
+    /// its own it moves into. A call is his
     /// however he opened the browser, so this is looser than the drawing
     /// test, which a terminal's work fails since jobs-sorter moves it once
     /// it's busy. A test's or an agent's Chrome, whose fake microphone would
@@ -269,13 +296,13 @@ impl Apps {
     /// jobs slice can't be told from an agent's there, and is left out.
     /// Processes are read from `proc`.
     pub fn may_call(&mut self, cgroup: &str, proc: &Path) -> bool {
-        self.opened_by_joel(cgroup, proc) || self.in_his_terminal(cgroup)
+        self.opener(cgroup, proc) != Opener::Other
     }
 
-    /// Whether a process in `cgroup` is one Joel opened, as
-    /// `launched_by_joel` says, and, in a scope named for a process,
-    /// `app-<name>-<pid>.scope`, one whose process he started, read from
-    /// `proc`. Chrome moves itself into such a scope of its own in his
+    /// Who opened a process in `cgroup`: his terminal, when it's in a kitty
+    /// scope directly in his app.slice; Joel, when `launched_by_joel` says
+    /// so and, in a scope named for a process, `app-<name>-<pid>.scope`, he
+    /// started its process, read from `proc`. Chrome moves itself into such a scope of its own in his
     /// `app.slice`, `app-com.google.Chrome-<pid>` for the browser's pid,
     /// whoever started it: jobs-sorter moves an agent's back about half a
     /// second later, which a minute's look can land in (5FWIUS 6f812ab4),
@@ -283,8 +310,10 @@ impl Apps {
     /// when its process's parent is his: his user manager, his session, or
     /// any unit in his app.slice, where his own services (1Password's,
     /// Tuple's, the launcher's opener) open links too (5FWIUS 72d972c9),
-    /// but those `NOT_HIS` names. A Chrome he starts from his terminal is
-    /// left out with an agent's there, since nothing tells them apart. The
+    /// but those `NOT_HIS` names and those made as they're run, as a
+    /// `systemd-run` makes them, which none of his services is. One his
+    /// terminal started is his terminal's: counted, and free to carry his
+    /// call, but not watched, since an agent's there reads the same. The
     /// verdict is judged once and kept while the watch runs, since a parent
     /// moved later, as jobs-sorter moves a terminal's busy work, didn't
     /// change who opened it; a restart judges again. A scope whose named
@@ -296,12 +325,15 @@ impl Apps {
     /// agent's whose launcher ended before it was judged, is the user
     /// manager's child, as his is, and reads as his: nothing about its
     /// parent tells them apart, and browser tools keep their launcher.
-    fn opened_by_joel(&mut self, cgroup: &str, proc: &Path) -> bool {
+    fn opener(&mut self, cgroup: &str, proc: &Path) -> Opener {
+        if self.in_his_terminal(cgroup) {
+            return Opener::HisTerminal;
+        }
         if !self.launched_by_joel(cgroup) {
-            return false;
+            return Opener::Other;
         }
         let Some((scope, pid)) = named_scope(cgroup) else {
-            return true;
+            return Opener::Joel;
         };
         self.scopes_looked.insert(scope.to_string());
         if let Some(his) = self.own_scopes.get(scope) {
@@ -312,22 +344,40 @@ impl Apps {
             .any(|line| line.strip_prefix("0::") == Some(scope));
         let stat = text(&proc.join(pid).join("stat"));
         let (true, Some(parent)) = (its_own, parent(&stat)) else {
-            return true;
+            return Opener::Joel;
         };
         let parents = text(&proc.join(parent).join("cgroup"));
-        let Some(path) = parents.lines().find_map(|line| line.strip_prefix("0::")) else {
-            return true;
+        if parents.lines().all(|line| !line.starts_with("0::")) {
+            return Opener::Joel;
+        }
+        let opener = if self.in_his_terminal(&parents) {
+            Opener::HisTerminal
+        } else if self.his_parent(&parents) {
+            Opener::Joel
+        } else {
+            Opener::Other
         };
+        self.own_scopes.insert(scope.to_string(), opener);
+        opener
+    }
+
+    /// Whether a parent in the cgroup `parents` is his: his user manager,
+    /// his session, or a unit in his app.slice but those `NOT_HIS` names
+    /// and those made as they're run.
+    fn his_parent(&self, parents: &str) -> bool {
         let account = self.slice.trim_end_matches("/app.slice");
-        let his = path.strip_prefix(account).is_some_and(|rest| {
-            rest == "/init.scope"
-                || rest.starts_with("/session.slice/")
-                || rest
-                    .strip_prefix("/app.slice/")
-                    .is_some_and(|unit| !NOT_HIS.iter().any(|name| unit.starts_with(name)))
-        });
-        self.own_scopes.insert(scope.to_string(), his);
-        his
+        parents
+            .lines()
+            .filter_map(|line| line.strip_prefix("0::"))
+            .filter_map(|path| path.strip_prefix(account))
+            .any(|rest| {
+                rest == "/init.scope"
+                    || rest.starts_with("/session.slice/")
+                    || rest.strip_prefix("/app.slice/").is_some_and(|unit| {
+                        !NOT_HIS.iter().any(|name| unit.starts_with(name))
+                            && !self.transient.join(unit).exists()
+                    })
+            })
     }
 }
 
@@ -511,12 +561,14 @@ mod tests {
             ("22", "4", "session.slice/xdg-desktop-portal.service"),
             ("24", "8", "app.slice/app-niri-slack-8.scope"),
             ("28", "12", "app.slice/onepassword.service"),
+            // One his terminal started, which may be a pi's: counted, not
+            // watched.
+            ("26", "10", "app.slice/kitty-70-0.scope"),
             // Browsers the hourly test call and a run of it by hand started,
-            // a pi in a terminal or a session of mycelium's in his app.slice,
-            // an agent's shared run and a pi host, which nothing moves back.
+            // a session of mycelium's in his app.slice, an agent's shared
+            // run and a pi host, which nothing moves back.
             ("50", "5", "app.slice/call-under-load.service"),
             ("54", "13", "app.slice/call-under-load-5193fv.service"),
-            ("26", "10", "app.slice/kitty-70-0.scope"),
             ("80", "9", "app.slice/mycelium-pi-a.scope"),
             ("60", "6", "shared.slice/run-u1.scope"),
             ("70", "7", "agents.slice/pi-host-work-attended.service"),
@@ -560,11 +612,16 @@ mod tests {
         let his = ["20", "22", "24", "28", "36", "42"]
             .map(|pid| format!("chrome-ui chrome {pid}/task/{pid}/schedstat"));
         assert_eq!(drawing_threads(&proc, &mut apps), his);
+        assert_eq!(
+            apps.unwatched(),
+            BTreeMap::from([("chrome-ui".to_string(), 1)]),
+            "only the browser his terminal started goes unwatched"
+        );
         let mut calls = |pid: &str| apps.may_call(&text(&proc.join(pid).join("cgroup")), &proc);
-        for pid in ["20", "22", "24", "28"] {
+        for pid in ["20", "22", "24", "28", "26"] {
             assert!(calls(pid), "Joel's browser {pid} carries his call");
         }
-        for pid in ["50", "54", "26", "80", "70", "32"] {
+        for pid in ["50", "54", "80", "70", "32"] {
             assert!(
                 !calls(pid),
                 "browser {pid}, not his, carries no call of his"
@@ -600,6 +657,49 @@ mod tests {
             !again.iter().any(|line| line.contains(" 20/")),
             "a browser started again in an emptied scope kept the last one's verdict: {again:?}"
         );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_chrome_a_run_made_in_his_app_slice_started_isn_t_his() {
+        let root = std::env::temp_dir().join(format!("lag-watch-run-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let proc = root.join("proc");
+        let transient = root.join("transient");
+        write(&transient.join("brio-night-2.service"), "[Unit]\n");
+        // One a declared service of his started, and one an agent's
+        // systemd-run made in his app.slice did.
+        for (pid, parent, unit) in [
+            ("20", "2", "onepassword.service"),
+            ("30", "3", "brio-night-2.service"),
+        ] {
+            let scope = format!("{ACCOUNT}/app.slice/app-com.google.Chrome-{pid}.scope");
+            write(&proc.join(pid).join("comm"), "chrome\n");
+            write(&proc.join(pid).join("cgroup"), &format!("0::{scope}\n"));
+            write(
+                &proc.join(pid).join("stat"),
+                &format!("{pid} (chrome) S {parent} 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0 9\n"),
+            );
+            write(
+                &proc.join(pid).join("task").join(pid).join("comm"),
+                "chrome\n",
+            );
+            write(&proc.join(pid).join("task/99/comm"), "Chrome_IOThread\n");
+            write(
+                &proc.join(parent).join("cgroup"),
+                &format!("0::{ACCOUNT}/app.slice/{unit}\n"),
+            );
+        }
+        let mut apps = Apps::of_account(ACCOUNT).reading_transient_units_from(transient);
+        assert_eq!(
+            drawing_threads(&proc, &mut apps),
+            ["chrome-ui chrome 20/task/20/schedstat"]
+        );
+        assert!(
+            !apps.may_call(&text(&proc.join("30/cgroup")), &proc),
+            "a run's Chrome carries no call of his"
+        );
+        assert!(apps.unwatched().is_empty(), "{:?}", apps.unwatched());
         fs::remove_dir_all(&root).unwrap();
     }
 

@@ -453,7 +453,9 @@ fn run() -> Result<(), Failure> {
     let proc = PathBuf::from("/proc");
     let account = account(&cgroups, manager);
     started();
-    let mut apps = apps::Apps::of_account(manager);
+    let mut apps = apps::Apps::of_account(manager).reading_transient_units_from(
+        env_dir("XDG_RUNTIME_DIR", ".cache").join("systemd/transient"),
+    );
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads, apps.unwatched());
     let mut answers: Vec<f64> = Vec::new();
