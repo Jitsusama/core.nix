@@ -511,6 +511,11 @@ mod tests {
             [("a".to_owned(), Floor::Pi)],
             "an orchestrator's window that holds none goes down to a pi's"
         );
+        assert_eq!(
+            keeping.changes(&[("c".to_owned(), Floor::Nothing)]),
+            [("c".to_owned(), Floor::Nothing)],
+            "a pi's window whose pi has gone gives its floor back"
+        );
         keeping.done("c", Floor::Nothing);
         assert_eq!(
             keeping.changes(&[("c".to_owned(), Floor::Pi)]),

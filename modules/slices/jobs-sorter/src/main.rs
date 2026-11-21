@@ -1335,30 +1335,25 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             .iter()
             .map(|proc| (proc.pid, proc.ppid))
             .collect();
-        let Some(pid) = hosts::host_of(&procs) else {
-            // An empty unit is a host stopping; one with two roots is something else, said once.
-            if !procs.is_empty() && ranks.hosts.unclear.insert(unit.to_owned()) {
-                eprintln!("Not ranking {unit}: it holds no one process that started it.");
-            }
+        // An empty unit is a host stopping, so it's left until it starts again.
+        if procs.is_empty() {
             continue;
-        };
+        }
+        // One with two roots, as a command its started process left behind makes, still holds
+        // what a window shows, so it's ranked by its windows alone, and said once.
+        let pid = hosts::host_of(&procs);
+        if pid.is_none() && ranks.hosts.unclear.insert(unit.to_owned()) {
+            eprintln!("Ranking {unit} by its windows alone: no one process in it started it.");
+        }
         seen.push(unit.to_owned());
-        let own = ranks.hosts.own(unit, pid, now, || {
-            let output = Command::new("systemctl")
-                .args(["--user", "cat", "--", unit])
-                .stderr(Stdio::null())
-                .output()
-                .ok()?;
-            output
-                .status
-                .success()
-                .then(|| hosts::own(&String::from_utf8_lossy(&output.stdout), total))
-        });
+        let own = own_of(unit, pid, now, total, ranks, &mut seen);
         let signs = hosts::Signs {
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
             shown: shown.iter().filter(|viewed| *viewed == unit).count(),
-            orchestrators: ranks.orchestrating.get(&pid).copied().unwrap_or(0),
-            marked: windows.dir.join(pid.to_string()).exists(),
+            orchestrators: pid
+                .and_then(|pid| ranks.orchestrating.get(&pid).copied())
+                .unwrap_or(0),
+            marked: pid.is_some_and(|pid| windows.dir.join(pid.to_string()).exists()),
             current: fs::read_to_string(path.join("memory.current"))
                 .ok()
                 .and_then(|text| text.trim().parse().ok()),
@@ -1398,6 +1393,42 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
     ranks.hosts.keep_only(&seen);
 }
 
+/// The settings `unit`, started by `pid` when one process did, holds of
+/// its own, read with `systemctl cat` once a minute and again when its
+/// host restarts. An instance's are its template's, so they're read once
+/// for them all and kept, among `seen`, while any instance runs, rather
+/// than read for each every minute.
+fn own_of(
+    unit: &str,
+    pid: Option<u32>,
+    now: std::time::Instant,
+    total: u64,
+    ranks: &mut Ranks,
+    seen: &mut Vec<String>,
+) -> hosts::Own {
+    let template = hosts::template(unit);
+    let source = template.as_deref().unwrap_or(unit);
+    let reader = if template.is_some() {
+        0
+    } else {
+        pid.unwrap_or(0)
+    };
+    if template.is_some() && !seen.iter().any(|kept| kept == source) {
+        seen.push(source.to_owned());
+    }
+    ranks.hosts.own(source, reader, now, || {
+        let output = Command::new("systemctl")
+            .args(["--user", "cat", "--", source])
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        output
+            .status
+            .success()
+            .then(|| hosts::own(&String::from_utf8_lossy(&output.stdout), total))
+    })
+}
+
 /// The units among `units` each window `held` shows, and each window
 /// shows at all, one for each viewer in it. A window showing a
 /// conversation that runs in a unit of its own gives that unit what it
@@ -1413,12 +1444,9 @@ fn viewers_and_shown(
         .filter_map(|path| path.file_name()?.to_str())
         .collect();
     let joins = |words: &[String]| {
-        windows
-            .conversations
-            .and_then(|(conversations, slots)| {
-                joins::conversation(words, conversations, slots, |unit| names.contains(unit))
-            })
-            .or_else(|| joins::viewed(words, prefix))
+        joins::unit_of(words, prefix, windows.conversations, |unit| {
+            names.contains(unit)
+        })
     };
     let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
     let viewers = windows

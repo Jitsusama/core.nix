@@ -246,6 +246,14 @@ pub fn host_of(procs: &[(u32, u32)]) -> Option<u32> {
     roots.next().is_none().then_some(root)
 }
 
+/// The template an instance's own settings come from, `<name>@.service`
+/// for `<name>@<instance>.service`, so its instances' are read once;
+/// none for a unit that isn't an instance.
+pub fn template(unit: &str) -> Option<String> {
+    let (name, _) = unit.strip_suffix(".service")?.split_once('@')?;
+    Some(format!("{name}@.service"))
+}
+
 /// The number of orchestrator sessions each pid holds, from presences
 /// read as `keep::orchestrators` reads them: one per window's pi, and as
 /// many as a host holds for its pid.
@@ -320,7 +328,8 @@ pub struct Hosts {
     set: HashMap<String, Rank>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
-    /// The units said to hold no one host, so each is said once.
+    /// The units said to hold no one host, ranked by their windows alone,
+    /// so each is said once.
     pub unclear: HashSet<String>,
 }
 
@@ -611,6 +620,20 @@ MemoryLow=10%
             "a percentage is of memory"
         );
         assert_eq!(size("lots", 0), None, "words aren't a size");
+    }
+
+    #[test]
+    fn an_instances_own_settings_are_its_templates() {
+        assert_eq!(
+            template("pi-conversation-work-background@0193-ab.service").as_deref(),
+            Some("pi-conversation-work-background@.service"),
+            "a conversation's unit is read as its template"
+        );
+        assert_eq!(
+            template("pi-host-work-attended.service"),
+            None,
+            "a host is its own"
+        );
     }
 
     #[test]
