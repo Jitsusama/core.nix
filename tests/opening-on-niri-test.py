@@ -1310,8 +1310,10 @@ def test_a_way_forward_into_a_copy_shown_before_a_share_is_let_go(shell: Shell) 
         since = shell.mark()
         shell.send_key("ctrl-i")
         shell.launcher_until(
-            lambda shown: len(shown["held"]) != home
-            or "let go, as the screen may be shared" in str(shown["saying"])
+            lambda shown: (
+                len(shown["held"]) != home
+                or "let go, as the screen may be shared" in str(shown["saying"])
+            )
         )
         shown = shell.showing()
         assert len(shown["held"]) == home, f"Ctrl+I went back into {shown['path']} shared"
