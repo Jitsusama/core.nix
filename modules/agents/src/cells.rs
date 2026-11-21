@@ -32,7 +32,7 @@ fn live(one: Session) -> bool {
 }
 
 /// The quest it works on: the one it owns, else the one its presence
-/// names, as Recent reads it.
+/// names, its questInfo's before its `quest`, as Recent reads a presence.
 fn quest_of(one: Session<'_>) -> &str {
     let owned = one.quest();
     if !owned.is_empty() {

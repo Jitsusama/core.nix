@@ -153,14 +153,14 @@ function cellGoes(one, cells) {
     return typeof record?.goes === "string" ? record.goes : "";
 }
 
-// The cell a look leads to as the agents daemon names it (cellGoes): the
-// live session found among `running` and `parked` by the address it goes
-// to. Where the daemon names none, cellOf's search decides. Where it names
-// a session those lists don't hold, or says the cell goes nowhere, the cell
-// itself is found, else the search decides among the sessions on the
-// look's quest alone: the daemon and the lists each read the node and
-// either can be a beat behind, and a record kept while the daemon is away
-// can be stale. A session on another quest that merely lists the cell's
+// The cell a look leads to: the cell itself while the lists hold it, else
+// the live session the agents daemon names (cellGoes), found among
+// `running` and `parked` by the address it goes to. Where the daemon names
+// none, cellOf's search decides. Where it names a session those lists
+// don't hold, or says the cell goes nowhere, the search decides among the
+// sessions on the look's quest alone: the daemon and the lists each read
+// the node and either can be a beat behind, so a cell back again wins over
+// an older answer. A session on another quest that merely lists the cell's
 // address is never found by that search; the daemon names one only where
 // cells.rs finds it was the cell, its one lister while no session goes by
 // the name. The search for a look naming no cell goes once every look
@@ -174,8 +174,8 @@ function cellFor(one, cells, running, parked) {
         .concat(Array.isArray(parked) ? parked : []);
     const quest = typeof one.quest === "string" ? one.quest : "";
     const ours = held.filter(session => quest !== "" && questOf(session) === quest);
-    return held.find(session => goes !== null && session.address === goes)
-        ?? held.find(session => session.address === one.cell)
+    return held.find(session => session.address === one.cell)
+        ?? held.find(session => goes !== null && session.address === goes)
         ?? cellOf(one, ours, []);
 }
 

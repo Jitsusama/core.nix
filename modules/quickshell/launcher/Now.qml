@@ -1122,6 +1122,9 @@ Provider {
         kind: "agent-cell"
         watching: ({ place: "agents" })
         answersWhole: true
+        // Where a cell goes is only true while the daemon answers, so its
+        // records go with it and cellFor's own search decides meanwhile.
+        keptThroughGap: false
     }
 
     // The cell a look leads to, running or parked, as the agents daemon

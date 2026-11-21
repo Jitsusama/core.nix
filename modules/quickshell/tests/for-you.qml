@@ -700,8 +700,10 @@ QtObject {
         };
         const naming = cell => Object.assign({}, lookLeft, { cell: cell });
         expect("a cell goes where the daemon says, running",
+            Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir], []).address, "BBBBBB");
+        expect("a cell back again before an older answer",
             Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir, leaver], []).address,
-            "BBBBBB");
+            "AAAAAA");
         expect("or parked",
             Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
         expect("ended with none to go to, none where the lists hold none",
@@ -733,6 +735,9 @@ QtObject {
         expect("said to go nowhere, one on its quest by the quest pi publishes",
             Looks.cellFor(naming("GGGGGG"), cells, [{ address: "QQQQQQ",
                 presence: { questInfo: { id: "Q-1" } } }], []).address, "QQQQQQ");
+        expect("its questInfo's quest before an older quest it names",
+            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "PPPPPP",
+                presence: { questInfo: { id: "Q-2" }, quest: "Q-1" } }], []), null);
         expect("not served yet, cellOf's search over every session, another quest's too",
             Looks.cellFor({ session: "s-4", cell: "HHHHHH" }, cells, [stranger], []).address,
             "DDDDDD");
