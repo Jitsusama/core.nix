@@ -521,8 +521,9 @@ impl Drop for History {
 }
 
 /// The followers health started, ended as `follow` returns: each still
-/// running is killed and waited on once this is dropped, as a `History`
-/// is, and none starts after. Once one follower has ended, health ends,
+/// running is killed and waited on, up to `WRITES_WITHIN` lest one stuck
+/// past its kill hold health, once this is dropped, and none starts after
+/// (`ended_within`, `signals.rs`). Once one follower has ended, health ends,
 /// and the others, following a journal no line comes to, would otherwise
 /// wait for their next line, outliving it where no service manager ends
 /// them with it, as when `health follow` is run by hand. A signal that
@@ -558,7 +559,7 @@ impl Followers {
 
 impl Drop for Followers {
     fn drop(&mut self) {
-        self.children.end();
+        crate::signals::ended_within(self.ender(), crate::signals::WRITES_WITHIN);
     }
 }
 

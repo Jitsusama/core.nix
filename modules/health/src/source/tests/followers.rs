@@ -2,7 +2,10 @@
 //! that stop themselves, as a quiet journal's follower waits for a line
 //! that never comes, so only health's end can end them.
 
+use std::thread;
+
 use super::*;
+use crate::signals::WRITES_WITHIN;
 
 /// Whether the process `pid` names is still running, or a zombie no one
 /// waited on.
@@ -75,6 +78,29 @@ fn a_follower_health_ended_says_nothing_of_its_end() {
         (alive(&pids[0]), all_of(&heard)),
         (false, vec![]),
         "a follower health ended outlived it, or said or sent its end"
+    );
+}
+
+#[test]
+fn followers_that_wont_end_hold_health_only_its_bound() {
+    // As one stuck past its kill on a stalled disk holds their end: here
+    // the followers' lock, held, keeps it from returning. On a thread of
+    // its own, so a drop that holds for good fails here.
+    let followers = Followers::default();
+    let children = followers.children.clone();
+    let held = children.running();
+    let (dropped, waited) = mpsc::channel();
+    thread::spawn(move || {
+        let since = Instant::now();
+        drop(followers);
+        let _ = dropped.send(since.elapsed());
+    });
+    // Long for a busy builder, and short of a second bound.
+    let took = waited.recv_timeout(WRITES_WITHIN + Duration::from_secs(2));
+    drop(held);
+    assert!(
+        took.is_ok_and(|took| took >= WRITES_WITHIN),
+        "followers that wouldn't end held health {took:?}, its bound {WRITES_WITHIN:?}"
     );
 }
 

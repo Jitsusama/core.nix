@@ -1,10 +1,71 @@
 //! When health's run ends: once a follower has ended and it has run long
 //! enough, never while its followers are only quiet, on a start that
-//! fails, and on a stop in the day's replay; and how often it ticks on a
-//! busy journal.
+//! fails, and on a stop in the day's replay; how often it ticks on a
+//! busy journal; and how long its end waits on its followers'.
+
+use std::sync::mpsc;
+use std::thread;
+use std::time::Instant;
 
 use super::*;
 use crate::follow::run::STOP_HEARD_WITHIN;
+use crate::signals::ended_within;
+use crate::source::tests::marks_of;
+
+#[test]
+fn an_end_stuck_past_its_kill_holds_health_only_its_bound() {
+    // As a follower stuck on a stalled disk outlives its kill when health
+    // ends by a fault, so health still exits and says why. On a thread of
+    // its own, so an end that holds for good fails here.
+    let within = Duration::from_millis(100);
+    let (ended, waited) = mpsc::channel();
+    thread::spawn(move || {
+        let since = Instant::now();
+        let returned = ended_within(
+            || loop {
+                thread::park();
+            },
+            within,
+        );
+        let _ = ended.send((returned, since.elapsed()));
+    });
+    // Well short of the bound health ends by, and long for a busy builder.
+    let took = waited.recv_timeout(within + Duration::from_secs(1));
+    assert!(
+        took.as_ref()
+            .is_ok_and(|(returned, took)| !returned && *took >= within),
+        "an end that never returns held health {took:?}, its bound {within:?}"
+    );
+    crate::source::tests::assert_marked(
+        "a follower left running",
+        // Its own bound names its line among the others' heard.
+        &["ending them hadn't returned", "100ms on"],
+        1,
+        crate::source::ERROR,
+    );
+}
+
+#[test]
+fn an_end_in_time_is_waited_for_and_unsaid() {
+    // As each follower ends on its kill in milliseconds. Its bound of 5s is
+    // this test's alone, naming its line among the others heard.
+    let (ended, waited) = mpsc::channel();
+    assert!(
+        ended_within(
+            move || {
+                // A follower's kill taking its few milliseconds to land.
+                thread::sleep(Duration::from_millis(20));
+                let _ = ended.send(());
+            },
+            Duration::from_secs(5),
+        ) && waited.try_recv().is_ok(),
+        "an end that returned in time wasn't waited for"
+    );
+    assert!(
+        marks_of(&["ending them hadn't returned", "5s on"]).is_empty(),
+        "an end that returned in time was said to have left a follower running"
+    );
+}
 
 #[test]
 fn a_follower_that_ends_ends_health_once_it_has_run_long_enough() {

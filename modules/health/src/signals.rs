@@ -34,7 +34,7 @@ use std::mem;
 use std::os::fd::{AsRawFd as _, IntoRawFd as _, OwnedFd};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
-use std::sync::{Condvar, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -107,7 +107,9 @@ pub const CAUGHT_WITHIN: Duration = Duration::from_millis(250);
 /// from before health hears of it, so this stays well under that, and a
 /// write that doesn't make it is said before the kill. It counts from the
 /// stop's catch, the followers ended beside the run's write, so one that
-/// won't end, stuck on a stalled disk, can't hold the stop.
+/// won't end, stuck on a stalled disk, can't hold the stop. Health ending
+/// by a fault waits as long on its followers' end (`Followers`), whose
+/// kill takes as little.
 pub(crate) const WRITES_WITHIN: Duration = Duration::from_secs(3);
 
 /// Whether `run` has returned, and the stop's thread and `rest` woken as
@@ -222,6 +224,44 @@ fn waited(flag: &(Mutex<bool>, Condvar), by: Instant) -> bool {
         .wait_timeout_while(set, left, |set| !*set)
         .unwrap_or_else(PoisonError::into_inner);
     *set
+}
+
+/// Call `end` on a thread of its own, waiting for it up to `within`, as a
+/// stop waits on the followers' end, and say so when it hasn't returned:
+/// as health ends by a fault, a follower stuck past its kill, on a stalled
+/// disk, would otherwise hold it for good, its error unsaid and its service
+/// still running, so never started again. Now it exits and is started
+/// again: by launchd after its 10 s between starts, and by systemd once its
+/// stop timeouts have given up on the stuck follower, about three minutes
+/// on at their defaults, the unit stopping until then. Says whether it
+/// returned in time. Where no thread starts, `end` is called here all the
+/// same, unbounded.
+pub(crate) fn ended_within(end: impl FnOnce() + Send + 'static, within: Duration) -> bool {
+    let (ended, waited) = mpsc::channel();
+    let end = Arc::new(Mutex::new(Some(end)));
+    let ending = Arc::clone(&end);
+    let started = thread::Builder::new().spawn(move || {
+        let taken = ending.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(end) = taken {
+            end();
+        }
+        let _ = ended.send(());
+    });
+    if started.is_err() {
+        let taken = end.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(end) = taken {
+            end();
+        }
+        return true;
+    }
+    let returned = waited.recv_timeout(within).is_ok();
+    if !returned {
+        crate::source::fail(&format!(
+            "health: may have left a follower running, as ending them hadn't returned \
+             {within:?} on"
+        ));
+    }
+    returned
 }
 
 /// Wait `time`, or less once a stop is caught, so a run resting between
