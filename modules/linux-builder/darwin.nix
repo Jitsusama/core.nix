@@ -47,6 +47,26 @@ let
   # Whether the guest is changed from the one nixpkgs caches.
   changed = cfg.features != [ ] || cfg.authorizedKeys != [ ] || cfg.collectableBy != [ ];
 
+  # The network option's address, and its prefix written as the mask vmnet
+  # takes, octet by octet.
+  networkParts = lib.splitString "/" cfg.network;
+  networkAddress = lib.head networkParts;
+  networkPrefix = lib.toInt (lib.last networkParts);
+  octetMasks = [
+    0
+    128
+    192
+    224
+    240
+    248
+    252
+    254
+    255
+  ];
+  networkMask = lib.concatMapStringsSep "." (
+    octet: toString (lib.elemAt octetMasks (lib.max 0 (lib.min 8 (networkPrefix - 8 * octet))))
+  ) (lib.range 0 3);
+
   # Sizing it changes only the Mac's side of it, which the Mac builds in
   # seconds; the guest's system still comes from the cache. A key from
   # another machine changes the guest's, which the running VM then builds.
@@ -102,10 +122,21 @@ let
       (lib.mkIf changed {
         # The network it asks for is in macOS 26's SDK, not nixpkgs' default.
         virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
-          patches = (old.patches or [ ]) ++ [ ./vzvm-without-dns-proxy.patch ];
+          patches = (old.patches or [ ]) ++ [
+            ./vzvm-without-dns-proxy.patch
+            ./vzvm-own-subnet.patch
+          ];
           buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.apple-sdk_26 ];
         });
-        virtualisation.vz.extraConfig.dnsProxy = false;
+        virtualisation.vz.extraConfig = {
+          dnsProxy = false;
+          # Left to pick, vmnet put the guest on 192.168.5.0/24 and then
+          # 192.168.7.0/24 on 21 November, inside a home network's
+          # 192.168.4.0/22. mDNSResponder heard the Mac's name at a second
+          # address, renamed it twice and spun a core. So the network is set.
+          ipv4Subnet = networkAddress;
+          ipv4Mask = networkMask;
+        };
         networking.nameservers = [
           "1.1.1.1"
           "1.0.0.1"
@@ -235,6 +266,17 @@ in
         store's garbage, all that's dead or up to a number of GiB, and read
         how much is free (collect.sh), reaching it through the Mac. None by
         default, which keeps the guest's system the cached one.
+      '';
+    };
+    network = lib.mkOption {
+      type = lib.types.strMatching "([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[6-9]|2[0-9]|30)";
+      default = "192.168.64.0/24";
+      example = "10.211.55.0/24";
+      description = ''
+        The IPv4 network a VM given keys or features is put on, between the
+        Mac and it. It must sit outside every network the Mac joins, or the
+        Mac hears its own name twice and renames itself. By default it's
+        clear of the low 192.168 networks home routers hand out.
       '';
     };
     builder = lib.mkOption {

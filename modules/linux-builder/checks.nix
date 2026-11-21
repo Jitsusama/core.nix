@@ -139,6 +139,36 @@ in
         && plain.virtualisation.vz.extraConfig == cached.virtualisation.vz.extraConfig
       );
 
+  # A changed guest's network is the one set, never one vmnet picks: on 21
+  # November vmnet put it inside a home network's /22, and mDNSResponder
+  # renamed the Mac twice and spun a core. The prefix becomes vmnet's mask
+  # octet by octet, so a /20 is tried as well as the default /24. Another
+  # network changes the daemon's command, so a switch loads the VM again,
+  # even one booted out by hand. One given nothing keeps the cached guest's
+  # network, so it still needs no build.
+  linux-builder-keeps-its-network-where-it-is-set =
+    let
+      narrowly = {
+        authorizedKeys = [ another ];
+        network = "10.211.48.0/20";
+      };
+      narrow = guestOf narrowly;
+      started = settings: (macOf settings).launchd.daemons.linux-builder-vz.script;
+    in
+    holds "linux-builder-keeps-its-network-where-it-is-set"
+      "A changed guest's network isn't the one set, by default 192.168.64.0/24, a /20 isn't given vmnet as 255.255.240.0, its vzvm isn't the one patched to set it, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
+      (
+        opened.virtualisation.vz.extraConfig.ipv4Subnet or null == "192.168.64.0"
+        && opened.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.255.0"
+        && narrow.virtualisation.vz.extraConfig.ipv4Subnet or null == "10.211.48.0"
+        && narrow.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.240.0"
+        && lib.elem "vzvm-own-subnet.patch" (
+          map (patch: baseNameOf (toString patch)) (opened.virtualisation.vz.package.patches or [ ])
+        )
+        && plain.virtualisation.vz.extraConfig == cached.virtualisation.vz.extraConfig
+        && started { authorizedKeys = [ another ]; } != started narrowly
+      );
+
   # A changed guest collects garbage once a sixth of its disk is free, back
   # to five twelfths, so a build has room: nixpkgs' 1 GiB and 3 GiB left a
   # 60 GiB store 90 to 93% full on 9 November, with builds failing for disk.
