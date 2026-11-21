@@ -1047,9 +1047,10 @@ pub fn slowed_by_its_own(measured: &Measured) -> bool {
 
 /// When a move never made is taken to have been made, so it holds the
 /// card from choosing again only a `SPAN` (`spanned`, a settle less a span
-/// before now), or till the settle of the move before it, if later. Within
-/// that of the clock's start, as in a boot's first minutes, no such
-/// instant is, so the move holds a whole settle from now rather than none.
+/// before now), or till the settle of the move before it, if later. On
+/// Linux an instant before boot is still one, so a boot's first minutes
+/// hold a span too; a clock that can't reach back that far, giving none,
+/// has the move hold a whole settle from now rather than none.
 fn unmade(now: Instant, before: Option<Instant>, spanned: Option<Instant>) -> Option<Instant> {
     before.max(Some(spanned.unwrap_or(now)))
 }
@@ -2579,19 +2580,28 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_move_never_made_just_after_boot_holds_a_whole_settle() {
-        let now = Instant::now();
-        let earlier = now.checked_sub(Duration::from_secs(1));
+    fn a_move_never_made_holds_till_the_later_of_its_span_and_the_last_settle() {
+        let now = Instant::now() + SETTLE;
+        let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
+        let earlier = spanned.and_then(|spanned| spanned.checked_sub(SPAN));
 
-        let young = unmade(now, None, None);
-        let after_one = unmade(now, earlier, None);
+        let first = unmade(now, None, spanned);
+        let after_a_late_one = unmade(now, Some(now), spanned);
+        let after_an_old_one = unmade(now, earlier, spanned);
+        let unreachable = unmade(now, None, None);
 
+        assert_eq!(first, spanned, "a first move holds a span");
         assert_eq!(
-            young,
+            after_a_late_one,
+            Some(now),
+            "a later settle before it holds"
+        );
+        assert_eq!(after_an_old_one, spanned, "an older one doesn't");
+        assert_eq!(
+            unreachable,
             Some(now),
             "no instant a span back, so a settle from now"
         );
-        assert_eq!(after_one, Some(now), "the later of the two holds");
     }
 
     #[test]
@@ -2636,7 +2646,7 @@ pub(crate) mod tests {
     #[test]
     fn a_move_sent_back_where_it_began_settles_from_the_move_before_it() {
         let mut chooser = after_a_bad_minute(DESK);
-        // A settle on, so taking one off can't fall before the host's boot.
+        // A settle on, so taking one off is an instant on any clock.
         let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let well = carried(15, 0.0);
@@ -2688,7 +2698,7 @@ pub(crate) mod tests {
     #[test]
     fn a_first_move_sent_back_where_it_began_waits_a_span_not_a_settle() {
         let mut chooser = after_a_bad_minute(DESK);
-        // A settle on, so taking one off can't fall before the host's boot.
+        // A settle on, so taking one off is an instant on any clock.
         let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let hall_alone = [hall(-53, Some(20), None)];
@@ -2727,8 +2737,8 @@ pub(crate) mod tests {
     #[test]
     fn a_move_ending_on_a_third_point_still_settles() {
         let mut chooser = after_a_bad_minute(DESK);
-        // A settle on, so a span's hold can't fall before the host's boot
-        // and pass as a full settle.
+        // A settle on, so a span's hold is an instant on any clock and
+        // can't pass as a full settle.
         let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let hall_alone = [hall(-53, Some(20), None)];
@@ -2759,8 +2769,8 @@ pub(crate) mod tests {
     #[test]
     fn a_move_that_stood_then_ended_where_it_began_still_settles() {
         let mut chooser = after_a_bad_minute(DESK);
-        // A settle on, so a span's hold can't fall before the host's boot
-        // and pass as a full settle.
+        // A settle on, so a span's hold is an instant on any clock and
+        // can't pass as a full settle.
         let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let well = carried(15, 0.0);

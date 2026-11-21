@@ -428,7 +428,7 @@ async fn follow(
             () = until(stalled), if stalled.is_some() => {
                 for (card, looked) in air.stalls.nudge(Instant::now()) {
                     if joining.is_none() {
-                        wifid.nudge(&card, looked, &air).await;
+                        wifid.nudge(&card, looked, &mut air).await;
                     }
                 }
             }
@@ -1577,7 +1577,9 @@ struct Wifid<'a> {
     /// The cards Joel took off their network, never nudged to join one
     /// while that stands: until they've joined again, he's asked one to
     /// join, or wpa_supplicant has let them go, as a new one starts every
-    /// card with every network on.
+    /// card with every network on. It's held in memory alone, so a wifid
+    /// started again forgets it: a look another account says then can
+    /// have such a card nudged onto a saved network.
     stopped: RefCell<HashSet<String>>,
 }
 
@@ -2058,7 +2060,7 @@ impl Wifid<'_> {
         // stranded later, would let go of the join he asked for, and lets
         // go of its hold first, so the join isn't aimed at a point gone.
         self.arrivals.borrow_mut().forget(&card.name);
-        self.stopped.borrow_mut().remove(&card.name);
+        let was_stopped = self.stopped.borrow_mut().remove(&card.name);
         self.let_go(&card.name, false).await;
         let selected = match self.supplicant.get_interface(&card.name).await {
             Ok(at) => match interface(self.bus, at).await {
@@ -2071,6 +2073,10 @@ impl Wifid<'_> {
             // The move it ended kept the card's other networks off, and
             // with no join to turn them on as it ends, they come on now.
             self.together(&card.name, true).await;
+            // Left off its network still, a card Joel left stays so.
+            if was_stopped {
+                self.stopped.borrow_mut().insert(card.name.clone());
+            }
             return Err(failed(format!("wpa_supplicant didn't join it: {error}")));
         }
         println!("<6>joining {name} on {}, as asked", card.name);
@@ -2204,11 +2210,13 @@ impl Wifid<'_> {
     /// from a new look if not. It picks among every saved network, all turned on
     /// first, rather than this naming one: a network still heard of may
     /// have gone, and joining only it would hold the card there.
-    async fn nudge(&self, name: &str, looked: Duration, air: &Air<'_>) {
+    async fn nudge(&self, name: &str, looked: Duration, air: &mut Air<'_>) {
         // A card Joel left looks only as another account says it does, as
         // wpa_supplicant joins nothing after a disconnect, so that's no
-        // stall to end.
+        // stall to end, and it's no longer watched: wpa_supplicant says
+        // no step to end it, so it would be said again for good.
         if self.stopped.borrow().contains(name) {
+            air.stalls.gone(name);
             return println!("<7>{name} was taken off its network, so isn't asked to join one");
         }
         let listing = match self.store.networks() {
@@ -2397,8 +2405,6 @@ impl Wifid<'_> {
             return Err(Refused::NotJoined);
         }
         for card in cards {
-            // Left mid-move, a card isn't sent back to the network it left.
-            self.arrivals.borrow_mut().forget(&card);
             let left = match self.supplicant.get_interface(&card).await {
                 Ok(at) => match interface(self.bus, at).await {
                     Ok(interface) => interface.disconnect().await,
@@ -2409,6 +2415,13 @@ impl Wifid<'_> {
             left.map_err(|error| Refused::Failed {
                 reason: format!("{card} didn't leave {name}: {error}"),
             })?;
+            // Left mid-move, a card isn't sent back to the network it left,
+            // and what the move kept off and held is freed here, as a card
+            // left between a way back's tries says no step leaving one.
+            // Turned on, its networks aren't joined after a disconnect.
+            self.arrivals.borrow_mut().forget(&card);
+            self.together(&card, true).await;
+            self.let_go(&card, false).await;
             self.stopped.borrow_mut().insert(card.clone());
             println!("<6>{card} left {name}, as asked");
         }
@@ -2495,7 +2508,15 @@ impl Wifid<'_> {
         };
         if let Err(error) = roamed.await {
             if let Some(before) = before {
+                let to = before.to().to_owned();
+                println!("<6>{card} keeps on its move to {to}, as the move to {bssid} failed");
+                // A move with nowhere to go back to kept nothing off, so
+                // what this ask turned off comes on again.
+                let alone = before.goes_back();
                 self.resume(&card, before).await;
+                if !alone {
+                    self.together(&card, joining != Some(card.as_str())).await;
+                }
             } else {
                 self.together(&card, joining != Some(card.as_str())).await;
                 self.let_go(&card, false).await;
@@ -3092,8 +3113,16 @@ mod tests {
             Some(last),
             "a join naming none is credited to the last point said"
         );
+        // The root, said of a card on no point, names nothing `joined`
+        // knows, so it asks wpa_supplicant where the card is.
+        let root = zvariant::Value::ObjectPath(ObjectPath::try_from("/").expect("the root is one"));
         assert_eq!(
-            credited(Some(&zvariant::Value::U32(4)), None),
+            credited(Some(&root), Some(last)).as_deref(),
+            Some("/"),
+            "the root is passed on, never taken for the last point said"
+        );
+        assert_eq!(
+            credited(None, None),
             None,
             "with none said either, wpa_supplicant is asked"
         );

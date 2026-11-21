@@ -84,6 +84,12 @@ impl Saved {
     pub fn to(&self) -> &str {
         &self.0.to
     }
+
+    /// Whether the move has a point to go back to, and so kept the card's
+    /// other networks off.
+    pub fn goes_back(&self) -> bool {
+        self.0.from.is_some()
+    }
 }
 
 #[derive(Clone)]

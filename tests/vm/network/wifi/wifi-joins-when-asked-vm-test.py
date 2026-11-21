@@ -213,7 +213,8 @@ def test_leaving_the_inn_from_the_shell_keeps_the_card_off_it_until_its_joined(
     # the leave, as it would a card stopped by any other hand.
     say_wlan2_is_looking(machine, since)
     machine.wait_until_succeeds(
-        f"{WIFID_SAYS} | grep -qx 'wlan2 was taken off its network, so isn.t asked to join one'",
+        f"{WIFID_SAYS} --after-cursor='{since}'"
+        " | grep -qx 'wlan2 was taken off its network, so isn.t asked to join one'",
         timeout=timedelta(seconds=40),
     )
     machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")
