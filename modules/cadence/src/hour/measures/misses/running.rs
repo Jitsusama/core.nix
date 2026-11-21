@@ -36,7 +36,7 @@ pub const UNSEEN: &str = "cadence can't ";
 /// World's from the last switch, mycelium's as that switch's core pins it,
 /// and the harness's from the version installed. A change elsewhere,
 /// deployed apart, is followed no further than its merge.
-const RUN_HERE: &[&str] = &["core", "world", "mycelium", "harness"];
+pub(super) const RUN_HERE: &[&str] = &["core", "world", "mycelium", "harness"];
 
 /// The repositories that run as core's `flake.lock` pins them, by the name
 /// of core's input for each.

@@ -4,19 +4,32 @@
 //! mycelial network, and the orchestrator ruled that each owner's open
 //! findings there count against it, fixed only once the fix runs where it
 //! hurt, never at its merge. A finding closes as a miss does, on the
-//! changes its latest landing note names once they run here, and one open
-//! past a day is filed with its owner. Cadence reads only this machine, so
-//! a finding that hurt another closes on its fix running here, until the
-//! node says what each machine runs.
+//! changes every landing note in its thread names once they run here, and
+//! one open past a day is filed with its owner, whatever else leads the
+//! hour. Cadence reads only this machine, so a finding that hurt another
+//! closes on its fix running here, until the node says what each machine
+//! runs; one closed only by a merge whose running cadence can't see is
+//! held, said beside the count rather than filed.
+//!
+//! The mesh doesn't authenticate senders: every cell writes its folder as
+//! the same user. So the count trusts what is posted as the mesh does, and
+//! guards against slips rather than a cell meaning harm: a file must be
+//! the message it names, sent by whom its id says; a landing note closes
+//! nothing until the changes it names run here; and a later note adds to
+//! the fix rather than replacing it, unless it says "instead".
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
 use super::super::{Class, DAY, Measure, count};
-use super::{Checkouts, Judged, open_misses};
-use crate::{mesh, write_whole};
+use super::running::RUN_HERE;
+use super::{BLIND, Checkouts, HELD, Judged, UNRUN, UNSEEN, named, open_misses};
+use crate::write_whole;
 
 /// The measure's key, from one hour to the next.
 pub const KEY: &str = "symbiosis-findings";
@@ -39,16 +52,28 @@ const PAST: i64 = DAY;
 /// files again, in ms, for one written as the last reading listed.
 const SLACK_MS: i64 = 60_000;
 
-/// How far ahead of now a message may be stamped and still be read, in
-/// ms: a clock a little fast is a sender's, a day ahead is no message.
-const AHEAD_MS: i64 = 3_600_000;
+/// How long after it was written a file that doesn't parse may still be
+/// one being written, in ms. Past that it is no message, said and left
+/// out, so one broken file can't leave the count unjudged, and each hour
+/// opening the week since it, until it ages out.
+const TORN_FOR_MS: i64 = 5 * 60_000;
+
+/// How much of a message's text is kept, in bytes: the count reads only
+/// its opening, and a reading opening a week holds every message at once.
+const OPENING: usize = 512;
 
 /// The shape of what a reading keeps: one of another shape is read again.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 /// What the measure says.
 const SAYS: &str = "work-system findings in #v2-symbiosis open past a day, with no fix running \
                     here";
+
+/// The word a landing note opens with.
+const LANDED: &[&str] = &["landed"];
+
+/// The words a withdrawal opens with.
+const WITHDRAWN: &[&str] = &["withdrawn", "withdrawing", "withdraw", "withdrew"];
 
 /// A message as far as the count reads one.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -66,14 +91,20 @@ struct Posted {
     supersedes: Option<String>,
     #[serde(default)]
     text: String,
+    /// When this machine wrote its file, in ms, by its own clock, never
+    /// past the reading's now: what ages and orders a message, since a
+    /// sender's clock may run hours fast or slow.
+    #[serde(default)]
+    written: i64,
 }
 
 /// What a reading keeps for the next: the messages that went to the group
 /// or answer one that did, every address seen sending, and, in ms, the
 /// latest time this machine wrote a message file read, so the next opens
-/// only files written since rather than a week's thousands. The write time
-/// is this machine's, so a sender's clock running ahead, or a message
-/// relayed late, hides nothing.
+/// only files written since rather than a week's thousands. The harness
+/// writes each message whole and renames it into place at once, and moves
+/// it into its day's folder only by a rename, which keeps that time; so a
+/// sender's clock, or a message relayed late, hides nothing.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 struct Kept {
     v: u32,
@@ -82,13 +113,14 @@ struct Kept {
     known: BTreeSet<String>,
 }
 
-/// A finding counted, its owner, and the first line of the latest landing
-/// note answering it or what followed it up.
+/// A finding counted, its owner, the first line of each landing note
+/// counted as its fix, and when the earliest of those came, in ms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Finding {
     posted: Posted,
     owner: String,
-    landed: Option<String>,
+    landed: Vec<String>,
+    landed_at: Option<i64>,
 }
 
 /// The findings read for the hour, before their fixes are judged.
@@ -149,7 +181,10 @@ impl Findings {
 
     /// The measure, once the findings' fixes are `judged` in `repos`: how
     /// many are open past a day at `now`, against none, each filed with its
-    /// own owner. One the mesh couldn't be read for judges none.
+    /// own owner. One the mesh couldn't be read for judges none. One held
+    /// only because cadence can't see its fix run, or couldn't read a main,
+    /// is the hour's own blindness, so it is said beside the count rather
+    /// than counted or put to its owner, as a miss held so is.
     pub(super) fn measured(&self, repos: &Checkouts, judged: &Judged<'_>, now: i64) -> Measure {
         let mut measure = Measure {
             key: KEY.to_owned(),
@@ -165,36 +200,77 @@ impl Findings {
             return measure;
         }
         let all = open_misses(&self.text, repos, judged);
+        let mut lines: Vec<&str> = all.behind.iter().map(String::as_str).collect();
         let mut owners: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+        let mut unseen = 0;
         for finding in &self.found {
             let named = named_as(&finding.posted);
             let opens = format!("{named} · {}", finding.owner);
-            let Some(line) = all.behind.iter().find(|line| line.starts_with(&opens)) else {
+            // Each open line is one finding's, taken once, its note after
+            // its owner opening with a comma, so neither a finding named
+            // alike nor an owner's longer name can take another's.
+            let at = lines.iter().position(|line| {
+                line.strip_prefix(opens.as_str())
+                    .is_some_and(|note| note.is_empty() || note.starts_with(','))
+            });
+            let Some(at) = at else {
+                unseen += usize::from(merged_unseen(finding, repos));
                 continue;
             };
-            let old = stamp(&finding.posted.id) / 1000 <= now - PAST;
+            let line: &str = lines.remove(at);
+            let note = &line[opens.len()..];
+            if blind(note) {
+                unseen += 1;
+                continue;
+            }
+            let old = finding.posted.written / 1000 <= now - PAST;
             let counts = owners.entry(finding.owner.as_str()).or_default();
             counts.0 += 1;
             if old {
                 counts.1 += 1;
                 // Each line ends with its owner, whom its drag is filed with.
-                let note = &line[opens.len()..];
                 measure
                     .behind
                     .push(format!("{named}{note} · {}", finding.owner));
             }
+        }
+        if unseen > 0 {
+            measure.says = format!("{SAYS}; {unseen} more held where cadence can't see it run");
         }
         if !owners.is_empty() {
             let each: Vec<String> = owners
                 .iter()
                 .map(|(owner, (open, old))| format!("{owner} {open} ({old} past a day)"))
                 .collect();
-            measure.says = format!("{SAYS}; open: {}", each.join(", "));
+            measure.says = format!("{}; open: {}", measure.says, each.join(", "));
         }
         measure.now = count(measure.behind.len());
         measure.target = Some(0.0);
         measure
     }
+}
+
+/// Whether a line's `note` holds its finding only because the hour
+/// couldn't look: a main unread, a measure unread, or what runs here
+/// unseen.
+fn blind(note: &str) -> bool {
+    note.contains("cadence couldn't read")
+        || note.split_once(HELD).is_some_and(|(_, why)| {
+            BLIND.iter().any(|b| why.ends_with(b))
+                || why
+                    .split_once(UNRUN)
+                    .is_some_and(|(_, unrun)| unrun.starts_with(UNSEEN))
+        })
+}
+
+/// Whether `finding`, closed, was closed by a change in a repository
+/// whose running revision cadence doesn't read, so only by its merge.
+fn merged_unseen(finding: &Finding, repos: &Checkouts) -> bool {
+    finding
+        .landed
+        .iter()
+        .flat_map(|line| named(line, repos))
+        .any(|change| !RUN_HERE.contains(&change.repo.as_str()))
 }
 
 /// A reading of the mesh: the messages kept, the addresses seen sending,
@@ -212,9 +288,8 @@ type Listed = (PathBuf, String, i64);
 /// The messages under `messages` of the last `WITHIN` before `now` that
 /// went to the group or answer or withdraw one that did, oldest first,
 /// opening only the files written since the reading kept at `kept_at`,
-/// which it `keeps` for the next. A file that can't be read is opened
-/// again each hour until it can, and says so; a folder that can't be
-/// listed is an error, since reading none would read as none open.
+/// which it `keeps` for the next. A folder, an entry or a file's time that
+/// can't be read is an error, since reading none would read as none open.
 fn read(messages: &Path, now: i64, kept_at: &Path, keeps: bool) -> Result<Read, String> {
     let kept: Kept = std::fs::read(kept_at)
         .ok()
@@ -222,39 +297,25 @@ fn read(messages: &Path, now: i64, kept_at: &Path, keeps: bool) -> Result<Read, 
         .filter(|kept: &Kept| kept.v == VERSION)
         .unwrap_or_default();
     let now_ms = now * 1000;
-    let from_ms = (now_ms - WITHIN * 1000).max(kept.through_ms - SLACK_MS);
+    // A mark past now says this machine's clock stepped back since it was
+    // kept, and a file written in the step would sit behind it, so the
+    // week is read anew.
+    let mark = if kept.through_ms > now_ms {
+        0
+    } else {
+        kept.through_ms
+    };
+    let from_ms = (now_ms - WITHIN * 1000).max(mark - SLACK_MS);
     let (listed, mut known) = listed(messages, from_ms, now_ms - WITHIN * 1000)
         .map_err(|error| format!("the mesh's messages can't be listed: {error}"))?;
     known.extend(kept.known);
-    let mut through_ms = kept.through_ms;
-    let mut unread = 0;
-    let mut first_unread: Option<i64> = None;
-    let mut opened = Vec::new();
-    for (path, name, written) in listed {
-        let one = std::fs::read(&path)
-            .ok()
-            .and_then(|json| serde_json::from_slice::<Posted>(&json).ok());
-        match one {
-            Some(one) if genuine(&one, &name) => opened.push(one),
-            Some(_) => eprintln!("cadence: {name} isn't the message it names, so it's left out"),
-            None => {
-                unread += 1;
-                first_unread = Some(first_unread.map_or(written, |at| at.min(written)));
-            }
-        }
-        through_ms = through_ms.max(written.min(now_ms));
-    }
-    // The next reading starts again at the first file it couldn't read.
-    if let Some(at) = first_unread {
-        through_ms = through_ms.min(at);
-    }
-    opened.sort_by_key(|one| stamp(&one.id));
-    let posted = kept_beside(kept.posted, opened, now_ms);
+    let opened = opened(listed, now_ms, mark);
+    let posted = kept_beside(kept.posted, opened.posted, now_ms);
     known.extend(posted.iter().map(|one| one.from.clone()));
     if keeps {
         let kept = Kept {
             v: VERSION,
-            through_ms,
+            through_ms: opened.through_ms,
             posted: posted.clone(),
             known: known.clone(),
         };
@@ -272,8 +333,89 @@ fn read(messages: &Path, now: i64, kept_at: &Path, keeps: bool) -> Result<Read, 
     Ok(Read {
         posted,
         known,
-        unread,
+        unread: opened.unread,
     })
+}
+
+/// What a reading opened: the genuine messages, oldest first, how many
+/// files couldn't be read, and the mark the next reading starts from.
+struct Opened {
+    posted: Vec<Posted>,
+    unread: usize,
+    through_ms: i64,
+}
+
+/// The messages the files `listed` hold as of `now_ms`, after a reading
+/// that got as far as `mark`. A file that can't be read, or doesn't parse
+/// while it may still be being written, is counted and holds the next
+/// reading back to it; one moved since it was listed holds it back
+/// uncounted, since the next lists it in its day's folder; one that
+/// doesn't parse long after it was written is no message, said and left
+/// out.
+fn opened(listed: Vec<Listed>, now_ms: i64, mark: i64) -> Opened {
+    let mut through_ms = mark;
+    let mut held: Option<i64> = None;
+    let mut unread = 0;
+    let mut posted = Vec::new();
+    for (path, name, written) in listed {
+        let at = written.min(now_ms);
+        through_ms = through_ms.max(at);
+        let parsed = match std::fs::read(&path) {
+            Ok(json) => serde_json::from_slice::<Posted>(&json)
+                .map_err(|error| (error.to_string(), now_ms - written >= TORN_FOR_MS)),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                held = Some(held.map_or(at, |held| held.min(at)));
+                continue;
+            }
+            Err(error) => Err((error.to_string(), false)),
+        };
+        match parsed {
+            Ok(mut one) if genuine(&one, &name) => {
+                one.written = at;
+                cut_to_opening(&mut one.text);
+                posted.push(one);
+            }
+            Ok(_) => eprintln!("cadence: {name} isn't the message it names, so it's left out"),
+            Err((why, true)) => {
+                eprintln!(
+                    "cadence: {} is no message ({why}), so it's left out",
+                    path.display()
+                );
+            }
+            Err((why, false)) => {
+                eprintln!("cadence: can't read {} yet: {why}", path.display());
+                unread += 1;
+                held = Some(held.map_or(at, |held| held.min(at)));
+            }
+        }
+    }
+    if let Some(at) = held {
+        through_ms = through_ms.min(at);
+    }
+    posted.sort_by(by_written);
+    Opened {
+        posted,
+        unread,
+        through_ms,
+    }
+}
+
+/// Cuts `text` to its opening, at most `OPENING` bytes.
+fn cut_to_opening(text: &mut String) {
+    if text.len() > OPENING {
+        let end = (0..=OPENING)
+            .rev()
+            .find(|&at| text.is_char_boundary(at))
+            .unwrap_or_default();
+        text.truncate(end);
+    }
+}
+
+/// Messages in the order this machine wrote them, then by id.
+fn by_written(one: &Posted, other: &Posted) -> Ordering {
+    one.written
+        .cmp(&other.written)
+        .then_with(|| one.id.cmp(&other.id))
 }
 
 /// Each message file under `messages` written at `from_ms` or later, by
@@ -281,7 +423,9 @@ fn read(messages: &Path, now: i64, kept_at: &Path, keeps: bool) -> Result<Read, 
 /// day the harness files messages into, from the day before `since_ms`
 /// on, since one relayed late may be filed under the day it was sent;
 /// and the address of every sender a file listed is named for. Files
-/// being written, named from a dot, are left for the next.
+/// being written, named from a dot, are left for the next. A day's folder
+/// or a file the harness took away as it was listed is passed over: it
+/// moves only what is old, read already, or expired.
 fn listed(
     messages: &Path,
     from_ms: i64,
@@ -292,16 +436,22 @@ fn listed(
         .unwrap_or_default();
     let dated = |name: &str| name.len() == 10 && name.as_bytes()[4] == b'-';
     let mut folders = vec![messages.to_path_buf()];
-    for entry in std::fs::read_dir(messages)?.flatten() {
+    for entry in std::fs::read_dir(messages)? {
+        let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) && dated(&name) && name >= earliest {
+        if dated(&name) && name >= earliest && entry.file_type()?.is_dir() {
             folders.push(entry.path());
         }
     }
     let mut listed = Vec::new();
     let mut known = BTreeSet::new();
     for folder in folders {
-        for entry in std::fs::read_dir(&folder).into_iter().flatten().flatten() {
+        let entries = match std::fs::read_dir(&folder) {
+            Err(error) if error.kind() == ErrorKind::NotFound && folder != messages => continue,
+            entries => entries.map_err(|error| in_folder(&folder, &error))?,
+        };
+        for entry in entries {
+            let entry = entry.map_err(|error| in_folder(&folder, &error))?;
             let name = entry.file_name().to_string_lossy().into_owned();
             let json = Path::new(&name)
                 .extension()
@@ -312,18 +462,26 @@ fn listed(
             if let Some(from) = name.split('-').nth(1).filter(|from| is_address(from)) {
                 known.insert(from.to_owned());
             }
-            let written = entry
-                .metadata()
-                .and_then(|meta| meta.modified())
-                .ok()
-                .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
-                .and_then(|at| i64::try_from(at.as_millis()).ok());
-            if let Some(written) = written.filter(|&written| written >= from_ms) {
+            let written = match entry.metadata().and_then(|meta| meta.modified()) {
+                Ok(at) => at
+                    .duration_since(UNIX_EPOCH)
+                    .ok()
+                    .and_then(|at| i64::try_from(at.as_millis()).ok())
+                    .unwrap_or_default(),
+                Err(error) if error.kind() == ErrorKind::NotFound => continue,
+                Err(error) => return Err(in_folder(&folder, &error)),
+            };
+            if written >= from_ms {
                 listed.push((entry.path(), name, written));
             }
         }
     }
     Ok((listed, known))
+}
+
+/// `error`, saying the `folder` it came from.
+fn in_folder(folder: &Path, error: &std::io::Error) -> std::io::Error {
+    std::io::Error::new(error.kind(), format!("{}: {error}", folder.display()))
 }
 
 /// Whether `one` is the message its file `name` names, sent by whom its id
@@ -333,15 +491,11 @@ fn genuine(one: &Posted, name: &str) -> bool {
         && one.id.split('-').nth(1) == Some(one.from.as_str())
 }
 
-/// When a message was sent, in ms, by its id; 0 where it can't say.
-fn stamp(id: &str) -> i64 {
-    mesh::stamped_at(id).unwrap_or_default()
-}
-
-/// What was `kept`, with what was `opened` since, oldest first, that went
-/// to the group or answers or withdraws a message kept; each once, none
-/// stamped ahead of `now_ms`, none past `KEPT_FOR`, and only a finding or
-/// what follows it past `WITHIN`, so a finding left open keeps counting.
+/// What was `kept`, with what was `opened` since, in the order this
+/// machine wrote them, that went to the group or answers or withdraws a
+/// message kept; each once, none written past `KEPT_FOR` before `now_ms`,
+/// and only a finding or what follows or withdraws it past `WITHIN`, so a
+/// finding left open keeps counting and one withdrawn stays withdrawn.
 fn kept_beside(kept: Vec<Posted>, opened: Vec<Posted>, now_ms: i64) -> Vec<Posted> {
     let mut posted: BTreeMap<String, Posted> =
         kept.into_iter().map(|one| (one.id.clone(), one)).collect();
@@ -353,24 +507,34 @@ fn kept_beside(kept: Vec<Posted>, opened: Vec<Posted>, now_ms: i64) -> Vec<Poste
     }
     let threaded: BTreeSet<String> = posted
         .values()
-        .filter(|one| {
-            std::iter::once(one.id.as_str())
-                .chain(ancestors(&posted, one))
-                .any(|id| posted.get(id).is_some_and(is_finding))
-        })
+        .filter(|one| lineage(&posted, one).any(|id| posted.get(id).is_some_and(is_finding)))
         .map(|one| one.id.clone())
         .collect();
     let mut posted: Vec<Posted> = posted
         .into_values()
         .filter(|one| {
-            let at = stamp(&one.id);
-            at <= now_ms + AHEAD_MS
-                && at >= now_ms - KEPT_FOR * 1000
-                && (at >= now_ms - WITHIN * 1000 || threaded.contains(&one.id))
+            one.written >= now_ms - KEPT_FOR * 1000
+                && (one.written >= now_ms - WITHIN * 1000 || threaded.contains(&one.id))
         })
         .collect();
-    posted.sort_by_key(|one| stamp(&one.id));
+    posted.sort_by(by_written);
     posted
+}
+
+/// `one`'s own id, the messages it answers, and the one it supersedes with
+/// those that one answers, as far as `posted` holds them.
+fn lineage<'a>(
+    posted: &'a BTreeMap<String, Posted>,
+    one: &'a Posted,
+) -> impl Iterator<Item = &'a str> + 'a {
+    let superseded = one.supersedes.as_deref().and_then(|id| posted.get(id));
+    std::iter::once(one.id.as_str())
+        .chain(ancestors(posted, one))
+        .chain(
+            superseded
+                .into_iter()
+                .flat_map(move |it| std::iter::once(it.id.as_str()).chain(ancestors(posted, it))),
+        )
 }
 
 /// The messages `one` answers, nearest first, as far as `posted` holds
@@ -392,11 +556,14 @@ fn is_finding(one: &Posted) -> bool {
 }
 
 /// The findings `posted` holds that are neither withdrawn nor added to
-/// another, oldest first, each with the latest landing note in its thread.
-/// A finding answering another adds to it while that one is open with no
+/// another, oldest first, each with the landing notes in its thread. A
+/// finding answering another adds to it while that one is open with no
 /// landing note yet, and counts on its own otherwise, so one saying a
-/// fixed finding is back counts again. A finding is withdrawn by its
-/// sender superseding it, or answering it with a withdrawal.
+/// fixed finding is back counts again. A landing note counts for the
+/// finding it answers and every one counted since that follows it up, so
+/// a note on the first closes a regression said beneath it too. A finding
+/// is withdrawn by its sender superseding it, or answering it with a
+/// withdrawal.
 fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>) -> Vec<Finding> {
     let by_id: BTreeMap<String, Posted> = posted
         .iter()
@@ -407,45 +574,94 @@ fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>
             one.from == finding.from
                 && (one.supersedes.as_deref() == Some(finding.id.as_str())
                     || (one.re.as_deref() == Some(finding.id.as_str())
-                        && opens_with(one, "withdr")))
+                        && opens_with(one, WITHDRAWN)))
         })
     };
     // A withdrawal is no finding, whatever it was sent as.
     let takes_back = |one: &Posted| {
         let answered = one.re.as_ref().and_then(|re| by_id.get(re));
-        answered.is_some_and(|it| it.from == one.from) && opens_with(one, "withdr")
+        answered.is_some_and(|it| it.from == one.from) && opens_with(one, WITHDRAWN)
     };
     let mut found: Vec<Finding> = Vec::new();
     let mut counted_as: BTreeMap<&str, usize> = BTreeMap::new();
     for one in posted {
         let thread = ancestors(&by_id, one).find_map(|id| counted_as.get(id).copied());
         if is_finding(one) && !withdrawn(one) && !takes_back(one) {
-            if let Some(at) = thread.filter(|&at| found[at].landed.is_none()) {
+            if let Some(at) = thread.filter(|&at| found[at].landed.is_empty()) {
                 counted_as.insert(&one.id, at);
             } else {
                 counted_as.insert(&one.id, found.len());
                 found.push(Finding {
                     posted: one.clone(),
                     owner: owner(one, orchestrator, known),
-                    landed: None,
+                    landed: Vec::new(),
+                    landed_at: None,
                 });
             }
-        } else if let Some(at) = thread.filter(|_| opens_with(one, "landed")) {
-            found[at].landed = one.text.lines().next().map(str::to_owned);
+        } else if let Some(at) = thread.filter(|_| opens_with(one, LANDED)) {
+            let line = one.text.lines().next().unwrap_or_default();
+            let root = found[at].posted.id.clone();
+            let following: Vec<usize> = (at..found.len())
+                .filter(|&index| {
+                    index == at || ancestors(&by_id, &found[index].posted).any(|id| id == root)
+                })
+                .collect();
+            for index in following {
+                land(&mut found[index], line, one.written);
+            }
         }
     }
     found
 }
 
-/// Whether `one`'s opening, after its sender's address, starts with
-/// `word`, in any case: "IKQ63G: withdrawn", "Landed core #6000".
-fn opens_with(one: &Posted, word: &str) -> bool {
+/// Counts the landing note opening with `line`, written at `at`, as part
+/// of `finding`'s fix. One saying it lands "instead" replaces those before
+/// it; any other adds to them, so a fix landed in parts closes only once
+/// every part runs.
+fn land(finding: &mut Finding, line: &str, at: i64) {
+    let instead = line
+        .split(|c: char| !c.is_ascii_alphabetic())
+        .any(|word| word.eq_ignore_ascii_case("instead"));
+    if instead {
+        finding.landed.clear();
+        finding.landed_at = None;
+    }
+    finding.landed.push(line.to_owned());
+    finding.landed_at.get_or_insert(at);
+}
+
+/// Whether `one`'s opening, after its sender's address, is one of `words`,
+/// in any case, as a whole word in a first sentence that asks nothing:
+/// "IKQ63G: withdrawn", "Landed core #6000.", never "Landed? No" or
+/// "Landed core #6000? It still fails".
+fn opens_with(one: &Posted, words: &[&str]) -> bool {
     let opening = one.text.trim_start();
     let opening = opening.strip_prefix(one.from.as_str()).unwrap_or(opening);
-    opening
-        .trim_start_matches([':', ',', ' '])
-        .get(..word.len())
-        .is_some_and(|start| start.eq_ignore_ascii_case(word))
+    let opening = opening.trim_start_matches([':', ',', ' ']);
+    if asks(opening) {
+        return false;
+    }
+    words.iter().any(|word| {
+        opening
+            .get(..word.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(word))
+            && !opening[word.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '?')
+    })
+}
+
+/// Whether `text`'s first sentence, ended by a stop, a bang or a question
+/// mark before a space or the end, or by its first line's end, is a
+/// question; a stop inside a name, as in `core.nix#6000`, ends nothing.
+fn asks(text: &str) -> bool {
+    let line = text.lines().next().unwrap_or_default();
+    let mut marks = line.char_indices().peekable();
+    while let Some((_, mark)) = marks.next() {
+        let ends = marks.peek().is_none_or(|(_, next)| next.is_whitespace());
+        if ends && matches!(mark, '.' | '!' | '?') {
+            return mark == '?';
+        }
+    }
+    false
 }
 
 /// Who a finding counts against: an address seen on the mesh after "for"
@@ -488,19 +704,22 @@ fn is_address(word: &str) -> bool {
 }
 
 /// `found` as lines of the misses' ledger, so their landing notes are
-/// judged as a miss's check is: what each says, its owner, its latest
-/// landing note as its check, and when it was sent.
+/// judged as a miss's check is: what each says, its owner, its landing
+/// notes together as its check, and when the earliest of them came, or
+/// it did where none has, so each main is read back from no further than
+/// a fix it names could have merged.
 fn as_misses(found: &[Finding]) -> String {
     found
         .iter()
         .map(|finding| {
-            let at = jiff::Timestamp::from_millisecond(stamp(&finding.posted.id))
+            let at = finding.landed_at.unwrap_or(finding.posted.written);
+            let at = jiff::Timestamp::from_millisecond(at)
                 .map(|at| at.to_string())
                 .ok();
             serde_json::json!({
                 "what": named_as(&finding.posted),
                 "owner": finding.owner,
-                "check": finding.landed,
+                "check": (!finding.landed.is_empty()).then(|| finding.landed.join("; ")),
                 "at": at,
             })
             .to_string()

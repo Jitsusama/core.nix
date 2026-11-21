@@ -22,7 +22,7 @@ mod symbiosis;
 
 pub use held::{BLIND, HELD, held};
 pub use running::{UNRUN, UNSEEN, hosts_started};
-pub use symbiosis::{Findings, findings};
+pub use symbiosis::{Findings, KEY as FINDINGS, findings};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -205,7 +205,9 @@ pub fn checked_beside(
     } else {
         format!("{text}\n{beside}")
     };
-    judged(&both, folder, checkouts, switches, |_, repos, judged| {
+    // Each measure judges its own lines, never the two joined, so a
+    // finding can't be read as a miss Joel found himself.
+    judged(&both, folder, checkouts, switches, |repos, judged| {
         (
             open_misses(text, repos, judged),
             findings.map(|found| found.measured(repos, judged, now)),
@@ -213,14 +215,14 @@ pub fn checked_beside(
     })
 }
 
-/// What `then` makes of the lines of `text`, each shaped as a miss, once
-/// their checks are judged as `checked` judges the misses'.
+/// What `then` makes of the checks of `text`'s lines, each shaped as a
+/// miss, once they are judged as the misses' are.
 fn judged<T>(
     text: &str,
     folder: &Path,
     checkouts: &[String],
     switches: &str,
-    then: impl FnOnce(&str, &Checkouts, &Judged<'_>) -> T,
+    then: impl FnOnce(&Checkouts, &Judged<'_>) -> T,
 ) -> io::Result<T> {
     let mut repos = Checkouts::from([
         ("core".to_owned(), folder.join("core.git")),
@@ -249,7 +251,7 @@ fn judged<T>(
         unrun: &unrun,
         here: here.trim(),
     };
-    Ok(then(text, &repos, &judged))
+    Ok(then(&repos, &judged))
 }
 
 /// The changes the misses' checks name now that have merged: only these

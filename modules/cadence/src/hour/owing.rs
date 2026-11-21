@@ -9,7 +9,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, UNRUN, UNSEEN, drag, rounds};
+use super::measures::{BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, rounds};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -121,6 +121,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
                 let files = files.join(", ");
                 let (things, closes) = match (m.class, m.key.as_str()) {
                     (Class::Cells, "reports-unasked") => ("reports", "none of them is left"),
+                    (Class::Cells, FINDINGS) => ("findings", "none of them is left"),
                     (Class::Cells, _) => ("cells", "none of them is left"),
                     _ => ("files", "its figure is back in"),
                 };
@@ -233,7 +234,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// miss does, and the drag the rest of the hour would have is filed too:
 /// his misses still reach their owners whatever his apps read. So does a
 /// merge whose rounds past five caught nothing, which WCJQSG asked be filed
-/// to whoever landed it, whatever else leads.
+/// to whoever landed it, whatever else leads, and each owner's findings in
+/// the work system's group open past a day, which WCJQSG ruled count
+/// against them as Joel's misses do.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -262,12 +265,11 @@ pub fn file(
         );
         dragging.extend(drag(&rest));
     }
-    // Never the lead, which passes them over, so filed whatever leads.
-    dragging.extend(
-        measures
-            .iter()
-            .filter(|m| m.key.starts_with(rounds::FRUITLESS) && m.past().is_some()),
-    );
+    // Never the lead, which passes them over, so filed whatever leads; a
+    // measure filed twice is owed once, as the ledger holds it open.
+    dragging.extend(measures.iter().filter(|m| {
+        (m.key.starts_with(rounds::FRUITLESS) || m.key == FINDINGS) && m.past().is_some()
+    }));
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -469,6 +471,27 @@ mod tests {
                 && told[0].1.contains("once none of them is left"),
             "a reports drag spoke of cells, or of a figure it doesn't wait for: {}",
             told[0].1
+        );
+    }
+
+    #[test]
+    fn each_owners_findings_are_filed_as_findings_whatever_leads() {
+        let slips = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let mut found = measure(FINDINGS, Class::Cells, 1.0, Some(0.0));
+        found.behind = vec!["ab12 from IKQ63G: the slots · A2VLJN".to_owned()];
+        let told = file(&mut Vec::new(), &[slips, found], "2026-11-21", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["OWNER", "A2VLJN"],
+            "a finding's owner wasn't filed while slips led the drag"
+        );
+        assert!(
+            told[1]
+                .1
+                .contains("these of its findings are yours: ab12 from IKQ63G: the slots"),
+            "a finding was put to its owner as a cell: {}",
+            told[1].1
         );
     }
 
