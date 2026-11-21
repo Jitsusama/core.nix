@@ -41,6 +41,19 @@ interface Looks {
   readonly settled: boolean;
 }
 
+/**
+ * Each of `side`'s looks with its key: its own words, and how many the same
+ * came before it, so a look keeps its key while those before it come and go.
+ */
+function keyed(side: readonly string[]): readonly { words: string; key: string }[] {
+  const seen = new Map<string, number>();
+  return side.map((words) => {
+    const before = seen.get(words) ?? 0;
+    seen.set(words, before + 1);
+    return { words, key: before === 0 ? words : `${words}#${before}` };
+  });
+}
+
 /** A part's own site, from the sites' root as the daemon says it. */
 function siteOf(part: Part): string {
   return `../${part.deeper.site}`;
@@ -54,10 +67,10 @@ function siteOf(part: Part): string {
  */
 function machineLooks(part: Part, drawn: number): readonly Look[] {
   if (part.health === "unread") {
-    return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, 0)];
+    return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
   return part.things.flatMap((thing, at) =>
-    thing.side.map((words, item) => ({
+    keyed(thing.side).map(({ words, key }) => ({
       health: thing.health,
       whose: thing.name,
       machine: true,
@@ -66,32 +79,32 @@ function machineLooks(part: Part, drawn: number): readonly Look[] {
         at < drawn
           ? `#machine-${at + 1}`
           : `../mycelium/#machine=${encodeURIComponent(thing.name)}`,
-      row: `look:machine:${thing.name}:${item}`,
+      row: `look:machine:${thing.name}:${key}`,
     })),
   );
 }
 
-/** One look in the part `part`, the `item`th of its own. */
-function lookOf(part: Part, health: Health, words: string, item: number): Look {
+/** One look in the part `part`, keyed `key` among its own. */
+function lookOf(part: Part, health: Health, words: string, key: string): Look {
   return {
     health,
     whose: named(part.part),
     machine: false,
     words: capital(words),
     href: siteOf(part),
-    row: `look:part:${part.part}:${item}`,
+    row: `look:part:${part.part}:${key}`,
   };
 }
 
 /** Another part's looks: each of its side's, or why it couldn't be read. */
 function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
-    return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, 0)];
+    return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
   if (part.health === "good") {
     return [];
   }
-  return part.side.map((words, item) => lookOf(part, part.health, words, item));
+  return keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
 }
 
 /**
