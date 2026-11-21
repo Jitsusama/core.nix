@@ -31,13 +31,13 @@ pub struct Unrun {
     /// the change made, rather than no Mac taking them.
     pub stalled: bool,
     /// Whether a Mac took them once and that run stopped unfinished,
-    /// before a day of runs that compared nothing. Its log isn't named,
-    /// since the next run wrote over it.
+    /// before a day of runs that compared nothing. Its log is
+    /// `stalled_log`, which a failure's may share, as runs append.
     pub stalled_once: bool,
     /// The log of a run a Mac failed before the ones that compared
     /// nothing, when one did.
     pub failed_log: Option<String>,
-    /// The log of the last run that stalled, when they stalled.
+    /// The log of the last run that stalled, when one did.
     pub stalled_log: Option<String>,
 }
 
@@ -94,9 +94,10 @@ fn said_to(merge: &Unrun, named: bool) -> String {
              may hang, may take longer than the net's two hours, may print nothing for half an \
              hour, or something else stopped them"
         ),
+        // The two runs' order isn't kept, so neither is said first.
         (false, true, Some(_)) => format!(
-            "a Mac failed its Mac checks at {short} once, a later run a Mac took stopped \
-             unfinished, and no Mac compared them again"
+            "a Mac failed its Mac checks at {short} once, and a run a Mac took stopped \
+             unfinished once, and no Mac compared them again"
         ),
         (false, true, None) => format!(
             "a Mac took its Mac checks at {short} once and the run stopped unfinished, and no \
@@ -112,8 +113,12 @@ fn said_to(merge: &Unrun, named: bool) -> String {
         (false, Some(log)) => format!(" The failure's log is {log}."),
         (_, None) => String::new(),
     };
-    let failed = match (merge.stalled, &merge.stalled_log) {
-        (true, Some(log)) => format!(" The last run's log is {log}.{failed}"),
+    let failed = match (merge.stalled, merge.stalled_once, &merge.stalled_log) {
+        (true, _, Some(log)) => format!(" The last run's log is {log}.{failed}"),
+        (false, true, Some(log)) if merge.failed_log.as_ref() == Some(log) => {
+            format!(" Both runs' log is {log}.")
+        }
+        (false, true, Some(log)) => format!("{failed} The unfinished run's log is {log}."),
         _ => failed,
     };
     let what = format!(
@@ -249,6 +254,7 @@ mod tests {
         let once = said_to(
             &Unrun {
                 stalled_once: true,
+                stalled_log: Some("/net/logs/fb46-1.log".to_owned()),
                 ..merge(Some(4925))
             },
             true,
@@ -257,20 +263,37 @@ mod tests {
             &Unrun {
                 stalled_once: true,
                 failed_log: Some("/net/logs/fb46-1.log".to_owned()),
+                stalled_log: Some("/net/logs/fb46-2.log".to_owned()),
+                ..merge(Some(4925))
+            },
+            true,
+        );
+        let shared = said_to(
+            &Unrun {
+                stalled_once: true,
+                failed_log: Some("/net/logs/fb46-1.log".to_owned()),
+                stalled_log: Some("/net/logs/fb46-1.log".to_owned()),
                 ..merge(Some(4925))
             },
             true,
         );
         assert!(
             once.contains("a Mac took its Mac checks at fb4676a1c0ff once and the run stopped")
+                && once.contains("The unfinished run's log is /net/logs/fb46-1.log.")
                 && !once.contains("no Mac compared its")
                 && !once.contains("may hang"),
-            "a single stall was told as no Mac comparing, or as a hang: {once}"
+            "a single stall was told as no Mac comparing, as a hang, or without its log: {once}"
         );
         assert!(
-            after.contains("failed its Mac checks at fb4676a1c0ff once, a later run")
-                && after.contains("The failure's log is /net/logs/fb46-1.log."),
-            "a failure then a stall wasn't told as both: {after}"
+            after.contains("failed its Mac checks at fb4676a1c0ff once, and a run a Mac took")
+                && after.contains("The failure's log is /net/logs/fb46-1.log.")
+                && after.contains("The unfinished run's log is /net/logs/fb46-2.log."),
+            "a failure and a stall weren't told as both, each with its log: {after}"
+        );
+        assert!(
+            shared.contains("Both runs' log is /net/logs/fb46-1.log.")
+                && !shared.contains("The failure's log"),
+            "a log both runs wrote was named twice: {shared}"
         );
     }
 

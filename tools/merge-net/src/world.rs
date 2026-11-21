@@ -9,6 +9,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{BufRead as _, BufReader, Read as _, Seek as _, SeekFrom, Write as _};
+use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,6 +55,22 @@ const TAKEN: &str = "nix-offload: building on ";
 /// busy Mac's two hours of waiting would read as two hours of building.
 const WAITS: &str = "waits there for its turn";
 
+/// What begins every line nix-offload says itself. What a build prints
+/// under `-L` begins with its name, so only these say what nix-offload
+/// did, whatever a build prints.
+const OWN: &str = "nix-offload:";
+
+/// How long a run waiting for a turn may go without nix-offload saying it
+/// still waits before its turn counts as come. It says so every five
+/// minutes while it waits and nothing once the turn comes, so a run that
+/// builds silently after its turn reads as building, and one then stopped
+/// as a stall, not as one that compared nothing.
+const TURN_QUIET: Duration = Duration::from_mins(10);
+
+/// The most of a line the clock keeps to read it by, since nix-offload's
+/// own lines say what they are in their first words.
+const LINE_READ: usize = 512;
+
 /// The longest a run a builder took may wait there for a turn before it's
 /// stopped. nix-offload waits for as long as a turn's holder lives, and
 /// the Mac takes one comparison at a time, so a holder that never ends
@@ -68,11 +85,20 @@ struct Clock {
     /// build, from which the longest it may run counts; none while it
     /// waits for one.
     building: Option<Instant>,
+    /// When nix-offload last said the run waits there for a turn, while
+    /// nothing built has come since.
+    waits: Option<Instant>,
     /// Where this run's part of the log begins. A run the net's restart
     /// cut short records nothing, so the next one has its name and writes
     /// after it, and the builder that took the run cut short hasn't taken
     /// this one.
     from: usize,
+    /// How much of the log the clock has read, so each look reads only
+    /// what was written since: a VM test's log runs to tens of megabytes,
+    /// and on 11 November reading each whole grew the net to 981 MB.
+    read: u64,
+    /// The start of the line being written when the log was last read.
+    line: Vec<u8>,
     written: u64,
     heard: Instant,
 }
@@ -84,10 +110,66 @@ impl Clock {
         Self {
             taken: None,
             building: None,
+            waits: None,
             from: usize::try_from(written).unwrap_or(usize::MAX),
+            read: written,
+            line: Vec::new(),
             written,
             heard: now,
         }
+    }
+
+    /// Reads what `log` gained since the clock last read it, line by line.
+    /// A log written over shorter, as a test's is, is read again from
+    /// where this run's part begins.
+    fn hear(&mut self, log: &Path, now: Instant) {
+        let from = u64::try_from(self.from).unwrap_or(u64::MAX);
+        if self.written < self.read || self.read < from {
+            self.read = from;
+            self.line.clear();
+        }
+        let mut gained = Vec::new();
+        let read = fs::File::open(log).and_then(|mut file| {
+            file.seek(SeekFrom::Start(self.read))?;
+            file.take(self.written.saturating_sub(self.read))
+                .read_to_end(&mut gained)
+        });
+        let Ok(read) = read else {
+            return;
+        };
+        self.read += u64::try_from(read).unwrap_or(u64::MAX);
+        for piece in gained.split_inclusive(|byte| *byte == b'\n') {
+            let room = LINE_READ.saturating_sub(self.line.len());
+            self.line.extend(piece.iter().take(room));
+            if piece.ends_with(b"\n") {
+                let line = std::mem::take(&mut self.line);
+                self.heard_line(&String::from_utf8_lossy(&line), now);
+            }
+        }
+    }
+
+    /// What one line of the run's log says of it: a builder took it, it
+    /// waits there for a turn, or, once taken, it builds. nix-offload's
+    /// other lines, as that it may wait for room, say neither.
+    fn heard_line(&mut self, line: &str, now: Instant) {
+        let line = line.trim();
+        if says_taken(line) {
+            self.taken.get_or_insert(now);
+            self.waits = None;
+            self.building.get_or_insert(now);
+        } else if says_waits(line) {
+            self.waits = Some(now);
+            self.building = None;
+        } else if self.taken.is_some() && !line.is_empty() && !line.starts_with(OWN) {
+            self.waits = None;
+            self.building.get_or_insert(now);
+        }
+    }
+
+    /// Whether the run's turn came on the builder that took it: it said
+    /// it was taken, and either built or stopped saying it waits.
+    fn turn_came(&self) -> bool {
+        self.taken.is_some() && self.waits.is_none() && self.building.is_some()
     }
 
     /// This run's part of `log`, read from where it begins rather than
@@ -109,20 +191,21 @@ impl Clock {
     /// a builder took that went silent, that built past the longest, or
     /// that waited there for a turn past the most it may. A wait for a
     /// turn says so every five minutes, so it's never silent, and the
-    /// longest counts only once the wait is over.
+    /// longest counts only once the wait is over: from what it built
+    /// first, or from when it stopped saying it waits, `TURN_QUIET` on.
     fn overdue(&mut self, log: &Path, now: Instant) -> bool {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         if written != self.written {
             self.written = written;
             self.heard = now;
-            if let Some(ours) = self.ours(log).filter(|ours| taken_in(ours)) {
-                self.taken.get_or_insert(now);
-                if waiting_in(&ours) {
-                    self.building = None;
-                } else {
-                    self.building.get_or_insert(now);
-                }
-            }
+            self.hear(log, now);
+        }
+        if self
+            .waits
+            .is_some_and(|waits| now.duration_since(waits) > TURN_QUIET)
+        {
+            self.waits = None;
+            self.building.get_or_insert(now);
         }
         self.taken.is_some_and(|taken| {
             now.duration_since(self.heard) > SILENT
@@ -641,6 +724,7 @@ impl Real {
         let args = build_args(&self.flake(commit), &self.system, check, picked, &takes);
         let child = Command::new("nix-offload")
             .args(args)
+            .process_group(0)
             .stdin(Stdio::null())
             .stdout(output.try_clone().ok()?)
             .stderr(output)
@@ -694,6 +778,7 @@ impl Real {
             Command::new("nix-offload")
                 .args(mac_args(base))
                 .current_dir(&apart.folder)
+                .process_group(0)
                 .stdin(Stdio::null())
                 .stdout(out)
                 .stderr(output)
@@ -711,7 +796,12 @@ impl Real {
 /// How a Mac's comparison that ended with `code` is read, from its own
 /// part of `log`, which the runs before it on the same merge share.
 fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
-    let read = mac_ending(code, clock.ours(log).as_deref());
+    // One stopped once its turn came is a stall, though nothing it built
+    // printed a line and the last its log says is that it waits.
+    let read = match code {
+        None if clock.turn_came() => None,
+        code => mac_ending(code, clock.ours(log).as_deref()),
+    };
     // net.log points at the run's log for why it compared nothing, and a
     // run ended before a builder took it printed nothing that says so.
     if read == Some(UNCOMPARED) {
@@ -728,21 +818,36 @@ fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
     read
 }
 
+/// Whether a line is nix-offload's saying a builder took the run.
+fn says_taken(line: &str) -> bool {
+    line.trim_start().starts_with(TAKEN)
+}
+
+/// Whether a line is nix-offload's saying the run waits there for a turn,
+/// rather than a build's printing the same words.
+fn says_waits(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with(OWN) && line.contains(WAITS)
+}
+
 /// Whether a run's part of its log says a builder took it.
 fn taken_in(ours: &[u8]) -> bool {
-    ours.windows(TAKEN.len())
-        .any(|seen| seen == TAKEN.as_bytes())
+    String::from_utf8_lossy(ours).lines().any(says_taken)
 }
 
 /// Whether a run's part of its log says it still waits for a turn on the
-/// builder that took it: its last line says it waits, and nothing it
-/// built came after.
+/// builder that took it: the last line saying it was taken, waits or
+/// built says it waits. nix-offload's other lines, as that the builder may
+/// wait for room, which it says during a wait as well, say neither.
 fn waiting_in(ours: &[u8]) -> bool {
     String::from_utf8_lossy(ours)
         .lines()
         .rev()
-        .find(|line| !line.trim().is_empty())
-        .is_some_and(|line| line.contains(WAITS))
+        .map(str::trim)
+        .find(|line| {
+            !line.is_empty() && (says_waits(line) || says_taken(line) || !line.starts_with(OWN))
+        })
+        .is_some_and(says_waits)
 }
 
 /// What a Mac's comparison that ended with `code` says of its riders,
@@ -872,7 +977,10 @@ pub fn mac_args(base: &str) -> Vec<String> {
 }
 
 /// How `child`, building at `commit` into `log`, ended; none when it was
-/// dropped or ran past its time, which stops it.
+/// dropped or ran past its time, which stops it with its process group.
+/// nix-offload's ssh to a builder is in that group, and one left when its
+/// caller was ended went on alone: on 8 November two sat for over an hour,
+/// and one waiting for a Mac's turn would take it when it came.
 fn ended(
     mut child: std::process::Child,
     clock: &mut Clock,
@@ -889,6 +997,10 @@ fn ended(
             }
             Ok(Some(status)) => return status.code(),
             Ok(None) if dropped() || clock.overdue(log, Instant::now()) => {
+                let _ = Command::new("kill")
+                    .args(["-s", "KILL", "--", &format!("-{}", child.id())])
+                    .stderr(Stdio::null())
+                    .status();
                 let _ = child.kill();
                 let _ = child.wait();
                 return None;
@@ -2366,6 +2478,103 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a run stopped while it waited compared nothing, so it rests"
         );
         let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_wait_read_through_nix_offloads_other_lines_and_only_its_own() {
+        let room = format!(
+            "{WAITING}nix-offload: the builder runs 2 builds, as many as it runs at once, so \
+             this may wait there for room\n"
+        );
+        assert_eq!(
+            mac_ending(None, Some(room.as_bytes())),
+            Some(UNCOMPARED),
+            "a room notice during a wait for a turn read as building"
+        );
+        let printed = "nix-offload: building on a-mac, /tmp/compare\n\
+            a-check> the stand waits there for its turn, held in /tmp/turns\n";
+        assert_eq!(
+            mac_ending(None, Some(printed.as_bytes())),
+            None,
+            "a build printing nix-offload's words read as waiting for a turn"
+        );
+    }
+
+    #[test]
+    fn a_run_silent_once_its_wait_ends_is_a_stall_not_a_comparison_of_nothing() {
+        let log = std::env::temp_dir().join(format!("merge-net-quiet-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, WAITING).unwrap();
+        assert!(!clock.overdue(&log, start));
+        assert!(!clock.overdue(&log, start + SILENT));
+        assert!(
+            clock.overdue(&log, start + SILENT + Duration::from_secs(1)),
+            "silent half an hour once nix-offload stopped saying it waits"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            None,
+            "a run whose turn came and that then hung was read as comparing nothing"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_line_written_in_two_pieces_is_read_whole() {
+        let log = std::env::temp_dir().join(format!("merge-net-pieces-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let (first, rest) = WAITING.split_at(WAITING.len() - 30);
+        fs::write(&log, first).unwrap();
+        assert!(!clock.overdue(&log, start));
+        fs::write(&log, WAITING).unwrap();
+        assert!(!clock.overdue(&log, start + Duration::from_secs(5)));
+        assert!(
+            clock.waits.is_some() && !rest.is_empty(),
+            "a wait line read in two pieces wasn't read as waiting"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_run_stopped_is_stopped_with_what_it_started() {
+        let folder = std::env::temp_dir().join(format!("merge-net-group-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
+        let (log, pid) = (folder.join("log"), folder.join("pid"));
+        fs::write(&log, "").unwrap();
+        let child = Command::new("sh")
+            .args([
+                "-c",
+                &format!("sleep 30 & echo $! > {}; wait", pid.display()),
+            ])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let written = (0..100).any(|_| {
+            let there = fs::read_to_string(&pid).is_ok_and(|said| !said.trim().is_empty());
+            if !there {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            there
+        });
+        assert!(written, "the sleep's pid was written");
+        let mut clock = Clock::new(&log, Instant::now());
+        assert_eq!(ended(child, &mut clock, "c", &log, &|| true), None);
+        let sleep = fs::read_to_string(&pid).unwrap();
+        let state = || fs::read_to_string(format!("/proc/{}/stat", sleep.trim())).ok();
+        let stopped = (0..100).any(|_| {
+            let dead = state().is_none_or(|stat| stat.contains(") Z "));
+            if !dead {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            dead
+        });
+        assert!(stopped, "what the stopped run started went on alone");
+        let _ = fs::remove_dir_all(&folder);
     }
 
     #[test]

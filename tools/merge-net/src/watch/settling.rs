@@ -373,10 +373,20 @@ impl<'a> Settler<'a> {
     /// Whether a Mac's comparison `check` at `merge` was told to its owner
     /// and let go, reverted, or let go as fixed forward, so handing it
     /// again would start another day of tries, or decide its revert again.
+    /// One that failed twice had its revert decided, though a revert
+    /// dropped as the check is flaky at main's newest head leaves no
+    /// finding at the merge.
     pub fn told(&self, check: &str, merge: &str) -> bool {
         ["mac-unrun", "failed", "fixed-forward"]
             .into_iter()
             .any(|kind| self.state.found(kind, check, merge))
+            || self
+                .state
+                .runs(merge, check)
+                .iter()
+                .filter(|ran| **ran == Ran::Failed)
+                .count()
+                >= super::FAILURES
     }
 
     /// Run `write` while nothing else writes the hold.
@@ -641,12 +651,21 @@ impl<'a> Settler<'a> {
                 ));
                 // A Mac that took it once and stopped unfinished did
                 // compare something, so cadence says so rather than that
-                // no Mac compared it; its log was written over since.
+                // no Mac compared it, naming the log the stall wrote: each
+                // run appends to the log of the failures before it, plus
+                // one. Named, the budget keeps it for the owner to read.
+                let runs = state.runs(merge, check);
+                let stalled = runs.iter().position(|ran| *ran == Ran::Stalled).map(|at| {
+                    let failures = runs[..at].iter().filter(|ran| **ran == Ran::Failed).count();
+                    let run = u32::try_from(failures + 1).unwrap_or(u32::MAX);
+                    state.log(merge, check, run).display().to_string()
+                });
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge,
                     "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
                     "failed_log": failed,
-                    "stalled_once": state.runs(merge, check).contains(&Ran::Stalled),
+                    "stalled_once": stalled.is_some(),
+                    "log": stalled,
                 });
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }
@@ -685,9 +704,9 @@ impl<'a> Settler<'a> {
                     "{check} at {} stalled twice on a Mac: told, and let go",
                     short(merge)
                 ));
-                // Each stall writes over the log the run after a failure
-                // would have, so the last is one past the failure, if any;
-                // named, the budget keeps it for the owner to read.
+                // Each run appends to the log of the failures before it,
+                // plus one, so the last stall's is one past the failure,
+                // if any; named, the budget keeps it for the owner to read.
                 let stalled = state.log(merge, check, if failed.is_some() { 2 } else { 1 });
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge, "stalled": true,
