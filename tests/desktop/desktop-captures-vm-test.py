@@ -7,6 +7,9 @@ tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytes
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it: unlocked, the shell running, nothing of its
 own still open, so any test runs alone.
+
+Long because every capture shares one set of helpers for judging pictures, videos and their
+sound, and a split would copy them into each half.
 """
 
 from __future__ import annotations
@@ -48,6 +51,13 @@ type Box = tuple[int, int, int, int]
 # The loudest a recording's sound may peak and still count as silence, in dB: the
 # microphone's test tone peaks near 0, and silence at minus infinity.
 SILENT = -60.0
+# The speakers' tone, in Hz, and the cut that keeps only it: four high-pass filters at 3 kHz
+# take the microphone's 440 Hz tone down past 130 dB and leave this one whole.
+SPEAKERS_TONE = 6000
+ABOVE_THE_MICROPHONE = ",".join(["highpass=f=3000"] * 4)
+# What records from a microphone without being a call, as the calls crate's NOT_CALLS has
+# it: the recording's own mix, and pw-record, which stands in for a call here.
+NO_CALL = frozenset({"recording-sound", "pw-record"})
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -130,8 +140,16 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     )
     ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
     assert loudest(machine, ffmpeg, call) > SILENT, "a call lost the microphone to the recording"
-    playing = desktop.as_account("wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -F node.name")
-    assert "stand-in-speakers" in playing, f"the recording moved the sound: {playing}"
+    for default, node in (("SINK", "stand-in-speakers"), ("SOURCE", "stand-in-microphone")):
+        held = desktop.as_account(f"wpctl inspect @DEFAULT_AUDIO_{default}@ | grep -F node.name")
+        assert node in held, f"the recording moved the default {default.lower()}: {held}"
+    # Nothing it records from reads as a call to a-call-is-on, which would hold uploads back.
+    calls = callers(json.loads(desktop.as_account("pw-dump"))) - NO_CALL
+    assert not calls, f"the recording reads as a call from {sorted(calls)}"
+    # What the desktop plays goes in too: a tone the microphone has nothing near.
+    tone = "/run/user/1000/tone.wav"
+    machine.succeed(f"{ffmpeg} -f lavfi -i sine=frequency={SPEAKERS_TONE}:duration=2 -y {tone}")
+    desktop.as_account(f"pw-play --target stand-in-speakers {tone}")
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Its notice comes once the file is finished, which its process outlives, waiting on
     # the notice's Play It. The screen is still as it stops, so this is the stop heard at
@@ -154,15 +172,49 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     # no recording did (Joel, 2026-11-20: "why does a screen recording not record audio?").
     peak = loudest(machine, ffmpeg, video)
     assert peak > SILENT, f"the recording's sound peaks at {peak} dB, silence"
+    played = loudest(machine, ffmpeg, video, ABOVE_THE_MICROPHONE)
+    assert played > SILENT, f"what the speakers played peaks at {played} dB, unheard"
     # The mix it was made from goes with it, its sink and both loops.
     mixes = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
     assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
 
 
-def loudest(machine: BaseMachine, ffmpeg: str, recorded: str) -> float:
-    """Give the peak of a recording's first sound, in dB; it fails where it has none."""
+def callers(dump: list[Json]) -> set[str]:
+    """Name each program recording from a microphone in pw-dump's objects, as calls does.
+
+    A stream is named by its own program, or its client's where it names none.
+    """
+    clients = {
+        thing["id"]: (thing.get("info") or {}).get("props", {})
+        for thing in dump
+        if thing.get("type") == "PipeWire:Interface:Client"
+    }
+    named = set()
+    for thing in dump:
+        info = thing.get("info") or {}
+        props = info.get("props", {})
+        if (
+            thing.get("type") == "PipeWire:Interface:Node"
+            and props.get("media.class") == "Stream/Input/Audio"
+            and info.get("state") == "running"
+            and props.get("stream.capture.sink") is not True
+        ):
+            client = clients.get(props.get("client.id"), {})
+            binary = props.get("application.process.binary") or client.get(
+                "application.process.binary", ""
+            )
+            named.add(binary.removesuffix("-wrapped").removeprefix("."))
+    return named
+
+
+def loudest(machine: BaseMachine, ffmpeg: str, recorded: str, cut: str = "") -> float:
+    """Give the peak of a recording's first sound, in dB, past the cut given if any.
+
+    It fails where the recording has no sound.
+    """
+    filters = f"{cut},volumedetect" if cut else "volumedetect"
     heard = machine.succeed(
-        f"{ffmpeg} -v info -i {recorded} -map 0:a:0 -af volumedetect -f null - 2>&1"
+        f"{ffmpeg} -v info -i {recorded} -map 0:a:0 -af {filters} -f null - 2>&1"
         " | grep -o 'max_volume: [-0-9.]*'"
     )
     return float(heard.split()[-1])

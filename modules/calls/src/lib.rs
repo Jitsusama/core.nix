@@ -76,8 +76,9 @@ impl Call {
 /// Programs that record from a microphone without being a call: PipeWire's
 /// own filters, dictation's recorder, the camera program's videos, the
 /// shell's level meters, and the noise-cancelled microphones, which hear a
-/// microphone only for the program recording from them.
-pub const NOT_CALLS: [&str; 7] = [
+/// microphone only for the program recording from them, and a screen
+/// recording's mix of the microphone (modules/quickshell/recording-sound.sh).
+pub const NOT_CALLS: [&str; 8] = [
     "noise-cancelled",
     "pipewire",
     "wireplumber",
@@ -85,6 +86,7 @@ pub const NOT_CALLS: [&str; 7] = [
     "pw-cat",
     "ffmpeg",
     "quickshell",
+    "recording-sound",
 ];
 
 /// Whether a node, as pw-dump prints it, is a stream recording from a
@@ -297,6 +299,25 @@ mod tests {
             "type": "PipeWire:Interface:Client",
             "info": { "props": { "application.process.binary": binary } }
         })
+    }
+
+    #[test]
+    fn a_screen_recordings_mix_is_no_call_though_its_client_would_be() {
+        // The mix's loops run inside pipewire-pulse, which no list knows,
+        // so only the name each loop gives itself keeps a recording from
+        // reading as a call.
+        let mut recording = Recording::default();
+        let mut unnamed = native(70, 69);
+        unnamed["info"]["props"]["node.name"] = json!("loopback-1-12");
+        recording.take(&json!([client(69, "pipewire-pulse"), unnamed]));
+        assert!(recording.any(), "an unnamed loop reads as a call");
+        let mut named = native(70, 69);
+        named["info"]["props"]["application.process.binary"] = json!("recording-sound");
+        recording.take(&json!([named]));
+        assert!(
+            !recording.any(),
+            "a loop naming itself recording-sound isn't a call"
+        );
     }
 
     #[test]

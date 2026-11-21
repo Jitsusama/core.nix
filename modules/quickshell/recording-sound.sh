@@ -9,9 +9,11 @@
 # default sink's monitor looped into it, so nothing is heard twice and no
 # feedback reaches the speakers. PipeWire shares a capture with every
 # program that asks, so a call in Meet or Tuple keeps the microphone while
-# a recording reads it too. The mix is passive and never a default, so the
-# desktop's sound and a call's never land in it, and it goes once the
-# recording ends, however it ends. Where there's no sound server, as on a
+# a recording reads it too, and the loops name themselves recording-sound,
+# a program a-call-is-on knows is no call. The mix ranks below every sink,
+# so it's never a default and the desktop's sound and a call's never land
+# in it, and it goes once the recording ends, however it ends but killed
+# outright. Where there's no sound server, as on a
 # machine without one, the recording runs without sound rather than not at
 # all. Its help takes the shape every command of ours does
 # (docs/commands.md), by hand.
@@ -58,8 +60,9 @@ let_go() {
 }
 trap let_go EXIT
 # Stopped itself, it lets the recording finish its file first, since bash
-# runs a trap only once the command it waits on is done.
-trap 'exit 143' TERM HUP
+# runs a trap only once the command it waits on is done, and says it was
+# interrupted, as the convention's one code for that.
+trap 'exit 130' TERM HUP
 
 # Loads one module, keeping its number so it's let go of.
 load() {
@@ -69,15 +72,17 @@ load() {
 }
 
 # The default source and the default sink's monitor, read once: a recording
-# keeps the sound it began with.
+# keeps the sound it began with. pactl joins its words with spaces, so each
+# value is quoted for the module's own reading of them.
+loop=("source_output_properties='application.process.binary=recording-sound'"
+  "sink_input_properties='application.process.binary=recording-sound'"
+  source_dont_move=true sink_dont_move=true latency_msec=30)
 if microphone=$(pactl get-default-source 2> /dev/null) &&
   speakers=$(pactl get-default-sink 2> /dev/null) &&
-  load module-null-sink sink_name="$mix" sink_properties="device.description=Recording \
-node.passive=true priority.session=0 priority.driver=0" &&
-  load module-loopback source="$microphone" sink="$mix" source_dont_move=true sink_dont_move=true \
-    latency_msec=30 &&
-  load module-loopback source="$speakers.monitor" sink="$mix" source_dont_move=true \
-    sink_dont_move=true latency_msec=30; then
+  load module-null-sink sink_name="$mix" \
+    "sink_properties='device.description=Recording priority.session=0'" &&
+  load module-loopback "source='$microphone'" sink="$mix" "${loop[@]}" &&
+  load module-loopback "source='$speakers.monitor'" sink="$mix" "${loop[@]}"; then
   export RECORDING_SOUND=$mix.monitor
 else
   let_go
