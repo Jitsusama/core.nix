@@ -60,6 +60,11 @@ const LENT: &str = "nix-offload: building on the lent builder ";
 /// the naming can hang, and nothing of nix-offload's says it took the run.
 const NAMES: &str = "nix-offload: no lent builder builds for ";
 
+/// How nix-offload's line ends when a comparison replayed onto a newer
+/// main failed, so it runs the change again on its own base, in the same
+/// process and log.
+const AGAIN: &str = "failed, so the change runs again on its own base";
+
 /// What nix-offload says, every five minutes, while a run a builder took
 /// waits there for one of its turns. It says that after `TAKEN`, so a
 /// busy Mac's two hours of waiting would read as two hours of building.
@@ -162,15 +167,35 @@ impl Clock {
         let Ok(read) = read else {
             return;
         };
+        let mut at = self.read;
         self.read += u64::try_from(read).unwrap_or(u64::MAX);
         for piece in gained.split_inclusive(|byte| *byte == b'\n') {
+            at = at.saturating_add(u64::try_from(piece.len()).unwrap_or(u64::MAX));
             let room = LINE_READ.saturating_sub(self.line.len());
             self.line.extend(piece.iter().take(room));
             if piece.ends_with(b"\n") {
                 let line = std::mem::take(&mut self.line);
-                self.heard_line(&String::from_utf8_lossy(&line), now);
+                let line = String::from_utf8_lossy(&line);
+                if says_it_runs_again(&line) {
+                    self.runs_again(at);
+                } else {
+                    self.heard_line(&line, now);
+                }
             }
         }
+    }
+
+    /// Starts the clock over for the run nix-offload begins after a
+    /// replayed comparison failed, from the log's byte `at`: it names,
+    /// sends and takes a Mac again in the same log, and only how that run
+    /// ends is the comparison's, so its part of the log begins there.
+    fn runs_again(&mut self, at: u64) {
+        self.from = usize::try_from(at).unwrap_or(usize::MAX);
+        self.taken = None;
+        self.building = None;
+        self.waits = None;
+        self.nearby = false;
+        self.named = None;
     }
 
     /// What one line of the run's log says of it: a builder took it, it
@@ -180,9 +205,11 @@ impl Clock {
         let line = line.trim();
         if line.starts_with(NAMES) {
             self.named.get_or_insert(now);
-        } else if says_a_mac_took(line) && !self.nearby {
+        } else if says_a_mac_took(line) {
             // A Mac's turn and its two hours begin at its own take, not
-            // at the naming before it, which took up to 20 minutes.
+            // at the naming before it, which took up to 20 minutes. A
+            // comparison building a held check alone takes a Mac again,
+            // and that take waits for its own turn and has its own hours.
             self.nearby = true;
             self.taken = Some(now);
             self.waits = None;
@@ -265,7 +292,7 @@ impl Clock {
                 .named
                 .is_some_and(|named| now.duration_since(named) > WAITS_AT_MOST)
         {
-            self.stopped = Some("it waited here past three hours for a turn to send it");
+            self.stopped = Some("nothing began naming it within three hours");
         }
         self.stopped.is_some()
     }
@@ -884,6 +911,13 @@ fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
             .and_then(|mut kept| writeln!(kept, "merge-net: this run stopped unfinished: {why}"));
     }
     read
+}
+
+/// Whether a line is nix-offload's saying a replayed comparison failed,
+/// so it runs the change again on its own base in the same process.
+fn says_it_runs_again(line: &str) -> bool {
+    let line = line.trim();
+    line.starts_with(OWN) && line.ends_with(AGAIN)
 }
 
 /// Whether a line is nix-offload's saying a builder took the run.
@@ -2641,7 +2675,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         );
         assert_eq!(
             clock.stopped,
-            Some("it waited here past three hours for a turn to send it"),
+            Some("nothing began naming it within three hours"),
             "a naming stopped waiting here for a turn was told as something else"
         );
         let _ = fs::remove_file(&log);
@@ -2718,6 +2752,192 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             fs::read_to_string(&log).unwrap().lines().last(),
             Some("merge-net: this run stopped unfinished: it built past two hours"),
             "a Mac's two-hour stop doesn't say why"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    /// Prints `line` into `log` every `every` from `from` until `until`,
+    /// asking `clock` at each whether the run is overdue, and says whether
+    /// it never was.
+    fn printed_on_time(
+        clock: &mut Clock,
+        log: &Path,
+        line: &str,
+        (from, until, every): (Instant, Instant, Duration),
+    ) -> bool {
+        let mut at = from;
+        let mut on_time = true;
+        while at <= until {
+            printed(log, line);
+            on_time &= !clock.overdue(log, at);
+            at += every;
+        }
+        on_time
+    }
+
+    #[test]
+    fn a_macs_build_past_three_hours_from_its_naming_counts_from_its_own_turn() {
+        let log = std::env::temp_dir().join(format!("merge-net-late-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        let took = start + Duration::from_mins(20);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare");
+        assert!(!clock.overdue(&log, took), "a Mac's take is overdue");
+        let turn = took + Duration::from_mins(90);
+        assert!(
+            printed_on_time(
+                &mut clock,
+                &log,
+                "nix-offload: a-mac waits there for its turn",
+                (took, took + Duration::from_mins(85), Duration::from_mins(5)),
+            ),
+            "a Mac's wait for its turn under three hours is overdue"
+        );
+        assert!(
+            printed_on_time(
+                &mut clock,
+                &log,
+                "a-check> building",
+                (
+                    turn,
+                    turn + Duration::from_mins(119),
+                    Duration::from_mins(10)
+                ),
+            ),
+            "a Mac building under two hours from its turn, past three from its naming, is overdue"
+        );
+        assert!(
+            clock.overdue(&log, turn + LONGEST + Duration::from_secs(1)),
+            "a Mac building past two hours from its turn went on"
+        );
+        assert_eq!(
+            clock.stopped,
+            Some("it built past two hours"),
+            "a Mac's build past two hours was told as something else"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_macs_second_take_waits_three_hours_from_its_own_take() {
+        let log = std::env::temp_dir().join(format!("merge-net-again-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        let took = start + Duration::from_mins(20);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare");
+        assert!(
+            printed_on_time(
+                &mut clock,
+                &log,
+                "a-check> building",
+                (
+                    took,
+                    took + Duration::from_mins(90),
+                    Duration::from_mins(10)
+                ),
+            ),
+            "a Mac building under two hours from its take is overdue"
+        );
+        let again = took + Duration::from_mins(100);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare-held");
+        assert!(
+            !clock.overdue(&log, again),
+            "a Mac's second take is overdue"
+        );
+        assert!(
+            printed_on_time(
+                &mut clock,
+                &log,
+                "nix-offload: a-mac waits there for its turn",
+                (again, again + WAITS_AT_MOST, Duration::from_mins(5)),
+            ),
+            "a second take waiting under three hours from its own take is overdue"
+        );
+        printed(&log, "nix-offload: a-mac waits there for its turn");
+        assert!(
+            clock.overdue(&log, again + WAITS_AT_MOST + Duration::from_mins(1)),
+            "a second take waiting past three hours from its own take went on"
+        );
+        assert_eq!(
+            clock.stopped,
+            Some("it waited for a turn past three hours"),
+            "a second take's long wait was told as something else"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_comparison_run_again_on_its_own_base_is_timed_and_read_from_there() {
+        let log = std::env::temp_dir().join(format!("merge-net-base-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        let took = start + Duration::from_mins(20);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare");
+        assert!(
+            printed_on_time(
+                &mut clock,
+                &log,
+                "a-check> building",
+                (
+                    took,
+                    took + Duration::from_mins(100),
+                    Duration::from_mins(10)
+                ),
+            ),
+            "a replayed comparison building under two hours is overdue"
+        );
+        let base = took + Duration::from_mins(105);
+        printed(
+            &log,
+            "nix-offload: the change replayed onto 1a2b3c failed, so the change runs again on \
+             its own base",
+        );
+        printed(&log, NAMING.trim_end());
+        assert!(
+            !clock.overdue(&log, base),
+            "a comparison run again on its own base is overdue"
+        );
+        let retook = base + Duration::from_mins(20);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare-base");
+        assert!(
+            printed_on_time(
+                &mut clock,
+                &log,
+                "a-check> building",
+                (
+                    retook,
+                    retook + Duration::from_mins(119),
+                    Duration::from_mins(10)
+                ),
+            ),
+            "a run on its own base under two hours from its own take is overdue"
+        );
+        let ours = String::from_utf8(clock.ours(&log).unwrap()).unwrap();
+        assert!(
+            ours.starts_with(NAMES) && !ours.contains(AGAIN),
+            "a run on its own base is read with the replayed run before it"
+        );
+        assert!(
+            clock.overdue(&log, retook + LONGEST + Duration::from_secs(1)),
+            "a run on its own base past two hours from its own take went on"
         );
         let _ = fs::remove_file(&log);
     }
