@@ -26,6 +26,11 @@ SETTLING = timedelta(minutes=2)
 # How long the relay may take to start once its node is named: systemd starts it as the node
 # appears, so it's a moment on a quiet host, and the bound is for a busy one.
 STARTING = timedelta(seconds=60)
+# How long logind may take to hand the seat its cameras once someone is there, and systemd to
+# settle what a replay set going: moments on a quiet host, the bound for a busy one.
+SEATING = timedelta(seconds=30)
+# How long journald may take to file what a run said after it's ended.
+FILING = timedelta(seconds=10)
 
 
 def the_stand_in(machine: BaseMachine, card: str) -> str:
@@ -41,6 +46,17 @@ def the_stand_in(machine: BaseMachine, card: str) -> str:
 def the_old_watch(node: str) -> str:
     """Name the seat's camera watch on the node, which a relayed camera doesn't keep."""
     return f"usb-camera-holders@{node.removeprefix('/dev/')}.service"
+
+
+def the_run_said(machine: BaseMachine, words: str) -> None:
+    """Wait for the take-hold's last run to have said `words`, read from that run alone."""
+    run = "$(systemctl show -p InvocationID --value mx-brio-take-hold.service)"
+    said = f"journalctl _SYSTEMD_INVOCATION_ID={run} -o cat --no-pager"
+    try:
+        machine.wait_until_succeeds(f"{said} | grep -qF '{words}'", timeout=FILING)
+    except RequestedAssertionFailed:
+        text = machine.execute(said)[1]
+        pytest.fail(f"the take-hold's last run didn't say {words!r}: {text}")
 
 
 def the_seat_can_open(machine: BaseMachine, node: str) -> bool:
@@ -63,7 +79,7 @@ def switched(machine: BaseMachine, values: dict[str, Any]) -> str:
     node = the_stand_in(machine, values["card"])
     other = the_stand_in(machine, values["other"])
     for camera in (node, other):
-        machine.wait_until_succeeds(f"getfacl -p {camera} | grep -q user:someone:", timeout=30)
+        machine.wait_until_succeeds(f"getfacl -p {camera} | grep -q user:someone:", timeout=SEATING)
     machine.wait_for_unit(the_old_watch(node))
     assert machine.execute("test -e /dev/mx-brio")[0] != 0, (
         "the Brio was named for its relay before the sharing was switched in"
@@ -82,7 +98,7 @@ def test_the_switch_names_the_brio_for_its_relay(machine: BaseMachine, switched:
 def test_the_switch_starts_the_relay(machine: BaseMachine, switched: str) -> None:
     """The relay runs once the switch is done, with nobody plugging the Brio in again."""
     del switched
-    machine.wait_for_unit("mx-brio.service", timeout=STARTING.seconds)
+    machine.wait_for_unit("mx-brio.service", timeout=STARTING)
 
 
 def test_the_switch_takes_the_brio_back_from_the_seat(machine: BaseMachine, switched: str) -> None:
@@ -117,8 +133,17 @@ def test_udev_no_longer_hands_the_brio_to_the_seat(machine: BaseMachine, switche
 
 def test_the_switch_ends_the_brios_old_watch(machine: BaseMachine, switched: str) -> None:
     """The watch started as the seat's camera ends, leaving the loopback's watch to say who."""
-    state = machine.execute(f"systemctl is-active {the_old_watch(switched)}")[1].strip()
-    assert state != "active", f"the Brio's old watch is still {state}"
+    old = the_old_watch(switched)
+    try:
+        machine.wait_until_succeeds(
+            f'state=$(systemctl is-active {old}); [ "$state" = inactive ] || [ "$state" = failed ]',
+            timeout=SEATING,
+        )
+    except RequestedAssertionFailed:
+        state = machine.execute(f"systemctl is-active {old}")[1].strip()
+        pytest.fail(f"the Brio's old watch is still {state}")
+    relayed = old.replace("usb-camera-holders@", "usb-camera-holders-relayed@")
+    machine.wait_for_unit(relayed, timeout=STARTING)
 
 
 def test_a_later_run_leaves_the_relay_running(machine: BaseMachine, switched: str) -> None:
@@ -130,8 +155,10 @@ def test_a_later_run_leaves_the_relay_running(machine: BaseMachine, switched: st
     relay = "systemctl show -p InactiveEnterTimestampMonotonic --value 'dev-mx\\x2dbrio.device'"
     before = machine.succeed(relay).strip()
     machine.succeed("systemctl restart mx-brio-take-hold.service")
-    said = machine.succeed("journalctl -b -u mx-brio-take-hold -o cat --no-pager")
-    assert "already held" in said, f"the take-hold didn't find the Brio held: {said}"
+    # A removal would have queued the relay's stop, so it's read once systemd has no job left.
+    machine.succeed("udevadm settle")
+    machine.wait_until_succeeds('[ -z "$(systemctl list-jobs --no-legend)" ]', timeout=SEATING)
+    the_run_said(machine, "already held")
     assert machine.succeed(relay).strip() == before, (
         "the take-hold took the Brio away from its relay"
     )
@@ -143,5 +170,4 @@ def test_with_no_brio_the_take_hold_does_nothing(machine: BaseMachine, switched:
     machine.succeed("systemctl stop mx-brio.service")
     machine.succeed(f"v4l2loopback-ctl delete {switched}")
     machine.succeed("systemctl restart mx-brio-take-hold.service")
-    said = machine.succeed("journalctl -b -u mx-brio-take-hold -o cat --no-pager")
-    assert "No MX Brio is plugged in" in said, f"the take-hold didn't say the Brio was gone: {said}"
+    the_run_said(machine, "No MX Brio is plugged in")

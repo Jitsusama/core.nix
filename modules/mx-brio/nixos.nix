@@ -133,6 +133,9 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        # A switch waits on it, and udevadm's settling has no bound of its
+        # own; a replay takes seconds, so a minute is a wedged udev.
+        TimeoutStartSec = "1min";
       };
     };
 
