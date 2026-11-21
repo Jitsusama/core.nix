@@ -1125,8 +1125,10 @@ Provider {
 
     // The cell a look leads to, running or parked, as the agents daemon
     // names it (Looks.js's cellFor): the session that left it, else its
-    // quest's own, else one on its quest.
+    // quest's own, else one on its quest. It reads the daemon's revision,
+    // since `held` changes in place, so a binding over it hears a cell move.
     function lookCell(one) {
+        void cellsDaemon.revision;
         return Looks.cellFor(one, cellsDaemon.held, Sessions.running, Sessions.parked);
     }
 
@@ -1397,7 +1399,10 @@ Provider {
             return lookRow(one, now);
         looksWeighed.times += 1;
         return keptAlike(looksKept, one.file,
-            [text, lookSide(one, now, forYouSaid(now)), lookAsker(one)], () => lookRow(one, now));
+            // Kept by the cell it leads to too, so Talk goes to the cell
+            // it is now rather than the one it was when the row was made.
+            [text, lookSide(one, now, forYouSaid(now)), lookAsker(one),
+                String(lookCell(one)?.address ?? "")], () => lookRow(one, now));
     }
 
     // The to-dos Joel said were done, while their quest's file

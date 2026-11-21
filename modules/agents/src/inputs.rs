@@ -628,7 +628,15 @@ impl Inputs {
         .with_landed(self.landed().0)
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
-        .with_cells(cells::records(&sessions))
+        // Every session, ended ones too, since a look's cell has most
+        // often ended; in_order keeps only those running or parked.
+        .with_cells(cells::records(
+            &self
+                .sessions
+                .records()
+                .map(|(_, one)| Session(one))
+                .collect::<Vec<_>>(),
+        ))
         .with_wants(wants::records(
             &sessions,
             &joel_can,
