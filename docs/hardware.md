@@ -894,6 +894,22 @@ a test of the microcode alone, worth a week before calling it.
 If a reset comes again, the next boot's
 `/var/lib/firmware-errors/<boot id>/` holds its record, and the firmware's
 own Power Event Log, under F2's Maintenance, keeps only about the last ten.
+What came before it is kept too: the hardware file takes the last-seconds
+module, which writes each second's draw, package heat, fans, load, waits,
+memory, battery and time at rest to a ring of ten minutes and eight
+seconds on the disk, and flushes only that record, about 4 KB a second,
+where flushing the file would cost btrfs 36 KB. The fans, battery and
+chargers answer through the firmware, so they're read every fifth
+second, and the fans from `dell_ddv`, never `dell_smm`, whose every read
+holds every processor. Seconds that follow each other lie on different
+pages of the ring, so a page a cut garbles costs one second in nineteen,
+never the last ones. A sleep's hook has it say the machine went to
+sleep, so a boot that never woke reads as such. `last-seconds` lists the
+boots and says which were cut short, and `last-seconds <boot>` gives its
+last seconds. The energy
+counters are readable to it from the boot after the switch that brings
+it: `stat -c '%G %a' /sys/class/powercap/intel-rapl:0/energy_uj` then
+reads `last-seconds 440`.
 
 ### The Light Sensor
 

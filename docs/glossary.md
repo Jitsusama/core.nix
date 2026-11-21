@@ -417,6 +417,9 @@ off.
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
 | trace | one thing a program did, followed through its steps, each a span with a start and an end | | OpenTelemetry's traces |
 | collector | the program keeping the machine's traces, to read any moment back | observability backend | `collector` |
+| last seconds | what the machine did each second of a boot's last ten minutes, kept on the disk for after a reset | | `last-seconds` |
+| recorder | the program writing a boot's last seconds, from its start until it powers off | | `last-seconds-keep` |
+| ring | a file of a fixed size whose newest entry is written over its oldest, as each boot's last seconds are kept | | last-seconds' `ring` |
 | cargo's builds | the filesystem of cargo's own, an image on the system's disk, where every account's builds keep their intermediates | build scratch | `cargo-builds.service`, `jitsusama.cargo.builds` |
 | compile cache | sccache's store of compiled crates, keyed by their inputs, which every worktree's cargo build reads before compiling one | build cache | `sccache`, `~/.cache/sccache` |
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |

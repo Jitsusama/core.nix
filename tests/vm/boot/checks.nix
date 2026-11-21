@@ -35,4 +35,7 @@ onLinux {
   # Whether a hang leaves a record shows only with a watchdog systemd arms,
   # a second machine hearing the kernel, and a kernel that panics.
   vm-a-hang-leaves-a-record = import ./hang.nix { inherit self pkgs; };
+  # Whether a reset leaves its last seconds shows only by killing a
+  # machine mid-boot, with nothing written on the way down.
+  vm-a-reset-leaves-its-last-seconds = import ./last-seconds.nix { inherit self pkgs; };
 }

@@ -398,6 +398,7 @@
         keyd = ./modules/keyd/nixos.nix;
         kmscon = ./modules/kmscon/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
+        last-seconds = ./modules/last-seconds/nixos.nix;
         libvirt = ./modules/libvirt/nixos.nix;
         lid = ./modules/lid/nixos.nix;
         lid-hinge = ./modules/lid-hinge/nixos.nix;
