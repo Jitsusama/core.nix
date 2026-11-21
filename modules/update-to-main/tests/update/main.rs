@@ -3884,6 +3884,38 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
     assert_eq!(why, "the machine is over its room");
 }
 
+/// A busy check that refuses the ask alone spares a build, so an ask for
+/// what the machine already runs is answered unchanged though it's busy:
+/// on 21 November a Mac over its load refused 26 asks in half an hour for
+/// the head it already ran, and its log read as if one waited.
+#[test]
+fn an_ask_for_what_the_machine_runs_is_unchanged_though_it_is_busy() {
+    let mut world = World::new();
+    over_its_room(&mut world, None);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(world.asked_by(&|| true).1, done(&head));
+    fs::write(world.root.join("call"), "").unwrap();
+    let ending = world.asked_by(&|| true).1;
+    assert!(
+        matches!(&ending, Line::Unchanged { commit, .. } if *commit == head),
+        "an ask for what runs was refused for a build it needn't make: {ending:?}"
+    );
+    let next = world.signed("two");
+    world.system(&next);
+    let (told, ending) = world.asked_by(&|| true);
+    assert!(
+        matches!(ending, Line::Refused { .. }),
+        "an ask with something to build while busy should be refused"
+    );
+    assert!(
+        !told
+            .iter()
+            .any(|line| matches!(line, Line::Building { .. })),
+        "a refused ask shouldn't build"
+    );
+}
+
 /// A person's ask builds though the machine is over its room, since the
 /// build is theirs to choose, and may be the one that mends the check.
 #[test]
@@ -3947,8 +3979,10 @@ fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
         };
         assert_eq!(why, "the machine is over its room");
         assert!(
-            !told.contains(&Line::Fetching),
-            "a refused ask shouldn't fetch"
+            !told
+                .iter()
+                .any(|line| matches!(line, Line::Building { .. })),
+            "a refused ask shouldn't build"
         );
         let (began, _) = kept_refusals(&world);
         assert_eq!(
@@ -4060,6 +4094,19 @@ fn a_refusal_record_it_cant_trust_or_keep_refuses_nothing_for_good() {
 }
 
 const HOUR: u64 = 60 * 60;
+
+/// A Mac's logs carry no time of their own, so the daemon and the
+/// follower stamp their lines with the time now, in UTC.
+#[test]
+fn a_log_stamp_is_the_time_now_in_utc() {
+    let before = now();
+    let stamp = update_to_main::stamp();
+    let after = now();
+    assert!(
+        (before..=after).any(|at| terminal_kit::time::rfc3339(i64::try_from(at).unwrap()) == stamp),
+        "{stamp} isn't the time in UTC between {before} and {after}"
+    );
+}
 
 fn now() -> u64 {
     std::time::SystemTime::now()

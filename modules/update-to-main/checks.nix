@@ -111,7 +111,7 @@ in
   # Mac can't update, the follower tells its person.
   update-to-main-follows-on-a-mac =
     holds "update-to-main-follows-on-a-mac"
-      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it, or build while over its room, or let that hold its own switch or every update for good."
+      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it, or build while over its load, or let that hold its own switch or every update for good."
       (
         follows.Label == "org.jitsusama.update-to-main-follows"
         && follows.RunAtLoad
@@ -131,12 +131,12 @@ in
           && refusal.refusesAtMost == 2 * 60 * 60
           && lib.hasSuffix "/bin/nix-offload" (lib.head refusal.command)
           && lib.tail refusal.command == [ "busy" ]
-        ) (refusesOnAMac "the Mac is over its room")
+        ) (refusesOnAMac "the Mac is over its load")
         && lib.any (refusal: refusal.followerWaits && refusal.followerWaitsAtMost == 45 * 60) (
           refusesOnAMac "someone is at the machine"
         )
       );
-  # The Mac's room check names a question nix-offload answers, not words it
+  # The Mac's load check names a question nix-offload answers, not words it
   # refuses as asked wrongly, which update-to-main would read as can't tell
   # and refuse all but one ask in two hours for: while this change was
   # written, nix-offload had no busy yet, and the words alone passed above.
@@ -145,7 +145,7 @@ in
   # can't say, as on a builder with no sysctl; never 64, asked wrongly.
   update-to-main-asks-what-nix-offload-answers =
     let
-      words = lib.tail (lib.head (refusesOnAMac "the Mac is over its room")).command;
+      words = lib.tail (lib.head (refusesOnAMac "the Mac is over its load")).command;
       offload = pkgs.callPackage ../nix-offload/offload/package.nix { };
     in
     # Kept in Nix because the command it runs is the Mac's own, read from
