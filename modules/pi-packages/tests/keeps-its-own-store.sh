@@ -42,7 +42,8 @@ inside() {
 
 for name in npm_config_store_dir pnpm_config_store_dir npm_config_cache_dir \
   pnpm_config_cache_dir npm_config_devdir; do
-  inside "$name" "$(jq -r --arg name "$name" '.env[$name] // ""' "$config")"
+  value=$(jq -r --arg name "$name" '.env[$name] // ""' "$config")
+  inside "$name" "$value"
 done
 
 # pnpm, in a home of its own, given the build's variables and nothing else.
@@ -50,11 +51,14 @@ home=$(mktemp -d)
 pnpm=$(jq -r .pnpm "$config")
 asked() {
   local -a vars=("HOME=$home" "PATH=$(dirname "$pnpm")")
-  local pair
+  local pair pairs
+  pairs=$(jq -r '.env | to_entries[] | "\(.key)=\(.value)"' "$config")
   while IFS= read -r pair; do
     vars+=("$pair")
-  done < <(jq -r '.env | to_entries[] | "\(.key)=\(.value)"' "$config")
+  done <<<"$pairs"
   env -i "${vars[@]}" "$pnpm" "$@"
 }
-inside "pnpm's store" "$(asked store path)"
-inside "pnpm's cache" "$(asked config get cache-dir)"
+store=$(asked store path)
+inside "pnpm's store" "$store"
+cache=$(asked config get cache-dir)
+inside "pnpm's cache" "$cache"
