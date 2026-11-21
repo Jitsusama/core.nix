@@ -63,7 +63,8 @@ Scope {
     // is keyed, which would give it a line's routing (TalkThread.js's threadKeyOf).
     readonly property var talks: Said.gathered(
         saidHere.filter(one => Thread.threadKeyOf(one.sent) === ""),
-        servedLines.filter(one => Thread.threadKeyOf(one.sent) === ""), events, seen)
+        servedLines.filter(one => Thread.threadKeyOf(one.sent) === ""), events,
+        { seen: seen, keep: openedSince })
     readonly property var servedLines: heard.filter(one => !Said.unanswered(one))
         .map(one => Said.fromServed(hears.to, one))
     // The replies said here and those the void keeps, which their threads show.

@@ -245,15 +245,15 @@ function open(talk, events, seen) {
     if (heard.last === "") {
         return talk.said === "sent";
     }
-    const awaited = heard.answers.length === 0 || heard.last === "replied";
-    return heard.answers.length > (seen?.[key] ?? 0) || (awaited && HOLDING.includes(heard.last));
+    return heard.answers.length > (seen?.[key] ?? 0)
+        || (heard.answers.length === 0 && HOLDING.includes(heard.last));
 }
 
 // The lines a talk line shows, each once: those the void keeps, and those said in this
 // shell it hasn't yet, or that are being taken back here. Lines still waiting, and lines
 // with answers he hasn't seen, come first and all of them, newest first; then the newest
-// KEPT_TALKS of the rest (WCJQSG [a2eb9575]).
-function gathered(here, served, events, seen) {
+// KEPT_TALKS of the rest (WCJQSG [a2eb9575]), and the one `keep` names, whose thread is open.
+function gathered(here, served, events, { seen, keep } = {}) {
     const lines = (served ?? []).filter(one => Number.isFinite(one.since));
     for (const one of here ?? []) {
         const kept = lines.findIndex(line => same(one, line));
@@ -266,7 +266,8 @@ function gathered(here, served, events, seen) {
     lines.sort((one, other) => other.since - one.since);
     const lined = keyed(lines, events);
     const opened = lined.filter(line => open(line, events, seen));
-    return opened.concat(lined.filter(line => !opened.includes(line)).slice(0, KEPT_TALKS));
+    const rest = lined.filter(line => !opened.includes(line));
+    return opened.concat(rest.filter((line, at) => at < KEPT_TALKS || line.since === keep));
 }
 
 // Each line's key from the void's own routings: a talk carries only its latest reply, and

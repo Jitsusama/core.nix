@@ -73,22 +73,13 @@ function pendingOf(key, replies, written) {
         side: Said.clockOf(one.reply.since), nerd: "", pending: true }));
 }
 
-// Who has a line now among its events in the order written, its last routing's, taking
-// up's or reply's, whose `who` is whoever the void sent it on to (8GYNJ6 [0543317b]),
-// mid-sentence; "" where none has, or it was let go or taken back since, as the list
-// waits on a line only while its last event holds it (TalkLine.js's past).
+// Who has a line now among its events in the order written, mid-sentence: its last
+// routing's, taking up's or reply's, whose `who` is whoever the void sent it on to (8GYNJ6
+// [0543317b]), as the list says (TalkLine.js's past); "" where none names one.
 const HOLDING = ["routed", "taken", "replied"];
-const LETTING = ["let-go", "undone"];
 function heldBy(own) {
-    let who = "";
-    for (const event of own ?? []) {
-        if (HOLDING.includes(event.event)) {
-            who = Said.midSentence(event.who);
-        } else if (LETTING.includes(event.event)) {
-            who = "";
-        }
-    }
-    return who;
+    const held = (own ?? []).filter(event => HOLDING.includes(event.event));
+    return held.length > 0 ? Said.midSentence(held[held.length - 1].who) : "";
 }
 
 // How his last reply stands while nothing has come of it since, a step in the voice under
