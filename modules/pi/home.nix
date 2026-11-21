@@ -189,6 +189,7 @@ in
     ./fence.nix
     ./harness-settings.nix
     ./host.nix
+    ./mesh-reader.nix
     ./timers.nix
     ../theme/home.nix
     ../keys/home.nix

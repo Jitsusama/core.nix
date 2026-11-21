@@ -648,6 +648,7 @@ gather {
     ./modules/pi/fence-display/checks.nix
     ./modules/pi/fence-run/checks.nix
     ./modules/pi/github-door/checks.nix
+    ./modules/pi/mesh-reader/checks.nix
     ./modules/pi-keys/checks.nix
     ./modules/pi-packages/checks.nix
     ./modules/pineapple/checks.nix
