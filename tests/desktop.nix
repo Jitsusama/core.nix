@@ -489,38 +489,12 @@ let
     inherit pkgs;
   };
 
-  # What the shell has reported (modules/quickshell/Report.qml): waits until
-  # it reports something starting with a prefix after a point in its
-  # journal, or since the boot with no point given, then prints every
-  # report since that point, each as "said", a tab and what was said, and
-  # last the point it read to, as "cursor" and a tab. It reads the journal
-  # again every fifth of a second rather than following it, since
-  # journalctl's follower is not always woken for an entry: on a busy
-  # machine it missed one in 300 that a fresh read found. The journal
-  # keeps Quickshell's lines as bytes, since it colours their level, so
-  # they're read as plain text: JSON would give them as numbers.
+  # What the shell has reported (modules/quickshell/Report.qml), waiting for
+  # a prefix after a point in its journal (desktop/reports.sh says how).
   reports = pkgs.writeShellApplication {
     name = "reports";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.gnugrep
-      pkgs.gnused
-      pkgs.systemd
-    ];
-    text = ''
-      since=$1 seconds=$2 prefix=$3
-      journal=(journalctl --user --unit=quickshell --no-pager --output=cat)
-      journal+=(--lines=all --show-cursor)
-      if [ -n "$since" ]; then journal+=("--after-cursor=$since"); else journal+=(--boot); fi
-      deadline=$((SECONDS + seconds))
-      while :; do
-        said=$("''${journal[@]}")
-        if grep -aqF "report[$prefix" <<< "$said"; then break; fi
-        [ "$SECONDS" -lt "$deadline" ] || exit 1
-        sleep 0.2
-      done
-      sed -n -e 's/^-- cursor: /cursor\t/p' -e 's/.*report\[\(.*\)\]$/said\t\1/p' <<< "$said"
-    '';
+    runtimeInputs = import ./desktop/reports-tools.nix pkgs ++ [ pkgs.systemd ];
+    text = builtins.readFile ./desktop/reports.sh;
   };
 
   # The status files the shell watches, each written again as their
@@ -573,7 +547,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
   # Reads the colours of the windows it shoots. The desktop it drives
   # is desktop/desktop_session.py, a module of the driver's Python, which
-  # every area imports.
+  # every area imports, with how it waits on what's reported (heard.py).
   extraPythonPackages = python: [
     python.pillow
     (python.toPythonModule (
@@ -581,6 +555,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         ''
           mkdir -p $out/${python.python.sitePackages}
           cp ${./desktop/desktop_session.py} $out/${python.python.sitePackages}/desktop_session.py
+          cp ${./desktop/heard.py} $out/${python.python.sitePackages}/heard.py
         ''
         # And what the looks areas share, only where it's read, so no other
         # area's test moves with it.

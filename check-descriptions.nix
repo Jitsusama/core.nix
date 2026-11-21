@@ -19,6 +19,18 @@
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
   '';
+  a-desktop-wait-says-what-it-last-heard = ''
+    a desktop area's wait on what the launcher reports that never passes says the last state it
+    heard, one a change passes ends there, one whose first read passes hears nothing more, each
+    giving back the state that passed, a test's own assert fails the wait the same way, a test
+    that trips keeps its error, noting what it last heard, a line that isn't JSON is noted as
+    it came, and a wait whose hearing stops before a state passes fails rather than giving back
+    a state its test refused; the reader it waits through, run on a stand-in journal, reads it again
+    from the point it's given until the report comes, says what follows a line's first report
+    mark, and its time running out fails as never hearing while
+    a failed read fails as a stopped reader; and a read for a failure's diagnosis never raises,
+    saying a cut-short read, a failed one or what it raised
+  '';
   a-failed-boot-says-what-stopped-it = ''
     a failed boot's shell names up to four failed units and their last lines, fitted to a
     terminal's rows with eight left for the shell, in the account's theme with the console's
