@@ -894,8 +894,8 @@ mod tests {
         let write = |folder: &str, lines: &[String]| {
             let project = dir.path().join(folder).join("project");
             std::fs::create_dir_all(&project).unwrap();
-            let body: String = lines.iter().map(|line| format!("{line}\n")).collect();
-            std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{body}")).unwrap();
+            let body = lines.join("\n");
+            std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{body}\n")).unwrap();
         };
         for teal_first in [false, true] {
             write("here", &[turn_at(1), turn_at(2)]);
@@ -947,8 +947,8 @@ mod tests {
             std::fs::create_dir_all(&project).unwrap();
             let path = project.join("2026_s1.jsonl");
             let _ = std::fs::remove_file(&path);
-            let body: String = lines.iter().map(|line| format!("{line}\n")).collect();
-            std::fs::write(path, format!("{HEADER}\n{body}")).unwrap();
+            let body = lines.join("\n");
+            std::fs::write(path, format!("{HEADER}\n{body}\n")).unwrap();
         };
         write("here", &[turn_at(1), turn_at(2)]);
         write("teal", &[turn_at(1), turn_at(3)]);

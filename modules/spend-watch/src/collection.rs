@@ -2205,7 +2205,7 @@ mod tests {
             let start = picture
                 .pieces
                 .iter()
-                .position(|piece| std::ptr::eq(piece, &today[0]))
+                .position(|piece| std::ptr::eq(piece, &raw const today[0]))
                 .unwrap();
             (start, today.len())
         };
