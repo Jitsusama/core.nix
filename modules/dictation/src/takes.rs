@@ -59,10 +59,14 @@ const QUIETEST_SPEECH_DB: f32 = -55.0;
 /// millisecond: the frame a mute starts or ends in, or a packet lost part
 /// of the way into it, holds only some of the line's sound, and would set
 /// a floor under its hiss. Inside a frame, such a run is a faint hum
-/// crossing zero, the line's own sound. A sample is judged by its size,
-/// so a mute sent as a faint dither is nothing as exact zeros are.
+/// crossing zero, the line's own sound, unless it fills half the frame,
+/// as a lost packet does whose edges a resampler's ringing has left a
+/// little sound on: a hum quiet enough to stay under it so long is
+/// nothing as a whole frame. A sample is judged by its size, so a mute
+/// sent as a faint dither is nothing as exact zeros are.
 const NOTHING_DB: f32 = -90.0;
 const NOTHING_SAMPLES: usize = RATE / 1000;
+const NOTHING_INSIDE_SAMPLES: usize = FRAME / 2;
 /// `NOTHING_DB` as the size of a sample.
 const NOTHING_SAMPLE: f32 = 3.16e-5;
 /// Nothing this long, 0.4 s, is a mute, across which the line may change,
@@ -338,12 +342,18 @@ impl Cutter {
     }
 }
 
-/// Whether a frame starts or ends with a run of nothing,
-/// `NOTHING_SAMPLES` long.
+/// Whether a frame starts or ends with a run of nothing
+/// `NOTHING_SAMPLES` long, or holds one `NOTHING_INSIDE_SAMPLES` long.
 fn holds_nothing(frame: &[f32]) -> bool {
     let nothing = |sample: &&f32| sample.abs() < NOTHING_SAMPLE;
+    let longest = frame
+        .split(|sample| !nothing(&sample))
+        .map(<[f32]>::len)
+        .max()
+        .unwrap_or(0);
     frame.iter().take_while(nothing).count() >= NOTHING_SAMPLES
         || frame.iter().rev().take_while(nothing).count() >= NOTHING_SAMPLES
+        || longest >= NOTHING_INSIDE_SAMPLES
 }
 
 /// Whether a frame, read with the one before it so a low voice's period
