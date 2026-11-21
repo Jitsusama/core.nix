@@ -79,6 +79,21 @@ impl Watch {
         fs::create_dir_all(&folder).unwrap();
         // What a run killed mid-write would have left.
         fs::write(folder.join("MX Brio 705 for Business.99"), "").unwrap();
+        // What a killed run of a camera since unplugged left, saying the
+        // node this one is now, and another camera's, saying its own.
+        let devices = folder.join(".devices");
+        fs::create_dir_all(&devices).unwrap();
+        let real = fs::canonicalize(&node).unwrap();
+        fs::write(devices.join("Unplugged"), format!("{}\n", real.display())).unwrap();
+        fs::write(folder.join("Unplugged"), "pipewire\n").unwrap();
+        fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
+        fs::write(folder.join("Another"), "obs\n").unwrap();
+        // And one another camera's run is writing, saying this node too,
+        // as this test's own process, which runs, and a camera named for
+        // a version, which isn't being written, killed the same way.
+        let plugged = format!("Plugged.{}", std::process::id());
+        fs::write(devices.join(plugged), format!("{}\n", real.display())).unwrap();
+        fs::write(devices.join("Webcam 2.0"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -179,6 +194,37 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     assert_eq!(fs::read_to_string(&watch.file).unwrap(), "");
     let left = watch.file.with_file_name("MX Brio 705 for Business.99");
     assert!(!left.exists(), "a killed run's file was left");
+    let device = watch.device();
+    let devices = device.parent().unwrap();
+    assert!(
+        !devices.join("Unplugged").exists(),
+        "a killed run's file saying this camera's node was left"
+    );
+    let folder = devices.parent().unwrap();
+    assert!(
+        !folder.join("Unplugged").exists(),
+        "the camera that killed run watched is still said held"
+    );
+    assert_eq!(
+        fs::read_to_string(folder.join("Another")).unwrap(),
+        "obs\n",
+        "another camera's holders were touched"
+    );
+    assert_eq!(
+        fs::read_to_string(devices.join("Another")).unwrap(),
+        "/dev/video9\n",
+        "another camera's node file was touched"
+    );
+    assert!(
+        devices
+            .join(format!("Plugged.{}", std::process::id()))
+            .exists(),
+        "a file being written was taken from its writer"
+    );
+    assert!(
+        !devices.join("Webcam 2.0").exists(),
+        "a camera named for a version was taken for a file being written"
+    );
 }
 
 #[test]

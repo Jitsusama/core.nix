@@ -177,9 +177,10 @@ fn say_device(output: &Path, node: Option<&Path>) {
         Some(node) => {
             let node = fs::canonicalize(node).unwrap_or_else(|_| node.to_owned());
             let folder = file.parent().unwrap_or_else(|| Path::new(""));
+            let said = format!("{}\n", node.display());
             fs::create_dir_all(folder)
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
-                .and_then(|()| replace(&file, &format!("{}\n", node.display())))
+                .and_then(|()| replace(&file, &said))
         }
         None => match fs::remove_file(&file) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
@@ -188,6 +189,48 @@ fn say_device(output: &Path, node: Option<&Path>) {
     };
     if let Err(error) = said {
         complain(format_args!("{}: {error}", file.display()));
+    }
+}
+
+/// Removes each file in the folder but this one that says this node, and
+/// the holders file beside the folder that it's named for, as that camera
+/// is gone; one being written, its name ending in a dot and the pid of a
+/// process still running, is left to its writer, where a camera named for
+/// a version, as `Webcam 2.0`, is not.
+fn forget_node(folder: &Path, own: &Path, said: &str) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let being_written = path
+            .extension()
+            .and_then(|end| end.to_str())
+            .is_some_and(|end| {
+                !end.is_empty()
+                    && end.bytes().all(|byte| byte.is_ascii_digit())
+                    && Path::new("/proc").join(end).exists()
+            });
+        if path == own || being_written || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        if !fs::read_to_string(&path).is_ok_and(|text| text == said) {
+            continue;
+        }
+        // Its holders file first, so a camera is never left said held with
+        // no node file to say who reads it. Read and removed apart, so a
+        // camera whose own run rewrites them between, as two cameras
+        // swapping nodes as a hub comes back might, reads unplugged until
+        // it streams: a run killed and a swap at once, which is accepted.
+        let holders = folder.parent().map(|above| above.join(entry.file_name()));
+        for gone in holders.iter().chain([&path]) {
+            if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
+                && let Err(error) = fs::remove_file(gone)
+                && error.kind() != io::ErrorKind::NotFound
+            {
+                complain(format_args!("{}: {error}", gone.display()));
+            }
+        }
     }
 }
 
@@ -342,6 +385,14 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     tidy(&output);
     if let Some(file) = device_file(&output) {
         tidy(&file);
+        // A USB camera's unit is the one that watches its node, so another
+        // camera's files saying it were left by a run killed before it
+        // could remove them. A loopback's unit removes its own as it stops,
+        // and one with no card may say a node another camera has since been
+        // given.
+        if let Some(folder) = file.parent() {
+            forget_node(folder, &file, &format!("{}\n", node.display()));
+        }
     }
     say_device(&output, Some(&node));
     let mut record = Record::new(&options.sysfs, &options.debugfs);
@@ -509,8 +560,16 @@ mod tests {
         // A folder left narrower, as a umask might make it, is widened.
         fs::create_dir(root.join(".devices")).unwrap();
         fs::set_permissions(root.join(".devices"), fs::Permissions::from_mode(0o700)).unwrap();
-        say_device(&output, Some(&link));
         let real = fs::canonicalize(&node).unwrap();
+        // Only a USB camera's run forgets another's file saying its node.
+        let another = root.join(".devices/Another");
+        fs::write(&another, format!("{}\n", real.display())).unwrap();
+        say_device(&output, Some(&link));
+        assert!(
+            another.exists(),
+            "another camera's file, said by a loopback"
+        );
+        fs::remove_file(&another).unwrap();
         assert_eq!(
             fs::read_to_string(&file).unwrap(),
             format!("{}\n", real.display())
