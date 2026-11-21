@@ -57,7 +57,19 @@ fn the_list_gives_each_thing_one_row_with_every_way_to_type_it() {
 #[test]
 fn the_list_says_selecting_text_objects_and_copying_by_letters() {
     let along = rows_of("Along a Line");
-    for way in ["h", "l", "w", "b", "e", "0", "$", "f", "F", ";", ","] {
+    for way in [
+        "h",
+        "l",
+        "w",
+        "b",
+        "e",
+        "0",
+        "$",
+        "f and a character",
+        "F and a character",
+        ";",
+        ",",
+    ] {
         assert!(
             along.iter().any(|(ways, _)| ways == &[way]),
             "Along a Line lists no row typed {way}"
@@ -120,7 +132,11 @@ fn every_act_the_reader_speaks_is_the_languages_and_every_key_of_it_is_taken() {
             "{name} has no keys"
         );
     }
-    assert_eq!(table.slots.len(), 3, "m, ' and the backtick take a letter");
+    assert_eq!(
+        table.slots.len(),
+        5,
+        "m, ' and the backtick take a letter, and f and F a character"
+    );
 }
 
 #[test]

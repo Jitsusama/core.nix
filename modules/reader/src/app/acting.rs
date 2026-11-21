@@ -238,34 +238,7 @@ impl App {
             Act::ShowKeys => self.show_keys(!listed),
             Act::AgainCommand => self.again_command(),
             Act::Change(_) => self.say(ex::CANNOT_CHANGE),
-            // Escape at rest does nothing, as Vim's does; :noh puts the
-            // search's marks away. The page is set to fit the window's
-            // width, so there's never anything beside it to move to; the
-            // keys along a line move the cursor's character, or a
-            // selection's cursor, which take them, with a selection's own
-            // keys, before they get here, and ; and , before any f do
-            // nothing.
-            Act::Rest
-            | Act::Left
-            | Act::Right
-            | Act::ToLetter(_)
-            | Act::ToLetterBack(_)
-            | Act::LetterAgain
-            | Act::LetterAgainBack
-            | Act::Select
-            | Act::SelectPieces
-            | Act::WordOn
-            | Act::WordBack
-            | Act::WordEnd
-            | Act::LineStart
-            | Act::LineEnd
-            | Act::OtherEnd
-            | Act::Object(_)
-            | Act::Copy
-            | Act::CopyPiece
-            | Act::CopyParagraph
-            | Act::CopyAParagraph
-            | Act::CopyToParagraphEnd => {}
+            act if taken_before(act) => {}
             other => self.act_as_vi(other, count),
         }
     }
@@ -482,6 +455,41 @@ impl App {
             }
         }
     }
+}
+
+/// Whether an act is done before the view's acts get it, or does nothing
+/// there. Escape at rest does nothing, as Vim's does; :noh puts the
+/// search's marks away. The page is set to fit the window's width, so
+/// there's never anything beside it to move to; the keys along a line move
+/// the cursor's character, or a selection's cursor, which take them, with a
+/// selection's own keys, before they get here, and ; and , before any f do
+/// nothing.
+fn taken_before(act: keys::Act) -> bool {
+    use keys::Act;
+    matches!(
+        act,
+        Act::Rest
+            | Act::Left
+            | Act::Right
+            | Act::ToLetter(_)
+            | Act::ToLetterBack(_)
+            | Act::LetterAgain
+            | Act::LetterAgainBack
+            | Act::Select
+            | Act::SelectPieces
+            | Act::WordOn
+            | Act::WordBack
+            | Act::WordEnd
+            | Act::LineStart
+            | Act::LineEnd
+            | Act::OtherEnd
+            | Act::Object(_)
+            | Act::Copy
+            | Act::CopyPiece
+            | Act::CopyParagraph
+            | Act::CopyAParagraph
+            | Act::CopyToParagraphEnd
+    )
 }
 
 /// A key's count as lines to move by: one when none was typed.

@@ -176,7 +176,15 @@ pub fn listing() -> Vec<(&'static str, Vec<Row>)> {
         .iter()
         .filter(|(keys, _, _)| !an_arrow(keys))
         .map(|(keys, act, _)| (*act, shown_all(keys)));
-    let slots = slots().map(|(act, key)| (act, format!("{} and a letter", shown(key))));
+    // f and F take any character, as Vim's do; a mark takes a letter.
+    let slots = slots().map(|(act, key)| {
+        let after = if matches!(act, Act::ToLetter(_) | Act::ToLetterBack(_)) {
+            "a character"
+        } else {
+            "a letter"
+        };
+        (act, format!("{} and {after}", shown(key)))
+    });
     let operators = operators().map(|(act, key)| (act, shown(key)));
     for (act, keys) in typed.chain(slots).chain(operators) {
         let Some((group, does)) = named(act) else {
