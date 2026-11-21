@@ -83,6 +83,49 @@ fn a_value_the_import_gives_owns_only_the_file_it_names() {
 }
 
 #[test]
+fn a_folder_joined_to_a_string_owns_the_file_the_two_name() {
+    // 20 November: #5927 picked each area's folder by its name and joined
+    // the file's name on, so the folders alone matched no file and an
+    // area's own cases named no VM test.
+    let desktop = r#"{ area, ... }: {
+  tests =
+    (
+      if hasPrefix "launcher-" area then
+        ./desktop/launcher
+      else
+        ./desktop
+    )
+    + "/desktop-${area}-vm-test.py";
+}"#;
+    let tests = [
+        (
+            "vm-desktop-captures".to_owned(),
+            owned_by("tests/desktop.nix", desktop, &[("area", "captures")]),
+        ),
+        (
+            "vm-desktop-launcher-answers".to_owned(),
+            owned_by(
+                "tests/desktop.nix",
+                desktop,
+                &[("area", "launcher-answers")],
+            ),
+        ),
+    ];
+    assert_eq!(
+        owners(&tests, &words("tests/desktop/desktop-captures-vm-test.py")),
+        words("vm-desktop-captures")
+    );
+    assert_eq!(
+        owners(
+            &tests,
+            &words("tests/desktop/launcher/desktop-launcher-answers-vm-test.py")
+        ),
+        words("vm-desktop-launcher-answers"),
+        "each folder the choice could pick is joined to the name"
+    );
+}
+
+#[test]
 fn a_path_inside_a_value_or_from_the_root_or_a_folder_is_owned() {
     assert_eq!(
         owned_by("tests/a.nix", "t = ./a-${import ./b.nix}.py;", &[]),
@@ -387,7 +430,20 @@ fn a_value_checks_gives_reaches_what_the_tree_names() {
         Some(words("vm-desktop-captures")),
         "the area a call gives is part of its test, so a change to it names that test"
     );
-    assert_eq!(tests("checks.nix"), Some(words("vm-desktop-looks")));
+    assert_eq!(
+        tests("checks.nix"),
+        Some(words("vm-desktop-captures vm-desktop-looks")),
+        "the root gives every gathered test its host, so a change to it names each"
+    );
+}
+
+#[test]
+fn a_wide_character_before_a_path_ends_the_word_before_it() {
+    assert_eq!(
+        beside("é./a.py «./b.py", &BTreeMap::new()),
+        words("./a.py ./b.py"),
+        "a character wider than a byte before a path panicked"
+    );
 }
 
 #[test]
