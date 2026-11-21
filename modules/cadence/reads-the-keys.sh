@@ -6,6 +6,8 @@
 # allowance. Each is a whole line on both sides, so a test's fixture or a
 # comment holding the same key can't stand in for one, and a field is
 # found in its own struct, as two of spend-watch's share a field's name.
+# A field's serde attributes, and its struct's, are pinned with it, as
+# serde can rename the key cadence reads without touching the field.
 # It takes cadence's unbilled.rs, unresolved.rs and watch/budgets.rs, then
 # spend-watch's collection.rs, detect.rs, standing.rs and status.rs.
 set -euo pipefail
@@ -26,13 +28,26 @@ line() {
 }
 
 # A line of one struct's body, between its opening line and the first
-# line that closes it.
+# line that closes it, with the serde attributes just above it, each ended
+# by a semicolon; an empty line stands for the struct's own opening line.
 within() {
-  local body
-  body=$(awk -v open="pub struct $2 {" \
-    '$0 == open {inside = 1; next} inside && /^}/ {exit} inside' "$1")
-  grep -qxF -- "$3" <<<"$body" || {
+  local got
+  got=$(awk -v open="pub struct $2 {" -v want="$3" '
+    function said() { printf "found:%s", attrs; found = 1; exit }
+    $0 == open { if (want == "") said(); inside = 1; attrs = ""; next }
+    inside && /^}/ { exit }
+    /^[[:space:]]*(#\[|\/\/\/)/ {
+      if ($0 ~ /#\[serde/) { a = $0; sub(/^[[:space:]]+/, "", a); attrs = attrs a ";" }
+      next
+    }
+    inside && $0 == want { said() }
+    { attrs = "" }
+    END { if (!found) exit 3 }' "$1") || {
     echo "$1's $2 no longer has the line: $3" >&2
+    exit 1
+  }
+  [[ $got == "found:${4-}" ]] || {
+    echo "$1's $2 has serde attributes '${got#found:}' on '${3:-its opening}', not '${4-}'" >&2
     exit 1
   }
 }
@@ -55,23 +70,29 @@ line "$detect" '        format!("{UNRESOLVED}:{budget}"),'
 
 # budgets.json, written whole from spend-watch's Standing.
 line "$status" '        let path = runtime.join("budgets.json");'
+within "$standing" Standing ''
 within "$standing" Standing '    pub at: String,'
 line "$budgets" '    let written = file["at"]'
 within "$standing" Standing '    pub budgets: Vec<Budget>,'
 line "$budgets" '    Ok(file["budgets"]'
+within "$standing" Budget ''
 within "$standing" Budget '    pub name: String,'
 within "$standing" Budget '    pub label: String,'
 line "$budgets" '                        budget: text(&budget["name"]),'
 line "$budgets" '                        label: text(&budget["label"]),'
 within "$standing" Budget '    pub allowances: Vec<Allowance>,'
 line "$budgets" '            budget["allowances"]'
+within "$standing" Allowance '' '#[serde(rename_all = "camelCase")];'
 within "$standing" Allowance '    pub name: String,'
 within "$standing" Allowance '    pub label: String,'
 line "$budgets" '                        name: text(&allowance["name"]),'
 line "$budgets" '                        window: text(&allowance["label"]),'
-within "$standing" Allowance '    pub nearest: Option<f64>,'
+within "$standing" Allowance '    pub nearest: Option<f64>,' \
+  '#[serde(skip_serializing_if = "Option::is_none")];'
 line "$budgets" '                        share: allowance["nearest"].as_f64()?,'
-within "$standing" Allowance '    pub standing: String,'
+within "$standing" Allowance '    pub standing: String,' \
+  '#[serde(skip_serializing_if = "String::is_empty")];'
 line "$budgets" '                        standing: text(&allowance["standing"]),'
-within "$standing" Allowance '    pub resets: Option<String>,'
+within "$standing" Allowance '    pub resets: Option<String>,' \
+  '#[serde(skip_serializing_if = "Option::is_none")];'
 line "$budgets" '                        resets: allowance["resets"].as_str().map(Into::into),'

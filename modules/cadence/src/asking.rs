@@ -234,13 +234,23 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         remember_budget(state, &breach.key, s.now);
     }
 
+    forget(s, state);
+    out
+}
+
+/// Forgets what's older than `REMEMBER`, and a budget's alarm `BUDGET_REST`
+/// after it last stood. A budget's memory ages only while its standing can
+/// be read: the first tick after a night's sleep reads the file from before
+/// it, and a level still standing would otherwise be told again each
+/// morning.
+fn forget(s: &Snapshot, state: &mut State) {
     let keep = |at: &i64| s.now - *at < REMEMBER;
+    let rests = |at: &i64| s.budgets_unwatched.is_some() || s.now - *at < BUDGET_REST;
     state
         .seen
-        .retain(|key, at| keep(at) && (!budgeting(key) || s.now - *at < BUDGET_REST));
+        .retain(|key, at| keep(at) && (!budgeting(key) || rests(at)));
     state.escalated.retain(|_, at| keep(at));
     state.asked.retain(|_, q| keep(&q.at));
-    out
 }
 
 /// Remembers a budget's alarm while it stands, a level with those beneath
@@ -513,6 +523,42 @@ mod tests {
             s.now += BUDGET_REST + 60;
             tick(&s, &mut state);
         }
+    }
+
+    #[test]
+    fn a_level_standing_through_a_night_asleep_isnt_told_again_on_waking() {
+        let mut s = calm(100_000);
+        s.budgets = vec![crate::watch::budgets::Allowance {
+            budget: "proxy".into(),
+            label: "Your AI proxy token".into(),
+            name: "weekly".into(),
+            window: "Week".into(),
+            share: 0.92,
+            standing: "$36,800 of $40,000".into(),
+            resets: None,
+        }];
+        let mut state = State::default();
+        assert_eq!(
+            told_whom(&tick(&s, &mut state)),
+            [(To::Orchestrator, false)],
+            "a budget at 92% wasn't told"
+        );
+        let standing = std::mem::take(&mut s.budgets);
+        // The first tick after eight hours asleep reads the file from
+        // before the sleep, and spend-watch writes again minutes later.
+        s.now += 8 * 3600;
+        s.budgets_unwatched = Some("was last written 480 min ago".into());
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a stale file on waking was told at once"
+        );
+        s.now += 5 * 60;
+        s.budgets_unwatched = None;
+        s.budgets = standing;
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a level standing through the night was told again on waking"
+        );
     }
 
     fn told_whom(questions: &[Question]) -> Vec<(To, bool)> {

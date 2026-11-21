@@ -176,7 +176,9 @@ pub fn stands_for(key: &str) -> Vec<String> {
 
 /// An allowance's key at a level. Its window is named by the hour it
 /// resets in, as a plan's feed reports a reset to the second, worked out
-/// at each read, and a second's drift would read as a new window.
+/// at each read, and a second's drift would read as a new window. A colon
+/// in a budget's or an allowance's name reads as a dot, as `stands_for`
+/// splits the key on colons.
 fn key(a: &Allowance, level: u32) -> String {
     let window = a.resets.as_deref().map_or_else(String::new, |resets| {
         resets
@@ -184,7 +186,12 @@ fn key(a: &Allowance, level: u32) -> String {
             .and_then(|at| at.round(jiff::Unit::Hour))
             .map_or_else(|_| resets.to_owned(), |at| at.to_string())
     });
-    format!("budget:{}:{}:{level}:{window}", a.budget, a.name)
+    let bare = |name: &str| name.replace(':', ".");
+    format!(
+        "budget:{}:{}:{level}:{window}",
+        bare(&a.budget),
+        bare(&a.name)
+    )
 }
 
 #[cfg(test)]
@@ -333,6 +340,23 @@ mod tests {
             stands_for("netheld:1:AAAAAA"),
             Vec::<String>::new(),
             "another alarm's key stood for a budget's"
+        );
+        let coloned = Allowance {
+            budget: "team:one".into(),
+            label: "Team One".into(),
+            name: "plan:week".into(),
+            window: "Week".into(),
+            share: 0.95,
+            standing: String::new(),
+            resets: None,
+        };
+        assert_eq!(
+            stands_for(&key(&coloned, 90)),
+            [
+                "budget:team.one:plan.week:80:",
+                "budget:team.one:plan.week:90:"
+            ],
+            "a name holding a colon left its level standing for nothing"
         );
     }
 
