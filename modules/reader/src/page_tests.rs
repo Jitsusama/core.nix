@@ -232,10 +232,9 @@ fn a_narrow_page_hyphenates_as_a_typesetter_would() {
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
-/// Every baseline from the first run holding `from` to the last holding
-/// `to`, top to bottom, and the page's pitch from its first paragraph,
-/// which is the page's line.
-/// The page a file holding `markdown` sets, as the window's is.
+/// The page a file holding `markdown` sets, as the window's is. Each
+/// test names its own, since tests set pages at once and each removes
+/// its folder when done.
 fn page_of(name: &str, markdown: &str) -> super::Page {
     let dir = std::env::temp_dir().join(format!("reader-pitch-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
@@ -248,6 +247,9 @@ fn page_of(name: &str, markdown: &str) -> super::Page {
     page
 }
 
+/// Every baseline from the first run holding `from` to the last holding
+/// `to`, top to bottom, and the page's pitch from its first paragraph,
+/// which is the page's line.
 fn baselines(name: &str, markdown: &str, from: &str, to: &str) -> (f64, Vec<f64>) {
     let page = page_of(name, markdown);
     let runs = crate::text::runs(&page.frame);
@@ -569,7 +571,11 @@ fn dropped(name: &str, markdown: &str) -> Option<String> {
 fn an_opening_drops_only_a_capital_and_a_letter_alone_reads_as_a_word() {
     // As long as the opening that drops its letter, so each would.
     let tail = "opening paragraph of this page runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, so that it opens on a letter dropped two lines down beside its first words, which then run on at the whole measure under it to the end, at Omega.\n";
-    for (name, start) in [("small", "the"), ("strong", "**The**"), ("code", "`The`")] {
+    for (name, start) in [
+        ("small", "the"),
+        ("strong", "**The**"),
+        ("code-start", "`The`"),
+    ] {
         assert_eq!(
             dropped(name, &format!("{start} {tail}")),
             None,
