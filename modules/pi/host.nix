@@ -249,15 +249,16 @@ let
   # leniently, passing over what they don't know, and nothing more pins
   # them. Each resume is a new slot, so systemd's start limit never trips;
   # the host retries a child that dies at once only at its conversation's
-  # next wake, and bounds no more than that yet. Each realm's
-  # conversations stop together with `systemctl --user stop
-  # 'pi-conversation-KEY@*'`, which parks each one; stop the host first, or
+  # next wake, and bounds no more than that yet. One host's conversations
+  # stop together with `systemctl --user stop 'pi-conversation-KEY@*'`,
+  # KEY being its REALM-KIND, which parks each one; stop the host first, or
   # it takes them up again at their next wake, and run it before moving the
   # harness back to one without children, whose host would take up what
-  # they hold. jobs-sorter and the shaper know only `pi-host-*` units so
-  # far, so a conversation's busy commands stay in its own unit, held back
-  # by its memory throttle below, and its uploads aren't yet raised while
-  # Joel types in it.
+  # they hold. jobs-sorter, the shaper and cadence know only `pi-host-*`
+  # units so far, so a conversation's busy commands stay in its own unit,
+  # held back by its memory throttle below, and aren't ranked first while
+  # Joel watches it; its uploads aren't yet raised while he types in it;
+  # and cadence doesn't see one still running an old pi after a switch.
   conversationOf =
     realm: host: kind:
     let
@@ -267,8 +268,9 @@ let
       name = "pi-conversation-${key}@";
       value = {
         Unit = {
-          # No ConditionPathExists, unlike the host's: only a running host
-          # starts one, so a missing program leaves the instance failed, with
+          # No ConditionPathExists, unlike the host's: a running host is what
+          # starts one, though nothing stops another process of the account
+          # doing so, so a missing program leaves the instance failed, with
           # node's error in the journal, rather than skipped with nothing run
           # or said. The start itself still succeeds, as Type=exec's does
           # once node runs; the host sees the instance gone before it listens.
@@ -276,6 +278,10 @@ let
           # A restart would end the conversation's turn, so a switch leaves a
           # running one be; the next conversation it takes up runs the new pi.
           X-SwitchMethod = "keep-old";
+          # Each open is a slot of its own, never started again, so an
+          # instance that failed is forgotten rather than listed for good.
+          # A [Unit] setting: systemd ignores it under [Service].
+          CollectMode = "inactive-or-failed";
         };
         Service = {
           # It says nothing to systemd: its host follows it on its socket.
@@ -292,9 +298,6 @@ let
           # conversation is resumed by the host in a new process, so systemd
           # never restarts one, and no watchdog kills one for a long turn.
           Restart = "no";
-          # Each open is a slot of its own, never started again, so an
-          # instance that failed is forgotten rather than listed for good.
-          CollectMode = "inactive-or-failed";
           # One of its commands killed for memory leaves the conversation be,
           # as a plain pi outlives its command.
           OOMPolicy = "continue";
@@ -418,8 +421,10 @@ let
         # later. The commands a host runs inherit the limit, as any command a
         # plain pi in a terminal runs does, so their cores are kept too, up
         # to the coredump module's MaxUse; the coredump module keeps them all
-        # in a folder only root enters. Back to 0 once the fault is found, or
-        # by 18:00 on Friday 20 November, whichever comes first.
+        # in a folder only root enters. Back to 0, here and on each
+        # conversation's own unit, which keeps its core for the same fault,
+        # once the fault is found, or by 18:00 on Friday 20 November,
+        # whichever comes first.
         LimitCORE = "infinity";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
