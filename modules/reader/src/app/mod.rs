@@ -59,6 +59,11 @@ fn cursor_marks() -> ([f32; 3], [f32; 3]) {
     (ink.cursor.gl(), ink.cursor_text.gl())
 }
 
+/// A window's size, in pixels, until niri names it, as a configure may
+/// leave either side out; the first screen is set for its width when no
+/// width was kept, so it seldom sets twice.
+pub(crate) const UNNAMED_SIZE: (u32, u32) = (960, 900);
+
 /// Bands asked for and not yet back, at most.
 const ASKED_AT_ONCE: usize = 8;
 

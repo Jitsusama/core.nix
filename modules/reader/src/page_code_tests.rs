@@ -24,6 +24,46 @@ fn lines_from(name: &str, markdown: &str, from: &str, window_pt: f64) -> Vec<(St
         .collect()
 }
 
+/// Code's pieces as the page splits them, at its spaces and after each
+/// slash.
+fn pieces(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for word in text.split(' ') {
+        let mut piece = String::new();
+        for c in word.chars() {
+            piece.push(c);
+            if c == '/' {
+                found.push(std::mem::take(&mut piece));
+            }
+        }
+        if !piece.is_empty() {
+            found.push(piece);
+        }
+    }
+    found
+}
+
+/// The short pieces of code broken over `lines` that share a line with
+/// neither piece beside them.
+fn scraps_alone(lines: &[&str]) -> Vec<String> {
+    let placed: Vec<(usize, String)> = lines
+        .iter()
+        .enumerate()
+        .flat_map(|(at, line)| pieces(line).into_iter().map(move |piece| (at, piece)))
+        .collect();
+    let on = |i: Option<usize>| i.and_then(|i| placed.get(i)).map(|(at, _)| *at);
+    placed
+        .iter()
+        .enumerate()
+        .filter(|(i, (at, piece))| {
+            piece.chars().count() < 4
+                && on(i.checked_sub(1)) != Some(*at)
+                && on(Some(i + 1)) != Some(*at)
+        })
+        .map(|(_, (_, piece))| piece.clone())
+        .collect()
+}
+
 #[test]
 fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap() {
     // Each piece narrower than two thirds of the narrowest measure here,
@@ -33,9 +73,11 @@ fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap
     let markdown = format!("Run this:\n\n`{code}`\n");
     let pitch = pitch_pt();
     let mut slashed = false;
-    // Across windows from under 45 characters to the whole page, so the
-    // breaks land in many places, beside each scrap among them.
-    for window in (0..13).map(|i| 300.0 + 15.0 * f64::from(i)) {
+    // Across windows from under 45 characters to past the whole page, so
+    // the breaks land in many places, beside each scrap among them, and on
+    // measures a wide window widens.
+    let windows = (0..13).map(|i| 300.0 + 15.0 * f64::from(i));
+    for window in windows.chain([560.0, 640.0, 720.0, 800.0, 1200.0]) {
         let lines = lines_from("wraps", &markdown, "nix-offload", window);
         assert!(lines.len() >= 2, "at {window} pt the code took {lines:?}");
         let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
@@ -47,15 +89,17 @@ fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap
             read, code,
             "at {window} pt the code broke inside a word: {texts:?}"
         );
-        // A scrap under four characters keeps to the piece before it, or
-        // the first of a word to the one after, so none stands alone at
-        // a line's end or start.
-        for cut in ["\n.", "\n-L", "~/\n", "\npi/", "\n|", "\ntee", "\nout"] {
-            assert!(
-                !broken.contains(cut),
-                "at {window} pt a scrap stands alone, {cut:?}: {texts:?}"
-            );
-        }
+        // A scrap under four characters keeps to a piece beside it, and a
+        // path's opening to the rest of its path.
+        let alone = scraps_alone(&texts);
+        assert!(
+            alone.is_empty(),
+            "at {window} pt {alone:?} stand alone: {texts:?}"
+        );
+        assert!(
+            !broken.contains("~/\n"),
+            "at {window} pt a line ends on the path's opening: {texts:?}"
+        );
         let baselines: Vec<f64> = lines.iter().map(|(_, baseline)| *baseline).collect();
         assert!(
             steps(pitch, &baselines).iter().all(|s| *s == 100),
@@ -63,6 +107,24 @@ fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap
         );
     }
     assert!(slashed, "no window broke the code after a slash");
+}
+
+#[test]
+fn a_span_of_short_flags_still_breaks_between_them() {
+    // Every piece short: held to each other without end, they would run
+    // off the page on one line.
+    let flags = "ls -l -a -h -t -r -S -R -1 -d -F -G -i -k -n -o -p -q -s -u -x -X -Z -A -B -C";
+    let lines = lines_from(
+        "short-flags",
+        &format!("Run this:\n\n`{flags}`\n"),
+        "ls",
+        300.0,
+    );
+    let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
+    assert!(texts.len() >= 2, "the flags took one line: {texts:?}");
+    assert_eq!(texts.join(" "), flags, "the flags read otherwise");
+    let alone = scraps_alone(&texts);
+    assert!(alone.is_empty(), "{alone:?} stand alone: {texts:?}");
 }
 
 #[test]
@@ -102,11 +164,27 @@ fn a_line_all_of_short_code_steps_one_line_as_any_other() {
 
 #[test]
 fn code_in_a_narrow_column_keeps_to_it() {
+    // One kept whole, and one long enough that the column measures its
+    // widest held run and breaks it.
+    for (i, code) in [
+        "cargo build --release",
+        "cargo build --release --features a-wide-column --target x86_64-unknown-linux-gnu",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        code_in_a_narrow_column_keeps_to_it_when(&format!("cell-{i}"), code);
+    }
+}
+
+/// Sets `code` in a column squeezed by a long cell beside it, in a
+/// folder of its own named `name`, and checks it never reaches the next.
+fn code_in_a_narrow_column_keeps_to_it_when(name: &str, code: &str) {
     let markdown = format!(
-        "{OPENING}| Alpha | Command | Wraps |\n|---|---|---|\n| one | `cargo build --release` | a cell long enough that it wraps onto a second line in its column, however narrow the face its words are set in, and longer still so it squeezes the others |\n"
+        "{OPENING}| Alpha | Command | Wraps |\n|---|---|---|\n| one | `{code}` | a cell long enough that it wraps onto a second line in its column, however narrow the face its words are set in, and longer still so it squeezes the others |\n"
     );
     let page = {
-        let dir = std::env::temp_dir().join(format!("reader-cell-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("reader-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("a folder");
         let file = dir.join("page.md");
         std::fs::write(&file, &markdown).expect("the file");
@@ -124,7 +202,6 @@ fn code_in_a_narrow_column_keeps_to_it() {
         .filter(|run| run.chars.iter().any(|c| c.0 == 'q'))
         .map(|run| run.x_pt)
         .fold(f64::MAX, f64::min);
-    let code = "cargo build --release";
     let code_end = runs
         .iter()
         .filter(|run| {
@@ -134,10 +211,10 @@ fn code_in_a_narrow_column_keeps_to_it() {
         .flat_map(|run| run.chars.iter())
         .map(|c| c.2)
         .fold(0.0, f64::max);
-    assert!(code_end > 0.0, "the code was never set");
+    assert!(code_end > 0.0, "{code:?} was never set");
     assert!(
         code_end < third,
-        "the code runs to {code_end} pt, past the next column at {third} pt"
+        "{code:?} runs to {code_end} pt, past the next column at {third} pt"
     );
 }
 
@@ -147,13 +224,17 @@ fn short_code_is_kept_whole_on_one_line() {
     let markdown = "Short.\n\nKeep it short. ".to_owned()
         + &"Never run `cargo build` here, where it evaluates beside the work. ".repeat(12)
         + "\n";
-    let lines = lines_from("whole", &markdown, "Keep it", 360.0);
-    assert!(lines.len() >= 6, "too few lines to show it: {lines:?}");
-    let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
-    // Both its words are long enough to stand alone, so only the box
-    // keeps them together.
-    assert!(
-        texts.iter().all(|text| !text.ends_with("cargo")),
-        "a short span broke across lines: {texts:?}"
-    );
+    // Across several windows, so a break between its words is a choice
+    // the lines would make somewhere were it not boxed.
+    for window in [300.0, 330.0, 360.0, 390.0, 420.0, 450.0] {
+        let lines = lines_from("whole", &markdown, "Keep it", window);
+        assert!(lines.len() >= 6, "too few lines to show it: {lines:?}");
+        let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
+        // Both its words are long enough to stand alone, so only the box
+        // keeps them together.
+        assert!(
+            texts.iter().all(|text| !text.ends_with("cargo")),
+            "at {window} pt a short span broke across lines: {texts:?}"
+        );
+    }
 }

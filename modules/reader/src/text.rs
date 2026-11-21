@@ -117,9 +117,10 @@ const DROPPED: f64 = 2.0;
 const DROP_AIR_EM: f64 = 0.08;
 
 /// A character as the page reads it back: a space that doesn't break as
-/// a space, and a word joiner as nothing, since they only hold code's
-/// pieces together (page.rs's `code`), and a yank or a search wants what
-/// the file has.
+/// a space, and a word joiner as nothing, since the page puts them in to
+/// hold code's pieces together (page.rs's `code`), and a yank or a search
+/// wants what the file has. A file's own read the same, which only a yank
+/// of one would show, and a search typed with a space then finds it.
 fn read_as(c: char) -> Option<char> {
     match c {
         '\u{a0}' => Some(' '),

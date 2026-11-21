@@ -199,9 +199,12 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // by a space that doesn't break or a word joiner after a slash, rather
 // than glued into one string, so a scrap stays held even beside a
 // piece too wide to box. A short piece holds to the one before it, or
-// the first to the one after, and the one after a held short piece
-// stands free, so a run of held pieces stays short. The page reads both
-// joins back as what the code has (text.rs).
+// the first to the one after, and the one after a held piece stands
+// free, so held pieces go in pairs and a span of short flags still
+// breaks between them. A short path's opening, `~/` or `./`, holds to
+// the rest of its path too, so no line ends on it; and a short last
+// piece holds to the pair before it rather than standing alone. The
+// page reads both joins back as what the code has (text.rs).
 #let after-slash = regex("[^/]*/|[^/]+")
 // A span's pieces: each with whether it's kept whole, what comes
 // between it and the one before (a space, nothing after a slash, or
@@ -212,6 +215,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   let out = ()
   let short-last = false
   let held-last = false
+  let opens-last = false
   for word in s.split(" ") {
     let parts = word.matches(after-slash).map(m => m.text)
     // A space beside another is a word of none, kept as it's written.
@@ -219,13 +223,15 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     for (j, piece) in parts.enumerate() {
       let first = out.len() == 0
       let short = piece.clusters().len() < 4
-      let held = not first and (short or (short-last and not held-last))
+      let held = not first and (opens-last or (not held-last and (short or short-last)))
       let by = if first { none } else if j == 0 { " " } else { "" }
       out.push((piece: piece, whole: measure(raw(piece)).width <= measure-width * 2 / 3, by: by, held: held))
       short-last = short
       held-last = held
+      opens-last = short and j == 0 and parts.len() > 1
     }
   }
+  if out.len() > 1 and out.last().piece.clusters().len() < 4 { out.at(-1).held = true }
   out
 }
 #let code(s) = context {
@@ -647,10 +653,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(..level.note.text, hyphenate: false, caption))))
   }
 })))
-// A diagram is drawn as wide as the measure, but no wider than the whole
-// page's, so a wide window's longer lines never grow its labels past the
-// words beside them.
-#let diagram(path) = block(width: 100%, image(path, width: calc.min(measure-width, whole-measure)))
+// A diagram is drawn as wide as the room it stands in, but no wider than
+// the whole page's measure, so a wide window's longer lines never grow its
+// labels past the words beside them, and one in a list keeps to the list.
+#let diagram(path) = block(width: 100%, layout(room => image(path, width: calc.min(room.width, whole-measure))))
 #let pictures = true
 #let pic(path, alt, w) = if not pictures { picture(alt) } else {
   box(layout(size => {

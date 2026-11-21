@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use markup5ever_rcdom::{Handle, NodeData};
 
-use super::{BLOCKS, Walker, attr, tag, text_of, unit, written_on};
+use super::{BLOCKS, Walker, attr, literal, tag, text_of, unit, written_on};
 
 impl Walker<'_> {
     pub(super) fn list(&mut self, open: &str, node: &Handle) {
@@ -137,12 +137,15 @@ impl Walker<'_> {
         for column in &mut words {
             column.sort_by_key(|(word, _)| std::cmp::Reverse(word.chars().count()));
             column.dedup();
-            column.truncate(6);
+            // The six longest words and the six longest spans of code, each
+            // apart, since a span's length says little of the least room
+            // it needs, and long ones would crowd out the word that does.
+            let plain = column.iter().filter(|(_, code)| !code).take(6);
+            let codes = column.iter().filter(|(_, code)| *code).take(6);
             self.out.push('(');
-            for (word, code) in column.iter() {
-                let quoted = format!("{word:?}");
+            for (word, code) in plain.chain(codes) {
                 let kind = if *code { "least-code" } else { "text" };
-                let _ = write!(self.out, "{kind}({quoted}), ");
+                let _ = write!(self.out, "{kind}({}), ", literal(word));
             }
             self.out.push_str("), ");
         }

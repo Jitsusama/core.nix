@@ -1,7 +1,7 @@
 //! Opening the reader: App made with each of its fields, from what `main()`
 //! starts.
 
-use super::REFERENCE_SCALE;
+use super::{REFERENCE_SCALE, UNNAMED_SIZE};
 use crate::painter::Painter;
 use crate::{App, Measure, Opening, Senders, Surface, keys, menu};
 use smithay_client_toolkit::output::OutputState;
@@ -36,7 +36,7 @@ impl App {
             viewport: surface.viewport,
             gl: None,
             painter: Painter::new(opening.page, REFERENCE_SCALE / 0.75, senders.done),
-            size: (960, 900),
+            size: UNNAMED_SIZE,
             scale: opening.scale,
             fractional: surface.fractional,
             offset: 0.0,
