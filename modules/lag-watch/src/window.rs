@@ -46,6 +46,17 @@ pub struct Snapshot {
     pub apps: BTreeMap<String, Group>,
     /// Each watched thread's schedstat.
     pub threads: BTreeMap<Thread, Sched>,
+    /// How many of each app's processes it had lowered, hidden tabs, whose
+    /// threads are left out of `threads`.
+    pub lowered: BTreeMap<String, usize>,
+    /// Those hidden tabs' threads' schedstat, read only as where the next
+    /// window starts: a tab shown in it is counted for all of it, its
+    /// waits while still hidden too, since a tab's nice is read only at
+    /// each window's end.
+    pub resting: BTreeMap<Thread, Sched>,
+    /// How many of each app's processes Joel started from his terminal, so
+    /// go unwatched, as of the minute's last look (`apps::Apps::unwatched`).
+    pub unwatched: BTreeMap<String, usize>,
 }
 
 /// A share of the window, in percent, each kind of stall.
@@ -149,6 +160,16 @@ pub struct Window {
     /// a window without a call, and of those written before it was added.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub call: BTreeMap<String, Worst>,
+    /// How many of each app's processes (`apps::APPS`) it had lowered at
+    /// the window's end, hidden tabs, whose threads are left out of its
+    /// wait. Left out when none was, and of windows written before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lowered: BTreeMap<String, usize>,
+    /// How many of each app's processes he'd started from his terminal,
+    /// which go unwatched, as of the minute's last look: a gap that shows,
+    /// not a quiet. Left out when none did, and of windows written before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unwatched: BTreeMap<String, usize>,
     pub niri: Answers,
     /// What counted as Joel waiting, in words.
     pub trouble: Vec<String>,
@@ -312,6 +333,8 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         memory,
         waits,
         call,
+        lowered: now.lowered.clone(),
+        unwatched: now.unwatched.clone(),
         niri,
         trouble: Vec::new(),
         worst: String::new(),
@@ -337,7 +360,8 @@ fn turns_waited(
     let mut waits: BTreeMap<String, (u64, u64, f64)> = BTreeMap::new();
     let mut call: BTreeMap<String, Worst> = BTreeMap::new();
     for (key, s) in &now.threads {
-        let Some(old) = then.threads.get(key) else {
+        // A tab shown in the window starts from where it rested hidden.
+        let Some(old) = then.threads.get(key).or_else(|| then.resting.get(key)) else {
             continue;
         };
         let (wait, slices) = (
