@@ -23,8 +23,8 @@
 // data. And what it says of jemalloc, which the test is linked with as Quickshell is: what's in use
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. And where it stands, read without a
-// walk, is where weigh() says the collector starts, with none under way
-// once one has run to its end. It exits 0 once all of it holds,
+// walk, is where weigh() says the collector starts, and says a collection
+// under way while one is left between its slices, and none once it's ended. It exits 0 once all of it holds,
 // and otherwise 1, saying what didn't. Long because each case reads one
 // engine's heap through the same helpers, in the one program linked with
 // Qt's private engine and jemalloc as the shell is: split, each part would
@@ -34,11 +34,14 @@
 #include <QCoreApplication>
 #include <QJSEngine>
 #include <QRegularExpression>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <private/qv4engine_p.h>
+#include <private/qv4mm_p.h>
 
 namespace {
 
@@ -758,6 +761,37 @@ bool standsAsWeighed() {
     return agrees && idle;
 }
 
+// So short a slice that a cycle stops after its first step, as one the
+// event loop steps on is left between its slices.
+constexpr std::chrono::microseconds A_MOMENT{1};
+
+// Whether standing() says a collection is under way while one is left
+// between its slices, and none once it's run to its end: read only after
+// one had ended, a standing() that never said one under way passed.
+bool saysOneUnderWay() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = keepScattered(engine);
+    QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const std::chrono::microseconds slice = manager->gcStateMachine->timeLimit;
+    manager->gcStateMachine->timeLimit = A_MOMENT;
+    manager->runGC();
+    const bool running = manager->gcStateMachine->inProgress();
+    const QVariant during = heap.standing().value(QStringLiteral("collecting"));
+    manager->gcStateMachine->timeLimit = slice;
+    engine.collectGarbage();
+    const QVariant after = heap.standing().value(QStringLiteral("collecting"));
+    const bool said = running && during.toBool() && after.typeId() == QMetaType::Bool &&
+                      !after.toBool();
+    if (!said)
+        std::fprintf(stderr,
+                     "FAIL standing() says a collection is under way between its slices, and "
+                     "none once it's ended: left running %s, said %s during and %s after\n",
+                     running ? "yes" : "no", qPrintable(during.toString()),
+                     qPrintable(after.toString()));
+    return said;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -849,10 +883,11 @@ int main(int argc, char **argv) {
     const bool census = namesWhatsKept();
     const bool placed = placesWhatMadeIt();
     const bool stands = standsAsWeighed();
+    const bool underWay = saysOneUnderWay();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && fits && whole && census &&
-                   placed && stands
+                   placed && stands && underWay
                ? 0
                : 1;
 }
