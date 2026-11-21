@@ -41,6 +41,14 @@ const ECHO_SLACK: usize = 2 * RATE;
 /// How many of a line's words must be in theirs for it to be their echo.
 const ECHO_SHARE: f32 = 0.6;
 
+/// How many words a line of Joel's, most of whose words are in theirs,
+/// must share with it to be their echo however long their line is. One
+/// sharing fewer, such as "Okay." or "Okay, that's fine.", is
+/// as likely Joel answering them in their own words, so it's their echo
+/// only when it holds most of their line's words too: a long line of
+/// theirs heard through his speakers comes back as long takes.
+const ECHO_WORDS: usize = 4;
+
 /// What the others on a call are called where nobody knows who they are.
 pub const OTHERS: &str = "Others";
 
@@ -185,8 +193,10 @@ pub fn read(transcript: &str, me: &str) -> Vec<Line> {
         .collect()
 }
 
-/// Whether `line` is Joel's microphone hearing one of the others' lines.
-fn echoes(line: &Line, lines: &[Line]) -> bool {
+/// Whether `line` is Joel's microphone hearing one of the others' lines,
+/// and so left out of the transcript; the meetings check says which of
+/// Joel's lines it leaves out (score.rs).
+pub fn echoes(line: &Line, lines: &[Line]) -> bool {
     if line.side != Side::Mine {
         return false;
     }
@@ -201,11 +211,16 @@ fn echoes(line: &Line, lines: &[Line]) -> bool {
             && {
                 let said = words(&theirs.text);
                 let shared = mine.intersection(&said).count();
-                #[expect(clippy::cast_precision_loss, reason = "a line's words are few")]
-                let share = shared as f32 / mine.len() as f32;
-                share >= ECHO_SHARE
+                share(shared, &mine) >= ECHO_SHARE
+                    && (shared >= ECHO_WORDS || share(shared, &said) >= ECHO_SHARE)
             }
     })
+}
+
+/// The share of `of`'s words that `shared` of them are.
+#[expect(clippy::cast_precision_loss, reason = "a line's words are few")]
+fn share(shared: usize, of: &HashSet<String>) -> f32 {
+    shared as f32 / of.len() as f32
 }
 
 /// A line's words, lowercased, without their punctuation.
@@ -506,6 +521,76 @@ mod tests {
             "",
         ];
         assert_eq!(markdown(&lines, "Joel", None, None), want.join("\n"));
+    }
+
+    /// Joel's lines that `markdown` keeps, among `lines`.
+    fn kept(lines: &[Line]) -> Vec<String> {
+        let written = markdown(lines, "Joel", None, None);
+        read(&written, "Joel")
+            .into_iter()
+            .filter(|line| line.side == Side::Mine)
+            .map(|line| line.text)
+            .collect()
+    }
+
+    #[test]
+    fn joels_short_answer_to_a_longer_line_of_theirs_is_his_own() {
+        // On the meetings, which hold no echo, each line of Joel's the
+        // filter left out was a short answer like these, its few words
+        // all in the longer line of theirs it answered.
+        let theirs = "Okay, that's fine, yes, but let's check the budget.";
+        for answer in ["Okay.", "Yes. Yes.", "Okay. That's fine."] {
+            let lines = [line(Side::Theirs, 4, theirs), line(Side::Mine, 5, answer)];
+            assert_eq!(
+                kept(&lines),
+                [answer],
+                "Joel's answer {answer:?} was taken for their echo"
+            );
+        }
+    }
+
+    #[test]
+    fn joels_long_line_taking_up_their_words_is_his_own() {
+        // Four of their five words are his, but under half of his.
+        let mine = "Thursday morning works for me, but not for my team at all.";
+        let lines = [
+            line(Side::Theirs, 4, "Thursday morning works for everyone?"),
+            line(Side::Mine, 5, mine),
+        ];
+        assert_eq!(
+            kept(&lines),
+            [mine],
+            "Joel's long line was taken for their echo"
+        );
+    }
+
+    #[test]
+    fn an_echo_of_a_short_line_of_theirs_is_still_left_out() {
+        let lines = [
+            line(Side::Theirs, 4, "Sounds good."),
+            line(Side::Mine, 4, "Sounds good"),
+        ];
+        assert!(
+            kept(&lines).is_empty(),
+            "the echo of their short line was kept as Joel's"
+        );
+    }
+
+    #[test]
+    fn four_words_of_a_longer_line_of_theirs_are_its_echo() {
+        // Joel's microphone hears their long line as two takes where it
+        // cuts at its own pauses, and each is the echo of part of it.
+        let theirs = "Thursday morning works for everyone, then lunch at noon.";
+        let lines = [
+            line(Side::Theirs, 4, theirs),
+            line(Side::Mine, 4, "Thursday morning works for"),
+            line(Side::Mine, 6, "everyone then lunch at noon"),
+        ];
+        assert!(
+            kept(&lines).is_empty(),
+            "a part of their long line was kept as Joel's: {:?}",
+            kept(&lines)
+        );
     }
 
     #[test]
