@@ -157,11 +157,8 @@ fn chosen(
     let busy = here.radio.load.map(|load| load.busy);
     let from = (measured, here.frequency, busy);
     let choice = chooser.choose(now, card, &others, call);
-    if let Some(unreached) = chooser.unreached() {
-        println!("<6>{}", kept_off(on, &unreached));
-    }
-    if let Some(narrower) = chooser.began_keeping_wide() {
-        println!("<6>{}", kept_wide(on, measured, here.signal, &narrower));
+    for aside in asides(chooser, on, measured, here.signal) {
+        println!("<6>{aside}");
     }
     match choice {
         Choice::Stay => None,
@@ -249,6 +246,44 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
     if let Err(refused) = acts::roam(&asks, air, &to).await {
         eprintln!("<4>{card} couldn't move to {to}: {refused:?}");
     }
+}
+
+/// What the journal says beside the choice itself, each said once: an
+/// access point kept off as a move never reached it, a narrower one a
+/// wider band holding well keeps off, a failing link held as the card was
+/// just sent back there, a keep-off giving way to a failing link, and one
+/// a trial standing as the usual ended early.
+fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) -> Vec<String> {
+    let mut said = Vec::new();
+    if let Some(unreached) = chooser.unreached() {
+        said.push(kept_off(on, &unreached));
+    }
+    if let Some(narrower) = chooser.began_keeping_wide() {
+        said.push(kept_wide(on, measured, signal, &narrower));
+    }
+    if let Some(point) = chooser.held() {
+        said.push(format!(
+            "{} stays on {point} though it loses {:.1}%, as it was sent back there under {} s \
+             ago and echoes lost on the way may be among them",
+            on.card,
+            measured.lost,
+            measure::SPAN.as_secs()
+        ));
+    }
+    if let Some(point) = chooser.yielded() {
+        said.push(format!(
+            "{} may try {point} though it kept it off, as its link on {} has failed a whole \
+             span",
+            on.card, on.point
+        ));
+    }
+    if let Some((point, from)) = chooser.freed() {
+        said.push(format!(
+            "{} no longer keeps off {point}, as it carried as {from} usually does",
+            on.card
+        ));
+    }
+    said
 }
 
 /// Why a card keeps off an access point it was moved to: it's somewhere
