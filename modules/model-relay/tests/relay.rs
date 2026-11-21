@@ -4,8 +4,8 @@
 //! Each test asks the relay's socket as pi does, in HTTP/1.1, and reads
 //! what the origin was handed: a request passes whole, only the origin is
 //! reached, many requests share a few connections at once, answers stream
-//! as they come, one in many small frames whole however late pi reads it,
-//! a connection the origin lets go is opened again, a
+//! as they come, many at once in small frames whole however late pi reads
+//! them, a connection the origin lets go is opened again, a
 //! request the origin resets before its answer retires its connection and
 //! goes once more on another, never one kept after a reset, with a burst
 //! of them sharing one opened for them, and goes direct with the relay's
@@ -91,9 +91,14 @@ const SIZED: &[u8] = b"whole";
 /// hold, so a pi not reading leaves the relay unable to read the rest.
 const SMALL_FRAME: &[u8] = &[b'x'; 64];
 const SMALL_FRAMES: usize = 32 * 1024;
-/// How long pi reads nothing of `/small-frames`'s answer, as one too busy
-/// to read on a machine under load: long enough for the origin to fill
-/// every window the relay holds open.
+/// How many `/small-frames` answers pi leaves unread at once on the
+/// relay's one connection: about as many as each of its default four
+/// carries for sixty sessions, all stalled together on a machine under
+/// load.
+const STALLED_ANSWERS: usize = 16;
+/// How long pi reads nothing of the `/small-frames` answers, as one too
+/// busy to read on a machine under load: long enough for the origin to
+/// fill every window the relay holds open, which the test checks it did.
 const READS_NOTHING_FOR: Duration = Duration::from_secs(2);
 // The relay's four 421 sentences, each pinned whole here. pi's client
 // goes direct on these exact words alone, with their one line break or
@@ -153,6 +158,8 @@ struct Origin {
     /// How it fails every request, as a path that has failed would: one
     /// of `ANSWERS`, `RESETS`, `ANSWERS_THE_FIRST_TWO` or `ANSWERS_502`.
     failing: Arc<AtomicU8>,
+    /// How many pieces of `/small-frames` answers it has sent.
+    sent: Arc<AtomicUsize>,
     _tls: Tls,
 }
 
@@ -196,6 +203,7 @@ struct Served {
     failing: Arc<AtomicU8>,
     /// How many requests this connection has been asked.
     asked: Arc<AtomicUsize>,
+    sent: Arc<AtomicUsize>,
     bye: Arc<Notify>,
     gone: Arc<Notify>,
 }
@@ -258,12 +266,14 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
     let handed = Arc::new(Mutex::new(Vec::new()));
     let held = Arc::new(Held::default());
     let failing = Arc::new(AtomicU8::new(ANSWERS));
-    let (counted, finished, kept, holding, failed) = (
+    let sent = Arc::new(AtomicUsize::new(0));
+    let (counted, finished, kept, holding, failed, sending) = (
         Arc::clone(&connections),
         Arc::clone(&ended),
         Arc::clone(&handed),
         Arc::clone(&held),
         Arc::clone(&failing),
+        Arc::clone(&sent),
     );
     tokio::spawn(async move {
         let mut silent = Vec::new();
@@ -281,6 +291,7 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
                 held: Arc::clone(&holding),
                 failing: Arc::clone(&failed),
                 asked: Arc::new(AtomicUsize::new(0)),
+                sent: Arc::clone(&sending),
                 bye: Arc::new(Notify::new()),
                 gone: Arc::new(Notify::new()),
             };
@@ -315,6 +326,7 @@ fn origin_on(listener: TcpListener, answering: Serves, tls: Tls) -> Origin {
         handed,
         held,
         failing,
+        sent,
         _tls: tls,
     }
 }
@@ -361,6 +373,7 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         held,
         failing,
         asked,
+        sent,
         bye,
         gone,
     } = served;
@@ -411,7 +424,7 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
     }
     let answer = match path.as_str() {
         "/stream" | "/long" | "/sized" | "/broken" | "/cut" | "/cut-late" => in_halves(&path, gone),
-        "/small-frames" => in_small_frames(),
+        "/small-frames" => in_small_frames(sent),
         "/held" => {
             let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
             held.most.fetch_max(now, Ordering::SeqCst);
@@ -503,8 +516,9 @@ fn in_halves(path: &str, gone: Arc<Notify>) -> hyper::http::Result<Response<Answ
 }
 
 /// `/small-frames`'s answer: `SMALL_FRAMES` pieces of `SMALL_FRAME`, each
-/// sent as a DATA frame of its own as the window allows.
-fn in_small_frames() -> hyper::http::Result<Response<Answer>> {
+/// sent as a DATA frame of its own as the window allows, and counted in
+/// `sent` as it goes.
+fn in_small_frames(sent: Arc<AtomicUsize>) -> hyper::http::Result<Response<Answer>> {
     let (mut sender, body) = Channel::<Bytes, Infallible>::new(64);
     tokio::spawn(async move {
         for _ in 0..SMALL_FRAMES {
@@ -515,6 +529,7 @@ fn in_small_frames() -> hyper::http::Result<Response<Answer>> {
             {
                 return;
             }
+            sent.fetch_add(1, Ordering::SeqCst);
         }
     });
     Response::builder()
@@ -795,52 +810,72 @@ async fn a_body_of_many_pieces_passes_whole() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn an_answer_in_small_frames_passes_whole_while_pi_reads_late() {
+async fn answers_in_small_frames_pass_whole_while_pi_reads_late() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
-    let stream = UnixStream::connect(&relay.socket)
+    let mut stalled = Vec::new();
+    for _ in 0..STALLED_ANSWERS {
+        stalled.push(begun(&relay.socket, request(&host, "/small-frames", b"")).await);
+    }
+    // Pis too busy to read, so what the origin sends waits in the relay's
+    // windows; h2 charges each small frame waiting there against what it
+    // allows the whole connection.
+    tokio::time::sleep(READS_NOTHING_FOR).await;
+    let sent = origin.sent.load(Ordering::SeqCst);
+    let mut reading = tokio::task::JoinSet::new();
+    for answer in stalled {
+        reading.spawn(async move {
+            let body = answer
+                .into_body()
+                .collect()
+                .await
+                .map(http_body_util::Collected::to_bytes)
+                .unwrap_or_default();
+            (body.len(), body.iter().all(|&byte| byte == SMALL_FRAME[0]))
+        });
+    }
+    let read = reading.join_all().await;
+    let after = ask(&relay.socket, request(&host, "/echo", b"after")).await;
+
+    let said = relay.said();
+    assert!(
+        sent < STALLED_ANSWERS * SMALL_FRAMES,
+        "the origin sent every piece while pi read none, so nothing waited in the relay"
+    );
+    assert!(
+        !said.contains("too_many_data_frames"),
+        "h2 ended the connection over the frames pi hadn't read: {said}"
+    );
+    assert!(
+        read.iter()
+            .all(|&(length, same)| length == SMALL_FRAMES * SMALL_FRAME.len() && same),
+        "an answer was cut short or changed, read as {read:?}; the relay said: {said}"
+    );
+    assert_eq!(
+        after.headers["x-origin-connection"], "0",
+        "the answers' connection was let go: {said}"
+    );
+}
+
+/// The answer to `request`, asked of the relay at `socket` on a connection
+/// of its own and begun, its body left for the caller to read.
+async fn begun<B>(socket: &Path, request: Request<B>) -> Response<Incoming>
+where
+    B: hyper::body::Body + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    let stream = UnixStream::connect(socket)
         .await
         .expect("the socket answers");
     let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
         .await
         .expect("an HTTP/1.1 connection");
     tokio::spawn(connection);
-    let response = sender
-        .send_request(request(&host, "/small-frames", b""))
-        .await
-        .expect("an answer");
-    assert_eq!(response.status(), StatusCode::OK, "the answer didn't begin");
-    // A pi too busy to read, so what the origin sends waits in the relay's
-    // windows; h2 counts each small frame waiting there against what it
-    // allows the whole connection.
-    tokio::time::sleep(READS_NOTHING_FOR).await;
-    let body = response
-        .into_body()
-        .collect()
-        .await
-        .map(|all| all.to_bytes().to_vec())
-        .unwrap_or_default();
-
-    let said = relay.said();
-    assert_eq!(
-        body.len(),
-        SMALL_FRAMES * SMALL_FRAME.len(),
-        "the answer was cut short; the relay said: {said}"
-    );
-    assert!(
-        body.iter().all(|&byte| byte == SMALL_FRAME[0]),
-        "the answer came back changed"
-    );
-    assert!(
-        !said.contains("too_many_data_frames"),
-        "h2 ended the connection over the frames pi hadn't read: {said}"
-    );
-    assert_eq!(
-        origin.connections.load(Ordering::SeqCst),
-        1,
-        "the answer's connection was let go: {said}"
-    );
+    let answer = sender.send_request(request).await.expect("an answer");
+    assert_eq!(answer.status(), StatusCode::OK, "the answer didn't begin");
+    answer
 }
 
 #[tokio::test(flavor = "current_thread")]

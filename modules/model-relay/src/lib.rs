@@ -184,20 +184,25 @@ const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(40);
 /// which the connection's window bounds and a lossy uplink keeps small.
 const HELD_AHEAD_AT_MOST: usize = 16 * 1024;
 /// How much of one answer the origin may send ahead of the relay reading
-/// it. A streamed answer comes as many DATA frames shorter than 256 bytes,
-/// and h2 counts each one not yet read against an allowance for the whole
-/// connection, half its window, ending the connection with every request
-/// on it once that's spent (`too_many_data_frames`, which 40 connections
-/// were retired on from 19 to 21 November). A pi too busy to read leaves
-/// its answer's frames unread, so what one stream may hold unread has to
-/// be far below that allowance: at 64-byte frames, this much costs about
-/// 768 KiB of it.
-const STREAM_WINDOW: u32 = 256 * 1024;
+/// it. As of h2 0.4.20 (`Counts::record_data_frame`), each DATA frame
+/// shorter than 256 bytes, but for a stream's last, is charged 256 less its
+/// length against an allowance for the whole connection, half the
+/// connection's window. The charge comes back as the relay reads the frame,
+/// or drops its stream, and once the allowance is spent h2 ends the
+/// connection with every request on it (`too_many_data_frames`, which 40
+/// connections were retired on from 19 to 21 November). A streamed answer
+/// is mostly such frames, and a pi too busy to read leaves them unread, so
+/// one answer costs at most this window in its smallest frames: 192 KiB in
+/// 64-byte ones. It still carries about two and a half megabits a stream
+/// over a 200 ms round trip, far past a model's streamed answer.
+const STREAM_WINDOW: u32 = 64 * 1024;
 /// How much of every answer on a connection the origin may send ahead of
-/// the relay reading it, so h2's allowance for small frames, half of this,
-/// holds about ten streams' unread windows at once even in 64-byte frames.
-/// hyper's adaptive window started both at 64 KiB, an allowance about 300
-/// frames of a streamed answer spent.
+/// the relay reading it. Its half, h2's allowance, holds about forty
+/// stalled answers in 64-byte frames, past the fifteen or so a connection
+/// carries with sixty sessions over the default four connections, all
+/// stalled at once on a machine under load. hyper's adaptive window started
+/// it at 64 KiB, an allowance of 32 KiB, which about 300 unread frames of
+/// 150 bytes spent.
 const CONNECTION_WINDOW: u32 = 16 * 1024 * 1024;
 /// The most of an error's account the journal keeps for one line, since
 /// the origin's goodbye carries debug data of its choosing.
