@@ -21,27 +21,13 @@
 //! - Its floor is the unit's own, plus [`focus::FLOOR`] for each window
 //!   Joel is at that shows one of its conversations, and [`keep::FLOOR`]
 //!   for each orchestrator among them, as each would have in a window.
-//!   With neither, a window that only shows one adds [`keep::PI_FLOOR`],
-//!   once, as a window running a pi of its own keeps.
-//! - While any but the last hold it, nothing of it is written to the
-//!   disk's swap and systemd-oomd ends it last, as a held window's.
-//!
-//! A host may run each conversation in a unit of its own instead,
-//! `<conversations><key>@<slot>.service` under `--conversations`, the slot
-//! named by a file in `--slots` that holds the session (`src/joins.rs`
-//! finds which unit a viewer joins). Each such unit is
-//! ranked the same way, by the windows showing its one conversation and
-//! whether that orchestrates, save that oomd isn't told to end it last,
-//! as its busy commands stay in it; and a window showing it gives the host
-//! nothing: on 21 November 75 conversations ran in units of their own and
-//! the two hosts' units held 21 and 34 MB, so every floor given a host
-//! kept only that, and the windows Joel was at kept none of theirs.
+//! - While any of those hold it, nothing of it is written to the disk's
+//!   swap and systemd-oomd ends it last, as a held window's.
 //!
 //! Giving back puts the unit's own settings back, not systemd's defaults
 //! as a window's give back does: a host's unit sets a floor and oomd's
 //! avoid of its own. Those are read from the unit's files, leaving out
-//! the runtime ones this sets, since what systemd reports includes them
-//! (`src/own.rs`).
+//! the runtime ones this sets, since what systemd reports includes them.
 //!
 //! Its adjustment for the kernel's OOM killer is left at the account's.
 //! Ending a host ends every conversation it holds, which
@@ -52,12 +38,34 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::own::{Own, template};
 use crate::{focus, keep, low};
 
 /// How long a unit's own settings are trusted before they're read again,
 /// so a switch that changes them reaches a host that keeps running.
 pub const OWN_FOR: Duration = Duration::from_secs(60);
+
+/// The folder runtime properties set through systemd's manager land in,
+/// which a unit's own settings leave out.
+const RUNTIME_CONTROL: &str = "/systemd/user.control/";
+
+/// A unit's own settings, as far as ranking it goes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Own {
+    pub floor: u64,
+    pub writeback: bool,
+    pub preference: String,
+}
+
+impl Default for Own {
+    /// systemd's defaults, which a unit that says nothing has.
+    fn default() -> Self {
+        Own {
+            floor: 0,
+            writeback: true,
+            preference: "none".to_owned(),
+        }
+    }
+}
 
 /// A host unit's rank: the properties set on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,9 +81,6 @@ pub struct Rank {
 pub struct Signs {
     /// Windows Joel is at that show one of its conversations.
     pub viewed: usize,
-    /// Windows that show one of its conversations, whether he's at them
-    /// or not.
-    pub shown: usize,
     /// Orchestrators among its conversations.
     pub orchestrators: usize,
     /// Whether the harness marks the host as one nobody is at.
@@ -83,9 +88,6 @@ pub struct Signs {
     /// The memory its unit holds now, as its memory.current says; none
     /// when that can't be read.
     pub current: Option<u64>,
-    /// Whether its unit keeps the busy commands its conversations start,
-    /// as a conversation's own unit does: only a host's are moved to jobs.
-    pub keeps_its_work: bool,
 }
 
 /// The rank a host wants from its unit's `own` settings and its `signs`,
@@ -98,17 +100,7 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
         .saturating_add(viewed.saturating_mul(focus::FLOOR))
         .saturating_add(orchestrators.saturating_mul(keep::FLOOR));
     let kept = signs.viewed > 0 || signs.orchestrators > 0;
-    // A window that only shows a conversation gives it a pi's window's floor, once, as a window
-    // running its own pi keeps one; a held window's or an orchestrator's stands in for it.
-    let floor = if signs.shown > 0 && !kept {
-        floor.saturating_add(keep::PI_FLOOR)
-    } else {
-        floor
-    };
-    // oomd passes over a held unit only when its busy commands are moved to jobs: one keeping
-    // them, as a conversation's own unit does, may hold a build's gigabytes, and passing over
-    // such units on 15 November ended 38 small ones beside them, freeing nothing.
-    let preference = if kept && !signs.keeps_its_work && own.preference != "omit" {
+    let preference = if kept && own.preference != "omit" {
         "avoid".to_owned()
     } else {
         own.preference.clone()
@@ -133,20 +125,84 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     }
 }
 
-/// The orchestrators a unit's `roots` run, as `orchestrating` counts them
-/// by pid, and whether `marked` says the harness marks any of them. Every
-/// root counts, since a command a conversation left behind is a root
-/// beside the conversation's own process.
-pub fn counted(
-    roots: &[u32],
-    orchestrating: &HashMap<u32, usize>,
-    marked: impl Fn(u32) -> bool,
-) -> (usize, bool) {
-    let orchestrators = roots
-        .iter()
-        .filter_map(|root| orchestrating.get(root))
-        .sum();
-    (orchestrators, roots.iter().any(|root| marked(*root)))
+/// The host unit a viewer's words join, `<prefix><key>.service`, when
+/// they are mycelium's `attach --host <key>`.
+pub fn viewed(words: &[String], prefix: &str) -> Option<String> {
+    let attach = words.iter().position(|word| word == "attach")?;
+    let rest = &words[attach + 1..];
+    let key = rest.iter().enumerate().find_map(|(at, word)| {
+        if word == "--host" {
+            rest.get(at + 1).cloned()
+        } else {
+            word.strip_prefix("--host=").map(str::to_owned)
+        }
+    })?;
+    (!key.is_empty() && !key.contains('/')).then(|| format!("{prefix}{key}.service"))
+}
+
+/// A unit's own settings from `systemctl cat`'s text, its files each
+/// under a `# <path>` line, leaving out the runtime ones set through the
+/// manager. A later file's setting wins, and an empty one is systemd's
+/// default again. A percentage is of `total`, the machine's memory.
+pub fn own(text: &str, total: u64) -> Own {
+    let mut own = Own::default();
+    let mut counted = true;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(path) = line.strip_prefix("# /") {
+            counted = !format!("/{path}").contains(RUNTIME_CONTROL);
+            continue;
+        }
+        if !counted || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        match key.trim() {
+            "MemoryLow" => {
+                own.floor = if value.is_empty() {
+                    0
+                } else {
+                    size(value, total).unwrap_or(own.floor)
+                };
+            }
+            "MemoryZSwapWriteback" => {
+                own.writeback = value.is_empty() || !matches!(value, "no" | "false" | "0" | "off");
+            }
+            "ManagedOOMPreference" => {
+                own.preference = if value.is_empty() {
+                    "none".to_owned()
+                } else {
+                    value.to_owned()
+                };
+            }
+            _ => {}
+        }
+    }
+    own
+}
+
+/// A size as systemd reads one: bytes, with K, M, G or T for powers of
+/// 1024, `infinity`, or a percentage of `total`.
+pub fn size(value: &str, total: u64) -> Option<u64> {
+    if value == "infinity" {
+        return Some(u64::MAX);
+    }
+    if let Some(percent) = value.strip_suffix('%') {
+        let percent: u128 = percent.trim().parse().ok()?;
+        return u64::try_from(u128::from(total) * percent / 100).ok();
+    }
+    let (digits, shift) = match value.chars().last()? {
+        'K' => (&value[..value.len() - 1], 10),
+        'M' => (&value[..value.len() - 1], 20),
+        'G' => (&value[..value.len() - 1], 30),
+        'T' => (&value[..value.len() - 1], 40),
+        _ => (value, 0),
+    };
+    let number: u64 = digits.trim().parse().ok()?;
+    number.checked_mul(1 << shift)
 }
 
 /// The host units under `slice` whose names start with `prefix`.
@@ -170,25 +226,17 @@ pub fn units(slice: &Path, prefix: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The pids among `procs`, each `(pid, parent)`, whose parent is outside
-/// them: the process the unit started, and any command one left behind.
-pub fn roots(procs: &[(u32, u32)]) -> Vec<u32> {
-    let inside: HashSet<u32> = procs.iter().map(|(pid, _)| *pid).collect();
-    procs
-        .iter()
-        .filter(|(_, parent)| !inside.contains(parent))
-        .map(|(pid, _)| *pid)
-        .collect()
-}
-
 /// The host among a unit's processes, each as its pid and its parent's:
 /// the one process whose parent is outside the unit, as a subagent a
 /// conversation starts is a child of the host.
 pub fn host_of(procs: &[(u32, u32)]) -> Option<u32> {
-    match roots(procs)[..] {
-        [root] => Some(root),
-        _ => None,
-    }
+    let inside: HashSet<u32> = procs.iter().map(|(pid, _)| *pid).collect();
+    let mut roots = procs
+        .iter()
+        .filter(|(_, parent)| !inside.contains(parent))
+        .map(|(pid, _)| *pid);
+    let root = roots.next()?;
+    roots.next().is_none().then_some(root)
 }
 
 /// The number of orchestrator sessions each pid holds, from presences
@@ -265,8 +313,7 @@ pub struct Hosts {
     set: HashMap<String, Rank>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
-    /// The units said to hold no one host, ranked by all their roots, so
-    /// each is said once.
+    /// The units said to hold no one host, so each is said once.
     pub unclear: HashSet<String>,
 }
 
@@ -308,12 +355,8 @@ impl Hosts {
 
     /// Forgets the units no longer among `units`, whose hosts stopped.
     pub fn keep_only(&mut self, units: &[String]) {
-        // A template's settings serve every instance of it, so they stay while one runs.
-        let templates: HashSet<String> = units.iter().filter_map(|unit| template(unit)).collect();
-        self.own
-            .retain(|unit, _| units.contains(unit) || templates.contains(unit));
+        self.own.retain(|unit, _| units.contains(unit));
         self.set.retain(|unit, _| units.contains(unit));
-        self.unclear.retain(|unit| units.contains(unit));
     }
 }
 
@@ -329,6 +372,10 @@ mod tests {
             writeback: true,
             preference: "avoid".to_owned(),
         }
+    }
+
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(str::to_owned).collect()
     }
 
     #[test]
@@ -473,66 +520,96 @@ mod tests {
     }
 
     #[test]
-    fn a_conversation_any_window_shows_keeps_a_pis_floor_softly() {
-        let shown = Signs {
-            shown: 2,
-            ..Signs::default()
-        };
-        let rank = wanted(&Own::default(), shown, 10);
+    fn a_viewer_names_the_host_unit_it_joins() {
+        let line = "mycelium --realm work attach --host work-attended --session 0193-ab";
         assert_eq!(
-            rank.floor,
-            keep::PI_FLOOR,
-            "one floor for any number of windows"
+            viewed(&words(line), "pi-host-"),
+            Some("pi-host-work-attended.service".to_owned()),
+            "attach --host names the host's unit"
         );
-        assert_eq!(rank.preference, "none", "oomd may end it before a held one");
-        assert_eq!(rank.weight, low::AT, "showing it isn't being at it");
-        let held = Signs { viewed: 1, ..shown };
         assert_eq!(
-            wanted(&Own::default(), held, 10).floor,
-            focus::FLOOR,
-            "a held window's floor stands in for a shown one's"
-        );
-        let orchestrating = Signs {
-            orchestrators: 1,
-            ..shown
-        };
-        assert_eq!(
-            wanted(&Own::default(), orchestrating, 10).floor,
-            keep::FLOOR,
-            "so does an orchestrator's"
-        );
-        let keeping = Signs {
-            keeps_its_work: true,
-            ..held
-        };
-        assert_eq!(
-            (
-                wanted(&Own::default(), keeping, 10).floor,
-                wanted(&Own::default(), keeping, 10).preference.as_str()
+            viewed(
+                &words("mycelium attach --host=work-background --session 1"),
+                "pi-host-"
             ),
-            (focus::FLOOR, "none"),
-            "a unit keeping its conversation's builds keeps its floor, but oomd may still end it"
+            Some("pi-host-work-background.service".to_owned()),
+            "the joined form names it too"
+        );
+        assert_eq!(
+            viewed(&words("mycelium --realm work attach h0"), "pi-host-"),
+            None,
+            "attaching a held program joins no host"
+        );
+        assert_eq!(
+            viewed(&words("ssh --host x attach"), "pi-host-"),
+            None,
+            "a --host before attach is another program's"
+        );
+        assert_eq!(
+            viewed(&words("mycelium attach --host ../x"), "pi-host-"),
+            None,
+            "a key that isn't a unit's name names none"
         );
     }
 
     #[test]
-    fn every_root_counts_its_orchestrators_and_marks() {
-        let orchestrating = HashMap::from([(20, 1), (30, 2)]);
+    fn a_units_own_settings_leave_out_the_runtime_ones() {
+        let text = "\
+# /home/j/.config/systemd/user/pi-host-work-attended.service -> /nix/store/x
+[Service]
+ManagedOOMPreference=avoid
+MemoryLow=512M
+
+# /run/user/1000/systemd/user.control/pi-host-work-attended.service.d/50-MemoryLow.conf
+[Service]
+MemoryLow=3221225472
+ManagedOOMPreference=none
+";
         assert_eq!(
-            counted(&[10, 20], &orchestrating, |pid| pid == 10),
-            (1, true),
-            "a conversation's orchestrator counts beside a command it left, and so does a mark"
+            own(text, 64 * GIB),
+            attended(),
+            "a floor this sorter set at runtime isn't the unit's own"
         );
+    }
+
+    #[test]
+    fn a_later_file_wins_and_an_empty_setting_is_the_default_again() {
+        let text = "\
+# /etc/systemd/user/pi-host-a.service
+[Service]
+MemoryLow=1G
+MemoryZSwapWriteback=no
+# /etc/systemd/user/pi-host-a.service.d/10-more.conf
+[Service]
+MemoryLow=
+MemoryLow=10%
+";
+        let own = own(text, 100 * GIB);
         assert_eq!(
-            counted(&[10, 30], &orchestrating, |_| false),
-            (2, false),
-            "each root's orchestrators add up"
+            own.floor,
+            10 * GIB,
+            "the last floor said is the one that holds"
         );
+        assert!(!own.writeback, "writeback turned off stays off");
         assert_eq!(
-            counted(&[10], &orchestrating, |_| false),
-            (0, false),
-            "a root running none, unmarked, adds nothing"
+            super::own("[Service]\nMemoryLow=\n", GIB).floor,
+            0,
+            "an empty floor is systemd's default"
         );
+    }
+
+    #[test]
+    fn sizes_read_as_systemd_reads_them() {
+        assert_eq!(size("512M", 0), Some(512 << 20), "M is mebibytes");
+        assert_eq!(size("1G", 0), Some(GIB), "G is gibibytes");
+        assert_eq!(size("4096", 0), Some(4096), "no suffix is bytes");
+        assert_eq!(size("infinity", 0), Some(u64::MAX), "infinity is no limit");
+        assert_eq!(
+            size("25%", 8 * GIB),
+            Some(2 * GIB),
+            "a percentage is of memory"
+        );
+        assert_eq!(size("lots", 0), None, "words aren't a size");
     }
 
     #[test]
@@ -552,11 +629,6 @@ mod tests {
             host_of(&[(10, 1), (20, 1)]),
             None,
             "two roots can't say which is the host"
-        );
-        assert_eq!(
-            roots(&[(10, 1), (20, 1), (21, 20)]),
-            [10, 20],
-            "a command its host left behind is a root beside it, so both are counted"
         );
     }
 
@@ -615,27 +687,6 @@ mod tests {
             "a failed read keeps what was read before"
         );
         assert_eq!(reads, 2, "only a new host was read again");
-        hosts.own("c@.service", 0, start, || Some(attended()));
-        hosts.unclear.insert("c@1.service".to_owned());
-        hosts.keep_only(&["c@1.service".to_owned()]);
-        assert_eq!(
-            hosts.own("c@.service", 0, start, || None),
-            attended(),
-            "a template's settings stay while an instance of it runs"
-        );
-        assert!(
-            hosts.own.contains_key("c@.service") && !hosts.own.contains_key("u"),
-            "the template stays and the gone host's settings go"
-        );
-        assert!(
-            hosts.unclear.contains("c@1.service"),
-            "a running unit's doubt stays said, so it isn't said again"
-        );
-        hosts.keep_only(&[]);
-        assert!(
-            hosts.own.is_empty() && hosts.unclear.is_empty(),
-            "a gone unit's settings and said doubt are forgotten"
-        );
     }
 
     #[test]

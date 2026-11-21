@@ -938,14 +938,6 @@ in
             # 15 November three evaluations there filled agents.slice.
             "--hosts"
             "pi-host-"
-            # A host that runs each conversation in a unit of its own has
-            # each ranked beside it as its one session would be, found by
-            # the slot that holds the session a window shows: from 21
-            # November 75 ran so, and a host's unit kept only its own node.
-            "--conversations"
-            "pi-conversation-"
-            "--slots"
-            "%t/pi-host"
             # When the kernel's reclaim thread gives up, agents' work gives a
             # gibibyte back, which brings it back; otherwise every program
             # reclaims for itself until the OOM killer ends one.

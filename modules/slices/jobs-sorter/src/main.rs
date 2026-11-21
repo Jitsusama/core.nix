@@ -78,9 +78,7 @@
 //!
 //! With `--hosts` and `--background`, each pi host's unit under that
 //! prefix ranks as the sessions it holds would in windows of their own, as
-//! `src/hosts.rs` says why and how, and with `--conversations` and
-//! `--slots` too, so does each unit a host runs one conversation in. With
-//! `--hosts` alone, each one's busy
+//! `src/hosts.rs` says why and how. With `--hosts` alone, each one's busy
 //! work goes to jobs as a terminal's does, as `looked_at` says why.
 //!
 //! With `--sessions` and `--weigh`, a session's holder found in jobs goes
@@ -107,12 +105,10 @@ mod elsewhere;
 mod focus;
 mod holds;
 mod hosts;
-mod joins;
 mod keep;
 mod kitty;
 mod low;
 mod oom;
-mod own;
 mod probe;
 mod quests;
 mod quick;
@@ -167,10 +163,6 @@ struct Settings {
     calls_elsewhere: Option<(PathBuf, PathBuf)>,
     niri: Option<PathBuf>,
     hosts: Option<String>,
-    /// The prefix of the units a host runs each conversation in, and the
-    /// folder of the hosts' slots that names each one's session.
-    conversations: Option<String>,
-    slots: Option<PathBuf>,
     /// The slice a session found in jobs goes back to.
     sessions: Option<String>,
     /// Where each `--under` slice's terminals send their busy work, when
@@ -794,9 +786,6 @@ struct Windows<'a> {
     focus: Option<&'a focus::Following>,
     /// The prefix of the pi hosts' units, when they're ranked.
     hosts: Option<&'a str>,
-    /// The prefix of the units a host runs each conversation in, and the
-    /// folder of its slots, when they're ranked beside it.
-    conversations: Option<(&'a str, &'a Path)>,
     /// The prefixes of the scopes a session window's pi runs in beside it
     /// (`--weigh`), held with the window ([`focus::attached_to`]).
     pis: &'a [String],
@@ -1070,7 +1059,7 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
                 ranks.holding.done(&scope, hold);
                 // An orchestrator's window gave its floor up to this one,
                 // so it's kept again from nothing once given back.
-                ranks.keeping.done(&unit, keep::Floor::Nothing);
+                ranks.keeping.done(&unit, false);
                 let says = if hold { "Held" } else { "Gave back" };
                 eprintln!("{says} {unit}, a window Joel is or was just at.");
             }
@@ -1246,7 +1235,6 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
         weight,
         focus: _,
         hosts: _,
-        conversations: _,
         pis: _,
     } = *windows;
     if let Some(prefix) = windows.hosts {
@@ -1307,26 +1295,33 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
     }
 }
 
-/// Ranks each pi host's unit under `prefix`, and each conversation's unit
-/// beside it, as its conversations would rank in windows, from the
-/// windows `held` as ones Joel is at, the windows showing each, and the
+/// Ranks each pi host's unit under `prefix` as its conversations would
+/// rank in windows, from the windows `held` as ones Joel is at and the
 /// orchestrators last counted. A failure is said once, and tried again on
 /// the next look.
 fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
+    let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
+    let viewers: Vec<String> = windows
+        .under
+        .iter()
+        .flat_map(|slice| viewing.iter().map(|unit| slice.join(unit)))
+        .flat_map(|scope| samples(&scope))
+        .filter_map(|proc| {
+            let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
+            let words: Vec<String> = words
+                .split(|byte| *byte == 0)
+                .map(|word| String::from_utf8_lossy(word).into_owned())
+                .collect();
+            hosts::viewed(&words, prefix)
+        })
+        .collect();
+    let now = std::time::Instant::now();
+    let total = memory_total();
     let units: Vec<PathBuf> = windows
         .under
         .iter()
-        .flat_map(|slice| {
-            let mut found = hosts::units(slice, prefix);
-            if let Some((conversations, _)) = windows.conversations {
-                found.extend(hosts::units(slice, conversations));
-            }
-            found
-        })
+        .flat_map(|slice| hosts::units(slice, prefix))
         .collect();
-    let (viewers, shown) = viewers_and_shown(windows, prefix, held, &units);
-    let now = std::time::Instant::now();
-    let total = memory_total();
     let mut seen = Vec::new();
     for path in units {
         let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
@@ -1336,35 +1331,32 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             .iter()
             .map(|proc| (proc.pid, proc.ppid))
             .collect();
-        // An empty unit is a host stopping, so it's left until it starts again.
-        if procs.is_empty() {
+        let Some(pid) = hosts::host_of(&procs) else {
+            // An empty unit is a host stopping; one with two roots is something else, said once.
+            if !procs.is_empty() && ranks.hosts.unclear.insert(unit.to_owned()) {
+                eprintln!("Not ranking {unit}: it holds no one process that started it.");
+            }
             continue;
-        }
-        // One with two roots, as a command its started process left behind makes, still holds
-        // what a window shows and the orchestrators its roots run, so every root is counted, and
-        // the doubt said once.
-        let roots = hosts::roots(&procs);
-        let pid = hosts::host_of(&procs);
-        if pid.is_none() && ranks.hosts.unclear.insert(unit.to_owned()) {
-            eprintln!("Ranking {unit} by all its roots: no one process in it started it.");
-        }
+        };
         seen.push(unit.to_owned());
-        let own = own_of(unit, pid, now, total, ranks);
-        let (orchestrators, marked) = hosts::counted(&roots, &ranks.orchestrating, |root| {
-            windows.dir.join(root.to_string()).exists()
+        let own = ranks.hosts.own(unit, pid, now, || {
+            let output = Command::new("systemctl")
+                .args(["--user", "cat", "--", unit])
+                .stderr(Stdio::null())
+                .output()
+                .ok()?;
+            output
+                .status
+                .success()
+                .then(|| hosts::own(&String::from_utf8_lossy(&output.stdout), total))
         });
         let signs = hosts::Signs {
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
-            shown: shown.iter().filter(|viewed| *viewed == unit).count(),
-            orchestrators,
-            marked,
+            orchestrators: ranks.orchestrating.get(&pid).copied().unwrap_or(0),
+            marked: windows.dir.join(pid.to_string()).exists(),
             current: fs::read_to_string(path.join("memory.current"))
                 .ok()
                 .and_then(|text| text.trim().parse().ok()),
-            // Busy commands are moved out of hosts' units alone (`looked_at`).
-            keeps_its_work: windows
-                .conversations
-                .is_some_and(|(conversations, _)| unit.starts_with(conversations)),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
         if !ranks.hosts.changed(unit, &rank) {
@@ -1377,9 +1369,8 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         {
             Ok(output) if output.status.success() => {
                 eprintln!(
-                    "Ranked {unit} at weight {}, floor {}: {} windows Joel's at of {} showing it, \
-                     {} orchestrators.",
-                    rank.weight, rank.floor, signs.viewed, signs.shown, signs.orchestrators
+                    "Ranked {unit} at weight {}, floor {}: {} windows Joel's at, {} orchestrators.",
+                    rank.weight, rank.floor, signs.viewed, signs.orchestrators
                 );
                 ranks.hosts.done(unit, rank);
             }
@@ -1399,95 +1390,6 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         }
     }
     ranks.hosts.keep_only(&seen);
-}
-
-/// The settings `unit`, started by `pid` when one process did, holds of
-/// its own, read with `systemctl cat` once a minute and again when its
-/// host restarts. An instance's are its template's, so they're read once
-/// for them all and kept while any instance runs (`Hosts::keep_only`),
-/// rather than read for each every minute.
-fn own_of(
-    unit: &str,
-    pid: Option<u32>,
-    now: std::time::Instant,
-    total: u64,
-    ranks: &mut Ranks,
-) -> own::Own {
-    let template = own::template(unit);
-    let source = template.as_deref().unwrap_or(unit);
-    let reader = if template.is_some() {
-        0
-    } else {
-        pid.unwrap_or(0)
-    };
-    ranks.hosts.own(source, reader, now, || {
-        let output = Command::new("systemctl")
-            .args(["--user", "cat", "--", source])
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        output
-            .status
-            .success()
-            .then(|| own::own(&String::from_utf8_lossy(&output.stdout), total))
-    })
-}
-
-/// The units among `units` each window `held` shows, and each window
-/// shows at all, one for each viewer in it. A window showing a
-/// conversation that runs in a unit of its own gives that unit what it
-/// gives, and its host nothing.
-fn viewers_and_shown(
-    windows: &Windows,
-    prefix: &str,
-    held: &HashSet<String>,
-    units: &[PathBuf],
-) -> (Vec<String>, Vec<String>) {
-    let names: HashSet<&str> = units
-        .iter()
-        .filter_map(|path| path.file_name()?.to_str())
-        .collect();
-    let joins = |words: &[String]| {
-        joins::unit_of(words, prefix, windows.conversations, |unit| {
-            names.contains(unit)
-        })
-    };
-    let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
-    let viewers = windows
-        .under
-        .iter()
-        .flat_map(|slice| viewing.iter().map(|unit| slice.join(unit)))
-        .flat_map(|scope| joined(&scope, &joins))
-        .collect();
-    let shown = windows
-        .under
-        .iter()
-        .flat_map(|slice| homes(slice, windows.prefixes))
-        .filter(|scope| {
-            scope
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|unit| !focus::runs_a_pi(unit, windows.pis))
-        })
-        .flat_map(|scope| joined(&scope, &joins))
-        .collect();
-    (viewers, shown)
-}
-
-/// The units the viewers in `scope` join, as `joins` names each from a
-/// process's command line.
-fn joined(scope: &Path, joins: &impl Fn(&[String]) -> Option<String>) -> Vec<String> {
-    samples(scope)
-        .into_iter()
-        .filter_map(|proc| {
-            let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
-            let words: Vec<String> = words
-                .split(|byte| *byte == 0)
-                .map(|word| String::from_utf8_lossy(word).into_owned())
-                .collect();
-            joins(&words)
-        })
-        .collect()
 }
 
 /// The machine's memory in bytes, as /proc/meminfo says, which a floor
@@ -1549,7 +1451,7 @@ fn keep_windows(
     // each, for `rank_hosts`.
     *orchestrating = hosts::orchestrating(&presences, boot.trim(), runs);
     let mut warned = keeping.failed;
-    let windows: Vec<(String, keep::Floor)> = under
+    let windows: Vec<(String, bool)> = under
         .iter()
         .flat_map(|slice| homes(slice, prefixes))
         .filter_map(|scope| {
@@ -1567,8 +1469,7 @@ fn keep_windows(
                 );
                 keep::adjust(proc, pid, wanted, &mut warned);
             }
-            let orchestrates = pis.iter().any(|pid| orchestrators.contains(pid));
-            Some((unit, keep::floor_of(pis.len(), orchestrates)))
+            Some((unit, pis.iter().any(|pid| orchestrators.contains(pid))))
         })
         .collect();
     keeping.failed = warned;
@@ -1580,29 +1481,20 @@ fn keep_windows(
     );
     // A window held as one Joel is at has a floor over an orchestrator's,
     // and is kept again once it's given back.
-    for (unit, floor) in keeping
+    for (unit, keep) in keeping
         .changes(&windows)
         .into_iter()
         .filter(|(unit, _)| !holding.holds(unit))
     {
         match Command::new("busctl")
-            .args(keep::keep_call(&unit, floor))
+            .args(keep::keep_call(&unit, keep))
             .stdout(Stdio::null())
             .output()
         {
             Ok(output) if output.status.success() => {
-                keeping.done(&unit, floor);
-                let says = match floor {
-                    keep::Floor::Orchestrator => "an orchestrator's window",
-                    keep::Floor::Pi => "a pi's window, softly",
-                    keep::Floor::Nothing => "which runs no pi",
-                };
-                let did = if floor == keep::Floor::Nothing {
-                    "Gave back"
-                } else {
-                    "Kept"
-                };
-                eprintln!("{did} {unit}, {says}.");
+                keeping.done(&unit, keep);
+                let says = if keep { "Kept" } else { "Gave back" };
+                eprintln!("{says} {unit}, an orchestrator's window.");
             }
             Ok(output) => {
                 if !std::mem::replace(&mut keeping.failed, true) {
@@ -1932,8 +1824,6 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         calls_elsewhere: None,
         niri: None,
         hosts: None,
-        conversations: None,
-        slots: None,
         sessions: None,
         sends: Vec::new(),
     };
@@ -1974,8 +1864,6 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--calls-elsewhere" => settings.calls_elsewhere = Some(elsewhere_from(&value()?)?),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
             "--hosts" => settings.hosts = Some(value()?),
-            "--conversations" => settings.conversations = Some(value()?),
-            "--slots" => settings.slots = Some(PathBuf::from(value()?)),
             "--sessions" => settings.sessions = Some(value()?),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => settings.low_weight = number(&value()?, "--low-weight is a weight")?,
@@ -2019,14 +1907,6 @@ fn paired(settings: Settings) -> Result<Settings, Failure> {
     if settings.sessions.is_some() && settings.weigh.is_empty() {
         return Err(wrongly(
             "--sessions names a session's scope by a --weigh prefix, and none is given",
-        ));
-    }
-    // A conversation's unit is found from its session's slot, and ranked beside its host's.
-    if settings.conversations.is_some() != settings.slots.is_some()
-        || (settings.conversations.is_some() && settings.hosts.is_none())
-    {
-        return Err(wrongly(
-            "--conversations ranks a host's conversations' units beside --hosts, by --slots",
         ));
     }
     Ok(settings)
@@ -2098,28 +1978,6 @@ mod settings_tests {
             .is_err(),
             "a name longer than the kernel keeps, which nothing could match, is refused"
         );
-    }
-
-    #[test]
-    fn conversations_take_their_slots_beside_the_hosts_and_neither_alone() {
-        let got = settings(
-            "--hosts pi-host- --conversations pi-conversation- --slots /run/pi-host"
-                .split_whitespace()
-                .map(str::to_owned),
-        )
-        .expect("all three are given");
-        assert_eq!(got.conversations.as_deref(), Some("pi-conversation-"));
-        assert_eq!(got.slots, Some(std::path::PathBuf::from("/run/pi-host")));
-        for alone in [
-            "--hosts pi-host- --conversations pi-conversation-",
-            "--hosts pi-host- --slots /run/pi-host",
-            "--conversations pi-conversation- --slots /run/pi-host",
-        ] {
-            assert!(
-                settings(alone.split_whitespace().map(str::to_owned)).is_err(),
-                "{alone} is refused"
-            );
-        }
     }
 
     #[test]
@@ -2510,10 +2368,6 @@ fn run(settings: &Settings) -> Result<(), String> {
                     weight: settings.low_weight,
                     focus: following.as_ref(),
                     hosts: settings.hosts.as_deref(),
-                    conversations: settings
-                        .conversations
-                        .as_deref()
-                        .zip(settings.slots.as_deref()),
                     pis: &settings.weigh,
                 };
                 rest(watch, settings.every, &windows, &mut ranks);
@@ -2782,8 +2636,6 @@ mod tests {
             calls_elsewhere: None,
             niri: None,
             hosts: None,
-            conversations: None,
-            slots: None,
             sessions: None,
             sends: vec![None],
         }
