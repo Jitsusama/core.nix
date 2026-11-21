@@ -545,7 +545,7 @@ pub fn holding(
         Some(all) => held(all, &seen.session, |pid| {
             keeps_running(hosted, is_pi(pid), shows(pid))
         }),
-        None if named_here(&|pid| !is_pi(pid)) => Held::Running,
+        None if named_here(&|pid| !is_pi(pid) && (!shows(pid) || !hosted)) => Held::Running,
         None => Held::Not,
     }
 }
