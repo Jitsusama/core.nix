@@ -552,7 +552,7 @@ Singleton {
     // automatic, you decided that by yourself"); on 11-01 he had chosen
     // to reopen them by hand.
     readonly property var lastBoot: offered.filter(one => one.way === "boot")
-        .map(one => one.session)
+        .map(one => root.wayCame(one))
 
     // The sessions offered apart from the last boot's, whatever the boot,
     // until each runs here, and never put off with the last boot's
@@ -560,7 +560,13 @@ Singleton {
     // away, and those pi's host gave back, so they run in plain pi again
     // (2QZBX9, [44e65ce0]). The newest first, as the daemon orders them.
     readonly property var apart: offered.filter(one => one.way !== "boot")
-        .map(one => one.session)
+        .map(one => root.wayCame(one))
+    // Each offered session with the way it came, which decides whether one
+    // kept nowhere comes back without a window (Reopening.broughtBack): on
+    // 2026-11-21 the session alone went on, and two kept nowhere got one.
+    function wayCame(one) {
+        return Object.assign({}, one.session, { way: one.way });
+    }
 
     // Every session there is to reopen: the last boot's, then those apart.
     readonly property var toReopen: lastBoot.concat(apart)
