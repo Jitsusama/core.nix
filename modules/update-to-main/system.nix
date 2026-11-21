@@ -322,9 +322,10 @@ in
         holdRestarts' daemons wait, such as one a person's windows run
         under. A unit sd-switch keeps isn't restarted, so it needs no
         grant: one whose new [Unit] section, drop-ins included, says
-        `X-SwitchMethod=keep-old`, or with no method says
-        `X-RestartIfChanged=false`, and doesn't refuse a manual start. The
-        running unit stays as it was until it next starts. Such a unit, as the example is while it keeps
+        `X-SwitchMethod=keep-old`, or names no method and says
+        `X-RestartIfChanged=false` without `X-ReloadIfChanged=true`, and
+        doesn't refuse a manual start. The running unit stays as it was
+        until it next starts. Such a unit, as the example is while it keeps
         old, is held only once it stops saying so. NixOS only.
       '';
     };

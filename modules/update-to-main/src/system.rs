@@ -1348,10 +1348,18 @@ pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) 
 /// order (sd-switch 0.6.4's `UnitFile::switch_method`): a unit refusing a
 /// manual start is stopped; a set `X-SwitchMethod` decides; else the legacy
 /// keys, where `X-ReloadIfChanged=true` reloads before
-/// `X-RestartIfChanged=false` keeps.
+/// `X-RestartIfChanged=false` keeps. A drop-in that won't read as text
+/// keeps nothing, since sd-switch fails on it rather than skip it, and its
+/// method can't be known.
 fn keeps_old(file: &str, drop_ins: &BTreeMap<String, Option<String>>) -> bool {
     const YES: &[&str] = &["1", "yes", "y", "true", "t", "on"];
     const NO: &[&str] = &["0", "no", "n", "false", "f", "off"];
+    if drop_ins
+        .iter()
+        .any(|(name, text)| is_drop_in(name) && text.is_none())
+    {
+        return false;
+    }
     let says = |key| unit_says(file, drop_ins, key);
     let is = |key, truth: &[&str]| {
         says(key).is_some_and(|value| truth.contains(&value.to_ascii_lowercase().as_str()))
@@ -1365,6 +1373,12 @@ fn keeps_old(file: &str, drop_ins: &BTreeMap<String, Option<String>>) -> bool {
     }
 }
 
+/// Whether a file in a unit's `.d` folder is one of its drop-ins: `.conf`
+/// alone, as written, as sd-switch and systemd read them; `.CONF` isn't.
+fn is_drop_in(name: &str) -> bool {
+    Path::new(name).extension().is_some_and(|e| e == "conf")
+}
+
 /// What a unit's `[Unit]` section says `key` is, as sd-switch reads it, as
 /// systemd does: the file, then its `.conf` drop-ins in name order, the
 /// last saying it winning, so a drop-in setting another method is heard.
@@ -1373,8 +1387,7 @@ fn unit_says(file: &str, drop_ins: &BTreeMap<String, Option<String>>, key: &str)
     let read = std::iter::once(file).chain(
         drop_ins
             .iter()
-            // systemd reads `.conf` alone, as written: `.CONF` isn't one.
-            .filter(|(name, _)| Path::new(name).extension().is_some_and(|e| e == "conf"))
+            .filter(|(name, _)| is_drop_in(name))
             .filter_map(|(_, text)| text.as_deref()),
     );
     for text in read {
