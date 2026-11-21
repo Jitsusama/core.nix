@@ -229,9 +229,11 @@ fn waited(flag: &(Mutex<bool>, Condvar), by: Instant) -> bool {
 /// Call `end` on a thread of its own, waiting for it up to `within`, as a
 /// stop waits on the followers' end, and say so when it hasn't returned:
 /// as health ends by a fault, a follower stuck past its kill, on a stalled
-/// disk, would otherwise hold it for good, its error unsaid and its
-/// service never started again. Says whether it returned in time. Where
-/// no thread starts, `end` is called here all the same, unbounded.
+/// disk, would otherwise hold it for good, its error unsaid and the unit
+/// active, so never started again. Now it exits, and systemd starts it
+/// again once the stuck follower's group has cleared, the unit stopping
+/// until then. Says whether it returned in time. Where no thread starts,
+/// `end` is called here all the same, unbounded.
 pub(crate) fn ended_within(end: impl FnOnce() + Send + 'static, within: Duration) -> bool {
     let (ended, waited) = mpsc::channel();
     let end = Arc::new(Mutex::new(Some(end)));
@@ -253,7 +255,8 @@ pub(crate) fn ended_within(end: impl FnOnce() + Send + 'static, within: Duration
     let returned = waited.recv_timeout(within).is_ok();
     if !returned {
         crate::source::fail(&format!(
-            "health: left a follower running, as it hadn't ended {within:?} after its kill"
+            "health: may have left a follower running, as ending them hadn't returned \
+             {within:?} on"
         ));
     }
     returned

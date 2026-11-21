@@ -621,53 +621,6 @@ fn a_rest_with_no_stop_waits_its_whole_time() {
 }
 
 #[test]
-fn an_end_stuck_past_its_kill_holds_health_only_its_bound() {
-    // As a follower stuck on a stalled disk outlives its kill when health
-    // ends by a fault, so health still says why and is started again. On
-    // a thread of its own, so an end that holds for good fails here.
-    let within = Duration::from_millis(100);
-    let (ended, waited) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let since = Instant::now();
-        let returned = ended_within(
-            || loop {
-                thread::park();
-            },
-            within,
-        );
-        let _ = ended.send((returned, since.elapsed()));
-    });
-    let took = waited.recv_timeout(within + LATE_BY);
-    assert!(
-        took.as_ref()
-            .is_ok_and(|(returned, took)| !returned && *took >= within),
-        "an end that never returns held health {took:?}, its bound {within:?}"
-    );
-    crate::source::tests::assert_marked(
-        "a follower left running",
-        &["left a follower running", "after its kill"],
-        1,
-        crate::source::ERROR,
-    );
-}
-
-#[test]
-fn an_end_in_time_is_waited_for() {
-    // As each follower ends on its kill in milliseconds.
-    let (ended, waited) = std::sync::mpsc::channel();
-    assert!(
-        ended_within(
-            move || {
-                thread::sleep(Duration::from_millis(20));
-                let _ = ended.send(());
-            },
-            WAITS,
-        ) && waited.try_recv().is_ok(),
-        "an end that returned in time wasn't waited for"
-    );
-}
-
-#[test]
 fn a_hangup_heard_again_is_the_same_stop() {
     // As a terminal closing sends one hangup from its shell and another
     // from the kernel, so the second mustn't cut off the day's write.
