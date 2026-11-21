@@ -75,7 +75,7 @@ pub fn witnessed(folder: &Path) -> Result<HashSet<Read>, String> {
             Some((written, fs::read_to_string(file.path()).ok()?))
         })
         .collect();
-    texts.sort_by(|a, b| b.0.cmp(&a.0));
+    texts.sort_by_key(|text| std::cmp::Reverse(text.0));
     let newest = &texts[..texts.len().min(SHAPE_JUDGED_BY)];
     if !newest.is_empty() && !newest.iter().any(|(_, text)| shaped(text)) {
         return Err(format!(
@@ -300,7 +300,7 @@ mod tests {
         ] {
             assert!(read(&[round(&extra)]).is_empty(), "{extra}");
         }
-        assert!(read_in("not json").is_empty());
+        assert_eq!(read_in("not json"), Vec::<Read>::new());
     }
 
     // A change's rounds read its commit; a range's read it from the
