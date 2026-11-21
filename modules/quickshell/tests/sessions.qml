@@ -343,6 +343,23 @@ ShellRoot {
         expect("one in a terminal it can't reach is said, never a press that does nothing",
             root.unreached === "ELSETERM" && Niri.spawns.length === before + 1,
             `${root.unreached} ${Niri.spawned.join(" ")}`);
+        // A row's own Reopen for one no host serves yet, as just after a
+        // crash, views it by its entry's words to wait for its host, once
+        // while that window comes; one whose entry gives none is said.
+        const view = ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
+            "--session", "s-row-waiting"];
+        Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
+        const rowAsk = asked(Niri.spawned.join(" "));
+        expect("a row's Reopen with no host views it by its entry's words, to wait",
+            Niri.spawns.length === before + 2 && rowAsk !== null
+            && rowAsk.classed === "pi-hosted.s-row-waiting"
+            && rowAsk.words.endsWith(view.join(" ")),
+            Niri.spawns.slice(before).join("\n"));
+        Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
+        Sessions.reopen({ id: "s-row-wordless", cwd: "/tmp", hosted: true });
+        expect("viewed once while it comes, and one with no words is said",
+            Niri.spawns.length === before + 2 && root.unhosted === "s-row-wordless",
+            `${root.unhosted} ${Niri.spawns.slice(before).join("\n")}`);
         holdsAlone();
     }
 
