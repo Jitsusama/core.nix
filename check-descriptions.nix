@@ -1868,6 +1868,14 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  local-name-comes-back = ''
+    a Mac macOS renamed gets its declared local name back, said once with what it was, and a name
+    already right is left unwritten
+  '';
+  local-name-is-kept-by-a-job = ''
+    a Mac with a local name runs a root job that sets it back whenever macOS writes its network
+    settings and once a minute, and a Mac with none runs nothing
+  '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
     daemon's records held as its watch tells them, a feed's watch saying connecting, live, broken

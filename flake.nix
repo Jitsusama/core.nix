@@ -331,6 +331,7 @@
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
         linux-builder = ./modules/linux-builder/darwin.nix;
+        local-name = ./modules/local-name/darwin.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         netconsole = ./modules/netconsole/darwin.nix;
