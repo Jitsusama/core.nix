@@ -1583,7 +1583,8 @@ Scope {
         into("agents");
         ask(offer.act, offer.words);
         prompt.linked(true);
-        offerHeld = { depth: held.length, told: JSON.stringify(told) };
+        // The foot itself, to say again with its colours, and as words, to know it's said.
+        offerHeld = { depth: held.length, foot: told, told: JSON.stringify(told) };
         return { done: true, said: `${offer.act.name} \u203a ${offer.words}`,
             from: offer.from?.address ?? null };
     }
@@ -3391,8 +3392,9 @@ Scope {
     // Where a page offered words (newWork), and what the foot says of it,
     // which stays while its line is held, past the keys Joel types, so he
     // reads where the words came from as he checks them and presses Return
-    // (Y2YBTS, 2026-11-20); something else said, the line left (onHeldChanged) or its words
-    // given (give) ends it, so it never stands over a line it didn't offer.
+    // (Y2YBTS, 2026-11-20); something else said puts it aside until a held Return says it
+    // again (sayOffer), and the line left (onHeldChanged) or its words given (give) ends it,
+    // so it never stands over a line it didn't offer.
     property var offerHeld: null
     readonly property bool offerSaid: offerHeld !== null && held.length === offerHeld.depth
         && JSON.stringify(saying) === offerHeld.told
@@ -3404,7 +3406,7 @@ Scope {
     // another word took the foot's place (Prompt's endWaited).
     function sayOffer() {
         if (offerHeld !== null && held.length === offerHeld.depth)
-            say(JSON.parse(offerHeld.told), true);
+            say(offerHeld.foot, true);
     }
     function say(keys, loose) {
         saying = keys;
@@ -4221,7 +4223,8 @@ Scope {
         Qt.callLater(rowsPlaced);
         // Leaving the line a page offered ends its foot and its Return's wait, so a line
         // reached later at the same depth isn't said to be a page's.
-        if (offerHeld !== null && held.length !== offerHeld.depth) {
+        const leftOffer = offerHeld !== null && held.length !== offerHeld.depth;
+        if (leftOffer) {
             offerHeld = null;
             prompt.endWaits = false;
         }
@@ -4244,11 +4247,16 @@ Scope {
                 flash.stop();
                 flashing = {};
             }
-            lastPlace = { held: left, here: here() };
+            // The line a page offered keeps none of its words on the way back, so Ctrl+O and
+            // Ctrl+I never bring them back without their foot or Return's wait (council F60).
+            const kept = here();
+            if (leftOffer)
+                kept.typed = "";
+            lastPlace = { held: left, here: kept };
             // A place stepped to afresh goes on the way back, and leaves
             // nothing ahead, as Vim's jump list does.
             if (!jumping) {
-                jumpsBack = jumpsBack.concat([{ held: left, here: here() }]);
+                jumpsBack = jumpsBack.concat([{ held: left, here: kept }]);
                 jumpsAhead = [];
             }
         }
