@@ -411,6 +411,12 @@ impl Config {
     /// be mistaken for, or logs found by anything but a whole path.
     fn check_machines(&self) -> Result<(), String> {
         let here = self.machine();
+        // Shown as written, so "teal " here would stand beside a teal.
+        if here.trim() != here {
+            return Err(format!(
+                "this machine's name has no spaces around it: {here:?}"
+            ));
+        }
         if here == ELSEWHERE || here.ends_with(NO_MACHINE) {
             return Err(format!(
                 "this machine's name is its own, not elsewhere or a tool's: {here:?}"
@@ -419,8 +425,24 @@ impl Config {
         let mut names: Vec<&str> = vec![here.as_str(), ELSEWHERE];
         // A folder inside another's would have its logs found twice, under
         // two machines, and so counted twice. Folders are compared where
-        // they really are, so a link can't stand one inside another.
-        let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+        // they really are, so a link can't stand one inside another, and
+        // one not made yet where its nearest folder that is really is.
+        let real = |path: &Path| {
+            let mut rest = Vec::new();
+            let mut at = path;
+            loop {
+                if let Ok(real) = std::fs::canonicalize(at) {
+                    return rest.iter().rev().fold(real, |real, part| real.join(part));
+                }
+                match (at.parent(), at.file_name()) {
+                    (Some(parent), Some(part)) => {
+                        rest.push(part.to_owned());
+                        at = parent;
+                    }
+                    _ => return path.to_owned(),
+                }
+            }
+        };
         let mut folders: Vec<PathBuf> = vec![real(&self.sessions)];
         for machine in &self.machines {
             let name = machine.name.trim();
@@ -767,7 +789,7 @@ mod tests {
             with_machines(&serde_json::json!([machine("teal"), machine("teal")])).is_err(),
             "two machines of one name were taken"
         );
-        for here in ["elsewhere", "codex (no machine)"] {
+        for here in ["elsewhere", "codex (no machine)", "slate ", " slate"] {
             let config = serde_json::json!({
                 "sessions": "/s", "runs": "/r", "registry": "/g", "quests": "/q",
                 "state": "/t", "machine": here,
@@ -832,6 +854,15 @@ mod tests {
         assert!(
             with_machines(&linked).is_err(),
             "a link to another machine's folder was taken as a folder of its own"
+        );
+        // Not made until the daemon starts, so compared where they'd be.
+        let unmade = serde_json::json!([
+            at("teal", &dir.path().join("a/x").to_string_lossy()),
+            at("ochre", &dir.path().join("b/x/y").to_string_lossy()),
+        ]);
+        assert!(
+            with_machines(&unmade).is_err(),
+            "a folder not made yet, through a link into another's, was taken as its own"
         );
     }
 

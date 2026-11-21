@@ -105,6 +105,20 @@ CREATE TABLE unresolved (session TEXT NOT NULL, at REAL NOT NULL, budget TEXT NO
     };
 }
 
+/// Each turn, refusal and unresolved budget once, whichever log said it.
+/// A session copied to another machine and gone on there keeps its id, so
+/// both machines' logs hold the turns from before the copy, and each holds
+/// its own after; read together they're the session's turns once.
+macro_rules! once {
+    () => {
+        "
+CREATE UNIQUE INDEX turns_once ON turns (session, at, model);
+CREATE UNIQUE INDEX refusals_once ON refusals (session, at, model);
+CREATE UNIQUE INDEX unresolved_once ON unresolved (session, at, budget);
+"
+    };
+}
+
 /// Each time an allowance went over: from when, until when it came back
 /// under (none while it's over), and what every source said as it went,
 /// kept here as well as in the report written from it.
@@ -208,8 +222,18 @@ const UPGRADES: [&str; 9] = [
     ),
     crossings!(),
     unresolved!(),
-    // A session read before machines were is this machine's.
-    "ALTER TABLE sessions ADD COLUMN machine TEXT;",
+    concat!(
+        // A session read before machines were is this machine's, and a
+        // turn kept twice before is kept once.
+        "ALTER TABLE sessions ADD COLUMN machine TEXT;
+         DELETE FROM turns WHERE rowid NOT IN
+             (SELECT MIN(rowid) FROM turns GROUP BY session, at, model);
+         DELETE FROM refusals WHERE rowid NOT IN
+             (SELECT MIN(rowid) FROM refusals GROUP BY session, at, model);
+         DELETE FROM unresolved WHERE rowid NOT IN
+             (SELECT MIN(rowid) FROM unresolved GROUP BY session, at, budget);",
+        once!()
+    ),
 ];
 
 const TABLES: &str = concat!(
@@ -275,7 +299,8 @@ CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
     id INTEGER NOT NULL, withdrawn REAL);
 ",
     crossings!(),
-    hours!()
+    hours!(),
+    once!()
 );
 
 pub struct History {
@@ -491,20 +516,10 @@ impl History {
             .and_then(|(offset, carry)| Some((u64::try_from(offset).ok()?, carry)))
     }
 
-    /// The log other than `path` whose turns a session's are, if one is.
-    pub fn held_by(&self, session: &str, path: &str) -> Option<String> {
-        self.db
-            .query_row(
-                "SELECT path FROM files WHERE session = ?1 AND path != ?2 LIMIT 1",
-                params![session, path],
-                |row| row.get(0),
-            )
-            .optional()
-            .ok()
-            .flatten()
-    }
-
     /// Forgets a log's turns, for one replaced or read again from its start.
+    /// Its session's turns are forgotten whole, so every other log of that
+    /// session is read again from its start too, to put back the turns only
+    /// it holds.
     pub fn forget_file(&self, path: &str) -> Result<(), String> {
         let session: Option<String> = self
             .db
@@ -523,6 +538,9 @@ impl History {
                 .map_err(sql)?;
             self.db
                 .execute("DELETE FROM unresolved WHERE session = ?1", [&session])
+                .map_err(sql)?;
+            self.db
+                .execute("DELETE FROM files WHERE session = ?1", [&session])
                 .map_err(sql)?;
         }
         self.db
@@ -561,11 +579,19 @@ impl History {
                 kind,
                 machine,
             } => {
-                // A log read again keeps the name its session was given.
+                // A log read again keeps the name its session was given. A
+                // session with a log here is this machine's, whichever log
+                // was read first; one only elsewhere is the machine's whose
+                // log was read from its start last, so a machine renamed, or
+                // its logs brought somewhere new, takes its sessions along.
                 self.db
                     .execute(
-                        "INSERT OR REPLACE INTO sessions VALUES (?1, ?2, ?3, ?4, ?5,
-                         (SELECT name FROM sessions WHERE id = ?1), ?6)",
+                        "INSERT INTO sessions VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)
+                         ON CONFLICT (id) DO UPDATE SET cwd = excluded.cwd,
+                             repo = excluded.repo, started = excluded.started,
+                             kind = excluded.kind,
+                             machine = CASE WHEN sessions.machine IS NULL THEN NULL
+                                 ELSE excluded.machine END",
                         params![id, cwd, crate::logs::repo_of(cwd), at, kind, machine],
                     )
                     .map_err(sql)?;
@@ -581,7 +607,8 @@ impl History {
             Event::Turn(turn) => {
                 self.db
                     .execute(
-                        "INSERT INTO turns VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                        "INSERT OR IGNORE INTO turns VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                         ?10, ?11,
                          ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                         params![
                             turn.session,
@@ -616,7 +643,7 @@ impl History {
             } => {
                 self.db
                     .execute(
-                        "INSERT INTO refusals VALUES (?1, ?2, ?3, ?4)",
+                        "INSERT OR IGNORE INTO refusals VALUES (?1, ?2, ?3, ?4)",
                         params![session, at, model, said],
                     )
                     .map_err(sql)?;
@@ -629,7 +656,7 @@ impl History {
             } => {
                 self.db
                     .execute(
-                        "INSERT INTO unresolved VALUES (?1, ?2, ?3, ?4)",
+                        "INSERT OR IGNORE INTO unresolved VALUES (?1, ?2, ?3, ?4)",
                         params![session, at, budget, missing],
                     )
                     .map_err(sql)?;
@@ -965,6 +992,7 @@ mod tests {
             .replace(crossings!(), "")
             .replace(unresolved!(), "")
             .replace(SESSIONS_10, "")
+            .replace(once!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1121,8 +1149,13 @@ mod tests {
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace(unresolved!(), "").replace(SESSIONS_10, ""))
-                .unwrap();
+            db.execute_batch(
+                &TABLES
+                    .replace(unresolved!(), "")
+                    .replace(SESSIONS_10, "")
+                    .replace(once!(), ""),
+            )
+            .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '8');
                  INSERT INTO refusals VALUES ('s1', 1.0, 'm', 'over');",
@@ -1159,10 +1192,15 @@ mod tests {
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace(SESSIONS_10, "")).unwrap();
+            db.execute_batch(&TABLES.replace(SESSIONS_10, "").replace(once!(), ""))
+                .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '9');
-                 INSERT INTO sessions VALUES ('here', '/x', 'x', 1.0, NULL, NULL);",
+                 INSERT INTO sessions VALUES ('here', '/x', 'x', 1.0, NULL, NULL);
+                 INSERT INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'person', NULL,
+                     1, 1, 0, 0, 0, 2.0, 0, 0, NULL, 0, 0, NULL, NULL);
+                 INSERT INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'person', NULL,
+                     1, 1, 0, 0, 0, 2.0, 0, 0, NULL, 0, 0, NULL, NULL);",
             )
             .unwrap();
         }
@@ -1189,6 +1227,17 @@ mod tests {
             machines,
             [("here".into(), None), ("there".into(), Some("teal".into()))],
             "a session kept before machines wasn't this machine's, or one read after lost its own"
+        );
+        let (turns, cost): (i64, f64) = history
+            .db
+            .query_row("SELECT turns, cost FROM turn_hours", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(
+            (turns, cost),
+            (1, 2.0),
+            "a turn kept twice before machines wasn't kept once, with its hour's sum"
         );
     }
 

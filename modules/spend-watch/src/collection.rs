@@ -367,11 +367,15 @@ fn cuts_for(picture: &Picture, period: Period) -> impl Iterator<Item = Cut> {
     let (from, to) = period.days(&picture.zone, picture.now);
     // Spend another machine made, not just a turn of its: a turn on a plan
     // costs nothing here, and a cut drops a row too small to show, which
-    // would leave this machine's work alone dressed as one of several.
-    let others = picture
-        .between(from, to)
-        .iter()
-        .any(|piece| !piece.machine.is_empty() && piece.dollars >= SHOWN);
+    // would leave this machine's work alone dressed as one of several. A
+    // row is a machine's whole spend in the period, so that's what's told.
+    let mut spent: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+    for piece in picture.between(from, to) {
+        if !piece.machine.is_empty() {
+            *spent.entry(piece.machine.as_str()).or_default() += piece.dollars;
+        }
+    }
+    let others = spent.values().any(|dollars| *dollars >= SHOWN);
     Cut::ALL.into_iter().filter(move |cut| match cut {
         Cut::Day => !one_day,
         Cut::Machine => others,
@@ -2194,6 +2198,48 @@ mod tests {
             (false, false),
             "a day another machine only took turns on a plan in was cut by machine"
         );
+        // Two pieces of a machine's, each too small to show alone, sum to
+        // a row that shows, and the cut is that row's.
+        let (start, count) = {
+            let today = picture.between(from, to);
+            let start = picture
+                .pieces
+                .iter()
+                .position(|piece| std::ptr::eq(piece, &today[0]))
+                .unwrap();
+            (start, today.len())
+        };
+        let small: Vec<usize> = (start..start + count)
+            .filter(|&at| picture.pieces[at].machine.is_empty())
+            .take(2)
+            .collect();
+        assert_eq!(
+            small.len(),
+            2,
+            "the fixture's day has no two pieces to share"
+        );
+        let before: Vec<(String, f64)> = small
+            .iter()
+            .map(|&at| {
+                (
+                    picture.pieces[at].machine.clone(),
+                    picture.pieces[at].dollars,
+                )
+            })
+            .collect();
+        for &at in &small {
+            "ochre".clone_into(&mut picture.pieces[at].machine);
+            picture.pieces[at].dollars = SHOWN * 0.6;
+        }
+        assert_eq!(
+            machine_lines(&picture, Period::Today),
+            (true, true),
+            "a machine whose pieces sum past what shows wasn't cut by machine"
+        );
+        for (&at, (machine, dollars)) in small.iter().zip(before) {
+            picture.pieces[at].machine = machine;
+            picture.pieces[at].dollars = dollars;
+        }
         let piece = picture
             .pieces
             .iter_mut()
