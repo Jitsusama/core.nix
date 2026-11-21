@@ -160,6 +160,12 @@ fn quiet(seconds: f32) -> Vec<f32> {
     tone(seconds, 0.0004, 1.3)
 }
 
+/// `seconds` of a 60 Hz mains hum far under any speech, at -83 dBFS.
+#[expect(clippy::cast_precision_loss, reason = "the sample rate is small")]
+fn hum(seconds: f32) -> Vec<f32> {
+    tone(seconds, 0.0001, std::f32::consts::TAU * 60.0 / RATE as f32)
+}
+
 fn cut(sound: &[f32]) -> Vec<Take> {
     let mut cutter = Cutter::new();
     let mut takes = Vec::new();
@@ -405,7 +411,11 @@ fn a_short_answer_after_a_dropped_part_of_a_frame_is_a_take() {
             quiet(2.0),
         ]
         .concat();
-        assert_eq!(cut(&sound).len(), 1, "the answer in the hiss, {into} samples in");
+        assert_eq!(
+            cut(&sound).len(),
+            1,
+            "the answer in the hiss, {into} samples in"
+        );
     }
 }
 
@@ -444,8 +454,10 @@ fn a_soft_answer_on_a_line_idling_on_a_faint_hum_is_a_take() {
     // under nothing's size for a millisecond at each crossing, yet its
     // frames are its floor, not nothing cut into: a soft answer after
     // its talk, 20 dB under it, is speech.
-    let hum = |seconds| tone(seconds, 0.0001, std::f32::consts::TAU * 60.0 / RATE as f32);
-    let soft: Vec<f32> = voice(0.3, 150.0).iter().map(|sample| sample * 0.1).collect();
+    let soft: Vec<f32> = voice(0.3, 150.0)
+        .iter()
+        .map(|sample| sample * 0.1)
+        .collect();
     let sound = [hum(2.0), voice(2.0, 150.0), hum(1.0), soft, hum(1.0)].concat();
     assert_eq!(cut(&sound).len(), 2, "the talk and the soft answer");
 }
