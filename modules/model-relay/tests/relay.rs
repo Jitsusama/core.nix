@@ -3221,9 +3221,9 @@ async fn an_origin_it_cant_trust_sends_pi_direct() {
     let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
 
     assert_eq!(
-        got.status,
-        StatusCode::MISDIRECTED_REQUEST,
-        "a fault of the relay's own was said as the origin's"
+        (got.status, got.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, CANT_CARRY_WORDS),
+        "a fault of the relay's own wasn't sent direct in the words pi goes direct on"
     );
     drop(relay.said());
 }
