@@ -293,8 +293,10 @@ fn run(context: &Context) -> Result<(), Failure> {
     let call = figures::call(&mine, &far, &clicks);
     let at = seconds_now();
     let watched = state().join("lag-watch");
-    let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST);
-    let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST);
+    let ran =
+        history::ran(&std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default());
+    let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
+    let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
     let measures = hour::measures(
         &call,
         call::STAND_IN,

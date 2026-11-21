@@ -30,9 +30,11 @@ pub struct Waits {
 /// those up to `longest` after the last hour's began, an hour before, when
 /// that one may still have been running. Those windows hold a test's own
 /// two browsers, and a test's minutes are more than the hour's top 1%, so
-/// its p99 could be a test's load alone. Its files are named by the UTC
-/// day, so the newest two hold the last hour whenever it falls.
-pub fn waits(folder: &Path, label: &str, began: u64, longest: u64) -> Waits {
+/// its p99 could be a test's load alone. Every earlier test `ran` names,
+/// as when the timer fired late after a resume, is left out too. Its files
+/// are named by the UTC day, so the newest two hold the last hour whenever
+/// it falls.
+pub fn waits(folder: &Path, label: &str, began: u64, longest: u64, ran: &[Ran]) -> Waits {
     let mut days: Vec<_> = fs::read_dir(folder)
         .into_iter()
         .flatten()
@@ -48,12 +50,42 @@ pub fn waits(folder: &Path, label: &str, began: u64, longest: u64) -> Waits {
         .filter_map(|path| fs::read_to_string(path).ok())
         .collect::<Vec<_>>()
         .join("\n");
-    of(&text, label, began, longest)
+    of(&text, label, began, longest, ran)
+}
+
+/// When an earlier test call began and ended, in seconds.
+pub type Ran = (u64, u64);
+
+/// How long a lag-watch window is, in seconds: one ending up to this long
+/// after a test ended still holds some of it.
+const WINDOW: u64 = 10;
+
+/// The earlier test calls the hour's own history names, from its lines:
+/// each row's `run.started` and `at`, or, in a stand-in's rows, `at` less
+/// `took_s`.
+pub fn ran(history: &str) -> Vec<Ran> {
+    history
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|row| {
+            let at = row["at"].as_u64()?;
+            let took = row["took_s"]
+                .as_f64()
+                .and_then(|took| std::time::Duration::try_from_secs_f64(took).ok())
+                .map(|took| at.saturating_sub(took.as_secs()));
+            let began = row["run"]["started"].as_u64().or(took)?;
+            Some((began, at))
+        })
+        .collect()
 }
 
 /// The same, from the history's lines.
-pub fn of(lines: &str, label: &str, began: u64, longest: u64) -> Waits {
+pub fn of(lines: &str, label: &str, began: u64, longest: u64, ran: &[Ran]) -> Waits {
     let after = began.saturating_sub(HOUR) + longest;
+    let tested = |ended: u64| {
+        ran.iter()
+            .any(|&(from, to)| ended > from && ended <= to + WINDOW)
+    };
     let mut worst = Vec::new();
     let mut found = Waits::default();
     for window in lines
@@ -61,7 +93,7 @@ pub fn of(lines: &str, label: &str, began: u64, longest: u64) -> Waits {
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
     {
         let ended = window["ended"].as_u64().unwrap_or(0);
-        if ended <= after || ended > began {
+        if ended <= after || ended > began || tested(ended) {
             continue;
         }
         if let Some(us) = window["waits"][label]["worst_us"].as_f64() {
@@ -97,12 +129,12 @@ mod tests {
         lines.push(window(now - 5, Some(40_000.0)));
         // An hour and more ago, and lag-watch's other waits, are left out.
         lines.push(window(now - HOUR - 1, Some(900_000.0)));
-        let waits = of(&lines.join("\n"), "chrome-ui", now, 0);
+        let waits = of(&lines.join("\n"), "chrome-ui", now, 0, &[]);
         assert_eq!(waits.windows, 100);
         assert_eq!(waits.worst_p99, Some(1.0));
         lines.push(window(now - 6, Some(30_000.0)));
         assert_eq!(
-            of(&lines.join("\n"), "chrome-ui", now, 0).worst_p99,
+            of(&lines.join("\n"), "chrome-ui", now, 0, &[]).worst_p99,
             Some(30.0)
         );
     }
@@ -117,11 +149,30 @@ mod tests {
         lines.extend((0..15).map(|i| window(now - i * 10, Some(80_000.0))));
         // The last hour's test, begun an hour before this one, ran 300 s.
         lines.extend((1..=30).map(|i| window(began - HOUR + i * 10, Some(70_000.0))));
-        let waits = of(&lines.join("\n"), "chrome-ui", began, 600);
+        // A test the timer fired late, after a resume, half an hour ago.
+        let late = (now - 1950, now - 1810);
+        lines.extend((0..15).map(|i| window(now - 1800 - i * 10, Some(60_000.0))));
+        let waits = of(&lines.join("\n"), "chrome-ui", began, 600, &[late]);
         assert_eq!(
             (waits.windows, waits.worst_p99),
             (84, Some(1.0)),
             "a window holding a test's own browsers was counted"
+        );
+    }
+
+    #[test]
+    fn the_runs_are_read_from_the_module_s_rows_and_a_stand_in_s() {
+        let history = [
+            json!({"at": 5_000, "run": {"started": 4_800, "seconds": 150}}).to_string(),
+            json!({"at": 9_000, "took_s": 163.4}).to_string(),
+            json!({"at": 9_500}).to_string(),
+            "not json".into(),
+        ]
+        .join("\n");
+        assert_eq!(
+            ran(&history),
+            vec![(4_800, 5_000), (8_837, 9_000)],
+            "a run in the history wasn't read as it was"
         );
     }
 
@@ -137,12 +188,12 @@ mod tests {
             "not json".into(),
         ]
         .join("\n");
-        let chrome = of(&lines, "chrome-ui", now, 0);
+        let chrome = of(&lines, "chrome-ui", now, 0, &[]);
         assert_eq!(
             (chrome.windows, chrome.lowered, chrome.unwatched),
             (1, 1, 0)
         );
-        let slack = of(&lines, "slack-ui", now, 0);
+        let slack = of(&lines, "slack-ui", now, 0, &[]);
         assert_eq!(
             (slack.windows, slack.worst_p99, slack.unwatched),
             (0, None, 1)
@@ -170,7 +221,7 @@ mod tests {
         )
         .unwrap();
         fs::write(root.join("status.json"), window(now - 1, Some(77_000.0))).unwrap();
-        let waits = waits(&root, "chrome-ui", now, 0);
+        let waits = waits(&root, "chrome-ui", now, 0, &[]);
         fs::remove_dir_all(&root).unwrap();
         assert_eq!((waits.windows, waits.worst_p99), (2, Some(5.0)));
     }
