@@ -397,8 +397,11 @@ in
         node = "${pkgs.emptyDirectory}/node";
         proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
       };
+      # jobs-sorter comes with the slices module, which a workstation alone
+      # doesn't import.
       machine = bareNixos [
         self.nixosModules.workstation
+        self.nixosModules.slices
         { home-manager.users.someone.jitsusama.pi = { inherit hosts; }; }
       ];
       home = account machine;
