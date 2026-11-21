@@ -411,6 +411,7 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     went = WENT_BACK.search(said[let_go])
     assert went, f"the line letting it go says no time: {said[let_go]}"
     held = int(went.group(1)) / 1000
+    assert held >= WAY_BACK, f"let go only {held:.3f} s after it was sent back"
     assert held < WAY_BACK + LOADED_SLACK, f"let go {held:.3f} s after it was sent back"
     unheld = first_line(said, "wlan2 may join any access point of its network again", sent)
     assert unheld > let_go, f"its hold let go before its 2 s were up: {said[unheld]}"

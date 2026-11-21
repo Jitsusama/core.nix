@@ -339,6 +339,12 @@ impl Arrivals {
         self.moves.remove(card);
     }
 
+    /// Forgets every card's move, as the wpa_supplicant making them has
+    /// gone.
+    pub fn clear(&mut self) {
+        self.moves.clear();
+    }
+
     /// Takes in a step wpa_supplicant says the card is at, short of joined,
     /// and says if its move has just given up, or was followed too long.
     pub fn step(&mut self, card: &str, step: &str, now: Instant) -> Option<Arrival> {
