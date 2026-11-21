@@ -77,7 +77,7 @@ function shareTurns(saying, heldSaying) {
 
 // What Return does on the selected row, from what `how` says of it: an
 // answer being given is given, a Return doubling a landing does nothing
-// more, and a held row is held before anything else, as every other
+// more, a gone row is only run, and a held row is held before anything else, as every other
 // way in asks it first; then one that arms arms ("arming", for the
 // caller to press), one that steps in is entered, one that ends
 // something is lined, one that changes something is landed on, and any
@@ -88,6 +88,11 @@ function returnAct(how) {
     }
     if (how.landed) {
         return "";
+    }
+    // A row whose thing has gone is only run, which does nothing (Launcher.qml's run): a line
+    // written for it, or an arming, would do it again (C2597D63, 2026-11-20).
+    if (how.gone) {
+        return "ran";
     }
     if (how.held) {
         return "held";

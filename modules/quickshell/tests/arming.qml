@@ -189,6 +189,18 @@ QtObject {
         expect("then lines", Arming.returnAct({ ends: true, lands: true }), "lined");
         expect("then lands", Arming.returnAct({ lands: true }), "landed");
         expect("and otherwise runs", Arming.returnAct({}), "ran");
+        // A row whose thing has gone, as Firmware's Install once it's in
+        // ("restart to finish"), is run, which does nothing, rather than
+        // armed, stepped into, landed on or lined: a line written for it
+        // would do it again (C2597D63, 2026-11-20).
+        expect("a gone row is only run",
+            Arming.returnAct(Object.assign({ gone: true }, every)), "ran");
+        expect("even one held",
+            Arming.returnAct(Object.assign({ gone: true, held: true }, every)), "ran");
+        expect("though an answer being given is still given",
+            Arming.returnAct(Object.assign({ gone: true, asking: true }, every)), "gave");
+        expect("and a Return doubling a landing still does nothing more",
+            Arming.returnAct(Object.assign({ gone: true, landed: true }, every)), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
