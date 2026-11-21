@@ -1,7 +1,14 @@
 # ripgrep, drawn as delta draws a diff: each file named in the strongest
 # colour, line numbers muted, and a match marked as the launcher marks its
-# chosen row, in the selection colour rather than the alert's red.
-{ config, lib, ... }:
+# chosen row, in the selection colour rather than the alert's red. On a Mac,
+# a search of the home folder leaves other apps' data and the folders macOS
+# guards alone.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   inherit (config.jitsusama.theme) colours;
   # ripgrep takes a colour as three hex bytes, 0xrr,0xgg,0xbb.
@@ -29,4 +36,9 @@ in
       "--colors=match:style:nobold"
     ];
   };
+
+  # An ignore file in the home folder, rather than ripgrep's arguments, since
+  # fd reads it too and both read it wherever they start under the home
+  # folder, whatever environment the program that runs them was given.
+  home.file.".ignore" = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin { source = ./ignore; };
 }
