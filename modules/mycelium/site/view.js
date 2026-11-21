@@ -3720,6 +3720,10 @@ import {
       where.textContent = NO_WORDS;
       return;
     }
+    // The Return that sent is held from here, so its repeats, landing on
+    // what opened the line once it closes, neither reopen it nor open a
+    // cell over what was said.
+    sproutHeld = true;
     sproutGo.href = link;
     sproutGo.click();
     sproutKept = { words: sproutInput.value, from };
@@ -3748,25 +3752,31 @@ import {
       sproutFromBox.checked = ticked;
     }
   });
-  // A held s opens the line once; its repeats don't type into the field,
-  // until any key comes up wherever it lands, a fresh key goes down, or
-  // the page loses the keys, where its key can come up unheard.
+  // A held s opens the line once and a held Return sends once: their
+  // repeats go nowhere, wherever focus lands, until any key comes up, a
+  // fresh key goes down, or the page loses the keys, where its key can
+  // come up unheard. A Return held on what opened the line repeats into
+  // it unsent, so the kept words never go again by themselves.
   const sproutLetGo = () => {
     sproutHeld = false;
   };
   document.addEventListener("keyup", sproutLetGo);
   window.addEventListener("blur", sproutLetGo);
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (!e.repeat) sproutLetGo();
+      else if (sproutHeld || (e.key === "Enter" && sproutLine.contains(e.target))) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    { capture: true },
+  );
   // Escape closes the line from anywhere in it, its tick and button too,
   // which the page's own keys leave alone as fields; it goes no further,
-  // so the same press never lets go of the open cell or closes Now. A held
-  // Return, on what opened the line or in it, sends once: its repeats
-  // never send the kept words again.
+  // so the same press never lets go of the open cell or closes Now.
   sproutLine.addEventListener("keydown", (e) => {
-    if (e.repeat && (sproutHeld || e.key === "Enter")) {
-      e.preventDefault();
-      return;
-    }
-    sproutLetGo();
     if (e.key !== "Escape") return;
     e.preventDefault();
     e.stopPropagation();

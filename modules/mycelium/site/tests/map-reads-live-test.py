@@ -1158,6 +1158,14 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     page.keyboard.up("s")
     assert not page.evaluate(REPEAT_HELD, "x"), "s coming up off the line didn't let repeats go"
     assert page.evaluate(REPEAT_HELD, "Enter"), "a held Return's repeat could send again"
+    # The page losing the keys lets a held s go too.
+    page.locator("#map-view").focus()
+    page.keyboard.press("Escape")
+    for _ in range(2):
+        page.keyboard.down("s")
+    page.evaluate("window.dispatchEvent(new Event('blur'))")
+    assert not page.evaluate(REPEAT_HELD, "x"), "the page losing the keys didn't let s go"
+    page.keyboard.up("s")
     field.focus()
     page.keyboard.down("x")
     page.keyboard.down("x")
@@ -1185,6 +1193,27 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     expect(field, "New Work didn't take the keys from find").to_be_focused()
     page.keyboard.press("Escape")
     expect(page.locator("#map-view"), "the keys went to the hidden find").to_be_focused()
+
+
+def test_a_held_return_sends_new_work_once(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    # Its repeats land on the map once the line closes, and neither reopen
+    # the line nor open a cell over what was said.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.keyboard.type("once")
+    for _ in range(4):
+        page.keyboard.down("Enter")
+    page.keyboard.up("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == "mycelium:sprout?words=once", f"a held Return sent {handed}"
+    expect(page.locator("#sprout-line"), "a held Return reopened the line").to_be_hidden()
+    expect(page.locator("#where"), "a held Return said over the send").to_have_text(
+        re.compile(r"^Sent to the Launcher's Start New Work;")
+    )
+    expect(page, "a held Return opened a cell").not_to_have_url(re.compile("#cell="))
 
 
 @pytest.mark.parametrize("width", [SIZES[0][0], 560, 700, 780, 900])
