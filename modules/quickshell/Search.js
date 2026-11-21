@@ -133,13 +133,14 @@ function found(pattern, text) {
     }
     let from = looked.indexOf(sought);
     while (from >= 0) {
-        // Its end is where its last letter ends, so a joiner after the
-        // place found isn't taken into it.
+        // Its end is where its last letter ends: in a text read letter by
+        // letter, a joiner after the place found isn't taken into it.
         const last = from + sought.length - 1;
         const span = plain.starts === null ? pairsWhole(text, from, last + 1)
             : [plain.starts[from], plain.ends[last]];
         // One that begins inside a letter the last place took, as two
-        // can where a letter lowers longer, is no place of its own.
+        // can where a letter lowers longer or a place took in the rest
+        // of a pair, is no place of its own.
         // The next is looked for past a place kept, but just past one
         // dropped, as one that begins inside it can begin in a letter of
         // its own (\u0307i\u0307i in six İ).

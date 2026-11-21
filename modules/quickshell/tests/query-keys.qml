@@ -1090,6 +1090,11 @@ QtObject {
         holds("with no joiner in the line too", Search.found("\ud83d", "\ud83d\ude00x"),
             [[0, 2]]);
         holds("from either half", Search.found("\ude00x", "a\ud83d\ude00x"), [[1, 4]]);
+        holds("but a half alone takes in nothing after it",
+            Search.found("\ud83d", "\ud83dx"), [[0, 1]]);
+        holds("nor anything before it", Search.found("\ude00x", "a\ude00x"), [[1, 3]]);
+        holds("even at the line's start", Search.found("\ude00", "\ude00x"), [[0, 1]]);
+        holds("or its end", Search.found("\ud83d", "x\ud83d"), [[1, 2]]);
         // A text read a letter at a time, for one that lowers longer, passes
         // over a joiner as the fast way does. The pattern is lower case, as one
         // with a capital is found by its case and never lowered.

@@ -570,10 +570,14 @@ def searched_mid_laying(shell: Shell, drawn: str, whole_least: int) -> None:
     plain = drawn.replace("\u00a0", " ")
     names = re.split(r" \u00b7 |\n", plain)
     name = next(
-        name
-        for name in reversed(names)
-        if re.fullmatch(r"[A-Za-z]+ [A-Za-z ]+", name) and plain.count(name) == 1
+        (
+            name
+            for name in reversed(names)
+            if re.fullmatch(r"[A-Za-z]+ [A-Za-z ]+", name) and plain.count(name) == 1
+        ),
+        None,
     )
+    assert name, f"no name of two plain words is found once in the run's {len(names)}"
     # Left at the run's top, so it's laid short at rest and the keys lay it again.
     shell.send_chars("gg")
     shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
@@ -2789,9 +2793,9 @@ def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> N
     said = said_once(shell, since, DRAWERS_SAID)
     lines = [line for line in said.splitlines() if "drawer" in line and "presented" in line]
     assert lines, f"no drawer walked in Network was said presented, of {rows}"
-    # A drawer that loses its row is said as `row` now, never as nothing, so a walk whose rows
-    # all have names must say it of none.
-    unnamed = [line for line in lines if 'drawer for "row"' in line]
+    # A drawer that loses its row is said as `row` through rowShown, so a walk whose rows all
+    # have names must say it of none; and nothing, only by a line that skipped rowShown.
+    unnamed = [line for line in lines if any(f"drawer for {no}" in line for no in ('"row"', '""'))]
     assert not unnamed, f"drawers said with no row: {unnamed}"
     in_home = [line for line in lines if " in home " in line]
     assert not in_home, f"Network's drawers were tallied in home: {in_home}"
