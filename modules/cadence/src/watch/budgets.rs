@@ -3,6 +3,8 @@
 //! week by about 13:00 and nobody was told: spend-watch says so in pi's
 //! footer and the launcher, which no one reads while the cells work alone.
 
+use std::path::Path;
+
 use super::{Breach, Snapshot};
 
 /// The shares of an allowance, in percent, past which the orchestrator is
@@ -18,7 +20,7 @@ pub const LEVELS: [u32; 2] = [80, 90];
 pub const FRESH_S: i64 = 30 * 60;
 
 /// The key of the alarm that no budget is watched.
-const UNWATCHED: &str = "budget:unwatched";
+pub const UNWATCHED: &str = "budget:unwatched";
 
 /// One allowance of one budget, as spend-watch last stood it.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,44 +41,70 @@ pub struct Allowance {
     pub resets: Option<String>,
 }
 
-/// Each allowance in spend-watch's `budgets.json`, as it stood at `now`,
-/// or `None` for a file that can't be read or wasn't written within
-/// [`FRESH_S`] of now, so no budget is watched. An allowance with no
-/// `nearest`, one in dollars with nothing allowed, is left out.
-#[must_use]
-pub fn read(text: &str, now: i64) -> Option<Vec<Allowance>> {
-    let file = serde_json::from_str::<serde_json::Value>(text).ok()?;
+/// Each allowance spend-watch's daemon keeps in its runtime folder, or
+/// why none is watched, in words that follow "budgets.json".
+///
+/// # Errors
+///
+/// When there's no runtime folder, or the file is missing, as while
+/// spend-watch's watch is held and it deletes the file, or can't be read
+/// as [`read`] says.
+pub fn gather(runtime: Option<&Path>, now: i64) -> Result<Vec<Allowance>, String> {
+    let runtime = runtime.ok_or("has no runtime folder to be read from")?;
+    match std::fs::read_to_string(runtime.join("spend-watch/budgets.json")) {
+        Ok(text) => read(&text, now),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err("is missing, as while spend-watch's watch is held or it isn't running".into())
+        }
+        Err(error) => Err(format!("can't be read: {error}")),
+    }
+}
+
+/// Each allowance in spend-watch's `budgets.json`, as it stood at `now`.
+/// An allowance with no `nearest`, one in dollars with nothing allowed, is
+/// left out.
+///
+/// # Errors
+///
+/// For a file that isn't spend-watch's standing, or wasn't written within
+/// [`FRESH_S`] of now, saying which.
+pub fn read(text: &str, now: i64) -> Result<Vec<Allowance>, String> {
+    let file = serde_json::from_str::<serde_json::Value>(text)
+        .map_err(|_| "isn't spend-watch's standing".to_owned())?;
     let written = file["at"]
         .as_str()
-        .and_then(|at| at.parse::<jiff::Timestamp>().ok())?
+        .and_then(|at| at.parse::<jiff::Timestamp>().ok())
+        .ok_or("says no time it was written")?
         .as_second();
-    if (now - written).abs() > FRESH_S {
-        return None;
+    if now - written > FRESH_S {
+        return Err(format!("was last written {} min ago", (now - written) / 60));
+    }
+    if written - now > FRESH_S {
+        return Err("is dated ahead of the clock".to_owned());
     }
     let text = |value: &serde_json::Value| value.as_str().unwrap_or_default().to_owned();
-    Some(
-        file["budgets"]
-            .as_array()?
-            .iter()
-            .flat_map(|budget| {
-                budget["allowances"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(move |allowance| {
-                        Some(Allowance {
-                            budget: text(&budget["name"]),
-                            label: text(&budget["label"]),
-                            name: text(&allowance["name"]),
-                            window: text(&allowance["label"]),
-                            share: allowance["nearest"].as_f64()?,
-                            standing: text(&allowance["standing"]),
-                            resets: allowance["resets"].as_str().map(Into::into),
-                        })
+    Ok(file["budgets"]
+        .as_array()
+        .ok_or("holds no budgets")?
+        .iter()
+        .flat_map(|budget| {
+            budget["allowances"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(move |allowance| {
+                    Some(Allowance {
+                        budget: text(&budget["name"]),
+                        label: text(&budget["label"]),
+                        name: text(&allowance["name"]),
+                        window: text(&allowance["label"]),
+                        share: allowance["nearest"].as_f64()?,
+                        standing: text(&allowance["standing"]),
+                        resets: allowance["resets"].as_str().map(Into::into),
                     })
-            })
-            .collect(),
-    )
+                })
+        })
+        .collect())
 }
 
 /// Each allowance past one of [`LEVELS`], keyed by the highest it has
@@ -85,45 +113,47 @@ pub fn read(text: &str, now: i64) -> Option<Vec<Allowance>> {
 /// stands, with those beneath it, so each is told once.
 #[must_use]
 pub fn standing(s: &Snapshot) -> Vec<Breach> {
-    if s.budgets_unwatched {
+    if let Some(why) = &s.budgets_unwatched {
         return vec![Breach {
             key: UNWATCHED.to_owned(),
-            text: "spend-watch's budgets weren't written in the last 30 min, so no \
-                   budget's allowance is watched"
-                .to_owned(),
+            text: format!("no budget's allowance is watched: spend-watch's budgets.json {why}"),
         }];
     }
     s.budgets
         .iter()
         .filter_map(|a| {
+            // Judged on the percent shown, rounded as spend-watch shows
+            // Joel the same share, so the text never names a level it
+            // says isn't passed.
+            let percent = (a.share * 100.0).round();
             let level = *LEVELS
                 .iter()
                 .rev()
-                .find(|&&level| a.share * 100.0 >= f64::from(level))?;
+                .find(|&&level| percent >= f64::from(level))?;
             let next = LEVELS.iter().find(|&&above| above > level).map_or_else(
                 || "the last level it's told".to_owned(),
                 |above| format!("told again past {above}%"),
             );
             Some(Breach {
                 key: key(a, level),
-                // Rounded, as spend-watch shows Joel the same share.
                 text: format!(
-                    "{}'s {} allowance stands at {}, {:.0}%: past {level}%, {next}",
-                    a.label,
-                    a.window,
-                    a.standing,
-                    (a.share * 100.0).round()
+                    "{}'s {} allowance stands at {}, {percent:.0}%: past {level}%, {next}",
+                    a.label, a.window, a.standing
                 ),
             })
         })
         .collect()
 }
 
-/// The keys an allowance's breach at `key` stands for: its own and each
+/// The keys a breach at `key` stands for: an allowance's own and each
 /// level beneath it in the same window, so one told past 90% isn't told
-/// as new past 80% as it eases. None for a key not an allowance's.
+/// as new past 80% as it eases, and the unwatched alarm's own, so it's
+/// told once however long it stands. None for another alarm's key.
 #[must_use]
 pub fn stands_for(key: &str) -> Vec<String> {
+    if key == UNWATCHED {
+        return vec![UNWATCHED.to_owned()];
+    }
     // Read from the left, as a reset time holds colons of its own.
     let mut parts = key
         .strip_prefix("budget:")
@@ -144,13 +174,17 @@ pub fn stands_for(key: &str) -> Vec<String> {
         .collect()
 }
 
+/// An allowance's key at a level. Its window is named by the hour it
+/// resets in, as a plan's feed reports a reset to the second, worked out
+/// at each read, and a second's drift would read as a new window.
 fn key(a: &Allowance, level: u32) -> String {
-    format!(
-        "budget:{}:{}:{level}:{}",
-        a.budget,
-        a.name,
-        a.resets.as_deref().unwrap_or_default()
-    )
+    let window = a.resets.as_deref().map_or_else(String::new, |resets| {
+        resets
+            .parse::<jiff::Timestamp>()
+            .and_then(|at| at.round(jiff::Unit::Hour))
+            .map_or_else(|_| resets.to_owned(), |at| at.to_string())
+    });
+    format!("budget:{}:{}:{level}:{window}", a.budget, a.name)
 }
 
 #[cfg(test)]
@@ -161,10 +195,12 @@ mod tests {
 
     const NOW: i64 = 1_795_000_000;
 
+    type Shown<'a> = (&'a str, Option<f64>, Option<&'a str>);
+
     /// A file as spend-watch writes one: a dollar allowance carries its
     /// `allowance`, `spent` and `nearest`, and a plan's share only `used`
     /// and `nearest`.
-    fn budgets(at: &str, allowances: &[(&str, Option<f64>, Option<&str>)]) -> String {
+    fn budgets(at: &str, allowances: &[Shown]) -> String {
         let allowances: Vec<_> = allowances
             .iter()
             .map(|(name, nearest, resets)| {
@@ -196,13 +232,17 @@ mod tests {
             .to_string()
     }
 
-    fn said(allowances: &[(&str, Option<f64>, Option<&str>)]) -> Vec<Breach> {
+    fn said(allowances: &[Shown]) -> Vec<Breach> {
         let s = Snapshot {
             now: NOW,
             budgets: read(&budgets(&at(NOW - 60), allowances), NOW).expect("a fresh file"),
             ..Snapshot::default()
         };
         standing(&s)
+    }
+
+    fn keys(breaches: &[Breach]) -> Vec<&str> {
+        breaches.iter().map(|b| b.key.as_str()).collect()
     }
 
     #[test]
@@ -229,24 +269,43 @@ mod tests {
             }],
             "a budget past 80% wasn't told at its first level, or read as past both"
         );
+        // Joel's footer shows 0.897 as 90%, so the orchestrator is told it
+        // passed 90% rather than "90%: past 80%".
         assert_eq!(
-            said(&[("weekly", Some(0.7999), None)]),
-            [],
-            "a budget short of 80% was told"
+            keys(&said(&[("weekly", Some(0.897), None)])),
+            ["budget:proxy:weekly:90:"],
+            "a share shown as 90% was judged short of it"
         );
         assert_eq!(
-            said(&[("day", Some(0.95), Some("2026-11-21T05:00:00Z"))])
-                .iter()
-                .map(|b| b.key.as_str())
-                .collect::<Vec<_>>(),
-            ["budget:proxy:day:90:2026-11-21T05:00:00Z"],
-            "an allowance that resets wasn't keyed by its window, so a later \
-             day's crossing would go untold"
+            said(&[("weekly", Some(0.7949), None)]),
+            [],
+            "a budget short of 80% was told"
         );
         assert_eq!(
             said(&[("spent", None, None)]),
             [],
             "an allowance with nothing allowed was read as passed"
+        );
+    }
+
+    #[test]
+    fn a_window_is_keyed_by_the_hour_it_resets_in() {
+        for resets in [
+            "2026-11-21T05:00:00Z",
+            "2026-11-21T04:59:59.902Z",
+            "2026-11-21T05:00:01Z",
+        ] {
+            assert_eq!(
+                keys(&said(&[("day", Some(0.95), Some(resets))])),
+                ["budget:proxy:day:90:2026-11-21T05:00:00Z"],
+                "a reset at {resets} wasn't keyed by its hour, so a second's drift \
+                 would tell a window again"
+            );
+        }
+        assert_eq!(
+            keys(&said(&[("day", Some(0.95), Some("not a time"))])),
+            ["budget:proxy:day:90:not a time"],
+            "a reset that isn't a time lost its window"
         );
     }
 
@@ -267,8 +326,8 @@ mod tests {
         );
         assert_eq!(
             stands_for(UNWATCHED),
-            Vec::<String>::new(),
-            "a key not an allowance's stood for one"
+            [UNWATCHED],
+            "no budget watched wasn't remembered while it stood"
         );
         assert_eq!(
             stands_for("netheld:1:AAAAAA"),
@@ -278,34 +337,47 @@ mod tests {
     }
 
     #[test]
-    fn a_file_stale_ahead_or_unreadable_leaves_no_budget_watched() {
+    fn a_file_missing_stale_ahead_or_unreadable_says_why_no_budget_is_watched() {
         let at_95 = |at: &str| budgets(at, &[("weekly", Some(0.95), None)]);
         assert_eq!(
             read(&at_95(&at(NOW - 60)), NOW).map(|all| all.len()),
-            Some(1),
+            Ok(1),
             "a fresh file wasn't read"
         );
-        for (written, why) in [
-            (at(NOW - FRESH_S - 1), "a stopped daemon's file was read"),
+        for (file, why) in [
             (
-                at(NOW + FRESH_S + 1),
-                "a file from ahead of the clock was read",
+                at_95(&at(NOW - FRESH_S - 60)),
+                "was last written 31 min ago",
             ),
-            ("not a time".to_owned(), "a file with no time was read"),
+            (at_95(&at(NOW + FRESH_S + 1)), "is dated ahead of the clock"),
+            (at_95("not a time"), "says no time it was written"),
+            (String::new(), "isn't spend-watch's standing"),
+            (json!({"at": at(NOW)}).to_string(), "holds no budgets"),
         ] {
-            assert_eq!(read(&at_95(&written), NOW), None, "{why}");
+            assert_eq!(read(&file, NOW), Err(why.to_owned()), "{file}");
         }
-        assert_eq!(read("", NOW), None, "an empty file was read");
+        let runtime = std::env::temp_dir().join(format!("cadence-budgets-{}", std::process::id()));
+        assert_eq!(
+            gather(Some(&runtime), NOW),
+            Err("is missing, as while spend-watch's watch is held or it isn't running".to_owned()),
+            "a file spend-watch deleted wasn't told as missing"
+        );
+        assert_eq!(
+            gather(None, NOW),
+            Err("has no runtime folder to be read from".to_owned()),
+            "no runtime folder wasn't told"
+        );
         let s = Snapshot {
-            budgets_unwatched: true,
+            budgets_unwatched: Some("is missing".to_owned()),
             ..Snapshot::default()
         };
         assert_eq!(
-            standing(&s)
-                .iter()
-                .map(|b| b.key.as_str())
-                .collect::<Vec<_>>(),
-            [UNWATCHED],
+            standing(&s),
+            [Breach {
+                key: UNWATCHED.to_owned(),
+                text: "no budget's allowance is watched: spend-watch's budgets.json is missing"
+                    .to_owned(),
+            }],
             "no budget watched read the same as every budget being fine"
         );
     }
