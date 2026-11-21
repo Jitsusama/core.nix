@@ -1354,7 +1354,8 @@ fn unit_says(file: &str, drop_ins: &BTreeMap<String, Option<String>>, key: &str)
     let read = std::iter::once(file).chain(
         drop_ins
             .iter()
-            .filter(|(name, _)| name.ends_with(".conf"))
+            // systemd reads `.conf` alone, as written: `.CONF` isn't one.
+            .filter(|(name, _)| Path::new(name).extension().is_some_and(|e| e == "conf"))
             .filter_map(|(_, text)| text.as_deref()),
     );
     for text in read {
