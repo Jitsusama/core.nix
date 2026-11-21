@@ -109,7 +109,8 @@ fn said_to(merge: &Unrun, named: bool) -> String {
         (false, false, None) => format!("no Mac compared its Mac checks at {short}"),
     };
     let failed = match (merge.stalled, &merge.failed_log) {
-        (true, Some(log)) => format!(" A Mac failed them once before that; its log is {log}."),
+        // A failure can come between the two stalls, so no order is said.
+        (true, Some(log)) => format!(" A Mac also failed them once; its log is {log}."),
         (false, Some(log)) => format!(" The failure's log is {log}."),
         (_, None) => String::new(),
     };
@@ -120,6 +121,12 @@ fn said_to(merge: &Unrun, named: bool) -> String {
         }
         (false, true, Some(log)) => format!("{failed} The unfinished run's log is {log}."),
         _ => failed,
+    };
+    // Runs after a stall write on in the same log, so its end is another's.
+    let failed = if merge.stalled_log.is_some() {
+        format!("{failed} Each run stopped unfinished says so in its log.")
+    } else {
+        failed
     };
     let what = format!(
         "{how}. The net let them go unchecked.{failed} Build them on a Mac, in a tree at \
@@ -323,8 +330,13 @@ mod tests {
                 )
                 && !stalled.contains("no Mac compared")
                 && stalled.contains("The last run's log is /net/logs/fb46-2.log.")
-                && stalled.contains("its log is /net/logs/fb46-1.log"),
+                && stalled.contains("A Mac also failed them once; its log is /net/logs/fb46-1.log")
+                && stalled.contains("Each run stopped unfinished says so in its log."),
             "a stall or a failure a Mac saw was told as no Mac comparing: {stalled}"
+        );
+        assert!(
+            !plain.contains("stopped unfinished says so"),
+            "a merge with no stall was pointed at a stall's mark: {plain}"
         );
     }
 
