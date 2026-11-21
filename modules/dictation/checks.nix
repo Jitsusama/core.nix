@@ -190,11 +190,13 @@
   # second of loud noise with no speech in it, then his question; the far
   # end's is silence with a click, a breath, a cough, a ringtone, a chime,
   # a chord and a mains hum, all but the click loud and long enough to be
-  # takes by loudness alone; Parakeet writes "Yeah." for the breath, and
-  # the last four repeat as a voice does, so they may reach Parakeet. One
-  # turn, Joel's question, with no "[static]" for the noise, proves none
-  # of the sounds gave one, whether the voice test or Parakeet stopped
-  # it, though a take of filler alone is kept.
+  # takes by loudness alone. Parakeet writes "Yeah." for the breath; it
+  # and the cough, steady unvoiced sound after nothing, may be taken for
+  # the line's own and give no take, and the cutter's own cases prove the
+  # voice test stops them. The last four repeat as a voice does, so they
+  # may reach Parakeet. One turn, Joel's question, with no "[static]" for
+  # the noise, proves none of the sounds gave one, whatever stopped it,
+  # though a take of filler alone is kept.
   call-transcripts-writes-only-what-was-said =
     let
       dictation = pkgs.callPackage ./package.nix { };

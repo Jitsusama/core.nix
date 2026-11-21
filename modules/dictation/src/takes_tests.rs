@@ -469,6 +469,23 @@ fn a_long_word_on_a_gated_line_is_heard_whole() {
 }
 
 #[test]
+fn a_line_that_starts_gating_is_heard_once_its_hiss_is_gone() {
+    // A far end's noise suppression may start gating its line with
+    // no mute, sending nothing between words: once the hiss heard
+    // before has left the floor's ten seconds, the line's words are
+    // all its floor holds, and they mustn't be judged against
+    // themselves.
+    let mut sound = noise(3.0, 0.005, false);
+    for _ in 0..50 {
+        sound.extend(voice(0.25, 150.0));
+        sound.extend(vec![0.0; RATE / 10]);
+    }
+    sound.extend(vec![0.0; RATE * 2]);
+    let heard: usize = cut(&sound).iter().map(|take| take.samples.len()).sum();
+    assert!(seconds(heard) >= 17.0, "{} s of 17.5", seconds(heard));
+}
+
+#[test]
 fn a_laugh_on_a_gated_line_keeps_it_gated() {
     // A laugh, a cough or a long "s" between a gated line's words is
     // loud and has no voice, as hiss hasn't, but rises and falls as
