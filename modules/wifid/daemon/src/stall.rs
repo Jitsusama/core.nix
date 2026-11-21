@@ -82,6 +82,14 @@ impl Stalls {
         due
     }
 
+    /// Stops counting the card's look, keeping how long its next waits, so
+    /// a card passed over is said again only as rarely as one nudged.
+    pub fn rest(&mut self, card: &str) {
+        if let Some(looking) = self.cards.get_mut(card) {
+            looking.since = None;
+        }
+    }
+
     /// Forgets the card, as it goes.
     pub fn gone(&mut self, card: &str) {
         self.cards.remove(card);
@@ -174,6 +182,25 @@ mod tests {
         stalls.nudge(start + STUCK);
 
         assert_eq!(stalls.due(), Some(start + STUCK + 2 * STUCK));
+    }
+
+    #[test]
+    fn a_card_passed_over_is_due_again_only_after_its_longer_wait() {
+        let start = Instant::now();
+        let mut stalls = Stalls::default();
+        stalls.step("wlan0", "scanning", start);
+        stalls.nudge(start + STUCK);
+        stalls.rest("wlan0");
+        let resting = stalls.due();
+        let later = start + 100 * SECOND;
+        stalls.step("wlan0", "scanning", later);
+
+        assert_eq!(resting, None, "no longer counted as looking");
+        assert_eq!(
+            stalls.due(),
+            Some(later + 2 * STUCK),
+            "looking again, it waits twice as long"
+        );
     }
 
     #[test]

@@ -372,8 +372,13 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
             f"back {took:.3f} s after the move was asked and {returned:.3f} s after it was sent,"
             f" bidden wait {waited} ms, bar 1 s past it"
         )
-    # Turned off, as wifid says it couldn't otherwise, the Inn is never tried.
-    stayed_on = [line for line in said if re.search(r"wlan2 moves with .* on", line)]
+    # Turned off, as wifid says it couldn't otherwise or that it had no point to go back to,
+    # where it turns nothing off, the Inn is never tried.
+    stayed_on = [
+        line
+        for line in said
+        if re.search(r"wlan2 moves with .* on", line) or "no point known to go back to" in line
+    ]
     assert not stayed_on, f"moved with its other networks on: {stayed_on}"
     tried = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn on the way back: {tried}"
@@ -434,19 +439,17 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     machine.log(f"let go {int(went.group(1))} ms after it was sent back")
     unheld = first_line(said, "wlan2 may join any access point of its network again", sent)
     assert unheld > let_go, f"its hold let go before its 2 s were up: {said[unheld]}"
-    # wifid's and wpa_supplicant's lines come down two streams, which journald may read in
-    # either order when both wait on it at once, so the Inn's tries are judged by when each
-    # was said, with 50 ms for that, not by where it falls.
+    # wifid's lines come down a stream and wpa_supplicant's through syslog, each stamped as
+    # journald reads it, which a loaded builder does late and in either order. So the Inn's
+    # tries are judged by their stamps, with 0.5 s for that: one tried while it was held would
+    # be up to 2 s early.
     let_go_at = float(said[let_go].split()[0])
-    tried = [
-        line
-        for line in said
-        if "SSID='Roadside Inn'" in line and float(line.split()[0]) < let_go_at - 0.05
-    ]
-    assert not tried, f"tried the Inn before it was let go: {tried}"
+    inn = [line for line in said if "SSID='Roadside Inn'" in line]
+    tried = [line for line in inn if float(line.split()[0]) < let_go_at - 0.5]
+    assert not tried, f"tried the Inn before it was let go at {let_go_at}: {tried}"
     # The Inn's tries are found by these words, as they are once it's let go.
-    tries = [line for line in said[let_go:] if "SSID='Roadside Inn'" in line]
-    assert tries, "the Inn's tries are said as searched for"
+    assert inn, "the Inn's tries are said as searched for"
+    machine.log(f"the Inn first tried {float(inn[0].split()[0]) - let_go_at:.3f} s after")
     # Let go while elsewhere, a stranded card isn't pulled off the network it takes. wifid
     # marks a card to look again only when wpa_supplicant is already joining elsewhere as its
     # hold is lifted, so this catches that coming back only in the runs where the Inn's join

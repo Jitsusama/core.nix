@@ -117,6 +117,10 @@ const JOINING: Duration = Duration::from_secs(45);
 /// the newest kept: their queued signals drain within a tick or two.
 const DEPARTED: usize = 4;
 
+/// What wpa_supplicant answers a disconnect with for a card it isn't
+/// joining or on (`dbus_new_handlers.c`, 2.12).
+const NOT_CONNECTED: &str = "fi.w1.wpa_supplicant1.NotConnected";
+
 /// wpa_supplicant's name on the bus.
 const SUPPLICANT: WellKnownName<'static> =
     WellKnownName::from_static_str_unchecked("fi.w1.wpa_supplicant1");
@@ -1575,9 +1579,11 @@ struct Wifid<'a> {
     /// joined again, or are let join whatever they hear.
     alone: RefCell<HashSet<String>>,
     /// The cards Joel took off their network, never nudged to join one
-    /// while that stands: until they've joined again, he's asked one to
-    /// join, or wpa_supplicant has let them go, as a new one starts every
-    /// card with every network on. It's held in memory alone, so a wifid
+    /// and with no network turned on while that stands: until they've
+    /// joined again, he's asked one to join, or wpa_supplicant has let them
+    /// go, as a new one starts every card with every network on. A card
+    /// left between tries isn't disconnected, so it's kept off every
+    /// network by having them all off. It's held in memory alone, so a wifid
     /// started again forgets it: a look another account says then can
     /// have such a card nudged onto a saved network.
     stopped: RefCell<HashSet<String>>,
@@ -1832,9 +1838,11 @@ impl Wifid<'_> {
         // off, or its next look could move it (supplicant::holds_a_network).
         // wpa_supplicant adds a network off, so one newly saved is on.
         // A card in a move keeps them off until the move ends, whatever its
-        // step, as a Keep, Forget or Trust can come meanwhile.
+        // step, as a Keep, Forget or Trust can come meanwhile, and one Joel
+        // left while he leaves it (`stopped`).
         let picked = self.picked.borrow().contains(&card.name);
-        let alone = self.alone.borrow().contains(&card.name);
+        let alone =
+            self.alone.borrow().contains(&card.name) || self.stopped.borrow().contains(&card.name);
         if !alone && !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
             for (_, network) in &joinable {
                 self.joinable(network).await?.set_enabled(true).await?;
@@ -1847,8 +1855,11 @@ impl Wifid<'_> {
     /// launcher left off among them, so a card come off its network can
     /// join whichever it hears.
     /// Each is turned on alone, so one that won't doesn't leave the rest
-    /// off.
+    /// off. A card Joel left keeps them as they are (`stopped`).
     async fn turn_on_networks(&self, card: &str) {
+        if self.stopped.borrow().contains(card) {
+            return;
+        }
         let listed = async {
             let at = self.supplicant.get_interface(card).await?;
             interface(self.bus, at).await?.networks().await
@@ -2070,13 +2081,14 @@ impl Wifid<'_> {
             Err(error) => Err(error),
         };
         if let Err(error) = selected {
-            // The move it ended kept the card's other networks off, and
-            // with no join to turn them on as it ends, they come on now.
-            self.together(&card.name, true).await;
-            // Left off its network still, a card Joel left stays so.
+            // Left off its network still, a card Joel left stays so, its
+            // networks as they were.
             if was_stopped {
                 self.stopped.borrow_mut().insert(card.name.clone());
             }
+            // The move it ended kept the card's other networks off, and
+            // with no join to turn them on as it ends, they come on now.
+            self.together(&card.name, true).await;
             return Err(failed(format!("wpa_supplicant didn't join it: {error}")));
         }
         println!("<6>joining {name} on {}, as asked", card.name);
@@ -2212,11 +2224,12 @@ impl Wifid<'_> {
     /// have gone, and joining only it would hold the card there.
     async fn nudge(&self, name: &str, looked: Duration, air: &mut Air<'_>) {
         // A card Joel left looks only as another account says it does, as
-        // wpa_supplicant joins nothing after a disconnect, so that's no
-        // stall to end, and it's no longer watched: wpa_supplicant says
-        // no step to end it, so it would be said again for good.
+        // it has nothing to join, so that's no stall to end. It's no
+        // longer counted as looking, as wpa_supplicant says no step to end
+        // it, but keeps its wait, so a stream of such looks is said no
+        // more often than a card nudged.
         if self.stopped.borrow().contains(name) {
-            air.stalls.gone(name);
+            air.stalls.rest(name);
             return println!("<7>{name} was taken off its network, so isn't asked to join one");
         }
         let listing = match self.store.networks() {
@@ -2405,27 +2418,67 @@ impl Wifid<'_> {
             return Err(Refused::NotJoined);
         }
         for card in cards {
-            let left = match self.supplicant.get_interface(&card).await {
-                Ok(at) => match interface(self.bus, at).await {
-                    Ok(interface) => interface.disconnect().await,
-                    Err(error) => Err(error),
-                },
+            let unleft = |error: &dyn std::fmt::Display| Refused::Failed {
+                reason: format!("{card} didn't leave {name}: {error}"),
+            };
+            let interface = match self.supplicant.get_interface(&card).await {
+                Ok(at) => interface(self.bus, at).await,
                 Err(error) => Err(error),
             };
-            left.map_err(|error| Refused::Failed {
-                reason: format!("{card} didn't leave {name}: {error}"),
-            })?;
+            let interface = interface.map_err(|error| unleft(&error))?;
             // Left mid-move, a card isn't sent back to the network it left,
-            // and what the move kept off and held is freed here, as a card
-            // left between a way back's tries says no step leaving one.
-            // Turned on, its networks aren't joined after a disconnect.
-            self.arrivals.borrow_mut().forget(&card);
-            self.together(&card, true).await;
+            // and one that won't leave keeps its move.
+            match interface.disconnect().await {
+                Ok(()) => {
+                    // What a move kept off and held is freed, as a card left
+                    // between a way back's tries says no step leaving one.
+                    // Turned on, its networks aren't joined after this.
+                    self.arrivals.borrow_mut().forget(&card);
+                    self.together(&card, true).await;
+                    self.stopped.borrow_mut().insert(card.clone());
+                    println!("<6>{card} left {name}, as asked");
+                }
+                // Between one try and the next, as a way back is or a card
+                // that fell off, wpa_supplicant refuses a disconnect and
+                // would join at its next try, so every network is turned
+                // off instead, and kept off while the card stays left
+                // (`stopped`). networkd can still say it's on that network
+                // until it hears it fell off.
+                Err(zbus::Error::MethodError(error, _, _)) if error.as_str() == NOT_CONNECTED => {
+                    self.arrivals.borrow_mut().forget(&card);
+                    self.stopped.borrow_mut().insert(card.clone());
+                    self.free(&card, false).await;
+                    self.turn_off_networks(&card, &interface)
+                        .await
+                        .map_err(|error| unleft(&error))?;
+                    println!("<6>{card} left {name} between tries, as asked, its networks off");
+                }
+                Err(error) => return Err(unleft(&error)),
+            }
             self.let_go(&card, false).await;
-            self.stopped.borrow_mut().insert(card.clone());
-            println!("<6>{card} left {name}, as asked");
         }
         Ok(())
+    }
+
+    /// Turns off every network the card holds, each alone, so one that
+    /// won't doesn't leave the rest on; says the first that wouldn't.
+    async fn turn_off_networks(
+        &self,
+        card: &str,
+        interface: &InterfaceProxy<'_>,
+    ) -> zbus::Result<()> {
+        let mut first = Ok(());
+        for network in interface.networks().await? {
+            let off = async { self.joinable(&network).await?.set_enabled(false).await };
+            if let Err(error) = off.await {
+                println!(
+                    "<4>{card}'s {} wouldn't turn off: {error}",
+                    network.as_str()
+                );
+                first = first.and(Err(error));
+            }
+        }
+        first
     }
 
     /// Moves the card on an access point's network to it, for the chooser

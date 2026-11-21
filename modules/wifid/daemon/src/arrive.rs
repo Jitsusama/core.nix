@@ -791,11 +791,17 @@ mod tests {
         arrivals.asked("wlan0", None, FAR, now + ms(300));
         let saved = saved.expect("a move followed is saved");
         let aimed = saved.to().to_owned();
+        let goes_back = saved.goes_back();
+        let unbacked = arrivals.saved("wlan0").map(|second| second.goes_back());
         arrivals.resume("wlan0", saved);
         let resumed = arrivals.due();
         let off = arrivals.fell_off("wlan0");
 
         assert_eq!(aimed, HALL, "saved going where the first ask sent it");
+        // Which has the networks the second ask kept off stay off for it,
+        // and those of one with nowhere to go back to come on.
+        assert!(goes_back, "saved with its way back");
+        assert_eq!(unbacked, Some(false), "the second, from no point, has none");
         assert_eq!(
             arrivals.saved("wlan1").map(|saved| saved.0.to),
             None,

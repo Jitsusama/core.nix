@@ -255,6 +255,12 @@ pub struct Chooser {
     /// The access point a move on trial never reached, kept off from the
     /// last choice, for the journal to say so.
     unreached: Option<String>,
+    /// Whether the last move judged never stood, until one does. A second
+    /// in a row holds a whole settle, not a span: a stranger in radio
+    /// range sending the network's name from point after point, none of
+    /// which answers, could otherwise have the card leave its own every
+    /// span, a second or more off the network each time.
+    missed: bool,
     /// When a card on a wider band was last slowed by its own download.
     queued: Option<Instant>,
     /// The card's access point and the narrower one a wider band holding
@@ -737,13 +743,17 @@ impl Chooser {
         // from choosing again for a settle, only for a `SPAN`: the next
         // choices then judge a span without the failed move's own outage,
         // which would read as loss wifid caused, and a card hearing stale
-        // points on a link that isn't failing tries one a span at most,
-        // each kept off once missed. A failing link holds only after a back
+        // points on a link that isn't failing tries one a span on, each
+        // kept off once missed, and the next a settle on if that misses
+        // too (`missed`). A failing link holds only after a back
         // (`holds_still`), so it may try another at each choice.
         if point != trial.to {
             if point == trial.from && !trial.stood {
-                let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
-                self.moved = unmade(now, trial.moved_before, spanned);
+                if !self.missed {
+                    let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
+                    self.moved = unmade(now, trial.moved_before, spanned);
+                }
+                self.missed = true;
             }
             let kept = Kept {
                 until: now + SPURNED,
@@ -755,6 +765,7 @@ impl Chooser {
             return None;
         }
         trial.stood = true;
+        self.missed = false;
         let over = self
             .moved
             .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
@@ -2731,6 +2742,48 @@ pub(crate) mod tests {
             next,
             Choice::Try(quicker_still().point),
             "tried a span on, long before a settle"
+        );
+    }
+
+    #[test]
+    fn a_second_move_never_made_in_a_row_holds_a_whole_settle() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let on = (DESK, &badly, -50, CH52);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, on, &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, on, &hall_alone, false);
+        let spanned = back + SPAN;
+        let second = chooser.choose(spanned, on, &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "a span after the first miss, another is tried"
+        );
+
+        // That one never got there either.
+        let near = [quicker_still()];
+        let back_again = spanned + Duration::from_secs(60);
+        chooser.choose(back_again, on, &near, false);
+        let span_on = chooser.choose(back_again + SPAN, on, &near, false);
+        let short = chooser.choose(spanned + SETTLE - Duration::from_secs(1), on, &near, false);
+        let settled = spanned + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, on, &near, false);
+
+        assert_eq!(
+            span_on,
+            Choice::Stay,
+            "a second miss in a row holds past a span"
+        );
+        assert_eq!(short, Choice::Stay, "to a settle from its move");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "and tries once that has passed"
         );
     }
 
