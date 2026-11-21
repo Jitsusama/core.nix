@@ -185,6 +185,15 @@ impl Clock {
         }
     }
 
+    /// Reads what the run printed since the net last looked, once it has
+    /// ended: a run can end between two looks, five seconds apart, and
+    /// its last lines, as that it runs again on its own base, still say
+    /// which part of the log is its own.
+    fn hear_the_rest(&mut self, log: &Path, now: Instant) {
+        self.written = fs::metadata(log).map_or(self.written, |meta| meta.len());
+        self.hear(log, now);
+    }
+
     /// Starts the clock over for the run nix-offload begins after a
     /// replayed comparison failed, from the log's byte `at`: it names,
     /// sends and takes a Mac again in the same log, and only how that run
@@ -870,13 +879,14 @@ impl Real {
             Err(why) => return unstarted(format!("nix-offload: {why}")),
         };
         let code = ended(child, &mut clock, commit, log, dropped);
-        mac_ended(code, &clock, log)
+        mac_ended(code, &mut clock, log)
     }
 }
 
 /// How a Mac's comparison that ended with `code` is read, from its own
 /// part of `log`, which the runs before it on the same merge share.
-fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
+fn mac_ended(code: Option<i32>, clock: &mut Clock, log: &Path) -> Option<i32> {
+    clock.hear_the_rest(log, Instant::now());
     // One stopped once its turn came on a Mac is a stall, though nothing it
     // built printed a line and the last its log says is that it waits.
     let read = match code {
@@ -2620,7 +2630,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a run stopped while it waited compared nothing, so it rests"
         );
         assert_eq!(
-            mac_ended(None, &clock, &log),
+            mac_ended(None, &mut clock, &log),
             Some(UNCOMPARED),
             "a run the net stopped while it waited compared nothing"
         );
@@ -2705,7 +2715,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a naming past two hours went on"
         );
         assert_eq!(
-            mac_ended(None, &clock, &log),
+            mac_ended(None, &mut clock, &log),
             Some(UNCOMPARED),
             "a naming the net stopped was read as a Mac's stall"
         );
@@ -2744,7 +2754,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a Mac building past two hours from its take went on"
         );
         assert_eq!(
-            mac_ended(None, &clock, &log),
+            mac_ended(None, &mut clock, &log),
             None,
             "a Mac's build stopped past its two hours wasn't read as a stall"
         );
@@ -2915,6 +2925,14 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             !clock.overdue(&log, base),
             "a comparison run again on its own base is overdue"
         );
+        assert!(
+            !clock.overdue(&log, took + LONGEST + Duration::from_mins(1)),
+            "a run on its own base, naming past the replayed take's two hours, was stopped"
+        );
+        assert!(
+            !clock.nearby,
+            "a run on its own base still naming reads as a Mac's turn come"
+        );
         let retook = base + Duration::from_mins(20);
         printed(&log, "nix-offload: building on a-mac, /tmp/compare-base");
         assert!(
@@ -2963,7 +2981,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a naming silent half an hour went on"
         );
         assert_eq!(
-            mac_ended(None, &clock, &log),
+            mac_ended(None, &mut clock, &log),
             Some(UNCOMPARED),
             "a run the net stopped while a lent builder named it was read as a Mac's stall"
         );
@@ -3012,7 +3030,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "silent half an hour once nix-offload stopped saying it waits"
         );
         assert_eq!(
-            mac_ended(None, &clock, &log),
+            mac_ended(None, &mut clock, &log),
             None,
             "a run whose turn came and that then hung was read as comparing nothing"
         );
@@ -3084,6 +3102,40 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         });
         assert!(stopped, "what the stopped run started went on alone");
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_comparison_ending_between_two_looks_is_read_from_its_run_again() {
+        let log = std::env::temp_dir().join(format!("merge-net-ended-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        // The replayed comparison failed on the Mac, and the run on its own
+        // base failed only on its caches, all before the net looked again.
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare");
+        printed(
+            &log,
+            "error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.drv'.\n\
+             Reason: builder failed with exit code 1.",
+        );
+        printed(
+            &log,
+            "nix-offload: the change replayed onto 1a2b3c failed, so the change runs again on \
+             its own base",
+        );
+        printed(&log, LOOKUPS.trim_end());
+        assert_eq!(
+            mac_ended(Some(1), &mut clock, &log),
+            Some(UNCOMPARED),
+            "a run on its own base that ended before the net looked was read with the replay's \
+             failure"
+        );
+        let _ = fs::remove_file(&log);
     }
 
     #[test]
@@ -3251,11 +3303,11 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
     fn a_mac_comparisons_ending_is_read_from_its_own_part_of_the_log() {
         let log = std::env::temp_dir().join(format!("merge-net-ours-{}.log", std::process::id()));
         fs::write(&log, "nix-offload: building on a-mac, /tmp/compare\n").unwrap();
-        let clock = Clock::new(&log, Instant::now());
+        let mut clock = Clock::new(&log, Instant::now());
         let mut file = fs::OpenOptions::new().append(true).open(&log).unwrap();
         writeln!(file, "comparing aarch64-darwin's checks at 7103329c5f54").unwrap();
         assert_eq!(
-            mac_ended(None, &clock, &log),
+            mac_ended(None, &mut clock, &log),
             Some(UNCOMPARED),
             "a run ended before a builder took it was read as taken from the run before"
         );
