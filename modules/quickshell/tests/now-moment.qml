@@ -325,8 +325,9 @@ ShellRoot {
     // wait for it, since Qt runs those queued while it runs them in one
     // pass, so this waits in time: until a tell has stood 250 ms, long
     // enough for a second to be counted, which heldHears refuses, or 5 s
-    // with none. The clock can turn a minute meanwhile, which this waits
-    // past and heldHears tells apart.
+    // with none. A turn of the clock told after the case's change carries
+    // it, since Now reads For You's rows as it tells its own, so the wait
+    // ends on a turn as on For You's ask, and heldHears tells them apart.
     Timer {
         id: tellWaited
 
@@ -337,8 +338,7 @@ ShellRoot {
         repeat: true
         onTriggered: {
             const at = Date.now();
-            if (tellWaited.toldAt === 0
-                && root.nowSaid.some(said => said.why !== "" && !root.bareTurn(said)))
+            if (tellWaited.toldAt === 0 && root.nowSaid.some(said => said.why !== ""))
                 tellWaited.toldAt = at;
             const told = tellWaited.toldAt > 0;
             if ((told && at - tellWaited.toldAt < 250)
@@ -1059,16 +1059,12 @@ ShellRoot {
     property var nowSaid: []
     // The time Now had placed as heldHears' change was made, so a turn of
     // the real clock, which places it again, is told from a second change
-    // of For You's however late it's heard, and what the row held and what
-    // it holds read then (Provider.qml's lastHeldRow).
+    // of For You's however late it's heard.
     property var heldTimeRow: null
+    // What the row held and what it holds read as heldHears' change was
+    // made (Provider.qml's lastHeldRow), so a turn is seen to carry the
+    // change to what's held or not.
     property string heldRowWas: ""
-
-    // A turn of the clock that carried none of what's held: Now's own rows
-    // told with the time placed again, the row held reading as it did.
-    function bareTurn(said) {
-        return said.why === "its own rows" && said.retimed && !said.heldMoved;
-    }
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
     // How many times what For You lists from moved (Now.qml's forYouHeard).
@@ -2637,14 +2633,14 @@ ShellRoot {
         // three more, 16 and 17 November), as it does with the notices'
         // rows changed just after the case. A turn of the clock places the
         // time again, a tell as Now's own rows, which is set aside once.
-        // Now compares what's held as it tells its own rows, so a turn told
-        // before For You's ask carries For You's change and leaves the ask
-        // nothing to say (Provider.qml's changedTo): a turn told alone
-        // stands for For You's tell when the row held read otherwise as it
-        // was told, and reading the same it's a turn that found For You
-        // saying nothing. A For You that never asks is caught on every run
-        // the clock doesn't turn in; on one it does, the turn draws the
-        // change, as Joel would see it.
+        // Now compares what's held as it tells its own rows, reading For
+        // You's rows then, so a turn told before For You's ask carries For
+        // You's change and leaves the ask nothing to say (Provider.qml's
+        // changedTo): a turn told alone stands for For You's tell when the
+        // row held read otherwise as it was told, which shows the change
+        // reached what's held, though not that For You asked. A For You
+        // that never asks is caught on every run the clock doesn't turn
+        // in; on one it does, the turn draws the change, as Joel would see.
         const moved = root.nowSaid;
         const told = moved.filter(said => said.why !== "");
         const turnedAt = told.findIndex(said => said.why === "its own rows" && said.retimed);

@@ -3819,11 +3819,16 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
 # the next (2026-11-19). Return's own key takes a while to be worked, so AHEAD starts half of
 # Pacing.keyed's 50 ms early and is steered: each turn heard after Return moves it earlier by as
 # much as it was late, and each heard before moves it later by AHEAD_BACK, twice as far for
-# each such turn in a row, within AHEAD_MOST either way, so the turns close in on the race on a
-# builder fast or slow. The way's time counts the poll that sees it too, which only steering
-# earns back, so the steps back grow rather than leave a slow poll beyond their reach.
+# each such turn in a row, within AHEAD_MOST, so the turns close in on the race on a builder
+# fast or slow. The way's time counts the poll that sees it too, which only steering earns
+# back, so the steps back grow rather than leave a slow poll beyond their reach. The launcher
+# says a turn only within a second of Return's work, so one heard a second or more after reads
+# as one heard before; AHEAD_LEAST keeps the lead within half a second of the way, from which a
+# turn would need half a second longer than the nudge took to read so, past the 331 ms the same
+# lead's turns spread over on 19 November.
 FIRST_AHEAD = -0.025
 AHEAD_BACK = 0.04
+AHEAD_LEAST = -0.5
 AHEAD_MOST = 1.0
 
 
@@ -3833,7 +3838,7 @@ def steered(ahead: float, back: float, late: int | None) -> tuple[float, float]:
         ahead, back = ahead - back, back * 2
     else:
         ahead, back = ahead + (late - KEYED_WITHIN / 2) / 1000, AHEAD_BACK
-    return min(max(ahead, -AHEAD_MOST), AHEAD_MOST), back
+    return min(max(ahead, AHEAD_LEAST), AHEAD_MOST), back
 
 
 # How many turns the case lays at most, and how many heard beside Return are enough.
