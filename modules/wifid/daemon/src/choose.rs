@@ -952,20 +952,27 @@ pub fn wider(to: u32, from: u32) -> bool {
 }
 
 /// What the card's own point usually carries, as the bar a trial off this
-/// minute must beat. Under load, the point carrying badly is known by an
-/// idle floor where it never learned more, which weighs the move but is no
-/// bar for a loaded trial to beat: carrying worse than no download could
-/// would send it back. One learned badly under load is a bar seldom
-/// failed, so little is lost leaving it out too.
+/// minute must beat. Under load, a point slow idle is known by that idle
+/// floor where it never learned more, which weighs the move but is no bar
+/// for a loaded trial to beat: carrying worse than no download could would
+/// send it back. A figure learned slow under load can't be told from one,
+/// so goes too, leaving its trial judged by the minute it left alone. The
+/// bar reads only a usual's slow end, so its loss, blended over every
+/// minute, never takes one away.
 fn trial_bar(usual: Option<&Measured>, measured: &Measured) -> Option<Measured> {
     usual
-        .filter(|usual| !loaded(measured) || !badly(usual))
+        .filter(|usual| !loaded(measured) || !slow(usual))
         .cloned()
 }
 
 /// Whether an access point carries badly enough to try another.
 pub fn badly(measured: &Measured) -> bool {
-    slowness(measured) > SLOW || measured.lost > LOSSY
+    slow(measured) || measured.lost > LOSSY
+}
+
+/// Whether an access point's slow end is past `SLOW`.
+pub fn slow(measured: &Measured) -> bool {
+    slowness(measured) > SLOW
 }
 
 /// Whether what a card brings down made its slow end slow, rather than
@@ -1868,10 +1875,6 @@ pub(crate) mod tests {
             &[floor(), hall_learned.clone()],
             false,
         );
-        let mut tried = after_a_bad_minute(DESK);
-        let far_quicker = hall(-43, None, Some(carried(9, 0.0)));
-        let off_a_floor = tried.choose(Instant::now(), on, &[floor(), far_quicker], false);
-        let bar = tried.trial.as_ref().and_then(|trial| trial.usual.clone());
 
         assert_eq!(
             weighed,
@@ -1893,14 +1896,58 @@ pub(crate) mod tests {
             Choice::Stay,
             "the hall's idle 49 ms isn't quicker than the desk's own idle floor of 60"
         );
-        assert_eq!(
-            off_a_floor,
-            Choice::Try(HALL.into()),
-            "9 ms is quicker than it"
+    }
+
+    #[test]
+    fn a_trial_is_barred_by_its_points_usual_save_a_floor_under_load() {
+        let start = Instant::now();
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let loaded = |p95| Measured {
+            moving: Some(77),
+            ..downloading(p95)
+        };
+        // Tried off the desk, usually carrying this, for a hall known at
+        // 9 ms, and judged a trial on: what the card did, and why.
+        let judged = |minute: &Measured, usual: Measured, there: &Measured| {
+            let mut chooser = after_a_bad_minute(DESK);
+            let others = [
+                desk_at(-41, Some(usual)),
+                hall(-43, None, Some(carried(9, 0.0))),
+            ];
+            let tried = chooser.choose(start, (DESK, minute, -41, CH52), &others, false);
+            assert_eq!(tried, Choice::Try(HALL.into()), "9 ms is far quicker");
+            let now = start + TRIAL;
+            let judged = chooser.choose(now, (HALL, there, -43, CH52), &others, false);
+            (judged, chooser.went_back())
+        };
+        let usually = |(choice, why): &(Choice, Option<Against>)| {
+            *choice == Choice::Back(DESK.into()) && matches!(why, Some(Against::Usually(_)))
+        };
+
+        let learned = judged(&loaded(163), carried(21, 0.0), &loaded(100));
+        let lossy = judged(&loaded(163), carried(21, 3.0), &loaded(100));
+        let floor = judged(&loaded(163), carried(60, 0.0), &loaded(100));
+        let idle = judged(&unloaded(120), carried(50, 0.0), &unloaded(70));
+
+        assert!(
+            usually(&learned),
+            "100 ms under load is worse than the desk's learned 21: {learned:?}"
+        );
+        assert!(
+            usually(&lossy),
+            "and the usual's blended loss doesn't take the bar away: {lossy:?}"
         );
         assert_eq!(
-            bar, None,
-            "but a floor is no bar for a loaded trial to beat"
+            floor,
+            (Choice::Stay, None),
+            "but 60 ms is a floor, no bar for a download to beat"
+        );
+        assert!(
+            usually(&idle),
+            "idle, a slow usual still bars: 70 ms is worse than 50: {idle:?}"
         );
     }
 
@@ -3262,9 +3309,9 @@ pub(crate) mod tests {
             "a minute with no echo isn't slow, it's unreached"
         );
 
-        let learned = judged(moving(163, 40), Some(unloaded(45)), &moving(100, 40));
+        let learned = judged(moving(163, 40), Some(unloaded(21)), &moving(100, 40));
         let usual = Measured {
-            p95: Some(Duration::from_millis(45)),
+            p95: Some(Duration::from_millis(21)),
             ..moving(163, 40)
         };
         let usually = (Some(Against::Usually(usual)), false);

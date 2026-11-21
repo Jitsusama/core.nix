@@ -48,11 +48,13 @@ struct Asked {
 /// what it usually carries. Under load, one learned to carry badly idle
 /// and never learned under load is known by that, since a radio slow
 /// idle is no quicker bringing a download down, and isn't tried blind.
-/// The card's own is too, so a download queued on it weighs another
-/// known by its idle floor against its own floor rather than its minute,
-/// lest it leave as at 04:48 on 19 Nov 2026. The chooser leaves such a
-/// figure out of a trial's bar, where it would send a download back for
-/// carrying worse than no download could.
+/// The card's own is too, where slow, so a download queued on it weighs
+/// another against that floor rather than its minute, lest it leave as at
+/// 04:48 on 19 Nov 2026: a floor is the least it carries loaded, so
+/// another beating it by the quicker margin beats it loaded too. One
+/// quick idle but lossy is no floor, and would hold the download however
+/// slow. The chooser leaves a floor out of a trial's bar, where it would
+/// send a download back for carrying worse than no download could.
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
@@ -73,7 +75,15 @@ fn known<'a>(
                 learned
                     .loaded(point, signal)
                     .map(|measured| (measured, Whence::Loaded))
-                    .or_else(|| idle().filter(|(measured, _)| choose::badly(measured)))
+                    .or_else(|| {
+                        idle().filter(|(measured, _)| {
+                            if own {
+                                choose::slow(measured)
+                            } else {
+                                choose::badly(measured)
+                            }
+                        })
+                    })
             } else {
                 idle()
             }
@@ -657,6 +667,32 @@ mod tests {
             own.p95,
             Some(ms(119)),
             "so a download queued on it weighs another by its floor, not the minute"
+        );
+    }
+
+    #[test]
+    fn under_load_a_point_quick_idle_but_lossy_is_kept_off_yet_no_floor_of_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let lossy = Measured {
+            lost: 3.0,
+            ..idle(15)
+        };
+        hall_carried(&mut learned, 20, &lossy);
+        let lately = Measures::default();
+
+        let known = known(&lately, &learned, (Instant::now(), 20));
+
+        let (hall, _) = known(HALL, -50, LOADED).expect("a lossy point isn't tried blind");
+        assert_eq!(hall.p95, Some(ms(15)), "so it's known by what it lost");
+        let own = Asked {
+            own: true,
+            ..LOADED
+        };
+        assert_eq!(
+            known(HALL, -50, own),
+            None,
+            "but 15 ms is no floor on a download, which it would hold however slow"
         );
     }
 
