@@ -2,7 +2,7 @@
 # colour, line numbers muted, and a match marked as the launcher marks its
 # chosen row, in the selection colour rather than the alert's red. On a Mac,
 # a search of the home folder leaves other programs' data and the folders macOS
-# guards alone.
+# asked about alone.
 {
   config,
   lib,

@@ -3449,8 +3449,9 @@
   searches-leave-other-programs-data-alone = ''
     a Mac's home folder holds an ignore file, and ripgrep and fd searching from it or from Library,
     run there or given its path, never open other programs' data, the cloud's folders or the
-    folders macOS guards, while still finding the rest, a project's folder named like a guarded one
-    included, and searching a guarded folder named or started in; Linux holds no such file
+    Desktop, Documents and Downloads folders macOS asked about, while still finding the rest, a
+    project's folder named like a guarded one included, and searching a guarded folder named or
+    started in; Linux holds no such file
   '';
   secret-asks-keeps-the-item-to-its-yes = ''
     a yes releases the one item to the checker alone, which says its length and never the value;

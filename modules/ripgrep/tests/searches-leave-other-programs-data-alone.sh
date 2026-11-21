@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Checks that a search of a home folder holding the Mac's ignore file never
-# opens other programs' data or the folders macOS guards, with ripgrep or fd,
+# opens other programs' data or the folders macOS asked about, with ripgrep or fd,
 # started from the home folder or from Library, or given either's path from
 # elsewhere as an agent's tool does, and still finds everything else, folders
 # in a project named like a guarded one included. Each guarded folder is made

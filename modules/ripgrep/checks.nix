@@ -14,7 +14,7 @@
 onLinux {
   # A Mac's home folder holds the ignore file, and a search with ripgrep or fd
   # started there or in Library never opens other programs' data or the folders
-  # macOS guards, while finding everything else; with no file, the same
+  # macOS asked about, while finding everything else; with no file, the same
   # search opens them (tests/searches-leave-other-programs-data-alone.sh).
   # Linux's home folder holds no such file, since nothing there asks.
   searches-leave-other-programs-data-alone =
