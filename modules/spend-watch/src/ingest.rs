@@ -758,9 +758,37 @@ mod tests {
         }
     }
 
+    // A fork made here of a session whose log is only ever brought waits
+    // for it, and once it lands counts what came before the fork once.
+    #[test]
+    fn a_fork_of_a_brought_session_counts_its_parent_s_turns_once() {
+        let dir = tempfile::tempdir().unwrap();
+        write_fork(&dir.path().join("here/project"), ELSEWHERE, &[]);
+        let project = dir.path().join("teal/project");
+        std::fs::create_dir_all(&project).unwrap();
+        let teal = "teal".to_owned();
+        let logs = || -> Vec<Found> {
+            own(&dir.path().join("here"))
+                .into_iter()
+                .chain(machine_logs(&dir.path().join("teal"), &[], Some(&teal)))
+                .collect()
+        };
+        let history = History::memory();
+        scan(&history, &logs(), Reading::default()).unwrap();
+        std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        for _ in 0..3 {
+            scan(&history, &logs(), Reading::default()).unwrap();
+        }
+        assert_eq!(
+            turns(&history),
+            2,
+            "a fork of a brought session counted its parent's turn again"
+        );
+    }
+
     // A brought log's header is the other machine's to write, so naming a
     // session of this machine's and a time to come can't take what this
-    // machine counted for it.
+    // machine counted for it, even once this machine's log is gone.
     #[test]
     fn a_brought_log_never_forgets_this_machine_s_session() {
         let dir = tempfile::tempdir().unwrap();
@@ -791,6 +819,17 @@ mod tests {
             turns(&history),
             1,
             "a brought log's header took what this machine counted for its own session"
+        );
+        std::fs::remove_file(here.join("2026_s1.jsonl")).unwrap();
+        let beside = project.join("2026_s1.jsonl.new");
+        std::fs::write(&beside, format!("{header}\n")).unwrap();
+        std::fs::rename(beside, project.join("2026_s1.jsonl")).unwrap();
+        scan(&history, &logs(), Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            1,
+            "a brought log replaced once this machine's was gone took what this machine \
+             counted"
         );
     }
 
@@ -1276,8 +1315,8 @@ mod tests {
             2,
             "a turn taken after the logs were brought somewhere new was lost"
         );
-        // The old folder cleared away, the log left is its session's only
-        // one, so written anew it counts only what it says.
+        // The old folder cleared away, what its log said stays counted:
+        // written anew, the log left can't take what only the old one held.
         std::fs::remove_dir_all(dir.path().join("teal")).unwrap();
         let beside = moved.join("2026_s1.jsonl.new");
         std::fs::write(&beside, format!("{HEADER}\n{}\n", turn_at(2))).unwrap();
@@ -1285,9 +1324,9 @@ mod tests {
         scan(&history, &logs, Reading::default()).unwrap();
         assert_eq!(
             turns(&history),
-            1,
-            "a log brought somewhere new, written anew once the old was gone, kept what it \
-             no longer says"
+            2,
+            "a log brought somewhere new, written anew once the old was gone, took the old \
+             log's turns with it"
         );
     }
 }

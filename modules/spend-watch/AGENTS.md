@@ -98,13 +98,15 @@ feed speaks.
   machine says it; one only elsewhere is the machine's whose log was
   last read from its start, so a machine renamed, or its logs brought
   somewhere new, takes its sessions along. A log replaced or shrunk is
-  read again from its start. When it's its session's only log still on
-  disk, what it no longer says is no longer counted; when it's one of
-  several, its
-  session's turns stay, since which log said what isn't kept. A finding
+  read again from its start. When it's its session's only log, what it
+  no longer says is no longer counted; when it's one of several, gone
+  from disk or not, its session's turns stay, since which log said what
+  isn't kept, and clearing old logs away never lowers what was counted. A finding
   on another machine's session offers no terminal to go to. The logs
   are read as they grow in place, which whatever brings them has to
-  keep to: a log replaced on each copy is read again whole every time.
+  keep to: a log replaced on each copy is read again whole every time,
+  and a session two other machines both carry on then takes the machine
+  of whichever log was read last.
   A brought folder is trusted as fully as
   this machine's own: its refusals, budgets and workspaces count here.
 - **Budgets.** pi's logs name one provider for everything a proxy

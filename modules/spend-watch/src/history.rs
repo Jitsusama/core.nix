@@ -523,9 +523,9 @@ impl History {
     /// longer says is no longer counted. One of several keeps them, since
     /// which log said what isn't kept: reading it again from its start
     /// counts only turns not held already, and the turn first read stays.
-    /// Only logs still on disk count as others: a log gone, moved or
-    /// cleared away no longer says anything, so its place is forgotten
-    /// here too, and a session's one log left is its only one.
+    /// A log gone from disk still counts as one of them: what it said was
+    /// spent, and the history is the only record left of it, so clearing
+    /// old logs away never lowers what was counted.
     pub fn forget_file(&self, path: &str) -> Result<(), String> {
         let forget = self.db.unchecked_transaction().map_err(sql)?;
         let session: Option<String> = forget
@@ -536,22 +536,14 @@ impl History {
             .map_err(sql)?
             .flatten();
         if let Some(session) = session {
-            let others: Vec<String> = forget
-                .prepare("SELECT path FROM files WHERE session = ?1 AND path != ?2")
-                .map_err(sql)?
-                .query_map(params![session, path], |row| row.get(0))
-                .map_err(sql)?
-                .collect::<Result<_, _>>()
+            let others: bool = forget
+                .query_row(
+                    "SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 AND path != ?2)",
+                    params![session, path],
+                    |row| row.get(0),
+                )
                 .map_err(sql)?;
-            let (left, gone): (Vec<String>, Vec<String>) = others
-                .into_iter()
-                .partition(|other| Path::new(other).exists());
-            for other in &gone {
-                forget
-                    .execute("DELETE FROM files WHERE path = ?1", [other])
-                    .map_err(sql)?;
-            }
-            if left.is_empty() {
+            if !others {
                 for table in ["turns", "refusals", "unresolved"] {
                     forget
                         .execute(

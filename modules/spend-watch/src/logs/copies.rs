@@ -29,12 +29,13 @@ pub fn parent_id(header: &Value) -> Option<String> {
     (!id.is_empty()).then(|| id.to_owned())
 }
 
-/// Whether a brought log names a parent that hasn't been brought yet.
-/// Logs arrive in whatever order whatever brings them keeps, so a copy can
-/// land before its parent; it's read whole meanwhile and checked again on
-/// each pass, to be read again for its own turns once the parent lands.
+/// Whether a log names a parent that isn't here or held yet. Logs arrive
+/// in whatever order whatever brings them keeps, so a copy can land before
+/// its parent, and one of this machine's can be a fork of a session whose
+/// log is only ever brought; it's read whole meanwhile and checked again
+/// on each pass, to be read again for its own turns once the parent lands.
 pub fn awaits_parent(header: &Value, brought: Option<&Path>, held: bool) -> bool {
-    brought.is_some() && parent(header).is_some() && !carried(header, brought, held)
+    parent(header).is_some() && !carried(header, brought, held)
 }
 
 /// The parent a session's header names, if it names one.
