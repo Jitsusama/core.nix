@@ -43,6 +43,19 @@ import {
 import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, shownAndRest, splits } from "./spend.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import {
+  dashOf,
+  GROUND_PAD,
+  groundAt as groundHolding,
+  holeClips,
+  LINE_PIECES,
+  lineAt as lineNearest,
+  offCanvas,
+  onScreen,
+  overlap,
+  paintOf,
+  saidLines,
+} from "./canvas.js";
+import {
   colonyRadius as colonyOf,
   CORD_BUNDLE_OVER,
   control,
@@ -659,7 +672,6 @@ import {
   const groundCtx = groundEl.getContext("2d");
   const inkProbe = document.getElementById("ink-probe");
   const RECEDED = 0.22; // what the find line doesn't match recedes to this
-  const GROUND_PAD = 8; // px past the map's edge a shape still paints
   // Each layer is a list of shapes in map units: a disc {tag: "circle",
   // cls, at, r} or a line {tag: "path", cls, w, line: [p, m, q]}.
   let groundLayers = [];
@@ -679,10 +691,6 @@ import {
   // Each network's ground, [key, x, y, r], so a click on it opens it.
   let groundsAt = [];
   const inks = new Map();
-  const dashOf = (v) => (v === "none" ? [] : v.split(/[\s,]+/).map(parseFloat).filter(Number.isFinite));
-  // A computed paint of no opacity is none: the browser writes its alpha
-  // last, so a clear one ends ", 0)".
-  const paintOf = (v) => (v === "none" || v === "transparent" || v.endsWith(", 0)") ? null : v);
   // A cell's inks depend on its own classes too (chosen, far, hovered),
   // so its probe wears them on a parent group, as the marks once did.
   const inkOf = (tag, cls, parent = "") => {
@@ -723,23 +731,12 @@ import {
   // round its words, so a name reads whole wherever it had to sit. The
   // boxes are the plates placeLabels put on screen, in screen px; discs
   // are never knocked out, since a plate never sits over a mark.
-  const KNOCK_PX = 3;
   let knocks = [];
   let paintedKnocks = null;
-  const knockedOut = ([x, y, bw, bh], px, py) => px > x - KNOCK_PX && px < x + bw + KNOCK_PX && py > y - KNOCK_PX && py < y + bh + KNOCK_PX;
-  // One clip holds as many holes as overlap none of each other, since an
-  // even-odd hole inside a hole would draw again; holes that do overlap go
-  // in a further clip, and clips intersect, so what is left lies outside
-  // every plate. A stack of one clip per plate cost a large paint tenfold.
+  // Holes that overlap go in clips of their own, which intersect, as
+  // holeClips says. A stack of one clip per plate cost a large paint tenfold.
   const clipKnocks = (g, w, h) => {
-    const holes = knocks.map(([x, y, bw, bh]) => [x - KNOCK_PX, y - KNOCK_PX, bw + 2 * KNOCK_PX, bh + 2 * KNOCK_PX]);
-    const clips = [];
-    for (const hole of holes) {
-      const free = clips.find((c) => !c.some((o) => overlap(o, hole)));
-      if (free) free.push(hole);
-      else clips.push([hole]);
-    }
-    for (const c of clips) {
+    for (const c of holeClips(knocks)) {
       const p = new Path2D();
       p.rect(-GROUND_PAD, -GROUND_PAD, w + 2 * GROUND_PAD, h + 2 * GROUND_PAD);
       for (const hole of c) p.rect(...hole);
@@ -776,7 +773,7 @@ import {
     const hovered = hover ? `c:${current?.byId.get(hover)?.address}` : null;
     const X = (x) => x * k + tx;
     const Y = (y) => y * k + ty;
-    const off = (x0, y0, x1, y1) => x1 < -GROUND_PAD || y1 < -GROUND_PAD || x0 > w + GROUND_PAD || y0 > h + GROUND_PAD;
+    const off = (x0, y0, x1, y1) => offCanvas([x0, y0, x1, y1], w, h);
     for (const layer of [...groundLayers, talkLayer, fedLayer, cellLayer]) {
       // Consecutive shapes in one ink share a path, so a frame strokes
       // once per ink rather than once per line.
@@ -865,9 +862,6 @@ import {
   // worked out fresh on each call from the lines the name placer avoids.
   // Where a line is knocked out round a name, it is said as two, ending
   // either side, since nothing is drawn there.
-  const LINE_STEPS = 8;
-  const LINE_STEP_PX = 3; // the most a said line moves between points
-  const lineSteps = (xs, ys) => Math.max(LINE_STEPS, Math.ceil((Math.hypot(xs[1] - xs[0], ys[1] - ys[0]) + Math.hypot(xs[2] - xs[1], ys[2] - ys[1])) / LINE_STEP_PX));
   // How many lines the canvas paints, by kind, said for the site's own
   // checks: the lines across networks, the talk arcs, the talk held, the
   // talk with two ends to draw (talk inside one folded network has one),
@@ -899,72 +893,22 @@ import {
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
     const box = groundEl.getBoundingClientRect();
-    const [w, h] = [box.width, box.height];
-    const out = [];
-    for (const [p, c, q] of [...lineShapes, ...talkShapes, ...fedShapes]) {
-      const xs = [p[0], c[0], q[0]].map((x) => x * k + tx);
-      const ys = [p[1], c[1], q[1]].map((y) => y * k + ty);
-      if (Math.max(...xs) < 0 || Math.max(...ys) < 0 || Math.min(...xs) > w || Math.min(...ys) > h) continue;
-      const steps = knocks.length ? lineSteps(xs, ys) : LINE_STEPS;
-      let line = [];
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const u = 1 - t;
-        const [x, y] = [u * u * xs[0] + 2 * u * t * xs[1] + t * t * xs[2], u * u * ys[0] + 2 * u * t * ys[1] + t * t * ys[2]];
-        if (knocks.some((b) => knockedOut(b, x, y))) {
-          if (line.length > 1) out.push(line);
-          line = [];
-          continue;
-        }
-        line.push({ x: box.left + x, y: box.top + y });
-      }
-      if (line.length > 1) out.push(line);
-    }
-    return out;
+    const view = { k, tx, ty };
+    const lines = [...lineShapes, ...talkShapes, ...fedShapes].map((line) => onScreen(line, view));
+    return saidLines(lines, box.width, box.height, knocks).map((said) => said.map(([x, y]) => ({ x: box.left + x, y: box.top + y })));
   };
 
   // The line under a point of the map, in CSS px from its corner: the
   // nearest within reach, feedings first and then talk, since each is drawn
   // over what comes after it. On a network's ground only the lines that
   // cross grounds count, so the ground itself still opens its network.
-  const TOUCH_PX = 6;
   const LIT = /\blit\b/;
   let touched = null;
-  const lineAt = (x, y, onGround) => {
-    let best = null;
-    let nearest = TOUCH_PX;
-    for (const shapes of [fedShapes, talkShapes, lineShapes]) {
-      for (const line of shapes) {
-        if (!line.opens || (onGround && line.within)) continue;
-        const [p, c, q] = line.map(([px, py]) => [px * k + tx, py * k + ty]);
-        if (x < Math.min(p[0], c[0], q[0]) - nearest || x > Math.max(p[0], c[0], q[0]) + nearest) continue;
-        if (y < Math.min(p[1], c[1], q[1]) - nearest || y > Math.max(p[1], c[1], q[1]) + nearest) continue;
-        let a = p;
-        for (let i = 1; i <= LINE_PIECES; i++) {
-          const t = i / LINE_PIECES;
-          const u = 1 - t;
-          const b = [u * u * p[0] + 2 * u * t * c[0] + t * t * q[0], u * u * p[1] + 2 * u * t * c[1] + t * t * q[1]];
-          const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
-          const along = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)));
-          const d = Math.hypot(x - a[0] - along * dx, y - a[1] - along * dy);
-          if (d < nearest) [best, nearest] = [line, d];
-          a = b;
-        }
-      }
-      if (best) return best;
-    }
-    return best;
-  };
+  const lineAt = (x, y, onGround) => lineNearest([fedShapes, talkShapes, lineShapes], { k, tx, ty }, [x, y], onGround);
 
   // The network whose ground is under a point of the map, the innermost
   // where grounds overlap.
-  const groundAt = (x, y) => {
-    let best = null;
-    for (const [key, gx, gy, r] of groundsAt) {
-      if ((x - gx) ** 2 + (y - gy) ** 2 <= r * r && (!best || r < best[1])) best = [key, r];
-    }
-    return best?.[0] || null;
-  };
+  const groundAt = (x, y) => groundHolding(groundsAt, x, y);
 
   // ---- What changed since he last looked. ----
 
@@ -1772,7 +1716,6 @@ import {
 
   // The lines on screen as short straight pieces, in the same buckets, so
   // a name can ask which it would lie over.
-  const LINE_PIECES = 8;
   const linesOnScreen = (w, h) => {
     const grid = new Map();
     const on = ([x, y]) => [x * k + tx, y * k + ty];
@@ -1825,7 +1768,6 @@ import {
     return under.size;
   };
 
-  const overlap = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
 
   // Whether a box's middle sits nearer some other mark than its own, which
   // would make the name read as that mark's. The middle, not the edge: a
