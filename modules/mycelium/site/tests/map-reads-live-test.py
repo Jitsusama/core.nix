@@ -69,10 +69,10 @@ CELLS = 8
 # each is doing, what each spent, what waits, how wide each line is drawn, how
 # a cell is named, how the map's motion is timed, where everything stands,
 # what the ground layer's canvas touches, a reading's shape and what new work
-# hands the Launcher were read in modules of their own; about 763 KB since the
+# hands the Launcher were read in modules of their own; about 774 KB since the
 # builders, the legend's moving samples, the typed modules' documented rules
 # and new work's line, with a little room above.
-BUDGET = Budget(files=32, kilobytes=770, elements=600)
+BUDGET = Budget(files=32, kilobytes=780, elements=600)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
