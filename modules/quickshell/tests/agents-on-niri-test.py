@@ -3811,18 +3811,18 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
-# How long before Return the first turn lays a session's work turning, in seconds: a turn took
-# about 0.85 s from the file to the shell on a builder (2026-11-18), and the same lead was heard
-# anywhere from 14 to 345 ms after Return's work from one turn to the next (2026-11-19), so a
-# fixed walk of leads could miss Pacing.keyed's 50 ms. Each turn heard after Return moves the
-# next one's laying earlier by as much as it was late, and each heard before moves it later by
-# LEAD_BACK, so the turns close in on the race on a builder fast or slow. A turn heard a second
-# or more after Return's work is said no more than one heard before it, so the lead never drops
-# below LEAST_LEAD, from which a turn would have to take 1.3 s or more to reach the shell to read
-# as early.
-FIRST_LEAD = 0.8
-LEAD_BACK = 0.04
-LEAST_LEAD = 0.3
+# How long before Return a session's work turns, in seconds, is how long the nudge's line took
+# from its file to what the launcher shows that very turn, the same way through the node and
+# Now, and AHEAD more. A fixed lead couldn't follow the builders: a turn took about 0.85 s to the
+# shell on 18 November and under 0.3 s on 21 November, when every turn of one run was heard
+# before Return, and the same lead was heard 14 to 345 ms after Return's work from one turn to
+# the next (2026-11-19). Return's own key takes a while to be worked, so AHEAD starts half of
+# Pacing.keyed's 50 ms early and is steered: each turn heard after Return moves it earlier by as
+# much as it was late, and each heard before moves it later by AHEAD_BACK, within AHEAD_MOST
+# either way, so the turns close in on the race on a builder fast or slow.
+FIRST_AHEAD = -0.025
+AHEAD_BACK = 0.04
+AHEAD_MOST = 1.0
 # How many turns the case lays at most, and how many heard beside Return are enough.
 TURNS = 36
 ENOUGH_BESIDE = 3
@@ -3847,7 +3847,8 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
     after Return asked again with For You held, read its rows too, and so said Now changed though
     no row had. The launcher made the very rows again, drew them and timed them as Return's act.
     Now comparing what For You shows is tests/now-moment.qml's; this is the path, the realm's
-    node to Now to the launcher, a line laid earlier each turn until one lands beside Return.
+    node to Now to the launcher, a line laid each turn as long before Return as that way takes
+    until one lands beside it.
     """
     # A session asking Joel a question is a row in For You, and its work turns each time.
     asking = {
@@ -3865,14 +3866,16 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
         shell.launcher_ready()
         shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
         shell.normal()
-        lead = FIRST_LEAD
+        ahead = FIRST_AHEAD
         for turn in range(TURNS):
             # Another session asking, or done asking, moves For You's own row, so Now says what
             # it shows with nothing held below it, as Joel's home rows had before each step in.
             ask = asking if turn % 2 == 0 else {"state": "busy", "busy": True}
             was = shell.showing()["seen"]["sides"][0]
+            laid = time.monotonic()
             lay("NUDGER", "Nudging Quest", ask)
             shell.launcher_until(partial(moved, was))
+            lead = max(time.monotonic() - laid + ahead, 0.0)
             shell.down_to("For You")
             step = {
                 "kind": "tool",
@@ -3907,12 +3910,12 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             # Only a turn that moves a row is heard, every other one, so only those steer.
             if turn % 2 == 0:
                 late = min(after, default=None)
-                lead = (
-                    lead + (late - KEYED_WITHIN / 2) / 1000
+                ahead = (
+                    ahead + (late - KEYED_WITHIN / 2) / 1000
                     if late is not None
-                    else lead - LEAD_BACK
+                    else ahead - AHEAD_BACK
                 )
-                lead = min(max(lead, LEAST_LEAD), 2.0)
+                ahead = min(max(ahead, -AHEAD_MOST), AHEAD_MOST)
         print(f"turns heard within {KEYED_WITHIN} ms of Return, by their leads: {beside}")
         assert beside, (
             f"no turn was heard within {KEYED_WITHIN} ms of Return (one heard before it, or a "
