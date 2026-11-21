@@ -325,7 +325,8 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// `/reset-but-on-the-second` does so on every connection but the
 /// origin's second, `/calm-down` resets saying to calm down,
 /// `/reset-then-calm-down` resets the first time and says to calm down
-/// after, `/drop` reads it and lets the connection fall with no word at
+/// after, `/each-reset-then-calm-down` resets each request's first try and
+/// says to calm down to its second, `/drop` reads it and lets the connection fall with no word at
 /// all, and `/reset-then-drop` resets the first time and drops after. An
 /// echo says which of the origin's connections it came on, counted from
 /// 0. While the origin is failing, it fails every request, on any route,
@@ -486,7 +487,10 @@ fn resets(path: &str, heard: usize, connection: usize) -> Option<h2::Reason> {
     let resets = match path {
         "/calm-down" => return Some(h2::Reason::ENHANCE_YOUR_CALM),
         "/reset-then-calm-down" if heard > 1 => return Some(h2::Reason::ENHANCE_YOUR_CALM),
-        "/reset" | "/reset-held" => true,
+        "/each-reset-then-calm-down" if heard.is_multiple_of(2) => {
+            return Some(h2::Reason::ENHANCE_YOUR_CALM);
+        }
+        "/reset" | "/reset-held" | "/each-reset-then-calm-down" => true,
         "/reset-once" | "/reset-once-held" | "/reset-then-calm-down" | "/reset-then-drop" => {
             heard == 1
         }
@@ -2036,14 +2040,15 @@ async fn drain_frames<S>(
 }
 
 /// A request a goodbye saying nothing was wrong left out goes once more,
-/// on another connection, and is answered there; never judged, so
-/// rotations crossing every request's first try never stand it down.
+/// on a connection opened for it, and is answered there. With one slot,
+/// each goodbye's connection must be let go rather than retired, or the
+/// slot's allowance for resets keeps it and the request goes direct.
 #[tokio::test(flavor = "current_thread")]
-async fn a_request_a_goodbye_left_out_goes_once_more_and_stands_nothing_down() {
+async fn a_request_a_goodbye_left_out_goes_once_more_and_is_answered() {
     let tls = tls();
     let origin = draining_origin(Drains::EveryOther, tls.clone()).await;
     let host = origin.address.to_string();
-    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 2);
+    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 1);
     for _ in 0..PAST_JUDGED {
         let got = ask(&relay.socket, request(&host, "/echo", b"hello")).await;
         assert_eq!(
@@ -2063,10 +2068,9 @@ async fn a_request_a_goodbye_left_out_goes_once_more_and_stands_nothing_down() {
     );
     let said = relay.said();
     assert!(
-        said.contains("left a request out of its goodbye")
-            && said.contains("left out on connection")
-            && !said.contains("so it stands down"),
-        "requests a goodbye left out weren't said sent again, unjudged: {said}"
+        said.contains("left a request out of its goodbye on connection 0.0, so it's let go")
+            && said.contains("left out on connection 0.0 is sent again on connection 0.1"),
+        "requests a goodbye left out weren't said let go and sent again: {said}"
     );
 }
 
@@ -2097,9 +2101,32 @@ async fn a_request_left_out_again_goes_direct_and_stands_nothing_down() {
     );
     let said = relay.said();
     assert!(
-        said.contains("couldn't be carried again, so pi goes directly")
+        said.contains("so it's let go")
+            && said.contains("; pi goes directly")
             && !said.contains("so it stands down"),
         "requests left out twice weren't said sent direct, unjudged: {said}"
+    );
+}
+
+/// A request reset, then told to calm down as it went again, is judged,
+/// as its first failure was the path's: enough of them stand the relay
+/// down, though calming down alone never does.
+#[tokio::test(flavor = "current_thread")]
+async fn requests_reset_then_told_to_calm_down_stand_it_down() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 2);
+    for _ in 0..PAST_JUDGED {
+        ask(
+            &relay.socket,
+            request(&host, "/each-reset-then-calm-down", b"hi"),
+        )
+        .await;
+    }
+    let said = relay.said();
+    assert!(
+        said.contains("so it stands down"),
+        "requests reset, then told to calm down, weren't judged: {said}"
     );
 }
 
