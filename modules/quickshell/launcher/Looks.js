@@ -141,8 +141,9 @@ function cellOf(one, running, parked) {
 function cellGoes(one, cells) {
     const cell = typeof one.cell === "string" ? one.cell : "";
     const record = cell === "" ? undefined : cells?.[`agent-cell:agents:${cell}`];
-    if (record !== undefined && record !== null && record.goes === null)
+    if (record !== undefined && record !== null && record.goes === null) {
         return null;
+    }
     return typeof record?.goes === "string" ? record.goes : "";
 }
 
@@ -159,8 +160,9 @@ function cellFor(one, cells, running, parked) {
     const goes = cellGoes(one, cells);
     const held = goes === "" ? [] : (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
-    if (goes === null)
+    if (goes === null) {
         return held.find(session => session.address === one.cell) ?? null;
+    }
     return held.find(session => session.address === goes) ?? cellOf(one, running, parked);
 }
 
