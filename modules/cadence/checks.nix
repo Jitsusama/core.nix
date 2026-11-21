@@ -8,6 +8,20 @@
   pkgs,
   ...
 }:
+let
+  # The files the keys check reads: cadence's copies of spend-watch's keys,
+  # then spend-watch's own, in the order reads-the-keys.sh takes them.
+  keysRead = builtins.concatStringsSep " " [
+    "${./src/hour/measures/unbilled.rs}"
+    "${./src/hour/measures/unresolved.rs}"
+    "${./src/watch/budgets.rs}"
+    "${../spend-watch/src/collection.rs}"
+    "${../spend-watch/src/detect.rs}"
+    "${../spend-watch/src/standing.rs}"
+    "${../spend-watch/src/status.rs}"
+    "${../spend-watch/src/config.rs}"
+  ];
+in
 # cadence reads Linux's pressure files and systemd's journal, and builds
 # only there.
 onLinux {
@@ -75,10 +89,17 @@ onLinux {
   cadence-reads-the-keys-spend-watch-writes =
     pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
       ''
-        bash ${./reads-the-keys.sh} ${./src/hour/measures/unbilled.rs} \
-          ${./src/hour/measures/unresolved.rs} ${./src/watch/budgets.rs} \
-          ${../spend-watch/src/collection.rs} ${../spend-watch/src/detect.rs} \
-          ${../spend-watch/src/standing.rs} ${../spend-watch/src/status.rs}
+        bash ${./reads-the-keys.sh} ${keysRead}
+        touch "$out"
+      '';
+  # The keys check passes only by finding each line, so one whose parser
+  # broke would pass while proving nothing: reads-the-keys-catches.sh
+  # gives it copies of spend-watch's files renamed as each guard means,
+  # and each must be refused.
+  cadence-keys-check-refuses-each-rename =
+    pkgs.runCommand "cadence-keys-check-refuses-each-rename" { }
+      ''
+        bash ${./reads-the-keys-catches.sh} ${./reads-the-keys.sh} ${keysRead}
         touch "$out"
       '';
   # cadence-spec's tests run as it builds: a watch of Spec is served the

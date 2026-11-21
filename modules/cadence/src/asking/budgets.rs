@@ -61,7 +61,7 @@ pub(super) fn remember(state: &mut State, key: &str, now: i64) {
 
 /// The breaches standing now, but for no budget watched until it has stood
 /// for `UNWATCHED_FOR` of waking time, so a machine just woken isn't told
-/// of it.
+/// of it, each keyed by the window already told where its reset drifted.
 pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
     let since = s.now - state.ticked.unwrap_or(s.now);
     let (slept, waking_ms) = match (&state.asleep, &s.asleep) {
@@ -83,10 +83,20 @@ pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
         state.unwatched_ms = None;
         0
     };
+    let told = || {
+        state
+            .seen
+            .keys()
+            .filter_map(|key| key.strip_prefix("alarm:"))
+    };
     breaches(s)
         .into_iter()
         .filter(|b| {
             b.key != crate::watch::budgets::UNWATCHED || unwatched_ms >= UNWATCHED_FOR * 1000
+        })
+        .map(|b| Breach {
+            key: crate::watch::budgets::as_remembered(&b.key, told()),
+            ..b
         })
         .collect()
 }
@@ -193,6 +203,37 @@ mod tests {
             told_whom(&tick(&s, &mut state)),
             [(To::Orchestrator, false)],
             "a rolling window climbing back past 90% after a night's easing went untold"
+        );
+    }
+
+    #[test]
+    fn a_window_whose_reset_drifts_across_the_half_hour_is_told_once() {
+        let mut s = calm(100_000);
+        let resets = |at: &str| crate::watch::budgets::Allowance {
+            resets: Some(at.into()),
+            ..week(0.91, "91% of five hours")
+        };
+        s.budgets = vec![resets("2026-11-21T16:29:59.9Z")];
+        let mut state = State::default();
+        assert_eq!(
+            tick(&s, &mut state).len(),
+            1,
+            "a window past 90% wasn't told"
+        );
+        for at in ["2026-11-21T16:30:00.1Z", "2026-11-21T16:31:02Z"] {
+            s.now += 5 * 60;
+            s.budgets = vec![resets(at)];
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a window whose reset drifted to {at} was told again"
+            );
+        }
+        s.now += 5 * 3600;
+        s.budgets = vec![resets("2026-11-21T21:30:00Z")];
+        assert_eq!(
+            tick(&s, &mut state).len(),
+            1,
+            "the next window past 90% went untold"
         );
     }
 

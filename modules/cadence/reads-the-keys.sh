@@ -11,7 +11,8 @@
 # a serde attribute the check can't read whole, as one split over lines
 # or inside another, fails it rather than reading as none.
 # It takes cadence's unbilled.rs, unresolved.rs and watch/budgets.rs, then
-# spend-watch's collection.rs, detect.rs, standing.rs and status.rs.
+# spend-watch's collection.rs, detect.rs, standing.rs, status.rs and
+# config.rs. reads-the-keys-catches.sh shows it fails each rename it guards.
 set -euo pipefail
 
 unbilled=$1
@@ -21,6 +22,7 @@ collection=$4
 detect=$5
 standing=$6
 status=$7
+config=$8
 
 line() {
   grep -qxF -- "$2" "$1" || {
@@ -77,7 +79,9 @@ line "$detect" 'pub const UNRESOLVED: &str = "unresolved";'
 line "$detect" '        format!("{UNRESOLVED}:{budget}"),'
 
 # budgets.json, written whole from spend-watch's Standing, of the version
-# cadence reads.
+# cadence reads, in spend-watch's own folder of the runtime directory.
+line "$config" '                .map(|dir| PathBuf::from(dir).join("spend-watch"))'
+line "$budgets" '    match std::fs::read_to_string(runtime.join("spend-watch/budgets.json")) {'
 line "$status" '        let path = runtime.join("budgets.json");'
 line "$status" '        budgets: Option<&Standing>,'
 line "$status" \

@@ -183,36 +183,76 @@ pub fn stands_for(key: &str) -> Vec<String> {
     if key == UNWATCHED {
         return vec![UNWATCHED.to_owned()];
     }
-    // Read from the left, as a reset time holds colons of its own.
-    let mut parts = key
-        .strip_prefix("budget:")
-        .unwrap_or_default()
-        .splitn(4, ':');
-    let (Some(budget), Some(name), Some(level), Some(resets)) =
-        (parts.next(), parts.next(), parts.next(), parts.next())
-    else {
-        return Vec::new();
-    };
-    let Ok(level) = level.parse::<u32>() else {
+    let Some((allowance, level, resets)) = parts(key) else {
         return Vec::new();
     };
     LEVELS
         .iter()
         .filter(|&&beneath| beneath <= level)
-        .map(|beneath| format!("budget:{budget}:{name}:{beneath}:{resets}"))
+        .map(|beneath| format!("budget:{allowance}{beneath}:{resets}"))
         .collect()
 }
 
-/// An allowance's key at a level. Its window is named by the hour it
-/// resets in, as a plan's feed reports a reset to the second, worked out
-/// at each read, and a second's drift would read as a new window. A colon
-/// in a budget's or an allowance's name reads as a dot, as `stands_for`
-/// splits the key on colons.
+/// How far apart two resets of one allowance may read and still name one
+/// window: a plan's feed works out each reset at its read, so one window's
+/// drifts by seconds, while an allowance's windows are hours apart.
+const SAME_WINDOW_S: i64 = 5 * 60;
+
+/// `key` with its window named as a key in `remembered` names it, where
+/// that one is of the same allowance and resets within `SAME_WINDOW_S` of
+/// it, so a window told once isn't told again as its reset drifts. No
+/// rounding keeps every drift to one side of an edge, wherever the edge
+/// falls, so the reset is matched to the one told instead.
+#[must_use]
+pub fn as_remembered<'a>(key: &str, remembered: impl IntoIterator<Item = &'a str>) -> String {
+    let Some((allowance, level, resets)) = parts(key) else {
+        return key.to_owned();
+    };
+    let Some(at) = instant(resets) else {
+        return key.to_owned();
+    };
+    remembered
+        .into_iter()
+        .filter_map(parts)
+        .find(|(other, _, was)| {
+            *other == allowance && instant(was).is_some_and(|was| (was - at).abs() <= SAME_WINDOW_S)
+        })
+        .map_or_else(
+            || key.to_owned(),
+            |(_, _, was)| format!("budget:{allowance}{level}:{was}"),
+        )
+}
+
+/// A budget's key read from the left, as a reset time holds colons of its
+/// own: its budget and allowance, as `budget:allowance:`, its level and its
+/// reset. None for another alarm's key.
+fn parts(key: &str) -> Option<(&str, u32, &str)> {
+    let rest = key.strip_prefix("budget:")?;
+    let mut colons = rest.match_indices(':').map(|(at, _)| at);
+    let (_, named) = (colons.next()?, colons.next()?);
+    let (allowance, rest) = rest.split_at(named + 1);
+    let (level, resets) = rest.split_once(':')?;
+    Some((allowance, level.parse().ok()?, resets))
+}
+
+/// A reset as seconds since the epoch, when it's a time.
+fn instant(resets: &str) -> Option<i64> {
+    resets
+        .parse::<jiff::Timestamp>()
+        .ok()
+        .map(jiff::Timestamp::as_second)
+}
+
+/// An allowance's key at a level. Its window is named by when it resets,
+/// to the second, which `as_remembered` matches to the window already told
+/// as a plan's feed works it out afresh at each read. A colon in a
+/// budget's or an allowance's name reads as a dot, as `stands_for` splits
+/// the key on colons.
 fn key(a: &Allowance, level: u32) -> String {
     let window = a.resets.as_deref().map_or_else(String::new, |resets| {
         resets
             .parse::<jiff::Timestamp>()
-            .and_then(|at| at.round(jiff::Unit::Hour))
+            .and_then(|at| at.round(jiff::Unit::Second))
             .map_or_else(|_| resets.to_owned(), |at| at.to_string())
     });
     let bare = |name: &str| name.replace(':', ".");
@@ -325,17 +365,47 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_keyed_by_the_hour_it_resets_in() {
-        for resets in [
-            "2026-11-21T05:00:00Z",
-            "2026-11-21T04:59:59.902Z",
-            "2026-11-21T05:00:01Z",
+    fn a_window_is_keyed_by_its_reset_and_matched_to_the_one_told() {
+        assert_eq!(
+            keys(&said(&[(
+                "day",
+                Some(0.95),
+                Some("2026-11-21T04:59:59.902Z")
+            )])),
+            ["budget:proxy:day:90:2026-11-21T05:00:00Z"],
+            "a reset wasn't keyed to its second"
+        );
+        // A window's reset drifting across the hour or the half hour, and
+        // a level past the one told, keep the window told.
+        let told = [
+            "budget:proxy:day:80:2026-11-21T04:59:59Z",
+            "budget:proxy:five:80:2026-11-21T16:29:59Z",
+        ];
+        for (key, window) in [
+            (
+                "budget:proxy:day:80:2026-11-21T05:00:01Z",
+                "budget:proxy:day:80:2026-11-21T04:59:59Z",
+            ),
+            (
+                "budget:proxy:five:90:2026-11-21T16:30:01Z",
+                "budget:proxy:five:90:2026-11-21T16:29:59Z",
+            ),
+            (
+                "budget:proxy:day:80:2026-11-22T05:00:00Z",
+                "budget:proxy:day:80:2026-11-22T05:00:00Z",
+            ),
+            (
+                "budget:other:day:80:2026-11-21T05:00:00Z",
+                "budget:other:day:80:2026-11-21T05:00:00Z",
+            ),
+            ("budget:proxy:weekly:90:", "budget:proxy:weekly:90:"),
+            (UNWATCHED, UNWATCHED),
         ] {
             assert_eq!(
-                keys(&said(&[("day", Some(0.95), Some(resets))])),
-                ["budget:proxy:day:90:2026-11-21T05:00:00Z"],
-                "a reset at {resets} wasn't keyed by its hour, so a second's drift \
-                 would tell a window again"
+                as_remembered(key, told),
+                window,
+                "{key} was matched to the wrong window: a drift would tell one again, or \
+                 the next window or another budget's would go untold"
             );
         }
         assert_eq!(
