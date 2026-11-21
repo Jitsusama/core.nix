@@ -314,6 +314,13 @@ ShellRoot {
         function onKindsChanged() {
             Qt.callLater(root.step);
         }
+
+        // Each answer heard, so a batch whose last answer says nothing fails
+        // by its name rather than waiting out the case.
+        function onOutstandingChanged() {
+            if (root.stage === 28)
+                Qt.callLater(root.step);
+        }
     }
 
     // The file Return picks once the files selected have been previewed,
@@ -498,11 +505,10 @@ ShellRoot {
                 stage = 28;
                 countingOnce();
             } else if (stage === 28 && theChooser.toCount.length === 0
-                && theChooser.outstanding === null && countsLeft.length > 0) {
+                && theChooser.outstanding === null) {
                 stage = 29;
                 expect("a batch of counts is said once, as the last is heard, not as each comes",
                     countsLeft.length === 1 && countsLeft[0] === "0", countsLeft.join(", "));
-                theChooser.countsHeldFor = 200;
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -512,15 +518,19 @@ ShellRoot {
     }
 
     // Four folders asked to be counted at once, held long enough that only
-    // the last count heard says them.
+    // the last count heard says them. The last is a path with a line end,
+    // which the chooser answers itself with nothing (FileChooser.qml's
+    // put), so what the three before it said is shown by a silent answer.
     function countingOnce() {
         theChooser.countsHeldFor = 60000;
         const deep = `${home}/elsewhere/deep`;
-        [`${home}/elsewhere`, deep, `${deep}/one`, `${deep}/two`]
+        [`${home}/elsewhere`, deep, `${deep}/one`, `${deep}/two\nlines`]
             .forEach(path => theChooser.count(path));
-        expect("the four wait to be counted, one asked",
-            theChooser.toCount.length + (theChooser.outstanding === null ? 0 : 1) === 4,
-            `${theChooser.toCount.length} waiting`);
+        expect("the four wait to be counted, the first asked",
+            theChooser.outstanding?.path === `${home}/elsewhere`
+                && theChooser.toCount.length === 3,
+            `${theChooser.outstanding?.path ?? "none"} asked, `
+                + `${theChooser.toCount.length} waiting`);
     }
 
     function opening() {
