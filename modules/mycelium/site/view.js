@@ -73,6 +73,7 @@ import {
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
+import { shapeOf as shapeOfReading } from "./shape.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -896,7 +897,8 @@ import {
     const box = groundEl.getBoundingClientRect();
     const view = { k, tx, ty };
     const lines = [...lineShapes, ...talkShapes, ...fedShapes].map((line) => onScreen(line, view));
-    return saidLines(lines, box.width, box.height, knocks).map((said) => said.map(([x, y]) => ({ x: box.left + x, y: box.top + y })));
+    const onPage = ([x, y]) => ({ x: box.left + x, y: box.top + y });
+    return saidLines(lines, box.width, box.height, knocks).map((said) => said.map(onPage));
   };
 
   // The line under a point of the map, in CSS px from its corner: the
@@ -905,7 +907,8 @@ import {
   // cross grounds count, so the ground itself still opens its network.
   const LIT = /\blit\b/;
   let touched = null;
-  const lineAt = (x, y, onGround) => lineNearest([fedShapes, talkShapes, lineShapes], { k, tx, ty }, [x, y], onGround);
+  const lineAt = (x, y, onGround) =>
+    lineNearest([fedShapes, talkShapes, lineShapes], { k, tx, ty }, [x, y], onGround);
 
   // The network whose ground is under a point of the map, the innermost
   // where grounds overlap.
@@ -1159,39 +1162,22 @@ import {
   // The shape of one reading and layout, kept so a choice or a fold, which
   // draws the same reading again, never builds it twice.
   let shapeFor = null;
-  // What every shape and mark of the map is built from, as one string:
-  // each network's place in the tree, cells, liveness, feeds and waits
-  // ring, and each cell's home, network, extra networks and place. It is
-  // all the whole draw reads of a reading but inks, which a restyle reads
-  // afresh, so two readings with one shape draw the same map.
-  const SWELL_STEP = 0.5; // how far a waits ring grows, in map units, before the map is drawn again
+  // What every shape and mark of the map is built from, as shape.ts says.
   const shapeOf = (m) => {
     const kept = shapeFor?.m === m && shapeFor.L === L && shapeFor.machines === machinesShown;
     if (kept) return shapeFor.shape;
-    // Each record is a JSON list, so a name holding a separator can't make
-    // two shapes read as one.
-    const parts = [];
-    for (const h of m.hubs.values()) {
-      const flags = `${h.edge ? 1 : 0}${h.alone ? 1 : 0}${isLive(h) ? 1 : 0}`;
-      const grown = Math.round(swell(h.owes) / SWELL_STEP);
-      const tree = [h.within || "", h.machine || ""];
-      const fed = [...(h.feeds || [])];
-      const sown = seeds.get(h.key) || [];
-      parts.push(JSON.stringify(["h", h.key, ...tree, h.cells.length, flags, h.shape, fed, grown, sown]));
-    }
-    for (const s of m.cells) {
-      const at = pos.get(s.id);
-      const where = at ? `${at[0].toFixed(1)},${at[1].toFixed(1)}` : "-";
-      const also = (s.also || []).map((h) => h.key);
-      const asks = s.standing === "asks" ? 1 : 0;
-      const net = netOf(s)?.key || "";
-      parts.push(JSON.stringify(["c", s.id, s.address, homeOf(s), net, asks, also, where]));
-    }
-    for (const n of m.shared) {
-      parts.push(JSON.stringify(["n", n.key, n.shape, n.cells.map((s) => s.id)]));
-    }
-    parts.push(JSON.stringify(["m", shownMachines().map((x) => x.name)]));
-    const shape = parts.join("\n");
+    const shape = shapeOfReading(
+      { hubs: m.hubs.values(), cells: m.cells, shared: m.shared },
+      {
+        live: isLive,
+        swollen: (h) => swell(h.owes),
+        sown: (key) => seeds.get(key),
+        at: (id) => pos.get(id),
+        home: homeOf,
+        net: (s) => netOf(s)?.key,
+        machines: shownMachines().map((x) => x.name),
+      },
+    );
     shapeFor = { m, L, machines: machinesShown, shape };
     return shape;
   };

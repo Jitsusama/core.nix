@@ -12,6 +12,7 @@ which leaves this note behind.
 | `view.js`      | the drawing, as it was written by hand before the feed      |
 | `layout.ts`    | where everything stands, kept in place while the page is up |
 | `canvas.ts`    | what the ground layer paints, says, and a pointer touches   |
+| `shape.ts`     | a reading's shape, which says when the map draws whole      |
 | `keys.ts`      | what each key asks of the drawing, decided apart from it    |
 | `outline.ts`   | the tree beside the map: what hangs from what, and its walk |
 | `words.ts`     | what each cell, network and machine is, in words            |
@@ -34,15 +35,16 @@ which leaves this note behind.
 `view.js`, `index.html` and `site.css` are the drawing as it was written
 by hand, served unchanged but for its seams: site.ts hands it each reading,
 layout.ts says where everything stands, canvas.ts what the ground layer
-touches and says, keys.ts what each key it hears asks, outline.ts which
-rows the tree shows and where its keys go, words.ts what each thing is in
-words, when.ts how a time is said, health.ts how each thing stands,
-doing.ts what each is doing, spend.ts what each spent, waits.ts what waits
-and what holds, lines.ts how wide a line is drawn and motion.ts how the
-map's motion is timed, so those decisions are typed and unit-tested while
-the drawing carries them out. They come under the
-linters as the drawing is rewritten in TypeScript on the kit, and until
-then `treefmt.nix` names them as kept out.
+touches and says, shape.ts when a reading draws the whole map again,
+keys.ts what each key it hears asks, outline.ts which rows the tree shows
+and where its keys go, words.ts what each thing is in words, when.ts how a
+time is said, health.ts how each thing stands, doing.ts what each is
+doing, spend.ts what each spent, waits.ts what waits and what holds,
+lines.ts how wide a line is drawn and motion.ts how the map's motion is
+timed, so those decisions are typed and unit-tested while the drawing
+carries them out. They come under the linters as the drawing is rewritten
+in TypeScript on the kit, and until then `treefmt.nix` names them as kept
+out.
 
 The `tests/` folder's `map-reads-live-test.py` reads the page as Nix builds
 it in headless Chromium, through the real server beside a stand-in node holding

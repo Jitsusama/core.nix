@@ -132,7 +132,10 @@ export const sow = (seeds: Seeds, realm: Realm): void => {
   }
 };
 
-/** The room a disc keeps for `n` seeds, in steps, so a cell arriving doesn't move the hubs round it. */
+/**
+ * The room a disc keeps for `n` seeds, in steps, so a cell arriving doesn't
+ * move the hubs round it.
+ */
 export const roomFor = (n: number): number =>
   Math.max(ROOM_STEP, Math.ceil((n * ROOM_SPARE + ROOM_MORE) / ROOM_STEP) * ROOM_STEP);
 

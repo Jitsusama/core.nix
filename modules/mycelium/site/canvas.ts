@@ -143,7 +143,10 @@ export const saidLines = (
   return out;
 };
 
-/** A line the pointer can open, carrying what it opens and whether it lies inside a network's ground. */
+/**
+ * A line the pointer can open, carrying what it opens and whether it lies
+ * inside a network's ground.
+ */
 export type Touchable = Line & { readonly opens?: unknown; readonly within?: boolean };
 
 /** How far a point lies from a line on screen, taken as `LINE_PIECES` straight pieces. */
