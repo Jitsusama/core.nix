@@ -850,7 +850,8 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     holders = "/run/camera-holders/camera"
     # Written whole, as a loopback's holders are, so the stand-in is the machine's own camera,
     # held by a program.
-    machine.succeed(f"echo chrome > {holders}.1 && mv {holders}.1 {holders}")
+    written = "/run/camera-holders/.camera.1"
+    machine.succeed(f"echo chrome > {written} && mv {written} {holders}")
     # The answer leads to the camera, rather than saying its parts again.
     desktop.answer("camera")
     desktop.launcher_until(

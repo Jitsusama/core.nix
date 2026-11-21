@@ -228,7 +228,7 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     );
     let log = fs::read_to_string(&watch.log).unwrap();
     assert!(
-        log.contains("forgot Unplugged, said at "),
+        log.contains("forgot \"Unplugged\", whose node file said "),
         "what a killed run left went unsaid: {log}"
     );
 }
@@ -308,34 +308,46 @@ fn the_file_goes_with_the_node() {
     assert_eq!(watch.ended(), Some(0));
 }
 
-#[test]
-fn forgetting_a_node_takes_only_what_says_it() {
-    let root = std::env::temp_dir().join(format!("holders-usb-forget-{}", std::process::id()));
+/// What is at the node as its unit stops.
+enum Then {
+    Gone,
+    Loopback,
+    Camera,
+}
+
+/// Runs `--usb --forget` on a folder holding these files, each with its
+/// holders file, with sysfs showing what is at the node, and gives what
+/// it said and what it left, sorted.
+fn forgetting(name: &str, then: &Then, files: &[(&str, &str)]) -> (Vec<String>, Vec<String>) {
+    let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let folder = root.join("camera-holders");
     let devices = folder.join(".devices");
     fs::create_dir_all(&devices).unwrap();
-    // The node is gone, as it is once its camera's unit stops.
     let node = root.join("dev/video0");
-    let said = format!("{}\n", node.display());
-    for (name, says) in [
-        ("Killed", said.as_str()),
-        ("Webcam 2.0", said.as_str()),
-        // Named for init's pid, 1, which always runs.
-        ("Webcam 2.1", said.as_str()),
-        (".Written.7", said.as_str()),
-        ("Another", "/dev/video9\n"),
-    ] {
-        fs::write(devices.join(name), says).unwrap();
-        fs::write(folder.join(name), "zoom\n").unwrap();
+    let sysfs = root.join("sys");
+    let video = sysfs.join("class/video4linux/video0");
+    if !matches!(then, Then::Gone) {
+        fs::create_dir_all(&node).unwrap();
+        fs::create_dir_all(&video).unwrap();
+        fs::write(video.join("name"), "Camera\n").unwrap();
     }
-    let status = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
-        .args(["--usb", "--forget"])
+    if matches!(then, Then::Camera) {
+        fs::create_dir_all(video.join("device")).unwrap();
+    }
+    let said = format!("{}\n", node.display());
+    for (file, says) in files {
+        let says = says.replace("NODE", &said);
+        fs::write(devices.join(file), says).unwrap();
+        fs::write(folder.join(file), "zoom\n").unwrap();
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .args(["--usb", "--forget", "--sysfs"])
+        .arg(&sysfs)
         .arg(&node)
         .arg(&folder)
-        .status()
+        .output()
         .unwrap();
-    assert!(status.success(), "forgetting ended {status}");
     let mut left: Vec<_> = fs::read_dir(&devices)
         .unwrap()
         .chain(fs::read_dir(&folder).unwrap())
@@ -343,35 +355,71 @@ fn forgetting_a_node_takes_only_what_says_it() {
         .collect();
     left.sort();
     let _ = fs::remove_dir_all(&root);
+    assert!(
+        output.status.success(),
+        "forgetting ended {}",
+        output.status
+    );
+    let mut said: Vec<_> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| line.replace(&node.display().to_string(), "NODE"))
+        .collect();
+    said.sort();
+    (said, left)
+}
+
+#[test]
+fn forgetting_a_node_takes_only_what_says_it() {
+    let (said, left) = forgetting(
+        "forget",
+        &Then::Gone,
+        &[
+            ("Killed", "NODE"),
+            ("Webcam 2.0", "NODE"),
+            // Named for init's pid, 1, which always runs.
+            ("Webcam 2.1", "NODE"),
+            (".Written.7", "NODE"),
+            ("Another", "/dev/video9\n"),
+        ],
+    );
     assert_eq!(
         left,
         [".Written.7", ".Written.7", ".devices", "Another", "Another"],
         "what says the node, and only it, goes, as a file being written is left"
     );
+    assert_eq!(
+        said,
+        [
+            "forgot \"Killed\", whose node file said NODE",
+            "forgot \"Webcam 2.0\", whose node file said NODE",
+            "forgot \"Webcam 2.1\", whose node file said NODE",
+        ],
+        "what it forgot, and only that, is said"
+    );
 }
 
 #[test]
-fn a_node_there_again_is_left_to_whoever_has_it() {
-    let root = std::env::temp_dir().join(format!("holders-usb-again-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    let folder = root.join("camera-holders");
-    let devices = folder.join(".devices");
-    fs::create_dir_all(&devices).unwrap();
+fn a_node_a_loopback_has_is_left_to_it() {
     // A loopback took the number as the camera went.
-    let node = root.join("dev/video0");
-    fs::create_dir_all(&node).unwrap();
-    fs::write(devices.join("Loopback"), format!("{}\n", node.display())).unwrap();
-    fs::write(folder.join("Loopback"), "zoom\n").unwrap();
-    let status = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
-        .args(["--usb", "--forget"])
-        .arg(&node)
-        .arg(&folder)
-        .status()
-        .unwrap();
-    let kept = devices.join("Loopback").exists() && folder.join("Loopback").exists();
-    let _ = fs::remove_dir_all(&root);
-    assert!(status.success(), "forgetting ended {status}");
-    assert!(kept, "the files of what has the node now were forgotten");
+    let (said, left) = forgetting("loopback", &Then::Loopback, &[("Loopback", "NODE")]);
+    assert_eq!(
+        left,
+        [".devices", "Loopback", "Loopback"],
+        "the files of the loopback that has the node now were forgotten"
+    );
+    assert!(said.is_empty(), "it said it forgot what it left: {said:?}");
+}
+
+#[test]
+fn a_camera_whose_run_crashed_reads_unplugged_rather_than_held() {
+    // The camera stayed plugged in, and no run is left to rewrite its files.
+    let (_, left) = forgetting("crashed", &Then::Camera, &[("Crashed", "NODE")]);
+    assert_eq!(
+        left,
+        [".devices"],
+        "a camera with no run was left said held"
+    );
 }
 
 #[test]

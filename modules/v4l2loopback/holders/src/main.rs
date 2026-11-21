@@ -238,19 +238,25 @@ fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
         // camera whose own run rewrites them between, as two cameras
         // swapping nodes as a hub comes back might, reads unplugged until
         // it streams: a run killed and a swap at once, which is accepted.
-        say(&format!(
-            "forgot {}, said at {}, which a killed run left",
-            entry.file_name().to_string_lossy(),
-            said.trim_end()
-        ));
         let holders = folder.parent().map(|above| above.join(entry.file_name()));
+        let mut removed = true;
         for gone in holders.iter().chain([&path]) {
             if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
                 && let Err(error) = fs::remove_file(gone)
                 && error.kind() != io::ErrorKind::NotFound
             {
                 complain(format_args!("{}: {error}", gone.display()));
+                removed = false;
             }
+        }
+        // Quoted, as the record quotes a holder, since a USB camera names
+        // itself.
+        if removed {
+            say(&format!(
+                "forgot {:?}, whose node file said {}",
+                entry.file_name().to_string_lossy(),
+                said.trim_end()
+            ));
         }
     }
 }
@@ -461,15 +467,20 @@ fn said_as(node: &Path) -> String {
 }
 
 /// Removes what says a USB camera's node, as its unit stops: its own run
-/// removes its files as it ends, so any left were a killed run's. A node
-/// that's there again is left alone, since its number may already be
-/// another camera's, as a loopback added as a hub comes back takes the
-/// lowest free, whose files say it rightly; this camera's next run there
-/// then forgets the rest as it starts. A pre-dotted file of the old
-/// `<name>.<pid>` shape isn't sought: a run's stop is read from a signalfd
-/// between writes, so only a run killed mid-write left one.
+/// removes its files as it ends, so any left were a killed run's. A node a
+/// loopback has by then is left alone, since a loopback added as a hub
+/// comes back takes the lowest free number, and its files say it rightly;
+/// the gone camera's own come back right when it does. A USB camera there
+/// is this one, its run crashed while it stayed plugged in, as the unit's
+/// next run at the node waits for this; with no run left to rewrite its
+/// files they're forgotten, so it reads unplugged rather than held for
+/// good. A loopback taking the number between the look and the removal
+/// loses its files until its holders change, which is accepted. A
+/// pre-dotted file of the old `<name>.<pid>` shape isn't sought: a run's
+/// stop is read from a signalfd between writes, so only a run killed
+/// mid-write left one.
 fn forget(options: &Options) {
-    if options.source.exists() {
+    if camera::loopback_at(&options.sysfs, &options.source) {
         return;
     }
     forget_node(

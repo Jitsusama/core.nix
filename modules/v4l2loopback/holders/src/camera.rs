@@ -43,6 +43,13 @@ fn attribute(folder: &Path, name: &str) -> Option<String> {
     )
 }
 
+/// Whether the node is a loopback's now: sysfs names it, as a virtual
+/// device with no hardware `device` under it, as a USB camera has.
+pub fn loopback_at(sysfs: &Path, node: &Path) -> bool {
+    let folder = video_folder(sysfs, node);
+    folder.join("name").exists() && !folder.join("device").exists()
+}
+
 /// Whether a USB camera is streaming: one of its video streaming
 /// interfaces (class 0e, subclass 02) has an alternate setting other than
 /// zero, which uvcvideo picks to start a stream and puts back to stop it.
