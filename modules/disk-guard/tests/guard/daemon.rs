@@ -627,6 +627,38 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 }
 
 #[test]
+fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
+    // Half the passes on 20 November freed nothing, and their lines
+    // couldn't say whether each reached, upkept or collected, or whether
+    // it had anything to take.
+    let passes = |home: &Home| -> Vec<serde_json::Value> {
+        home.journal()
+            .into_iter()
+            .filter(|line| line["event"] == "pass")
+            .collect()
+    };
+    let filling = Home::new();
+    filling.cold_scratch("run-1");
+    filling.hidden(300, 77);
+    let mut guard = filling.guard(filling.config("100%", "100%"));
+    guard.step(&tick_at(3600.0), &CALM).unwrap();
+    let reach = passes(&filling);
+    assert_eq!(reach.len(), 1, "{reach:?}");
+    assert_eq!(reach[0]["why"], "reach");
+    assert!(reach[0]["offered"].as_u64() >= Some(1), "{reach:?}");
+    assert!(reach[0]["surveyed"].as_f64() >= Some(0.0), "{reach:?}");
+    let healthy = Home::new();
+    healthy.trashed("old.txt", "2020-01-01T00:00:00");
+    let mut guard = healthy.guard(healthy.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let upkeep = passes(&healthy);
+    assert_eq!(upkeep.len(), 1, "{upkeep:?}");
+    assert_eq!(upkeep[0]["why"], "upkeep");
+    assert!(upkeep[0]["offered"].as_u64() >= Some(1), "{upkeep:?}");
+    assert!(upkeep[0]["surveyed"].as_f64() >= Some(0.0), "{upkeep:?}");
+}
+
+#[test]
 fn a_pass_kept_short_by_an_unheard_system_daemon_looks_again_once_it_answers() {
     // The first pass after the account's daemon starts may find the system
     // daemon not answering in time: on 8 November that left a critical

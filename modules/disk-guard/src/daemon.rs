@@ -357,6 +357,10 @@ pub struct Guard {
     answers_path: PathBuf,
     watched: BTreeMap<u64, Watched>,
     last: Option<LastPass>,
+    /// How long the survey serving this step's passes took, in seconds,
+    /// for the first pass it served to journal: a pass's own seconds leave
+    /// out the walk of every source that offered it its candidates.
+    surveyed: Option<f64>,
     /// The pass whose failing still stands: kept through passes elsewhere
     /// or ones that free nothing, until a pass on its disk frees some or
     /// finds it no longer filling.
@@ -776,6 +780,7 @@ impl Guard {
             answers_path,
             watched: BTreeMap::new(),
             last: None,
+            surveyed: None,
             failed: None,
             saved_at: None,
             written: None,
@@ -1270,6 +1275,8 @@ impl Guard {
 
     pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
         self.stepped = Instant::now();
+        // A survey for `explain` or a plan between steps served no pass.
+        self.surveyed = None;
         // Once: what it resumes it journals as ended, so looking again
         // would only re-read the journal every step to find nothing.
         if !self.resumed {
@@ -1532,7 +1539,7 @@ impl Guard {
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            let aim = (Band::Healthy, Goal::Produce);
+            let aim = (Band::Healthy, Goal::Produce, Why::Producers);
             self.pass_on(tick, device, &here, aim, thresholds, &mut scan)?;
         }
         Ok(true)
@@ -1553,7 +1560,8 @@ impl Guard {
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            self.pass_on(tick, device, &here, (band, Goal::Clear), thresholds, scan)?;
+            let aim = (band, Goal::Clear, Why::Clear);
+            self.pass_on(tick, device, &here, aim, thresholds, scan)?;
         }
         Ok(())
     }
@@ -1598,7 +1606,7 @@ impl Guard {
             tick,
             device,
             &here,
-            (band, Goal::Reach),
+            (band, Goal::Reach, Why::Collect),
             thresholds,
             &mut scan,
         )
@@ -2435,6 +2443,14 @@ impl Guard {
     /// offer, for a clear or a producer with news: a survey of that part
     /// leaves what the holders say of the rest as the last whole one did.
     fn offers(&mut self, tick: &Tick, part: Option<&Config>) -> io::Result<(Scan, Vec<Offer>)> {
+        let surveying = Instant::now();
+        let surveyed = self.survey(tick, part);
+        self.surveyed = Some(surveying.elapsed().as_secs_f64());
+        surveyed
+    }
+
+    /// What `offers` answers, untimed.
+    fn survey(&mut self, tick: &Tick, part: Option<&Config>) -> io::Result<(Scan, Vec<Offer>)> {
         let me = std::process::id();
         let mut scan = self.scan(me);
         let processes = scan.processes()?.to_vec();
@@ -2581,7 +2597,7 @@ impl Guard {
         tick: &Tick,
         device: u64,
         here: &[Offer],
-        (band, goal): (Band, Goal),
+        (band, goal, why): (Band, Goal, Why),
         thresholds: Thresholds,
         scan: &mut Scan,
     ) -> io::Result<End> {
@@ -2668,6 +2684,9 @@ impl Guard {
             end: end.clone(),
             freed: report.freed,
             seconds,
+            why: why.word(),
+            offered: here.len(),
+            surveyed: self.surveyed.take(),
         })?;
         let last = LastPass {
             at: tick.wall,
@@ -3176,11 +3195,46 @@ fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
     }
 }
 
-/// The band a decision's pass plans by, and what it's for.
-fn aim(decision: Decision) -> (Band, Goal) {
+/// What set a pass going, for its journal line: a goal alone can't say,
+/// since Nix's garbage passes as upkeep, and a user daemon's collect as a
+/// reach, and half the passes on 20 November freed nothing with no way to
+/// tell which of these each was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Why {
+    /// Free space short of the target, or forecast to be.
+    Reach,
+    /// A healthy disk's routine, or an owner ending.
+    Upkeep,
+    /// Nix's garbage alone, once something let some go.
+    Garbage,
+    /// Producers whose watched files said something new.
+    Producers,
+    /// What Joel asked cleared.
+    Clear,
+    /// The system's share of the store, asked for by a user daemon.
+    Collect,
+}
+
+impl Why {
+    fn word(self) -> &'static str {
+        match self {
+            Why::Reach => "reach",
+            Why::Upkeep => "upkeep",
+            Why::Garbage => "garbage",
+            Why::Producers => "producers",
+            Why::Clear => "clear",
+            Why::Collect => "collect",
+        }
+    }
+}
+
+/// The band a decision's pass plans by, what it's for, and what set it
+/// going.
+fn aim(decision: Decision) -> (Band, Goal, Why) {
     match decision {
-        Decision::Reach(band) => (band, Goal::Reach),
-        _ => (Band::Healthy, Goal::Upkeep),
+        Decision::Reach(band) => (band, Goal::Reach, Why::Reach),
+        Decision::Collect => (Band::Healthy, Goal::Upkeep, Why::Garbage),
+        Decision::Upkeep | Decision::Rest => (Band::Healthy, Goal::Upkeep, Why::Upkeep),
     }
 }
 
