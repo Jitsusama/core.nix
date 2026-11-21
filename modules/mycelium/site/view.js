@@ -4397,8 +4397,13 @@ import {
       fedLayer.push({ tag: "path", cls: `m-fed${faint}`, line });
     }
     // The lines a name keeps off, stamped once per paint rather than read
-    // by every placing: a pan places on every frame.
-    const seen = JSON.stringify([talkShapes, fedShapes]);
+    // by every placing: a pan places on every frame. Sorted, since the
+    // talk's order shifts between readings while placing reads the lines as
+    // a set: in order, most readings on a busy realm placed for nothing.
+    const seen = [...talkShapes, ...fedShapes]
+      .map((line) => JSON.stringify(line))
+      .sort()
+      .join("|");
     if (seen !== linesSig) {
       linesSig = seen;
       linesSeen++;
