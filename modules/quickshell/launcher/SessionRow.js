@@ -190,6 +190,9 @@ function footName(served, title, address) {
         .find(one => one !== "") ?? "";
 }
 
+// What an address is made of, the only kind reasonOf looks for in a reason.
+const ADDRESS = /^[A-Z0-9]+$/u;
+
 // The node's reason for refusing an act on a session, without the address
 // it opens with (mycelium's steer_here says "<ADDRESS> isn't parked ..."),
 // since the row or the name beside it already stands for the session, and
@@ -198,14 +201,15 @@ function footName(served, title, address) {
 function reasonOf(why, address, name) {
     const upper = String(address ?? "").toUpperCase();
     const given = String(why ?? "");
-    if (upper === "")
+    if (upper === "") {
         return given;
+    }
     const rest = given.toUpperCase().startsWith(`${upper} `) ? given.slice(upper.length + 1)
         : given;
     const called = String(name ?? "").trim();
     // An address is letters and figures alone, so it needs no escaping.
-    return called === "" || !/^[A-Z0-9]+$/.test(upper) ? rest
-        : rest.replace(new RegExp(`\\b${upper}\\b`, "g"), () => called);
+    return called === "" || !ADDRESS.test(upper) ? rest
+        : rest.replace(new RegExp(`\\b${upper}\\b`, "gu"), () => called);
 }
 
 // An act's own name as the vocabulary says it ("Wake", "Pause"), by
@@ -214,9 +218,10 @@ function reasonOf(why, address, name) {
 // "answer", whose id is all Words.name would give.
 function actName(act, nameOf) {
     const given = String(act ?? "");
-    if (given === "")
+    if (given === "") {
         return "";
-    const id = `verb:agent:${given}`;
+    }
+    const id = `${AGENT}${given}`;
     const name = String(nameOf(id) ?? "");
     return name === id ? "" : name;
 }
