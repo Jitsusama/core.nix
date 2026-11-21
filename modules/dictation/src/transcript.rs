@@ -41,8 +41,9 @@ const ECHO_SLACK: usize = 2 * RATE;
 /// How many of a line's words must be in theirs for it to be their echo.
 const ECHO_SHARE: f32 = 0.6;
 
-/// How many words a line must share with theirs to be their echo on that
-/// alone. A shorter one, such as "Okay." or "Okay, that's fine.", is
+/// How many words a line of Joel's, most of whose words are in theirs,
+/// must share with it to be their echo however long their line is. One
+/// sharing fewer, such as "Okay." or "Okay, that's fine.", is
 /// as likely Joel answering them in their own words, so it's their echo
 /// only when it holds most of their line's words too: a long line of
 /// theirs heard through his speakers comes back as long takes.
@@ -550,7 +551,7 @@ mod tests {
 
     #[test]
     fn joels_long_line_taking_up_their_words_is_his_own() {
-        // Four of his words are all of theirs, but under half of his.
+        // Four of their five words are his, but under half of his.
         let mine = "Thursday morning works for me, but not for my team at all.";
         let lines = [
             line(Side::Theirs, 4, "Thursday morning works for everyone?"),
