@@ -283,8 +283,8 @@ fn run(context: &Context) -> Result<(), Failure> {
     let call = figures::call(&mine, &far, &clicks);
     let at = seconds_now();
     let watched = state().join("lag-watch");
-    let chrome_waits = history::waits(&watched, "chrome-ui", at);
-    let slack_waits = history::waits(&watched, "slack-ui", at);
+    let chrome_waits = history::waits(&watched, "chrome-ui", at, started);
+    let slack_waits = history::waits(&watched, "slack-ui", at, started);
     let measures = hour::measures(
         &call,
         call::STAND_IN,

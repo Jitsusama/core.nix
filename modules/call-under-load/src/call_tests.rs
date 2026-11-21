@@ -46,6 +46,39 @@ fn off() -> Call {
     Call::Off
 }
 
+fn unsure() -> Call {
+    Call::Unknown("a-call-is-on didn't answer in 5000 ms".into())
+}
+
+static ASKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Unanswered at first, then answered with no call, as under a load spike.
+fn unsure_once() -> Call {
+    if ASKED.fetch_add(1, Ordering::SeqCst) == 0 {
+        unsure()
+    } else {
+        Call::Off
+    }
+}
+
+#[test]
+fn one_unanswered_ask_lets_the_call_go_on_and_a_run_of_them_ends_it() {
+    let watch = Watch::asking(unsure_once, Duration::from_millis(10));
+    let started = Instant::now();
+    assert!(
+        watch
+            .wait_until(started + Duration::from_millis(200))
+            .is_ok(),
+        "one slow ask ended the hour"
+    );
+    drop(watch);
+    let watch = Watch::asking(unsure, Duration::from_millis(10));
+    assert!(
+        heard(&watch),
+        "asks that never answered let the call run on"
+    );
+}
+
 #[test]
 fn a_call_of_joel_s_stops_a_step_and_the_call_s_beat() {
     let watch = Watch::asking(on, Duration::from_millis(10));

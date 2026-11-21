@@ -47,6 +47,13 @@ const WAIT: Duration = Duration::from_secs(60);
 /// the call's Weston and Chromes, which ends the step.
 const GRACE: Duration = Duration::from_secs(5);
 
+/// How many asks in a row may go unanswered before the call ends as if
+/// one of Joel's began. One alone doesn't: under the heaviest load a
+/// single ask can outlast its 5 s, and ending on it would drop just the
+/// hours this measures. The test never touches a real camera, so waiting
+/// out three costs his call only 15 s more of the test's load.
+const UNSURE: usize = 3;
+
 /// The folders Chrome maps writable and keeps writing, kept in memory and
 /// linked from the profile on disk, as Joel's own Chrome has them.
 const MAPPED: [&str; 4] = [
@@ -128,11 +135,17 @@ impl Watch {
         let started = Arc::new(Mutex::new(Vec::new()));
         let ending = Arc::clone(&started);
         thread::spawn(move || {
+            let mut unsure = 0;
             let why = loop {
                 match ask() {
-                    Call::Off => {}
+                    Call::Off => unsure = 0,
                     Call::On => break "Joel's call began".to_string(),
-                    Call::Unknown(why) => break why,
+                    Call::Unknown(why) => {
+                        unsure += 1;
+                        if unsure >= UNSURE {
+                            break why;
+                        }
+                    }
                 }
                 // Asked on the call's own five-second beat.
                 thread::sleep(tick);
