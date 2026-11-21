@@ -5,8 +5,11 @@
 //! older runtime's pi. Whatever cadence can't read counts as not running,
 //! so a blind hour never tells him fixed.
 
+mod conversations;
 mod program;
 mod resumed;
+
+use conversations::conversations;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -80,9 +83,8 @@ struct Host {
 /// the hosts' patches once every running host also loads a runtime that
 /// applied each as merged or since, one to the hosts' unit once every
 /// host started after the switch that carried it, and a harness change to
-/// the hosts' program once every host started after it was installed. A
-/// change seen
-/// running is kept in `folder`'s `ran.json` and never read again, so a
+/// the hosts' program once every host and conversation started after it
+/// was installed. A change seen running is kept in `folder`'s `ran.json` and never read again, so a
 /// closed miss isn't reopened, and told fixed twice, by an hour that can't
 /// see for a moment: a host restarting at :10, or a switch from a branch.
 #[must_use]
@@ -99,6 +101,7 @@ pub fn unrun(
         .unwrap_or_default();
     let revs = running(switches, repos);
     let mut hosts: Option<Option<Vec<Host>>> = None;
+    let mut talks: Option<Option<Vec<Host>>> = None;
     let mut unrun = BTreeMap::new();
     for change in merged.iter().filter(|change| !ran.contains(*change)) {
         let Some(path) = repos.get(&change.repo) else {
@@ -115,8 +118,17 @@ pub fn unrun(
             |sha, reaches| {
                 let read = hosts.get_or_insert_with(read_hosts);
                 let carried = |rev: &str| carries(&path, sha, rev) == Some(true);
+                // Each conversation's process runs the program too.
+                let listed: Option<Vec<Host>> = if reaches.program {
+                    let talks = talks.get_or_insert_with(conversations).as_ref();
+                    read.as_ref()
+                        .zip(talks)
+                        .map(|(read, talks)| read.iter().chain(talks).cloned().collect())
+                } else {
+                    read.clone()
+                };
                 let since = if reaches.program {
-                    program::first_installed(Path::new(&*path), carried)
+                    program::swapped(&crate::axes::landings::harness_mirror())
                 } else if reaches.unit {
                     first_switched(switches, carried)
                 } else {
@@ -124,7 +136,7 @@ pub fn unrun(
                 };
                 // Walked only once a host keeps copies to compare with it.
                 let merged = std::cell::OnceCell::new();
-                hosts_lack(read.as_deref(), &reaches, since, |applied| {
+                hosts_lack(listed.as_deref(), &reaches, since, |applied| {
                     merged
                         .get_or_init(|| versions(&path, sha, &reaches.patches))
                         .as_ref()
@@ -240,9 +252,10 @@ fn judge(
 /// Why the pi hosts lack a change that `reaches` them, if they do: each
 /// host's runtime must have applied its patches, as `loads` says of what a
 /// runtime applied (`None` when it can't tell), and each must have started
-/// after `since`: when a switch first carried a change to their unit, or a
-/// version carrying one to their program was first installed, `None` when
-/// cadence found neither. `hosts` is `None` when they couldn't be listed.
+/// after `since`: when a switch first carried a change to their unit, or
+/// `current` last moved to the version carrying one to their program,
+/// `None` when cadence found neither. For the program, `hosts` holds each
+/// conversation's process too, and is `None` when they couldn't be listed.
 /// Something lacking outranks what can't be read, so the owner is asked.
 fn hosts_lack(
     hosts: Option<&[Host]>,
@@ -272,7 +285,7 @@ fn hosts_lack(
         && running().any(|host| host.started.is_some_and(|started| started < at))
     {
         return Some(if reaches.program {
-            "a pi host runs the harness from before it"
+            "a pi host or conversation runs the harness from before it"
         } else {
             "a pi host keeps its unit from before it"
         });
@@ -645,8 +658,8 @@ fn input_pin(lock: &str, input: &str) -> Option<String> {
 /// The runtime each pi host loads its pi from and when it started, each
 /// `None` where it couldn't be read, and whether it was stopped. A host is
 /// the main process of a unit core's host module names
-/// `pi-host-REALM-KIND`, so what it starts, which keeps its environment
-/// after the host moves on, isn't read. A host stopped comes back on the
+/// `pi-host-REALM-KIND`; the conversations it starts are read only for its
+/// program, in `conversations`. A host stopped comes back on the
 /// runtime its unit names, so it's judged by that rather than left out.
 /// One failed or restarting may never load that runtime, as when it
 /// can't start on it, so what it loads can't be told.
