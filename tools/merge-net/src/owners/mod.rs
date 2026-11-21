@@ -10,7 +10,7 @@
 //!
 //! Long because it is one reader of Nix's text: its paths, lets, calls and
 //! brackets share one scanning, and its cases already live apart, in
-//! `owners/shapes.rs`.
+//! `shapes.rs` beside it.
 
 use std::collections::BTreeMap;
 use std::fs;

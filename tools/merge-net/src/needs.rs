@@ -1,7 +1,7 @@
 //! `merge-net needs`, on a branch: whether its change runs VM tests before
 //! it merges, rather than after on the net, and which. It names each VM
 //! test whose area the change touches (`rules.rs`) and each that owns one
-//! of its files (`owners.rs`), and keeps only those whose derivation moved
+//! of its files (`owners/`), and keeps only those whose derivation moved
 //! from main, read from a run that passed at a clean head where one did
 //! (`gated.rs`) and asked of changed-checks otherwise.
 
