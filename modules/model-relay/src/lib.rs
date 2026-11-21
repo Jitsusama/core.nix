@@ -2260,10 +2260,10 @@ fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
 /// the origin, or when one reset and sent once more failed again on the
 /// relay's path, which pi would send again whole after a 502 anyway, as
 /// pi sends a request the relay answers with one straight to the origin
-/// itself. pi knows one by its whole body being
-/// one line, "this relay forwards to its own origin alone", or one that
-/// begins "this relay " and ends "so go directly", so a new one is
-/// worded so. A refusal once something went is a 5xx.
+/// itself. pi knows one only by its whole body being one of the four
+/// sentences the tests pin, word for word, so a reworded one fails pi's
+/// turn rather than sending it direct, and a new one needs pi taught it
+/// too. A refusal once something went is a 5xx.
 fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     let mut answer = Response::new(
         Full::new(Bytes::from_static(why.as_bytes()))
