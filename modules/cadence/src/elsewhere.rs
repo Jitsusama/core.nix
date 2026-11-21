@@ -22,6 +22,20 @@ pub struct Failing {
     pub panicked: Option<String>,
 }
 
+/// Each realm's other machines whose newest update failed, as the node
+/// keeping it says in `machines`, each realm's answer by its name; none
+/// from a realm whose node doesn't answer.
+#[must_use]
+pub fn failing_in(machines: &std::collections::BTreeMap<String, String>) -> Vec<Failing> {
+    // Read as the kit reads it, so it matches mycelium's names as the
+    // other tools' readings do.
+    let this = terminal_kit::environment::machine();
+    machines
+        .values()
+        .flat_map(|answer| failing_elsewhere(answer, &this))
+        .collect()
+}
+
 /// The machines in a `mycelium machines` answer, but `this`, whose newest
 /// update failed; none when the answer doesn't parse.
 #[must_use]
@@ -119,7 +133,7 @@ pub fn crowded(answer: &str) -> Option<Vec<Crowded>> {
 /// in it does. The answer is a document a line, the builders' following the
 /// machines' once a machine names builders (16 November), so each document
 /// is read until one holds the machines.
-fn machines(answer: &str) -> Option<Vec<serde_json::Value>> {
+pub(crate) fn machines(answer: &str) -> Option<Vec<serde_json::Value>> {
     serde_json::Deserializer::from_str(answer)
         .into_iter::<serde_json::Value>()
         .map_while(Result::ok)

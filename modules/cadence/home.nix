@@ -30,6 +30,16 @@
 # reads its end. Nor is a service systemd-run started that still has its
 # default description, "[systemd-run] <command>", unless someone holds it
 # by an owner line or its name; a run given --description is told.
+# It tells the same way of each realm's other machine its node read ready
+# within the hour before, on mains power with a session on it busy, and
+# has read unreachable for ten minutes since, with a desktop notice to
+# Joel, once, and again once it's back: its owner is the one `owners`
+# names for `down:<machine>`. A machine with no work, or on battery or a
+# Mac with its lid shut, sleeps unsaid. With none ready, this machine may be the
+# one cut off, so nothing is told unless every network its node probes
+# for it reads reached and no two machines down were last heard within
+# minutes of each other; where it can't tell, as when a realm doesn't
+# answer, nothing new is told.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches, each
@@ -173,7 +183,8 @@ in
         the session whose mesh address is a dash-separated part of the
         unit's name, as `garbage-bound-mon-2af2dh.service`; any other
         goes to the watcher. A broken unit the tick finds goes the same
-        way, as `unit:google.service`. The owner of `switch.` is also
+        way, as `unit:google.service`, and a machine gone down as
+        `down:<machine>`. The owner of `switch.` is also
         asked the tick's alarms only a switch answers (a merge not on the
         machine, updates failing, the follower held), in place of the
         watcher, and only its replies settle them.
@@ -268,13 +279,15 @@ in
           ++ revive
           ++ reading
         );
-        # git and journalctl, as the account has them; to revive, the
-        # terminal, shell and holder it starts a session with; and the
-        # node it asks about each realm's machines.
+        # git and journalctl, as the account has them; notify-send, for a
+        # machine gone down; to revive, the terminal, shell and holder it
+        # starts a session with; and the node it asks about each realm's
+        # machines.
         Environment = [
           "PATH=${
             lib.makeBinPath [
               pkgs.git
+              pkgs.libnotify
               pkgs.systemd
             ]
           }${lib.optionalString onProfile ":${config.home.profileDirectory}/bin:/run/current-system/sw/bin"}"
