@@ -209,12 +209,24 @@ mod tests {
                 r#"{"00:00:5e:00:53:01": {"up": 12000, "#,
                 r#""house": {"most": 7000, "from": "the mac"}}, "#,
                 r#""00:00:5e:00:53:02": {"up": 9000, "#,
-                r#""house": {"most": 7, "from": "192.0.2.7"}}}"#,
+                r#""house": {"most": 7, "from": "192.0.2.7"}}, "#,
+                r#""00:00:5e:00:53:03": {"up": 9000, "#,
+                r#""house": {"most": 8000, "from": "2001:db8::7"}}}"#,
             ),
         )
-        .expect("houses written wrongly");
-        assert!(houses(&file).is_empty(), "no address, or a ceiling in Mb/s");
-        assert_eq!(anchors(&file).len(), 2, "which loses no anchor");
+        .expect("two houses written wrongly beside one written well");
+        assert_eq!(
+            houses(&file),
+            Houses::from([(
+                "00:00:5e:00:53:03".to_string(),
+                House {
+                    most: 8_000,
+                    from: "2001:db8::7".parse().expect("an address"),
+                },
+            )]),
+            "one with no address, or a ceiling in Mb/s, is left out alone"
+        );
+        assert_eq!(anchors(&file).len(), 3, "which loses no anchor");
         fs::write(&file, "not json").expect("a broken file");
         assert!(anchors(&file).is_empty(), "a broken file anchors nothing");
         assert!(ceilings(&file).is_empty(), "nor sets a ceiling");
