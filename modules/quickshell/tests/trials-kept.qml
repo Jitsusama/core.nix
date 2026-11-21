@@ -134,12 +134,14 @@ ShellRoot {
                 root.stage = "closing after the cut";
                 root.openAndClose();
             } else if (root.stage === "closing after the cut" && root.lines.length === 4) {
-                // A slow key and a slow step, said with reports off, which the
-                // check reads: by how many letters, the step keeping its arrow.
+                // A slow key, a slow step and a slow page down, said with
+                // reports off, which the check reads: by how many letters, the
+                // step keeping its arrow, and the launcher's own key whole.
                 root.made.opened();
                 root.made.timed(2, 900, null, "Harbour House", null, "");
                 root.made.timed(2, 900, null, "\u2192 Harbour House", null,
                     "\u2192 Harbour House");
+                root.made.timed(2, 900, null, "page down", null, "", true);
                 root.stage = "done";
                 console.info("every case holds");
                 Qt.callLater(() => Qt.exit(0));

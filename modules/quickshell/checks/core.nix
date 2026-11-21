@@ -643,14 +643,19 @@ in
   # shell starting carries the old list into lines and lets the oldest go
   # (modules/quickshell/tests/trials-kept.qml, through Quickshell). With
   # reports off, a slow key's line says how many letters were typed and a
-  # slow step's keeps its arrow, so neither names the row.
+  # slow step's keeps its arrow, so neither names the row
+  # (modules/quickshell/tests/trials-kept-heard.sh).
   the-launcher-keeps-its-trials-one-by-one =
     # procps gives the case pkill, to end the pipe as a full disk would.
     pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one"
-      { nativeBuildInputs = [ pkgs.procps ]; }
+      {
+        nativeBuildInputs = [ pkgs.procps ];
+        LANG = "C.UTF-8";
+        QT_QPA_PLATFORM = "offscreen";
+        FONTCONFIG_FILE = noFonts;
+      }
       ''
-        export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-        export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
+        export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_RUNTIME_DIR=$TMPDIR/runtime
         mkdir -m 700 launcher $XDG_RUNTIME_DIR
         ${copied [
           "Options.qml"
@@ -661,9 +666,7 @@ in
         ${shellFolderLint}
         set -o pipefail
         timeout 60 ${qs} -p shell.qml 2>&1 | tee said
-        grep -aF 'launcher: 13 letters took 900 ms' said
-        grep -aF 'launcher: → 13 letters took 900 ms' said
-        if grep -aF Harbour said; then exit 1; fi
+        ${pkgs.lib.getExe pkgs.bash} ${../tests/trials-kept-heard.sh} said
         touch $out
       '';
 

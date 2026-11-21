@@ -562,11 +562,14 @@ QtObject {
         // has no words.
         const refused = "1.3\u00d7 not set \u00b7 HP offers 1\u00d7 to 3\u00d7";
         holds("a late refusal is said while the keys are still the line's",
-            SetWords.later("scale", refused, 7, 7), { say: refused });
+            SetWords.later("scale", refused, true), { say: refused });
         holds("a late refusal after Joel typed on goes to the journal alone",
-            SetWords.later("scale", refused, 7, 9),
+            SetWords.later("scale", refused, false),
             { journal: `launcher: scale refused after Joel typed on: ${refused}` });
-        holds("a late answer with no words does nothing", SetWords.later("scale", "", 7, 9),
+        holds("and says there only the words' form the launcher gives it",
+            SetWords.later("scale", refused, false, "34 letters"),
+            { journal: "launcher: scale refused after Joel typed on: 34 letters" });
+        holds("a late answer with no words does nothing", SetWords.later("scale", "", false),
             null);
 
         // Each option as Vim's :set volume? says it.
