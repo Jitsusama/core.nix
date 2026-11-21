@@ -563,6 +563,62 @@ fn a_copy_up_waits_its_turn_while_three_go_up() {
 }
 
 #[test]
+fn a_copy_up_takes_whichever_turn_frees_first() {
+    // On 21 November sixteen runs waited on two held turns for over half an
+    // hour while the third stood free, since each waited on one turn its
+    // process id chose.
+    use std::io::{BufRead, BufReader, Read};
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let turns = folder.path().join("nix-offload-there");
+    fs::create_dir_all(&turns).unwrap();
+    let mut held: Vec<Option<fs::File>> = (1..=3)
+        .map(|turn| {
+            let file = fs::File::create(turns.join(format!("uplink-{turn}"))).unwrap();
+            file.lock().unwrap();
+            Some(file)
+        })
+        .collect();
+    let began = std::time::Instant::now();
+    let mut running = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    // The turn the run would have waited on alone, and another to free.
+    let its_own = usize::try_from(running.id() % 3).unwrap();
+    let mut said = BufReader::new(running.stderr.take().unwrap());
+    let mut heard = String::new();
+    while !heard.contains("waits its turn to send") {
+        assert_ne!(said.read_line(&mut heard).unwrap(), 0, "{heard}");
+    }
+    held[(its_own + 1) % 3] = None;
+    // The rest are let go once the run ends, or after 30 s, so a run that
+    // waits on a held turn fails here rather than hanging.
+    let (ended, ending) = std::sync::mpsc::channel::<()>();
+    let letting_go = std::thread::spawn(move || {
+        let _ = ending.recv_timeout(Duration::from_secs(30));
+        drop(held);
+    });
+    said.read_to_string(&mut heard).unwrap();
+    let ran = running.wait().unwrap();
+    let took = began.elapsed();
+    // Spent when the 30 s ran out first, which the assert below reports.
+    let _ = ended.send(());
+    letting_go.join().unwrap();
+    assert_eq!(ran.code(), Some(0), "{heard}");
+    assert!(
+        took < Duration::from_secs(30),
+        "waited on a held turn while another was free: {took:?}"
+    );
+}
+
+#[test]
 fn a_copy_up_sent_first_takes_no_turn() {
     let (ran, took) = sent_up_while_the_uplink_is_taken(&["--first"], Duration::from_secs(20));
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");

@@ -1303,10 +1303,17 @@ fn derivations_up(
 /// their turn and then go at its whole speed, rather than all crawling.
 const UPLOADS: u32 = 3;
 
+/// How often a copy waiting to send looks again for a turn that freed.
+/// A copy up takes minutes, so a second's lag costs nothing.
+const UPLINK_LOOKS_EVERY: Duration = Duration::from_secs(1);
+
 /// A turn at sending up from this machine, had while what this gives is
 /// held, so one that dies frees it. A run sent first takes none, as the
-/// net's go ahead of sessions'. When none can be had, the copy goes on
-/// without one.
+/// net's go ahead of sessions'. A run that finds every turn taken takes
+/// whichever frees first: on 21 November sixteen runs waited over half an
+/// hour on two held turns, each on the one its process id chose, while
+/// the third stood free. When none can be had, the copy goes on without
+/// one.
 fn uplink_turn(rank: Rank) -> Option<fs::File> {
     if rank == Rank::First {
         return None;
@@ -1323,19 +1330,26 @@ fn uplink_turn(rank: Rank) -> Option<fs::File> {
             .open(turns.join(format!("uplink-{turn}")))
             .ok()
     };
-    for turn in 1..=UPLOADS {
-        let held = open(turn)?;
-        if held.try_lock().is_ok() {
-            return Some(held);
-        }
+    let mut turns: Vec<fs::File> = (1..=UPLOADS).map(open).collect::<Option<_>>()?;
+    let mut free = || {
+        let at = turns.iter().position(|turn| turn.try_lock().is_ok())?;
+        Some(turns.swap_remove(at))
+    };
+    if let Some(held) = free() {
+        return Some(held);
     }
     eprintln!(
         "nix-offload: {UPLOADS} copies already go up from this machine, so this waits its turn \
          to send"
     );
-    let held = open(std::process::id() % UPLOADS + 1)?;
-    held.lock().ok()?;
-    Some(held)
+    // flock waits on one file alone, so a turn freed elsewhere is found by
+    // looking again.
+    loop {
+        thread::sleep(UPLINK_LOOKS_EVERY);
+        if let Some(held) = free() {
+            return Some(held);
+        }
+    }
 }
 
 /// Every path the derivations at `paths` are built from, themselves
