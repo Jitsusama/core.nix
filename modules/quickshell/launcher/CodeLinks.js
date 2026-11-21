@@ -31,6 +31,17 @@ function linked(served, said, fresh) {
     return { key, row: unlisted ? null : row, unlisted };
 }
 
+// Whether a link landed on before Code's rows were read whole names a
+// repository the watch then answers without: `waiting` is the row it
+// landed on, none once it's judged, and `fresh` whether the rows `served`
+// are read whole in the watch now running. Only then is a miss known, so
+// the foot can say it as the rows come rather than leave the cursor
+// waiting unsaid, which a link followed with the launcher shut, its watch
+// not yet begun, always is.
+function missed(waiting, served, fresh) {
+    return waiting !== null && waiting !== "" && fresh === true && !served.includes(waiting);
+}
+
 // Whether a drawn row is the one a link's `row`, from linked, lands on.
 function lands(row) {
     return one => row !== null && (one?.servedKey ?? "") === row;

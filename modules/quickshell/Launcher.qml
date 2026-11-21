@@ -1713,8 +1713,23 @@ Scope {
             return { done: false, said: `${words.unlisted ?? ""}: ${words.unlistedWhy ?? ""}` };
         }
         intoOn("code", code.lands(row));
+        // Judged again once Code's watch answers whole, as a link followed
+        // with the launcher shut is judged before that watch begins.
+        code.awaitLink(row);
         prompt.linked();
         return { done: true, said: `opening Code \u203a ${key}` };
+    }
+
+    // Says a link's repository unlisted once Code's rows, read whole after
+    // it landed, lack it, while the landing still waits, so Joel's click
+    // never goes nowhere unsaid. A key pressed since let the landing go,
+    // and the cursor is his, so nothing's said then.
+    function codeLinkMissed() {
+        if (landOn === null)
+            return;
+        landOn = null;
+        const words = Words.of("code").said ?? {};
+        toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
     }
 
     function catalogueRunWalked(id, words) {

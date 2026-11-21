@@ -6,8 +6,9 @@
 // picks the row its whole key names and no other; a key missing from rows
 // read whole in the watch now running picks none, unlisted; and judged by
 // rows held from an earlier watch, which may be from before a clone, or by
-// none, it picks the row to land on as it comes. It exits 0 once every
-// case holds, and otherwise 1, saying which didn't.
+// none, it picks the row to land on as it comes, and is said missed once
+// the watch answers whole without it. It exits 0 once every case holds,
+// and otherwise 1, saying which didn't.
 import QtQuick
 import "CodeLinks.js" as Links
 import "Expect.js" as Expect
@@ -46,6 +47,17 @@ QtObject {
             Links.linked([], "github:someone/thing", undefined), thing);
         Expect.same("an empty link picks nothing however the rows were read",
             Links.linked([], "  ", false), { key: "", row: null, unlisted: true });
+
+        // A link landed on before the rows were read whole is judged once
+        // the watch answers whole: missed only then, only if its row isn't
+        // among them, and never once judged.
+        const waiting = "row:code:github:nobody/thing";
+        Expect.same("a link waiting is said missed once rows read whole lack it, and only then",
+            [Links.missed(waiting, served, true), Links.missed(waiting, served, false),
+                Links.missed(waiting, served, undefined),
+                Links.missed("row:code:github:someone/thing", served, true),
+                Links.missed(null, served, true), Links.missed("", served, true)],
+            [true, false, false, false, false, false]);
 
         // Among drawn rows, a link lands on its repository's alone, never one
         // whose name or a row inside it matches.

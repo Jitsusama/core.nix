@@ -8,7 +8,7 @@
 //! it started, and what git said when it failed goes to the daemon's
 //! journal.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -82,6 +82,34 @@ pub fn tried(
     args: &[&str],
     wait: Option<Duration>,
 ) -> Result<String, Failure> {
+    told(git, folder, args, None, wait)
+}
+
+/// As [`ran`], with `input` on git's standard input, as `rev-list --stdin`
+/// reads what would pass the command line's limit.
+///
+/// # Errors
+///
+/// How git exited when it failed, or none when it was stopped, never
+/// started or printed what isn't text.
+pub fn fed(
+    git: &str,
+    folder: &Path,
+    args: &[&str],
+    input: String,
+    wait: Option<Duration>,
+) -> Result<String, Option<i32>> {
+    told(git, folder, args, Some(input), wait).map_err(|failure| failure.exit)
+}
+
+/// As [`tried`], with `input`, where there's one, on git's standard input.
+fn told(
+    git: &str,
+    folder: &Path,
+    args: &[&str],
+    input: Option<String>,
+    wait: Option<Duration>,
+) -> Result<String, Failure> {
     let failed = |exit| Failure {
         exit,
         said: String::new(),
@@ -105,7 +133,11 @@ pub fn tried(
         .env_remove("LANGUAGE")
         .env_remove("GIT_ASKPASS")
         .env_remove("SSH_ASKPASS")
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(all) = std::env::var_os("LC_ALL").filter(|all| !all.is_empty()) {
@@ -131,6 +163,13 @@ pub fn tried(
         });
     }
     let mut child = command.spawn().map_err(|_| failed(None))?;
+    // Written on a thread of its own, closed once written, so git never
+    // waits on what's still to come while its own pipes fill.
+    if let (Some(input), Some(mut pipe)) = (input, child.stdin.take()) {
+        std::thread::spawn(move || {
+            let _ = pipe.write_all(input.as_bytes());
+        });
+    }
     // Read as it prints, so a long status never fills its pipe and waits.
     let (printed, said) = (drained(child.stdout.take()), drained(child.stderr.take()));
     if let Some(wait) = wait

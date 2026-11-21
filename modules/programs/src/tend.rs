@@ -7,7 +7,7 @@
 //! another way. Neither touches a file to work in: forgetting a tree takes
 //! only git's own record of it, its branch stays, and a locked tree is
 //! kept, as git keeps it. Git's record of a gone tree, its HEAD and its
-//! own reflog, can be the one place some commits are kept, as a tree
+//! own refs and reflogs, can be the one place some commits are kept, as a tree
 //! worked in at no branch, or rebased, leaves them, so forgetting is
 //! refused while one is rather than leave them to git's next gc, which
 //! Gather Its Store runs. The checkout is read before and after
@@ -19,19 +19,25 @@
 //! [`GATHER`], with all it started, and git lets go of its locks as it's
 //! asked to stop.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use repos::model::Checkout;
 use serde_json::{Value, json};
 
 pub use crate::git::READ;
-use crate::git::ran;
+use crate::git::{fed, ran};
 
 /// The longest gathering a store may take before it's stopped. A store of
 /// millions of objects takes minutes, and one stopped is left as it was,
 /// since git writes a pack whole before it removes what it gathered.
 pub const GATHER: Duration = Duration::from_mins(30);
+
+/// How old an upkeep's lock is before it's called left behind: git's own
+/// half a day, past which its gc takes a `gc.pid` for a dead one's, as
+/// Joel's own gc or a scheduled upkeep may hold a large store far longer
+/// than a gathering Code starts.
+const LEFT: Duration = Duration::from_hours(12);
 
 /// How a tending went when it changed nothing it shouldn't.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,12 +72,15 @@ pub enum Refused {
     /// A gone tree holds commits no branch or other ref reaches.
     Stranded,
     /// Git's upkeep left its lock on the store behind, longer ago than any
-    /// gathering may take, as a killed one does, and git keeps no rule to
-    /// call it stale.
+    /// upkeep takes, as a killed one does, and git keeps no rule to call it
+    /// stale.
     Left,
     /// The checkout's config names a program git's gc runs, which a
     /// `.git` from elsewhere could name, and which no `-c` takes back.
     Hooked,
+    /// What git's records of its gone trees hold couldn't all be read, as
+    /// a reftable keeps them where no file says, so none is taken on trust.
+    Records,
 }
 
 impl Refused {
@@ -84,6 +93,7 @@ impl Refused {
             Refused::Stranded => "stranded",
             Refused::Left => "left",
             Refused::Hooked => "hooked",
+            Refused::Records => "records",
         }
     }
 }
@@ -223,61 +233,111 @@ fn named(said: &str) -> bool {
         && said.bytes().any(|byte| byte != b'0')
 }
 
-/// The commits git's records of a checkout's trees hold, apart by
-/// whether `worktree prune` would take the record: gone are those
-/// unlocked whose folder is gone, or never said, and kept the rest.
+/// What git's records of a checkout's trees hold, apart by whether
+/// `worktree prune` would take the record: gone are those unlocked whose
+/// folder is gone, or never said, and kept the rest; and the folders the
+/// gone records name, for git to forget each by.
 struct Held {
     gone: Vec<String>,
     kept: Vec<String>,
+    folders: Vec<PathBuf>,
 }
 
-/// The commits the records of the trees of the checkout whose git folder
-/// is `common` hold, each its HEAD, where it's at a commit, and its own
-/// reflog's commits, those written since `since`, as git's gc keeps them.
-fn held_by_trees(common: &Path, since: u64) -> Held {
+/// What the records of the trees of the checkout whose git folder is
+/// `common` hold, each its HEAD, the refs it keeps of its own, and its
+/// reflogs' commits written since `since`, as git's gc keeps them.
+///
+/// # Errors
+///
+/// [`Refused::Records`] for a gone record that can't be read for what it
+/// holds: one in a reftable, whose HEAD file says only
+/// `refs/heads/.invalid`, or one whose HEAD says neither a commit nor a
+/// ref, which is refused rather than taken to hold nothing.
+fn held_by_trees(common: &Path, since: u64) -> Result<Held, Refused> {
     let mut held = Held {
         gone: Vec::new(),
         kept: Vec::new(),
+        folders: Vec::new(),
     };
     let Ok(records) = std::fs::read_dir(common.join("worktrees")) else {
-        return held;
+        return Ok(held);
     };
     for record in records.flatten().map(|record| record.path()) {
-        let there = std::fs::read_to_string(record.join("gitdir"));
-        let gone = !there.is_ok_and(|there| record.join(there.trim()).exists());
-        let side = if record.join("locked").exists() || !gone {
-            &mut held.kept
-        } else {
-            &mut held.gone
-        };
-        side.extend(held_by_record(&record, since));
+        let there = std::fs::read_to_string(record.join("gitdir")).ok();
+        let tree = there.map(|there| record.join(there.trim()));
+        let gone = !tree.as_ref().is_some_and(|tree| tree.exists());
+        if record.join("locked").exists() || !gone {
+            pointed(&record, since, &mut held.kept);
+            continue;
+        }
+        let tip = std::fs::read_to_string(record.join("HEAD")).unwrap_or_default();
+        let tip = tip.trim();
+        let readable = (named(tip) || tip.starts_with("ref: refs/"))
+            && tip != "ref: refs/heads/.invalid"
+            && !record.join("reftable").exists();
+        if !readable {
+            return Err(Refused::Records);
+        }
+        pointed(&record, since, &mut held.gone);
+        held.folders
+            .extend(tree.and_then(|tree| tree.parent().map(Path::to_path_buf)));
     }
     for side in [&mut held.gone, &mut held.kept] {
         side.retain(|commit| named(commit));
         side.sort();
         side.dedup();
     }
-    held
+    Ok(held)
 }
 
-/// The commits one tree's `record` holds: its HEAD and its reflog's
-/// entries written since `since`, unchecked.
-fn held_by_record(record: &Path, since: u64) -> Vec<String> {
-    let tip = std::fs::read_to_string(record.join("HEAD")).unwrap_or_default();
-    let mut held = vec![tip.trim().to_owned()];
-    let log = std::fs::read_to_string(record.join("logs/HEAD")).unwrap_or_default();
-    for entry in log.lines() {
-        let said = entry.split('\t').next().unwrap_or_default();
-        let words: Vec<&str> = said.split_whitespace().collect();
-        let at = words
-            .len()
-            .checked_sub(2)
-            .and_then(|at| words[at].parse().ok());
-        if at.is_some_and(|at: u64| at >= since) {
-            held.extend(words.iter().take(2).map(|commit| (*commit).to_owned()));
+/// Adds to `held` what the git folder `git_dir` points at: its HEAD, the
+/// refs it keeps as files, and its reflogs' commits, unchecked.
+fn pointed(git_dir: &Path, since: u64, held: &mut Vec<String>) {
+    let tip = std::fs::read_to_string(git_dir.join("HEAD")).unwrap_or_default();
+    held.push(tip.trim().to_owned());
+    for file in files(&git_dir.join("refs")) {
+        let tip = std::fs::read_to_string(file).unwrap_or_default();
+        held.push(tip.trim().to_owned());
+    }
+    logged(git_dir, since, held);
+}
+
+/// Adds to `held` both commits of each entry in the reflogs the git
+/// folder `git_dir` keeps, its HEAD's and its refs', written since
+/// `since`, unchecked.
+fn logged(git_dir: &Path, since: u64, held: &mut Vec<String>) {
+    for log in files(&git_dir.join("logs")) {
+        let log = std::fs::read_to_string(log).unwrap_or_default();
+        for entry in log.lines() {
+            let said = entry.split('\t').next().unwrap_or_default();
+            let words: Vec<&str> = said.split_whitespace().collect();
+            let at = words
+                .len()
+                .checked_sub(2)
+                .and_then(|at| words[at].parse().ok());
+            if at.is_some_and(|at: u64| at >= since) {
+                held.extend(words.iter().take(2).map(|commit| (*commit).to_owned()));
+            }
         }
     }
-    held
+}
+
+/// Every file under `folder`, however deep.
+fn files(folder: &Path) -> Vec<PathBuf> {
+    let (mut found, mut folders) = (Vec::new(), vec![folder.to_path_buf()]);
+    while let Some(folder) = folders.pop() {
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => folders.push(entry.path()),
+                Ok(kind) if kind.is_file() => found.push(entry.path()),
+                _ => {}
+            }
+        }
+    }
+    found
 }
 
 /// Whether a gone tree of the checkout at `folder` is all that keeps
@@ -285,22 +345,33 @@ fn held_by_record(record: &Path, since: u64) -> Vec<String> {
 /// as a tree worked in at no branch, or rebased, leaves. That record,
 /// which `worktree prune` takes, holds its HEAD and its reflog, roots
 /// git's gc walks from, so once it's taken, gc drops what only it held.
-/// Nothing a ref, a ref's own reflog, the checkout's HEAD or a kept
-/// tree reaches is lost, as an amended branch's old tip is not, and an
-/// entry git would expire anyway is left out, so a tree is held no
-/// longer than git would hold it.
-fn stranding(git: &str, folder: &Path) -> Result<bool, Refused> {
-    let held = held_by_trees(&folder.join(".git"), kept_since(git, folder));
+/// Nothing a ref, the checkout's HEAD, a kept tree or a reflog entry git
+/// keeps reaches is lost, as an amended branch's old tip is not, and an
+/// entry git would expire anyway counts on neither side, so a tree is held
+/// no longer than git would hold it, and lets go of nothing git would
+/// drop. What's held goes to git on its input, never its command line,
+/// whose length a checkout of thousands of trees would pass.
+fn stranding(git: &str, folder: &Path, held: &Held, since: u64) -> Result<bool, Refused> {
     if held.gone.is_empty() {
         return Ok(false);
     }
-    let mut args = vec!["rev-list", "--ignore-missing", "--max-count=1"];
-    args.extend(held.gone.iter().map(String::as_str));
-    // Run from the checkout's own folder, a single worktree's refs and
-    // reflogs are every ref's and its own HEAD's, but no tree's record.
-    args.extend(["--not", "--single-worktree", "--all", "--reflog"]);
-    args.extend(held.kept.iter().map(String::as_str));
-    let left = ran(git, folder, &args, Some(READ)).map_err(|_| Refused::Failed)?;
+    let mut reached = held.kept.clone();
+    logged(&folder.join(".git"), since, &mut reached);
+    reached.retain(|commit| named(commit));
+    let mut input = held.gone.clone();
+    // Run from the checkout's own folder, a single worktree's refs are
+    // every ref and its own HEAD, but no tree's record.
+    input.extend(["--not".to_owned(), "--all".to_owned()]);
+    input.extend(reached);
+    let args = [
+        "rev-list",
+        "--ignore-missing",
+        "--max-count=1",
+        "--single-worktree",
+        "--stdin",
+    ];
+    let left = fed(git, folder, &args, input.join("\n") + "\n", Some(READ))
+        .map_err(|_| Refused::Failed)?;
     Ok(!left.trim().is_empty())
 }
 
@@ -317,15 +388,26 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
     if before == 0 {
         return Ok(Tended::Nothing);
     }
-    if stranding(git, folder)? {
+    let since = kept_since(git, folder);
+    let held = held_by_trees(&folder.join(".git"), since)?;
+    if stranding(git, folder, &held, since)? {
         return Err(Refused::Stranded);
     }
-    ran(git, folder, &["worktree", "prune"], Some(READ)).map_err(|_| Refused::Failed)?;
+    // Each by the folder its record names, those read alone, never a
+    // prune of whatever's gone by then, so a tree gone since they were
+    // read waits for the next press.
+    let mut refused = false;
+    for tree in &held.folders {
+        let tree = tree.to_string_lossy();
+        let remove = ["worktree", "remove", tree.as_ref()];
+        refused |= ran(git, folder, &remove, Some(READ)).is_err();
+    }
     let kept = gone(&own(folder)?);
-    Ok(Tended::Forgot {
-        forgot: before.saturating_sub(kept),
-        kept,
-    })
+    let forgot = before.saturating_sub(kept);
+    if refused && forgot == 0 {
+        return Err(Refused::Failed);
+    }
+    Ok(Tended::Forgot { forgot, kept })
 }
 
 /// Gathers the store of the checkout at `folder` as git's own upkeep
@@ -351,7 +433,7 @@ pub fn gather(git: &str, folder: &Path, wait: Duration) -> Result<Tended, Refuse
     // holds this lock, or a killed one left it.
     if let Ok(lock) = std::fs::metadata(folder.join(".git/objects/maintenance.lock")) {
         let age = lock.modified().ok().and_then(|at| at.elapsed().ok());
-        return Err(if age.is_some_and(|age| age > wait) {
+        return Err(if age.is_some_and(|age| age > LEFT) {
             Refused::Left
         } else {
             Refused::Busy
@@ -363,7 +445,9 @@ pub fn gather(git: &str, folder: &Path, wait: Duration) -> Result<Tended, Refuse
         Ok(_) | Err(Some(1)) => {}
         Err(_) => return Err(Refused::Failed),
     }
-    if stranding(git, folder)? {
+    let since = kept_since(git, folder);
+    let held = held_by_trees(&folder.join(".git"), since)?;
+    if stranding(git, folder, &held, since)? {
         return Err(Refused::Stranded);
     }
     let args = [

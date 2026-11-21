@@ -209,11 +209,18 @@ fn gather_its_store_is_refused_while_another_upkeep_holds_it() {
         said["error"]["said"], "not gathered: git is already at work in it",
         "Gather Its Store didn't say another upkeep holds the store: {said}"
     );
-    // A lock older than any gathering is one a killed upkeep left.
-    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(2);
+    // Past a gathering of Code's own, Joel's gc may still hold it.
     let held = std::fs::File::options().write(true).open(&lock).unwrap();
-    held.set_modified(long_ago).unwrap();
+    let ago = |hours| std::time::SystemTime::now() - std::time::Duration::from_hours(hours);
+    held.set_modified(ago(2)).unwrap();
     let said = client.ask(&json!({"id": 2, "ask": "code:gather", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not gathered: git is already at work in it",
+        "Gather Its Store called a long upkeep's lock left behind: {said}"
+    );
+    // A lock older than any upkeep is one a killed upkeep left.
+    held.set_modified(ago(13)).unwrap();
+    let said = client.ask(&json!({"id": 3, "ask": "code:gather", "path": here}));
     assert_eq!(
         said["error"]["said"],
         "not gathered: git left its upkeep's lock behind, in .git/objects/maintenance.lock",
@@ -382,6 +389,86 @@ fn forget_gone_trees_forgets_a_tree_whose_work_a_branch_or_a_standing_tree_holds
     assert_eq!(
         said["said"], "forgot 2 gone trees",
         "Forget Gone Trees was held back by work a branch or a standing tree holds: {said}"
+    );
+}
+
+#[test]
+fn forget_gone_trees_keeps_what_a_gone_trees_own_ref_alone_holds() {
+    let running = Running::new("code-forget-own-ref");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    let marked = real(&running.path("")).join("marked");
+    let path = marked.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
+    behind.commit(&marked, "marked-only");
+    let commit = behind.head(&marked);
+    behind.git(&marked, &["update-ref", "refs/worktree/mark", &commit]);
+    let main = behind.head(&here);
+    behind.git(&marked, &["checkout", "--quiet", "--detach", &main]);
+    std::fs::remove_dir_all(&marked).unwrap();
+    // No reflog counts, so the tree's own ref alone holds its commit.
+    behind.git(&here, &["config", "gc.reflogExpireUnreachable", "now"]);
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
+        "Forget Gone Trees forgot a tree whose own ref alone holds a commit: {said}"
+    );
+}
+
+#[test]
+fn forget_gone_trees_counts_no_reflog_entry_git_would_expire() {
+    let running = Running::new("code-forget-expiring");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    // A commit the checkout's own HEAD reflog alone reaches, besides a
+    // gone tree at it, which holds it for as long as its record stands.
+    behind.git(&here, &["checkout", "--quiet", "--detach"]);
+    behind.commit(&here, "passing");
+    let commit = behind.head(&here);
+    behind.git(&here, &["checkout", "--quiet", "main"]);
+    let resting = real(&running.path("")).join("resting");
+    let path = resting.to_str().unwrap();
+    behind.git(
+        &here,
+        &["worktree", "add", "--quiet", "--detach", path, &commit],
+    );
+    std::fs::remove_dir_all(&resting).unwrap();
+    // Every reflog entry past git's keeping, as its gc would expire them.
+    behind.git(&here, &["config", "gc.reflogExpireUnreachable", "now"]);
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
+        "Forget Gone Trees counted a reflog entry git would expire: {said}"
+    );
+}
+
+#[test]
+fn a_reftable_checkouts_gone_trees_are_refused_unread() {
+    let running = Running::new("code-reftable");
+    let behind = Behind::new(&running);
+    let cases = real(&running.path(""));
+    let tabled = cases.join("src/tabled");
+    let init = ["init", "--quiet", "--ref-format=reftable", "-b", "main"];
+    behind.git(&cases, &[&init[..], &[tabled.to_str().unwrap()]].concat());
+    behind.commit(&tabled, "one");
+    let pinned = cases.join("pinned");
+    let path = pinned.to_str().unwrap();
+    behind.git(&tabled, &["worktree", "add", "--quiet", "--detach", path]);
+    behind.commit(&pinned, "only-here");
+    std::fs::remove_dir_all(&pinned).unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": tabled}));
+    assert_eq!(
+        said["error"]["said"],
+        "not forgotten: git's records of its gone trees couldn't all be read",
+        "Forget Gone Trees took a reftable's records to hold nothing: {said}"
+    );
+    let listed = behind.git(&tabled, &["worktree", "list", "--porcelain"]);
+    assert!(
+        listed.contains(path),
+        "git no longer lists the tree: {listed}"
     );
 }
 

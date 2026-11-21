@@ -132,8 +132,9 @@
         "tree": "not forgotten: it isn't a checkout's own folder",
         "busy": "not forgotten: git is already at work in it",
         "stranded": "not forgotten: a gone tree holds commits no branch has",
+        "records": "not forgotten: git's records of its gone trees couldn't all be read",
         "unread": "not forgotten: git's folder couldn't be read",
-        "failed": "not forgotten: git refused"
+        "failed": "not forgotten: git failed or ran too long"
       }
     },
     {
@@ -153,6 +154,7 @@
         "left": "not gathered: git left its upkeep's lock behind, in .git/objects/maintenance.lock",
         "hooked": "not gathered: its config names a program git's gc would run",
         "stranded": "not gathered: a gone tree holds commits no branch has",
+        "records": "not gathered: git's records of its gone trees couldn't all be read",
         "unread": "not gathered: its store couldn't be read",
         "failed": "not gathered: git failed or ran too long"
       }

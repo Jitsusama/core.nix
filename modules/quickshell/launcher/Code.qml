@@ -91,6 +91,32 @@ Provider {
         return Links.lands(row);
     }
 
+    // The row a link landed on before Code's rows were read whole, kept
+    // until the watch answers whole, so a key it lacks is said then
+    // (CodeLinks.js's missed); none while no link waits.
+    property string linkWaiting: ""
+
+    // Keeps the row a link lands on to judge once the rows are read whole,
+    // unless they're read whole already, as linked judged them.
+    function awaitLink(row) {
+        linkWaiting = ready.link?.answeredThisWatch === true ? "" : (row ?? "");
+    }
+
+    Connections {
+        target: ready.link
+
+        function onAnsweredThisWatchChanged() {
+            const fresh = ready.link?.answeredThisWatch === true;
+            if (!fresh || provider.linkWaiting === "")
+                return;
+            const waiting = provider.linkWaiting;
+            provider.linkWaiting = "";
+            const served = ready.rows().map(row => row?.servedKey ?? "");
+            if (Links.missed(waiting, served, fresh))
+                provider.launcher?.codeLinkMissed();
+        }
+    }
+
     // Its repositories, as the programs daemon ranks them for what's typed.
     // While its answer is asked, those that hold every letter typed stand:
     // the last answer's, in its order, when what's typed goes on from it,
