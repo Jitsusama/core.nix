@@ -19,10 +19,11 @@ pragma ComponentBehavior: Bound
 // it (modules/quickshell/tests/sessions-hosted-reopen.qml), the rest reopened
 // held in its own folder, one pi never saved started under its own id with its
 // quest, and Reopen Them All reopens even when niri never answers its ask
-// for the screens; what another machine carried here, or pi's host gave
-// back, is offered after it; forgetting one and putting the last boot off
-// are asked of the daemon; and a window it had joined to a session another
-// machine holds is joined again by its words, once; a closed session
+// for the screens, and by the daemon's places when given none; what
+// another machine carried here, or pi's host gave back, is offered after
+// it; forgetting one and putting the last boot off are asked of the
+// daemon; and a window it had joined to a session another machine holds
+// is joined again by its words, once; a closed session
 // resumes in its own folder, and one whose folder is gone opens nowhere
 // but its quest's start folder, never the home folder. What the node tells
 // of sessions on the realm's other machines is held too: each says its
@@ -561,6 +562,13 @@ ShellRoot {
         Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
         // Reopen Them All asks niri for its screens first, and niri here
         // never answers, as it doesn't a request it refused.
+        // Asked as the launcher asks, with no places of its own, the walk
+        // takes the daemon's: the boot being restored kept places, so one
+        // that sat here kept nowhere had no window, and comes back held.
+        // Asked first, since niri here opens no window for the next to
+        // wait on.
+        Sessions.reopenAll([{ id: "s-unkept", cwd: "/tmp", way: "boot" }], told("s-unkept"),
+            undefined, Sessions.carryOn);
         Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null);
         patience.start();
     }
@@ -602,8 +610,14 @@ ShellRoot {
             || root.fenced === "" && !Niri.spawns.some(one => one.includes("s-fenced"))
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
-            || root.unsaid === "" && !Niri.spawns.some(one => one.includes("s-unsaid")))
+            || root.unsaid === "" && !Niri.spawns.some(one => one.includes("s-unsaid"))
+            || !Niri.spawns.some(one => one.includes(" pi --session s-unkept ")))
             return;
+        expect("one the daemon's boot kept nowhere comes back held, with no window",
+            Niri.spawns.filter(one => one.includes(" pi --session s-unkept ")).length === 1
+            && Niri.spawns.some(one => one.includes(" pi --session s-unkept ")
+                && one.includes("holds add --detached --folder "))
+            && !kitties.some(one => one.includes("s-unkept")), Niri.spawns.join("\n"));
         expect("one parked that no holder keeps is reopened where it left off, once",
             kitties.filter(one => one.startsWith(`${kitty} ${state}/trees/karst zsh -lic `)
                 && one.endsWith(" pi --session s-orphan")).length === 1, kitties.join("\n"));
