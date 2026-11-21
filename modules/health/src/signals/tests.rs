@@ -666,20 +666,28 @@ fn a_hangup_after_another_stop_is_the_same_stop() {
 fn a_stop_whose_followers_never_end_still_ends_health_in_time() {
     // As a follower stuck on a stalled disk outlives its kill, so health's
     // end of it never returns, and the stop's bound must count without it.
-    // The run writes all the same, not waiting on its followers.
+    // The run writes all the same, not waiting on its followers, and its
+    // error is said before the bound, where a reboot's kill may land.
     let mut stopped = Stopped::starting(&[ENDS_NEVER]);
     let since = Instant::now();
     stopped.send(libc::SIGTERM, false);
+    let error = format!("health: {FAILS_ENDING}");
+    while !stopped.failed().contains(&error) && since.elapsed() < WAITS {
+        thread::sleep(Duration::from_millis(5));
+    }
+    let said_in = since.elapsed();
     let ended = stopped.ending();
     let took = since.elapsed();
+    let failed = stopped.failed();
     assert!(
         ended.signal() == Some(libc::SIGTERM)
+            && said_in < WRITES_WITHIN
             && took >= WRITES_WITHIN
             && stopped.wrote()
-            && !stopped.failed().contains(UNWRITTEN)
-            && stopped.failed().contains(LEFT),
+            && !failed.contains(UNWRITTEN)
+            && failed.find(&error) < failed.find(LEFT),
         "a stop whose followers never end ended health ({ended}) {took:?} on, didn't write \
-         the day, or didn't say it left one: {}",
+         the day, or didn't say its run's error before it left one: {}",
         stopped.failed()
     );
 }
