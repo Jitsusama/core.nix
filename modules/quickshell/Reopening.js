@@ -174,7 +174,7 @@ function namedBack(at, workspaces) {
 // it by name (namedBack), on whatever screen that workspace is now, so
 // placing it moves it no further.
 function onNamed(at, workspace) {
-    return Boolean(at?.workspaceName) && workspace?.output === at.output;
+    return Boolean(at?.workspaceName) && workspace?.name === at.workspaceName;
 }
 
 // How long a session started without a window is taken as begun, though

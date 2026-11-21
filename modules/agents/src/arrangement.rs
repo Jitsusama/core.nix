@@ -219,6 +219,11 @@ fn id_of(one: &Session) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// What a place is marked while its window is gone with every other its
+/// terminal drew, as a crash takes them, until it shows again: one of
+/// those opened again doesn't make the rest closed by hand.
+const ORPHANED: &str = "orphaned";
+
 /// The addresses whose window windows.rs couldn't tell from another's.
 fn untold_of(paired: &[Value]) -> HashSet<&str> {
     paired
@@ -273,10 +278,12 @@ pub fn unwindowed<'a>(
             Some(SESSIONS_KITTY)
         }
     };
-    let lit: HashSet<Option<&str>> = running
+    // A terminal no kitty is known for lights nothing: windows.rs pairs a
+    // plain pi's window only through its kitty, so it can't be told whose.
+    let lit: HashSet<&str> = running
         .iter()
         .filter(|one| shown(one))
-        .map(terminal)
+        .filter_map(terminal)
         .collect();
     let mut seen = Windowless {
         heard: sessions.iter().filter_map(id_of).collect(),
@@ -289,7 +296,7 @@ pub fn unwindowed<'a>(
         let Some(id) = id_of(one) else {
             continue;
         };
-        if lit.contains(&terminal(one)) {
+        if terminal(one).is_some_and(|its| lit.contains(its)) {
             seen.closed.insert(id);
         } else {
             seen.unsure.insert(id);
@@ -384,9 +391,11 @@ impl Arrangement {
     /// ended keeps its place, and one now [`unplaced`] keeps the place it
     /// had. One `unwindowed` closed, running on with its window closed by
     /// hand, is marked `closed` when first seen so, and let go once it has
-    /// been for [`CLOSED_FOR`]; one unsure keeps its place as it is, a mark
-    /// set before running its course, since its window went as its whole
-    /// terminal did.
+    /// been for [`CLOSED_FOR`]; one unsure keeps its place, a mark set
+    /// before running its course, since its window went as its whole
+    /// terminal did, and one with none is marked [`ORPHANED`], never then
+    /// taken as closed until it shows again. A marker for a window with no
+    /// place never stands over a place this boot or the one restored has.
     #[must_use]
     pub fn kept(
         &self,
@@ -407,23 +416,35 @@ impl Arrangement {
             let Some(place) = place.as_object_mut() else {
                 return !unwindowed.closed.contains(id);
             };
-            // One in a window again, parked, ended or gone keeps its place
-            // as it was kept, unmarked, so no mark outlives what set it and
-            // comes due at once, again and again.
+            // One in a window again, or heard parked, ended or elsewhere,
+            // keeps its place as it was kept, unmarked, so no mark outlives
+            // what set it and comes due at once, again and again. One not
+            // heard, as before the node's sessions are, keeps its marks.
             let windowless = unwindowed.closed.contains(id) || unwindowed.unsure.contains(id);
-            if now.contains_key(id) || !windowless {
+            if now.contains_key(id) || (!windowless && unwindowed.heard.contains(id)) {
                 place.remove("closed");
+                place.remove(ORPHANED);
                 return true;
             }
-            let closed = if unwindowed.closed.contains(id) {
+            if unwindowed.unsure.contains(id) && !place.contains_key("closed") {
+                place.insert(ORPHANED.to_owned(), json!(true));
+            }
+            let closed = if unwindowed.closed.contains(id) && !place.contains_key(ORPHANED) {
                 place.entry("closed").or_insert_with(|| json!(at)).as_u64()
             } else {
                 place.get("closed").and_then(Value::as_u64)
             };
             closed.is_none_or(|closed| at.saturating_sub(closed) < closed_for())
         });
+        let restored = self
+            .before(boot, restoring)
+            .and_then(|before| self.boots.get(before))
+            .and_then(Value::as_object);
         for (id, place) in now {
-            if place["unplaced"] == true && this.contains_key(&id) {
+            let placed_before = restored
+                .and_then(|those| those.get(&id))
+                .is_some_and(|there| there.get("unplaced").is_none());
+            if place["unplaced"] == true && (this.contains_key(&id) || placed_before) {
                 continue;
             }
             this.insert(id, place);
@@ -911,14 +932,16 @@ mod tests {
         let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
         let first = kept.kept("this", "", Map::new(), Vec::new(), &unsure, 2_000);
         assert_eq!(
-            first.boots["this"], kept.boots["this"],
-            "the last window closing leaves each place as it was: a mark already set \
-             stands, and none is set"
+            first.boots["this"],
+            json!({"s-shut": {"column": 4, "closed": 1_000},
+                   "s-last": {"column": 5, "orphaned": true}}),
+            "the last window closing leaves each place: a mark already set stands, and \
+             one unmarked is taken as gone with its terminal"
         );
         let gone = first.kept("this", "", Map::new(), Vec::new(), &unsure, 1_000 + grace);
         assert_eq!(
             gone.boots["this"],
-            json!({"s-last": {"column": 5}}),
+            json!({"s-last": {"column": 5, "orphaned": true}}),
             "one marked while others showed is let go when its time comes"
         );
     }
