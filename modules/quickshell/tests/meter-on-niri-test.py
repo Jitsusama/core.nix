@@ -84,7 +84,10 @@ def test_a_meter_niri_shows_late_stays_its_moment_from_niris_frame(shell: Shell)
     came = heard(shell, since, "gone brightness")
     told = f"{sorted(came)}\n{shell.tail()}"
     assert "drawn brightness" in came, f"the meter was never drawn: {told}"
-    assert SWAPPED not in came, f"its moment began at Qt's frame, not niri's: {told}"
+    assert SWAPPED not in came, (
+        "its moment began at Qt's frame, not niri's, so the shell found no"
+        f" presentation-time from niri: {told}"
+    )
     assert PRESENTED in came, f"niri never showed the meter: {told}"
     assert "gone brightness" in came, f"the meter never went: {told}"
     stayed = came["gone brightness"] - came[PRESENTED]

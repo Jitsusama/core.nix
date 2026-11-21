@@ -5168,7 +5168,7 @@
     first frame shown of it, or after the last change once one has been, at its most unseen,
     and never once hidden, waiting anew for a frame when shown again
   '';
-  a-meter-stays-its-moment-once-drawn-on-niri = ''
+  a-meter-stays-its-moment-from-niris-frame = ''
     the screen's brightness picked while the nested niri is held stopped for 2.5 s, longer than
     a meter's moment, has the brightness meter drawn once niri goes on, its moment begun at
     niri's presented frame and not Qt's swapped one, and gone between 1.2 and 3 s after, so it

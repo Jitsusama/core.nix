@@ -697,10 +697,9 @@
     '';
 
   # A meter picked while niri can't draw is shown once it can, and stays its
-  # moment from niri's frame (modules/quickshell/tests/meter-on-niri-test.py);
-  # its name keeps "drawn", since a-meter-stays-its-moment-once-seen is Qt's case.
-  a-meter-stays-its-moment-once-drawn-on-niri = launcherOnNiri {
-    name = "a-meter-stays-its-moment-once-drawn-on-niri";
+  # moment from niri's frame (modules/quickshell/tests/meter-on-niri-test.py).
+  a-meter-stays-its-moment-from-niris-frame = launcherOnNiri {
+    name = "a-meter-stays-its-moment-from-niris-frame";
     tests = ../tests/meter-on-niri-test.py;
   };
 }

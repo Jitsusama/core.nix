@@ -68,7 +68,8 @@ PanelWindow {
     }
 
     // Which frame began its moment, niri's presented or Qt's swapped, said
-    // with it so the desktop test knows the moment began at niri's.
+    // with it so the desktop test knows the moment began at niri's. Cleared
+    // as it hides, so a later showing never says an earlier one's frame.
     property string seenBy: ""
 
     function shownBy(frame) {
@@ -80,10 +81,15 @@ PanelWindow {
     Moment {
         id: moment
         showing: meter.visible
-        // Said to the desktop test as its moment first begins, at niri's
-        // frame, which can come a second or more after the frame Qt hands
-        // it ("drawn") on a screen slow to draw, with which frame it was. A
-        // change once seen begins it again (again()), unsaid.
+        onShowingChanged: {
+            if (!showing)
+                meter.seenBy = "";
+        }
+        // Said to the desktop test as its moment first begins, with which
+        // frame began it: niri's, which can come a second or more after the
+        // frame Qt hands it ("drawn") on a screen slow to draw, or Qt's where
+        // niri never tells. A change once seen begins it again (again()),
+        // unsaid.
         onSeenChanged: {
             if (seen)
                 Report.say(`seen ${meter.name} ${meter.seenBy}`);
