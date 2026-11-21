@@ -545,8 +545,10 @@ in
     home.sessionVariables = lib.mkMerge [
       (lib.mkIf onClaude { PI_CLAUDE_CODE_COMMAND = lib.getExe claude; })
       # A pi started by hand browses in Chromium, as a hosted one does
-      # (host.nix says why).
-      (lib.mkIf pkgs.stdenv.hostPlatform.isLinux { CHROME_PATH = lib.getExe pkgs.chromium; })
+      # (host.nix says why). A default, so a machine's own value wins.
+      (lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+        CHROME_PATH = lib.mkDefault (lib.getExe pkgs.chromium);
+      })
     ];
     #
     # Off the plan every pi starts on Opus 5.5 at high thinking, the one

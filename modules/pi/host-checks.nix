@@ -303,7 +303,11 @@ in
                 inherit pi node proof;
                 conversationHeapMb = 3072;
                 asyncContextFrame = true;
-                environment.PROXY_ORIGIN = "https://proxy.example.com";
+                environment = {
+                  PROXY_ORIGIN = "https://proxy.example.com";
+                  # A machine's own browser wins over Chromium.
+                  CHROME_PATH = "/own/chrome";
+                };
               };
               # Where pi's SSH agent proxy runs.
               agentProxy.builderKey = "/builders/key";
@@ -364,12 +368,14 @@ in
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
         && lib.elem ''"SSH_AUTH_SOCK=%t/pi-agent.sock"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
+        && lib.elem ''"CHROME_PATH=/own/chrome"'' environment
+        && lib.count (lib.hasPrefix ''"CHROME_PATH='') environment == 1
         # One conversation keeps a plain pi's pools, not a host's.
         && !(lib.any (lib.hasPrefix ''"PI_CODEMODE_MAX_WORKERS='') environment)
         && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);
     in
     holds "pi-conversations-run-apart"
-      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, can't keep its core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
+      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, browses in Chromium where its machine names its own browser, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, can't keep its core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
       (
         runsApart "attended"
         && runsApart "background"
