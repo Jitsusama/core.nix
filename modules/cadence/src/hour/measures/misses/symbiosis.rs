@@ -411,7 +411,7 @@ fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>
         })
     };
     // A withdrawal is no finding, whatever it was sent as.
-    let withdraws = |one: &Posted| {
+    let takes_back = |one: &Posted| {
         let answered = one.re.as_ref().and_then(|re| by_id.get(re));
         answered.is_some_and(|it| it.from == one.from) && opens_with(one, "withdr")
     };
@@ -419,7 +419,7 @@ fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>
     let mut counted_as: BTreeMap<&str, usize> = BTreeMap::new();
     for one in posted {
         let thread = ancestors(&by_id, one).find_map(|id| counted_as.get(id).copied());
-        if is_finding(one) && !withdrawn(one) && !withdraws(one) {
+        if is_finding(one) && !withdrawn(one) && !takes_back(one) {
             if let Some(at) = thread.filter(|&at| found[at].landed.is_none()) {
                 counted_as.insert(&one.id, at);
             } else {
