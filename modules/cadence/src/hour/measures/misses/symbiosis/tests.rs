@@ -1,3 +1,9 @@
+//! The cases of the work system's findings count.
+//!
+//! Long because each way the mesh can move under a reading, and each way
+//! a thread's findings, follow-ups and landing notes can come, is a case
+//! of its own.
+
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
@@ -54,6 +60,19 @@ fn known() -> BTreeSet<String> {
         .into()
 }
 
+/// Whom `one` counts against, P9R1KI where it names none.
+fn owned(one: &Posted) -> String {
+    super::owner(one, &known()).unwrap_or_else(|| "P9R1KI".to_owned())
+}
+
+/// The ids of the findings `posted` holds.
+fn ids_of(posted: &[Posted]) -> Vec<String> {
+    open_findings(posted, "P9R1KI", &known())
+        .into_iter()
+        .map(|one| one.posted.id)
+        .collect()
+}
+
 #[test]
 fn a_finding_counts_against_the_owner_its_opening_names() {
     let cases = [
@@ -91,18 +110,12 @@ fn a_finding_counts_against_the_owner_its_opening_names() {
     ];
     for (text, owner) in cases {
         assert_eq!(
-            super::owner(&finding(60, "IKQ63G", text), "P9R1KI", &known()),
+            owned(&finding(60, "IKQ63G", text)),
             owner,
             "{text:?} counted against the wrong owner"
         );
     }
-    let owner_of = |from: &str, to: &[&str]| {
-        super::owner(
-            &sent(60, from, "finding", to, "on the slots"),
-            "P9R1KI",
-            &known(),
-        )
-    };
+    let owner_of = |from: &str, to: &[&str]| owned(&sent(60, from, "finding", to, "on the slots"));
     assert_eq!(
         owner_of("CIJMZQ", &["@IKQ63G", GROUP]),
         "IKQ63G",
@@ -147,6 +160,9 @@ fn a_follow_up_adds_to_an_open_finding_and_its_landing_notes_are_its_check() {
     let note = sent(8_300, "WCJQSG", "fyi", &[GROUP], "rolled out harness 1.2");
     let on_note = answering(finding(8_200, "KP0L6A", "KP0L6A: 1.2 broke spawns"), &note);
     let elsewhere = sent(8_100, "IKQ63G", "finding", &["@WCJQSG"], "IKQ63G: not here");
+    // After the note's thread holds a finding, a note there lands on it
+    // alone, never on the first's.
+    let late = answer(8_000, "KP0L6A", "Landed harness #1950.", &on_note);
     let posted = [
         first.clone(),
         more,
@@ -161,6 +177,7 @@ fn a_follow_up_adds_to_an_open_finding_and_its_landing_notes_are_its_check() {
         note,
         on_note.clone(),
         elsewhere,
+        late,
     ];
     let found = open_findings(&posted, "P9R1KI", &known());
     let ids: Vec<&str> = found.iter().map(|one| one.posted.id.as_str()).collect();
@@ -186,9 +203,143 @@ fn a_follow_up_adds_to_an_open_finding_and_its_landing_notes_are_its_check() {
         ["Landed core #6020."],
         "a note on the first finding didn't land for the regression beneath it"
     );
+    assert_eq!(
+        found[2].landed,
+        ["Landed harness #1950."],
+        "a landing note on a finding's thread didn't land for it"
+    );
     assert!(
-        found[2].landed.is_empty(),
+        !found[0].landed.iter().any(|line| line.contains("harness")),
         "a landing note in another thread landed here"
+    );
+    // A note answering a follow-up folded into its finding lands for it.
+    let root = finding(500, "IKQ63G", "IKQ63G finding for A2VLJN: q");
+    let folded = answering(finding(400, "CIJMZQ", "CIJMZQ: one more"), &root);
+    let on_folded = answer(300, "A2VLJN", "Landed core #6040.", &folded);
+    let found = open_findings(&[root, folded, on_folded], "P9R1KI", &known());
+    assert_eq!(
+        found[0].landed,
+        ["Landed core #6040."],
+        "a landing note on a folded follow-up didn't land for its finding"
+    );
+}
+
+#[test]
+fn a_follow_up_after_a_landing_note_waits_on_that_fix_and_counts_once_it_runs() {
+    let first = finding(2 * DAY + 900, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let landed = answer(2 * DAY + 800, "A2VLJN", "Landed core #6000.", &first);
+    let more = answering(
+        finding(2 * DAY + 700, "CIJMZQ", "CIJMZQ: still seeing it"),
+        &first,
+    );
+    let again = answering(
+        finding(2 * DAY + 600, "CIJMZQ", "CIJMZQ: and again"),
+        &first,
+    );
+    // Sent as a finding, a landing note still lands.
+    let sent_as = answering(
+        finding(2 * DAY + 500, "A2VLJN", "Landed core #6010 too."),
+        &first,
+    );
+    let found = open_findings(
+        &[first, landed, more.clone(), again, sent_as],
+        "P9R1KI",
+        &known(),
+    );
+    let ids: Vec<&str> = found.iter().map(|one| one.posted.id.as_str()).collect();
+    assert_eq!(
+        ids[1..],
+        [more.id.as_str()],
+        "a second follow-up counted apart from the first, or a landing note sent as a \
+         finding counted as one"
+    );
+    assert_eq!(
+        (found[1].owner.as_str(), found[1].follows),
+        ("A2VLJN", Some(0)),
+        "a follow-up naming no owner wasn't owned as its thread's first, or didn't follow it"
+    );
+    assert_eq!(
+        found[0].landed,
+        ["Landed core #6000.", "Landed core #6010 too."],
+        "a landing note sent as a finding didn't add to the fix"
+    );
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let core = |number| Named {
+        repo: "core".to_owned(),
+        number,
+    };
+    let findings = Findings {
+        text: as_misses(&found, NOW),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    let merged = BTreeSet::from([core(6000), core(6010)]);
+    let waiting = BTreeMap::from([(core(6010), "the last switch doesn't carry it")]);
+    let judged = |unrun| Judged {
+        merged: &merged,
+        unread: &BTreeSet::new(),
+        unrun,
+        here: "here",
+    };
+    let waits = findings.measured(&repos, &judged(&waiting), NOW).behind;
+    assert!(
+        waits.len() == 1 && waits[0].contains(": x,"),
+        "a follow-up counted while the fix it follows didn't run yet: {waits:?}"
+    );
+    let ran = findings
+        .measured(&repos, &judged(&BTreeMap::new()), NOW)
+        .behind;
+    assert!(
+        ran.len() == 1 && ran[0].contains("still seeing it"),
+        "a follow-up didn't count once the fix it follows ran, or the fixed one did: {ran:?}"
+    );
+}
+
+#[test]
+fn a_landing_note_that_doubts_itself_or_was_cut_lands_nothing() {
+    let first = finding(9_000, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let doubts = answer(
+        8_900,
+        "CIJMZQ",
+        "Landed core #6000 but it still fails here.",
+        &first,
+    );
+    let cut = Posted {
+        cut: true,
+        ..answer(
+            8_800,
+            "A2VLJN",
+            "Landed core #6001, core #6002 and core #60",
+            &first,
+        )
+    };
+    let landed = answer(8_700, "A2VLJN", "Landed core #6020.", &first);
+    let kept = answer(
+        8_600,
+        "A2VLJN",
+        "Landed core #6021 as well, not instead of #6020.",
+        &first,
+    );
+    let found = open_findings(&[first, doubts, cut, landed, kept], "P9R1KI", &known());
+    assert_eq!(
+        found[0].landed,
+        [
+            "Landed core #6020.",
+            "Landed core #6021 as well, not instead of #6020."
+        ],
+        "a note doubting itself or cut short landed, or one saying not instead replaced"
+    );
+    let mut long = format!("Landed {}", "core #6000, ".repeat(400));
+    assert!(
+        cut_to_opening(&mut long) && long.len() <= FIRST_LINE,
+        "a first line past what's kept wasn't marked cut"
+    );
+    let mut whole = format!("Landed {}.\n{}", "core #6000, ".repeat(60), "x".repeat(900));
+    let first_line = whole.lines().next().unwrap_or_default().to_owned();
+    assert!(
+        !cut_to_opening(&mut whole) && whole == first_line,
+        "a first line past the opening but within what's kept was cut"
     );
 }
 
@@ -510,7 +661,7 @@ fn a_finding_open_past_a_day_is_filed_with_its_owner_until_its_fix_runs_here() {
         number,
     };
     let core = |number| change("core", number);
-    let text = as_misses(&found);
+    let text = as_misses(&found, NOW);
     let named = named_in(&text, &repos);
     assert_eq!(
         named,
@@ -545,13 +696,15 @@ fn a_finding_open_past_a_day_is_filed_with_its_owner_until_its_fix_runs_here() {
          one open under a day dragged, or one held by the hour's blindness counted"
     );
     assert!(
-        measure.behind.len() == 3
+        measure.behind.len() == 4
             && measure.behind[0].ends_with(" · A2VLJN")
             && measure.behind[1].contains("doesn't carry it")
             && measure.behind[1].ends_with(" · KP0L6A")
-            && measure.behind[2].contains(": a day · WCJQSG"),
+            && held_unseen(&measure.behind[2])
+            && measure.behind[2].ends_with(" · OSPHT4")
+            && measure.behind[3].contains(": a day · WCJQSG"),
         "each finding past a day wasn't filed with its own owner, saying why, or one held \
-         by what cadence can't see was put to its owner: {:?}",
+         by what cadence can't see left the card or wasn't marked held: {:?}",
         measure.behind
     );
     assert!(
@@ -570,5 +723,220 @@ fn a_finding_open_past_a_day_is_filed_with_its_owner_until_its_fix_runs_here() {
         unread.measured(&repos, &judged, NOW).target,
         None,
         "a mesh that couldn't be read was judged"
+    );
+}
+
+#[test]
+fn a_finding_held_by_a_main_unread_or_a_change_unreadable_is_kept_apart() {
+    let unread = finding(2 * DAY, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let elsewhere = finding(2 * DAY - 1, "IKQ63G", "IKQ63G finding for OSPHT4: y");
+    let numberless = finding(2 * DAY - 2, "IKQ63G", "IKQ63G finding for KP0L6A: z");
+    let posted = [
+        unread.clone(),
+        elsewhere.clone(),
+        numberless.clone(),
+        answer(DAY, "A2VLJN", "Landed core #6000.", &unread),
+        answer(DAY, "OSPHT4", "Landed mycelial-node #12.", &elsewhere),
+        answer(DAY, "KP0L6A", "Landed the fix.", &numberless),
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    let findings = Findings {
+        text: as_misses(&found, NOW),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let judged = Judged {
+        merged: &BTreeSet::new(),
+        unread: &BTreeSet::from(["core".to_owned()]),
+        unrun: &BTreeMap::new(),
+        here: "here",
+    };
+    let measure = findings.measured(&repos, &judged, NOW);
+    assert!(
+        measure.now == 0.0
+            && measure.behind.len() == 3
+            && measure.behind.iter().all(|line| held_unseen(line))
+            && measure
+                .says
+                .contains("3 more held where cadence can't see it run"),
+        "a finding held by a main cadence couldn't read, or by a landing note naming no \
+         change it reads, was counted, or left the card: {} {:?}",
+        measure.says,
+        measure.behind
+    );
+}
+
+#[test]
+fn a_findings_landing_note_is_walked_for_and_held_while_its_main_is_unread() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let first = finding(2 * DAY, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let posted = [
+        first.clone(),
+        answer(DAY, "A2VLJN", "Landed core #6000.", &first),
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    let findings = Findings {
+        text: as_misses(&found, NOW),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    // No core mirror is kept here, so the walk the note asks for fails.
+    let (_, measure) = super::super::checked_beside("", root.path(), &[], "", Some(&findings), NOW)
+        .expect("judged");
+    let measure = measure.expect("the findings measured");
+    assert!(
+        measure.now == 0.0
+            && measure.behind.len() == 1
+            && measure.behind[0].contains("cadence couldn't read core's main"),
+        "a finding's landing note wasn't walked for, so its finding counted as unlanded: {:?}",
+        measure.behind
+    );
+}
+
+#[test]
+fn an_answer_off_the_group_written_before_its_finding_still_counts() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let messages = root.path().join("messages");
+    let kept = root.path().join("symbiosis.json");
+    let first = finding(600, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let slip = finding(590, "CIJMZQ", "CIJMZQ: a slip");
+    // Each written here before the finding it settles, as one relayed late.
+    let landed = answering(
+        sent(500, "A2VLJN", "fyi", &["@IKQ63G"], "Landed core #6000."),
+        &first,
+    );
+    let taken = Posted {
+        supersedes: Some(slip.id.clone()),
+        ..sent(500, "CIJMZQ", "fyi", &["@P9R1KI"], "CIJMZQ: never mind")
+    };
+    put(&messages, &landed, 300);
+    put(&messages, &taken, 300);
+    read_at(&messages, &kept, true);
+    put(&messages, &first, 100);
+    put(&messages, &slip, 100);
+    let posted = read_at(&messages, &kept, true).posted;
+    let found = open_findings(&posted, "P9R1KI", &known());
+    assert!(
+        found.len() == 1 && found[0].landed == ["Landed core #6000."],
+        "an answer off the group written before its finding was lost: {found:?}"
+    );
+}
+
+#[test]
+fn a_file_moved_away_holds_the_mark_and_one_unreadable_holds_the_count() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let gone = root.path().join("1795262340000-IKQ63G-1-x.json");
+    let at = (NOW - 60) * 1000;
+    let moved = opened(
+        vec![(gone, "1795262340000-IKQ63G-1-x.json".to_owned(), at)],
+        NOW * 1000,
+        at - 1000,
+    );
+    assert_eq!(
+        (moved.through_ms, moved.unread),
+        (at, 0),
+        "a file moved since it was listed was counted unread, or let the mark pass it"
+    );
+    let expired = opened(
+        vec![(
+            root.path().join("1794657600000-IKQ63G-1-y.json"),
+            "1794657600000-IKQ63G-1-y.json".to_owned(),
+            (NOW - WITHIN + 60) * 1000,
+        )],
+        NOW * 1000,
+        0,
+    );
+    assert_eq!(
+        expired.through_ms,
+        (NOW - WITHIN + 60) * 1000,
+        "a file expired at the week's end held the next reading back to it"
+    );
+    let one = finding(30, "IKQ63G", "IKQ63G: shut");
+    put(root.path(), &one, 30);
+    let path = root.path().join(format!("{}.json", one.id));
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).expect("shut");
+    let shut = opened(
+        vec![(path, format!("{}.json", one.id), (NOW - 30) * 1000)],
+        NOW * 1000,
+        0,
+    );
+    assert_eq!(
+        (shut.unread, shut.through_ms),
+        (1, (NOW - 30) * 1000),
+        "a file that can't be opened wasn't counted unread and held to"
+    );
+}
+
+#[test]
+fn a_file_dated_ahead_ages_from_when_it_was_first_written_here() {
+    let one = finding(0, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let kept = vec![written(&one, 3_600)];
+    let posted = kept_beside(kept, vec![written(&one, 0)], NOW * 1000);
+    assert_eq!(
+        posted,
+        [written(&one, 3_600)],
+        "a file opened again moved its finding's age to now"
+    );
+}
+
+#[test]
+fn a_kept_reading_that_cant_be_read_is_an_error() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let messages = root.path().join("messages");
+    put(&messages, &finding(60, "IKQ63G", "IKQ63G: x"), 60);
+    let kept = root.path().join("symbiosis.json");
+    std::fs::create_dir(&kept).expect("a folder where the reading goes");
+    assert!(
+        read(&messages, NOW, &kept, true).is_err(),
+        "a kept reading that couldn't be read was taken for none"
+    );
+}
+
+#[test]
+fn only_plain_files_are_read() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let messages = root.path().join("messages");
+    let first = finding(60, "IKQ63G", "IKQ63G: x");
+    put(&messages, &first, 60);
+    std::os::unix::fs::symlink("/dev/zero", messages.join("1795262390000-CIJMZQ-1-z.json"))
+        .expect("a link");
+    std::fs::create_dir(messages.join("1795262390000-CIJMZQ-1-d.json")).expect("a folder");
+    let kept = root.path().join("symbiosis.json");
+    let read = read_at(&messages, &kept, true);
+    assert_eq!(
+        (read.posted, read.unread),
+        (vec![first], 0),
+        "a link or a folder named as a message was read"
+    );
+}
+
+#[test]
+fn a_look_reads_the_mesh_only_where_the_hour_keeps_it() {
+    let account = tempfile::tempdir().expect("a scratch folder");
+    let root = account.path().join("harness");
+    let folder = account.path().join("cadence");
+    let messages = root.join("mesh-workflow/messages");
+    let one = finding(60, "IKQ63G", "IKQ63G: x");
+    put(&messages, &one, 60);
+    std::fs::create_dir_all(&folder).expect("a folder");
+    let kept = folder.join("symbiosis.json");
+    let now = jiff::Timestamp::now().as_second();
+    assert!(
+        findings(&root, &folder, now, None).is_none(),
+        "a look with no reading kept read the mesh"
+    );
+    put_as(&folder, "symbiosis.json", "{}", NOW - now + 3 * 3_600);
+    assert!(
+        findings(&root, &folder, now, None).is_none(),
+        "a look read the mesh past a reading no hour keeps"
+    );
+    std::fs::write(&kept, "{}").expect("kept now");
+    let look = findings(&root, &folder, now, None).expect("a look at a kept reading");
+    assert_eq!(
+        look.orchestrator, "the orchestrator",
+        "a look said a finding naming no owner as nobody's"
     );
 }
