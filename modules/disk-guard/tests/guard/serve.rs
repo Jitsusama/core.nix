@@ -635,6 +635,41 @@ fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
 }
 
 #[test]
+fn every_clear_one_survey_served_carries_its_seconds() {
+    // Before each pass carried its own, only the first of a survey's
+    // passes got the seconds and the rest journaled none.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    let mut asked = Vec::new();
+    for name in ["one.txt", "two.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2099-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+        let path = fs::canonicalize(root.join("files").join(name)).unwrap();
+        disk_guard::clears::ask(root, &path, 1.0).unwrap();
+        asked.push(path);
+    }
+    let mut guard = guard_at(root, "0%");
+    stepped(&mut guard, 2, &mut Fake::default());
+    assert!(asked.iter().all(|path| !path.exists()), "both asks went");
+    let journal = fs::read_to_string(root.join("journal.jsonl")).unwrap();
+    let seconds: Vec<Option<f64>> = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|line| line["event"] == "pass" && line["why"] == "clear")
+        .map(|line| line["surveyed"].as_f64())
+        .collect();
+    assert_eq!(seconds.len(), 2, "a pass for each ask: {journal}");
+    assert!(seconds[0].is_some(), "{journal}");
+    assert_eq!(
+        seconds[0], seconds[1],
+        "one walk, the same seconds: {journal}"
+    );
+}
+
+#[test]
 fn a_clear_leaves_what_the_other_holders_could_clear_as_it_was() {
     // A clear surveys only the sources around its folder, so the rest
     // must keep what the last whole survey said of them.

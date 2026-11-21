@@ -519,9 +519,23 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     )
     .unwrap();
     let (_, said, _) = machine.run("journal");
+    let old = said
+        .lines()
+        .find(|row| row.ends_with("exhausted in 5 s"))
+        .unwrap_or_else(|| {
+            panic!("a pass from before its why was journaled should still be shown: {said}")
+        });
+    let whys = [
+        "reach",
+        "upkeep",
+        "garbage",
+        "producers",
+        "clear",
+        "collect",
+    ];
     assert!(
-        said.lines().any(|row| row.ends_with("exhausted in 5 s")),
-        "a pass from before its why was journaled should still be shown: {said}"
+        !old.split_whitespace().any(|word| whys.contains(&word)),
+        "a pass that never said what set it going is given no why: {old}"
     );
     // The newest entry, after what the rotated file still holds.
     let row = said.lines().last().unwrap_or_default();

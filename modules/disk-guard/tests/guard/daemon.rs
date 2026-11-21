@@ -478,7 +478,7 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
     guard.step(&at(305.0), &CALM).unwrap();
     assert_eq!(runs(), 3, "a file saying something new");
     assert!(trashed.exists(), "only the producer ran, not all of upkeep");
-    // Journaled as the producers' own pass, with the survey of them alone.
+    // Journaled as the producers' own pass, with its survey's seconds.
     let journal = home.journal();
     let pass = journal
         .iter()
@@ -636,9 +636,11 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 
 #[test]
 fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
-    // Half the passes on 20 November freed nothing, and their lines
-    // couldn't say whether each reached, upkept or collected, or whether
-    // it had anything to take.
+    // In the day to 03:00 on 21 November half the passes freed nothing,
+    // and their lines couldn't say whether each reached, upkept or
+    // collected, or whether it had anything to take. Reach and upkeep
+    // are here; producers, clear, garbage and collect are with their own
+    // cases.
     let passes = |home: &Home| -> Vec<serde_json::Value> {
         home.journal()
             .into_iter()
@@ -647,13 +649,16 @@ fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     };
     let filling = Home::new();
     filling.cold_scratch("run-1");
+    // Kept, since process 300 can't be judged, so the pass is offered
+    // something and frees nothing: the waste its line is there to show.
     filling.hidden(300, 77);
     let mut guard = filling.guard(filling.config("100%", "100%"));
     guard.step(&tick_at(3600.0), &CALM).unwrap();
     let reach = passes(&filling);
     assert_eq!(reach.len(), 1, "{reach:?}");
     assert_eq!(reach[0]["why"], "reach");
-    assert!(reach[0]["offered"].as_u64() >= Some(1), "{reach:?}");
+    assert_eq!(reach[0]["offered"], 1, "{reach:?}");
+    assert_eq!(reach[0]["freed"], 0, "{reach:?}");
     assert!(reach[0]["surveyed"].as_f64() >= Some(0.0), "{reach:?}");
     let healthy = Home::new();
     healthy.trashed("old.txt", "2020-01-01T00:00:00");
@@ -664,6 +669,17 @@ fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     assert_eq!(upkeep[0]["why"], "upkeep");
     assert!(upkeep[0]["offered"].as_u64() >= Some(1), "{upkeep:?}");
     assert!(upkeep[0]["surveyed"].as_f64() >= Some(0.0), "{upkeep:?}");
+    // A scratch folder with nothing in it is watched, and offers nothing.
+    let empty = Home::new();
+    fs::create_dir_all(empty.root.join("scratch")).unwrap();
+    let mut guard = empty.guard(empty.config("100%", "100%"));
+    guard.step(&tick_at(3600.0), &CALM).unwrap();
+    let nothing = passes(&empty);
+    assert_eq!(nothing.len(), 1, "{nothing:?}");
+    assert_eq!(
+        nothing[0]["offered"], 0,
+        "a pass with nothing to take says so"
+    );
 }
 
 #[test]

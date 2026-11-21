@@ -228,7 +228,11 @@ or launchd, and [`home.nix`][2] the account's.
   served carries its seconds, so passes at one time and the same seconds
   shared one walk. A pass that freed nothing can so be told from one with
   nothing to take: in the day to 03:00 on 21 November, half of them freed
-  nothing, and their lines couldn't say which. Any account may pass
+  nothing, and their lines couldn't say which. The table shows what set
+  a pass going; `--json` gives what it was offered and its survey's
+  seconds. `upkeep` covers every trigger of the routine, and a
+  producers' or clear's survey that offers nothing makes no pass, so its
+  walk leaves no seconds. Any account may pass
   through the machine's state folder to its journal but not list it, and
   every other file there is saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
