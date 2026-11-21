@@ -79,10 +79,12 @@ pub enum Job {
 /// the whole call, as they do for one heard from its start in this run,
 /// and not for one taken up from its file after a restart. Its `guesses`
 /// say who the voices left numbered may be, once it's told apart; they
-/// aren't in its lines, so a restart loses them.
+/// aren't in its lines, so a restart loses them. Its first `read` lines
+/// were read back from its file, their echoes already left out.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
+    read: usize,
     done: HashSet<Side>,
     heard: Vec<Heard>,
     pieces: Vec<Piece>,
@@ -512,12 +514,13 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
     let grouped = voices::group(&writing.heard, people);
     let takes: Vec<usize> = writing.pieces.iter().map(|piece| piece.take).collect();
     let voiced = pieces::within_takes(&takes, &grouped);
-    let mut heard = split::Heard {
+    let mut call = split::Call {
         lines: &mut writing.lines,
         pieces: &mut writing.pieces,
         words: &mut writing.words,
     };
-    split::by_voice(&mut heard, &voiced);
+    let split::Splits { of, split, into } = split::by_voice(&mut call, &voiced);
+    eprintln!("call-transcripts: {split} of {of} lines of theirs split by voice, into {into}");
     true
 }
 
@@ -565,6 +568,7 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
     }
     Writing {
         whole: lines.is_empty(),
+        read: lines.len(),
         lines,
         ..Writing::default()
     }
@@ -612,8 +616,10 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 /// it's known and the voices' `note`. Joel's echoes are left out against
 /// each take of theirs whole, never its parts, so a take split by voice
 /// neither brings back an echo of it nor takes away his answer to it.
+/// Lines read back from the file were told when first written, and are
+/// kept, since a split take's parts read back can't be joined again.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let heard = split::unechoed(&writing.lines, &writing.pieces);
+    let heard = split::unechoed(&writing.lines, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
     markdown_unechoed(&heard, me, them, note, guesses)
 }

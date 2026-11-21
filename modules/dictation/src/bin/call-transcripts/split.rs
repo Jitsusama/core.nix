@@ -18,7 +18,12 @@
 //! as it was heard, never against its parts: an echo of a take that runs
 //! across the cut holds too few of either part's words to be taken for
 //! its echo, and his short answer in a part's words would be taken for
-//! one.
+//! one. It leans to keeping his lines: where his microphone cuts its copy
+//! of one short part as a take of its own, that echo holds too few of the
+//! take's words and is kept, as it was before any take was split. A line
+//! read back from the call's file after a restart was told when it was
+//! first written, and its take's parts can't be joined again, so it's
+//! kept as it is.
 
 use std::collections::HashMap;
 
@@ -39,10 +44,19 @@ pub struct Piece {
 
 /// A call's lines, the pieces embedded and each line's words, timed from
 /// the call's start, by the line they're of.
-pub struct Heard<'a> {
+pub struct Call<'a> {
     pub lines: &'a mut Vec<Line>,
     pub pieces: &'a mut [Piece],
     pub words: &'a mut HashMap<usize, Vec<Word>>,
+}
+
+/// How many lines of theirs with pieces there were, as heard, how many
+/// were split where the voice changes, and into how many parts.
+#[derive(Debug, Default, PartialEq)]
+pub struct Splits {
+    pub of: usize,
+    pub split: usize,
+    pub into: usize,
 }
 
 /// A line as its take was heard, the parts it was split into before
@@ -59,11 +73,13 @@ struct Whole {
 /// piece's, and splits one whose pieces fall in more than one voice where
 /// the voice changes, each part keeping the words written in it; the
 /// pieces and words then say which of the lines, split, they're of. A
-/// line with no pieces keeps the voice it has.
-pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
-    let mut lines = Vec::with_capacity(heard.lines.len());
+/// line with no pieces keeps the voice it has. What was split is given
+/// back, to be logged.
+pub fn by_voice(call: &mut Call, voices: &[Option<usize>]) -> Splits {
+    let mut lines = Vec::with_capacity(call.lines.len());
     let mut words = HashMap::new();
-    for whole in wholes(heard) {
+    let mut splits = Splits::default();
+    for whole in wholes(call) {
         if whole.pieces.is_empty() {
             if !whole.words.is_empty() {
                 words.insert(lines.len(), whole.words);
@@ -71,15 +87,20 @@ pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
             lines.push(whole.line);
             continue;
         }
-        let runs = runs(&whole.pieces, heard.pieces, voices);
+        let runs = runs(&whole.pieces, call.pieces, voices);
         let parts = parts(&whole.line, &runs, whole.words);
+        splits.of += 1;
+        if parts.len() > 1 {
+            splits.split += 1;
+            splits.into += parts.len();
+        }
         // A piece is of the last part starting at or before it; the first
         // starts with the take.
         let starts: Vec<usize> = parts.iter().map(|(part, _)| part.start).collect();
         for &piece in &whole.pieces {
-            let at = heard.pieces[piece].start;
+            let at = call.pieces[piece].start;
             let part = starts.iter().rposition(|&start| start <= at).unwrap_or(0);
-            heard.pieces[piece].line = Some(lines.len() + part);
+            call.pieces[piece].line = Some(lines.len() + part);
         }
         for (part, said) in parts {
             if !said.is_empty() {
@@ -88,14 +109,17 @@ pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
             lines.push(part);
         }
     }
-    *heard.lines = lines;
-    *heard.words = words;
+    *call.lines = lines;
+    *call.words = words;
+    splits
 }
 
 /// `lines` but Joel's that echo one of their takes, each take told whole
 /// as it was heard: the parts of one split by voice, next to each other
-/// and of the same take as `pieces` say, are joined again.
-pub fn unechoed(lines: &[Line], pieces: &[Piece]) -> Vec<Line> {
+/// and of the same take as `pieces` say, are joined again. The first
+/// `read` lines were read back from the call's file, told when they were
+/// first written, and are kept.
+pub fn unechoed(lines: &[Line], pieces: &[Piece], read: usize) -> Vec<Line> {
     let take_of: HashMap<usize, usize> = pieces
         .iter()
         .filter_map(|piece| Some((piece.line?, piece.take)))
@@ -116,8 +140,9 @@ pub fn unechoed(lines: &[Line], pieces: &[Piece]) -> Vec<Line> {
     }
     lines
         .iter()
-        .filter(|line| !transcript::echoes(line, &takes))
-        .cloned()
+        .enumerate()
+        .filter(|&(index, line)| index < read || !transcript::echoes(line, &takes))
+        .map(|(_, line)| line.clone())
         .collect()
 }
 
@@ -125,18 +150,18 @@ pub fn unechoed(lines: &[Line], pieces: &[Piece]) -> Vec<Line> {
 /// a take split before are joined again. Each line's pieces are read
 /// before any is renumbered, since one renumbered for a part would
 /// otherwise be read as a later line's.
-fn wholes(heard: &mut Heard) -> Vec<Whole> {
+fn wholes(call: &mut Call) -> Vec<Whole> {
     let mut of_line: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (piece, of) in heard.pieces.iter().enumerate() {
+    for (piece, of) in call.pieces.iter().enumerate() {
         if let Some(line) = of.line {
             of_line.entry(line).or_default().push(piece);
         }
     }
     let mut wholes: Vec<Whole> = Vec::new();
-    for (index, line) in std::mem::take(heard.lines).into_iter().enumerate() {
+    for (index, line) in std::mem::take(call.lines).into_iter().enumerate() {
         let pieces = of_line.remove(&index).unwrap_or_default();
-        let words = heard.words.remove(&index).unwrap_or_default();
-        let take = pieces.first().map(|&piece| heard.pieces[piece].take);
+        let words = call.words.remove(&index).unwrap_or_default();
+        let take = pieces.first().map(|&piece| call.pieces[piece].take);
         match wholes.last_mut() {
             Some(whole) if take.is_some() && whole.take == take => {
                 whole.line.end = line.end;
@@ -321,12 +346,21 @@ mod tests {
                 word("yet.", 17),
             ],
         )]);
-        let mut heard = Heard {
+        let mut call = Call {
             lines: &mut lines,
             pieces: &mut pieces,
             words: &mut words,
         };
-        by_voice(&mut heard, &[Some(0), Some(0), Some(1)]);
+        let splits = by_voice(&mut call, &[Some(0), Some(0), Some(1)]);
+        assert_eq!(
+            splits,
+            Splits {
+                of: 1,
+                split: 1,
+                into: 2
+            },
+            "the take split in two wasn't counted as split"
+        );
         assert_eq!(
             said(&lines),
             [
@@ -354,12 +388,12 @@ mod tests {
         let mut lines = vec![theirs(0, 9, "Right, so.")];
         let mut pieces = pieces_of(0, 0, &[0, 3, 6]);
         let mut words = HashMap::from([(0, vec![word("Right,", 1), word("so.", 4)])]);
-        let mut heard = Heard {
+        let mut call = Call {
             lines: &mut lines,
             pieces: &mut pieces,
             words: &mut words,
         };
-        by_voice(&mut heard, &[Some(0), Some(0), Some(1)]);
+        by_voice(&mut call, &[Some(0), Some(0), Some(1)]);
         assert_eq!(
             said(&lines),
             [("Right, so.", Some(0), 0, 9)],
@@ -372,12 +406,12 @@ mod tests {
         let mut lines = vec![theirs(0, 9, "Yes. No.")];
         let mut pieces = pieces_of(0, 0, &[0, 3, 6]);
         let mut words = HashMap::from([(0, vec![word("Yes.", 4), word("No.", 7)])]);
-        let mut heard = Heard {
+        let mut call = Call {
             lines: &mut lines,
             pieces: &mut pieces,
             words: &mut words,
         };
-        by_voice(&mut heard, &[Some(2), Some(0), Some(1)]);
+        by_voice(&mut call, &[Some(2), Some(0), Some(1)]);
         assert_eq!(
             said(&lines),
             [("Yes.", Some(0), 0, 6), ("No.", Some(1), 6, 9)],
@@ -398,12 +432,12 @@ mod tests {
         let mut lines = vec![theirs(0, 6, "Fine (laughs)."), read_back];
         let mut pieces = pieces_of(0, 0, &[0, 3]);
         let mut words = HashMap::from([(0, vec![word("Fine", 1), word("(laughs).", 2)])]);
-        let mut heard = Heard {
+        let mut call = Call {
             lines: &mut lines,
             pieces: &mut pieces,
             words: &mut words,
         };
-        by_voice(&mut heard, &[Some(1), Some(1)]);
+        by_voice(&mut call, &[Some(1), Some(1)]);
         assert_eq!(
             said(&lines),
             [("Fine (laughs).", Some(1), 0, 6), ("Okay.", Some(4), 7, 9)],
@@ -423,12 +457,12 @@ mod tests {
         words: &mut HashMap<usize, Vec<Word>>,
         voices: &[Option<usize>],
     ) {
-        let mut heard = Heard {
+        let mut call = Call {
             lines,
             pieces,
             words,
         };
-        by_voice(&mut heard, voices);
+        by_voice(&mut call, voices);
     }
 
     /// Ada's take, 10 s to 19 s, running into Bo's at 16 s, and a line of
@@ -450,14 +484,31 @@ mod tests {
             ("yet.", 17),
         ];
         let mut words = HashMap::from([(0, timed.map(|(text, at)| word(text, at)).into())]);
-        let mut heard = Heard {
+        let mut call = Call {
             lines: &mut lines,
             pieces: &mut pieces,
             words: &mut words,
         };
-        by_voice(&mut heard, &[Some(0), Some(0), Some(1)]);
+        by_voice(&mut call, &[Some(0), Some(0), Some(1)]);
         let of_a_part = transcript::echoes(joels, &lines);
-        (unechoed(&lines, &pieces), of_a_part)
+        (unechoed(&lines, &pieces, 0), of_a_part)
+    }
+
+    #[test]
+    fn joels_lines_read_back_are_kept_as_they_were_told() {
+        // Bo's part and Joel's answer read back from the file: a line
+        // each, with no pieces to join Bo's to the rest of his take.
+        let lines = [theirs(16, 16, "Not yet."), joels(17, 17, "Not yet.")];
+        assert_eq!(
+            unechoed(&lines, &[], 0).len(),
+            1,
+            "Joel's answer, judged against Bo's part alone, wasn't taken for its echo"
+        );
+        assert_eq!(
+            unechoed(&lines, &[], 2),
+            lines,
+            "a line read back was judged again"
+        );
     }
 
     fn joels(from_s: usize, to_s: usize, text: &str) -> Line {
