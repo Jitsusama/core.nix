@@ -338,8 +338,7 @@ ShellRoot {
         onTriggered: {
             const at = Date.now();
             if (tellWaited.toldAt === 0
-                && root.nowSaid.some(said => said.why !== ""
-                    && !(said.retimed && said.why === "its own rows")))
+                && root.nowSaid.some(said => said.why !== "" && !root.bareTurn(said)))
                 tellWaited.toldAt = at;
             const told = tellWaited.toldAt > 0;
             if ((told && at - tellWaited.toldAt < 250)
@@ -1055,15 +1054,21 @@ ShellRoot {
     // changedWhy).
     property string nowMoved: ""
     // What it said moved each time, in order, since the case set it going
-    // cleared them, and whether Now had placed its time again by then,
-    // since heldHears' change.
+    // cleared them, whether Now had placed its time again by then, since
+    // heldHears' change, and whether the row held read otherwise.
     property var nowSaid: []
     // The time Now had placed as heldHears' change was made, so a turn of
     // the real clock, which places it again, is told from a second change
-    // of For You's however late it's heard, and how many times For You's
-    // list had moved by then.
+    // of For You's however late it's heard, and what the row held and what
+    // it holds read then (Provider.qml's lastHeldRow).
     property var heldTimeRow: null
-    property int heldHeardTimes: 0
+    property string heldRowWas: ""
+
+    // A turn of the clock that carried none of what's held: Now's own rows
+    // told with the time placed again, the row held reading as it did.
+    function bareTurn(said) {
+        return said.why === "its own rows" && said.retimed && !said.heldMoved;
+    }
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
     // How many times what For You lists from moved (Now.qml's forYouHeard).
@@ -1078,7 +1083,8 @@ ShellRoot {
 
         function onChanged() {
             root.nowChanged += 1;
-            root.nowSaid.push({ why: now.changedWhy, retimed: now.timeRow !== root.heldTimeRow });
+            root.nowSaid.push({ why: now.changedWhy, retimed: now.timeRow !== root.heldTimeRow,
+                heldMoved: now.lastHeldRow !== root.heldRowWas });
             root.nowMoved = now.changedWhy;
             root.nowUnseen = now.changedUnseen;
         }
@@ -2583,7 +2589,7 @@ ShellRoot {
         root.nowChanged = 0;
         root.nowSaid = [];
         root.heldTimeRow = now.timeRow;
-        root.heldHeardTimes = root.forYouHeardTimes;
+        root.heldRowWas = now.lastHeldRow;
         WaitingOnYou.now = [toDo("Sign In Again")];
         expect("a to-do said otherwise, its count the same, keeps For You's own row",
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
@@ -2634,15 +2640,18 @@ ShellRoot {
         // Now compares what's held as it tells its own rows, so a turn told
         // before For You's ask carries For You's change and leaves the ask
         // nothing to say (Provider.qml's changedTo): a turn told alone
-        // stands for For You's tell once For You's list has moved, and
-        // with nothing moved it's a turn that found For You saying nothing.
+        // stands for For You's tell when the row held read otherwise as it
+        // was told, and reading the same it's a turn that found For You
+        // saying nothing. A For You that never asks is caught on every run
+        // the clock doesn't turn in; on one it does, the turn draws the
+        // change, as Joel would see it.
         const moved = root.nowSaid;
         const told = moved.filter(said => said.why !== "");
         const turnedAt = told.findIndex(said => said.why === "its own rows" && said.retimed);
         const turned = turnedAt >= 0;
         const others = told.filter((said, at) => at !== turnedAt);
         const heard = (others.length === 1 && others[0].why === "the rows it holds")
-            || (turned && others.length === 0 && root.forYouHeardTimes > root.heldHeardTimes);
+            || (turned && others.length === 0 && told[turnedAt].heldMoved);
         expect("and For You held hears it once the change is done", heard,
             `${JSON.stringify(moved)} after ${root.tellWaitedFor} ms`);
         // Said last with nothing held, Now stepped into For You since

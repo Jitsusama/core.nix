@@ -3818,11 +3818,24 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
 # before Return, and the same lead was heard 14 to 345 ms after Return's work from one turn to
 # the next (2026-11-19). Return's own key takes a while to be worked, so AHEAD starts half of
 # Pacing.keyed's 50 ms early and is steered: each turn heard after Return moves it earlier by as
-# much as it was late, and each heard before moves it later by AHEAD_BACK, within AHEAD_MOST
-# either way, so the turns close in on the race on a builder fast or slow.
+# much as it was late, and each heard before moves it later by AHEAD_BACK, twice as far for
+# each such turn in a row, within AHEAD_MOST either way, so the turns close in on the race on a
+# builder fast or slow. The way's time counts the poll that sees it too, which only steering
+# earns back, so the steps back grow rather than leave a slow poll beyond their reach.
 FIRST_AHEAD = -0.025
 AHEAD_BACK = 0.04
 AHEAD_MOST = 1.0
+
+
+def steered(ahead: float, back: float, late: int | None) -> tuple[float, float]:
+    """AHEAD and the next step back after a turn heard `late` ms after Return, or None."""
+    if late is None:
+        ahead, back = ahead - back, back * 2
+    else:
+        ahead, back = ahead + (late - KEYED_WITHIN / 2) / 1000, AHEAD_BACK
+    return min(max(ahead, -AHEAD_MOST), AHEAD_MOST), back
+
+
 # How many turns the case lays at most, and how many heard beside Return are enough.
 TURNS = 36
 ENOUGH_BESIDE = 3
@@ -3867,6 +3880,7 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
         shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
         shell.normal()
         ahead = FIRST_AHEAD
+        back = AHEAD_BACK
         for turn in range(TURNS):
             # Another session asking, or done asking, moves For You's own row, so Now says what
             # it shows with nothing held below it, as Joel's home rows had before each step in.
@@ -3875,7 +3889,8 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             laid = time.monotonic()
             lay("NUDGER", "Nudging Quest", ask)
             shell.launcher_until(partial(moved, was))
-            lead = max(time.monotonic() - laid + ahead, 0.0)
+            way = time.monotonic() - laid
+            lead = max(way + ahead, 0.0)
             shell.down_to("For You")
             step = {
                 "kind": "tool",
@@ -3899,7 +3914,9 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             # something was. The launcher's whole state is left out.
             heard = [report for report in said if report.startswith(("act ", "heard "))]
             assert not shown, f"a turn {lead} s before Return was drawn as its act: {heard}"
-            told[f"turn {turn}, {lead:.3f} s before"] = heard
+            told[f"turn {turn}, {lead:.3f} s before ({way:.3f} s way, {ahead:+.3f} s ahead)"] = (
+                heard
+            )
             after = [int(found[1]) for report in said if (found := HEARD_AFTER.match(report))]
             if any(ago < KEYED_WITHIN for ago in after):
                 beside.append(lead)
@@ -3909,13 +3926,7 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
                 break
             # Only a turn that moves a row is heard, every other one, so only those steer.
             if turn % 2 == 0:
-                late = min(after, default=None)
-                ahead = (
-                    ahead + (late - KEYED_WITHIN / 2) / 1000
-                    if late is not None
-                    else ahead - AHEAD_BACK
-                )
-                ahead = min(max(ahead, -AHEAD_MOST), AHEAD_MOST)
+                ahead, back = steered(ahead, back, min(after, default=None))
         print(f"turns heard within {KEYED_WITHIN} ms of Return, by their leads: {beside}")
         assert beside, (
             f"no turn was heard within {KEYED_WITHIN} ms of Return (one heard before it, or a "
