@@ -22,6 +22,17 @@ TIMED_OUT = 3
 CUT_SHORT = 124
 
 
+def said_by(read: str) -> list[tuple[str, str]]:
+    """Give what a read by reports said, each line as its kind and what follows the tab.
+
+    It splits only where the reader does, at a newline: what the launcher shows is JSON, which
+    keeps a line or paragraph separator someone typed as it is, and Python's splitlines would
+    break a report there into pieces that aren't.
+    """
+    lines = (line.split("\t", 1) for line in read.split("\n") if line)
+    return [(kind, what) for kind, what in lines]
+
+
 def ended(status: int, never: Callable[[], str]) -> None:
     """Say how a read of what's reported ended, by the status it stopped with.
 

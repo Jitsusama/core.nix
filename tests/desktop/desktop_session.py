@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import diagnosed, ended, until_heard
+from heard import diagnosed, ended, said_by, until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -552,8 +552,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 timeout=timedelta(seconds=left + 30),
             )
             ended(status, never)
-            for line in said.splitlines():
-                kind, what = line.split("\t", 1)
+            for kind, what in said_by(said):
                 if kind == "cursor":
                     since = what
                 elif what.startswith(prefix) and test(what[len(prefix) :]):

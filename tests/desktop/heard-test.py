@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from heard import CUT_SHORT, TIMED_OUT, diagnosed, ended, until_heard
+from heard import CUT_SHORT, TIMED_OUT, diagnosed, ended, said_by, until_heard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -214,11 +214,29 @@ def test_a_diagnosis_read_cut_off_mid_line_says_so_on_a_line_of_its_own() -> Non
     assert said == wanted, f"a read cut off mid-line told: {said!r}"
 
 
-@pytest.mark.parametrize("said", ["", "first line\n"])
-def test_a_diagnosis_read_that_fails_says_how_it_ended_after_what_it_read(said: str) -> None:
-    # A journal read that failed may have read all there was, so nothing is called unread.
+@pytest.mark.parametrize(
+    ("said", "wanted"),
+    [
+        ("", "(ended with 1)"),
+        ("first line\n", "first line\n(ended with 1)"),
+        ("par", "par\n(ended with 1)"),
+    ],
+)
+def test_a_diagnosis_read_that_fails_says_how_it_ended_after_what_it_read(
+    said: str, wanted: str
+) -> None:
+    # A journal read that failed may have read all there was, so nothing is called unread, and
+    # one that failed mid-line says so on a line of its own.
     told = diagnosed(lambda: (1, said))
-    assert told == f"{said}(ended with 1)", f"a read that failed after {said!r} told: {told!r}"
+    assert told == wanted, f"a read that failed after {said!r} told: {told!r}"
+
+
+def test_what_the_reader_said_splits_only_where_it_does() -> None:
+    # Typed words can hold a line or paragraph separator, which the launcher's JSON keeps raw.
+    read = 'said\tshowing {"typed": "a\u2028b\u0085c"}\ncursor\tc1\n'
+    said = said_by(read)
+    wanted = [("said", 'showing {"typed": "a\u2028b\u0085c"}'), ("cursor", "c1")]
+    assert said == wanted, f"the reader's lines were taken as: {said}"
 
 
 def test_a_reader_stopping_in_a_wait_keeps_its_kind_and_says_the_last_state_heard() -> None:
@@ -235,7 +253,7 @@ def test_a_reader_stopping_in_a_wait_keeps_its_kind_and_says_the_last_state_hear
 
 
 def reports(
-    tmp_path: Path, journal: str, seconds: int = 5, since: str = ""
+    tmp_path: Path, journal: str, seconds: int | str = 5, since: str = ""
 ) -> subprocess.CompletedProcess[str]:
     """Run the reader the waits read through, for showing, on a stand-in journal.
 
@@ -294,7 +312,8 @@ def test_the_reader_reads_again_after_its_point_until_the_report_comes(tmp_path:
 def test_the_readers_time_running_out_fails_as_never_hearing(tmp_path: Path) -> None:
     # The status ended reads as time running out is the one the reader gives, or retry loops
     # would stop retrying a wait that only ran out, and it comes only once it has read again.
-    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=1)
+    # Two seconds, since bash counts its seconds whole by the clock, so one can end at once.
+    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=2)
     with pytest.raises(AssertionError):
         ended(read.returncode, never)
     assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
@@ -306,6 +325,14 @@ def test_the_readers_failed_journal_read_fails_as_a_stopped_reader(tmp_path: Pat
     read = reports(tmp_path, "exit 1")
     with pytest.raises(RuntimeError):
         ended(read.returncode, never)
+    assert read.returncode == 1, f"the reader whose journal read failed gave: {read}"
+
+
+def test_the_reader_refuses_a_time_that_isnt_a_number(tmp_path: Path) -> None:
+    # Bash's arithmetic would run what a time held, so it's refused before the reader reads.
+    ran = tmp_path / "ran"
+    read = reports(tmp_path, "echo '-- cursor: c1'", seconds=f"a[$(echo >{ran})]")
+    assert (read.returncode, ran.exists()) == (2, False), f"the reader given a word gave: {read}"
 
 
 def test_a_diagnosis_read_that_raises_says_what_it_raised_rather_than_raising() -> None:

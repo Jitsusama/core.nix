@@ -18,6 +18,8 @@
 # their level, so they're read as plain text: JSON would give them as
 # numbers.
 since=$1 seconds=$2 prefix=$3
+# Bash's arithmetic would run what a time held, so any time but a number ends it with 2.
+[[ $seconds =~ ^[0-9]+$ ]] || exit 2
 journal=(journalctl --user --unit=quickshell --no-pager --output=cat)
 journal+=(--lines=all --show-cursor)
 if [ -n "$since" ]; then journal+=("--after-cursor=$since"); else journal+=(--boot); fi
