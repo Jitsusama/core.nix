@@ -1907,11 +1907,11 @@
     model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
     headers and body as they came, a body of many pieces whole, refuses any other host, carries many
     requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, sends
-    a request the origin reset before its answer once more on another connection, one already
-    open, even beside one kept, or one opened for a burst of them together, whose failure to open
-    each hears at once, and sends pi direct with its own 421 when reset again or lost, when its
-    connection was kept with none other open, when none would open or when left out by a goodbye
-    saying nothing was wrong, first try or again, but says a 502 when a
+    a request the origin reset before its answer, or left out of a goodbye saying nothing was
+    wrong, once more on another connection, one already open, even beside one kept, or one opened
+    for a burst of them together, whose failure to open each hears at once, and sends pi direct
+    with its own 421 when reset or left out again or lost, when its connection was kept with none
+    other open or when none would open, but says a 502 when a
     reset, first or again, said to calm down, retiring its connection, sends on no body too large
     or left unfinished, stands down past its share failed with the 421 that sends pi direct,
     staying through its idle time, trying its path as it stands down, kept down by a trial failing
