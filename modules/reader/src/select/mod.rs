@@ -366,6 +366,12 @@ impl Layout {
         }
     }
 
+    /// These lines, when they were read from the page's setting `version`:
+    /// read from another, they no longer say where the page's links are.
+    pub fn of(&self, version: u32) -> Option<&Self> {
+        (self.version == version).then_some(self)
+    }
+
     /// The page's lines and the pieces' marks, each block's start, in
     /// points, and the file.
     pub fn new(mut lines: Vec<Line>, mut units: Vec<Unit>, starts: &[f64], source: String) -> Self {

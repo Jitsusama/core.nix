@@ -188,7 +188,7 @@ impl App {
             }
         }
         if let Some(link) = chosen {
-            self.follow(&link);
+            self.follow(&link.href);
         }
         if !self.frame_pending {
             self.draw();
@@ -197,11 +197,11 @@ impl App {
 
     /// Goes where a link points: to a heading here, as a jump Ctrl+O comes
     /// back from, or anywhere else as the desktop opens it.
-    pub(crate) fn follow(&mut self, link: &links::Link) {
+    pub(crate) fn follow(&mut self, href: &str) {
         if keys_logged() {
-            eprintln!("link: {}", link.href);
+            eprintln!("link: {href}");
         }
-        match links::target(&link.href, &self.file) {
+        match links::target(href, &self.file) {
             // A link to the page itself, with no heading, goes to its top,
             // and one to a heading puts the cursor on it, as gg and ]] do.
             links::Target::Here(anchor) if anchor.is_empty() => {

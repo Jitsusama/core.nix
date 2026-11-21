@@ -304,10 +304,7 @@ impl App {
     /// agree.
     pub(crate) fn character_on(&self) -> Option<(&crate::text::Line, f64)> {
         let at = self.standing()?.cursor;
-        let layout = self.layout.as_ref()?;
-        if layout.version != self.painter.version {
-            return None;
-        }
+        let layout = self.layout.as_ref()?.of(self.painter.version)?;
         let line = layout.lines.get(at.line)?;
         Some((line, crate::text::middle_of(line, at.ch)?))
     }
@@ -321,7 +318,7 @@ impl App {
             && self
                 .layout
                 .as_ref()
-                .is_some_and(|layout| layout.version != self.painter.version)
+                .is_some_and(|layout| layout.of(self.painter.version).is_none())
     }
 
     /// Lets the character go once the cursor has left its line, so it

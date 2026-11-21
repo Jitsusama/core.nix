@@ -23,7 +23,11 @@ impl App {
         let found = if let Some((line, x_pt)) = self.character_on() {
             let pieces = links::pieces(&page.frame);
             match links::file_here(&pieces, line, x_pt, &self.file, std::path::Path::is_file) {
-                Ok(file) => Some(file),
+                // A link is followed as Ctrl+] follows it, on to the heading
+                // it names, here or in its file, rather than to where the
+                // file was left.
+                Ok((_, links::Name::Link(href))) => return self.follow(&href),
+                Ok((file, links::Name::Written(_))) => Some(file),
                 Err(None) => return self.say("E446: No file name under cursor"),
                 Err(Some(said)) => {
                     return self.say(&format!("E447: Can't find file \"{said}\" in path"));
@@ -34,14 +38,7 @@ impl App {
             let mut named: Vec<(f64, f64, std::path::PathBuf)> = links::links(&page.frame)
                 .into_iter()
                 .filter(|link| link.baseline_pt > from && link.top_pt < foot)
-                // A heading here is Ctrl+]'s to go to; gf from a line wants
-                // another file.
-                .filter(|link| {
-                    !matches!(
-                        links::target(&link.href, &self.file),
-                        links::Target::Here(_)
-                    )
-                })
+                .filter(|link| links::names_another_file(&link.href, &self.file))
                 .filter_map(|link| {
                     let file = file_of(&links::Name::Link(link.href))?;
                     Some((link.baseline_pt.round(), link.left_pt, file))

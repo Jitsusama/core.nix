@@ -88,7 +88,9 @@ fn taken(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize) -
 }
 
 /// What gf opens, or says, with the character `at` characters into
-/// `words` on a page in /notes, whose folder holds only `there`.
+/// `words` on a page in /notes, whose folder holds only `there`: a file
+/// a link names is followed to it, as Ctrl+] follows it, and one a path
+/// writes is opened.
 fn opened(
     lines: &[crate::text::Line],
     pieces: &[Link],
@@ -102,7 +104,8 @@ fn opened(
             .is_ok_and(|name| there.iter().any(|one| name == Path::new(one)))
     };
     match file_here(pieces, line, x_pt, page, is_file) {
-        Ok(file) => file.display().to_string(),
+        Ok((file, Name::Link(href))) => format!("{} by {href}", file.display()),
+        Ok((file, Name::Written(_))) => file.display().to_string(),
         Err(Some(said)) => format!("E447 {said}"),
         Err(None) => "E446".to_string(),
     }
@@ -197,6 +200,8 @@ fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
         "no-file",
         "See [the site](https://example.com) or [old](gone.md), or notes.md.\n",
     );
+    // A link to a site is a name too, as the page gives it, unlike prose
+    // that only reads as a path.
     // gf settles the name and only then asks the disk, so it says it
     // can't find these rather than opening notes.md.
     let there = ["notes.md"];
@@ -216,18 +221,6 @@ fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
     );
     let page = Path::new("/notes/page.md");
     assert_eq!(
-        file_of(&Name::Link("#a-heading".into()), page),
-        Some(page.to_path_buf()),
-        "a heading here names this page, which is there"
-    );
-    if let Some(home) = std::env::var_os("HOME") {
-        assert_eq!(
-            file_of(&Name::Written("~/notes.md".into()), page),
-            Some(PathBuf::from(home).join("notes.md")),
-            "a written path from ~/ is from home"
-        );
-    }
-    assert_eq!(
         file_of(&Name::Link("https://example.com".into()), page),
         None,
         "a site's address names no file"
@@ -245,6 +238,40 @@ fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
 }
 
 #[test]
+fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
+    let (lines, pieces) = set(
+        "heading-here",
+        "See [the keys](#the-keys) and [its part](other.md#part) first.\n",
+    );
+    let there = ["page.md", "other.md"];
+    assert_eq!(
+        opened(&lines, &pieces, ("the keys", 0), &there),
+        "/notes/page.md by #the-keys",
+        "this page, followed to the heading"
+    );
+    assert_eq!(
+        opened(&lines, &pieces, ("its part", 0), &there),
+        "/notes/other.md by other.md#part",
+        "another page, followed to its heading rather than where it was left"
+    );
+    let page = Path::new("/notes/page.md");
+    assert!(
+        !names_another_file("#the-keys", page) && !names_another_file("page.md#a", page),
+        "from a whole line, gf leaves a heading here to Ctrl+]"
+    );
+    assert!(names_another_file("other.md#part", page));
+    let home = std::env::var_os("HOME").map_or_else(
+        || PathBuf::from("/notes/~/notes.md"),
+        |home| PathBuf::from(home).join("notes.md"),
+    );
+    assert_eq!(
+        file_of(&Name::Written("~/notes.md".into()), page),
+        Some(home),
+        "a written path from ~/ is from home, and with none, from the page's folder"
+    );
+}
+
+#[test]
 fn a_word_read_as_a_path_after_the_character_stops_gf_only_when_its_a_file() {
     let (lines, pieces) = set(
         "dotted",
@@ -252,7 +279,7 @@ fn a_word_read_as_a_path_after_the_character_stops_gf_only_when_its_a_file() {
     );
     assert_eq!(
         opened(&lines, &pieces, ("Read", 0), &["guide.md"]),
-        "/notes/guide.md",
+        "/notes/guide.md by guide.md",
         "past words that aren't files, to the link"
     );
     assert_eq!(

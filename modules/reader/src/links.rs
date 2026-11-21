@@ -128,22 +128,30 @@ pub fn name_here(
 
 /// What gf opens with a character `x_pt` across `line` on the page `page`:
 /// the file the name under or after it stands for, when `is_file` finds
-/// it. The name is settled first and only then asked of the disk, so one
-/// naming no file here is said, as Vim's E447, rather than passed for the
-/// next; none at all is `Err(None)`, as Vim's E446.
+/// it, with the name, since a link goes on to the heading it names. The
+/// name is settled first and only then asked of the disk, so one naming
+/// no file here is said, as Vim's E447, rather than passed for the next;
+/// none at all is `Err(None)`, as Vim's E446.
 pub fn file_here(
     pieces: &[Link],
     line: &crate::text::Line,
     x_pt: f64,
     page: &Path,
     is_file: impl Fn(&Path) -> bool,
-) -> Result<PathBuf, Option<String>> {
+) -> Result<(PathBuf, Name), Option<String>> {
     let there =
         |path: &str| file_of(&Name::Written(path.into()), page).is_some_and(|f| is_file(&f));
     let name = name_here(pieces, line, x_pt, there).ok_or(None)?;
-    file_of(&name, page)
-        .filter(|file| is_file(file))
-        .ok_or_else(|| Some(name.said().to_string()))
+    match file_of(&name, page).filter(|file| is_file(file)) {
+        Some(file) => Ok((file, name)),
+        None => Err(Some(name.said().to_string())),
+    }
+}
+
+/// Whether gf from a whole line takes the link to `href`: one to a heading
+/// on `page` is Ctrl+]'s to go to, and gf from a line wants another file.
+pub fn names_another_file(href: &str, page: &Path) -> bool {
+    !matches!(target(href, page), Target::Here(_))
 }
 
 /// The file a name stands for, from the page `page` in its folder, when it

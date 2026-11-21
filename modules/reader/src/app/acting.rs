@@ -329,7 +329,7 @@ impl App {
             (link, "No link from the line here")
         };
         match link {
-            Some(link) => self.follow(&link),
+            Some(link) => self.follow(&link.href),
             None => self.say(missing),
         }
     }
