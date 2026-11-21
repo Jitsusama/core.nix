@@ -168,6 +168,28 @@ pub struct Source {
     pub reason: Option<String>,
 }
 
+/// Keeps what each source said a minute before that this minute can't
+/// know: a source still in the same state it wasn't answering in has been
+/// so since the earlier minute said, and one that didn't answer last
+/// answered when the earlier minute said. Each source reads only this
+/// minute, so without this net would say every outage began just now.
+pub fn carry_over(sources: &mut [Source], earlier: &[Source]) {
+    for source in sources {
+        let Some(before) = earlier.iter().find(|before| before.name == source.name) else {
+            continue;
+        };
+        if source.state != SourceState::Answering
+            && source.state == before.state
+            && let Some(then) = before.since
+        {
+            source.since = Some(source.since.map_or(then, |now| now.min(then)));
+        }
+        if source.read_at.is_none() {
+            source.read_at = before.read_at;
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SourceState {
@@ -494,6 +516,54 @@ mod tests {
         .map(|(kind, device)| (kind, device.to_owned()))
         .collect();
         assert_eq!(order, want, "the widest reach comes first");
+    }
+
+    fn source(state: SourceState, read_at: Option<u64>, since: Option<u64>) -> Source {
+        Source {
+            name: "modem".into(),
+            what: String::new(),
+            state,
+            read_at,
+            since,
+            reason: None,
+        }
+    }
+
+    #[test]
+    fn an_outage_keeps_the_minute_it_began_and_the_last_answer() {
+        let earlier = [source(SourceState::Unreachable, Some(100), Some(160))];
+        let mut now = [source(SourceState::Unreachable, None, Some(220))];
+        carry_over(&mut now, &earlier);
+        assert_eq!(
+            (now[0].read_at, now[0].since),
+            (Some(100), Some(160)),
+            "an outage is said to begin each minute, or its last answer is lost"
+        );
+    }
+
+    #[test]
+    fn a_new_state_starts_its_own_since_and_an_answer_its_own_time() {
+        let earlier = [source(SourceState::SignedOut, Some(100), Some(160))];
+        let mut now = [
+            source(SourceState::Unreachable, None, Some(220)),
+            Source {
+                name: "eero".into(),
+                ..source(SourceState::Answering, Some(220), None)
+            },
+        ];
+        let mut answering = [source(SourceState::Answering, Some(220), None)];
+        carry_over(&mut now, &earlier);
+        carry_over(&mut answering, &earlier);
+        assert_eq!(
+            (now[0].since, now[1].read_at, answering[0].since),
+            (Some(220), Some(220), None),
+            "a since crosses states or sources, or an answer keeps an old one"
+        );
+        assert_eq!(
+            answering[0].read_at,
+            Some(220),
+            "an answer this minute keeps the earlier reading"
+        );
     }
 
     #[test]
