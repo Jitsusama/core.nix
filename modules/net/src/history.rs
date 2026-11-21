@@ -32,9 +32,9 @@ const LATELY: u64 = 60 * 60;
 /// time, so it's trimmed about once an hour instead.
 const SLACK: u64 = 60 * 60;
 
-/// How much later a reading may say the modem started than the reading
-/// before it and still mean the same start: each is a reading's time less
-/// the modem's uptime, and a reading taken under load lands some seconds
+/// How much earlier a line may say the modem started than it last did
+/// and still mean the same start: each is a reading's time less the
+/// modem's uptime, and a reading taken under load lands some seconds
 /// late.
 const ONE_START: u64 = 5 * 60;
 
@@ -220,37 +220,43 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 }
 
 /// What each downstream channel lost since the day's earliest reading
-/// after the modem last started. The walk back stops where the modem
-/// says it started later than the reading before, or where every channel
-/// that had counted any reads lower, which is a start too though one the
-/// modem may not count. A minute the modem didn't answer says nothing of
-/// it, so the walk passes it by.
+/// after the modem last started. The walk back stops at a line saying
+/// the modem started over five minutes before it last did, or where
+/// every channel that had counted any reads lower after it, which is a
+/// start too though one the modem may not count. The page misreads an
+/// uptime or a count now and then, often several channels in one
+/// minute, so either needs two lines to show it: the line before one
+/// that says it started earlier must say so too, and counts must read
+/// lower in both newer lines. A minute the modem didn't answer says
+/// nothing of it, so the walk passes it by.
 fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
-    let mut later: Vec<Lost> = Moment::lost_of(modem);
-    let mut later_timed = started.is_some();
-    let started = started.or_else(|| day.iter().rev().find_map(|moment| moment.modem_started));
-    let mut since: Vec<&Moment> = Vec::new();
-    for moment in day.iter().rev().filter(|moment| moment.at < now) {
-        if moment.lost.is_empty() {
-            continue;
-        }
-        // Each line is measured against the start the modem gives now,
-        // never the line after it, so one misread uptime moves only its
-        // own line, and a start reading later than now's is passed by.
-        let started_before = moment
+    let lines: Vec<&Moment> = day
+        .iter()
+        .rev()
+        .filter(|moment| moment.at < now && !moment.lost.is_empty())
+        .collect();
+    let latest = latest_start(started, &lines);
+    let before_start = |moment: &Moment| {
+        moment
             .modem_started
-            .zip(started)
-            .is_some_and(|(then, latest)| latest > then + ONE_START);
-        // Where both lines say when the modem started, counts falling
-        // are a start only on two channels at once, so one misread on
-        // the only channel that has counted is not.
-        let timed = moment.modem_started.is_some() && later_timed;
-        if started_before || all_fell(&moment.lost, &later, if timed { 2 } else { 1 }) {
+            .zip(latest)
+            .is_some_and(|(then, latest)| latest > then + ONE_START)
+    };
+    let mut newer: Vec<Vec<Lost>> = vec![Moment::lost_of(modem)];
+    let mut since: Vec<&Moment> = Vec::new();
+    for (at, &moment) in lines.iter().enumerate() {
+        let started_since =
+            before_start(moment) && lines.get(at + 1).copied().is_none_or(before_start);
+        let fell = newer
+            .iter()
+            .rev()
+            .take(2)
+            .all(|later| all_fell(&moment.lost, later));
+        if started_since || fell {
             break;
         }
         since.push(moment);
-        later.clone_from(&moment.lost);
-        later_timed = moment.modem_started.is_some();
+        newer.push(moment.lost.clone());
     }
     let base = since.last().filter(|base| now - base.at >= LATELY);
     modem.lately_s = base.map(|base| now - base.at);
@@ -262,33 +268,56 @@ fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
     }
 }
 
-/// What a channel had lost when the walk's earliest three lines were
-/// kept: the middle of its readings in them, so one misread, often a
-/// zero, is outvoted; with fewer, the first. The day keeps a line a
-/// minute, so the middle one misses at most two minutes' losses. A
-/// channel none of them names has no count lately, since one taken from
-/// a later line would cover less than the stretch a warning names.
+/// When the modem last started: the middle of what now and the two
+/// newest lines say, so one misread uptime now doesn't move it; with
+/// fewer, what now says, or else the newest line.
+fn latest_start(started: Option<u64>, lines: &[&Moment]) -> Option<u64> {
+    let mut starts: Vec<u64> = started
+        .into_iter()
+        .chain(lines.iter().filter_map(|moment| moment.modem_started))
+        .take(3)
+        .collect();
+    if starts.len() == 3 {
+        starts.sort_unstable();
+        return Some(starts[1]);
+    }
+    starts.first().copied()
+}
+
+/// How long after the stretch's first line its first readings may come:
+/// the day keeps a line a minute, so three, with room for a late one.
+const FIRST_READINGS: u64 = 3 * 60;
+
+/// What a channel had lost when the stretch began, from its readings in
+/// the stretch's first three lines: the middle of three, or the higher
+/// of two, since counts only climb and a misread reads low, so one is
+/// outvoted at the cost of at most two minutes' losses. Only lines
+/// within its first minutes count, and a channel they don't name has no
+/// count lately, since one taken later would cover less than the
+/// stretch a warning names.
 fn first_count(since: &[&Moment], channel: &Channel) -> Option<u64> {
+    let first = since.last()?.at;
     let mut firsts: Vec<u64> = since
         .iter()
         .rev()
+        .take_while(|moment| moment.at <= first + FIRST_READINGS)
         .take(3)
         .filter_map(|moment| moment.lost.iter().find(|each| each.of(channel)))
         .map(|each| each.uncorrectable)
         .collect();
-    if firsts.len() == 3 {
-        firsts.sort_unstable();
-        return Some(firsts[1]);
+    firsts.sort_unstable();
+    match firsts[..] {
+        [_, middle, _] => Some(middle),
+        [.., highest] => Some(highest),
+        [] => None,
     }
-    firsts.first().copied()
 }
 
 /// Whether every channel that had counted any reads lower in the later
-/// reading, as after a start, which sets every count back to zero, with
-/// at least `channels` of them. One channel reading lower among others
-/// is the page misreading it, which it does now and then, often as a
-/// zero.
-fn all_fell(earlier: &[Lost], later: &[Lost], channels: usize) -> bool {
+/// reading, as after a start, which sets every count back to zero. One
+/// channel reading lower among others is the page misreading it, which
+/// it does now and then, often as a zero.
+fn all_fell(earlier: &[Lost], later: &[Lost]) -> bool {
     let counted: Vec<bool> = earlier
         .iter()
         .filter(|earlier| earlier.uncorrectable > 0)
@@ -297,7 +326,7 @@ fn all_fell(earlier: &[Lost], later: &[Lost], channels: usize) -> bool {
             Some(earlier.uncorrectable > each.uncorrectable)
         })
         .collect();
-    counted.len() >= channels && counted.iter().all(|fell| *fell)
+    !counted.is_empty() && counted.iter().all(|fell| *fell)
 }
 
 #[cfg(test)]
@@ -577,10 +606,10 @@ mod tests {
     }
 
     #[test]
-    fn the_only_channel_counting_reading_low_is_no_start() {
-        // Soon after a start only 455.6 MHz has counted any. The page
-        // misreading its 18 as 0 is no start, since the modem still says
-        // it started when it did.
+    fn both_ofdm_channels_misread_together_is_no_start() {
+        // Soon after a start only the OFDM channels have counted any. The
+        // page misreads both as 0 in one minute more often than either
+        // alone, and that is no start, since the next minute reads 18.
         let mut now = network();
         let channels = now
             .devices
@@ -589,18 +618,64 @@ mod tests {
             .and_then(|device| device.modem.as_mut())
             .expect("the record has the modem's channels");
         for channel in &mut channels.downstream {
-            if channel.frequency_hz != Some(455_600_000) {
+            if channel.kind != "ofdm" {
                 channel.uncorrectable = Some(0);
             }
         }
         let mut misread = earlier(&now, 3 * HOUR, 0, 41);
         ofdm(&mut misread, 455_600_000, 0);
+        ofdm(&mut misread, 635_600_000, 0);
         let day = [earlier(&now, 5 * HOUR, 0, 41), misread];
         let network = recalled(now, &day);
         assert_eq!(
             modem(&network).lately_s,
             Some(5 * HOUR),
-            "one misread on the only counting channel was taken as a start"
+            "one minute misreading both counting channels was taken as a start"
+        );
+    }
+
+    #[test]
+    fn an_old_line_whose_uptime_read_long_is_passed_by() {
+        // One line's uptime read ten minutes long, so it says the modem
+        // started ten minutes before it did; the line before it says the
+        // start it did, so that is no start.
+        let now = network();
+        let mut misread = earlier(&now, 4 * HOUR, 820, 41);
+        misread.modem_started = misread.modem_started.map(|started| started - 10 * 60);
+        let day = [
+            earlier(&now, 5 * HOUR, 800, 41),
+            misread,
+            earlier(&now, 3 * HOUR, 840, 41),
+        ];
+        let network = recalled(now, &day);
+        assert_eq!(
+            modem(&network).lately_s,
+            Some(5 * HOUR),
+            "an uptime misread long was taken as the modem starting"
+        );
+    }
+
+    #[test]
+    fn an_uptime_misread_now_is_outvoted_by_the_newest_lines() {
+        // Now's uptime reads ten minutes short, so now says the modem
+        // started ten minutes after the day's lines do; they outvote it.
+        let mut now = network();
+        let day = [
+            earlier(&now, 5 * HOUR, 800, 41),
+            earlier(&now, 3 * HOUR, 840, 41),
+            earlier(&now, 2 * HOUR, 860, 41),
+        ];
+        let modem_now = now
+            .devices
+            .iter_mut()
+            .find(|device| device.id == "modem")
+            .expect("the record has the modem");
+        modem_now.up_s = modem_now.up_s.map(|up| up - 10 * 60);
+        let network = recalled(now, &day);
+        assert_eq!(
+            modem(&network).lately_s,
+            Some(5 * HOUR),
+            "an uptime misread now was taken as the modem starting"
         );
     }
 
@@ -649,8 +724,8 @@ mod tests {
         ofdm(&mut misread, 455_600_000, 0);
         let day = [
             misread,
-            earlier(&now, 4 * HOUR, 878, 41),
-            earlier(&now, 3 * HOUR, 878, 41),
+            earlier(&now, 5 * HOUR - 60, 878, 41),
+            earlier(&now, 5 * HOUR - 120, 878, 41),
         ];
         let network = recalled(now, &day);
         let lately = modem(&network)
