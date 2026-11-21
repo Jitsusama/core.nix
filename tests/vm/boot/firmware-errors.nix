@@ -3,8 +3,10 @@
 # an administrator and as an account that isn't one. QEMU adds both tables:
 # PHAT with a line of the test's own as its body, and BERT pointing at 64
 # bytes of the BIOS's own memory as its error region, so the kernel lays
-# that region out in sysfs as it does a real one. The script is
-# firmware-errors-vm-test.py.
+# that region out in sysfs as it does a real one. Its serial number is a
+# stand-in too. The script is
+# firmware-errors-vm-test.py, which also runs `firmware-errors` over the
+# copies as each account.
 { self, pkgs }:
 let
   phat = pkgs.writeText "phat-body" "firmware-errors stand-in";
@@ -22,6 +24,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     virtualisation.qemu.options = [
       "-acpitable sig=PHAT,data=${phat}"
       "-acpitable sig=BERT,data=${bert}"
+      "-smbios type=1,serial=stand-in-serial"
     ];
     users.users.alice = {
       isNormalUser = true;

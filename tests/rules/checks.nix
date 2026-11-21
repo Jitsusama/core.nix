@@ -324,6 +324,7 @@
         eero = pkgs.callPackage ../../modules/eero/package.nix { };
         elsewhere = pkgs.callPackage ../../modules/elsewhere/package.nix { };
         file-preview = pkgs.callPackage ../../modules/open-with/file-preview.nix { };
+        firmware-errors = pkgs.callPackage ../../modules/firmware-errors/package.nix { };
         firmware-notice = pkgs.callPackage ../../modules/firmware-notice/package.nix { };
         firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
         gcloud-broker = pkgs.callPackage ../../modules/gcloud-broker/package.nix { };
@@ -543,6 +544,25 @@
               "devices"
             ]
             [ "events" ]
+          ];
+        # Four kept boots, the newest reset by the controller, one that lost
+        # power, a cold boot whose error region was cut short and one whose
+        # reason has no name: the list, and the newest in full.
+        firmware-errors =
+          let
+            script = ../../modules/firmware-errors/tests/a-few-kept-boots.sh;
+            state = built "a-few-kept-boots" script;
+            env = {
+              FIRMWARE_ERRORS_STATE = "@HERE@/state";
+              FIRMWARE_ERRORS_CPUINFO = "@HERE@/cpuinfo";
+            };
+          in
+          [
+            { inherit state env; }
+            {
+              inherit state env;
+              args = [ "1a2b3c4d" ];
+            }
           ];
         # Firmware off two of its declared settings, which a bare run names
         # and exits 1 for, as diff does.

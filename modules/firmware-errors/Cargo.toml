@@ -1,0 +1,22 @@
+# firmware-errors says why each kept boot's last one ended, from what the
+# firmware handed it (src/main.rs says how).
+[package]
+name = "firmware-errors"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1.0"
+# Its help, usage and failures take the shape every command of ours does.
+terminal-kit = { path = "../terminal-kit" }
+
+# Intel's own decoder for the Crash Log a firmware reset leaves in BERT, with
+# the register layouts of each processor built in. Intel publishes it only
+# in its repository, not on crates.io, so it's taken at a commit.
+[dependencies.intel_crashlog]
+git = "https://github.com/intel/crashlog"
+rev = "8c924fa75e1ac32acb10730480adbc54556a07b9"
+default-features = false
+features = ["analysis", "embedded_collateral_tree", "std"]
