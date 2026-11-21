@@ -3,7 +3,8 @@
 //! viewporter's, fractional scale's and presentation's events.
 
 use super::{
-    ZOOM_UNTIL, current_marks, cursor_marks, ground, page_ink, search_marks, selection_marks,
+    UNNAMED_SIZE, ZOOM_UNTIL, current_marks, cursor_marks, ground, page_ink, search_marks,
+    selection_marks,
 };
 use crate::{
     App, Feedback, Presentation, Scaling, Viewporting, blend, gl, keys, keys_logged, theme,
@@ -238,8 +239,8 @@ impl WindowHandler for App {
         let (width, height) = configure.new_size;
         let at_end = self.shown && self.at_end();
         self.size = (
-            width.map_or(960, std::num::NonZero::get),
-            height.map_or(900, std::num::NonZero::get),
+            width.map_or(UNNAMED_SIZE.0, std::num::NonZero::get),
+            height.map_or(UNNAMED_SIZE.1, std::num::NonZero::get),
         );
         self.fit_window();
         let (w, h) = self.buffer_size();

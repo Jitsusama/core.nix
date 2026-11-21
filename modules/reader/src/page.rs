@@ -1,8 +1,8 @@
 //! The page: the markdown set once in Typst as one tall page, its text one
-//! measure of about 66 characters with room either side for a wide table to
-//! spread into, on one pitch and one type scale. The window draws it
-//! centred, so its margins are what the window leaves, and a window too
-//! narrow for that has the page set again to fit it.
+//! measure of about 66 characters, up to 80 in a wide window, with room
+//! either side for a wide table to spread into, on one pitch and one type
+//! scale. The window draws it centred, so its margins are what the window
+//! leaves, and a window of another width has the page set again to fit it.
 //!
 //! Long because the Typst template the page is set by is held here whole,
 //! half the file, as one program whose parts lean on each other's
@@ -18,9 +18,26 @@ use crate::numbers::ms_of_ns;
 use crate::walk::{self, Costs, Pieces};
 use crate::world::PageWorld;
 
-/// The measure: 580 px, about 66 characters of the text face, the most a
-/// line should hold.
+/// The measure: 580 px, about 66 characters of the text face, the line a
+/// page is set to in a window just wide enough for it.
 const MEASURE_PT: f64 = 435.0;
+
+/// The widest measure, about 80 characters of the text face: the most a
+/// line should hold, past which the eye loses its way back to the next
+/// line's start.
+const WIDEST_MEASURE_PT: f64 = MEASURE_PT * 80.0 / 66.0;
+
+/// How much of a window's width past the whole page's the measure takes,
+/// the rest going to the margins, so a wider window reads wider without
+/// the words running to its edges.
+const WIDENS_BY: f64 = 0.5;
+
+/// A character of the text face, as the measure counts them.
+const CHARACTER_PT: f64 = MEASURE_PT / 66.0;
+
+/// The measure widens three characters at a time, so a wide window being
+/// dragged sets a handful of pages rather than one every few pixels.
+const WIDENS_IN_CHARACTERS: f64 = 3.0;
 
 /// The least a measure holds: 45 characters of the text face, below which
 /// lines break too often to read.
@@ -76,13 +93,20 @@ impl Width {
     }
 
     /// The page for a window this many points of the page wide at zoom 1.
-    /// A narrower window than the whole page's has no room to spread a
-    /// table into, and the measure gives way to keep xxl either side, down
-    /// to 45 characters; then the margins give way to xl, and only then the
-    /// measure again.
+    /// A wider window than the whole page's widens the measure by half of
+    /// what it has past it, three characters at a time, up to 80. A narrower one has no
+    /// room to spread a table into, and the measure gives way to keep xxl
+    /// either side, down to 45 characters; then the margins give way to
+    /// xl, and only then the measure again.
     pub fn for_window(window_pt: f64) -> Width {
         if window_pt >= whole_from_pt() {
-            return Width::whole();
+            let step_pt = WIDENS_IN_CHARACTERS * CHARACTER_PT;
+            let steps = ((window_pt - whole_from_pt()) * WIDENS_BY / step_pt).floor();
+            let measure_pt = MEASURE_PT + steps * step_pt;
+            return Width {
+                measure_pt: measure_pt.min(WIDEST_MEASURE_PT),
+                spread_pt: spread_pt(),
+            };
         }
         let measure_pt = if window_pt >= LEAST_MEASURE_PT + 2.0 * XL_PT {
             (window_pt - 2.0 * XXL_PT).clamp(LEAST_MEASURE_PT, MEASURE_PT)
@@ -101,11 +125,12 @@ impl Width {
     }
 
     /// What Typst counts a hyphen as costing, in percent of its own: 200 on
-    /// the whole measure, and dearer as the measure narrows, with the square
-    /// of how much, since a narrow line has fewer spaces to take up the
-    /// slack and Typst would otherwise hyphenate line after line.
+    /// the whole measure or a wider one, and dearer as the measure narrows,
+    /// with the square of how much, since a narrow line has fewer spaces to
+    /// take up the slack and Typst would otherwise hyphenate line after
+    /// line. A wider line has spaces to spare, so it is no cheaper there.
     pub fn hyphen_cost(self) -> f64 {
-        (200.0 * (MEASURE_PT / self.measure_pt).powi(2)).round()
+        (200.0 * (MEASURE_PT / self.measure_pt.min(MEASURE_PT)).powi(2)).round()
     }
 }
 
@@ -159,7 +184,76 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // Code in a line stands at the line's top edge rather than the mono's
 // lower capitals, so a line that is all code steps as far as one of
 // words.
-#let code(s) = context text(top-edge: line-top(), raw(s))
+//
+// Code short enough to keep whole, under a third of the measure, never
+// breaks. Longer code breaks only at its spaces and after a slash,
+// never at a hyphen or inside a name, so a flag or a path's piece is
+// read whole; and a piece under four characters stays with the one
+// beside it, so no line ends or opens on a stray `-o`, `|` or `/`. A
+// piece wider than two thirds of the measure is left to break where
+// Typst can, so it never runs out of a nested list's narrower room,
+// and so is code past a few thousand bytes, which isn't worth the
+// splitting.
+//
+// Each piece is boxed alone and held to the one before it at the join,
+// by a space that doesn't break or a word joiner after a slash, rather
+// than glued into one string, so a scrap stays held even beside a
+// piece too wide to box. A short piece holds to the one before it, or
+// the first to the one after, and the one after a held piece stands
+// free, so held pieces go in pairs and a span of short flags still
+// breaks between them. A short path's opening, `~/` or `./`, holds to
+// the rest of its path too, so no line ends on it; and a short last
+// piece holds to the pair before it rather than standing alone. The
+// page reads both joins back as what the code has (text.rs).
+#let after-slash = regex("[^/]*/|[^/]+")
+// A span's pieces: each with whether it's kept whole, what comes
+// between it and the one before (a space, nothing after a slash, or
+// none for the first), and whether it's held to that one.
+#let code-pieces(s) = {
+  if s.len() > 4000 { return ((piece: s, whole: false, by: none, held: false),) }
+  if measure(raw(s)).width < measure-width / 3 { return ((piece: s, whole: true, by: none, held: false),) }
+  let out = ()
+  let short-last = false
+  let held-last = false
+  let opens-last = false
+  for word in s.split(" ") {
+    let parts = word.matches(after-slash).map(m => m.text)
+    // A space beside another is a word of none, kept as it's written.
+    if parts.len() == 0 { parts = ("",) }
+    for (j, piece) in parts.enumerate() {
+      let first = out.len() == 0
+      let short = piece.clusters().len() < 4
+      let held = not first and (opens-last or (not held-last and (short or short-last)))
+      let by = if first { none } else if j == 0 { " " } else { "" }
+      out.push((piece: piece, whole: measure(raw(piece)).width <= measure-width * 2 / 3, by: by, held: held))
+      short-last = short
+      held-last = held
+      opens-last = short and j == 0 and parts.len() > 1
+    }
+  }
+  if out.len() > 1 and out.last().piece.clusters().len() < 4 { out.at(-1).held = true }
+  out
+}
+#let code(s) = context {
+  let set-piece(p) = {
+    let piece = if p.whole { box(raw(p.piece)) } else { raw(p.piece) }
+    if p.by == none { piece } else if p.held and p.by == " " { raw("\u{a0}") + piece } else if p.held { sym.wj + piece } else if p.by == " " { raw(" ") + piece } else { piece }
+  }
+  text(top-edge: line-top(), code-pieces(s).map(set-piece).join())
+}
+// The least room a table's column needs for a span: its widest run of
+// pieces held together, since only between those can it break.
+#let least-code(s) = context {
+  let widest = 0pt
+  let run = 0pt
+  for p in code-pieces(s) {
+    let width = measure(raw(p.piece)).width
+    let by = if p.by == " " { measure(raw(" ")).width } else { 0pt }
+    run = if not p.whole { 0pt } else if p.held { run + by + width } else { width }
+    widest = calc.max(widest, run)
+  }
+  box(width: widest)
+}
 // An emoji in the colour face, whichever face the words around it are
 // set in, as the desktop draws them: a pictograph drawn as one, with
 // its skin tone, its joined people and its keycap, or a flag's pair of
@@ -559,7 +653,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     block(above: pitch - cap, below: 0pt, width: 100%, pad(x: spread, align(center, text(..level.note.text, hyphenate: false, caption))))
   }
 })))
-#let diagram(path) = block(width: 100%, image(path, width: 100%))
+// A diagram is drawn as wide as the room it stands in, but no wider than
+// the whole page's measure, so a wide window's longer lines never grow its
+// labels past the words beside them, and one in a list keeps to the list.
+#let diagram(path) = block(width: 100%, layout(room => image(path, width: calc.min(room.width, whole-measure))))
 #let pictures = true
 #let pic(path, alt, w) = if not pictures { picture(alt) } else {
   box(layout(size => {
@@ -601,7 +698,7 @@ fn at_width(ink: &str, look: &str, width: Width) -> String {
         spread_pt,
     } = width;
     format!(
-        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {top}pt, bottom: {bottom}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let spread = {spread_pt}pt\n#let hyphen-cost = {hyphen}%\n{look}",
+        "{ink}#set page(width: {page}pt, height: auto, margin: (x: {spread_pt}pt, top: {top}pt, bottom: {bottom}pt), fill: ink.background)\n#let measure-width = {measure_pt}pt\n#let whole-measure = {MEASURE_PT}pt\n#let spread = {spread_pt}pt\n#let hyphen-cost = {hyphen}%\n{look}",
         page = width.page_pt(),
         top = top_pt(),
         bottom = bottom_pt(),
