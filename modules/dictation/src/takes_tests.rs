@@ -179,8 +179,11 @@ fn talk_with_no_pause_is_cut_inside_one_window_and_nothing_is_lost() {
     let sound = [quiet(1.0), spoken(70.0)].concat();
     let takes = cut(&sound);
     assert!(takes.len() >= 5, "{}", takes.len());
-    assert!(takes.iter().all(|take| take.samples.len() < WINDOW));
-    assert!(takes.iter().all(|take| seconds(take.samples.len()) <= 14.0));
+    let longest = takes.iter().map(|take| take.samples.len()).max();
+    assert!(
+        longest.is_some_and(|samples| samples < WINDOW && seconds(samples) <= 14.0),
+        "the longest take, {longest:?} samples, must be 14 s at most"
+    );
     let heard: usize = takes.iter().map(|take| take.samples.len()).sum();
     assert!(seconds(heard) >= 70.0, "{}", seconds(heard));
     for pair in takes.windows(2) {
@@ -372,23 +375,27 @@ fn a_short_answer_after_a_dropped_part_of_a_frame_is_a_take() {
 
 #[test]
 fn a_lost_packet_adds_no_hiss_to_a_take() {
-    // The line's floor holds across the packets lost after a word,
-    // so its hiss after them is no more speech than before.
-    let sound = [
-        noise(3.0, 0.005, false),
-        voice(0.4, 150.0),
-        vec![0.0; FRAME * 2],
-        noise(3.0, 0.005, false),
-        quiet(1.0),
-    ]
-    .concat();
-    let takes = cut(&sound);
-    assert_eq!(takes.len(), 1, "the voice");
-    assert!(
-        seconds(takes[0].samples.len()) < 1.2,
-        "{}",
-        seconds(takes[0].samples.len())
-    );
+    // The line's floor holds across the packets lost after a word, up
+    // to just short of a mute, so its hiss after them is no more
+    // speech than before: the take is the word and its edges, where a
+    // cleared floor would add a fifth of a second of hiss at least.
+    for lost in [2, MUTE_FRAMES - 1] {
+        let sound = [
+            noise(3.0, 0.005, false),
+            voice(0.4, 150.0),
+            vec![0.0; FRAME * lost],
+            noise(3.0, 0.005, false),
+            quiet(1.0),
+        ]
+        .concat();
+        let takes = cut(&sound);
+        assert_eq!(takes.len(), 1, "the voice, across {lost} frames lost");
+        assert!(
+            seconds(takes[0].samples.len()) < 0.9,
+            "{}, across {lost} frames lost",
+            seconds(takes[0].samples.len())
+        );
+    }
 }
 
 #[test]
@@ -445,6 +452,38 @@ fn a_long_word_on_a_gated_line_is_heard_whole() {
             seconds(takes[0].samples.len())
         );
     }
+}
+
+#[test]
+fn a_laugh_on_a_gated_line_keeps_it_gated() {
+    // A laugh, a cough or a long "s" between a gated line's words is
+    // loud and has no voice, as hiss hasn't, but rises and falls as
+    // hiss doesn't: it mustn't be taken for the line's own sound and
+    // set a floor the words after it are lost under. This one's level
+    // steps 6 dB from one frame to the next.
+    let laugh: Vec<f32> = noise(0.3, 0.045, false)
+        .chunks(FRAME)
+        .enumerate()
+        .flat_map(|(i, frame)| {
+            let gain = if i % 2 == 0 { 1.0 } else { 0.5 };
+            frame.iter().map(move |sample| sample * gain)
+        })
+        .collect();
+    let sound = [
+        vec![0.0; RATE * 2],
+        voice(0.7, 150.0),
+        laugh,
+        voice(0.8, 150.0),
+        vec![0.0; RATE * 2],
+    ]
+    .concat();
+    let takes = cut(&sound);
+    assert_eq!(takes.len(), 1, "the words around the laugh");
+    assert!(
+        seconds(takes[0].samples.len()) >= 1.8,
+        "{}",
+        seconds(takes[0].samples.len())
+    );
 }
 
 #[test]

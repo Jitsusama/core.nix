@@ -34,7 +34,10 @@ const EDGE_FRAMES: usize = 10;
 /// A take is cut by this length at the latest, a second inside
 /// Parakeet's window, so it's heard whole.
 const LONGEST_FRAMES: usize = 14 * 50;
-const _: () = assert!(LONGEST_FRAMES * FRAME < WINDOW);
+const _: () = assert!(
+    LONGEST_FRAMES * FRAME < WINDOW,
+    "the longest take must fit inside Parakeet's window"
+);
 /// The longest a take runs, in samples.
 pub const LONGEST: usize = LONGEST_FRAMES * FRAME;
 /// Where a take that long is cut: at its quietest 20 ms in its last few
