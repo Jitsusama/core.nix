@@ -2712,6 +2712,8 @@ impl Guard {
             seconds,
             why: why.word(),
             offered: here.len(),
+            // Each candidate a pass judges is acted on once, taken or kept.
+            judged: report.actions.len(),
             surveyed,
         })?;
         let last = LastPass {
@@ -3232,7 +3234,10 @@ enum Why {
     /// A healthy disk's routine: every six hours, and at once when an
     /// owner ends, a new boot or guard binary starts, a snapshot's build
     /// goes an hour unused, a builds disk passes its budget, or a garbage
-    /// listing finds some to let go. The line can't say which of these.
+    /// listing finds some to let go; again ten minutes after one that kept
+    /// what only an unheard system daemon could vouch for, and at the next
+    /// spare step after one left unfinished or stopped. The line can't say
+    /// which of these.
     Upkeep,
     /// Nix's garbage, once something let some go: alone, with no survey,
     /// unless another disk was due in the same step, when the survey's
@@ -3277,6 +3282,8 @@ fn aim(decision: Decision, surveyed: Option<f64>) -> Aim {
     let (band, goal, why) = match decision {
         Decision::Reach(band) => (band, Goal::Reach, Why::Reach),
         Decision::Collect => (Band::Healthy, Goal::Upkeep, Why::Garbage),
+        // A rest is never due, so never aimed; it reads as the routine only
+        // so that the match needs no arm that can't run.
         Decision::Upkeep | Decision::Rest => (Band::Healthy, Goal::Upkeep, Why::Upkeep),
     };
     Aim {
@@ -3565,9 +3572,7 @@ mod tests {
             (Goal::Reach, Why::Reach, Some(2.0))
         );
         assert_eq!(reach.band, Band::Filling);
-        for routine in [Decision::Upkeep, Decision::Rest] {
-            let upkeep = aim(routine, Some(3.0));
-            assert_eq!((upkeep.why, upkeep.surveyed), (Why::Upkeep, Some(3.0)));
-        }
+        let upkeep = aim(Decision::Upkeep, Some(3.0));
+        assert_eq!((upkeep.why, upkeep.surveyed), (Why::Upkeep, Some(3.0)));
     }
 }

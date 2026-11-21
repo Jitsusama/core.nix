@@ -485,7 +485,7 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
         .rfind(|line| line["event"] == "pass")
         .unwrap();
     assert_eq!(pass["why"], "producers", "{journal:?}");
-    assert!(pass["surveyed"].as_f64() >= Some(0.0), "{journal:?}");
+    assert!(pass["surveyed"].as_f64() > Some(0.0), "{journal:?}");
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
@@ -649,7 +649,7 @@ fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     };
     let filling = Home::new();
     filling.cold_scratch("run-1");
-    // Kept, since process 300 can't be judged, so the pass is offered
+    // Kept, since process 300 can't be judged, so the pass judges
     // something and frees nothing: the waste its line is there to show.
     filling.hidden(300, 77);
     let mut guard = filling.guard(filling.config("100%", "100%"));
@@ -658,8 +658,9 @@ fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     assert_eq!(reach.len(), 1, "{reach:?}");
     assert_eq!(reach[0]["why"], "reach");
     assert_eq!(reach[0]["offered"], 1, "{reach:?}");
+    assert_eq!(reach[0]["judged"], 1, "{reach:?}");
     assert_eq!(reach[0]["freed"], 0, "{reach:?}");
-    assert!(reach[0]["surveyed"].as_f64() >= Some(0.0), "{reach:?}");
+    assert!(reach[0]["surveyed"].as_f64() > Some(0.0), "{reach:?}");
     let healthy = Home::new();
     healthy.trashed("old.txt", "2020-01-01T00:00:00");
     let mut guard = healthy.guard(healthy.config("0%", "0%"));
@@ -668,7 +669,18 @@ fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     assert_eq!(upkeep.len(), 1, "{upkeep:?}");
     assert_eq!(upkeep[0]["why"], "upkeep");
     assert!(upkeep[0]["offered"].as_u64() >= Some(1), "{upkeep:?}");
-    assert!(upkeep[0]["surveyed"].as_f64() >= Some(0.0), "{upkeep:?}");
+    assert_eq!(upkeep[0]["judged"], 1, "the old trash was due: {upkeep:?}");
+    assert!(upkeep[0]["surveyed"].as_f64() > Some(0.0), "{upkeep:?}");
+    // Trash deleted after now is inside every window, so the routine is
+    // offered it and has nothing due: not the waste of one that kept it.
+    let young = Home::new();
+    young.trashed("new.txt", "2099-01-01T00:00:00");
+    let mut guard = young.guard(young.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let undue = passes(&young);
+    assert_eq!(undue.len(), 1, "{undue:?}");
+    assert!(undue[0]["offered"].as_u64() >= Some(1), "{undue:?}");
+    assert_eq!(undue[0]["judged"], 0, "nothing was due: {undue:?}");
     // A scratch folder with nothing in it is watched, and offers nothing.
     let empty = Home::new();
     fs::create_dir_all(empty.root.join("scratch")).unwrap();
@@ -677,7 +689,8 @@ fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     let nothing = passes(&empty);
     assert_eq!(nothing.len(), 1, "{nothing:?}");
     assert_eq!(
-        nothing[0]["offered"], 0,
+        (&nothing[0]["offered"], &nothing[0]["judged"]),
+        (&serde_json::json!(0), &serde_json::json!(0)),
         "a pass with nothing to take says so"
     );
 }

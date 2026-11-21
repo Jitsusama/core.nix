@@ -631,13 +631,13 @@ fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
         .find(|line| line["event"] == "pass" && line["why"] == "clear")
         .unwrap_or_else(|| panic!("a clear's pass: {journal}"));
     assert_eq!(clear["offered"], 1, "{journal}");
-    assert!(clear["surveyed"].as_f64() >= Some(0.0), "{journal}");
+    assert!(clear["surveyed"].as_f64() > Some(0.0), "{journal}");
 }
 
 #[test]
 fn every_clear_one_survey_served_carries_its_seconds() {
-    // Before each pass carried its own, only the first of a survey's
-    // passes got the seconds and the rest journaled none.
+    // One walk serving several clears shows on each of their lines, so
+    // none reads as having needed no walk.
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     fs::create_dir_all(root.join("files")).unwrap();

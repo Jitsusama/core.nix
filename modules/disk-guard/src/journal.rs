@@ -48,11 +48,13 @@ pub enum Line {
         root: PathBuf,
     },
     /// A pass, how it ended, and how long it took; what set it going, how
-    /// many things it was offered, and how long the survey that offered
-    /// them took, or none when no survey did, so a pass that frees nothing
-    /// can be told from one that had nothing to take. Every pass one
-    /// survey served carries its seconds, so passes of one step at the
-    /// same seconds shared one walk.
+    /// many things it was offered, how many of those its band's windows
+    /// made due and it judged, taken or kept, and how long the survey
+    /// that offered them took, or none when no survey did. A pass that
+    /// freed nothing having judged none had nothing due, so it can be
+    /// told from one that kept all it judged. Every pass one survey
+    /// served carries its seconds, so passes of one step at the same
+    /// seconds shared one walk.
     Pass {
         at: f64,
         band: Band,
@@ -61,6 +63,7 @@ pub enum Line {
         seconds: f64,
         why: &'static str,
         offered: usize,
+        judged: usize,
         surveyed: Option<f64>,
     },
     /// How many replaced builds a pass took from one target, and their
@@ -104,10 +107,12 @@ impl Line {
                 seconds,
                 why,
                 offered,
+                judged,
                 surveyed,
             } => json!({
                 "event": "pass", "at": at, "band": band, "end": end, "freed": freed,
-                "seconds": seconds, "why": why, "offered": offered, "surveyed": surveyed,
+                "seconds": seconds, "why": why, "offered": offered, "judged": judged,
+                "surveyed": surveyed,
             }),
             Line::Begin { at, path, root } => {
                 json!({ "event": "begin", "at": at, "path": path, "root": root })

@@ -63,6 +63,7 @@ fn each_line_is_one_json_record() {
             seconds: 42.5,
             why: "reach",
             offered: 3,
+            judged: 2,
             surveyed: Some(7.25),
         })
         .unwrap();
@@ -79,6 +80,7 @@ fn each_line_is_one_json_record() {
     assert_eq!(read[2]["freed"], 1u64 << 30);
     assert_eq!(read[2]["why"], "reach");
     assert_eq!(read[2]["offered"], 3);
+    assert_eq!(read[2]["judged"], 2);
     assert_eq!(read[2]["surveyed"], 7.25);
 }
 
