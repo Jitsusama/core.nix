@@ -277,16 +277,21 @@ QtObject {
                 ["line 17:49", "line 17:48", "line 17:46", "line 17:45", "line 16:32"]);
             const seen = Said.seenAfter({}, lines, events, at(18, 0));
             Expect.same("once seen, the newest three show",
-                shown(Said.gathered([], lines, events, seen)),
+                shown(Said.gathered([], lines, events, { seen })),
                 ["line 17:49", "line 17:48", "line 17:46"]);
+            // The line whose thread is open stays past them, so it never leaves under him
+            // (our council, 2026-11-21, round 3).
+            Expect.same("and the one whose thread is open, past them",
+                shown(Said.gathered([], lines, events, { seen, keep: lines[0].since })),
+                ["line 17:49", "line 17:48", "line 17:46", "line 16:32"]);
             const waiting = events.filter(event => event.msg !== "a1632");
             Expect.same("one still waiting shows first, seen or not",
-                shown(Said.gathered([], lines, waiting, seen)),
+                shown(Said.gathered([], lines, waiting, { seen })),
                 ["line 16:32", "line 17:49", "line 17:48", "line 17:46"]);
             const later = events.concat([Object.assign(answer(17, 45), { msg: "b1745",
                 text: "And merged." })]);
             Expect.same("a new answer to a seen line brings it back first",
-                shown(Said.gathered([], lines, later, seen)),
+                shown(Said.gathered([], lines, later, { seen })),
                 ["line 17:45", "line 17:49", "line 17:48", "line 17:46"]);
             const yesterday = Said.fromServed("VOID", { id: `talk-${at(9, 5) - 86400000}`,
                 words: "from yesterday", stage: "over",
@@ -294,20 +299,20 @@ QtObject {
             Expect.same("an answer from an earlier day he hasn't seen still shows",
                 shown(Said.gathered([], lines.concat([yesterday]), events.concat([
                     { line: "2026-11-12 09:05", msg: "y", who: "Delta", event: "answered",
-                        at: "09:10", text: "Fixed." }]), seen)),
+                        at: "09:10", text: "Fixed." }]), { seen })),
                 ["from yesterday", "line 17:49", "line 17:48", "line 17:46"]);
             const justSaid = Said.begun("VOID", "line 17:49", "line 17:49", at(17, 49) - 900);
             Expect.same("a line said here and kept by the void shows once",
-                shown(Said.gathered([justSaid], lines, events, seen)).length, 3);
+                shown(Said.gathered([justSaid], lines, events, { seen })).length, 3);
             Expect.same("the same words said again later are a line of their own",
                 shown(Said.gathered([Said.begun("VOID", "line 17:49", "line 17:49",
-                    at(17, 52))], lines, events, seen))[0], "line 17:49");
+                    at(17, 52))], lines, events, { seen }))[0], "line 17:49");
             Expect.same("and wait while the one before is answered",
                 Said.gathered([Said.begun("VOID", "line 17:49", "line 17:49", at(17, 52))],
-                    lines, events, seen).length, 4);
+                    lines, events, { seen }).length, 4);
             Expect.same("a line said here the void hasn't kept yet waits first",
                 shown(Said.gathered([Said.begun("VOID", "new", "new", at(18, 1))], lines,
-                    events, seen))[0], "new");
+                    events, { seen }))[0], "new");
             // The steer inbox can file a later line's reply under an earlier one, which then
             // names the later line's key, and would show its answers (Joel at 23:39 on
             // 2026-11-13: "every entry is supposedly waiting on the same thing").
@@ -324,7 +329,7 @@ QtObject {
             const pickedUp = waiting.concat([{ line: "2026-11-13 16:32", msg: "t1632",
                 who: "Your orchestrator", event: "taken", at: "16:40", text: "On it." }]);
             Expect.same("a line taken up whose words he has seen no longer comes first",
-                shown(Said.gathered([], lines, pickedUp, seen)),
+                shown(Said.gathered([], lines, pickedUp, { seen })),
                 ["line 17:49", "line 17:48", "line 17:46"]);
             Expect.same("a talk not delivered, failed without a word back, or :take's asking, "
                 + "is no line", [Said.unanswered({ words: "", stage: "", reply: "" }),
@@ -400,7 +405,9 @@ QtObject {
             // the order written, superseded ones too, each with who and when, and the nerdy
             // bits for the fold (8GYNJ6 [851e94b2]).
             const threadWords = { has: "{who} has it", tookUp: "{who} took it up",
-                letGo: "{who} let it go", taken: "taken back" };
+                letGo: "{who} let it go", taken: "taken back", sent: "sent",
+                waiting: "waiting on {who}", void: "the void", picks: "picks a line",
+                opens: "opens it", back: "back to the lines" };
             const threaded = Object.assign(Said.begun("VOID", "is the fix in?", "is the fix in?",
                 when(20, 30)), { key: "2026-11-13 20:30" });
             const threadEvents = [
@@ -470,8 +477,55 @@ QtObject {
             const pending = Thread.threadOf(threaded, threadEvents, threadWords,
                 { replies: [replyHere, replyServed, elsewhere] }).steps.slice(5);
             Expect.same("replies to it not yet written show at once as his, without their key",
-                pending.map(step => [step.text, step.mine, step.side]),
+                pending.slice(0, 2).map(step => [step.text, step.mine, step.side]),
                 [["and now?", true, "21:00"], ["and then?", true, "21:05"]]);
+            // His last reply says how it stands while nothing has come of it: sent until
+            // the void writes it, then whom it waits on, by name (Joel, 2026-11-21 10:27: "it
+            // didn't indicate whether it was working on it").
+            Expect.same("a reply not yet written stands as sent, in the voice, under it",
+                pending.slice(2).map(step => [step.text, step.mine, step.answer, step.side]),
+                [["sent", false, false, ""]]);
+            // The void writes his reply under whom it sent it on to, the line's owner, or its
+            // own route where nobody has answered, let go or not (8GYNJ6 [0543317b]), so that
+            // name is whom it waits on, over whoever held the line before.
+            const held = threadEvents.filter(event => event.event !== "let-go");
+            const routedFirst = [{ line: replyKey, msg: "m1", owner: "WCJQSG",
+                who: "Your orchestrator", event: "routed" }];
+            Expect.same("a reply written waits on whom the void sent it to, by name, not address",
+                [held, threadEvents, routedFirst].map(events => Thread.threadOf(threaded,
+                    events.concat([replyWritten]), threadWords).steps.slice(-1)
+                    .map(step => [step.text, step.mine])[0]),
+                [["waiting on Delta", false], ["waiting on Delta", false],
+                    ["waiting on Delta", false]]);
+            // In the list his reply neither holds open nor leaves waiting a line whose
+            // answers he has seen, or a thanks nobody answers would read as work left for
+            // good (Joel, 2026-11-13 23:39: "tons of things still waiting"); the thread
+            // says whom it waits on.
+            const lineKey = Said.keyOf(threaded);
+            const repliedTo = held.concat([replyWritten]);
+            const seenAll = { [lineKey]: Said.past(repliedTo, lineKey).answers.length };
+            Expect.same("his reply leaves an answered line as it was, waiting on nobody",
+                [Said.open(threaded, held, seenAll), Said.open(threaded, repliedTo, seenAll),
+                    Said.past(repliedTo, lineKey).waiting], [false, false, ""]);
+            Expect.same("his reply to a line nobody has answered waits on whom it went to",
+                Said.past(routedFirst.concat([replyWritten]), replyKey).waiting, "Delta");
+            // The void may keep what was attached under his words (TalkLine.js's said).
+            const withAttached = Object.assign({}, replyWritten,
+                { text: Said.said("and now?", [{ kind: "clip", sent: "a note" }]) });
+            Expect.same("a reply written with what was attached still counts as written",
+                Thread.threadOf(threaded, threadEvents.concat([withAttached]), threadWords,
+                    { replies: [replyHere] }).steps.slice(-1)[0].text, "waiting on Delta");
+            Expect.same("a holder's name goes in as written, $ and all",
+                Said.worded(threadWords, "waiting", "$& $'"), "waiting on $& $'");
+            Expect.same("a reply written in a thread nobody has waits on the void",
+                Thread.threadOf(threaded, [Object.assign({}, replyWritten, { who: "" })],
+                    threadWords).steps.map(step => step.text),
+                ["and now?", "waiting on the void"]);
+            Expect.same("anything after his reply ends its standing",
+                Thread.threadOf(threaded, threadEvents.concat([replyWritten, { line: replyKey,
+                    msg: "r2", who: "Delta", event: "answered", at: "21:02",
+                    text: "Now." }]), threadWords).steps.slice(-1).map(step => step.text),
+                ["Now."]);
             Expect.same("a reply said here shows once when the void has written it",
                 Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords,
                     { replies: [replyHere] }).steps.filter(step => step.text === "and now?")
@@ -482,6 +536,40 @@ QtObject {
                 [Thread.picking(-1, 1, 4), Thread.picking(0, 1, 4), Thread.picking(2, 5, 4),
                     Thread.picking(1, -3, 4), Thread.picking(-1, -1, 4), Thread.picking(-1, 1, 0)],
                 [0, 1, 3, 0, 0, -1]);
+            // Return opens the line picked, and sends what's typed where none is picked or a
+            // thread is open (Joel, 2026-11-21 10:27); the niri case holds it in insert.
+            // Typing lets the pick go, but in the thread it opened, where typing is its reply,
+            // so - comes back to it picked.
+            Expect.same("typing lets a pick go, but not in its open thread",
+                [Thread.afterTyping(2, false), Thread.afterTyping(2, true),
+                    Thread.afterTyping(-1, true)], [-1, 2, -1]);
+            const listed = [{ since: 30 }, { since: 20 }, { since: 10 }];
+            Expect.same("Return opens the line picked, and only where no thread is open",
+                [Thread.opening(1, listed, null), Thread.opening(-1, listed, null),
+                    Thread.opening(0, listed, listed[2]), Thread.opening(5, listed, null)],
+                [20, 0, 0, 0]);
+            // Back from a thread, the line left is picked again by its key, wherever the list
+            // moved it while it was open (our council, 2026-11-21, round 2).
+            Expect.same("- comes back to the line left, by its key, and leaves a pick alone",
+                [Thread.comingBack(1, listed, 10), Thread.comingBack(1, listed, 0),
+                    Thread.comingBack(1, listed, 99)], [2, 1, -1]);
+            // The foot says how to pick a line, that Return opens it, and how to come back,
+            // by the keys of the mode he's in (Joel, 2026-11-21 10:23: "I have no clue how to
+            // step into a thread").
+            const footed = (asked) => Thread.footKeys(Object.assign({ listed: true, opens: false,
+                threadOpen: false, typing: true, takes: "" }, asked), threadWords);
+            Expect.same("the foot says how to pick a line, typing and in normal",
+                [footed({}), footed({ typing: false }), footed({ listed: false })],
+                [[["Tab", "picks a line"]], [["j", "picks a line"]], []]);
+            Expect.same("with a line picked, the foot says Return opens it",
+                footed({ opens: true }), [["\u21b5", "opens it"]]);
+            Expect.same("in a thread, the foot says how to come back, typing and in normal",
+                [footed({ threadOpen: true, opens: true }),
+                    footed({ threadOpen: true, typing: false })],
+                [[["Esc -", "back to the lines"]], [["-", "back to the lines"]]]);
+            Expect.same("while the void can undo it, :take follows",
+                footed({ takes: "Take It Back" }),
+                [["Tab", "picks a line"], [":take", "take it back"]]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);
