@@ -5,7 +5,9 @@ pragma ComponentBehavior: Bound
 // conversation back as the machine started, so only a viewer is opened,
 // never a pi: one the host serves opens quietly where the last boot kept
 // it, on the screen's empty workspace, and holds there; one no host serves
-// yet has its place kept, for its viewer to open once one does; one the
+// yet has its place kept, for its viewer to open once one does, unless its
+// restore entry says the words its viewer runs, when that viewer opens at
+// once to wait there for its host, once however often he asks; one the
 // boot kept no place of opens none. One bound for the workspace Joel is on
 // waits until he leaves it, then opens there. Asked to reopen as a plain pi
 // one its host's own list names, it begins none; one whose hosted presence
@@ -36,7 +38,8 @@ ShellRoot {
             "--session", id];
     }
     // The words a hosted session's restore entry says its viewer runs, the
-    // harness's join, which waits for the host its roster names.
+    // harness's join, which looks again until the host its roster names
+    // shows the conversation.
     function waitingView(id) {
         return ["node", "/lasting/scripts/host-join.ts", "--view", "--session", id, "--",
             "pi", "--session", id];
@@ -129,6 +132,8 @@ ShellRoot {
                 adrift();
             else if (stage === "unserved")
                 unserved();
+            else if (stage === "again")
+                again();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -365,10 +370,16 @@ ShellRoot {
         }
         // After a crash its host is still coming back, so it serves nothing
         // yet, but the restore entry says the words its viewer runs.
+        // A place kept for it before, as the cutover keeps one, is let go.
+        Sessions.keepPlaces(Object.assign({}, Sessions.keptPlaces,
+            { "s-waiting": { workspace: 41, column: 2, at: Date.now() } }));
         stage = "unserved";
-        Sessions.reopenAll([{ id: "s-waiting", cwd: "/home/skiff/harbour", title: "Reef",
-            hosted: true, way: "boot", view: waitingView("s-waiting") }], root.never,
+        Sessions.reopenAll([waitingEntry("s-waiting")], root.never,
             kept({ "s-waiting": keptOn(3) }), "");
+    }
+    function waitingEntry(id) {
+        return { id, cwd: "/home/skiff/harbour", title: "Reef", hosted: true, way: "boot",
+            view: waitingView(id) };
     }
 
     // Its viewer opens at once, where its window was, quietly, held and
@@ -389,8 +400,40 @@ ShellRoot {
         Expect.expect("niri is told where it opens", opensOn("s-waiting").length === 1
             && typeof opensOn("s-waiting")[0].reference.Id === "number"
             && opensOn("s-waiting")[0].column === 1, JSON.stringify(Niri.acts));
-        Expect.expect("its place isn't kept for later",
+        const on = opensOn("s-waiting")[0].reference.Id;
+        Expect.expect("it opens off the workspace Joel is on",
+            Niri.workspaces[on]?.is_focused !== true, JSON.stringify(Niri.workspaces));
+        Expect.expect("its place isn't kept for later, and one kept before is let go",
             Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
+        Expect.expect("nothing but its viewer is started for it",
+            Niri.spawns.filter(command => command.includes("s-waiting")).length === 1,
+            Niri.spawns.join("\n"));
+        // niri opens it, and Joel goes to its workspace; asked again while
+        // the host is still coming back, as its row is still offered, the
+        // walk finds it open, and keeps another bound there for him to leave.
+        const window = { id: 61, pid: 610, workspace_id: on, session: true,
+            opened: "pi-hosted.s-waiting", layout: { pos_in_scrolling_layout: [1, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "61": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(61, "pi-hosted.s-waiting", on)] });
+        Niri.windowOpenedOrChanged(window);
+        joelOn(on);
+        waitedOn = on;
+        stage = "again";
+        Sessions.reopenAll([waitingEntry("s-waiting"), waitingEntry("s-watched")], root.never,
+            kept({ "s-waiting": keptOn(3), "s-watched": keptOn(3) }), "");
+    }
+    property int waitedOn: -1
+
+    function again() {
+        const watched = Sessions.keptPlaces["s-watched"];
+        if (!watched || (Sessions.reopening?.queue.length ?? 0) > 0)
+            return;
+        Expect.expect("one open, waiting for its host, opens no second viewer",
+            viewerSpawns("s-waiting").length === 1, Niri.spawns.join("\n"));
+        Expect.expect("one bound for Joel's workspace is kept there, not opened",
+            watched.workspace === waitedOn && viewerSpawns("s-watched").length === 0,
+            `${JSON.stringify(watched)} ${Niri.spawns.join("\n")}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }

@@ -603,9 +603,10 @@ QtObject {
             Viewers.viewerTitle("mycelium", "Reef", "/home/skiff/harbour"),
             "\u03c0 - Reef - harbour");
         expect("words titled first, the title one word, said to nothing but the title",
-            Viewers.titled("\u03c0 - Reef\u001b]2;x\u0007", ["mycelium", "attach"]),
+            Viewers.titled("\u03c0 - Reef\u001b]2;x\u0007\u007f\u009b\u00a0",
+                ["mycelium", "attach"]),
             ["sh", "-c", 'printf "\\033]2;%s\\007" "$0"; exec "$@"',
-                "\u03c0 - Reef ]2;x ", "mycelium", "attach"]);
+                "\u03c0 - Reef ]2;x   \u00a0", "mycelium", "attach"]);
         // A hosted session's restore entry says the words its viewer runs
         // while its host isn't serving it yet; an entry an older harness
         // wrote says none, and words not whole are none.
