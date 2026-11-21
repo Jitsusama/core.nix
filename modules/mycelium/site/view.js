@@ -1864,6 +1864,9 @@ import {
       }
       fit(nodes[i].querySelector(".t-plate"), l.mark ? l.markBox : l.box);
     });
+    // The boxes are written into the same labels, which placing's key
+    // can't see, so the names measured again are placed again.
+    labelsPlacedFor = null;
   };
   const NAMES_OPEN = 12; // the most names on the map once something is open
   // Busiest first: asks, then stuck, then moving, then the most cells.
