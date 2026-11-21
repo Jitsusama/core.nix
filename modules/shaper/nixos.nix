@@ -285,6 +285,13 @@ in
         + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}"
         + lib.optionalString (networks != { }) " --networks ${networksFile}";
       ExecStopPost = "${shaper}/bin/shaper stop --unless-restarting shaper.service";
+      # The stop's SIGTERM goes to the shaper alone, which ends its loop
+      # itself. Sent to the whole unit, it also kills a tc the loop is
+      # reading, whose empty answer reads as a queue gone, so the loop puts
+      # the VPN's turn on again and matchall refuses it: "File exists" in
+      # the restart test, twice on 21 November. What is left once the
+      # shaper exits is still killed.
+      KillMode = "mixed";
       Restart = "always";
       RestartSec = 2;
       StateDirectory = "shaper";
