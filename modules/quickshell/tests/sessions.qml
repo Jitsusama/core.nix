@@ -560,8 +560,6 @@ ShellRoot {
         Sessions.resume("s-kept", "QEST-KEPT", "/tmp", told("s-kept"));
         Sessions.resume("s-gone", "QEST-GONE", root.state, told("s-gone"));
         Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
-        // Reopen Them All asks niri for its screens first, and niri here
-        // never answers, as it doesn't a request it refused.
         // Asked as the launcher asks, with no places of its own, the walk
         // takes the daemon's: the boot being restored kept places, so one
         // that sat here kept nowhere had no window, and comes back held.
@@ -569,15 +567,21 @@ ShellRoot {
         // wait on.
         Sessions.reopenAll([{ id: "s-unkept", cwd: "/tmp", way: "boot" }], told("s-unkept"),
             undefined, Sessions.carryOn);
+        // Reopen Them All asks niri for its screens first, and niri here
+        // never answers, as it doesn't a request it refused. s-patient
+        // follows s-unkept by the walk's pace.
         Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null);
         patience.start();
     }
+    // Saying what the walk still waits on, since s-unkept opened in a
+    // window would hold s-patient up as niri's answer would.
     Timer {
         id: patience
-        interval: 10000
+        interval: 12000
         onTriggered: {
             if (!Niri.spawns.some(one => one.endsWith(" pi --session s-patient")))
-                root.fail("Reopen Them All waited on niri's answer for good");
+                root.fail("Reopen Them All waited on niri's answer for good, or on "
+                    + `${Sessions.reopening?.waiting?.id ?? "nothing"}'s window`);
         }
     }
 
@@ -616,7 +620,7 @@ ShellRoot {
         expect("one the daemon's boot kept nowhere comes back held, with no window",
             Niri.spawns.filter(one => one.includes(" pi --session s-unkept ")).length === 1
             && Niri.spawns.some(one => one.includes(" pi --session s-unkept ")
-                && one.includes("holds add --detached --folder "))
+                && one.includes('holds add --detached --folder "$1" -- '))
             && !kitties.some(one => one.includes("s-unkept")), Niri.spawns.join("\n"));
         expect("one parked that no holder keeps is reopened where it left off, once",
             kitties.filter(one => one.startsWith(`${kitty} ${state}/trees/karst zsh -lic `)

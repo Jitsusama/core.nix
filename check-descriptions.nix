@@ -216,7 +216,10 @@
   a-hosted-viewer-reopens-where-it-was = ''
     Reopen Them All opens only the viewer of a session pi's host brought back, never its pi,
     quietly where the last boot kept it, and keeps the place of one no host serves yet, opens none
-    for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it
+    for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it; and
+    of plain pis, opens one kept where its orchestrator isn't at its kept place, brings back held,
+    at the walk's pace, those kept nowhere, even one whose folder went, but in a window when no
+    boot's places are known
   '';
   a-screen-niri-is-late-to-name-takes-its-workspaces-back = ''
     a monitor plugged back in takes back the workspace niri kept on the laptop's screen, leaving
