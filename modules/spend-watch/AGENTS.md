@@ -81,9 +81,13 @@ feed speaks.
   which another machine spent money, not just took turns on a plan. Only
   another machine's logs are read: its subagent runs and quest
   workspaces stay there, so its runs' spend beyond their logs is
-  elsewhere. A brought log's parent is looked for among that machine's
-  logs; a copy brought before its parent counts whole until the parent
-  lands, then is read again for its own turns. Each machine's folder
+  elsewhere. A copy's turns from before its header are its parent's when
+  the parent's log is beside it or the parent's session is held already,
+  read from any machine's logs, so every copy of a session agrees; a copy
+  brought before its parent counts whole until the parent lands, then is
+  read again for its own turns. A brought log drops what a session of
+  this machine's was counted for only when its header begins when this
+  machine's log of it does. Each machine's folder
   stands apart from every other's where it really is, links passed over
   inside, so nothing is counted twice. A session copied to another
   machine and gone on there keeps its id, so its logs share the turns
@@ -94,8 +98,9 @@ feed speaks.
   machine says it; one only elsewhere is the machine's whose log was
   last read from its start, so a machine renamed, or its logs brought
   somewhere new, takes its sessions along. A log replaced or shrunk is
-  read again from its start. When it's its session's only log, what it
-  no longer says is no longer counted; when it's one of several, its
+  read again from its start. When it's its session's only log still on
+  disk, what it no longer says is no longer counted; when it's one of
+  several, its
   session's turns stay, since which log said what isn't kept. A finding
   on another machine's session offers no terminal to go to. The logs
   are read as they grow in place, which whatever brings them has to

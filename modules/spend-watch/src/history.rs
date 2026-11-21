@@ -523,6 +523,9 @@ impl History {
     /// longer says is no longer counted. One of several keeps them, since
     /// which log said what isn't kept: reading it again from its start
     /// counts only turns not held already, and the turn first read stays.
+    /// Only logs still on disk count as others: a log gone, moved or
+    /// cleared away no longer says anything, so its place is forgotten
+    /// here too, and a session's one log left is its only one.
     pub fn forget_file(&self, path: &str) -> Result<(), String> {
         let forget = self.db.unchecked_transaction().map_err(sql)?;
         let session: Option<String> = forget
@@ -533,14 +536,22 @@ impl History {
             .map_err(sql)?
             .flatten();
         if let Some(session) = session {
-            let others: i64 = forget
-                .query_row(
-                    "SELECT COUNT(*) FROM files WHERE session = ?1 AND path != ?2",
-                    params![session, path],
-                    |row| row.get(0),
-                )
+            let others: Vec<String> = forget
+                .prepare("SELECT path FROM files WHERE session = ?1 AND path != ?2")
+                .map_err(sql)?
+                .query_map(params![session, path], |row| row.get(0))
+                .map_err(sql)?
+                .collect::<Result<_, _>>()
                 .map_err(sql)?;
-            if others == 0 {
+            let (left, gone): (Vec<String>, Vec<String>) = others
+                .into_iter()
+                .partition(|other| Path::new(other).exists());
+            for other in &gone {
+                forget
+                    .execute("DELETE FROM files WHERE path = ?1", [other])
+                    .map_err(sql)?;
+            }
+            if left.is_empty() {
                 for table in ["turns", "refusals", "unresolved"] {
                     forget
                         .execute(
@@ -555,6 +566,30 @@ impl History {
             .execute("DELETE FROM files WHERE path = ?1", [path])
             .map_err(sql)?;
         forget.commit().map_err(sql)
+    }
+
+    /// Whether a session's log has been read, so what it said is counted
+    /// under it.
+    pub fn holds_session(&self, id: &str) -> bool {
+        self.db
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sessions WHERE id = ?1)",
+                [id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+    }
+
+    /// When a session of this machine's began, as its log here says, or
+    /// none for a session that isn't this machine's.
+    pub fn this_machines_start(&self, id: &str) -> Option<f64> {
+        self.db
+            .query_row(
+                "SELECT started FROM sessions WHERE id = ?1 AND machine IS NULL",
+                [id],
+                |row| row.get(0),
+            )
+            .ok()
     }
 
     /// Forgets what a session was counted for before `until`, for a copy
@@ -1258,6 +1293,17 @@ mod tests {
             [("here".into(), None), ("there".into(), Some("teal".into()))],
             "a session kept before machines wasn't this machine's, or one read after lost its own"
         );
+        // A turn held already, read again, is still kept once: the shape
+        // keeps each turn by its key, not only by dropping what it held twice.
+        history
+            .db
+            .execute_batch(
+                "INSERT OR IGNORE INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'person', NULL,
+                     1, 1, 0, 0, 0, 2.0, 0, 0, NULL, 0, 0, NULL, NULL);
+                 INSERT OR IGNORE INTO refusals VALUES ('here', 5.0, 'm', 'no');
+                 INSERT OR IGNORE INTO unresolved VALUES ('here', 5.0, 'teal', 'no key');",
+            )
+            .unwrap();
         let (turns, cost): (i64, f64) = history
             .db
             .query_row("SELECT SUM(turns), SUM(cost) FROM turn_hours", [], |row| {
