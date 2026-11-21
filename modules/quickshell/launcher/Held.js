@@ -165,20 +165,32 @@ function forgets(made, leaving, held, steps) {
 // its key. `landed` is the key of the row selected once it landed, or
 // "" for none. A row gone from the rows the leave searched again, as an
 // ask a share hides, leaves the selection where it stood, on a row Joel
-// never chose (holdsReturn).
+// never chose (returnUnder).
 function guessedAt(from, landed, keys) {
     const key = from?.key ?? "";
     return key !== "" && key === landed ? -1 : keys;
 }
 
-// Whether Return holds still, doing nothing, once a step left by itself
-// landed where guessedAt says: only as the first key after the leave, so
-// a second Return meant for the step that left, as an ask's Release It,
-// never runs the row the selection stands on instead. Any other key
-// first, as a move or a word typed, lets the next Return run. `keys`
-// counts this Return too, as the field counts a key before it acts.
-function holdsReturn(guessed, keys) {
-    return guessed >= 0 && keys === guessed + 1;
+// No landing guessed: what a Return reads before any leave, and after
+// one is done with.
+function unguessed() {
+    return { keys: -1, at: 0 };
+}
+
+// Whether a Return holds still, doing nothing, under `guess`, a landing
+// guessed (guessedAt's keys, and when a Return was last held under it,
+// or 0), and what's guessed after it. Only the first key after the leave
+// holds, so a second Return meant for the step that left, as an ask's
+// Release It, never acts on the row the selection stands on instead;
+// and the Return straight after a held one, within `wait` ms, holds
+// once more, as that Return doubled, a key bounced or pressed twice for
+// one. Any other key first, as a move or a word typed, lets the next
+// Return act. `keys` counts this Return too, as the field counts a key
+// before it acts.
+function returnUnder(guess, keys, now, wait) {
+    const holds = guess.keys >= 0 && keys === guess.keys + 1
+        && (guess.at === 0 || now - guess.at < wait);
+    return { holds, next: holds && guess.at === 0 ? { keys, at: now } : unguessed() };
 }
 
 // Where a list of steps goes, the one way the launcher tells places

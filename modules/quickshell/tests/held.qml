@@ -302,11 +302,31 @@ QtObject {
             [Held.guessedAt({ key: "", at: 0 }, "", 3),
                 Held.guessedAt({ at: 0 }, "", 3), Held.guessedAt(undefined, "x", 3)].join(" "),
             "3 3 3");
-        check("the first key after a guessed landing, a Return, holds",
-            Held.holdsReturn(5, 6), true);
-        check("a Return after another key first runs, as Joel moved or typed since",
-            [Held.holdsReturn(5, 7), Held.holdsReturn(5, 5)].join(" "), "false false");
-        check("a landing by its key holds no Return", Held.holdsReturn(-1, 0), false);
+        // Held.returnUnder, as the field's Return asks it, the leave at 5
+        // keys and the key-timing wait 300 ms.
+        const under = (guess, keys, now) => {
+            const said = Held.returnUnder(guess, keys, now, 300);
+            return `${said.holds} ${said.next.keys}@${said.next.at}`;
+        };
+        const left = { keys: 5, at: 0 };
+        check("the first key after a guessed landing, a Return, holds, and marks when",
+            under(left, 6, 1000), "true 6@1000");
+        // A guess made before the field's first key is 0, a count still.
+        check("a landing guessed before any key holds the first",
+            under({ keys: 0, at: 0 }, 1, 1000), "true 1@1000");
+        check("a Return after another key first acts, as Joel moved or typed since",
+            under(left, 7, 1000), "false -1@0");
+        check("a Return with nothing guessed acts", under(Held.unguessed(), 0, 1000),
+            "false -1@0");
+        // The Return just held, doubled as a key bounces or is pressed twice
+        // for one, holds once more within the wait, then lets the next act.
+        const held = { keys: 6, at: 1000 };
+        check("the Return straight after a held one, within the wait, holds too",
+            under(held, 7, 1250), "true -1@0");
+        check("but not past the wait", under(held, 7, 1300), "false -1@0");
+        check("nor after another key between", under(held, 8, 1100), "false -1@0");
+        check("and a third Return acts", under(Held.returnUnder(held, 7, 1250, 300).next, 8,
+            1260), "false -1@0");
     }
 
     // Where a step that offers nothing now leaves to, as `nothing` and

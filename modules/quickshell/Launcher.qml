@@ -3091,10 +3091,18 @@ Scope {
     property int landedKeys: -1
     property real landedAt: 0
 
-    // The keys the line had taken when a step left by itself landed on a
-    // row other than the one Joel stepped in from (Held.guessedAt), or -1:
-    // the next key, if it's Return, does nothing (run).
-    property int guessedAt: -1
+    // A landing a step left by itself had to guess, on a row other than
+    // the one Joel stepped in from (Held.guessedAt), or none: the next
+    // key, if it's Return, does nothing (the field's onAccepted, as
+    // Held.returnUnder says).
+    property var guessed: Held.unguessed()
+
+    // A Return held under a guessed landing says so, and what another
+    // does, so it never reads as the key lost.
+    function heldUnder() {
+        console.info("launcher: Return held, as the step closed by itself under it");
+        say([["\u21b5", (Words.field.hints ?? {}).closedUnder ?? ""]]);
+    }
 
     function land(choice) {
         prompt.toNormal();
@@ -6437,6 +6445,11 @@ Scope {
         const from = steps[leaving.keep];
         jumping = true;
         const before = steps.length;
+        // Guessed until the landing is known to be on its row, so a leave
+        // that throws partway, its rows unsearched and the selection where
+        // it stood, holds the next Return too.
+        if (open)
+            guessed = { keys: prompt.keysTaken, at: 0 };
         try {
             held = steps;
             back(false, held.length - leaving.keep);
@@ -6456,7 +6469,10 @@ Scope {
             // Joel never chose: a Return pressed next, meant for the step
             // that left, waits rather than run it.
             const onRow = current >= 0 ? matches[current] ?? null : null;
-            guessedAt = Held.guessedAt(from, onRow ? steadyId(onRow) : "", prompt.keysTaken);
+            const keys = Held.guessedAt(from, onRow ? steadyId(onRow) : "", prompt.keysTaken);
+            guessed = open && keys >= 0 ? { keys, at: 0 } : Held.unguessed();
+        } else {
+            guessed = Held.unguessed();
         }
         return "left";
     }
@@ -8330,17 +8346,6 @@ Scope {
         // did nothing can be told from one that ran: the reason only, which names nothing.
         if (choice.gone) {
             console.info("launcher: Return on a gone row did nothing");
-            return;
-        }
-        // The first key after a step left by itself under a row it had to
-        // guess, as an ask hidden as a share starts, is a Return meant for
-        // that step, so it runs nothing and the foot says why. A click
-        // takes no key, so it's never held: it chose its row.
-        const guessed = Held.holdsReturn(guessedAt, prompt.keysTaken);
-        guessedAt = -1;
-        if (guessed) {
-            console.info("launcher: Return held once, as the step closed by itself under it");
-            say([["\u21b5", (Words.field.hints ?? {}).closedUnder ?? ""]]);
             return;
         }
         // One held still, as a secret ask hidden while Joel shares, keeps
@@ -11096,7 +11101,7 @@ Scope {
             // Reboot was armed and the launcher shut, a click rebooted).
             armed = Arming.rest();
             landedKey = "";
-            guessedAt = -1;
+            guessed = Held.unguessed();
             // Shut in the mode it opens in, so what it keeps is weighed for
             // that mode while shut, and the opening's take() changes no
             // mode. Closed by :q from normal, each reopening weighed its
@@ -13996,6 +14001,24 @@ Scope {
                             // arms first, and a second Return does it
                             // (pressArming).
                             const one = root.selected;
+                            // The first key after a step left by itself
+                            // under a row it had to guess, as an ask a
+                            // share hides, is a Return meant for that
+                            // step: it does nothing to the row, whatever
+                            // that row's Return would do, arming Power
+                            // Off included. Words asked for are still
+                            // given. Only Return is held here; a click
+                            // chose its row.
+                            const under = Held.returnUnder(root.guessed, prompt.keysTaken,
+                                Date.now(), Options.keyTiming.wait);
+                            root.guessed = under.next;
+                            if (under.holds && !root.asking) {
+                                root.heldUnder();
+                                root.returned = { act: "waited",
+                                    pressed: pressed > 0 ? pressed : null, heard: heard,
+                                    done: KeyTimes.now() };
+                                return;
+                            }
                             const chosen = Arming.returnAct({
                                 asking: !!root.asking,
                                 landed: root.landedJustNow(),
