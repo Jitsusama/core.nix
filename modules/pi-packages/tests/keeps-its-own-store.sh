@@ -34,6 +34,7 @@ inside() {
   case $value in
     */../* | */..) ;;
     "$root"/*) return 0 ;;
+    *) ;;
   esac
   echo "pi-packages gives pnpm $name='$value', outside $root, which fenced commands may write"
   exit 1
