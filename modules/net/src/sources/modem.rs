@@ -332,7 +332,8 @@ fn whole<T: std::str::FromStr>(row: &Value, key: &str) -> Option<T> {
 /// A channel's count of pieces of data, which the modem keeps in 32 bits:
 /// one climbing tens of thousands a second reads only hundreds of millions
 /// after weeks up, so it wraps. Now and then a page gives one past 32 bits,
-/// a small count echoed in the high half, which is a misread and so none.
+/// 64 to 72 in its high half over a plausible count, which is a misread and
+/// so none.
 fn count(row: &Value, key: &str) -> Option<u64> {
     whole::<u32>(row, key).map(u64::from)
 }
