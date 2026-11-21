@@ -2749,7 +2749,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_second_move_never_made_in_a_row_holds_a_whole_settle() {
+    fn a_second_never_stood_miss_within_an_hour_holds_a_whole_settle() {
         let mut chooser = after_a_bad_minute(DESK);
         // A settle on, so taking one off is an instant on any clock.
         let start = Instant::now() + SETTLE;
@@ -2780,13 +2780,73 @@ pub(crate) mod tests {
         assert_eq!(
             span_on,
             Choice::Stay,
-            "a second miss in a row holds past a span"
+            "a second miss within an hour holds past a span"
         );
         assert_eq!(short, Choice::Stay, "to a settle from its move");
         assert_eq!(
             next,
             Choice::Try(quicker_still().point),
             "and tries once that has passed"
+        );
+    }
+
+    #[test]
+    fn a_move_that_stands_between_two_misses_still_has_the_second_hold_a_settle() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let well = carried(15, 0.0);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, (DESK, &badly, -50, CH52), &hall_alone, false);
+
+        // The next move stands, and holds well past a settle.
+        let spanned = back + SPAN;
+        let second = chooser.choose(spanned, (DESK, &badly, -50, CH52), &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "a span after the miss"
+        );
+        let there = elsewhere().point;
+        let stood = (there.as_str(), &well, -50, CH52);
+        chooser.choose(spanned + Duration::from_secs(60), stood, &[], false);
+        let kept = chooser.choose(spanned + TRIAL, stood, &[], false);
+        assert_eq!(kept, Choice::Stay, "the second stood its trial");
+
+        // Failing there a settle on, a third is tried and never made.
+        let failing = carried(400, 15.0);
+        let third = spanned + SETTLE + Duration::from_secs(60);
+        let on = (there.as_str(), &failing, -50, CH52);
+        let tried_again = chooser.choose(third, on, &[quicker_still()], false);
+        assert_eq!(
+            tried_again,
+            Choice::Try(quicker_still().point),
+            "tried as it failed"
+        );
+        let desk = Other {
+            point: DESK.into(),
+            ..hall(-53, Some(20), None)
+        };
+        let near = [desk];
+        let missed = third + Duration::from_secs(60);
+        let on = (there.as_str(), &badly, -50, CH52);
+        chooser.choose(missed, on, &near, false);
+        let span_on = chooser.choose(missed + SPAN, on, &near, false);
+        let next = chooser.choose(third + SETTLE + Duration::from_secs(1), on, &near, false);
+
+        assert_eq!(
+            span_on,
+            Choice::Stay,
+            "a stand between misses doesn't make the second a first"
+        );
+        assert_eq!(
+            next,
+            Choice::Try(DESK.into()),
+            "tried a settle from the move"
         );
     }
 
