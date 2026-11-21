@@ -2773,6 +2773,10 @@
     versions a pi runs, keeping nothing else of its environment, and models the keys again by the
     install each window's pi loaded, so installs compare under one load
   '';
+  pi-keys-outlasts-a-switch = ''
+    a switch leaves a running pi-keys sample be rather than restarting it and waiting on its start,
+    which outlasts home-manager's wait and sends the whole switch back
+  '';
   pi-keys-passes-clippy = ''
     clippy finds nothing in pi-keys or its tests
   '';
