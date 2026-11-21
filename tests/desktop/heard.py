@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-# What reports (tests/desktop.nix) ends with when its time runs out, kept apart from the 1
-# a failed read gives.
+# What reports (reports.sh) ends with when its time runs out, kept apart from the 1 a failed
+# read gives; heard-test.py runs it to hold the two together.
 TIMED_OUT = 3
 # What the driver's own limit on a command ends it with (desktop-starts-clean pins it). One
 # past reports' own end is the wait running out on a starved guest, not a reader stopping.
@@ -44,15 +44,17 @@ def diagnosed(execute: Callable[[], tuple[int, str]]) -> str:
     """Give what a read for a failure's diagnosis said, never raising.
 
     A session gone bad is when its read fails too, and that error would stand in for the
-    failure it's read to explain. So a read that stops says its status after what it said,
-    and one that raises says what it raised, rather than being taken for a program that said
-    nothing.
+    failure it's read to explain. So a read the driver cut short says so after what it said,
+    one that fails says only its status, since it may have read all there was, and one that
+    raises says what it raised, rather than being taken for a program that said nothing.
     """
     try:
         status, said = execute()
     except Exception as broke:  # noqa: BLE001 # What it raised is the diagnosis.
         return f"(unread, since it raised {broke!r})"
-    return said if status == 0 else f"{said}(unread past here, stopping with {status})"
+    if status == CUT_SHORT:
+        return f"{said}(unread past here, stopping with {status})"
+    return said if status == 0 else f"{said}(ended with {status})"
 
 
 def until_heard(

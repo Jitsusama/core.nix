@@ -1474,8 +1474,11 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
             # and what the stand-in ran, telling a lost key from a second install. Each is read
             # without raising and paced to the builder, since a shell that hung on the Return
             # fails its read too, and that error would stand in for this one (desktop.diagnosis).
-            showing = desktop.diagnosis("qs ipc call launcher showing").strip()
-            installed = desktop.diagnosis(f"cat {said}/installed").strip()
+            # Each has 15 s on a quiet host, since a hung shell never answers and the driver's
+            # own limit would hold the failure back minutes for nothing.
+            quick = dt.timedelta(seconds=15)
+            showing = desktop.diagnosis("qs ipc call launcher showing", quick).strip()
+            installed = desktop.diagnosis(f"cat {said}/installed", quick).strip()
             failed = (
                 "the journal never said the gone row's Return was taken,"
                 f" the launcher showing {showing} and the stand-in run as {installed}"

@@ -19,7 +19,7 @@
     "due_why": "Firmware failed because the test stepped out past where the launcher had already stepped back by itself; the test now waits for that step back, then asserts that a Return on the gone row writes no line, as the launcher has done since its fix, ruled 20 Nov and merged 21 Nov UTC. It comes off once five net runs after that change exit 0, counted by exit code, since a failure only here is recorded as passed. Its own entry, apart from the time here's, so those five runs, about a day at the net's pace from a merge on 21 Nov, count against a date that holds them and leave the time here's date its own",
     "owner_pr": 5869,
     "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 042387bc604a",
+    "reason": "failed every net run from 18 Nov but one, stepping out past the launcher's own step back",
     "subtests": [
       "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart"
     ],

@@ -6,6 +6,9 @@ keeps of what the launcher showed.
 
 from __future__ import annotations
 
+import os
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -202,6 +205,55 @@ def test_a_diagnosis_read_that_stops_says_so_after_what_it_read() -> None:
     said = diagnosed(lambda: (CUT_SHORT, "first line\n"))
     wanted = "first line\n(unread past here, stopping with 124)"
     assert said == wanted, f"a read cut short told: {said!r}"
+
+
+def test_a_diagnosis_read_that_fails_says_only_how_it_ended() -> None:
+    # A cat of a file that isn't there read all there was, so nothing went unread.
+    said = diagnosed(lambda: (1, ""))
+    assert said == "(ended with 1)", f"a read that failed told: {said!r}"
+
+
+def reports(tmp_path: Path, journal: str, seconds: int = 5) -> subprocess.CompletedProcess[str]:
+    """Run the reader the waits read through, for showing, on a stand-in journal.
+
+    The stand-in journalctl runs the journal as a shell's lines, and the reader runs on the
+    shell and tools its check gives (checks.nix), as the VM's writeShellApplication runs it.
+    """
+    shell = os.environ["REPORTS_SHELL"]
+    stand_in = tmp_path / "journalctl"
+    stand_in.write_text(f"#!{shell}\n{journal}\n")
+    stand_in.chmod(0o755)
+    reader = Path(__file__).with_name("reports.sh")
+    return subprocess.run(
+        [shell, "-euo", "pipefail", reader, "", str(seconds), "showing"],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{tmp_path}:{os.environ['REPORTS_TOOLS']}"},
+        check=False,
+    )
+
+
+def test_the_reader_says_what_follows_a_lines_first_report_mark(tmp_path: Path) -> None:
+    # What the launcher shows can hold the mark again, as typed words, which stay its words.
+    journal = "echo 'qml: report[showing {\"typed\": \"report[x]\"}]'; echo '-- cursor: c1'"
+    read = reports(tmp_path, journal)
+    wanted = 'said\tshowing {"typed": "report[x]"}\ncursor\tc1\n'
+    assert (read.returncode, read.stdout) == (0, wanted), f"the reader said: {read}"
+
+
+def test_the_readers_time_running_out_fails_as_never_hearing(tmp_path: Path) -> None:
+    # The status ended reads as time running out is the one the reader gives, or retry loops
+    # would stop retrying a wait that only ran out.
+    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=0)
+    with pytest.raises(AssertionError):
+        ended(read.returncode, never)
+    assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
+
+
+def test_the_readers_failed_journal_read_fails_as_a_stopped_reader(tmp_path: Path) -> None:
+    read = reports(tmp_path, "exit 1")
+    with pytest.raises(RuntimeError):
+        ended(read.returncode, never)
 
 
 def test_a_diagnosis_read_that_raises_says_what_it_raised_rather_than_raising() -> None:

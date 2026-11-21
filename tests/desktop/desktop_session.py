@@ -18,6 +18,7 @@ import operator
 import re
 import shlex
 import tempfile
+import textwrap
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -436,14 +437,16 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         allowed = timeout * vm_helpers.pace(vm_helpers.busyness())
         return self.machine.succeed(self.in_session(command), timeout=allowed)
 
-    def diagnosis(self, command: str) -> str:
+    def diagnosis(self, command: str, quiet: timedelta = ANSWERING) -> str:
         """Run a command as the account, as as_account does, to say why a failure happened.
 
         It never raises, since a session gone bad is when its reads fail too, and their error
         would stand in for the failure they're read to explain; one that stops or raises says
-        so after what it printed (heard.diagnosed).
+        so after what it printed (heard.diagnosed). Quiet is how long it may run on a quiet
+        host, paced as every wait is: a read of a shell that may have hung takes less than
+        ANSWERING, since that shell is the one most likely never to answer.
         """
-        allowed = ANSWERING * vm_helpers.pace(vm_helpers.busyness())
+        allowed = quiet * vm_helpers.pace(vm_helpers.busyness())
         return diagnosed(lambda: self.machine.execute(self.in_session(command), timeout=allowed))
 
     # What whereabouts keeps of where the laptop is, read back as it starts.
@@ -533,11 +536,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         start = since
 
         # The journal is printed as well as it can be, never raising, so the wait's own error
-        # is always the one made (diagnosis).
+        # is always the one made (diagnosis). Each line is indented, since merge-net takes a
+        # line of the log opening with FAILED for pytest's, and the guest's lines aren't.
         def never() -> str:
             point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
             read = f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
-            print(self.diagnosis(read))
+            print(textwrap.indent(self.diagnosis(read), "  "))
             return f"the shell never reported {prefix!r} as wanted"
 
         while True:

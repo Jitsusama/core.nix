@@ -21,13 +21,23 @@ in
       '';
 
   # How an area's wait on what the launcher reports ends, and what one that
-  # never passes says, apart from any VM. Only the two files are copied, for
-  # the same reason.
+  # never passes says, apart from any VM, with the reader it waits through
+  # run against a stand-in journal on the shell and tools the VM gives it.
+  # Only those three files are copied, for the same reason.
   a-desktop-wait-says-what-it-last-heard =
-    pkgs.runCommandLocal "a-desktop-wait-says-what-it-last-heard" { }
+    pkgs.runCommandLocal "a-desktop-wait-says-what-it-last-heard"
+      {
+        REPORTS_SHELL = pkgs.lib.getExe pkgs.bash;
+        REPORTS_TOOLS = pkgs.lib.makeBinPath [
+          pkgs.coreutils
+          pkgs.gnugrep
+          pkgs.gnused
+        ];
+      }
       ''
         cp ${./heard.py} heard.py
         cp ${./heard-test.py} heard-test.py
+        cp ${./reports.sh} reports.sh
         PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
           -p no:cacheprovider --import-mode=importlib --quiet heard-test.py
         touch $out
