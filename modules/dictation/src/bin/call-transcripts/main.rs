@@ -397,7 +397,9 @@ fn summarize(
     let mut model = ask::load(summarizer).map_err(|unloaded| match unloaded {
         ask::Unloaded::Short(why) | ask::Unloaded::Failed(why) => why,
     })?;
-    let written = summary::summarize(
+    // Joel's name, as the daemon wrote his lines under it, so a voice
+    // named from the Meet that opens the call is never taken for him.
+    let written = summary::summarize_as(
         &mut |prompt, tokens| {
             let answer = model.answer(prompt, tokens)?;
             // What each pass answered, to check a summary by.
@@ -405,6 +407,7 @@ fn summarize(
             Ok(answer)
         },
         title,
+        Some(&own_name()),
         them,
         text,
     )?;
@@ -427,6 +430,7 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
                     end: take.start + take.samples.len(),
                     text,
                     voice: None,
+                    name: None,
                 });
             }
         }

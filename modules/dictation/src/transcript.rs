@@ -21,7 +21,8 @@ pub enum Side {
 
 /// A take heard: who said it, from when to when in the call, in samples,
 /// and what; for their side, which of the voices told apart it is, from
-/// 0, where it's one (voices.rs).
+/// 0, where it's one (voices.rs), and who that voice is, where who was on
+/// the call says so for certain.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Line {
     pub side: Side,
@@ -29,6 +30,7 @@ pub struct Line {
     pub end: usize,
     pub text: String,
     pub voice: Option<usize>,
+    pub name: Option<String>,
 }
 
 /// How near in time a line of Joel's must be to one of theirs to be its
@@ -44,6 +46,11 @@ pub const OTHERS: &str = "Others";
 
 /// What a voice told apart is called, before its number from 1.
 const VOICE: &str = "Voice ";
+
+/// What the voice `voice`, from 0, is called in a transcript.
+pub fn voice_called(voice: usize) -> String {
+    format!("{VOICE}{}", voice + 1)
+}
 
 /// The voice, from 0, a speaker `markdown` wrote is, when it's one: Voice
 /// and a number from 1, in digits alone, as it writes them, so a name such
@@ -68,6 +75,14 @@ pub const VOICES_NOTE: &str = "Their side's voices are told apart by how they so
     numbered in the order they first spoke; who each one is isn't known. Lines no voice was \
     sure of, or heard after the service restarted during the call, stay under Others.";
 
+/// What the transcript says once some of its voices are named, so a name
+/// is read as only as sure as who was in the Meet.
+pub const NAMED_NOTE: &str = "Their side's voices are told apart by how they sound. A voice \
+    is called by name where only that person was in the Meet each time it spoke, and the rest \
+    are numbered in the order they first spoke. Lines no voice was sure of, or heard after the \
+    service restarted during the call, stay under Others. Where several people shared one \
+    seat in the Meet, a name may be wrong.";
+
 /// The transcript: lines in the order they were said, echoes left out, a
 /// speaker's lines in a row joined into one paragraph under the time it
 /// began, Joel's under `me` and theirs under `them`, or Others when who
@@ -77,14 +92,37 @@ pub const VOICES_NOTE: &str = "Their side's voices are told apart by how they so
 /// note says what that means. A `note` saying where their name came from,
 /// or who was on the call, comes first, under the heading.
 pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>) -> String {
+    markdown_naming(lines, me, them, note, None)
+}
+
+/// `markdown`, where a line of theirs whose voice is named is under its
+/// name, unless that's Joel's or reads as unnamed, and `guesses`, saying
+/// who the voices left numbered may be, follows the voices' note.
+pub fn markdown_naming(
+    lines: &[Line],
+    me: &str,
+    them: Option<&str>,
+    note: Option<&str>,
+    guesses: Option<&str>,
+) -> String {
     let named = them.filter(|them| *them != me);
     let mut heard: Vec<&Line> = lines.iter().filter(|line| !echoes(line, lines)).collect();
     heard.sort_by_key(|line| line.start);
-    let voiced = named.is_none() && heard.iter().any(|line| line.voice.is_some());
+    let name_of = |line: &Line| {
+        line.name
+            .clone()
+            .filter(|name| name != me && !name.is_empty() && !unnamed(name))
+    };
+    let voiced = named.is_none()
+        && heard
+            .iter()
+            .any(|line| line.voice.is_some() || name_of(line).is_some());
     let mut paragraphs = vec!["# Transcript".to_owned()];
     paragraphs.extend(note.map(str::to_owned));
     if voiced {
-        paragraphs.push(VOICES_NOTE.to_owned());
+        let some_called = heard.iter().any(|line| name_of(line).is_some());
+        paragraphs.push(if some_called { NAMED_NOTE } else { VOICES_NOTE }.to_owned());
+        paragraphs.extend(guesses.map(str::to_owned));
     }
     // The notes are no line, so a run of lines never joins onto them. A
     // run is one side under one speaker, so a line of theirs never joins
@@ -94,8 +132,11 @@ pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>
         let who = match (line.side, named, line.voice.filter(|_| voiced)) {
             (Side::Mine, ..) => me.to_owned(),
             (Side::Theirs, Some(them), _) => them.to_owned(),
-            (Side::Theirs, None, Some(voice)) => format!("{VOICE}{}", voice + 1),
-            (Side::Theirs, None, None) => OTHERS.to_owned(),
+            (Side::Theirs, None, voice) => match (name_of(line), voice) {
+                (Some(name), _) => name,
+                (None, Some(voice)) => voice_called(voice),
+                (None, None) => OTHERS.to_owned(),
+            },
         };
         match paragraphs.last_mut() {
             Some(paragraph) if last.as_ref() == Some(&(line.side, who.clone())) => {
@@ -115,9 +156,10 @@ pub fn markdown(lines: &[Line], me: &str, them: Option<&str>, note: Option<&str>
 
 /// The lines of a transcript `markdown` wrote, a paragraph each, so a
 /// call taken up again after the daemon restarts goes on from them, a
-/// line Joel's only when it's under `me`, and one of theirs under a
-/// voice read back with it. Only when each began is kept, which is all
-/// the layout needs.
+/// line Joel's only when it's under `me`, one of theirs under a voice
+/// read back with it, and one under a name with that name, so a voice
+/// named before a restart stays named. Only when each began is kept,
+/// which is all the layout needs.
 pub fn read(transcript: &str, me: &str) -> Vec<Line> {
     transcript
         .split("\n\n")
@@ -130,12 +172,14 @@ pub fn read(transcript: &str, me: &str) -> Vec<Line> {
                 .ok()?;
             let side = if who == me { Side::Mine } else { Side::Theirs };
             let voice = voice_of(who).filter(|_| side == Side::Theirs);
+            let name = (side == Side::Theirs && !unnamed(who)).then(|| who.to_owned());
             Some(Line {
                 side,
                 start: seconds * RATE,
                 end: seconds * RATE,
                 text: text.trim_end().to_owned(),
                 voice,
+                name,
             })
         })
         .collect()
@@ -200,6 +244,7 @@ mod tests {
             end: (second + 2) * RATE,
             text: text.to_owned(),
             voice: None,
+            name: None,
         }
     }
 
@@ -257,6 +302,92 @@ mod tests {
             written,
             "a transcript with voices didn't write again as it was"
         );
+    }
+
+    fn named(second: usize, voice: usize, name: &str, text: &str) -> Line {
+        Line {
+            name: Some(name.to_owned()),
+            ..voiced(second, voice, text)
+        }
+    }
+
+    #[test]
+    fn a_voice_named_for_certain_is_under_its_name_and_reads_back_named() {
+        let lines = [
+            named(0, 0, "Ada", "Shall we start?"),
+            voiced(3, 1, "Yes, go ahead."),
+            named(6, 0, "Ada", "Good."),
+            line(Side::Mine, 9, "Thanks."),
+        ];
+        let guesses = "Voice 2 may be Bo or Cy.";
+        let want = [
+            "# Transcript",
+            "",
+            "In the Meet: Ada, Bo and Cy.",
+            "",
+            NAMED_NOTE,
+            "",
+            guesses,
+            "",
+            "**Ada**, 0:00: Shall we start?",
+            "",
+            "**Voice 2**, 0:03: Yes, go ahead.",
+            "",
+            "**Ada**, 0:06: Good.",
+            "",
+            "**Joel**, 0:09: Thanks.",
+            "",
+        ];
+        let note = Some("In the Meet: Ada, Bo and Cy.");
+        let written = markdown_naming(&lines, "Joel", None, note, Some(guesses));
+        assert_eq!(
+            written,
+            want.join("\n"),
+            "a named voice wasn't under its name"
+        );
+        let back = read(&written, "Joel");
+        let names: Vec<Option<&str>> = back.iter().map(|l| l.name.as_deref()).collect();
+        assert_eq!(
+            names,
+            [Some("Ada"), None, Some("Ada"), None],
+            "a named voice didn't read back with its name"
+        );
+        assert_eq!(
+            markdown_naming(&back, "Joel", None, note, Some(guesses)),
+            written,
+            "a transcript with names didn't write again as it was"
+        );
+    }
+
+    #[test]
+    fn a_transcript_whose_every_voice_is_named_writes_again_with_its_notes() {
+        let lines = [
+            named(0, 0, "Ada", "Shall we start?"),
+            named(3, 1, "Bo", "Yes, go ahead."),
+        ];
+        let guesses = Some("Voice 3 may be Cy.");
+        let written = markdown_naming(&lines, "Joel", None, None, guesses);
+        assert!(
+            written.contains(NAMED_NOTE) && written.contains("Voice 3 may be Cy."),
+            "a transcript naming every voice lost the note or the guesses: {written}"
+        );
+        let back = read(&written, "Joel");
+        assert_eq!(
+            markdown_naming(&back, "Joel", None, None, guesses),
+            written,
+            "read back, names but no voice numbers lost the note on writing again"
+        );
+    }
+
+    #[test]
+    fn a_voice_named_what_joel_is_or_what_reads_as_unnamed_keeps_its_number() {
+        for name in ["Joel", "Others", "Voice 3", ""] {
+            let written = markdown(&[named(0, 0, name, "Hello.")], "Joel", None, None);
+            assert!(
+                written.contains("**Voice 1**, 0:00") && written.contains(VOICES_NOTE),
+                "a voice named {name:?} wasn't kept under its number: {written}"
+            );
+        }
     }
 
     #[test]

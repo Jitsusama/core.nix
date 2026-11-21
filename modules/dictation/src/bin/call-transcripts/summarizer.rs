@@ -218,7 +218,7 @@ impl Summarizer {
             Err(why) => return Tried::Failed(why),
         };
         let mut stopped = None;
-        let summed = summary::summarize(
+        let summed = summary::summarize_as(
             &mut |prompt, tokens| {
                 model.ask(prompt, tokens, &mut || {
                     let stop = self
@@ -229,6 +229,7 @@ impl Summarizer {
                 })
             },
             title,
+            Some(&self.me),
             them,
             text,
         );

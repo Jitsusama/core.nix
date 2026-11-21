@@ -11,6 +11,8 @@
 //! while they were out, and may set aside the wrong one for a likely
 //! name.
 
+use dictation::transcript::voice_called;
+
 /// How far apart Meet's clock and this laptop's, and when a take is said
 /// to start and when its words were, may be: a person is taken as there
 /// from this long before they joined to this long after they left.
@@ -97,6 +99,37 @@ pub fn who(present: &[Present], spoke: &[Spoke], voices: usize) -> Vec<Who> {
                 })
                 .collect();
         }
+    }
+}
+
+/// What a transcript says of the voices it leaves numbered, of those
+/// `heard` in it: who each is likely to be, or who it may be; none when
+/// that's nothing. A sure name needs no saying, since its voice's lines
+/// are under it.
+pub fn guesses(who: &[Who], heard: &[bool]) -> Option<String> {
+    let said: Vec<String> = who
+        .iter()
+        .zip(heard)
+        .enumerate()
+        .filter(|(_, (_, heard))| **heard)
+        .filter_map(|(voice, (who, _))| {
+            let called = voice_called(voice);
+            match who {
+                Who::Is(_) => None,
+                Who::Likely(name) => Some(format!("{called} is likely {name}.")),
+                Who::MayBe(names) => either(names).map(|names| format!("{called} may be {names}.")),
+            }
+        })
+        .collect();
+    (!said.is_empty()).then(|| said.join(" "))
+}
+
+/// `names` as one of them, "Ada, Bo or Cy"; none for no names.
+fn either(names: &[String]) -> Option<String> {
+    match names {
+        [] => None,
+        [one] => Some(one.clone()),
+        [rest @ .., last] => Some(format!("{} or {last}", rest.join(", "))),
     }
 }
 
@@ -348,6 +381,28 @@ mod tests {
             who(&present, &[spoke(0, 2)], 2)[1],
             may_be(&["Ada", "Bo"]),
             "a voice with no worded take was given a name or nobody"
+        );
+    }
+
+    #[test]
+    fn the_voices_left_numbered_are_said_likely_or_maybe_and_only_those_heard() {
+        let who = [
+            is("Ada"),
+            likely("Bo"),
+            may_be(&["Cy", "Di", "Ed"]),
+            may_be(&["Fi"]),
+            may_be(&[]),
+            may_be(&["Gus"]),
+        ];
+        assert_eq!(
+            guesses(&who, &[true, true, true, true, true, false]).as_deref(),
+            Some("Voice 2 is likely Bo. Voice 3 may be Cy, Di or Ed. Voice 4 may be Fi."),
+            "the guesses didn't say who each numbered voice heard may be"
+        );
+        assert_eq!(
+            guesses(&[is("Ada"), may_be(&[])], &[true, true]),
+            None,
+            "a sure name or a voice that may be nobody was said as a guess"
         );
     }
 }

@@ -1,7 +1,8 @@
 //! Who is in the Meet call Joel is on, as the google program's daemon
 //! follows it: it asks Meet every so often about each call open in a
 //! window of its own, and serves each as a `call` record, its people by
-//! the names Meet shows them by. Being in the call says more than being
+//! the names Meet shows them by, with when each first joined and last
+//! left, which says who each voice may be (presence.rs). Being in the call says more than being
 //! invited to it, so a followed Meet's people stand for their side in
 //! place of its invitation's (meeting.rs). The shell has a call followed
 //! while this daemon records one, which it serves as `recording`
@@ -14,6 +15,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use crate::meeting::{Known, asked, meetings, on_tuple, speaker};
+use crate::presence::Present;
 
 /// Where the google program's daemon answers, in the runtime folder.
 const GOOGLE: &str = "daemons/google.sock";
@@ -28,6 +30,15 @@ enum Which {
     Only,
 }
 
+/// Who a call is with now, how that's known, and, for a Meet, when each
+/// of them was in it; none for a Tuple call, which doesn't say.
+#[derive(Debug, PartialEq)]
+pub struct Seen {
+    pub people: Vec<String>,
+    pub known: Option<Known>,
+    pub present: Vec<Present>,
+}
+
 /// Who a call being recorded is with now, and how that's known, for a
 /// call its record says is `known` so and joined by its calendar `event`:
 /// a Tuple call's from Tuple, any other's from its Meet, Joel, `me`, left
@@ -39,11 +50,19 @@ pub fn still_on(
     known: Option<Known>,
     event: Option<&str>,
     me: &str,
-) -> Option<(Vec<String>, Option<Known>)> {
+) -> Option<Seen> {
     if known == Some(Known::Tuple) {
-        return on_tuple(runtime).map(|on| (on.people, on.known));
+        return on_tuple(runtime).map(|on| Seen {
+            people: on.people,
+            known: on.known,
+            present: Vec::new(),
+        });
     }
-    on_meet(runtime, event, me).map(|people| (people, Some(Known::Meet)))
+    on_meet(runtime, event, me).map(|(people, present)| Seen {
+        people,
+        known: Some(Known::Meet),
+        present,
+    })
 }
 
 /// Who else is or was in the Meet call Joel, `me`, is on, from the google
@@ -54,7 +73,7 @@ pub fn still_on(
 /// can't be told. The meetings are asked for only once a call is
 /// followed, which none is while nothing is recorded and the launcher is
 /// shut.
-fn on_meet(runtime: &Path, event: Option<&str>, me: &str) -> Option<Vec<String>> {
+fn on_meet(runtime: &Path, event: Option<&str>, me: &str) -> Option<(Vec<String>, Vec<Present>)> {
     let socket = runtime.join(GOOGLE);
     let said = followed(&socket)?;
     let listed = match event {
@@ -74,7 +93,7 @@ pub fn on_meet_of(
 ) -> Option<Vec<String>> {
     let which = which(listed, event)?;
     let said = followed(&runtime.join(GOOGLE))?;
-    in_meet(&said, &which, me)
+    in_meet(&said, &which, me).map(|(people, _)| people)
 }
 
 /// The google daemon's list of the calls it follows, at `socket`; or none
@@ -118,8 +137,10 @@ fn code(link: &str) -> Option<String> {
 /// Joel is still in, so a Meet he's left isn't the call he's on. Two
 /// people of his name, or none, leave it untold, since then a voice of
 /// his could be counted as theirs, or theirs as his; and so does nobody
-/// else in it yet, which would say less than the invitation.
-fn in_meet(said: &Value, which: &Which, me: &str) -> Option<Vec<String>> {
+/// else in it yet, which would say less than the invitation. Beside them,
+/// when each of them first joined and last left, leaving out one Meet
+/// gives no time for.
+fn in_meet(said: &Value, which: &Which, me: &str) -> Option<(Vec<String>, Vec<Present>)> {
     let calls: Vec<&Value> = said["records"]
         .as_array()?
         .iter()
@@ -134,7 +155,7 @@ fn in_meet(said: &Value, which: &Which, me: &str) -> Option<Vec<String>> {
             _ => return None,
         },
     };
-    let (mut joels, mut still_in, mut others) = (0, false, Vec::new());
+    let (mut joels, mut still_in, mut others, mut present) = (0, false, Vec::new(), Vec::new());
     for person in call["people"].as_array()? {
         let Some((said, name)) = person["name"]
             .as_str()
@@ -146,10 +167,15 @@ fn in_meet(said: &Value, which: &Which, me: &str) -> Option<Vec<String>> {
             joels += 1;
             still_in = person["left"].is_null();
         } else {
+            if let Some(joined) = person["joined"].as_u64() {
+                let left = person["left"].as_u64();
+                let name = name.clone();
+                present.push(Present { name, joined, left });
+            }
             others.push(name);
         }
     }
-    (joels == 1 && still_in && !others.is_empty()).then_some(others)
+    (joels == 1 && still_in && !others.is_empty()).then_some((others, present))
 }
 
 /// Whether `said` is the name `me`, word for word, in any case.
@@ -182,6 +208,11 @@ mod tests {
     fn call(code: &str, people: &[&str]) -> Value {
         let people: Vec<Value> = people.iter().map(|name| person(name)).collect();
         json!({"code": code, "granted": true, "known": true, "started": AT, "people": people})
+    }
+
+    /// Who else is in the call `which` names, by name alone.
+    fn who_in(said: &Value, which: &Which, me: &str) -> Option<Vec<String>> {
+        in_meet(said, which, me).map(|(people, _)| people)
     }
 
     fn listed(calls: &[Value]) -> Value {
@@ -271,33 +302,64 @@ mod tests {
             call("kkk-llll-mmm", &[JOEL, "Grace Hopper"]),
         ]);
         assert_eq!(
-            in_meet(&said, &Which::Code("abc-defg-hij".into()), JOEL),
+            who_in(&said, &Which::Code("abc-defg-hij".into()), JOEL),
             Some(vec!["Ada Lovelace".to_owned(), "Bo Diddley".to_owned()]),
             "the call its code names wasn't read, or Joel was left in"
         );
         assert_eq!(
-            in_meet(&said, &Which::Only, JOEL),
+            who_in(&said, &Which::Only, JOEL),
             None,
             "one of two calls under way was taken for the one Joel is on"
         );
         let alone = listed(&[call("abc-defg-hij", &["joel  gerber", "Voice 1"])]);
         assert_eq!(
-            in_meet(&alone, &Which::Only, JOEL),
+            who_in(&alone, &Which::Only, JOEL),
             Some(vec!["\"Voice 1\"".to_owned()]),
             "Joel's name in another case wasn't his, or a voice's name wasn't quoted"
         );
         let namesake = listed(&[call("abc-defg-hij", &[JOEL, "Joel Smith"])]);
         assert_eq!(
-            in_meet(&namesake, &Which::Only, JOEL),
+            who_in(&namesake, &Which::Only, JOEL),
             Some(vec!["Joel Smith".to_owned()]),
             "someone of Joel's first name was taken for him"
         );
     }
 
     #[test]
+    fn each_other_in_a_meet_is_there_from_their_join_to_their_leave() {
+        let mut said = call("abc-defg-hij", &[JOEL, "Ada Lovelace", "Bo Diddley", "Cy"]);
+        said["people"][1]["left"] = json!(AT + 60_000);
+        said["people"][2]["joined"] = json!(AT + 5_000);
+        said["people"][3]["joined"] = Value::Null;
+        let (people, present) = in_meet(&listed(&[said]), &Which::Only, JOEL).unwrap();
+        assert_eq!(
+            people.len(),
+            3,
+            "someone with no join time wasn't counted in the Meet"
+        );
+        let at = AT.cast_unsigned();
+        assert_eq!(
+            present,
+            [
+                Present {
+                    name: "Ada Lovelace".to_owned(),
+                    joined: at,
+                    left: Some(at + 60_000)
+                },
+                Present {
+                    name: "Bo Diddley".to_owned(),
+                    joined: at + 5_000,
+                    left: None
+                },
+            ],
+            "who was in when wasn't read, or one with no join time was taken as there"
+        );
+    }
+
+    #[test]
     fn a_meet_is_untold_where_joel_cant_be_told_or_meet_hasnt_said() {
         let unknown = |me: &str, people: &[&str]| {
-            in_meet(&listed(&[call("abc-defg-hij", people)]), &Which::Only, me)
+            who_in(&listed(&[call("abc-defg-hij", people)]), &Which::Only, me)
         };
         assert_eq!(
             unknown(JOEL, &[JOEL, JOEL, "Ada"]),
@@ -322,26 +384,26 @@ mod tests {
         let mut gone = call("abc-defg-hij", &[JOEL, "Ada"]);
         gone["people"][0]["left"] = json!(AT + 60_000);
         assert_eq!(
-            in_meet(&listed(&[gone]), &Which::Only, JOEL),
+            who_in(&listed(&[gone]), &Which::Only, JOEL),
             None,
             "a Meet Joel has left was taken for the call he's on"
         );
         let mut not_yet = call("abc-defg-hij", &[JOEL, "Ada"]);
         not_yet["known"] = json!(false);
         assert_eq!(
-            in_meet(&listed(&[not_yet]), &Which::Only, JOEL),
+            who_in(&listed(&[not_yet]), &Which::Only, JOEL),
             None,
             "a call Meet hasn't said is under way was taken as one"
         );
         let mut ungranted = call("abc-defg-hij", &[JOEL, "Ada"]);
         ungranted["granted"] = json!(false);
         assert_eq!(
-            in_meet(&listed(&[ungranted]), &Which::Only, JOEL),
+            who_in(&listed(&[ungranted]), &Which::Only, JOEL),
             None,
             "a call the sign-in can't read was taken as one"
         );
         assert_eq!(
-            in_meet(&listed(&[]), &Which::Code("abc-defg-hij".into()), JOEL),
+            who_in(&listed(&[]), &Which::Code("abc-defg-hij".into()), JOEL),
             None,
             "a call that isn't followed"
         );
@@ -361,7 +423,15 @@ mod tests {
         let (runtime, asks) = standing_in("linked", vec![calls.clone(), meetings.clone()]);
         assert_eq!(
             still_on(&runtime, Some(Known::Invitation), Some("e1"), JOEL),
-            Some((vec!["Ada Lovelace".to_owned()], Some(Known::Meet))),
+            Some(Seen {
+                people: vec!["Ada Lovelace".to_owned()],
+                known: Some(Known::Meet),
+                present: vec![Present {
+                    name: "Ada Lovelace".to_owned(),
+                    joined: AT.cast_unsigned(),
+                    left: None
+                }],
+            }),
             "an invited call didn't take its own Meet's people"
         );
         assert_eq!(

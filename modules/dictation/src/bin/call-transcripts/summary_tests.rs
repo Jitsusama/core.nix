@@ -1,5 +1,15 @@
 use super::*;
-use dictation::transcript::VOICES_NOTE;
+use dictation::transcript::{NAMED_NOTE, VOICES_NOTE};
+
+/// The summary of a call where Joel isn't told, so he's guessed.
+fn summarize(
+    ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
+    title: &str,
+    them: Option<&str>,
+    transcript: &str,
+) -> Result<String, String> {
+    summarize_as(ask, title, None, them, transcript)
+}
 
 const CALL: &str = "# Transcript\n\n**Joel**, 0:13: Hi there.\n\n\
      **Others**, 0:19: I think we should move the review to Thursday, you know, because \
@@ -132,6 +142,49 @@ fn a_transcript_naming_them_is_summed_up_by_their_name_whoever_spoke_first() {
 }
 
 #[test]
+fn a_call_opening_on_a_named_voice_is_summed_up_with_joel_as_joel() {
+    let call = format!(
+        "# Transcript\n\nIn the Meet: Ada and Bo.\n\n{NAMED_NOTE}\n\nVoice 2 may be Bo.\n\n\
+         **Ada**, 0:00: Hi there.\n\n\
+         **Voice 2**, 0:02: I think we should move the review to Thursday, you know, because \
+         the release slipped.\n\n\
+         **Joel**, 0:10: Okay, I will tell the team that the review moves to Thursday \
+         morning.\n\n**Ada**, 4:00: Thanks, bye.\n"
+    );
+    let mut model = Model {
+        picks: "L1, L2",
+        quotes: vec!["we should move the review to Thursday", "tell the team"],
+        verdict: "YES",
+        asked: Vec::new(),
+    };
+    let summary = summarize_as(
+        &mut |p, _| Ok(model.ask(p)),
+        "Review",
+        Some("Joel"),
+        None,
+        &call,
+    )
+    .unwrap();
+    assert!(
+        summary.contains("- Voice 2, to Joel: \"we should move the review to Thursday\" [0:02]"),
+        "a voice's quote isn't said to Joel: {summary}"
+    );
+    assert!(
+        summary.contains("- Joel, to the others: \"tell the team\" [0:10]"),
+        "Ada, named by the Meet and speaking first, was taken for Joel: {summary}"
+    );
+    assert!(
+        summary.contains("\n\nVoice 2 may be Bo.\n\n"),
+        "the summary lost who a numbered voice may be: {summary}"
+    );
+    assert!(
+        model.asked[0].contains("called by name where only that person was in the Meet"),
+        "the model isn't told how the voices are named: {}",
+        model.asked[0]
+    );
+}
+
+#[test]
 fn a_call_opening_on_a_voice_is_summed_up_with_joel_as_joel_and_every_note() {
     let call = format!(
         "# Transcript\n\nAda and Bo were invited.\n\n{VOICES_NOTE}\n\n\
@@ -164,6 +217,11 @@ fn a_call_opening_on_a_voice_is_summed_up_with_joel_as_joel_and_every_note() {
     assert!(
         model.asked[0].contains("a call between Joel and the others on it, whose voices"),
         "the model is told the voices are the others: {}",
+        model.asked[0]
+    );
+    assert!(
+        !model.asked[0].contains("called by name"),
+        "the model is told voices are called by name where none is: {}",
         model.asked[0]
     );
 }

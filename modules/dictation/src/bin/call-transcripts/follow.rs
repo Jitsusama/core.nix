@@ -398,8 +398,8 @@ impl Recording {
 
 /// Adds to a call's record whoever its Tuple call or Meet says is on it
 /// now (meet.rs's `still_on`), since people join and leave as it goes,
-/// Joel, `me`, left out of a Meet's. It's asked every `LOOK_AGAIN`, since
-/// it was last `looked`, while a call is recorded.
+/// Joel, `me`, left out of a Meet's, and when each was in. Asked every
+/// `LOOK_AGAIN` since it was last `looked`, while a call is recorded.
 fn look_again(
     book: &Shared,
     runtime: &Path,
@@ -425,18 +425,8 @@ fn look_again(
     let Some(seen) = crate::meet::still_on(runtime, known, event.as_deref(), me) else {
         return;
     };
-    let mut book = book.lock();
-    let Some(record) = book.record(key).cloned() else {
-        return;
-    };
-    let (people, known) = meeting::came((record.people.clone(), record.known), seen);
-    if (&people, known) != (&record.people, record.known) {
+    if book.lock().saw(key, seen, now()) {
         eprintln!("call-transcripts: who's on it changed, {key}");
-        book.put(Record {
-            people,
-            known,
-            ..record
-        });
     }
 }
 

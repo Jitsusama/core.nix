@@ -26,6 +26,74 @@ fn ask(book: &mut Book, line: &str) -> (Value, mpsc::Receiver<String>) {
     (book.answer(line, 1, &told), heard)
 }
 
+fn present(name: &str, joined: u64, left: Option<u64>) -> Present {
+    Present {
+        name: name.to_owned(),
+        joined,
+        left,
+    }
+}
+
+fn in_meet(people: &[&str], present: Vec<Present>) -> Seen {
+    Seen {
+        people: people.iter().map(|&someone| someone.to_owned()).collect(),
+        known: Some(Known::Meet),
+        present,
+    }
+}
+
+#[test]
+fn every_time_meet_gave_for_someone_is_kept_beside_when_it_was_last_looked_at() {
+    let mut book = Book::default();
+    let first = vec![present("Ada", 10, Some(50)), present("Bo", 20, None)];
+    book.saw("call:e1", in_meet(&["Ada", "Bo"], first.clone()), 100);
+    let rejoined = vec![present("Ada", 60, None), present("Cy", 70, None)];
+    book.saw("call:e1", in_meet(&["Ada", "Cy"], rejoined), 200);
+    book.saw("call:e1", in_meet(&["Ada", "Bo"], first), 300);
+    assert_eq!(
+        book.attendance("call:e1"),
+        Attendance {
+            present: vec![
+                present("Ada", 10, Some(50)),
+                present("Bo", 20, None),
+                present("Ada", 60, None),
+                present("Cy", 70, None),
+            ],
+            looked: 300,
+        },
+        "a time Meet gave was lost or kept twice, or the last look wasn't noted"
+    );
+    assert_eq!(
+        book.attendance("call:e2"),
+        Attendance::default(),
+        "a call whose Meet wasn't seen was given someone's"
+    );
+}
+
+#[test]
+fn a_look_adds_whoever_joined_to_the_record_and_says_whether_anyone_did() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut book = Book::default();
+    book.put(Record {
+        people: vec!["Ada".to_owned()],
+        known: Some(Known::Meet),
+        ..call(folder.path(), "call:e1", 0)
+    });
+    assert!(
+        book.saw("call:e1", in_meet(&["Ada", "Bo"], Vec::new()), 100),
+        "Bo joining wasn't said to change who's on the call"
+    );
+    assert_eq!(
+        book.record("call:e1").unwrap().people,
+        ["Ada", "Bo"],
+        "Bo joining wasn't added to the call's record"
+    );
+    assert!(
+        !book.saw("call:e1", in_meet(&["Ada", "Bo"], Vec::new()), 200),
+        "the same people again were said to change who's on the call"
+    );
+}
+
 #[test]
 fn a_watch_hears_each_call_as_it_changes_and_lists_are_newest_first() {
     let folder = tempfile::tempdir().unwrap();
