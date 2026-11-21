@@ -4394,6 +4394,41 @@ fn an_account_unit_home_manager_keeps_running_needs_no_hold() {
     assert_eq!(world.update().1, done(&head));
 }
 
+/// sd-switch keeps a changed unit whose new file says keep-old running as
+/// it was, as the sessions' kitty is, so changing it closes no window and
+/// needs no grant (2026-11-21).
+#[test]
+fn an_account_unit_a_switch_keeps_needs_no_hold() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    account_unit(&world.system("first"), "[Unit]\nX-SwitchMethod=keep-old\n");
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "same");
+    account_unit(
+        &system,
+        "[Service]\nExecStart=new\n\n[Unit]\nX-SwitchMethod=keep-old\n",
+    );
+    assert_eq!(world.update().1, done(&head));
+}
+
+/// A unit that only kept running before, and now restarts as any other,
+/// is held again.
+#[test]
+fn an_account_unit_no_longer_kept_waits_for_a_hold() {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    account_unit(&world.system("first"), "[Unit]\nX-SwitchMethod=keep-old\n");
+    let head = world.signed("one");
+    let system = world.system(&head);
+    daemon_unit(&system, "same");
+    account_unit(&system, "[Unit]\nX-SwitchMethod=restart\n");
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("not refused")
+    };
+    assert!(why.contains("joel's windows.service"), "{why}");
+}
+
 fn daemon_unit(system: &Path, says: &str) {
     let units = system.join("etc/systemd/system");
     fs::create_dir_all(&units).unwrap();
