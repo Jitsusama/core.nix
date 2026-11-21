@@ -285,16 +285,41 @@ ShellRoot {
     // together: each taken alone parsed every look and banded For You
     // afresh, 166 times in each of Joel's openings (2026-11-10).
     function afterwards() {
-        // Now's tell is one function queued once a turn, so a later ask for
-        // it, as the notices' daemon answering late, moves it behind this:
-        // a loaded builder found nothing told yet (21 November). So this
-        // waits 20 turns, told or not, so a second tell queued behind the
-        // first is counted too, and heldHears still wants exactly one.
-        if (root.turnsForATell < 20) {
-            root.turnsForATell += 1;
-            Qt.callLater(root.afterwards);
-            return;
+        tellWaited.began = Date.now();
+        tellWaited.toldAt = 0;
+        tellWaited.start();
+    }
+
+    // Now's tell can wait on the notices' daemon answering over its socket,
+    // and a loaded builder found nothing told yet as the case looked (21
+    // November). Queued calls can't wait for it, since Qt runs those queued
+    // while it runs them in one pass, reading no socket, so this waits in
+    // time: until a tell has stood 250 ms, long enough for a second to be
+    // counted, which heldHears refuses, or 5 s with none.
+    Timer {
+        id: tellWaited
+
+        property real began: 0
+        property real toldAt: 0
+
+        interval: 25
+        repeat: true
+        onTriggered: {
+            const at = Date.now();
+            if (tellWaited.toldAt === 0 && root.nowSaid.some(why => why !== ""))
+                tellWaited.toldAt = at;
+            const told = tellWaited.toldAt > 0;
+            if ((told && at - tellWaited.toldAt < 250)
+                || (!told && at - tellWaited.began < 5000))
+                return;
+            tellWaited.stop();
+            root.tellWaitedFor = at - tellWaited.began;
+            root.heardOut();
         }
+    }
+    property real tellWaitedFor: 0
+
+    function heardOut() {
         if (tried(() => {
             heldHears();
             bandedAtReads = now.bandsKept.times;
@@ -308,7 +333,6 @@ ShellRoot {
             Qt.callLater(root.readsTaken);
     }
     property int bandedAtReads: 0
-    property int turnsForATell: 0
 
     // The to-do daemon's records of looks whose texts are `texts`, by file,
     // as its stream tells them.
@@ -2506,7 +2530,7 @@ ShellRoot {
         const turned = now.minuteNow() !== root.heldMinute;
         expect("and For You held hears it once the change is done", told.length === 1
             && (told[0] === "the rows it holds" || turned && told[0] === "its own rows"),
-            `${JSON.stringify([moved, turned])} after ${root.turnsForATell} turns`);
+            `${JSON.stringify([moved, turned])} after ${root.tellWaitedFor} ms`);
         // Said last with nothing held, Now stepped into For You since
         // compares what For You shows, as the launcher made it stepping
         // in: Joel's journal timed For You drawn again as Return's act
