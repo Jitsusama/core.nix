@@ -892,6 +892,17 @@ LONG_NAMED = """document.getElementById("sprout-from-words").textContent =
   "From " + "A Long Cell Name An Agent Wrote ".repeat(3)"""
 # What the page says once the line has left letters off.
 FULL_WORDS = "The line holds 1000 letters; any past that were left off."
+# What the page says to Return with no words, and to Escape on the line.
+NO_WORDS = "Say what the new work is first; the Launcher needs its words."
+CLOSED_WORDS = "New work closed; nothing was handed on."
+# Whether a key's repeat, pressed now in new work's field, is held off.
+REPEAT_HELD = """(() => {
+  const e = new KeyboardEvent("keydown", {
+    key: "x", repeat: true, bubbles: true, cancelable: true,
+  });
+  document.getElementById("sprout").dispatchEvent(e);
+  return e.defaultPrevented;
+})()"""
 # Where the field's chosen words start and end.
 CHOSEN = """(() => {
   const f = document.getElementById("sprout");
@@ -913,6 +924,7 @@ def test_s_hands_new_work_to_the_launcher_in_its_own_words(mycelium_opened: Open
     expect(page.locator("#sprout-from-line"), "a cell was offered with none open").to_be_hidden()
     page.keyboard.press("Enter")
     assert page.evaluate("window.talkedTo") is None, "Return with no words handed something on"
+    expect(page.locator("#where"), "Return with no words wasn't said").to_have_text(NO_WORDS)
     page.keyboard.type("tidy the rows & more")
     page.keyboard.press("Enter")
     handed = page.evaluate("window.talkedTo")
@@ -1014,6 +1026,7 @@ def test_escape_closes_only_new_works_line(mycelium_opened: Opened) -> None:
     page.keyboard.type("not this")
     page.keyboard.press("Escape")
     expect(line, "Escape didn't close new work's line").to_be_hidden()
+    expect(page.locator("#where"), "Escape's close wasn't said").to_have_text(CLOSED_WORDS)
     expect(page.locator("#trail"), "the trail didn't come back").to_be_visible()
     assert page.evaluate("window.talkedTo") is None, "Escape handed the words on"
     # Opened by the control, Escape gives the keys back to it.
@@ -1042,7 +1055,9 @@ def test_find_and_new_work_never_stand_together(mycelium_opened: Opened) -> None
     expect(trail, "the trail stood beside new work").to_be_hidden()
 
 
-def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened) -> None:
+def test_new_work_sends_again_from_the_cell_it_went_from(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
     page.evaluate(TALK_HELD)
@@ -1092,6 +1107,15 @@ def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened
     page.keyboard.press("s")
     expect(page.locator("#sprout-from-line"), "a cell came back unasked").to_be_hidden()
     page.keyboard.press("Escape")
+    # Kept words whose cell has left the map go again from the cell open now.
+    drawer.click()
+    page.keyboard.type("last")
+    page.keyboard.press("Enter")
+    page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
+    expect(page, "the first cell didn't open").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
+    mycelium_node.tell("cell", gone=[f"cell:{NEEDING[1]}"])
+    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
+    send_again(f"mycelium:sprout?words=last&from={NEEDING[0]}")
 
 
 def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
@@ -1104,8 +1128,10 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     for _ in range(3):
         page.keyboard.down("s")
     expect(field, "a held s typed into the line").to_have_value("")
+    assert page.evaluate(REPEAT_HELD), "a held s's repeat wasn't held off"
     page.locator("#map-view").focus()
     page.keyboard.up("s")
+    assert not page.evaluate(REPEAT_HELD), "s coming up off the line didn't let repeats go"
     field.focus()
     page.keyboard.down("x")
     page.keyboard.down("x")
@@ -1118,6 +1144,13 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     )
     page.keyboard.press("y")
     expect(page.locator("#where"), "a letter left off wasn't said").to_have_text(FULL_WORDS)
+    # On the line's own button, / and the map's letters leave the words be.
+    page.locator(".sprout-go").focus()
+    page.keyboard.press("/")
+    page.keyboard.press("a")
+    expect(page.locator("#find-line"), "/ on the line's button opened find").to_be_hidden()
+    expect(field, "a key on the line's button let the words go").to_have_value("x" * 1000)
+    field.focus()
     # Opened from find, which the line hides, Escape gives the keys to
     # the map.
     page.keyboard.press("Escape")

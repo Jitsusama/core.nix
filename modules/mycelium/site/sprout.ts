@@ -12,6 +12,9 @@
 const ADDRESS = /^[A-Z0-9]{1,12}$/u;
 // Any run of spaces, tabs or line breaks, which a line of words reads as one.
 const GAPS = /\s+/u;
+// What mycelium-link leaves out of words, as its plain.rs does: control and
+// format characters, what else draws nothing, and the braille blank.
+const UNSEEN = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/gu;
 
 /**
  * The most letters new work's line takes: a few paragraphs, ample for a
@@ -26,13 +29,16 @@ export const isAddress = (from: string | null): from is string =>
 
 /**
  * The words as one line, spaces between them, or "" when there are none,
- * cut at LONGEST_WORDS as the line's own field is. A half of a pair of
+ * with what the launcher leaves out left out here too, so words it would
+ * refuse as empty are never said as sent, and cut at LONGEST_WORDS as the
+ * line's own field is. A half of a pair of
  * UTF-16 halves left alone, pasted or by the cut, becomes the replacement
  * character, since encoding it as a link would throw.
  */
 export const sproutWords = (typed: string): string =>
   typed
     .split(GAPS)
+    .map((word) => word.replace(UNSEEN, ""))
     .filter((word) => word !== "")
     .join(" ")
     .slice(0, LONGEST_WORDS)

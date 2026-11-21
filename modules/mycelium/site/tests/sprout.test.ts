@@ -44,6 +44,19 @@ it("hands no link without words", () => {
     null,
     "only spaces should hand nothing, from a cell too",
   );
+  assert.equal(
+    sproutLink("\u200B\u202E\u0007 \u2800\uFE0F", null),
+    null,
+    "only what the launcher leaves out should hand nothing, as it would refuse it",
+  );
+});
+
+it("leaves out what the launcher leaves out of the words", () => {
+  assert.equal(
+    sproutWords("ti\u200Bdy \u202Ethe\u0007 \u2800 rows"),
+    "tidy the rows",
+    "control, format and blank characters should go, and a word of only them with them",
+  );
 });
 
 it("percent-encodes the words, so none of them can add to the link", () => {
@@ -87,8 +100,9 @@ it("says where the work went, that nothing starts yet, and how to send it again"
     handedWords(null),
     `Sent to the Launcher's Start New Work; nothing starts until you press Return there.${again}`,
   );
+  const fromHeron = "Sent to the Launcher's Start New Work, from Heron; ";
   assert.equal(
     handedWords("Heron"),
-    `Sent to the Launcher's Start New Work, from Heron; nothing starts until you press Return there.${again}`,
+    `${fromHeron}nothing starts until you press Return there.${again}`,
   );
 });

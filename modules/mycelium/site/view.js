@@ -3738,12 +3738,14 @@ import {
     if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
   // New words over kept ones are new work, so they go from the cell open
-  // now, as a fresh line's would.
+  // now, as a fresh line's would; a tick Joel cleared stays cleared.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
     if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
       sproutKeptFromOffered = false;
+      const ticked = sproutFromBox.checked;
       offerFrom(chosen?.kind === "cell" ? chosen.id : null);
+      sproutFromBox.checked = ticked;
     }
   });
   // A held s opens the line once; its repeats don't type into the field,
@@ -4977,7 +4979,9 @@ import {
   };
   document.addEventListener("keydown", (e) => {
     const asked = pageKey(e, {
-      typing: !!e.target.closest?.("input, textarea, select"),
+      // New work's line, its tick and button too, keeps the page's keys
+      // off, so / or a map letter never lets go of the words typed there.
+      typing: !!e.target.closest?.("input, textarea, select, #sprout-line"),
       keysOpen: keys.open,
       onMap: !!e.target.closest?.("#main"),
       findOpen: !findLine.hidden,
