@@ -295,6 +295,47 @@ fn line_end(file: &mut std::fs::File, from: u64, slice: u64) -> Result<Option<u6
     }
 }
 
+/// Checks a log held from before copies were told apart, or brought before
+/// its parent, and says whether it's to be read again from its start: a
+/// carried log is, for its own turns, once what was counted before its
+/// header is dropped as its parent's. One still waiting on its parent is
+/// left to be checked again, and any other is marked as checked.
+fn check_copies(
+    history: &History,
+    found: &Found,
+    identity: &str,
+    carry: &mut Carry,
+    offset: u64,
+) -> Result<bool, String> {
+    let name = found.path.to_string_lossy().into_owned();
+    let header = header(&found.path);
+    let brought = found.brought.as_deref();
+    if let Some(header) = header
+        .as_ref()
+        .filter(|header| crate::logs::copies::carried(header, brought))
+    {
+        let session = header.get("id").and_then(serde_json::Value::as_str);
+        let until = header
+            .get("timestamp")
+            .and_then(serde_json::Value::as_str)
+            .and_then(crate::time::parse);
+        if let (Some(session), Some(until)) = (session, until) {
+            history.forget_copied(session, until)?;
+        }
+        history.forget_file(&name)?;
+        return Ok(true);
+    }
+    if !header
+        .as_ref()
+        .is_some_and(|header| crate::logs::copies::awaits_parent(header, brought))
+    {
+        carry.copies_known = true;
+        let carried = serde_json::to_string(&*carry).map_err(|error| error.to_string())?;
+        history.set_file(&name, identity, offset, &carried, carry.session.as_deref())?;
+    }
+    Ok(false)
+}
+
 fn scan_slice(
     history: &History,
     found: &Found,
@@ -319,37 +360,12 @@ fn scan_slice(
         offset = 0;
         carry = Carry::default();
     }
-    if offset > 0 && !carry.copies_known {
-        // Held from before copies were told apart, or brought before its
-        // parent: a carried log is read again for its own turns, one still
-        // waiting on its parent is left to be checked again, and any other
-        // is marked as checked.
-        let header = header(path);
-        let brought = found.brought.as_deref();
-        if let Some(header) = header
-            .as_ref()
-            .filter(|header| crate::logs::copies::carried(header, brought))
-        {
-            // What was counted before its header is its parent's.
-            let session = header.get("id").and_then(serde_json::Value::as_str);
-            let until = header
-                .get("timestamp")
-                .and_then(serde_json::Value::as_str)
-                .and_then(crate::time::parse);
-            if let (Some(session), Some(until)) = (session, until) {
-                history.forget_copied(session, until)?;
-            }
-            history.forget_file(&name)?;
-            offset = 0;
-            carry = Carry::default();
-        } else if !header
-            .as_ref()
-            .is_some_and(|header| crate::logs::copies::awaits_parent(header, brought))
-        {
-            carry.copies_known = true;
-            let carried = serde_json::to_string(&carry).map_err(|error| error.to_string())?;
-            history.set_file(&name, &identity, offset, &carried, carry.session.as_deref())?;
-        }
+    if offset > 0
+        && !carry.copies_known
+        && check_copies(history, found, &identity, &mut carry, offset)?
+    {
+        offset = 0;
+        carry = Carry::default();
     }
     if metadata.len() == offset {
         return Ok(Pass::default());
