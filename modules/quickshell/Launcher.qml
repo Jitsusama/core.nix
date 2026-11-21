@@ -11003,9 +11003,16 @@ Scope {
         // time on (Joel, 2026-11-10: the launcher takes forever to load).
         let lapped = KeyTimes.now();
         const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
+        // Each lap is felt as a span of its own too, so an opening's longest
+        // stall names this handler's parts rather than calling them all
+        // "opening", with what's left of it the bindings and handlers
+        // `open` turning runs besides: in a day of Joel's journal, 1259 ms
+        // of 42 openings' longest stalls were "opening", while these laps
+        // came to 371 ms over the day's 40 fills (2026-11-21).
         const lap = name => {
             const now = KeyTimes.now();
             parts[name] = (parts[name] ?? 0) + now - lapped;
+            feltSpan(name, lapped);
             lapped = now;
         };
         // Opened from what it kept, it was shown already, holding the keys
