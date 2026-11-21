@@ -299,7 +299,8 @@ in
       # 21 November, the slowest under a load of 160. It bounds the stop's
       # sweep too, one tc read for each of a handful of devices, which took
       # 46 ms. Past this the shaper is killed, and the stop's sweep, or the
-      # next shaper taking the queues back, still sets every queue right.
+      # next shaper taking the queues back, still sets each queue right
+      # that it can read, and names in the journal any it can't.
       TimeoutStopSec = 15;
       Restart = "always";
       RestartSec = 2;
