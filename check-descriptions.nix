@@ -2260,11 +2260,13 @@
     realm it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
-    a machine's home realm mycelium node is given what it lends the worker machines it made as a
-    file in the Nix store, in the names mycelium reads, since an agent running as the account could
-    rewrite one in its config folder to raise a machine's cap or send its requests elsewhere; a
-    budget with no key is written with none, a further realm's node and a machine lending nothing
-    are given no lend, and a lend naming a budget it lacks, or a key by a relative path, is refused
+    a machine that lends evaluates, and its home realm mycelium node, on NixOS and nix-darwin, is
+    given what it lends the worker machines it made as a file in the Nix store, in the names
+    mycelium reads, rather than one in the account's config folder; a budget with no key is written
+    with none, a further realm's node and a machine lending nothing are given no lend, and a lend
+    with no realm, naming a budget it lacks, with a prefix that starts another or is named twice,
+    a key program outside the store, an upstream that climbs out with .., or a bare / path is
+    refused, each by its own message or the option's type
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a

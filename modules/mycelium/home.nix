@@ -133,15 +133,16 @@ let
         pathsToLink = [ "/bin" ];
       }}"
     ];
-  # The person's table of which receptors' climbs the node says, from the
-  # store as the declaration is: the node refuses one any other account
-  # could write, and a table naming nothing is no table, so every source is
-  # silent.
   # What the home realm's node lends the worker machines it made, from the
-  # store as the declaration is: anything running as the account, every
-  # agent included, could rewrite a file in its config folder, and so raise
-  # a machine's cap or send its requests elsewhere. A key left out is left
-  # out of the file, as mycelium reads a budget whose upstream adds its own.
+  # store as the declaration is, so the lend is the one the machine's
+  # configuration says, not a file in the account's config folder that a
+  # command run as the account could change in passing. It guards the lend
+  # from the machines lent to, not from the account itself: a command run as
+  # the account unfenced could as well give the node words of its own, or
+  # bind the relay's socket in the runtime folder, and it already reaches
+  # every key that account holds, so the lend opens it nothing new. A key
+  # left out is left out of the file, as mycelium reads a budget whose
+  # upstream adds its own.
   lendArgs = lib.optionals (cfg.lend != null) [
     "--lend"
     "${pkgs.writeText "mycelium-lend.json" (
@@ -153,6 +154,10 @@ let
       }
     )}"
   ];
+  # The person's table of which receptors' climbs the node says, from the
+  # store as the declaration is: the node refuses one any other account
+  # could write, and a table naming nothing is no table, so every source is
+  # silent.
   stimuliArgs = lib.optionals (cfg.stimuli != [ ]) [
     "--stimuli"
     "${pkgs.writeText "mycelium-stimuli.json" (builtins.toJSON { say = cfg.stimuli; })}"
@@ -218,8 +223,9 @@ let
             options = {
               upstream = lib.mkOption {
                 # A path relative to the node's runtime folder, since a
-                # module doesn't know the account's uid, or a whole one.
-                type = lib.types.strMatching "[^%$[:space:]]+";
+                # module doesn't know the account's uid, or a whole one;
+                # no part of it starts with a dot, so `..` can't climb out.
+                type = lib.types.strMatching "/?([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
                 example = "model-relay/agents.sock";
                 description = ''
                   The socket each request goes on to, whole or relative to the
@@ -231,7 +237,8 @@ let
                 description = "The host the requests are for, with no scheme.";
               };
               paths = lib.mkOption {
-                type = lib.types.nonEmptyListOf (lib.types.strMatching "/[^[:space:]]*");
+                # Never `/` alone, which would lend every path the host has.
+                type = lib.types.nonEmptyListOf (lib.types.strMatching "/[^[:space:]]+");
                 description = "The paths a request may ask for; any other is refused.";
               };
               auth_header = lib.mkOption {
@@ -242,10 +249,16 @@ let
                 '';
               };
               key = lib.mkOption {
-                type = lib.types.nullOr (lib.types.nonEmptyListOf lib.types.str);
+                # Its program in the Nix store, where the account can't
+                # swap it for one printing the key somewhere else too.
+                type = lib.types.nullOr (
+                  lib.types.addCheck (lib.types.nonEmptyListOf lib.types.str) (
+                    words: lib.hasPrefix "${builtins.storeDir}/" (lib.head words)
+                  )
+                );
                 default = null;
                 description = ''
-                  The command, its program by its absolute path, that prints
+                  The command, its program by its path in the Nix store, that prints
                   the header's whole value on one line, which the node never
                   logs; or null where the upstream adds its own.
                 '';
@@ -716,15 +729,28 @@ in
           message = "jitsusama.mycelium.declares.fence.strict is set on a Mac, whose fence reads the home folder but what it hides, so it isn't strict: declare fence instead.";
         }
         {
+          assertion = cfg.lend != null -> cfg.realm != null;
+          message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, the realm whose node lends.";
+        }
+        {
+          assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;
+          message = "jitsusama.mycelium.lend.vms names a budget jitsusama.mycelium.lend.budgets doesn't hold.";
+        }
+        {
+          # mycelium refuses a machine whose name starts as two prefixes do,
+          # so two that overlap would refuse every machine they both match.
+          # Compared by place, so a prefix named twice is caught too.
           assertion =
-            cfg.lend == null
-            ||
-              cfg.realm != null
-              && lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms
-              && lib.all (budget: budget.key == null || lib.hasPrefix "/" (lib.head budget.key)) (
-                lib.attrValues cfg.lend.budgets
-              );
-          message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, a budget for each machine it names, and each key's program by its absolute path.";
+            cfg.lend != null
+            -> (
+              let
+                prefixes = map (vm: vm.prefix) cfg.lend.vms;
+                places = lib.range 0 (lib.length prefixes - 1);
+                at = builtins.elemAt prefixes;
+              in
+              lib.all (one: lib.all (other: one == other || !(lib.hasPrefix (at one) (at other))) places) places
+            );
+          message = "jitsusama.mycelium.lend.vms has two prefixes where one starts the other, so every machine both match is refused.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

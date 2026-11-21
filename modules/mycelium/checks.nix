@@ -70,7 +70,8 @@ let
         host = "models.example";
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
-        key = [ "/run/current-system/sw/bin/models-key" ];
+        # A program in the store, named but never built.
+        key = [ "${builtins.storeDir}/00000000000000000000000000000000-models-key/bin/models-key" ];
       };
       keyless = {
         upstream = "/run/relay/agents.sock";
@@ -1054,7 +1055,7 @@ in
   # a machine naming a budget the lend lacks is refused.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending machine's home realm node isn't given its lend as a store file holding it in mycelium's names, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, or a lend naming a budget it lacks, or a key by a relative path, is taken."
+      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it in mycelium's names, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store, an upstream climbing out with .., or a bare / path is taken."
       (
         let
           machine = bareNixos [
@@ -1076,22 +1077,68 @@ in
           # The store file, built as the machine's own, in mycelium's names:
           # the budget with no key is written with none.
           holding = "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
-          refuses = lend: !(evaluates (linux (both // { inherit lend; })));
+          # Refused by the assertion whose message starts so, and by it.
+          assertsAgainst =
+            settings: start:
+            lib.any (check: !check.assertion && lib.hasPrefix start check.message) (linux settings).assertions;
+          refuses = lend: start: assertsAgainst (both // { inherit lend; }) start;
+          # Refused by the option's type, which fails the node's words.
+          typeRefuses =
+            lend:
+            let
+              words =
+                toString
+                  (linux (both // { inherit lend; })).systemd.user.services.mycelium.Service.ExecStart;
+            in
+            !(builtins.tryEval (builtins.deepSeq words words)).success;
+          withModels =
+            change:
+            lending
+            // {
+              budgets = lending.budgets // {
+                models = lending.budgets.models // change;
+              };
+            };
+          vm = lib.head lending.vms;
+          onMac = (mac (both // { lend = lending; })).launchd.agents;
         in
-        given home.systemd.user.services.mycelium == holding
+        evaluates home
+        && given home.systemd.user.services.mycelium == holding
         && given home.systemd.user.services.mycelium-other == null
         && given bothLinux.mycelium == null
-        && refuses (lending // { vms = [ ((lib.head lending.vms) // { budget = "none"; }) ]; })
+        && lib.elem "--lend" onMac.mycelium.config.ProgramArguments
+        && !(lib.elem "--lend" onMac.mycelium-other.config.ProgramArguments)
+        && assertsAgainst { lend = lending; } "jitsusama.mycelium.lend needs jitsusama.mycelium.realm"
+        && refuses (
+          lending // { vms = [ (vm // { budget = "none"; }) ]; }
+        ) "jitsusama.mycelium.lend.vms names a budget"
         && refuses (
           lending
           // {
-            budgets = lending.budgets // {
-              models = lending.budgets.models // {
-                key = [ "models-key" ];
-              };
-            };
+            vms = [
+              vm
+              (vm // { prefix = "agents-big-"; })
+            ];
           }
-        )
+        ) "jitsusama.mycelium.lend.vms has two prefixes"
+        && refuses (
+          lending
+          // {
+            vms = [
+              vm
+              vm
+            ];
+          }
+        ) "jitsusama.mycelium.lend.vms has two prefixes"
+        && typeRefuses (withModels {
+          key = [ "/tmp/models-key" ];
+        })
+        && typeRefuses (withModels {
+          upstream = "model-relay/../../agents.sock";
+        })
+        && typeRefuses (withModels {
+          paths = [ "/" ];
+        })
       );
 
   # The sources a table may name are the locked mycelium's own, read from its
