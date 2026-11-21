@@ -1,6 +1,9 @@
 # The checks of pi-keys, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
+  graphical,
+  holds,
   onLinux,
   passesClippy,
   pkgs,
@@ -14,4 +17,9 @@ onLinux {
   pi-keys-models-a-key-s-waits = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in pi-keys, its tests included.
   pi-keys-passes-clippy = passesClippy "pi-keys-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # A switch leaves a running sample be, since waiting on its start would
+  # outlast home-manager's patience and send the whole switch back.
+  pi-keys-outlasts-a-switch =
+    holds "pi-keys-outlasts-a-switch" "A switch restarts a running pi-keys sample and waits on it."
+      (((account graphical).systemd.user.services.pi-keys.Unit.X-SwitchMethod or null) == "keep-old");
 }
