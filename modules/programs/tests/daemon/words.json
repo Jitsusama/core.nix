@@ -78,7 +78,7 @@
       "said": {
         "gathered": "gathered its store",
         "gatheredStill": "gathered its store, and git still calls it due",
-        "untouched": "git left its store as it was: another upkeep may hold it",
+        "untouched": "git left its store as it was",
         "nothing": "nothing was due",
         "tree": "not gathered: it isn't a checkout's own folder",
         "busy": "not gathered: git is already at work in it",

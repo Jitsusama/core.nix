@@ -6,10 +6,11 @@
 //! never on a tree cut from it or a bare checkout, which git is told of
 //! another way. Neither touches a file to work in: forgetting a tree takes
 //! only git's own record of it, its branch stays, and a locked tree is
-//! kept, as git keeps it. A gone tree at no branch, whose commit no ref
-//! reaches, is the one place its commits are kept, so forgetting is
-//! refused while there's one rather than leave them to git's next gc,
-//! which Gather Its Store runs. The checkout is read before and after
+//! kept, as git keeps it. Git's record of a gone tree, its HEAD and its
+//! own reflog, can be the one place some commits are kept, as a tree
+//! worked in at no branch, or rebased, leaves them, so forgetting is
+//! refused while one is rather than leave them to git's next gc, which
+//! Gather Its Store runs. The checkout is read before and after
 //! from git's own files, as `repos` reads it, so the answer says what
 //! changed rather than what was asked.
 //!
@@ -19,7 +20,7 @@
 //! asked to stop.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use repos::model::Checkout;
 use serde_json::{Value, json};
@@ -41,8 +42,10 @@ pub enum Tended {
     /// Its store was gathered, and git still calls it due or not.
     Gathered { still: bool },
     /// Git ran its upkeep and left the store as it was, as it does when
-    /// another upkeep holds the store, or when Joel's own config says it
-    /// isn't due where the checkout's alone, which repos reads, says it is.
+    /// what it holds loose is unreached and too young to drop, when
+    /// another upkeep took the store as it began, or when Joel's own
+    /// config says it isn't due where the checkout's alone, which repos
+    /// reads, says it is. Which, git doesn't say, so neither does Code.
     Untouched,
     /// There was nothing to do, as a reading since the row's said.
     Nothing,
@@ -53,7 +56,8 @@ pub enum Tended {
 pub enum Refused {
     /// The folder isn't a checkout's own, as a tree cut from one isn't.
     Tree,
-    /// A Pull, a switch or a tending of the same checkout is under way.
+    /// A Pull, a switch or a tending of the same checkout is under way,
+    /// or git's own upkeep holds its store.
     Busy,
     /// Its git folder couldn't be read.
     Unread,
@@ -182,33 +186,88 @@ fn gone(checkout: &Checkout) -> u64 {
     u64::try_from(gone).unwrap_or(u64::MAX)
 }
 
-/// Whether a gone tree of the checkout at `folder` is all that keeps
-/// some commits: one at no branch, whose commit no ref reaches, as a tree
-/// pinned at a commit and worked in there would be. Git's record of the
-/// tree, which `worktree prune` takes, holds its HEAD and its reflog, the
-/// only roots its gc walks from to them.
-fn stranding(git: &str, folder: &Path, checkout: &Checkout) -> Result<bool, Refused> {
-    let detached = checkout
-        .trees
-        .iter()
-        .filter(|tree| !tree.present && tree.head.branch.is_none());
-    for tree in detached {
-        let Some(commit) = tree.head.commit.as_deref() else {
-            return Ok(true);
-        };
-        let args = [
-            "for-each-ref",
-            "--count=1",
-            "--format=x",
-            "--contains",
-            commit,
-        ];
-        let reached = ran(git, folder, &args, Some(READ)).map_err(|_| Refused::Failed)?;
-        if reached.trim().is_empty() {
-            return Ok(true);
+/// How long git keeps a reflog's entry that no ref reaches, before gc
+/// expires it, as the time before which none is kept: the checkout's
+/// `gc.reflogExpireUnreachable`, which git reads as such a time, or git's
+/// own 30 days where it says none.
+fn kept_since(git: &str, folder: &Path) -> u64 {
+    const DEFAULT: Duration = Duration::from_hours(30 * 24);
+    let args = [
+        "config",
+        "--type=expiry-date",
+        "--get",
+        "gc.reflogExpireUnreachable",
+    ];
+    let said = ran(git, folder, &args, Some(READ)).ok();
+    said.and_then(|said| said.trim().parse().ok())
+        .unwrap_or_else(|| {
+            let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+            now.unwrap_or_default().saturating_sub(DEFAULT).as_secs()
+        })
+}
+
+/// Whether `said` is a whole commit's name, as git writes one, and so
+/// nothing git could read as anything else.
+fn named(said: &str) -> bool {
+    matches!(said.len(), 40 | 64)
+        && said.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && said.bytes().any(|byte| byte != b'0')
+}
+
+/// The commits git's records of the gone trees of the checkout whose git
+/// folder is `common` hold, as `worktree prune` would take them: each
+/// unlocked record whose folder is gone, or never said. Each holds its
+/// HEAD, where it's at a commit, and its own reflog's commits, those
+/// written since `since`, as git's gc keeps them.
+fn held_by_gone(common: &Path, since: u64) -> Vec<String> {
+    let Ok(records) = std::fs::read_dir(common.join("worktrees")) else {
+        return Vec::new();
+    };
+    let mut held = Vec::new();
+    for record in records.flatten().map(|record| record.path()) {
+        let there = std::fs::read_to_string(record.join("gitdir"));
+        let gone = !there.is_ok_and(|there| record.join(there.trim()).exists());
+        if record.join("locked").exists() || !gone {
+            continue;
+        }
+        let tip = std::fs::read_to_string(record.join("HEAD")).unwrap_or_default();
+        held.push(tip.trim().to_owned());
+        let log = std::fs::read_to_string(record.join("logs/HEAD")).unwrap_or_default();
+        for entry in log.lines() {
+            let said = entry.split('\t').next().unwrap_or_default();
+            let words: Vec<&str> = said.split_whitespace().collect();
+            let at = words
+                .len()
+                .checked_sub(2)
+                .and_then(|at| words[at].parse().ok());
+            if at.is_some_and(|at: u64| at >= since) {
+                held.extend(words.iter().take(2).map(|commit| (*commit).to_owned()));
+            }
         }
     }
-    Ok(false)
+    held.retain(|commit| named(commit));
+    held.sort();
+    held.dedup();
+    held
+}
+
+/// Whether a gone tree of the checkout at `folder` is all that keeps
+/// some commits: a commit git's record of it holds that no ref reaches,
+/// as a tree worked in at no branch, or rebased, leaves. That record,
+/// which `worktree prune` takes, holds its HEAD and its reflog, roots
+/// git's gc walks from, so once it's taken, gc drops what only it held.
+/// Nothing a ref reaches is lost, and an entry git would expire anyway
+/// is left out, so a tree is held no longer than git would hold it.
+fn stranding(git: &str, folder: &Path) -> Result<bool, Refused> {
+    let held = held_by_gone(&folder.join(".git"), kept_since(git, folder));
+    if held.is_empty() {
+        return Ok(false);
+    }
+    let mut args = vec!["rev-list", "--ignore-missing", "--max-count=1"];
+    args.extend(held.iter().map(String::as_str));
+    args.extend(["--not", "--glob=*"]);
+    let left = ran(git, folder, &args, Some(READ)).map_err(|_| Refused::Failed)?;
+    Ok(!left.trim().is_empty())
 }
 
 /// Has git forget the trees cut from the checkout at `folder` whose
@@ -224,7 +283,7 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
     if before == 0 {
         return Ok(Tended::Nothing);
     }
-    if stranding(git, folder, &checkout)? {
+    if stranding(git, folder)? {
         return Err(Refused::Stranded);
     }
     ran(git, folder, &["worktree", "prune"], Some(READ)).map_err(|_| Refused::Failed)?;
@@ -248,6 +307,11 @@ pub fn gather(git: &str, folder: &Path, wait: Duration) -> Result<Tended, Refuse
     let before = own(folder)?.weight.ok_or(Refused::Unread)?;
     if !before.due {
         return Ok(Tended::Nothing);
+    }
+    // Git's upkeep passes a store by, and says nothing, while another
+    // holds this lock.
+    if folder.join(".git/objects/maintenance.lock").exists() {
+        return Err(Refused::Busy);
     }
     let args = ["maintenance", "run", "--auto", "--no-detach", "--quiet"];
     ran(git, folder, &args, Some(wait)).map_err(|_| Refused::Failed)?;

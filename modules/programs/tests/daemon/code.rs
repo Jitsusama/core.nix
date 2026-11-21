@@ -658,9 +658,34 @@ fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
     let running = Running::new("code-gather-untouched");
     let behind = Behind::new(&running);
     let here = behind.here.clone();
+    // Due by loose objects in the folder git counts, each reached by
+    // nothing and too young for git to drop: its upkeep runs, leaves the
+    // store as it was, and exits 0 all the same. These three blobs' names
+    // begin 17, the folder of 256 git's count reads.
+    behind.git(&here, &["config", "gc.auto", "1"]);
+    let blobs = real(&running.path("")).join("blobs");
+    std::fs::create_dir_all(&blobs).unwrap();
+    for number in [857, 868, 1169] {
+        let blob = blobs.join(number.to_string());
+        std::fs::write(&blob, format!("blob {number}\n")).unwrap();
+        behind.git(&here, &["hash-object", "-w", blob.to_str().unwrap()]);
+    }
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
+    assert_eq!(
+        said["said"], "git left its store as it was",
+        "Gather Its Store said it gathered a store git left: {said}"
+    );
+}
+
+#[test]
+fn gather_its_store_waits_while_another_upkeep_holds_it() {
+    let running = Running::new("code-gather-held");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
     let git = |args: &[&str]| behind.git(&here, args);
-    // Due, and held by another upkeep's lock: git's own upkeep passes a
-    // store by while another holds it, and exits 0 all the same.
+    // Due, and held by another upkeep's lock, which git's own upkeep
+    // passes by in silence.
     git(&["config", "gc.autoPackLimit", "1"]);
     git(&["repack", "--quiet", "-a", "-d"]);
     behind.commit(&here, "three");
@@ -669,8 +694,8 @@ fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
     assert_eq!(
-        said["said"], "git left its store as it was: another upkeep may hold it",
-        "Gather Its Store said it gathered a store git passed by: {said}"
+        said["error"]["said"], "not gathered: git is already at work in it",
+        "Gather Its Store didn't say another upkeep holds the store: {said}"
     );
 }
 
@@ -700,6 +725,23 @@ fn forget_gone_trees_keeps_a_tree_whose_commits_nothing_else_holds() {
     // Once a branch holds its commit, it's forgotten as any gone tree is.
     behind.git(&here, &["branch", "kept", &commit]);
     let said = client.ask(&json!({"id": 2, "ask": "code:forget", "path": here}));
+    assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
+    // A tree worked in and moved back to a commit a branch has keeps
+    // that work in its own reflog alone, until git would expire it.
+    let moved = cases.join("moved");
+    let path = moved.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
+    behind.commit(&moved, "moved-off");
+    let main = behind.head(&here);
+    behind.git(&moved, &["checkout", "--quiet", "--detach", &main]);
+    std::fs::remove_dir_all(&moved).unwrap();
+    let said = client.ask(&json!({"id": 3, "ask": "code:forget", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
+        "Forget Gone Trees forgot a tree whose reflog alone holds its work: {said}"
+    );
+    behind.git(&here, &["config", "gc.reflogExpireUnreachable", "now"]);
+    let said = client.ask(&json!({"id": 4, "ask": "code:forget", "path": here}));
     assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
 }
 
