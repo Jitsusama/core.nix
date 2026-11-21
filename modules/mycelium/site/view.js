@@ -42,9 +42,38 @@ import {
 } from "./health.js";
 import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, shownAndRest, splits } from "./spend.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
+import {
+  dashOf,
+  GROUND_PAD,
+  groundAt as groundHolding,
+  holeClips,
+  LINE_PIECES,
+  lineAt as lineNearest,
+  offCanvas,
+  onScreen,
+  overlap,
+  paintOf,
+  quadAt,
+  saidLines,
+} from "./canvas.js";
+import {
+  colonyRadius as colonyOf,
+  CORD_BUNDLE_OVER,
+  control,
+  HUB_R,
+  layOut,
+  layoutKeyOf,
+  MACHINE_R,
+  MACHINE_STEP,
+  placeCells,
+  R,
+  shortestTree,
+  sow as sowSeeds,
+} from "./layout.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
+import { shapeOf as shapeOfReading } from "./shape.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -86,27 +115,17 @@ import {
   const EVERY_MS = 2000;
   const SVG = "http://www.w3.org/2000/svg";
 
-  // The drawing's measures, in the map's own units, which zoom scales.
-  const R = 11; // a cell's membrane
+  // The drawing's measures, in the map's own units, which zoom scales. A
+  // cell's, a hub's and a machine's are layout.ts's, which keeps things
+  // apart by them.
   const NUCLEUS = 6.5;
   const QUIET_DOT = 5.5; // the ring inside a quiet cell
-  const HUB_R = 21; // an orchestration's hub
-  const MACHINE_R = 19;
   const SPOKES = 8; // round a network's hub, which no cell has, so the two never read alike
   const SPOKE_FROM = 3; // how far out past the hub's ring a spoke starts
   const SPOKE_LONG = 6;
   const LENT_CORNER = 0.32; // how much of a lent machine's shorter side each corner keeps
-  const SEED = 16.5; // a sunflower's spacing: seeds about 29 apart
-  const HOLE = 5; // seeds left empty round a hub, so it has room
-  const GAP = 54; // between two neighbouring discs
-  const BRANCH_GAP = 2.4 * GAP; // between a hub's disc and a branch's, so each colony reads as its own
-  const EDGE_GAP = 2 * GAP; // between the furthest network and the receptors at the edge
   const DISH_LIP = 0.6; // how far above a receptor's middle its dish's lips reach, in R
   const DISH_DEPTH = 1.6; // its curve's pull below the middle, which puts its floor half an R down
-  const RING_MIN = 190; // the least distance from the machines to a hub
-  const MACHINE_STEP = 96;
-  const MACHINE_SPREAD = 0.4; // the least distance between machines, as a share of the ring
-  const GOLDEN = Math.PI * (3 - Math.sqrt(5));
   // Zoom, as screen pixels per unit.
   const K_MIN = 0.15;
   const K_MAX = 3.2;
@@ -433,8 +452,11 @@ import {
     // it runs on, as its host.
     const machines = now.machines || [];
     const standOf = new Map(machines.flatMap((x) => (x.members || []).map((y) => [y.name, x.name])));
-    const known = new Set(now.networks.map((n) => n.name));
     const orchestrations = now.networks.filter((n) => n.shape === "orchestration");
+    // A hub hangs only from another hub: one the node puts within a quest
+    // or a repository would hang from nothing, and the ring would never
+    // place it.
+    const known = new Set(orchestrations.map((n) => n.name));
     const shapes = shapesFor(orchestrations.map((n) => n.name));
     const hubs = new Map();
     // An orchestration the node left untitled is named by its quest's
@@ -600,189 +622,34 @@ import {
 
   // ---- Places that never move. ----
 
-  // Each hub's seeds, in the order its cells first came: an id, or null
-  // where a cell has ended. Kept while the page is open.
+  // Where each thing sits is layout.ts's to say. The drawing keeps each
+  // hub's seeds, in the order its cells first came, while the page is open,
+  // and the layout for as long as nothing that would move it has changed.
   const seeds = new Map();
-  const sow = (m) => {
-    const where = new Map();
-    for (const s of m.cells) where.set(s.id, (s.hub || s.loose).key);
-    for (const [key, list] of seeds) {
-      for (let i = 0; i < list.length; i++) if (list[i] && where.get(list[i]) !== key) list[i] = null;
-    }
-    for (const h of m.hubs.values()) {
-      const list = seeds.get(h.key) || [];
-      const have = new Set(list);
-      const fresh = h.cells.filter((s) => !have.has(s.id)).sort((a, b) => (a.since || "").localeCompare(b.since || "") || a.id.localeCompare(b.id));
-      for (const s of fresh) {
-        const empty = list.indexOf(null);
-        if (empty >= 0) list[empty] = s.id;
-        else list.push(s.id);
-      }
-      seeds.set(h.key, list);
-    }
-  };
-
-  // A disc keeps room for more cells than it holds, in steps, so a cell
-  // arriving doesn't move the hubs round it.
-  const roomFor = (n) => Math.max(8, Math.ceil((n * 1.15 + 3) / 8) * 8);
-  const discRadius = (room) => SEED * Math.sqrt(room + HOLE) + R;
-  const seedAt = (i) => {
-    const k = i + HOLE;
-    const r = SEED * Math.sqrt(k);
-    const a = k * GOLDEN;
-    return [r * Math.cos(a), r * Math.sin(a)];
-  };
-
-  // Where everything sits, in map units: the machines at the origin, each
-  // top hub round them in a share of the ring as wide as its family, and
-  // each branch further out from its parent.
+  const sow = (m) => sowSeeds(seeds, m);
   let layout = null;
   let layoutKey = "";
   const lay = (m) => {
-    const room = new Map();
-    for (const h of m.hubs.values()) room.set(h.key, roomFor((seeds.get(h.key) || []).length));
-    const key = [...room].map(([k, r]) => `${k}:${r}:${m.hubs.get(k)?.machine || ""}:${m.hubs.get(k)?.within || ""}`).join("|") + `|${m.machines.map((x) => x.name).join(",")}|${m.builders.map((b) => b.name).join(",")}`;
+    const key = layoutKeyOf(m, seeds);
     if (key === layoutKey && layout) return layout;
     layoutKey = key;
-    const disc = new Map([...room].map(([k, r]) => [k, discRadius(r)]));
-    // Each machine's networks take one arc of the ring, clockwise from the
-    // top, the top machine's first, so its cords never cross the middle
-    // and a machine opened is the arc it carries.
-    const machineAt = new Map(m.machines.map((x, i) => [x.name, i]));
-    const arc = (h) => machineAt.get(h.machine) ?? m.machines.length;
-    const tops = [...m.hubs.values()].filter((h) => !h.within && !h.edge).sort((a, b) => Boolean(a.alone) - Boolean(b.alone) || arc(a) - arc(b) || collate(a.name, b.name));
-    const familyWidth = (h) => {
-      const kids = h.children.reduce((sum, c) => sum + familyWidth(c) + GAP, 0);
-      return Math.max(2 * disc.get(h.key), kids - GAP);
-    };
-    const widths = tops.map((h) => familyWidth(h) + GAP);
-    const total = widths.reduce((a, b) => a + b, 0);
-    const column = m.machines.length;
-    const machineSpan = ((column - 1) * MACHINE_STEP) / 2 + MACHINE_R;
-    const ring = Math.max(RING_MIN + machineSpan, total / (2 * Math.PI));
-    const at = new Map();
-    const angle = new Map();
-    const place = (h, x, y, a) => {
-      at.set(h.key, [x, y]);
-      angle.set(h.key, a);
-      const kids = [...h.children].sort((p, q) => p.name.localeCompare(q.name));
-      if (!kids.length) return;
-      const reach = disc.get(h.key) + BRANCH_GAP + Math.max(...kids.map((c) => disc.get(c.key)));
-      const spans = kids.map((c) => (familyWidth(c) + GAP) / reach);
-      let from = a - spans.reduce((p, q) => p + q, 0) / 2;
-      kids.forEach((c, i) => {
-        const ca = from + spans[i] / 2;
-        from += spans[i];
-        const d = disc.get(h.key) + BRANCH_GAP + disc.get(c.key);
-        place(c, x + Math.cos(ca) * d, y + Math.sin(ca) * d, ca);
-      });
-    };
-    // The machines stand in a column, so the first machine's arc is turned
-    // to sit over it, at the top, and the last one's comes round below.
-    const firstRun = tops.findIndex((h) => h.machine !== tops[0]?.machine);
-    const lead = widths.slice(0, firstRun < 0 ? widths.length : firstRun).reduce((a, b) => a + b, 0);
-    let used = -lead / 2;
-    tops.forEach((h, i) => {
-      const a = -Math.PI / 2 + ((used + widths[i] / 2) / total) * 2 * Math.PI;
-      used += widths[i];
-      const d = ring + disc.get(h.key);
-      place(h, Math.cos(a) * d, Math.sin(a) * d, a);
-    });
-    // The receptors stand at the edge, above everything the ring and its
-    // branches reach, since they are where the outside comes in.
-    const edge = m.hubs.get(OUTSIDE);
-    const outer = Math.max(ring, ...[...at].map(([k, [x, y]]) => Math.hypot(x, y) + disc.get(k)));
-    if (edge) place(edge, 0, -(outer + EDGE_GAP + disc.get(OUTSIDE)), -Math.PI / 2);
-    // Machines stand in a column, apart in proportion to the ring, since a
-    // machine's mark is its name, wide and short: a row of them would
-    // need several times the room to keep their boxes apart.
-    const step = Math.max(MACHINE_STEP, ring * MACHINE_SPREAD);
-    const inColumn = (i) => [0, (i - (column - 1) / 2) * step];
-    const machines = new Map(m.machines.map((x, i) => [x.name, inColumn(i)]));
-    // A builder carries no cord, and inside the ring a mark of words
-    // stands on the hubs once the map is zoomed out to its whole, so the
-    // builders stand under the ring, below everything it and its branches
-    // reach, as the receptors stand above it: under the machines' column,
-    // a step apart, kept there when the machines move out to their arcs.
-    const foot = outer + EDGE_GAP + MACHINE_R;
-    const builders = new Map(m.builders.map((b, j) => [b.name, [0, foot + j * MACHINE_STEP]]));
-    // Once a machine's cords bundle, the ring is too wide for a row of
-    // machines at its middle to be told apart: each machine carrying
-    // networks moves out to the middle of its own arc, so its trunks start
-    // from it and two machines' arcs read as two.
-    const carried = new Map();
-    for (const h of tops) if (h.machine) carried.set(h.machine, [...(carried.get(h.machine) || []), h]);
-    if ([...carried.values()].some((hs) => hs.length > CORD_BUNDLE_OVER)) {
-      for (const [name, hs] of carried) {
-        const [cx, cy] = hs.reduce(([x, y], h) => [x + Math.cos(angle.get(h.key)), y + Math.sin(angle.get(h.key))], [0, 0]);
-        const a = Math.atan2(cy, cx);
-        machines.set(name, [Math.cos(a) * ring * MACHINE_ORBIT, Math.sin(a) * ring * MACHINE_ORBIT]);
-      }
-    }
-    layout = { at, angle, disc, machines, builders, ring };
+    layout = layOut(m, seeds);
     return layout;
   };
 
   // How far a hub's cells reach from it, as sown now rather than as
   // room is kept, so the ground fits the colony it holds.
   const COLONY_PAD = 12;
-  const colonyRadius = (h) => {
-    const n = (seeds.get(h.key) || []).length;
-    return n ? SEED * Math.sqrt(n - 1 + HOLE) + R : HUB_R;
-  };
-
-  // Each cell's place: its hub's, plus its seed's.
-  const placeCells = (m, L) => {
-    const pos = new Map();
-    for (const h of m.hubs.values()) {
-      const [hx, hy] = L.at.get(h.key);
-      (seeds.get(h.key) || []).forEach((id, i) => {
-        if (!id || !m.byId.has(id)) return;
-        const [dx, dy] = seedAt(i);
-        pos.set(id, [hx + dx, hy + dy]);
-      });
-    }
-    return pos;
-  };
+  const colonyRadius = (h) => colonyOf(seeds, h.key);
 
   // The places are kept for as long as the reading and the layout are:
   // seeds are sown only from a new reading, and a choice moves nothing.
   let placedFor = null;
   const placed = (m, L) => {
-    if (placedFor?.m !== m || placedFor.L !== L) placedFor = { m, L, pos: placeCells(m, L) };
+    if (placedFor?.m !== m || placedFor.L !== L) placedFor = { m, L, pos: placeCells(m, L, seeds) };
     return placedFor.pos;
   };
 
-  // The shortest tree joining `points` (Prim's), as pairs of indices; the
-  // hyphae a network grows between its cells, short ones first.
-  const shortestTree = (points) => {
-    const n = points.length;
-    const edges = [];
-    if (n < 2) return edges;
-    const best = new Array(n).fill(Infinity);
-    const from = new Array(n).fill(-1);
-    const done = new Array(n).fill(false);
-    best[0] = 0;
-    for (let step = 0; step < n; step++) {
-      let u = -1;
-      for (let i = 0; i < n; i++) if (!done[i] && (u < 0 || best[i] < best[u])) u = i;
-      done[u] = true;
-      if (from[u] >= 0) edges.push([from[u], u]);
-      const [ux, uy] = points[u];
-      for (let v = 0; v < n; v++) {
-        if (done[v]) continue;
-        const d = (points[v][0] - ux) ** 2 + (points[v][1] - uy) ** 2;
-        if (d < best[v]) {
-          best[v] = d;
-          from[v] = u;
-        }
-      }
-    }
-    return edges;
-  };
-
-  // A gently bowed line from one place to another, as hyphae grow.
-  const control = ([x1, y1], [x2, y2], by) => [(x1 + x2) / 2 - (y2 - y1) * by, (y1 + y2) / 2 + (x2 - x1) * by];
   // Every line drawn, as a curve in map units, so names can keep off them.
   let lineShapes = [];
   let talkShapes = [];
@@ -810,7 +677,6 @@ import {
   const groundCtx = groundEl.getContext("2d");
   const inkProbe = document.getElementById("ink-probe");
   const RECEDED = 0.22; // what the find line doesn't match recedes to this
-  const GROUND_PAD = 8; // px past the map's edge a shape still paints
   // Each layer is a list of shapes in map units: a disc {tag: "circle",
   // cls, at, r} or a line {tag: "path", cls, w, line: [p, m, q]}.
   let groundLayers = [];
@@ -830,10 +696,6 @@ import {
   // Each network's ground, [key, x, y, r], so a click on it opens it.
   let groundsAt = [];
   const inks = new Map();
-  const dashOf = (v) => (v === "none" ? [] : v.split(/[\s,]+/).map(parseFloat).filter(Number.isFinite));
-  // A computed paint of no opacity is none: the browser writes its alpha
-  // last, so a clear one ends ", 0)".
-  const paintOf = (v) => (v === "none" || v === "transparent" || v.endsWith(", 0)") ? null : v);
   // A cell's inks depend on its own classes too (chosen, far, hovered),
   // so its probe wears them on a parent group, as the marks once did.
   const inkOf = (tag, cls, parent = "") => {
@@ -874,23 +736,12 @@ import {
   // round its words, so a name reads whole wherever it had to sit. The
   // boxes are the plates placeLabels put on screen, in screen px; discs
   // are never knocked out, since a plate never sits over a mark.
-  const KNOCK_PX = 3;
   let knocks = [];
   let paintedKnocks = null;
-  const knockedOut = ([x, y, bw, bh], px, py) => px > x - KNOCK_PX && px < x + bw + KNOCK_PX && py > y - KNOCK_PX && py < y + bh + KNOCK_PX;
-  // One clip holds as many holes as overlap none of each other, since an
-  // even-odd hole inside a hole would draw again; holes that do overlap go
-  // in a further clip, and clips intersect, so what is left lies outside
-  // every plate. A stack of one clip per plate cost a large paint tenfold.
+  // Holes that overlap go in clips of their own, which intersect, as
+  // holeClips says. A stack of one clip per plate cost a large paint tenfold.
   const clipKnocks = (g, w, h) => {
-    const holes = knocks.map(([x, y, bw, bh]) => [x - KNOCK_PX, y - KNOCK_PX, bw + 2 * KNOCK_PX, bh + 2 * KNOCK_PX]);
-    const clips = [];
-    for (const hole of holes) {
-      const free = clips.find((c) => !c.some((o) => overlap(o, hole)));
-      if (free) free.push(hole);
-      else clips.push([hole]);
-    }
-    for (const c of clips) {
+    for (const c of holeClips(knocks)) {
       const p = new Path2D();
       p.rect(-GROUND_PAD, -GROUND_PAD, w + 2 * GROUND_PAD, h + 2 * GROUND_PAD);
       for (const hole of c) p.rect(...hole);
@@ -927,7 +778,7 @@ import {
     const hovered = hover ? `c:${current?.byId.get(hover)?.address}` : null;
     const X = (x) => x * k + tx;
     const Y = (y) => y * k + ty;
-    const off = (x0, y0, x1, y1) => x1 < -GROUND_PAD || y1 < -GROUND_PAD || x0 > w + GROUND_PAD || y0 > h + GROUND_PAD;
+    const off = (x0, y0, x1, y1) => offCanvas([x0, y0, x1, y1], w, h);
     for (const layer of [...groundLayers, talkLayer, fedLayer, cellLayer]) {
       // Consecutive shapes in one ink share a path, so a frame strokes
       // once per ink rather than once per line.
@@ -1016,9 +867,6 @@ import {
   // worked out fresh on each call from the lines the name placer avoids.
   // Where a line is knocked out round a name, it is said as two, ending
   // either side, since nothing is drawn there.
-  const LINE_STEPS = 8;
-  const LINE_STEP_PX = 3; // the most a said line moves between points
-  const lineSteps = (xs, ys) => Math.max(LINE_STEPS, Math.ceil((Math.hypot(xs[1] - xs[0], ys[1] - ys[0]) + Math.hypot(xs[2] - xs[1], ys[2] - ys[1])) / LINE_STEP_PX));
   // How many lines the canvas paints, by kind, said for the site's own
   // checks: the lines across networks, the talk arcs, the talk held, the
   // talk with two ends to draw (talk inside one folded network has one),
@@ -1050,72 +898,24 @@ import {
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
     const box = groundEl.getBoundingClientRect();
-    const [w, h] = [box.width, box.height];
-    const out = [];
-    for (const [p, c, q] of [...lineShapes, ...talkShapes, ...fedShapes]) {
-      const xs = [p[0], c[0], q[0]].map((x) => x * k + tx);
-      const ys = [p[1], c[1], q[1]].map((y) => y * k + ty);
-      if (Math.max(...xs) < 0 || Math.max(...ys) < 0 || Math.min(...xs) > w || Math.min(...ys) > h) continue;
-      const steps = knocks.length ? lineSteps(xs, ys) : LINE_STEPS;
-      let line = [];
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const u = 1 - t;
-        const [x, y] = [u * u * xs[0] + 2 * u * t * xs[1] + t * t * xs[2], u * u * ys[0] + 2 * u * t * ys[1] + t * t * ys[2]];
-        if (knocks.some((b) => knockedOut(b, x, y))) {
-          if (line.length > 1) out.push(line);
-          line = [];
-          continue;
-        }
-        line.push({ x: box.left + x, y: box.top + y });
-      }
-      if (line.length > 1) out.push(line);
-    }
-    return out;
+    const view = { k, tx, ty };
+    const lines = [...lineShapes, ...talkShapes, ...fedShapes].map((line) => onScreen(line, view));
+    const onPage = ([x, y]) => ({ x: box.left + x, y: box.top + y });
+    return saidLines(lines, box.width, box.height, knocks).map((said) => said.map(onPage));
   };
 
   // The line under a point of the map, in CSS px from its corner: the
   // nearest within reach, feedings first and then talk, since each is drawn
   // over what comes after it. On a network's ground only the lines that
   // cross grounds count, so the ground itself still opens its network.
-  const TOUCH_PX = 6;
   const LIT = /\blit\b/;
   let touched = null;
-  const lineAt = (x, y, onGround) => {
-    let best = null;
-    let nearest = TOUCH_PX;
-    for (const shapes of [fedShapes, talkShapes, lineShapes]) {
-      for (const line of shapes) {
-        if (!line.opens || (onGround && line.within)) continue;
-        const [p, c, q] = line.map(([px, py]) => [px * k + tx, py * k + ty]);
-        if (x < Math.min(p[0], c[0], q[0]) - nearest || x > Math.max(p[0], c[0], q[0]) + nearest) continue;
-        if (y < Math.min(p[1], c[1], q[1]) - nearest || y > Math.max(p[1], c[1], q[1]) + nearest) continue;
-        let a = p;
-        for (let i = 1; i <= LINE_PIECES; i++) {
-          const t = i / LINE_PIECES;
-          const u = 1 - t;
-          const b = [u * u * p[0] + 2 * u * t * c[0] + t * t * q[0], u * u * p[1] + 2 * u * t * c[1] + t * t * q[1]];
-          const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
-          const along = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)));
-          const d = Math.hypot(x - a[0] - along * dx, y - a[1] - along * dy);
-          if (d < nearest) [best, nearest] = [line, d];
-          a = b;
-        }
-      }
-      if (best) return best;
-    }
-    return best;
-  };
+  const lineAt = (x, y, onGround) =>
+    lineNearest([fedShapes, talkShapes, lineShapes], { k, tx, ty }, [x, y], onGround);
 
   // The network whose ground is under a point of the map, the innermost
   // where grounds overlap.
-  const groundAt = (x, y) => {
-    let best = null;
-    for (const [key, gx, gy, r] of groundsAt) {
-      if ((x - gx) ** 2 + (y - gy) ** 2 <= r * r && (!best || r < best[1])) best = [key, r];
-    }
-    return best?.[0] || null;
-  };
+  const groundAt = (x, y) => groundHolding(groundsAt, x, y);
 
   // ---- What changed since he last looked. ----
 
@@ -1365,39 +1165,22 @@ import {
   // The shape of one reading and layout, kept so a choice or a fold, which
   // draws the same reading again, never builds it twice.
   let shapeFor = null;
-  // What every shape and mark of the map is built from, as one string:
-  // each network's place in the tree, cells, liveness, feeds and waits
-  // ring, and each cell's home, network, extra networks and place. It is
-  // all the whole draw reads of a reading but inks, which a restyle reads
-  // afresh, so two readings with one shape draw the same map.
-  const SWELL_STEP = 0.5; // how far a waits ring grows, in map units, before the map is drawn again
+  // What every shape and mark of the map is built from, as shape.ts says.
   const shapeOf = (m) => {
     const kept = shapeFor?.m === m && shapeFor.L === L && shapeFor.machines === machinesShown;
     if (kept) return shapeFor.shape;
-    // Each record is a JSON list, so a name holding a separator can't make
-    // two shapes read as one.
-    const parts = [];
-    for (const h of m.hubs.values()) {
-      const flags = `${h.edge ? 1 : 0}${h.alone ? 1 : 0}${isLive(h) ? 1 : 0}`;
-      const grown = Math.round(swell(h.owes) / SWELL_STEP);
-      const tree = [h.within || "", h.machine || ""];
-      const fed = [...(h.feeds || [])];
-      const sown = seeds.get(h.key) || [];
-      parts.push(JSON.stringify(["h", h.key, ...tree, h.cells.length, flags, h.shape, fed, grown, sown]));
-    }
-    for (const s of m.cells) {
-      const at = pos.get(s.id);
-      const where = at ? `${at[0].toFixed(1)},${at[1].toFixed(1)}` : "-";
-      const also = (s.also || []).map((h) => h.key);
-      const asks = s.standing === "asks" ? 1 : 0;
-      const net = netOf(s)?.key || "";
-      parts.push(JSON.stringify(["c", s.id, s.address, homeOf(s), net, asks, also, where]));
-    }
-    for (const n of m.shared) {
-      parts.push(JSON.stringify(["n", n.key, n.shape, n.cells.map((s) => s.id)]));
-    }
-    parts.push(JSON.stringify(["m", shownMachines().map((x) => x.name)]));
-    const shape = parts.join("\n");
+    const shape = shapeOfReading(
+      { hubs: m.hubs.values(), cells: m.cells, shared: m.shared },
+      {
+        live: isLive,
+        swollen: (h) => swell(h.owes),
+        sown: (key) => seeds.get(key),
+        at: (id) => pos.get(id),
+        home: homeOf,
+        net: (s) => netOf(s)?.key,
+        machines: shownMachines().map((x) => x.name),
+      },
+    );
     shapeFor = { m, L, machines: machinesShown, shape };
     return shape;
   };
@@ -1923,17 +1706,14 @@ import {
 
   // The lines on screen as short straight pieces, in the same buckets, so
   // a name can ask which it would lie over.
-  const LINE_PIECES = 8;
   const linesOnScreen = (w, h) => {
     const grid = new Map();
-    const on = ([x, y]) => [x * k + tx, y * k + ty];
-    for (const [p0, c0, q0] of [...lineShapes, ...talkShapes, ...fedShapes]) {
-      const [p, c, q] = [on(p0), on(c0), on(q0)];
-      let a = p;
+    const view = { k, tx, ty };
+    for (const shape of [...lineShapes, ...talkShapes, ...fedShapes]) {
+      const line = onScreen(shape, view);
+      let a = line[0];
       for (let i = 1; i <= LINE_PIECES; i++) {
-        const t = i / LINE_PIECES;
-        const u = 1 - t;
-        const b = [u * u * p[0] + 2 * u * t * c[0] + t * t * q[0], u * u * p[1] + 2 * u * t * c[1] + t * t * q[1]];
+        const b = quadAt(line, i / LINE_PIECES);
         const [x0, x1] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
         const [y0, y1] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
         if (x1 >= 0 && y1 >= 0 && x0 <= w && y0 <= h)
@@ -1976,7 +1756,6 @@ import {
     return under.size;
   };
 
-  const overlap = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
 
   // Whether a box's middle sits nearer some other mark than its own, which
   // would make the name read as that mark's. The middle, not the edge: a
@@ -2381,12 +2160,10 @@ import {
   // off the map, draws as its ground and hub, and its cells unfold as he
   // comes close. What's open, chosen, pointed at or found never folds. ----
   const FOLD_OVER = 400; // cells, at or under which nothing folds
-  const CORD_BUNDLE_OVER = 24; // networks on a machine, past which its cords bundle
   const CORD_MOST = 6; // px, the heaviest a cord or trunk is drawn
   const CROSS_MOST = 4; // px, the largest a cross-hypha's dots are drawn
   const BUNDLE_WAYS = 12; // trunks out of a bundling machine, one each way
   const BUNDLE_REACH = 0.8; // how far out a trunk forks, as a share of the ring
-  const MACHINE_ORBIT = 0.3; // how far out a bundling machine sits, as a share of the ring
   // A cell's radius on screen under which its network folds: 5 px across, the least a disc
   // still reads as one, since folding at 8 hid every cell of a hundred on a laptop's whole map.
   const FOLD_PX = 2.5;
@@ -4440,10 +4217,7 @@ import {
     }
     if (flights.length && !flying) flying = requestAnimationFrame(fly);
   };
-  const along = ({ p, c, q }, t) => {
-    const u = 1 - t;
-    return [u * u * p[0] + 2 * u * t * c[0] + t * t * q[0], u * u * p[1] + 2 * u * t * c[1] + t * t * q[1]];
-  };
+  const along = ({ p, c, q }, t) => quadAt([p, c, q], t);
   // What flies is painted on a canvas of its own above the ground, so a
   // frame costs the flights alone however many cells lie under them, and
   // a page with nothing in flight draws nothing at all.
