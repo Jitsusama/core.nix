@@ -1087,6 +1087,9 @@ QtObject {
             Search.found("x", "\ud83d\ude00\u2060x"), [[3, 4]]);
         holds("and half of it, found, is washed whole",
             Search.found("\ud83d", "\ud83d\ude00\u2060x"), [[0, 2]]);
+        holds("with no joiner in the line too", Search.found("\ud83d", "\ud83d\ude00x"),
+            [[0, 2]]);
+        holds("from either half", Search.found("\ude00x", "a\ud83d\ude00x"), [[1, 4]]);
         // A text read a letter at a time, for one that lowers longer, passes
         // over a joiner as the fast way does. The pattern is lower case, as one
         // with a capital is found by its case and never lowered.
