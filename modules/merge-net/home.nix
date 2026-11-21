@@ -27,6 +27,8 @@ let
   net = pkgs.callPackage ../../tools/merge-net/package.nix { };
   changed-checks = pkgs.callPackage ../../tools/changed-checks/package.nix { };
   installed = "changed-checks/installed";
+  installedNet = "${config.home.profileDirectory}/bin/merge-net";
+  installedKeeper = "${config.xdg.stateHome}/${installed}/bin/changed-checks";
   # The account's own tools come first, the machine's next, and these last,
   # for a machine without them.
   path = lib.concatStringsSep ":" [
@@ -49,14 +51,17 @@ in
   # A switch leaves the running net be, since stopping it mid-round loses
   # every run in flight; it follows the build installed and, once that is
   # another, starts no more runs and ends when those under way have, for
-  # Restart to start the new one.
+  # Restart to start the new one. It starts the build it follows, not its
+  # own store path: on 20 November a switch moved the profile and rolled
+  # back before the unit was reloaded, and from 19:04 to 19:13 each
+  # restart ran the old build again, which saw itself replaced and left.
   systemd.user.services.merge-net = {
     Unit = {
       Description = "Runs the VM tests each merge to core's main changed, and reverts a merge that breaks one";
       X-SwitchMethod = "keep-old";
     };
     Service = {
-      ExecStart = "${lib.getExe net} watch --follow ${config.home.profileDirectory}/bin/merge-net";
+      ExecStart = "${installedNet} watch --follow ${installedNet}";
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;
@@ -80,11 +85,8 @@ in
       X-SwitchMethod = "keep-old";
     };
     Service = {
-      ExecStart = lib.concatStringsSep " " [
-        (lib.getExe changed-checks)
-        "keep-main --follow"
-        "${config.xdg.stateHome}/${installed}/bin/changed-checks"
-      ];
+      # The build it follows, for the reason the net starts its own.
+      ExecStart = "${installedKeeper} keep-main --follow ${installedKeeper}";
       Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;
