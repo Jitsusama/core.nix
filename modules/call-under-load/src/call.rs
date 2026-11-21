@@ -1,14 +1,16 @@
-//! One test call, shaped as Meet's, between two Chromes on this machine
-//! while it carries whatever load it carries: the near end is a Chrome
+//! One test call, shaped as Meet's, between two Chromiums on this machine
+//! while it carries whatever load it carries: the near end is a Chromium
 //! with a profile like Joel's, drawing on a headless Weston, never his
-//! screen, and the far end a headless Chrome. Both use Chrome's fake
-//! camera; no real one is ever opened. A call of Joel's stops it within
+//! screen, and the far end a headless Chromium. Both use Chromium's fake
+//! camera; no real one is ever opened. Chromium, not Google Chrome, for
+//! the reason `managed` gives; the Chromes named below are these. A call of Joel's stops it within
 //! fifteen seconds, from its first step to its last: the watch asks every
 //! five, an ask has five to answer, and a step still going five more on
 //! has its Weston and Chromes ended under it.
 
 use crate::cdp::{self, Browser};
 use crate::gate::{self, Call};
+use crate::managed;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,8 +31,9 @@ const SCALE_DOWN: f64 = 1.5;
 const MAX_BITRATE: u32 = 2_500_000;
 
 /// What the hour's figures say the call was.
-pub const STAND_IN: &str = "Chrome's fake camera at 1080p30, sent as Meet sends, VP9 \
-                            720p in three layers at up to 2.5 Mb/s, to a second Chrome here";
+pub const STAND_IN: &str = "Chromium's fake camera at 1080p30, sent as Meet sends, VP9 \
+                            720p in three layers at up to 2.5 Mb/s, to a second Chromium \
+                            here";
 
 /// How often the call is checked for one of Joel's, and his click stood in for.
 const TICK: Duration = Duration::from_secs(5);
@@ -197,24 +200,40 @@ fn sends() -> Value {
 }
 
 /// Runs a call of `seconds` with `chrome`, on the page at `page`; `runtime`
-/// is Joel's runtime folder and `cache` the folder the profile goes in.
+/// is Joel's runtime folder, `cache` the folder the profile goes in and
+/// `state` where an enrolment is kept.
 pub fn run(
     chrome: &Path,
     page: &Path,
     seconds: u64,
     runtime: &Path,
     cache: &Path,
+    state: &Path,
 ) -> Result<Ended, String> {
     let watch = Watch::start();
     sweep(runtime, "call-under-load-");
     sweep(cache, "profile-");
-    settled(steps(chrome, page, seconds, runtime, cache, &watch), &watch)
+    let folders = Folders {
+        runtime,
+        cache,
+        state,
+    };
+    settled(steps(chrome, page, seconds, &folders, &watch), &watch)
+}
+
+/// The folders a call is made in, as `run` names them.
+struct Folders<'a> {
+    runtime: &'a Path,
+    cache: &'a Path,
+    state: &'a Path,
 }
 
 /// How the call's steps ended, as the run says it.
 fn settled(steps: Result<Ended, Step>, watch: &Watch) -> Result<Ended, String> {
     steps.or_else(|step| match step {
         Step::Stopped(ended) => Ok(ended),
+        // An alarm is never a skip, whatever the watch has heard since.
+        Step::Refused(why) => Err(why),
         // A step the watch broke off by ending its processes fails, but
         // the call stopped for Joel's, and counts for nothing.
         Step::Failed(why) => match watch.stop() {
@@ -224,9 +243,11 @@ fn settled(steps: Result<Ended, Step>, watch: &Watch) -> Result<Ended, String> {
     })
 }
 
-/// Why a call's steps ended early: Joel's call, or a failure.
+/// Why a call's steps ended early: Joel's call, an alarm (a real camera,
+/// or an enrolled browser), or a failure.
 enum Step {
     Stopped(Ended),
+    Refused(String),
     Failed(String),
 }
 
@@ -264,14 +285,13 @@ fn steps(
     chrome: &Path,
     page: &Path,
     seconds: u64,
-    runtime: &Path,
-    cache: &Path,
+    folders: &Folders,
     watch: &Watch,
 ) -> Result<Ended, Step> {
     let id = std::process::id();
     // A Wayland socket's path must fit in 108 bytes, so it's kept short.
-    let memory = runtime.join(format!("call-under-load-{id}"));
-    let profile = cache.join(format!("profile-{id}"));
+    let memory = folders.runtime.join(format!("call-under-load-{id}"));
+    let profile = folders.cache.join(format!("profile-{id}"));
     let mut started = Started {
         folders: vec![memory.clone(), profile.clone()],
         children: Vec::new(),
@@ -323,7 +343,7 @@ fn steps(
     let mut far = Browser::start(far).map_err(|e| format!("the far end's Chrome: {e}"))?;
     watch.ends(far.pid());
     let profiles = [profile.as_path(), far_profile.as_path()];
-    unenrolled(&profiles)?;
+    unenrolled(&profiles, folders.state)?;
     watch.stop()?;
 
     let url = format!("file://{}", page.display());
@@ -352,7 +372,7 @@ fn steps(
         // Each click comes on the call's own 5 s beat, and Joel's call
         // stops it the moment the watch hears of one.
         watch.wait_until(next)?;
-        unenrolled(&profiles)?;
+        unenrolled(&profiles, folders.state)?;
     }
     let mine = list(near.eval("window.samples", WAIT)?);
     connected(&mine)?;
@@ -403,21 +423,24 @@ fn lay_out(memory: &Path, profile: &Path, config: &Path) -> std::io::Result<()> 
 /// `Policy/Enrollment`. Chromium reads no enrolment token, so it never
 /// should; this is the alarm behind that, since an enrolled test browser
 /// shows up in the machine owner's management as one of Joel's.
-fn unenrolled(profiles: &[&Path]) -> Result<(), Step> {
+/// What it was given is kept in `state` first, which keeps the test off
+/// until someone has read it (`managed::keep`).
+fn unenrolled(profiles: &[&Path], state: &Path) -> Result<(), Step> {
     for profile in profiles {
         let enrolment = profile.join("Policy/Enrollment");
         if fs::read_dir(&enrolment).is_ok_and(|mut tokens| tokens.next().is_some()) {
-            return Err(format!(
-                "the test browser enrolled with a management service, in {}",
+            let why = format!(
+                "a test browser enrolled with a management service, in {}",
                 enrolment.display()
-            )
-            .into());
+            );
+            managed::keep(state, &why, profile);
+            return Err(Step::Refused(why));
         }
     }
     Ok(())
 }
 
-/// Refuses a camera that isn't Chrome's fake one, as `end`'s page named it.
+/// Refuses a camera that isn't Chromium's fake one, as `end`'s page named it.
 /// It's an alarm, not the gate: the label is read once the camera's open,
 /// and what keeps a real one shut is `--use-fake-device-for-media-stream`,
 /// with which Chrome lists only its fake devices.
@@ -426,7 +449,9 @@ fn fake(said: &Value, end: &str) -> Result<(), Step> {
     if label.contains("fake") {
         return Ok(());
     }
-    Err(format!("the {end} end's camera was {label:?}, not Chrome's fake one").into())
+    Err(Step::Refused(format!(
+        "the {end} end's camera was {label:?}, not Chromium's fake one"
+    )))
 }
 
 /// A Chrome with `profile`, Chrome's fake camera, and the TPM kept out of
@@ -454,6 +479,9 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
         ])
         .env("HOME", memory.join("home"))
         .env("XDG_RUNTIME_DIR", memory)
+        // Joel's session bus is named by an absolute path, which a runtime
+        // folder of its own doesn't hide, so the browser isn't told it.
+        .env_remove("DBUS_SESSION_BUS_ADDRESS")
         .env("XDG_CONFIG_HOME", config)
         .env("TSS2_FAPICONF", "/nonexistent/fapi-config.json")
         .env("TPM2_PKCS11_TCTI", "mssim:host=127.0.0.1,port=9")
@@ -650,12 +678,12 @@ mod tests {
     }
 
     #[test]
-    fn only_chrome_s_fake_camera_is_taken_at_either_end() {
+    fn only_the_fake_camera_is_taken_at_either_end() {
         assert!(
             fake(&json!({"label": "fake_device_0"}), "near").is_ok(),
-            "Chrome's fake camera was refused"
+            "Chromium's fake camera was refused"
         );
-        let refused = |said: Value| matches!(fake(&said, "far"), Err(Step::Failed(_)));
+        let refused = |said: Value| matches!(fake(&said, "far"), Err(Step::Refused(_)));
         assert!(
             refused(json!({"label": "MX Brio 705 for Business"})),
             "a real camera was taken"
@@ -664,20 +692,38 @@ mod tests {
     }
 
     #[test]
-    fn a_browser_that_enrolled_ends_the_call() {
-        let profile = std::env::temp_dir().join(format!("cul-enrol-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&profile);
+    fn a_browser_that_enrolled_ends_the_call_and_keeps_the_test_off() {
+        let temp = std::env::temp_dir();
+        let profile = temp.join(format!("cul-enrol-{}", std::process::id()));
+        let state = temp.join(format!("cul-enrol-state-{}", std::process::id()));
+        let _ = (fs::remove_dir_all(&profile), fs::remove_dir_all(&state));
         fs::create_dir_all(profile.join("Policy/Enrollment")).expect("the folder is made");
         assert!(
-            unenrolled(&[profile.as_path()]).is_ok(),
+            unenrolled(&[profile.as_path()], &state).is_ok(),
             "an empty enrolment folder stopped the call"
         );
         fs::write(profile.join("Policy/Enrollment/token"), "t").expect("the token is written");
-        let stopped = unenrolled(&[Path::new("/nonexistent"), profile.as_path()]);
-        let _ = fs::remove_dir_all(&profile);
+        let stopped = unenrolled(&[Path::new("/nonexistent"), profile.as_path()], &state);
+        let off = managed::stays_off(&state);
+        let _ = (fs::remove_dir_all(&profile), fs::remove_dir_all(&state));
         assert!(
-            matches!(stopped, Err(Step::Failed(ref why)) if why.contains("enrolled")),
+            matches!(stopped, Err(Step::Refused(ref why)) if why.contains("enrolled")),
             "an enrolled browser's call went on"
+        );
+        assert!(
+            off.is_some_and(|why| why.contains("enrolled")),
+            "the next hour's test would start again"
+        );
+    }
+
+    #[test]
+    fn an_alarm_is_never_read_as_a_skip_for_joel_s_call() {
+        let watch = Watch::asking(on, Duration::from_millis(10));
+        assert!(heard(&watch), "the watch never heard of Joel's call");
+        let alarm = Err(Step::Refused("a test browser enrolled".into()));
+        assert!(
+            matches!(settled(alarm, &watch), Err(ref why) if why.contains("enrolled")),
+            "an alarm during Joel's call read as a skipped hour"
         );
     }
 

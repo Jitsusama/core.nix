@@ -119,11 +119,14 @@ pub fn measures(
             )),
         ),
         measure(
-            "Chrome click to next frame p99 ms",
+            "call click to next frame p99 ms",
             call.clicks_p99,
             50.0,
             true,
-            vec!["a click every 5 s on the call's own tab, while the call runs".to_string()],
+            vec![
+                "a click every 5 s on the test call's own Chromium tab, not Joel's Chrome"
+                    .to_string(),
+            ],
         ),
         measure(
             "Chrome CPU wait per wakeup p99 ms",

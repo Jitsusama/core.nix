@@ -5,7 +5,7 @@
 //! under all its pressures, with Chrome and Slack staying responsive. A
 //! check that runs only when someone remembers finds a slide a day late,
 //! so each hour `call-under-load run` makes a test call shaped as Meet's
-//! between two Chromes on this machine, on Chrome's fake camera, never a
+//! between two Chromiums on this machine, on Chromium's fake camera, never a
 //! real one, and clicks the call's tab every five seconds. It writes what
 //! the call did, with the hour's Chrome and Slack drawing waits from
 //! lag-watch's history and the launcher's openings from the journal, to
@@ -25,6 +25,7 @@ mod figures;
 mod gate;
 mod history;
 mod hour;
+mod managed;
 
 use serde_json::{Value, json};
 use std::fmt::Write as _;
@@ -175,8 +176,29 @@ fn said(hour: &Value, age: u64) -> String {
     text
 }
 
+/// Refuses the call where a test browser could join anyone's management
+/// (`managed`): once one has enrolled, until someone has read what it was
+/// given, or where Chromium's own machine policy could enrol it.
+fn unmanaged() -> Result<(), Failure> {
+    if let Some(why) = managed::stays_off(&state()) {
+        let kept = managed::kept(&state());
+        return Err(Failure::new(Exit::Refused, "the test call stays off")
+            .because(why.trim_end())
+            .try_this(format!("ls -R {0}; rm -r {0}", kept.display())));
+    }
+    if let Some(why) = managed::could_enrol(Path::new(managed::POLICIES)) {
+        return Err(
+            Failure::new(Exit::Refused, "the test call could enrol its browsers")
+                .because(why)
+                .try_this(format!("ls -R {}", managed::POLICIES)),
+        );
+    }
+    Ok(())
+}
+
 /// The hour's test call, and the figures written for cadence.
 fn run(context: &Context) -> Result<(), Failure> {
+    unmanaged()?;
     let skip = |why: String| {
         context
             .say(&format!("no test call this hour: {why}\n"))
@@ -222,7 +244,7 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .try_this("nix build .#call-under-load")
         })?;
     let cache = env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load");
-    let ended = call::run(&chrome, &page, SECONDS, &runtime, &cache).map_err(|why| {
+    let ended = call::run(&chrome, &page, SECONDS, &runtime, &cache, &state()).map_err(|why| {
         Failure::new(Exit::Failed, "the test call couldn't be made")
             .because(why)
             .try_this("journalctl --user -u call-under-load")

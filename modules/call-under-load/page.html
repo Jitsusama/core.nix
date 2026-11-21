@@ -3,8 +3,8 @@
 <title>call under load</title>
 <script>
 // Both ends of the hour's test call, as a Meet call sends: VP9 SVC both ways, each end's stats
-// sampled each second. The near end offers with Chrome's fake camera; the far end, a second
-// Chrome, answers with its own and sends its samples back over a data channel. call-under-load
+// sampled each second. The near end offers with Chromium's fake camera; the far end, a second
+// Chromium, answers with its own and sends its samples back over a data channel. call-under-load
 // drives both over DevTools. Nothing here writes a frame anywhere.
 'use strict';
 
@@ -76,8 +76,8 @@ async function sample() {
   const video = [...stats.values()].filter((r) => !r.kind || r.kind === 'video');
   // Timed by when the stats were gathered, which their counts are as of; a loaded machine
   // can take a while between the ask and the gathering.
-  const gathered = video.find((r) => r.type === 'media-source' || r.type === 'outbound-rtp');
-  const s = { t: Math.round(gathered?.timestamp ?? asked), state: pc.connectionState };
+  const timed = video.find((r) => r.type === 'media-source' || r.type === 'outbound-rtp');
+  const s = { t: Math.round(timed?.timestamp ?? asked), state: pc.connectionState };
   for (const r of video) {
     if (r.type === 'outbound-rtp') {
       s.out = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'qualityLimitationReason',
