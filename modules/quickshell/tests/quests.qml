@@ -587,7 +587,81 @@ ShellRoot {
                 `${theQuests.tally.rows - root.counted} rows`);
             expect("counted again", theQuests.counted() === "3 open, 1 driving",
                 theQuests.counted());
-            Qt.callLater(() => Qt.exit(0));
+            Qt.callLater(root.movedCases);
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // The asks file the daemon reads for what moved, which the check
+    // writes before the daemon starts, and a case writes again.
+    FileView {
+        id: asksFile
+        path: Quickshell.env("ASKS")
+        blockWrites: true
+    }
+    readonly property string askedAt: "2026-11-20T10:00:00-05:00"
+
+    // What Moved as Quests makes it from what the daemon serves: nothing
+    // of the asks there at its start; an ask landing for an open quest is
+    // that quest's own row, named and acted on as Quests' is, saying what
+    // landed; a quest's own row changing tells what moved again; and given
+    // back as looked at, it goes.
+    function movedCases() {
+        root.waiting = "what moved first";
+        try {
+            expect("nothing of the asks there at the start", theQuests.moved().length === 0,
+                JSON.stringify(theQuests.served.held["moved:quests"]));
+            const revision = theQuests.movedRevision;
+            theQuests.served.heard(["row:quests:QEST-20261001-LAPTOP"], []);
+            theQuests.served.heard(["summary:quests"], []);
+            expect("a quest's own row tells what moved again, and nothing else does",
+                theQuests.movedRevision === revision + 1,
+                `${revision} to ${theQuests.movedRevision}`);
+            const first = { at: root.askedAt, owner: "LAPTOP", words: "the first",
+                landed: root.askedAt };
+            const next = { at: root.askedAt, owner: "LAPTOP (PROMPT)", words: "the dock",
+                landed: root.askedAt };
+            root.waiting = "what moved heard";
+            asksFile.setText(`${JSON.stringify(first)}\n${JSON.stringify(next)}\n`);
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+    Connections {
+        target: theQuests
+
+        function onMovedRevisionChanged() {
+            const moved = theQuests.moved();
+            if (root.waiting === "what moved heard" && moved.length === 1)
+                Qt.callLater(root.movedHeard);
+            if (root.waiting === "what moved looked at" && moved.length === 0)
+                Qt.callLater(() => Qt.exit(0));
+        }
+    }
+
+    function movedHeard() {
+        if (root.waiting !== "what moved heard")
+            return;
+        root.waiting = "what moved looked at";
+        try {
+            const row = theQuests.moved()[0];
+            const own = theQuests.looksThrough()
+                .find(one => one.key === "quest:QEST-20261001-LAPTOP");
+            expect("the quest that moved is its own row, named as it is",
+                row.key === own.key && row.name === "Bootstrap the laptop"
+                    && row.name === own.name,
+                JSON.stringify([row.key, row.name]));
+            expect("saying what landed where its note was", row.note === "landed: the dock",
+                row.note);
+            expect("acted on as the quest's own row is",
+                JSON.stringify(row.verbs().map(verb => verb.name))
+                    === JSON.stringify(own.verbs().map(verb => verb.name)),
+                JSON.stringify(row.verbs().map(verb => verb.name)));
+            const seen = theQuests.movedSeen();
+            expect("what it shows of the ask that moved", seen.length === 1
+                && seen[0].key === `${root.askedAt}\tthe dock`, JSON.stringify(seen));
+            theQuests.looked(seen);
         } catch (error) {
             fail(error.message);
         }
