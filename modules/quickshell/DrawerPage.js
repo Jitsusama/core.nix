@@ -173,15 +173,15 @@ function partsKept(pieces, texts, was, now) {
     if (!was || texts.length === 0) {
         return null;
     }
-    const shown = new Map();
+    const carried = new Map();
     for (const text of texts) {
         const read = pieces.get(text);
         if (!read) {
             return null;
         }
-        shown.set(text, shifted(read, now.x - was.x, now.y - was.y));
+        carried.set(text, shifted(read, now.x - was.x, now.y - was.y));
     }
-    return shown;
+    return carried;
 }
 
 // The pieces a part laid under the run leaves where they were read: all
