@@ -19,8 +19,11 @@ pragma ComponentBehavior: Bound
 // outlived its host's list is begun; and one parked in its holder here is
 // woken, told to carry on, its place kept for its window to open there as it
 // wakes. One whose folder is gone starts its quest afresh, under an id of its
-// own, in the folder the harness's quest index says a new one starts in. It
-// exits 0 once that holds, and otherwise 1, saying what didn't.
+// own, in the folder the harness's quest index says a new one starts in. One
+// kept on a workspace named for its orchestrator goes back to the one named
+// so now, whatever its number, and one whose name no workspace has names the
+// empty one it opens on. It exits 0 once that holds, and otherwise 1, saying
+// what didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -153,6 +156,12 @@ ShellRoot {
                 raised();
             else if (stage === "guarded")
                 guarded();
+            else if (stage === "naming")
+                naming();
+            else if (stage === "named")
+                named();
+            else if (stage === "renamed")
+                renamed();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -603,6 +612,66 @@ ShellRoot {
             Niri.acts.some(act => act.FocusWindow?.id === 63)
             && viewerSpawns("s-goto").length === 0,
             `${JSON.stringify(Niri.acts)} ${Niri.spawns.join("\n")}`);
+        // KELP's workspace, named for its orchestrator, comes back fifth
+        // this boot, with a window of its own, and niri's empty one after.
+        Niri.workspaces = Object.assign({}, Niri.workspaces, {
+            "44": { id: 44, idx: 5, name: "KELP", output: "DP-4", is_focused: false,
+                active_window_id: 92 },
+            "45": { id: 45, idx: 6, output: "DP-4", is_focused: false, active_window_id: null }
+        });
+        Niri.windows = Object.assign({}, Niri.windows, { "92": { id: 92, pid: 920,
+            workspace_id: 44, opened: "pi-hosted.s-lead",
+            layout: { pos_in_scrolling_layout: [1, 1] } } });
+        Niri.revision += 1;
+        stage = "naming";
+        Watch.tell(root.watch, { changed: [
+            Object.assign(hosted("s-kelp", "KELPER"), { told: "0000000000000010" }),
+            Object.assign(hosted("s-reef", "REEFER"), { told: "0000000000000011" })] });
+    }
+
+    // One kept on a workspace named for its orchestrator goes back to the
+    // one named so now, though niri numbers it otherwise this boot
+    // (2026-11-21 10:08: WM4KSZ's sessions came back on workspace 3 by
+    // number), naming nothing.
+    function naming() {
+        if (!find("KELPER") || !find("REEFER") || (Sessions.reopening?.queue.length ?? 0) > 0)
+            return;
+        stage = "named";
+        Sessions.reopenAll([{ id: "s-kelp", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-kelp": Object.assign(keptOn(3), { named: "KELP" }) }), "");
+    }
+    function named() {
+        const opens = opensOn("s-kelp");
+        if (opens.length === 0)
+            return;
+        Expect.expect("one kept on a named workspace goes back to the one named so now",
+            opens[0].reference?.Id === 44 && opens[0].column === 2, JSON.stringify(opens));
+        Expect.expect("naming nothing, since one has the name",
+            !Niri.acts.some(act => act.SetWorkspaceName), JSON.stringify(Niri.acts));
+        const window = { id: 93, pid: 930, workspace_id: 44, session: true,
+            opened: "pi-hosted.s-kelp", layout: { pos_in_scrolling_layout: [2, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "93": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(93, "pi-hosted.s-kelp", 44)] });
+        stage = "renamed";
+        Niri.windowOpenedOrChanged(window);
+        Sessions.reopenAll([{ id: "s-reef", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-reef": Object.assign(keptOn(4), { named: "REEF" }) }), "");
+    }
+
+    // One whose name no workspace has now opens on the screen's empty
+    // workspace and names it, once.
+    function renamed() {
+        const opens = opensOn("s-reef");
+        if (opens.length === 0)
+            return;
+        const naming = Niri.acts.filter(act => act.SetWorkspaceName)
+            .map(act => act.SetWorkspaceName);
+        Expect.expect("one whose name no workspace has names the empty one it opens on, once",
+            naming.length === 1 && naming[0].name === "REEF"
+            && naming[0].workspace?.Id === opens[0].reference?.Id
+            && Niri.workspaces[opens[0].reference?.Id]?.active_window_id === null,
+            `${JSON.stringify(naming)} ${JSON.stringify(opens)}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }
