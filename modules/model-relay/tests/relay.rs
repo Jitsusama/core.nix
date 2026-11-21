@@ -84,8 +84,19 @@ const LISTENS_WITHIN: Duration = Duration::from_secs(10);
 const GOODBYE_HEARD_WITHIN: Duration = Duration::from_millis(200);
 /// What `/sized` answers, its length named.
 const SIZED: &[u8] = b"whole";
-/// What a relay standing down says in its 421, pinned whole, as pi goes
-/// direct on these words alone.
+// The relay's four 421 sentences, each pinned whole here. pi's client
+// goes direct on these exact words alone, with their one line break or
+// none, and on any other 421 takes it as the origin's answer. So one
+// reworded in the relay fails these tests, and if it's meant, pi's turns
+// fail on it too until pi learns it.
+
+/// What a relay asked for another origin says in its 421.
+const OTHER_ORIGIN_WORDS: &[u8] = b"this relay forwards to its own origin alone\n";
+/// What a relay says in its 421 to a request taken as it leaves.
+const LEAVING_WORDS: &[u8] = b"this relay is leaving, so go directly\n";
+/// What a relay says in its 421 of a request it couldn't carry.
+const CANT_CARRY_WORDS: &[u8] = b"this relay can't carry a request to its origin, so go directly\n";
+/// What a relay standing down says in its 421.
 const STANDS_DOWN_WORDS: &[u8] =
     b"this relay forwards to its own origin alone, and stands down from it for now, so go \
       directly\n";
@@ -776,7 +787,11 @@ async fn only_its_origin_is_reached() {
         (other_port, "another port"),
     ] {
         let got = ask(&relay.socket, asked).await;
-        assert_eq!(got.status, StatusCode::MISDIRECTED_REQUEST, "{what}");
+        assert_eq!(
+            (got.status, got.body.as_slice()),
+            (StatusCode::MISDIRECTED_REQUEST, OTHER_ORIGIN_WORDS),
+            "{what}"
+        );
     }
     // Its body read whole first, so pi isn't left writing what the relay
     // stopped reading.
@@ -873,10 +888,7 @@ async fn a_request_reset_then_lost_as_it_went_again_goes_direct() {
 
     assert_eq!(
         (got.status, got.body.as_slice()),
-        (
-            StatusCode::MISDIRECTED_REQUEST,
-            b"this relay can't carry a request to its origin, so go directly\n".as_slice()
-        ),
+        (StatusCode::MISDIRECTED_REQUEST, CANT_CARRY_WORDS),
         "a request reset, then lost as it went again, wasn't sent direct"
     );
     assert_eq!(
@@ -950,7 +962,7 @@ async fn a_request_the_origin_resets_twice_goes_direct_and_retires_its_connectio
         "a request the origin reset twice didn't go direct"
     );
     assert_eq!(
-        got.body, b"this relay can't carry a request to its origin, so go directly\n",
+        got.body, CANT_CARRY_WORDS,
         "a request reset twice wasn't sent direct in the words pi goes direct on"
     );
     for _ in 0..2 {
@@ -1462,10 +1474,7 @@ async fn fail_past_its_share(socket: &Path, host: &str) {
         // it stood down only past its share.
         assert_eq!(
             (got.body.as_slice(), retry_after(&got)),
-            (
-                b"this relay can't carry a request to its origin, so go directly\n".as_slice(),
-                None
-            ),
+            (CANT_CARRY_WORDS, None),
             "a request the origin reset twice went direct as the relay stood down"
         );
     }
@@ -1492,10 +1501,10 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         StatusCode::MISDIRECTED_REQUEST,
         "a request while the relay stands down"
     );
-    let words = String::from_utf8_lossy(&got.body).into_owned();
-    assert!(
-        words.starts_with("this relay ") && words.trim_end().ends_with("so go directly"),
-        "the stand-down's 421 doesn't say what sends pi direct: {words}"
+    assert_eq!(
+        got.body.as_slice(),
+        STANDS_DOWN_WORDS,
+        "the stand-down's 421 isn't in the words pi goes direct on"
     );
     // Standing down retires its connections, so none stays open on the
     // path it stood down from.
@@ -2101,10 +2110,7 @@ async fn a_request_left_out_again_goes_direct_and_stands_nothing_down() {
         let got = ask(&relay.socket, request(&host, "/echo", b"hello")).await;
         assert_eq!(
             (got.status, got.body.as_ref()),
-            (
-                StatusCode::MISDIRECTED_REQUEST,
-                b"this relay can't carry a request to its origin, so go directly\n".as_slice()
-            ),
+            (StatusCode::MISDIRECTED_REQUEST, CANT_CARRY_WORDS),
             "a request left out twice didn't go direct"
         );
     }
@@ -3215,9 +3221,9 @@ async fn an_origin_it_cant_trust_sends_pi_direct() {
     let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
 
     assert_eq!(
-        got.status,
-        StatusCode::MISDIRECTED_REQUEST,
-        "a fault of the relay's own was said as the origin's"
+        (got.status, got.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, CANT_CARRY_WORDS),
+        "a fault of the relay's own wasn't sent direct in the words pi goes direct on"
     );
     drop(relay.said());
 }
@@ -3303,6 +3309,98 @@ async fn a_connection_pi_keeps_open_doesnt_keep_the_relay() {
     );
     assert!(closed.is_ok(), "the relay left the kept connection open");
     drop(sender);
+    drop(relay.said());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_taken_as_it_leaves_is_told_its_leaving_in_the_words_pi_goes_direct_on() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    // Idle for 4 s, it takes connections 4 s more as it leaves, which is
+    // the window the request below has to arrive in on a busy builder.
+    let mut relay = Relay::start_with(
+        &format!("https://{}", origin.address),
+        &origin.roots,
+        1,
+        &["--idle-exit", "4"],
+    );
+    // Another host's request isn't the relay's work, so the relay goes
+    // idle and leaves while its body is still coming. Its connection is
+    // held until it's answered, so the relay goes on taking connections
+    // as it leaves rather than leaving the moment the kept one closes.
+    let (mut halves, body) = Channel::<Bytes, Infallible>::new(1);
+    let socket = relay.socket.clone();
+    let elsewhere = tokio::spawn(async move {
+        let asked = Request::builder()
+            .method("POST")
+            .uri("/echo")
+            .header("host", "elsewhere.example")
+            .body(body)
+            .expect("a request");
+        ask(&socket, asked).await
+    });
+    halves
+        .send_data(Bytes::from_static(b"the first half, "))
+        .await
+        .expect("the first half sent");
+    // A connection kept open and asking nothing is closed the moment the
+    // relay starts leaving, which is how the test knows it has.
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (kept_sender, connection) =
+        hyper::client::conn::http1::handshake::<_, Full<Bytes>>(TokioIo::new(stream))
+            .await
+            .expect("an HTTP/1.1 connection");
+    let closed = tokio::time::timeout(Duration::from_secs(15), connection).await;
+    assert!(
+        closed.is_ok(),
+        "the relay never closed a kept connection, so never left; the relay said:\n{}",
+        relay.said()
+    );
+    drop(kept_sender);
+
+    let Ok(got) = tokio::time::timeout(
+        Duration::from_secs(4),
+        ask(&relay.socket, request(&host, "/echo", b"")),
+    )
+    .await
+    else {
+        panic!(
+            "a request taken as the relay left went unanswered within its 4 s of taking \
+             connections; the relay said:\n{}",
+            relay.said()
+        );
+    };
+    // Its body ended, the other host's request gets its own answer.
+    drop(halves);
+    let refused = tokio::time::timeout(Duration::from_secs(5), elsewhere)
+        .await
+        .expect("another host's request went unanswered as the relay left")
+        .expect("the other host's request ran");
+
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, LEAVING_WORDS),
+        "a request taken as the relay left wasn't sent direct in the words pi goes direct on"
+    );
+    assert_eq!(
+        (refused.status, refused.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, OTHER_ORIGIN_WORDS),
+        "another host's request, finished as the relay left, wasn't refused as another origin's"
+    );
+    assert_eq!(
+        origin.handed.lock().expect("the record").len(),
+        0,
+        "a request taken as the relay left reached the origin"
+    );
+    let left = relay.left_within(Duration::from_secs(5));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave cleanly after the request it refused: {left:?}; the relay \
+         said:\n{}",
+        relay.said()
+    );
     drop(relay.said());
 }
 
