@@ -9,8 +9,8 @@ use crate::command;
 /// The runtime each pi host loads its pi from and when it started, each
 /// `None` where it couldn't be read, and how it stands. A host is
 /// the main process of a unit core's host module names
-/// `pi-host-REALM-KIND`; the conversations it starts are read only for its
-/// program, in `conversations`. A host stopped comes back on the
+/// `pi-host-REALM-KIND`; the conversations it starts are read beside it,
+/// in `conversations`. A host stopped comes back on the
 /// runtime its unit names, so it's judged by that rather than left out.
 /// One restarting may never load that runtime, as when it can't start on
 /// it, so what it loads can't be told; one failed is told as failed.

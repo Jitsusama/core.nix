@@ -591,12 +591,12 @@ fn every_host_must_have_started_since_its_unit_switched_in() {
     assert_eq!(lack(&[host(None, Some(200))], Some(100)), None);
     assert_eq!(
         lack(&[host(None, Some(200)), host(None, Some(50))], Some(100)),
-        Some("a pi host keeps its unit from before it"),
+        Some("a pi host or conversation keeps its unit from before it"),
         "a host started before the switch counted as running its new unit"
     );
     assert_eq!(
         lack(&[host(None, None)], Some(100)),
-        Some("cadence can't tell when a pi host started")
+        Some("cadence can't tell when a pi host or conversation started")
     );
     // A host stopped since it last started keeps no unit, and starts on the
     // one switched in.
@@ -614,7 +614,7 @@ fn every_host_must_have_started_since_its_unit_switched_in() {
     );
     assert_eq!(
         lack(&[host(None, Some(200))], None),
-        Some("cadence can't tell when a pi host started"),
+        Some("cadence can't tell when a pi host or conversation started"),
         "no switch found carrying it, yet the hosts counted as started since"
     );
     let failed = Host {

@@ -89,7 +89,7 @@ fn every_host_must_have_started_since_its_program_was_installed() {
     );
     assert_eq!(
         lack(&[host(None, None)], Some(100)),
-        Some("cadence can't tell when a pi host started")
+        Some("cadence can't tell when a pi host or conversation started")
     );
     assert_eq!(
         lack(&[], Some(100)),
@@ -137,6 +137,33 @@ fn a_program_change_counts_from_the_first_install_seen_carrying_it() {
 }
 
 #[test]
+fn a_version_lacking_the_change_left_since_is_a_step_back() {
+    let carrying = |rev: &str| rev.starts_with("cafe");
+    let left = |revs: &[&str]| Some(revs.iter().map(|rev| (*rev).to_owned()).collect());
+    assert!(
+        stepped_back(left(&["cafe001", "dead002"]), carrying),
+        "a version lacking the change, left since, wasn't a step back, so a conversation \
+         started on it would read as running the change"
+    );
+    assert!(
+        !stepped_back(left(&["cafe001", "cafe002"]), carrying),
+        "a later install carrying it counted as a step back, moving the time kept"
+    );
+    assert!(
+        !stepped_back(left(&[]), carrying),
+        "no version left since counted as a step back"
+    );
+    assert!(
+        stepped_back(None, carrying),
+        "marks that couldn't be read kept the time"
+    );
+    assert!(
+        stepped_back(left(&["cafe-HEAD"]), |_| true),
+        "a mark not named as a commit reached git, where a ref could read as carrying it"
+    );
+}
+
+#[test]
 fn an_hour_that_cant_see_keeps_the_first_install_and_one_seeing_it_lacked_drops_it() {
     let key = "harness #1900";
     let first = BTreeMap::from([(key.to_owned(), 100)]);
@@ -176,7 +203,7 @@ fn an_hour_that_cant_see_keeps_the_first_install_and_one_seeing_it_lacked_drops_
 }
 
 #[test]
-fn a_conversation_holds_a_change_to_the_program_it_runs_but_not_to_the_unit() {
+fn a_conversation_holds_a_change_to_the_program_unit_or_runtime_it_started_on() {
     let program = Reaches {
         program: true,
         ..Reaches::default()
@@ -185,10 +212,16 @@ fn a_conversation_holds_a_change_to_the_program_it_runs_but_not_to_the_unit() {
         unit: true,
         ..Reaches::default()
     };
-    let hosts = [host(None, Some(200))];
-    let old_talk = [host(None, Some(50))];
+    let patches = Reaches {
+        patches: vec!["x.patch".to_owned()],
+        ..Reaches::default()
+    };
+    let hosts = [host(Some("new"), Some(200))];
+    let old_talk = [host(Some("old"), Some(50))];
     let lack = |hosts: Option<&[Host]>, talks: Option<&[Host]>, reaches: &Reaches| {
-        lacking(hosts, talks, reaches, Some(100), |_| Some(true))
+        lacking(hosts, talks, reaches, Some(100), |applied| {
+            Some(applied.values().all(|kept| kept == "new"))
+        })
     };
     assert_eq!(
         lack(Some(&hosts), Some(&old_talk), &program),
@@ -197,8 +230,23 @@ fn a_conversation_holds_a_change_to_the_program_it_runs_but_not_to_the_unit() {
     );
     assert_eq!(
         lack(Some(&hosts), Some(&old_talk), &unit),
+        Some("a pi host or conversation keeps its unit from before it"),
+        "a conversation started before the switch, on the unit the hosts' file gives it, \
+         didn't hold a change to it"
+    );
+    assert_eq!(
+        lack(Some(&hosts), Some(&old_talk), &patches),
+        Some("the pi hosts don't load it yet"),
+        "a conversation on a runtime without the patch didn't hold it"
+    );
+    assert_eq!(
+        lack(
+            Some(&hosts),
+            Some(&[host(Some("new"), Some(150))]),
+            &patches
+        ),
         None,
-        "a conversation held a change to the hosts' unit, which it doesn't run"
+        "a conversation on the runtime with the patch held it"
     );
     assert_eq!(
         lack(Some(&hosts), None, &program),
@@ -234,7 +282,8 @@ fn the_program_is_followed_through_the_harness_as_git_holds_it() {
         "export {\n  b,\n} from './b.mjs';\nawait import(\"./c.ts\");\nimport \"./été.ts\";\n",
     );
     write("host/b.mjs", "export const b = 1;\n");
-    write("host/été.ts", "export {};\n");
+    write("host/été.ts", "import \"./f.ts\";\n");
+    write("host/f.ts", "export {};\n");
     write(
         "host/c.ts",
         concat!(
@@ -261,6 +310,7 @@ fn the_program_is_followed_through_the_harness_as_git_holds_it() {
                 "host/c.ts",
                 "host/d.mjs",
                 "host/été.ts",
+                "host/f.ts",
                 "data/schema.sql",
                 "package.json",
                 "pnpm-lock.yaml",

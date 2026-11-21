@@ -92,17 +92,18 @@ struct Host {
 
 /// Which of `merged` don't run here yet, each with why. A change runs once
 /// its repository's running revision carries its merge, a core change to
-/// the hosts' patches once every running host also loads a runtime that
-/// applied each as merged or since, one to the hosts' unit once every
-/// host started after the switch that carried it, and a harness change to
-/// the hosts' program once every host and conversation started after it
-/// was installed. A change seen running is kept in `folder`'s `ran.json`
-/// and never read again, so a closed miss isn't reopened, and told fixed
-/// twice, by an hour that can't see for a moment: a host restarting at
-/// :10, or a switch from a branch. When the harness installed first
-/// carried a program change is kept in its `installed.json` until an hour
-/// sees it not carried, or pi-packages marks a version lacking it left
-/// since, so a later install doesn't hold it open again.
+/// the hosts' patches once every running host and conversation also
+/// loads a runtime that applied each as merged or since, one to the hosts'
+/// unit once every host and conversation started after the switch that
+/// carried it, and a harness change to the hosts' program once every host
+/// and conversation started after it was installed. A change seen
+/// running is kept in `folder`'s `ran.json` and never read again, so a
+/// closed miss isn't reopened, and told fixed twice, by an hour that
+/// can't see for a moment: a host restarting at :10, or a switch from a
+/// branch. When the harness installed first carried a program change is
+/// kept in its `installed.json` until an hour sees it not carried, or
+/// pi-packages marks a version lacking it left since, so a later install
+/// doesn't hold it open again.
 #[must_use]
 pub fn unrun(
     merged: &BTreeSet<Named>,
@@ -137,27 +138,34 @@ pub fn unrun(
             merge_of(&path, change.number).as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
-            |sha| program::files(&path, sha),
+            |sha| {
+                let files = program::files(&path, sha);
+                if files.is_none() {
+                    eprintln!(
+                        "cadence: can't follow the pi host's program at {sha}, so each harness \
+                         change waits on every pi host and conversation"
+                    );
+                }
+                files
+            },
             |sha, reaches| {
                 let read = hosts.get_or_insert_with(read_hosts).as_deref();
+                let talks = talks.get_or_insert_with(read_talks).as_deref();
                 let carried = |rev: &str| carries(&path, sha, rev) == Some(true);
-                let (talks, since) = if reaches.program {
+                let since = if reaches.program {
                     let mirror = crate::axes::landings::harness_mirror();
-                    let since = first_installed(
+                    let named = revs.get(&change.repo).map(String::as_str);
+                    first_installed(
                         &firsts,
                         &mut now_firsts,
                         &key,
-                        |at| {
-                            program::left_since(&mirror, at)
-                                .is_none_or(|left| left.iter().any(|rev| !carried(rev)))
-                        },
-                        || program::swapped(&mirror),
-                    );
-                    (talks.get_or_insert_with(conversations).as_deref(), since)
+                        |at| stepped_back(program::left_since(&mirror, at), carried),
+                        || program::swapped(&mirror, named),
+                    )
                 } else if reaches.unit {
-                    (None, first_switched(switches, carried))
+                    first_switched(switches, carried)
                 } else {
-                    (None, None)
+                    None
                 };
                 // Walked only once a host keeps copies to compare with it.
                 let merged = std::cell::OnceCell::new();
@@ -249,9 +257,17 @@ fn keep_unseen(
     }
 }
 
+/// Whether `current` named a version lacking the change since the time
+/// kept, from the versions pi-packages marks it `left` since: one that
+/// isn't `carried`, or whose name isn't a commit's, so nothing but a
+/// commit reaches git; or marks that couldn't be read.
+fn stepped_back(left: Option<Vec<String>>, carried: impl Fn(&str) -> bool) -> bool {
+    left.is_none_or(|left| left.iter().any(|rev| !is_rev(rev) || !carried(rev)))
+}
+
 /// Why the pi hosts lack a change that `reaches` them, as `hosts_lack`
 /// says, with each conversation's process, `talks`, read beside the
-/// `hosts` for a change to their program, since each runs it too, and
+/// `hosts`, since each runs their program, unit and runtime too, and
 /// `None` when they couldn't be listed. A host lacking it outranks the
 /// conversations unread, so its owner is asked.
 fn lacking(
@@ -261,9 +277,6 @@ fn lacking(
     since: Option<i64>,
     loads: impl Fn(&Applied) -> Option<bool>,
 ) -> Option<&'static str> {
-    if !reaches.program {
-        return hosts_lack(hosts, reaches, since, loads);
-    }
     let Some(talks) = talks else {
         return hosts_lack(hosts, reaches, since, loads)
             .or(Some("cadence can't list the pi conversations"));
@@ -360,9 +373,9 @@ fn judge(
 /// runtime applied (`None` when it can't tell), and each must have started
 /// after `since`: when a switch first carried a change to their unit, or
 /// `current` last moved to the version carrying one to their program,
-/// `None` when cadence found neither. For the program, `hosts` holds each
-/// conversation's process too, as `lacking` gives them, and with none
-/// running nothing lacks it. A host failed and left so lacks anything
+/// `None` when cadence found neither. `hosts` holds each conversation's
+/// process too, as `lacking` gives them, and with none running a program
+/// change lacks nothing. A host failed and left so lacks anything
 /// reaching the hosts until it's reset. Something lacking outranks what
 /// can't be read, so the owner is asked.
 fn hosts_lack(
@@ -405,7 +418,7 @@ fn hosts_lack(
         return Some(if reaches.program {
             "a pi host or conversation runs the harness from before it"
         } else {
-            "a pi host keeps its unit from before it"
+            "a pi host or conversation keeps its unit from before it"
         });
     }
     if runtime && loaded.contains(&None) {
@@ -415,7 +428,7 @@ fn hosts_lack(
         return Some("cadence can't tell when the harness carrying it was installed");
     }
     if restarts && (since.is_none() || running().any(|host| host.started.is_none())) {
-        return Some("cadence can't tell when a pi host started");
+        return Some("cadence can't tell when a pi host or conversation started");
     }
     None
 }
@@ -626,16 +639,24 @@ fn only_lists(diff: &str, files: &[&str]) -> bool {
 /// Each pi host, with the patches its runtime applied where it keeps them,
 /// or `None` when the hosts couldn't be listed.
 fn read_hosts() -> Option<Vec<Host>> {
-    Some(
-        hosts()?
-            .into_iter()
-            .map(|(runtime, started, standing)| Host {
-                applied: runtime.and_then(|runtime| applied(&runtime)),
-                started,
-                standing,
-            })
-            .collect(),
-    )
+    hosts().map(as_hosts)
+}
+
+/// Each running conversation, read as `read_hosts` reads a host.
+fn read_talks() -> Option<Vec<Host>> {
+    conversations().map(as_hosts)
+}
+
+/// Each of `listed` with the patches its runtime applied.
+fn as_hosts(listed: Vec<Listed>) -> Vec<Host> {
+    listed
+        .into_iter()
+        .map(|(runtime, started, standing)| Host {
+            applied: runtime.and_then(|runtime| applied(&runtime)),
+            started,
+            standing,
+        })
+        .collect()
 }
 
 /// The patches the runtime at `root` applied, from the copies it keeps;

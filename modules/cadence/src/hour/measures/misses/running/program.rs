@@ -27,9 +27,12 @@ const PACKAGES: &[&str] = &["package.json", "pnpm-lock.yaml"];
 /// or a schema or query it reads, by `new URL("./schema.sql",
 /// import.meta.url)`, on one line or split over two. A path written only
 /// in a comment counts too, which errs toward a change waiting on the
-/// hosts.
-const IMPORT: &str =
-    r#"(from|import) *\(? *["']\.\.?/[^"']+["']|["']\.\.?/[^"'[:space:]]+\.[A-Za-z0-9]+["']"#;
+/// hosts. A load cadence can't follow, by a template's path or by a `#`
+/// name package.json maps, is matched too, so the walk can fail on it.
+const IMPORT: &str = concat!(
+    r#"(from|import) *\(? *["']\.\.?/[^"']+["']|["']\.\.?/[^"'[:space:]]+\.[A-Za-z0-9]+["']"#,
+    r#"|import *\( *`|(from|import) *\(? *["']#"#,
+);
 
 /// The files that import, as the harness names its scripts.
 const SCRIPTS: &[&str] = &["*.ts", "*.mts", "*.cts", "*.tsx", "*.js", "*.mjs", "*.cjs"];
@@ -39,9 +42,10 @@ const SCRIPTS: &[&str] = &["*.ts", "*.mts", "*.cts", "*.tsx", "*.js", "*.mjs", "
 /// imports nothing, as when it moved, or it names a file the commit
 /// doesn't hold, as a `./x.js` written for `x.ts` or a folder would: a
 /// walk that can't follow each step would read a change past it as
-/// loading nowhere. A load by a path made at run time isn't followed:
-/// the harness makes one only for a session's extensions, which aren't
-/// counted, and a worker's own code, written inline.
+/// loading nowhere, or it loads one by a path cadence can't follow. A
+/// load by a path made at run time isn't followed: the harness makes one
+/// only for a session's extensions, which aren't counted, and a worker's
+/// own code, written inline.
 pub fn files(path: &str, sha: &str) -> Option<BTreeSet<String>> {
     let mut args = vec!["-C", path, "grep", "--null", "-o", "-E", IMPORT, sha, "--"];
     args.extend(SCRIPTS);
@@ -60,9 +64,11 @@ pub fn files(path: &str, sha: &str) -> Option<BTreeSet<String>> {
 /// Every file `PROGRAM` imports, itself and through what it imports, from
 /// `found`'s lines, each `SHA:FILE`, a NUL, then the import, as
 /// `git grep --null -o` writes them for the commit `sha`; `None` when no
-/// line comes from `PROGRAM`, or it reaches a file not `held`.
+/// line comes from `PROGRAM`, or it reaches a file not `held`, or one
+/// loading by a template's path or a `#` name.
 fn imported(found: &str, sha: &str, held: &BTreeSet<&str>) -> Option<BTreeSet<String>> {
     let mut imports: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    let mut unfollowed: BTreeSet<&str> = BTreeSet::new();
     let prefix = format!("{sha}:");
     for line in found.lines() {
         let Some((file, import)) = line
@@ -71,6 +77,10 @@ fn imported(found: &str, sha: &str, held: &BTreeSet<&str>) -> Option<BTreeSet<St
         else {
             continue;
         };
+        if import.contains('`') || import.contains("\"#") || import.contains("'#") {
+            unfollowed.insert(file);
+            continue;
+        }
         let Some(target) = import
             .split(['"', '\''])
             .nth(1)
@@ -84,6 +94,9 @@ fn imported(found: &str, sha: &str, held: &BTreeSet<&str>) -> Option<BTreeSet<St
     let mut loaded = BTreeSet::from([PROGRAM.to_owned()]);
     let mut next = VecDeque::from([PROGRAM.to_owned()]);
     while let Some(file) = next.pop_front() {
+        if unfollowed.contains(file.as_str()) {
+            return None;
+        }
         for target in imports.get(file.as_str()).into_iter().flatten() {
             if !held.contains(target.as_str()) {
                 return None;
@@ -122,20 +135,26 @@ fn resolve(file: &str, to: &str) -> Option<String> {
 /// the change, so any host started since loaded it; the hour keeps the
 /// first such time it saw, so a later install doesn't hold a conversation
 /// started on an earlier one carrying it. `None` when the link can't be
-/// read.
-pub fn swapped(mirror: &Path) -> Option<i64> {
-    let link = std::fs::symlink_metadata(mirror.parent()?.join("current")).ok()?;
+/// read, or no longer names the version `named`, checked to carry it, as
+/// after a move since: its time would be another version's.
+pub fn swapped(mirror: &Path, named: Option<&str>) -> Option<i64> {
+    let current = mirror.parent()?.join("current");
+    let link = std::fs::symlink_metadata(&current).ok()?;
+    let target = std::fs::read_link(&current).ok()?;
+    (target.file_name()?.to_str() == Some(named?)).then_some(())?;
     let at = link.modified().ok()?;
     let at = at.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     Some(i64::try_from(at).ok()? + 1)
 }
 
-/// Each version `current` left at or after `at`, by its commit, as
-/// pi-packages marks one in `retired`, beside `mirror`, with the time it
-/// left: `current` named each such version after `at`, so a host or
-/// conversation started since may run it. pi-packages drops a version's
-/// mark as it drops the version, once nothing runs it. `None` when the
-/// marks can't be read; none when there are none yet.
+/// Each version pi-packages marked retired, in `retired` beside `mirror`,
+/// at or after `at`, by its commit. A swap marks the version `current`
+/// left with the time its run began, and a sweep marks a version current
+/// never named with its folder's time, so a mark since `at` may be either:
+/// counting each as named after `at` errs toward counting afresh. A mark
+/// goes with its version, once nothing runs it, so one swept as it's read
+/// is passed over. `None` when the marks can't be read; none when there
+/// are none yet.
 pub fn left_since(mirror: &Path, at: i64) -> Option<Vec<String>> {
     let marks = match std::fs::read_dir(mirror.parent()?.join("retired")) {
         Ok(marks) => marks,
@@ -145,7 +164,12 @@ pub fn left_since(mirror: &Path, at: i64) -> Option<Vec<String>> {
     let mut left = Vec::new();
     for mark in marks {
         let mark = mark.ok()?;
-        let when = mark.metadata().ok()?.modified().ok()?;
+        let meta = match mark.metadata() {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return None,
+        };
+        let when = meta.modified().ok()?;
         let when = when.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
         if i64::try_from(when).ok()? >= at {
             left.push(mark.file_name().into_string().ok()?);
@@ -206,6 +230,19 @@ mod tests {
             "a program naming a file its commit doesn't hold was followed as if it loaded nothing \
              past it"
         );
+        for unfollowed in ["import(`", "from \"#", "import '#"] {
+            let reached = format!("{found}f00d:lib/core/z.mjs\0{unfollowed}\n");
+            assert_eq!(
+                imported(&reached, "f00d", &held),
+                None,
+                "a program loading by {unfollowed} was followed as if it loaded nothing more"
+            );
+            let elsewhere = format!("{found}f00d:extensions/quest/index.ts\0{unfollowed}\n");
+            assert!(
+                imported(&elsewhere, "f00d", &held).is_some(),
+                "a load by {unfollowed} the program never reaches failed the walk"
+            );
+        }
     }
 
     #[test]
@@ -214,7 +251,11 @@ mod tests {
         std::fs::remove_dir_all(&place).ok();
         std::fs::create_dir_all(place.join("versions/abc")).expect("a version");
         let mirror = place.join("mirror.git");
-        assert_eq!(swapped(&mirror), None, "a missing link read as a move");
+        assert_eq!(
+            swapped(&mirror, Some("abc")),
+            None,
+            "a missing link read as a move"
+        );
         let current = place.join("current");
         std::os::unix::fs::symlink("versions/abc", &current).expect("the link");
         // The version and the link at two known times, read off no clock.
@@ -229,10 +270,15 @@ mod tests {
         touch(&["-d", "@2000000000", &version.to_string_lossy()]);
         touch(&["-h", "-d", "@1000000000", &current.to_string_lossy()]);
         assert_eq!(
-            swapped(&mirror),
+            swapped(&mirror, Some("abc")),
             Some(1_000_000_001),
             "the link's own time, a second on, wasn't read, or the link was followed to its \
              version's"
+        );
+        assert_eq!(
+            swapped(&mirror, Some("def")),
+            None,
+            "a link moved off the version checked to carry the change gave its new time"
         );
         assert_eq!(
             left_since(&mirror, 0),
