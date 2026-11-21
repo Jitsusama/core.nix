@@ -3,8 +3,9 @@
 //! while nobody streams, goes when the camera's node does or the program
 //! is stopped, and while the camera streams, its log says how.
 
+use std::fs::Permissions;
 use std::fs::{self, File};
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread::sleep;
@@ -37,16 +38,22 @@ impl Watch {
     /// The same, with a real device's node for the camera's, which a
     /// program holding it is seen holding, as only a node under /dev is.
     fn on(name: &str, device: Option<&Path>) -> Self {
-        Self::saying(name, device, false)
+        Self::saying(name, device, false, false)
+    }
+
+    /// The same, its node one the watch may not read, so inotify refuses
+    /// to watch it, as it does when it has no watches left to give.
+    fn blind(name: &str) -> Self {
+        Self::saying(name, None, false, true)
     }
 
     /// The same, its log and complaints going to /dev/full, which takes no
     /// write, as a journal stream that has gone takes none.
     fn unheard(name: &str, device: &Path) -> Self {
-        Self::saying(name, Some(device), true)
+        Self::saying(name, Some(device), true, false)
     }
 
-    fn saying(name: &str, device: Option<&Path>, unheard: bool) -> Self {
+    fn saying(name: &str, device: Option<&Path>, unheard: bool, blind: bool) -> Self {
         let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let sysfs = root.join("sys");
@@ -113,6 +120,9 @@ impl Watch {
             command.stdout(full()).stderr(full());
         } else {
             command.stdout(File::create(&log).unwrap());
+        }
+        if blind {
+            fs::set_permissions(&node, Permissions::from_mode(0o000)).unwrap();
         }
         let program = command.spawn().unwrap();
         Self {
@@ -443,18 +453,50 @@ fn the_file_goes_when_it_is_stopped() {
 fn a_file_that_cant_go_keeps_what_finds_it() {
     let mut watch = Watch::start("stuck");
     watch.until_there(true, "no file while the camera's there");
-    // A folder full where its file was, which removing a file can't take.
-    fs::remove_file(&watch.file).unwrap();
-    fs::create_dir(&watch.file).unwrap();
-    fs::write(watch.file.join("inside"), "").unwrap();
+    // A folder nothing may be removed from, though its node files may.
+    let folder = watch.file.parent().unwrap().to_owned();
+    fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
+    if File::create(folder.join("probe")).is_ok() {
+        eprintln!("skipped: a privileged run may remove from any folder");
+        return;
+    }
     watch.stop();
-    assert_ne!(
-        watch.ended(),
-        Some(0),
-        "a file it couldn't remove went unsaid"
+    let ended = watch.ended();
+    // Then the unit's stop step, as it runs after a failed run.
+    let forget = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .args(["--usb", "--forget", "--sysfs"])
+        .arg(watch.root.join("sys"))
+        .arg(&watch.node)
+        .arg(&folder)
+        .output()
+        .unwrap();
+    let kept = watch.device().exists();
+    fs::set_permissions(&folder, Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(ended, Some(1), "a file it couldn't remove went unsaid");
+    assert!(
+        forget.status.success(),
+        "forgetting ended {}",
+        forget.status
     );
     assert!(
-        watch.device().exists(),
+        kept,
         "the node file went, so nothing can find what was left"
+    );
+}
+
+#[test]
+fn a_watch_that_cant_be_made_fails_so_it_starts_again() {
+    let mut watch = Watch::blind("blind");
+    if fs::read_dir(&watch.node).is_ok() {
+        eprintln!("skipped: a privileged run may watch any node");
+        return;
+    }
+    // It waits five seconds before giving up on the watch.
+    let ended = (0..3).find_map(|_| watch.ended());
+    fs::set_permissions(&watch.node, Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        ended,
+        Some(1),
+        "a watch that left a camera still there unwatched ended cleanly"
     );
 }

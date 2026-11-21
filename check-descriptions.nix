@@ -5391,8 +5391,8 @@
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
     writes as it stops, so a run killed before removing its files leaves no camera said there
-    unless a loopback has the node by then, and starts again when its run crashes, three times a
-    minute at most
+    unless a loopback has the node by then, and starts again when its run crashes, backing off to a
+    minute, with no start limit to refuse a camera plugged in again
   '';
   usb-camera-holders-may-open-the-camera = ''
     the USB camera watch's unit lets it open a camera to read, under its ProtectClock, with no
