@@ -3233,7 +3233,8 @@ fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
 /// nothing with no way to tell which of these each was.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Why {
-    /// Free space short of the target, or forecast to be.
+    /// Free space short of the target, or forecast to be; a forecast's line
+    /// shows the band it reaches for, not the one the disk is in.
     Reach,
     /// A healthy disk's routine: every six hours, and at once when an
     /// owner ends, a new boot or guard binary starts, a snapshot's build
@@ -3246,7 +3247,8 @@ enum Why {
     /// Nix's garbage, once something let some go: alone, with no survey,
     /// unless another disk was due in the same step, when the survey's
     /// offers on the store's disk come too, and the line says how long
-    /// that survey took.
+    /// that survey took. It runs as the routine, so it puts off every
+    /// disk's next six-hourly upkeep.
     Garbage,
     /// Producers whose watched files said something new.
     Producers,
@@ -3554,9 +3556,10 @@ impl Reclaimer for Pretending {
     }
 }
 
-// Garbage beside another disk's survey needs two watched disks in one
-// step, which no fixture builds, so the mapping a pass's line reads from
-// is pinned here.
+// Pins which why and goal each decision gives its pass. Which survey a
+// garbage pass beside another disk's is handed is chosen in `passes`,
+// which needs two watched disks in one step, and no fixture builds that,
+// so this test doesn't cover it.
 #[cfg(test)]
 mod tests {
     use super::{Band, Decision, Goal, Why, aim};
