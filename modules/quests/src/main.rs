@@ -198,7 +198,12 @@ fn keep_looked(kept: &Path, looked: &Looked) -> io::Result<()> {
     if let Some(folder) = kept.parent() {
         fs::create_dir_all(folder)?;
     }
-    fs::write(&next, moved::kept(looked))?;
+    // Synced before it's moved into place, so a machine losing power
+    // leaves what was kept before rather than an empty file, which would
+    // say every ask again.
+    let mut file = File::create(&next)?;
+    io::Write::write_all(&mut file, moved::kept(looked).as_bytes())?;
+    file.sync_all()?;
     fs::rename(&next, kept)
 }
 

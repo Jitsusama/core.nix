@@ -117,7 +117,11 @@ mod tests {
             "moved-landed",
             "moved-landed-more",
             "moved-dated",
+            "moved-dated-more",
+            "moved-given",
+            "moved-given-more",
             "moved-taken",
+            "moved-taken-more",
             "moved-next",
         ];
         for key in ["empty", "open", "driving"].into_iter().chain(moved) {

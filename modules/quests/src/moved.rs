@@ -77,8 +77,19 @@ impl Ask {
 enum How {
     Landed,
     Dated,
+    /// Given its first date: a promise made, never one slipped.
+    Given,
     Taken,
 }
+
+/// Each way an ask moves, in the order a note says them, with the word
+/// that says it.
+const SAID: [(How, &str); 4] = [
+    (How::Landed, "moved-landed"),
+    (How::Dated, "moved-dated"),
+    (How::Given, "moved-given"),
+    (How::Taken, "moved-taken"),
+];
 
 fn moment_of(line: &Value, field: &str) -> Option<i64> {
     line.get(field)
@@ -201,6 +212,8 @@ fn how(ask: &Ask, looked: &Looked) -> Option<How> {
     };
     if ask.landed.is_some() && ask.landed != was.landed {
         Some(How::Landed)
+    } else if ask.landed.is_none() && was.expected.is_none() && ask.expected.is_some() {
+        Some(How::Given)
     } else if ask.landed.is_none() && ask.expected != was.expected {
         Some(How::Dated)
     } else {
@@ -283,10 +296,12 @@ fn entries<'a>(
         .collect()
 }
 
-/// A quest's entry: what landed, else that a date moved, else what it
-/// took on, and the next date it still owes: the soonest still to come,
-/// since a date passed unlanded is a slip its keeper dates again, never
-/// the next one owed; with the asks its note names.
+/// A quest's entry: what landed, else that a date moved, else that one
+/// was given, else what it took on, each of the kind at once with how
+/// many more, so a backlog is said in one look rather than one a look;
+/// and the next date it still owes: the soonest still to come, since a
+/// date passed unlanded is a slip its keeper dates again, never the next
+/// one owed; with the asks its note names.
 fn entry<'a>(
     quest: Quest,
     own: &[&'a Ask],
@@ -303,21 +318,19 @@ fn entry<'a>(
         these.sort_by_key(|ask| std::cmp::Reverse(ask.landed.unwrap_or(ask.latest)));
         these
     };
-    let (landed, dated, taken) = (all(How::Landed), all(How::Dated), all(How::Taken));
-    let note = match (landed.as_slice(), dated.first(), taken.first()) {
-        ([one], ..) => words.fill("moved-landed", &[("words", &one.words)]),
-        ([one, rest @ ..], ..) => words.fill(
-            "moved-landed-more",
+    let landed = all(How::Landed).len();
+    let (named, word) = SAID
+        .iter()
+        .map(|(how, word)| (all(*how), *word))
+        .find(|(these, _)| !these.is_empty())
+        .unwrap_or_default();
+    let note = match named.as_slice() {
+        [] => String::new(),
+        [one] => words.fill(word, &[("words", &one.words)]),
+        [one, rest @ ..] => words.fill(
+            &format!("{word}-more"),
             &[("words", &one.words), ("more", &rest.len().to_string())],
         ),
-        ([], Some(one), _) => words.fill("moved-dated", &[("words", &one.words)]),
-        ([], None, Some(one)) => words.fill("moved-taken", &[("words", &one.words)]),
-        ([], None, None) => String::new(),
-    };
-    let named: Vec<&Ask> = match (landed.as_slice(), dated.first(), taken.first()) {
-        ([_, ..], ..) => landed.clone(),
-        ([], Some(one), _) | ([], None, Some(one)) => vec![*one],
-        ([], None, None) => Vec::new(),
     };
     let next = soonest(own.iter().copied(), now);
     let side: Vec<Value> = next
@@ -328,7 +341,7 @@ fn entry<'a>(
         "key": format!("{KIND}:quests:{}", quest.id()), "kind": KIND,
         "thing": format!("quest:{}", quest.id()), "name": quest.name(),
         "reads": quest.summary(), "note": note, "side": side,
-        "held": { "id": quest.id(), "landed": landed.len(), "moved": moved.len() },
+        "held": { "id": quest.id(), "landed": landed, "moved": moved.len() },
     });
     (entry, named)
 }
@@ -342,7 +355,11 @@ mod tests {
             ("moved-landed", "landed: {words}"),
             ("moved-landed-more", "landed: {words}, and {more} more"),
             ("moved-dated", "a date moved: {words}"),
+            ("moved-dated-more", "a date moved: {words}, and {more} more"),
+            ("moved-given", "dated: {words}"),
+            ("moved-given-more", "dated: {words}, and {more} more"),
             ("moved-taken", "taken on: {words}"),
+            ("moved-taken-more", "taken on: {words}, and {more} more"),
             ("moved-next", "next {time}"),
         ])
     }
@@ -487,6 +504,12 @@ mod tests {
             line("ONE", AT, "new", &json!({})),
         ]
         .join("\n");
+        let mut looked = looked;
+        looked.extend(shown(&asks(&line("ONE", AT, "first", &json!({})))));
+        let after = format!(
+            "{after}\n{}",
+            line("ONE", AT, "first", &json!({"expected": ahead}))
+        );
         let asks = asks(&after);
         let moved: Vec<(&str, Option<How>)> = asks
             .iter()
@@ -497,6 +520,7 @@ mod tests {
             [
                 ("ahead", None),
                 ("dated", Some(How::Dated)),
+                ("first", Some(How::Given)),
                 ("landed-dated", None),
                 ("lands", Some(How::Landed)),
                 ("new", Some(How::Taken)),
@@ -666,14 +690,14 @@ mod tests {
         );
         looked.extend(seen);
         // What ONE took on behind its landings wasn't said, so it's said
-        // now rather than counted as seen, one look each.
+        // now rather than counted as seen, both in the one look.
         let next = record(&after, &looked, &quests, &words(), now());
-        assert_eq!(next["moved"][0]["note"], "taken on: later", "{next}");
+        assert_eq!(
+            next["moved"][0]["note"], "taken on: later, and 1 more",
+            "{next}"
+        );
         assert_eq!(next["moved"].as_array().map(Vec::len), Some(1), "{next}");
         looked.extend(seen_in(&next["seen"]).expect("what it shows reads back"));
-        let last = record(&after, &looked, &quests, &words(), now());
-        assert_eq!(last["moved"][0]["note"], "taken on: owed", "{last}");
-        looked.extend(seen_in(&last["seen"]).expect("what it shows reads back"));
         assert_eq!(
             record(&after, &looked, &quests, &words(), now())["moved"],
             json!([]),
