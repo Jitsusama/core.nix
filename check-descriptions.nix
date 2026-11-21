@@ -2052,8 +2052,10 @@
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
     reading's order at the top, their cells worst first, the rows only open branches show and
-    where each tree key goes from a row, edges included, what each cell, network and machine is
-    in words, counts, sums and labels included, each time said against the reading's own with
+    where each tree key goes from a row, edges included, the builders the node reads kept as
+    builders, never cells, and rooted after the machines, what each cell, network, machine and
+    builder is in words, counts, sums and labels included, each time said against the reading's
+    own with
     its day only off the reading's and a lease's time left, and how each set of cells and each
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
@@ -2073,7 +2075,9 @@
     feeding of a cell drawn with both drawers saying it and leaving once its ten minutes end or the
     node drops it, a network grown out of another as its branch once a forage says a cell of the
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
-    the branch going with the forage, a key of each
+    the branch going with the forage, the builders standing under the machines in rounded boxes,
+    dashed while taking no builds, their words read unopened, opened by link and let go by m,
+    a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
     and out about its middle, panned a step across and down and fitted whole again, -
