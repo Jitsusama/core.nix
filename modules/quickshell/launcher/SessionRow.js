@@ -192,25 +192,54 @@ function footName(served, title, address) {
 
 // The node's reason for refusing an act on a session, without the address
 // it opens with (mycelium's steer_here says "<ADDRESS> isn't parked ..."),
-// since the row or the name beside it already stands for the session.
-function reasonOf(why, address) {
+// since the row or the name beside it already stands for the session, and
+// the address anywhere after said as `name`, when there is one, so no id
+// reaches the foot.
+function reasonOf(why, address, name) {
     const upper = String(address ?? "").toUpperCase();
     const given = String(why ?? "");
-    return upper !== "" && given.toUpperCase().startsWith(`${upper} `)
-        ? given.slice(upper.length + 1) : given;
+    if (upper === "")
+        return given;
+    const rest = given.toUpperCase().startsWith(`${upper} `) ? given.slice(upper.length + 1)
+        : given;
+    const called = String(name ?? "").trim();
+    // An address is letters and figures alone, so it needs no escaping.
+    return called === "" || !/^[A-Z0-9]+$/.test(upper) ? rest
+        : rest.replace(new RegExp(`\\b${upper}\\b`, "g"), () => called);
+}
+
+// An act's own name as the vocabulary says it ("Wake", "Pause"), by
+// `nameOf`, Words.name: none for words talked to a session, and none for an
+// act the vocabulary doesn't name, as For You's "fill" or a look's
+// "answer", whose id is all Words.name would give.
+function actName(act, nameOf) {
+    const given = String(act ?? "");
+    if (given === "")
+        return "";
+    const id = `verb:agent:${given}`;
+    const name = String(nameOf(id) ?? "");
+    return name === id ? "" : name;
 }
 
 // What the foot says of an act a session's node refused or never answered,
-// as `[name, words]`. The act is named by its own name ("Wake", "Pause"),
-// or none for words talked to it, and the node's reason by reasonOf.
+// as `[name, words]`. The act is named by actName ("Wake", "Talk"), or none
+// for words talked to it or an act the vocabulary doesn't name, and the
+// node's reason by reasonOf. With no reason, the node never answered, so
+// nothing is said refused or untold, since it may yet have been done.
 // `said` is the vocabulary's agents:machine words; `refused` holds the
 // act's name, the node's `why`, the session's `address` and its `name`.
+// Each value goes in as it is, never read as a replacement's pattern.
 function refusal(said, refused) {
     const { act, why, address, name } = refused;
     const upper = String(address ?? "").toUpperCase();
-    const own = reasonOf(why, upper);
-    const reason = own === "" ? String(said.unanswered ?? "") : own;
+    const called = footName(name, "", upper);
+    const reason = reasonOf(why, upper, called === upper ? "" : called);
+    if (reason === "") {
+        const words = act === "" ? String(said.unanswered ?? "")
+            : String(said.unansweredTo ?? "").replace("{act}", () => act);
+        return [called, words];
+    }
     const words = act === "" ? String(said.untold ?? "")
-        : String(said.refused ?? "").replace("{act}", act);
-    return [footName(name, "", upper), words.replace("{why}", reason)];
+        : String(said.refused ?? "").replace("{act}", () => act);
+    return [called, words.replace("{why}", () => reason)];
 }
