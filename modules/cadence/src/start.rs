@@ -85,20 +85,7 @@ pub fn revive(
             .as_ref()
             .and_then(|q| fs::read_to_string(reviving.quests.join(q).join("README.md")).ok())
             .map(|readme| revive::quest(&readme));
-        let hold = node.as_deref().map_or_else(
-            || {
-                if held(&s.session) {
-                    Held::Running
-                } else {
-                    Held::Not
-                }
-            },
-            |all| {
-                revive::held(all, &s.session, |pid| {
-                    revive::keeps_running(s.hosted.is_some(), is_pi(pid), shows(pid))
-                })
-            },
-        );
+        let hold = holding(s, node.as_deref());
         let named = matches!(hold, Held::Running | Held::Parked);
         let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
             Verdict::Died { cwd } => cwd,
@@ -511,6 +498,19 @@ fn pi_under(pid: u32) -> bool {
         }
     }
     false
+}
+
+/// How `s` is held: by the node's holders where it lists them, a viewer
+/// counting only for a session no host runs (`revive::keeps_running`),
+/// or by a process here naming it where the node can't be asked.
+fn holding(s: &Seen, node: Option<&[Holder]>) -> Held {
+    match node {
+        Some(all) => revive::held(all, &s.session, |pid| {
+            revive::keeps_running(s.hosted.is_some(), is_pi(pid), shows(pid))
+        }),
+        None if held(&s.session) => Held::Running,
+        None => Held::Not,
+    }
 }
 
 /// Whether a process other than a pi holds `session`, naming it after

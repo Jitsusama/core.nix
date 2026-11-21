@@ -517,11 +517,15 @@ pub fn held(holders: &[Holder], session: &str, runs: impl Fn(u32) -> bool) -> He
 }
 
 /// Whether a holder's process keeps its session running: a pi, or a
-/// viewer of one, as a window handed into a host runs.
+/// viewer of one, as a window handed into a host runs, but for a session
+/// a host runs only a pi. A hosted session's viewer only shows what its
+/// host runs, so with the host down it keeps nothing alive; counted as
+/// running, it hid a host left down, since after a crash the launcher
+/// opens each hosted session's viewer to wait for its host. Nothing is
+/// closed for it: a hosted session is never judged dead.
 #[must_use]
 pub fn keeps_running(hosted: bool, pi: bool, viewer: bool) -> bool {
-    let _ = hosted;
-    pi || viewer
+    pi || (viewer && !hosted)
 }
 
 /// The realm the restart words hold a session in, after `--realm`.
