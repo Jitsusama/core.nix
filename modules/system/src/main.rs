@@ -136,7 +136,10 @@ pub(crate) fn read() -> (System, Notes) {
     // Each owner's answer stands on its last good one for a read missed,
     // as under load one may be; with no state home, none is kept. Each
     // realm keeps its own, as mycelium answers for the realm asked.
-    let kept = state_home().map(|state| Kept::in_folder(state.join("system/kept").join(realm())));
+    let kept = state_home().map(|state| {
+        let realm = std::env::var("MYCELIUM_REALM").unwrap_or_default();
+        Kept::in_folder(state.join("system/kept").join(kept::realm_folder(&realm)))
+    });
     let at = now();
     let mut used = asked
         .iter()
@@ -181,21 +184,6 @@ pub(crate) fn read() -> (System, Notes) {
         Homes::read(&sites).place(&mut system);
     }
     (system, notes)
-}
-
-/// The realm mycelium is asked in, as a folder's name: the one this
-/// account's sessions are in, or none.
-fn realm() -> String {
-    let realm: String = std::env::var("MYCELIUM_REALM")
-        .unwrap_or_default()
-        .chars()
-        .filter(|each| each.is_ascii_alphanumeric() || matches!(each, '-' | '_'))
-        .collect();
-    if realm.is_empty() {
-        "no-realm".to_owned()
-    } else {
-        format!("realm-{realm}")
-    }
 }
 
 /// Puts an error the firmware kept before this boot into this machine's

@@ -153,12 +153,33 @@ impl Notes {
     }
 }
 
+/// The folder a realm's answers are kept in, `realm` as `MYCELIUM_REALM`
+/// names it: mycelium answers for the realm asked, so each keeps its own.
+/// A character a folder's name shouldn't carry is written as its code, so
+/// no two realms share a folder, and an unnamed realm is apart from all.
+pub fn realm_folder(realm: &str) -> String {
+    if realm.is_empty() {
+        return "no-realm".to_owned();
+    }
+    let named: String = realm
+        .chars()
+        .map(|each| {
+            if each.is_ascii_alphanumeric() || matches!(each, '-' | '_') {
+                each.to_string()
+            } else {
+                format!("+{:x}+", u32::from(each))
+            }
+        })
+        .collect();
+    format!("realm-{named}")
+}
+
 /// Says, on each part and each machine read from a kept answer, when that
-/// was read and why the newest read wasn't: a part after what it says, a
-/// machine after what it says when the machines' own answer was kept, and
-/// a machine's cells, network and code under its ties' `kept`, each only
-/// on a tie that answer gave it. A part so read is judged no better than
-/// watch.
+/// was read and why the newest read wasn't: a part and a machine after
+/// what it says and among what is worth a look, and a machine's cells,
+/// network and code under its ties' `kept`, each only on a tie that answer
+/// gave it. A part or machine so read is judged no better than watch, as
+/// its owner didn't answer.
 pub fn mark(system: &mut System, notes: &Notes) {
     let owners = [
         ("cells", &notes.health),
@@ -167,14 +188,17 @@ pub fn mark(system: &mut System, notes: &Notes) {
     ];
     for part in &mut system.parts {
         if let Some(note) = notes.of(part.name) {
-            part.says = format!("{}, {note}", part.says);
+            part.says = told(&part.says, note);
+            part.side.push(note.to_owned());
             part.health = part.health.max(Health::Watch);
         }
         for thing in &mut part.things {
             if part.name == "machines"
                 && let Some(note) = &notes.machines
             {
-                thing.says = format!("{}, {note}", thing.says);
+                thing.says = told(&thing.says, note);
+                thing.side.push(note.clone());
+                thing.health = thing.health.max(Health::Watch);
             }
             let Some(ties) = thing.ties.as_object_mut() else {
                 continue;
@@ -189,6 +213,22 @@ pub fn mark(system: &mut System, notes: &Notes) {
             }
         }
     }
+}
+
+/// `says` with `note` after it: as a clause after one, or as a sentence
+/// of its own after one that ends as a sentence, as the network's does.
+fn told(says: &str, note: &str) -> String {
+    const ENDS: [char; 4] = ['.', '?', '!', '\u{2026}'];
+    if !says.ends_with(ENDS) {
+        return format!("{says}, {note}");
+    }
+    let mut letters = note.chars();
+    let capital: String = letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect())
+        .unwrap_or_default();
+    let stop = if note.ends_with(ENDS) { "" } else { "." };
+    format!("{says} {capital}{stop}")
 }
 
 #[cfg(test)]
@@ -438,10 +478,11 @@ mod tests {
             Health::Good,
             "the mycelium reads good"
         );
+        let note = "as read at 11:54; just now mycelium health ended with 1";
         mark(
             &mut system,
             &Notes {
-                health: Some("as read at 11:54; just now mycelium health ended with 1".to_owned()),
+                health: Some(note.to_owned()),
                 ..Notes::default()
             },
         );
@@ -449,6 +490,64 @@ mod tests {
             system.parts[1].health,
             Health::Watch,
             "an owner that didn't answer is watched, whatever it last said"
+        );
+        assert_eq!(
+            system.parts[1].side.last().map(String::as_str),
+            Some(note),
+            "what makes it worth a look is said among what is"
+        );
+    }
+
+    #[test]
+    fn a_note_follows_a_clause_as_a_clause_and_a_sentence_as_a_sentence() {
+        let note = "as read at 11:54; just now net --json gave no answer in 20 s";
+        assert_eq!(
+            told("21 devices", note),
+            format!("21 devices, {note}"),
+            "a clause takes the note after a comma"
+        );
+        assert_eq!(
+            told("The Hall point is weak. 12 devices.", note),
+            "The Hall point is weak. 12 devices. As read at 11:54; just now net --json gave \
+             no answer in 20 s.",
+            "sentences take the note as one of their own"
+        );
+        assert_eq!(
+            told(
+                "12 devices.",
+                "as read at 11:54; just now net --json ended with 1: no route."
+            ),
+            "12 devices. As read at 11:54; just now net --json ended with 1: no route.",
+            "an owner's words that end a sentence are stopped once"
+        );
+    }
+
+    #[test]
+    fn each_realm_keeps_its_own_folder() {
+        assert_eq!(
+            realm_folder(""),
+            "no-realm",
+            "no realm has a folder of its own"
+        );
+        assert_eq!(
+            realm_folder("home"),
+            "realm-home",
+            "a plain realm is named as it is"
+        );
+        assert_ne!(
+            realm_folder("no"),
+            realm_folder(""),
+            "a realm named like the unnamed one is apart from it"
+        );
+        assert_ne!(
+            realm_folder("a.b"),
+            realm_folder("ab"),
+            "realms that differ only by a character a folder can't carry stay apart"
+        );
+        assert!(
+            !realm_folder("../up").contains('/') && !realm_folder("../up").contains(".."),
+            "a realm can't name a folder outside the kept one: {}",
+            realm_folder("../up")
         );
     }
 
@@ -470,6 +569,17 @@ mod tests {
                 thing.name,
                 thing.says
             );
+            assert_eq!(
+                (thing.health, thing.side.last().map(String::as_str)),
+                (Health::Watch, Some(note)),
+                "{} read from the kept machines is worth a look, saying why",
+                thing.name
+            );
         }
+        assert_eq!(
+            system.parts[0].health,
+            Health::Watch,
+            "the machines part read from a kept answer is watched"
+        );
     }
 }

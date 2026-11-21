@@ -209,6 +209,29 @@ it("a tie read from an owner's last good answer says when and why", () => {
   );
 });
 
+it("each tie says its own owner's note, stopped once", () => {
+  const net = "as read at 11:54; just now net --json ended with 1: no route.";
+  const repos = "as read at 11:55; just now repos --json gave no answer in 20 s";
+  const kept = tiesOf({ ...ties, kept: { network: net, code: repos } });
+  const netTold = "As read at 11:54; just now net --json ended with 1: no route.";
+  const reposTold = "As read at 11:55; just now repos --json gave no answer in 20 s.";
+  assert.equal(
+    networkSaid(kept).aside,
+    `A strong signal, with 184 Mb/s of room. ${netTold}`,
+    "the network read from a kept net says so, its owner's stop kept once",
+  );
+  assert.equal(
+    codeSaid(kept, "kestrel", true).aside,
+    `2,174 trees; 8 checkouts behind their upstreams; 127 open changes. ${reposTold}`,
+    "the code read from a kept repos says so",
+  );
+  assert.deepEqual(
+    cellsSaid(kept),
+    cellsSaid(tiesOf(ties)),
+    "cells read from their own answer say nothing of the others",
+  );
+});
+
 it("its network says where it meets it, by band or by wire, and how well", () => {
   assert.deepEqual(networkSaid(tiesOf(ties)), {
     said: "Wi-Fi to the Hall point, on 2.4 GHz",

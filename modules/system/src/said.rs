@@ -476,6 +476,37 @@ mod tests {
     }
 
     #[test]
+    fn each_tie_says_its_own_owners_note() {
+        let net = "as read at 11:54; just now net --json gave no answer in 20 s";
+        let repos = "as read at 11:55; just now repos --json gave no answer in 20 s";
+        let ties = json!({
+            "cells": {"busy": 2, "idle": 3, "ended": 0},
+            "network": [],
+            "code": {"repositories": 1, "checkouts": 1, "trees": 0, "behind": 0,
+                     "changes": 0},
+            "kept": {"network": net, "code": repos},
+        });
+        assert_eq!(
+            network(&ties).aside,
+            format!("no device on it carries this machine's name, {net}"),
+            "the network read from a kept net says so"
+        );
+        assert_eq!(
+            code(&ties, "kestrel", true),
+            said(
+                "1 checkout of 1 repository",
+                &format!("no tree; no checkout behind its upstream; no open change, {repos}")
+            ),
+            "the code read from a kept repos says so"
+        );
+        assert_eq!(
+            cells(&ties).aside,
+            "none has ended",
+            "cells read from their own answer say nothing of the others"
+        );
+    }
+
+    #[test]
     fn code_is_counted_where_it_was_read_and_said_unread_elsewhere() {
         let read = json!({"code": {"repositories": 12, "checkouts": 14, "trees": 3,
                                    "behind": 1, "changes": 0}});

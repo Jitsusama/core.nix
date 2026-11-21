@@ -25,8 +25,9 @@ asked is unread, with why. The whole takes the worst part that was read.
 It keeps each owner's last good answer, so an owner that misses a read but
 answered in the last ten minutes stands on that answer, and the part and
 each machine's tie read from it say "as read at 11:54" and why the newest
-read missed. Such a part is judged no better than watch, and its owner is
-said not answering. Otherwise its answer is now; a run takes under a second when
+read missed. Such a part, like a machine read from kept machines, is
+judged no better than watch with that note as what is worth a look, and
+its owner is said not answering. Otherwise its answer is now; a run takes under a second when
 the machine isn't loaded.
 
 ## Reading It

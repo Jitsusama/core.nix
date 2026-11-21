@@ -193,7 +193,7 @@ function keptSaid<T extends Said>(said: T, note: string | undefined): T {
   if (note === undefined || note === "") {
     return said;
   }
-  const told = `${note.charAt(0).toUpperCase()}${note.slice(1)}.`;
+  const told = stopped(capital(note));
   return { ...said, aside: said.aside === "" ? told : `${said.aside} ${told}` };
 }
 
