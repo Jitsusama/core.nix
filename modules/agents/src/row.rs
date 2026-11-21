@@ -94,6 +94,9 @@ pub struct Known<'a> {
     /// The theme's mark for the shape a session's team is drawn by, by
     /// pi's id for the session leading it (shape.rs).
     pub shape: &'a dyn Fn(&str) -> Option<&'static str>,
+    /// Whether Joel put off what a session wants of him, for the hour
+    /// Put It Off holds it (wants.rs's `PutOff`).
+    pub put_off: &'a dyn Fn(Session) -> bool,
 }
 
 /// Where a row is placed: how deep, and whether it orchestrates others.
@@ -344,7 +347,10 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         .then(|| (known.shape)(session.id()))
         .flatten();
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
-    let waits_on_joel = wears == Stands::Needs;
+    // A want Joel put off still waits, so its row keeps his mark, but in
+    // its own hue, lighting nothing above it (top.rs) until the hour is up.
+    let put_off = wears == Stands::Needs && (known.put_off)(session);
+    let waits_on_joel = wears == Stands::Needs && !put_off;
     let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
@@ -360,7 +366,11 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         glyph,
         mark: shape.unwrap_or("agent"),
         mark_hue: standing::unwaited_hue(stands, !full.is_empty()),
-        hue: standing::hue(wears, !full.is_empty()),
+        hue: if put_off {
+            standing::unwaited_hue(wears, !full.is_empty())
+        } else {
+            standing::hue(wears, !full.is_empty())
+        },
         side: said_of(&items),
         side_items: items,
         note: noted.clone(),
@@ -536,6 +546,7 @@ mod tests {
         joel_can: JoelCan,
         jobs: Vec<Value>,
         sharing: bool,
+        put_off: Vec<String>,
     }
 
     fn given() -> Given {
@@ -543,6 +554,7 @@ mod tests {
             joel_can: JoelCan::default(),
             jobs: Vec::new(),
             sharing: false,
+            put_off: Vec::new(),
         }
     }
 
@@ -562,6 +574,7 @@ mod tests {
             sharing: given.sharing,
             needs: &|quest| usize::from(quest == "QEST-B"),
             shape: &|id| (id == "s-lead").then_some("shapeSquare"),
+            put_off: &|one| given.put_off.contains(&one.address().to_owned()),
         };
         row(Session(record), place, &known, &words())
     }
@@ -697,6 +710,31 @@ mod tests {
             ],
             ["warning", "program"],
             "and the hue, so For You's rows aren't all alert, its nearing limit still warned"
+        );
+    }
+
+    #[test]
+    fn a_want_joel_put_off_keeps_his_mark_in_its_own_hue_and_waits_on_him_for_nothing() {
+        let asking = json!({"presence": {"addresses": ["P"], "session": "s-1",
+            "wants": {"kind": "approval", "said": "May I push?"}}});
+        let put_off = Given {
+            put_off: vec!["P".to_owned()],
+            ..given()
+        };
+        let marks = |given: &Given| {
+            let row = made(&asking, Place::default(), given);
+            format!(
+                "{}:{}:{}:{}",
+                row.state, row.glyph, row.hue, row.waits_on_joel
+            )
+        };
+        assert_eq!(
+            [marks(&given()), marks(&put_off)],
+            [
+                "needs:waitsOnJoel:alert:true",
+                "needs:waitsOnJoel:program:false"
+            ],
+            "put off, it still waits, so it keeps his mark, but quietly, lifting nothing above it"
         );
     }
 

@@ -562,6 +562,8 @@ impl Inputs {
         let to_dos = |quest: &str| self.needs(quest).len();
         let by_lead = shape::by_lead(self.teams.records().map(|(_, team)| team));
         let shaped = |id: &str| by_lead.get(id).copied();
+        let now_ms = clock::now_ms();
+        let put_off = |one: Session| self.put_off.holds_for(one, now_ms);
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
@@ -572,6 +574,7 @@ impl Inputs {
             sharing: self.sharing,
             needs: &to_dos,
             shape: &shaped,
+            put_off: &put_off,
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
