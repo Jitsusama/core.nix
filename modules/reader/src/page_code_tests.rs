@@ -269,7 +269,7 @@ fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
     let (item, probe_pt, _) = set_in_a_list(&"a-name".repeat(4), width);
     let room = width.measure_pt - item;
     let per_char = probe_pt / 24.0;
-    let wanted = (room + width.measure_pt) / 2.0 / per_char;
+    let wanted = f64::midpoint(room, width.measure_pt) / per_char;
     let name: String = "a-name"
         .repeat(20)
         .chars()
