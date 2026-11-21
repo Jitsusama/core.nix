@@ -186,6 +186,10 @@
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
     battery without repeating it, and said once it takes
   '';
+  a-repository-link-lands-on-its-row = ''
+    a mycelium:repository/ link opens Code on the row its whole key names and no other, waits for
+    that row before Code has read its rows, and lands on none for a key no row has, saying so
+  '';
   a-row-made-again-keeps-every-field = ''
     a collection's row made again from a row made, as For You makes a session's from Agents', keeps
     every field it is given over 60 shapes grown from one another, and makes its own name ready to

@@ -1057,7 +1057,11 @@
       "glyph": "branch",
       "ask": "which repository?",
       "empty": "No repositories under the folders it reads.",
-      "none": "none found"
+      "none": "none found",
+      "said": {
+        "unlisted": "the link named a repository Code doesn't list",
+        "unlistedWhy": "no checkout of it lies under the folders Code reads"
+      }
     },
     {
       "id": "tabs",

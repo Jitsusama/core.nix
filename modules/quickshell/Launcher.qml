@@ -1614,10 +1614,10 @@ Scope {
     }
 
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
-    // talkTo, goToCell, showNetwork or showMachine, never opens over: what he's typed, and
-    // where he is, stay as they are, and the link opens nothing (ISXEG8's ruling, 2026-11-15
-    // [dd375f5e]). A link opens either only from closed, holding his first keys back
-    // (Prompt.qml's linked). One still opening counts, since open is set only once its
+    // talkTo, goToCell, showNetwork, showMachine or showCode, never opens over: what he's
+    // typed, and where he is, stay as they are, and the link opens nothing (ISXEG8's ruling,
+    // 2026-11-15 [dd375f5e]). A link opens either only from closed, holding his first keys
+    // back (Prompt.qml's linked). One still opening counts, since open is set only once its
     // first frame is drawn, and his keys are already the launcher's before then.
     function inUse() {
         return open || opening || talkLine.up;
@@ -1691,6 +1691,30 @@ Scope {
         intoOn("machines", machines.lands(key));
         prompt.linked();
         return { done: true, said: `opening Machines \u203a ${name}` };
+    }
+
+    // Opens Code on a repository's row by its key, selected, as a
+    // mycelium:repository/ link from Code's page asks: it runs nothing, and a
+    // key no row has opens Code saying so in the foot, never a guess
+    // (Y2YBTS, 2026-11-20 [423fc9fa]).
+    function showCode(said) {
+        const code = collections.find(one => one.settings.name === "code") ?? null;
+        if (code === null)
+            return { error: "the launcher has no Code" };
+        const { key, row, unlisted } = code.linked(said);
+        console.info(`launcher: asked from outside to show the repository ${JSON.stringify(key)}`);
+        if (inUse())
+            return inUseSaid;
+        if (unlisted) {
+            const words = Words.of("code").said ?? {};
+            toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
+            into("code");
+            prompt.linked();
+            return { done: false, said: `${words.unlisted ?? ""}: ${words.unlistedWhy ?? ""}` };
+        }
+        intoOn("code", code.lands(row));
+        prompt.linked();
+        return { done: true, said: `opening Code \u203a ${key}` };
     }
 
     function catalogueRunWalked(id, words) {
@@ -8696,6 +8720,12 @@ Scope {
         // acts a step in (root's showMachine).
         function machine(name: string): string {
             return JSON.stringify(root.showMachine(name));
+        }
+
+        // Opens Code on a repository's row by its key, selected, its acts a
+        // step in (root's showCode).
+        function code(key: string): string {
+            return JSON.stringify(root.showCode(key));
         }
 
         // What a place or a row shows, its drawer and the rows inside it,

@@ -15,6 +15,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "CodeLinks.js" as Links
 
 Provider {
     id: provider
@@ -75,6 +76,18 @@ Provider {
 
     function everything() {
         return ready.rows();
+    }
+
+    // The row a mycelium:repository/ link lands on, by the key its
+    // repository's row is served by, or none for a key no row has once
+    // they're read (CodeLinks.js's linked).
+    function linked(said) {
+        return Links.linked(ready.rows().map(row => row?.servedKey ?? ""), said);
+    }
+
+    // Whether a row is the one that link lands on (CodeLinks.js's lands).
+    function lands(row) {
+        return Links.lands(row);
     }
 
     // Its repositories, as the programs daemon ranks them for what's typed.
