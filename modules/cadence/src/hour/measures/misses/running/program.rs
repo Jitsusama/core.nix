@@ -163,7 +163,7 @@ mod tests {
         let unheld: BTreeSet<&str> = held
             .iter()
             .copied()
-            .filter(|f| !f.ends_with(".cjs"))
+            .filter(|f| *f != "lib/core/read.cjs")
             .collect();
         assert_eq!(
             imported(found, "f00d", &unheld),
