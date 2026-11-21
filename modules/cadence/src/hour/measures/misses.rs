@@ -22,7 +22,7 @@ mod symbiosis;
 
 pub use held::{BLIND, HELD, held};
 pub use running::{UNRUN, UNSEEN, hosts_started};
-pub use symbiosis::symbiosis;
+pub use symbiosis::{Findings, findings};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -184,13 +184,33 @@ fn main_of(path: &str) -> &'static str {
 /// the last of `switches` and the pi hosts' runtimes say. The changes
 /// found merged are kept in `folder`, so a main is never read again for
 /// them, and so are those seen running, so a closed miss stays closed.
-pub fn checked(
+/// The `findings` of the work system are judged in the same pass, so the
+/// mains are walked and what runs here is read once for both: it gives
+/// the misses' measure, and the findings' as of `now`.
+///
+/// # Errors
+///
+/// Where the changes found merged can't be kept.
+pub fn checked_beside(
     text: &str,
     folder: &Path,
     checkouts: &[String],
     switches: &str,
-) -> io::Result<Measure> {
-    judged(text, folder, checkouts, switches, open_misses)
+    findings: Option<&Findings>,
+    now: i64,
+) -> io::Result<(Measure, Option<Measure>)> {
+    let beside = findings.map_or("", Findings::text);
+    let both = if beside.is_empty() {
+        text.to_owned()
+    } else {
+        format!("{text}\n{beside}")
+    };
+    judged(&both, folder, checkouts, switches, |_, repos, judged| {
+        (
+            open_misses(text, repos, judged),
+            findings.map(|found| found.measured(repos, judged, now)),
+        )
+    })
 }
 
 /// What `then` makes of the lines of `text`, each shaped as a miss, once
