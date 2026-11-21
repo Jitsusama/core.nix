@@ -11,7 +11,7 @@ fn one(machine: &str, reading: Reading, working: bool) -> Seen {
         reading,
         working: Some(working),
         battery: false,
-        heard: None,
+        heard: Some(NOW),
     }
 }
 
@@ -56,10 +56,17 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
             },
             Seen {
                 battery: true,
+                heard: None,
                 ..one("far", Reading::Ready, false)
             },
-            one("near", Reading::Ready, false),
-            one("odd", Reading::Unread, false),
+            Seen {
+                heard: None,
+                ..one("near", Reading::Ready, false)
+            },
+            Seen {
+                heard: None,
+                ..one("odd", Reading::Unread, false)
+            },
         ],
         "the machines weren't read as the node says, or this one wasn't left out"
     );
@@ -268,12 +275,129 @@ fn machines_last_heard_together_with_none_ready_is_this_one_cut_off() {
     let straddled = [lost("yonder", 290), one("near", Reading::Ready, true)];
     step(&mut told, NOW + 5 * 60, &straddled);
     let down = [lost("yonder", 290), lost("near", 320)];
-    for minutes in (10..=40).step_by(5) {
+    step(&mut told, NOW + 10 * 60, &down);
+    // And back either side of a tick, the count the cut-off held starts anew.
+    let back = [lost("yonder", 290), one("near", Reading::Ready, true)];
+    for minutes in [15, 20] {
         assert!(
-            step(&mut told, NOW + minutes * 60, &down).is_empty(),
-            "peers lost either side of a tick were told at {minutes} min"
+            step(&mut told, NOW + minutes * 60, &back).is_empty(),
+            "a peer back a tick after another was told at {minutes} min"
         );
     }
+}
+
+#[test]
+fn this_machine_reaching_nothing_it_probes_reads_offline() {
+    let machines = |reached: &str| {
+        format!(
+            r#"{{"Ok":{{"Machines":[{{"name":"here","reached":{reached}}},
+            {{"name":"yonder","reached":{{"home":true}}}}]}}}}"#
+        )
+    };
+    assert!(
+        offline(&machines(r#"{"call":false,"home":false}"#), "here"),
+        "a machine reaching nothing read online"
+    );
+    for reached in [r#"{"call":false,"home":true}"#, "{}"] {
+        assert!(
+            !offline(&machines(reached), "here"),
+            "a machine reaching {reached} read offline"
+        );
+    }
+    assert!(
+        !offline(&machines(r#"{"home":false}"#), "far"),
+        "another machine's record was read as this one's"
+    );
+    assert!(!offline("", "here"), "no answer read as offline");
+}
+
+#[test]
+fn what_the_cut_off_cant_tell_is_never_told() {
+    let up = [
+        one("yonder", Reading::Ready, true),
+        one("near", Reading::Ready, true),
+    ];
+    // A machine down with no time heard.
+    let mut told = Told::default();
+    step(&mut told, NOW, &up);
+    let unheard = Seen {
+        heard: None,
+        ..one("yonder", Reading::Down, true)
+    };
+    for minutes in (5..=30).step_by(5) {
+        let down = [unheard.clone(), lost("near", 100)];
+        assert!(
+            step(&mut told, NOW + minutes * 60, &down).is_empty(),
+            "a drop beside a machine with no time heard was told at {minutes} min"
+        );
+    }
+    // Read down by two realms, one of which lost it long before.
+    let mut told = Told::default();
+    step(&mut told, NOW, &up);
+    let both = ["work".to_owned(), "personal".to_owned()];
+    let personal = |seen: Seen| Seen {
+        realm: "personal".into(),
+        ..seen
+    };
+    for minutes in (5..=30).step_by(5) {
+        let down = [
+            lost("yonder", -7200),
+            personal(lost("yonder", 200)),
+            personal(lost("near", 230)),
+        ];
+        assert!(
+            due(&down, &both, &both, &mut told, NOW + minutes * 60).is_empty(),
+            "a realm's stale hearing parted a cut-off, told at {minutes} min"
+        );
+    }
+    // A realm not answering.
+    let mut told = Told::default();
+    step(&mut told, NOW, &up);
+    for minutes in (5..=30).step_by(5) {
+        let down = [lost("yonder", 200)];
+        assert!(
+            due(&down, &both, &work(), &mut told, NOW + minutes * 60).is_empty(),
+            "a drop while a realm didn't answer was told at {minutes} min"
+        );
+    }
+}
+
+#[test]
+fn three_machines_tell_apart_a_cut_off_from_a_crash() {
+    let three = [
+        one("yonder", Reading::Ready, true),
+        one("near", Reading::Ready, true),
+        one("far", Reading::Ready, true),
+    ];
+    // Two dropping together beside one still ready is no cut-off.
+    let mut told = Told::default();
+    step(&mut told, NOW, &three);
+    let pair = [
+        lost("yonder", 200),
+        lost("near", 210),
+        one("far", Reading::Ready, true),
+    ];
+    step(&mut told, NOW + 5 * 60, &pair);
+    assert_eq!(
+        step(&mut told, NOW + 15 * 60, &pair).len(),
+        2,
+        "two machines down beside one ready weren't told"
+    );
+    // Two idle, asleep together long before, don't hide a third's crash.
+    let mut told = Told::default();
+    let idle_pair = [
+        one("yonder", Reading::Ready, false),
+        one("near", Reading::Ready, false),
+        one("far", Reading::Ready, true),
+    ];
+    step(&mut told, NOW, &idle_pair);
+    let crash = [lost("yonder", -9000), lost("near", -8990), lost("far", 200)];
+    step(&mut told, NOW + 5 * 60, &crash);
+    assert_eq!(
+        step(&mut told, NOW + 15 * 60, &crash).len(),
+        1,
+        "a crash beside two machines asleep since long before wasn't told"
+    );
 }
 
 #[test]
@@ -349,6 +473,29 @@ fn a_realm_not_saying_who_is_busy_never_reads_another_realms_idle_as_its_own() {
         told.machines["yonder"].working,
         "one realm's idle and another's unsaid read the machine idle"
     );
+    // A word not said again past its time doesn't keep it busy for good.
+    for minutes in [10, 15, 20, 25] {
+        due(
+            &[one("yonder", Reading::Ready, false), personal_unsaid()],
+            &both,
+            &both,
+            &mut told,
+            NOW + minutes * 60,
+        );
+    }
+    assert!(
+        !told.machines["yonder"].working,
+        "a busy word never said again kept the machine busy"
+    );
+}
+
+/// The machine as the personal realm reads it, ready, not saying who's busy.
+fn personal_unsaid() -> Seen {
+    Seen {
+        realm: "personal".into(),
+        working: None,
+        ..one("yonder", Reading::Ready, false)
+    }
 }
 
 #[test]

@@ -6,10 +6,12 @@
 //! powered off by itself and no one heard for minutes; the node knows each
 //! link's state, so the tick reads it rather than wait on another session
 //! to. A machine with no work sleeps as its node lets it, and one on battery
-//! sleeps when its lid shuts whatever it holds, so neither is news. With
-//! none ready, the machine down last heard from within minutes of another
-//! is this one cut off, as a lost link loses every peer at once; with one
-//! other machine, the two can't be told apart.
+//! sleeps when its lid shuts whatever it holds, so neither is news. This
+//! machine reaching none of what its node probes is this one cut off, and
+//! so, with none ready, is two machines down last heard within minutes of
+//! each other, as a lost link loses every peer at once. Where it can't
+//! tell, as when a realm doesn't answer, nothing new is told: a false
+//! critical notice misleads Joel, where a late one only waits.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -33,6 +35,9 @@ const READY_WITHIN: i64 = 60 * 60;
 /// across a sleep of this machine or a node not answering: one tick missed
 /// is absorbed, and only readings in a row count as being down.
 const READ_GAP: i64 = 15 * 60;
+/// How long a word on who is busy holds when a tick doesn't say, so a
+/// realm whose sessions never answer can't keep a machine busy for good.
+const SAID_FOR: i64 = READ_GAP;
 /// How long a machine no realm lists any more is remembered.
 const FORGET: i64 = 2 * 86_400;
 /// How long a node may take to answer: one stalled on a peer it can't reach
@@ -67,6 +72,20 @@ pub struct Seen {
     pub battery: bool,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
+}
+
+/// Whether this machine's own record, in what `mycelium machines` answers,
+/// says it reaches none of what its node probes for it.
+#[must_use]
+pub fn offline(machines: &str, this: &str) -> bool {
+    crate::elsewhere::machines(machines)
+        .unwrap_or_default()
+        .iter()
+        .filter(|machine| machine["name"] == this)
+        .filter_map(|machine| machine["reached"].as_object())
+        .any(|reached| {
+            !reached.is_empty() && reached.values().all(|one| one.as_bool() == Some(false))
+        })
 }
 
 /// Each machine the realm's node lists but this one, from what `mycelium
@@ -124,9 +143,13 @@ pub struct Spell {
     #[serde(default)]
     pub ready_at: Option<i64>,
     /// Whether a session on it was busy when it last read ready, as last
-    /// said: a tick the node didn't say keeps what the one before did.
+    /// said: a tick the node didn't say keeps what the one before did, for
+    /// as long as `SAID_FOR`.
     #[serde(default)]
     pub working: bool,
+    /// When a realm last said whether a session on it was busy.
+    #[serde(default)]
+    pub said_at: Option<i64>,
     /// Whether it ran on battery when it last read ready, or as its node
     /// last heard while it reads down.
     #[serde(default)]
@@ -190,6 +213,10 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             .entry(&one.machine)
             .or_insert_with(|| (one.clone(), BTreeSet::new()));
         realms.insert(one.realm.clone());
+        // Read down by two realms, it was last heard when either last
+        // heard it, on battery if either heard so.
+        let both_down = kept.reading == Reading::Down && one.reading == Reading::Down;
+        let (heard, battery) = (kept.heard.max(one.heard), kept.battery || one.battery);
         // A realm that didn't say keeps the word unsaid, unless another
         // saw a session busy: its sessions may be the ones it didn't say.
         let working = match (kept.working, one.working) {
@@ -201,29 +228,39 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             *kept = one.clone();
         }
         kept.working = working;
+        if both_down {
+            kept.heard = heard;
+            kept.battery = battery;
+        }
     }
     by
 }
 
-/// Whether this machine reads as cut off: none ready, and the machine down
-/// last heard from was heard within `TOGETHER` of another down. It reads
-/// only what the node heard, so a tick that read nothing, or peers lost
-/// either side of a tick, change nothing; one asleep long before doesn't
-/// pair with one failing now. A machine with no time heard can't count.
-fn cut_off(by: &BTreeMap<&str, (Seen, BTreeSet<String>)>) -> bool {
+/// Whether this machine reads as cut off, or can't tell: none ready, and
+/// either a machine down with no time heard, or two down heard within
+/// `TOGETHER` of each other within the hour. It reads only what the node
+/// heard, so a tick that read nothing, or peers lost either side of a
+/// tick, change nothing, and one clock running fast can't part the rest.
+/// A time heard ahead of now counts as now.
+fn cut_off(by: &BTreeMap<&str, (Seen, BTreeSet<String>)>, now: i64) -> bool {
     if by.values().any(|(one, _)| one.reading == Reading::Ready) {
         return false;
     }
-    let mut heard: Vec<i64> = by
+    let downs: Vec<Option<i64>> = by
         .values()
         .filter(|(one, _)| one.reading == Reading::Down)
-        .filter_map(|(one, _)| one.heard)
+        .map(|(one, _)| one.heard.map(|heard| heard.min(now)))
+        .collect();
+    if downs.contains(&None) {
+        return true;
+    }
+    let mut heard: Vec<i64> = downs
+        .into_iter()
+        .flatten()
+        .filter(|heard| now - heard <= READY_WITHIN)
         .collect();
     heard.sort_unstable();
-    match heard.as_slice() {
-        [.., before, last] => last - before <= TOGETHER,
-        _ => false,
-    }
+    heard.windows(2).any(|pair| pair[1] - pair[0] <= TOGETHER)
 }
 
 /// What's newly down or back, given what each of the `answered` realms of
@@ -251,7 +288,10 @@ pub fn due(
             spell.realms = std::mem::take(realms);
         }
     }
-    let cut_off = cut_off(&by);
+    let cut_off = cut_off(&by, now);
+    // A realm not answering may hold the machines that show this one cut
+    // off, so nothing new is told until each answers.
+    let all_answered = asked.iter().all(|realm| answered.contains(realm));
     let mut tells = Vec::new();
     for (machine, (one, _)) in by {
         let spell = told
@@ -260,7 +300,13 @@ pub fn due(
             .expect("each machine was kept above");
         match one.reading {
             Reading::Unread => {}
-            Reading::Down if cut_off => {}
+            Reading::Down if cut_off => {
+                // What this machine read while cut off says nothing of
+                // it, so a count not yet told starts afresh after.
+                if spell.notice.is_none() && spell.sent.is_empty() {
+                    spell.down_since = None;
+                }
+            }
             Reading::Ready => {
                 if let Some(since) = spell.down_since
                     && (spell.notice.is_some() || !spell.sent.is_empty())
@@ -278,7 +324,14 @@ pub fn due(
                 }
                 *spell = Spell {
                     ready_at: Some(now),
-                    working: one.working.unwrap_or(spell.working),
+                    working: one.working.unwrap_or(
+                        spell.working && spell.said_at.is_some_and(|at| now - at <= SAID_FOR),
+                    ),
+                    said_at: if one.working.is_some() {
+                        Some(now)
+                    } else {
+                        spell.said_at
+                    },
                     battery: one.battery,
                     read_at: Some(now),
                     realms: std::mem::take(&mut spell.realms),
@@ -301,7 +354,7 @@ pub fn due(
                     .ready_at
                     .is_some_and(|ready| since - ready <= READY_WITHIN);
                 let holds = spell.working && !spell.battery;
-                if !spell.told && holds && lately && now - since >= DOWN_FOR {
+                if !spell.told && all_answered && holds && lately && now - since >= DOWN_FOR {
                     tells.push(Tell::Down {
                         machine: machine.to_owned(),
                         realm: one.realm.clone(),
@@ -560,6 +613,7 @@ pub fn run(
     let ask = |realm: &str, what: &str| answer("mycelium", &["--realm", realm, what], ASK_WITHIN);
     let mut answered = Vec::new();
     let mut read = Vec::new();
+    let mut here_offline = false;
     for realm in realms {
         // An answer naming no machines, as an error, says nothing of them.
         let Some(machines) = ask(realm, "machines")
@@ -570,7 +624,17 @@ pub fn run(
         };
         let sessions = ask(realm, "sessions").unwrap_or_default();
         answered.push(realm.clone());
+        here_offline |= offline(&machines, &this);
         read.extend(seen(realm, &machines, &sessions, &this));
+    }
+    // Every other machine reads unreachable from a machine offline, so its
+    // readings are left unread and its spells as they were.
+    if here_offline {
+        println!("{this} reaches none of what its node probes, so no machine is judged");
+        return Ok(());
+    }
+    for realm in realms.iter().filter(|realm| !answered.contains(realm)) {
+        println!("The {realm} realm's node didn't answer, so no machine is told down");
     }
     let tells = due(&read, realms, &answered, &mut told, now);
     let owner_of = |key: &str| crate::findings::owner_of(key, owners);
