@@ -36,7 +36,8 @@
 # stands down ten minutes, or twice as long as the last when that ended
 # within the hour, to an hour, while it runs: one that leaves once idle, or
 # is restarted, starts over. A stand-down begun while it waits to try its
-# path again waits its own first trial from when it began. The journal says when it
+# path again waits its own first trial from when it began, or, begun during
+# a trial, from that trial's end. The journal says when it
 # stands down, each trial, and when it takes requests again; restarting it
 # ends a stand-down.
 #
