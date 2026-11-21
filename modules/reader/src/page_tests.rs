@@ -327,8 +327,8 @@ fn a_line_all_of_code_steps_one_line_as_any_other() {
     assert!(steps.len() >= 4, "too few lines: {steps:?}");
     let set = crate::text::lines(crate::text::runs(&page_of("code-lines", &markdown).frame));
     assert!(
-        set.iter()
-            .any(|line| !line.text.trim().is_empty() && command.contains(line.text.trim())),
+        set.iter().any(|line| !line.text.trim().is_empty()
+            && format!("{command} {command} {command}").contains(line.text.trim())),
         "no line was all code: {:?}",
         set.iter().map(|line| &line.text).collect::<Vec<_>>()
     );
@@ -427,7 +427,7 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
     // beside the letter and the rest.
     let read = lines
         .iter()
-        .map(|line| line.text.as_str())
+        .map(|line| line.text.trim_end())
         .collect::<Vec<_>>()
         .join(" ")
         .replace("\u{ad} ", "");
@@ -493,19 +493,16 @@ fn dropped(name: &str, markdown: &str) -> Option<String> {
 
 #[test]
 fn an_opening_drops_only_a_capital_and_a_letter_alone_reads_as_a_word() {
-    let tail = "runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, before it ends at Omega.\n";
-    for (name, start) in [
-        ("small", "the opening"),
-        ("strong", "**The** opening"),
-        ("code", "`The` opening"),
-    ] {
+    // As long as the opening that drops its letter, so each would.
+    let tail = "opening paragraph of this page runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, so that it opens on a letter dropped two lines down beside its first words, which then run on at the whole measure under it to the end, at Omega.\n";
+    for (name, start) in [("small", "the"), ("strong", "**The**"), ("code", "`The`")] {
         assert_eq!(
             dropped(name, &format!("{start} {tail}")),
             None,
             "an opening on {start:?} dropped a letter"
         );
     }
-    let alone = format!("A long opening {tail}");
+    let alone = format!("A long {tail}");
     assert_eq!(dropped("alone", &alone).as_deref(), Some("A"));
     let lines: Vec<_> = crate::text::lines(crate::text::runs(&page_of("alone", &alone).frame))
         .into_iter()

@@ -58,6 +58,10 @@ pub fn test_line(baseline_pt: f64, text: &str) -> Line {
 /// A drop cap read on its word's first line: its size, where it stands
 /// across the page, and the baseline it sits on, the line under.
 #[derive(Clone, Copy)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "each is in points, as everything on the page is"
+)]
 struct Dropped {
     size_pt: f64,
     x_pt: f64,
