@@ -150,7 +150,8 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     if !members.is_empty() {
         acts.push(more());
     }
-    let (glyph, hue) = worn(row, members.iter().any(|one| one.waits_on_joel));
+    let under_waits = members.iter().any(|one| one.waits_on_joel);
+    let (glyph, hue) = worn(row, under_waits);
     acts.extend(
         row.acts
             .iter()
@@ -166,7 +167,8 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
-                "waitsOnJoel": row.waits_on_joel},
+                "waitsOnJoel": row.waits_on_joel,
+                "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
 }
@@ -306,7 +308,8 @@ fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
             "depth": depth, "side": items(&row.side_items), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
-                "waitsOnJoel": row.waits_on_joel},
+                "waitsOnJoel": row.waits_on_joel,
+                "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
 }

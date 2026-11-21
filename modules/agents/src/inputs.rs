@@ -1360,6 +1360,22 @@ mod tests {
     }
 
     #[test]
+    fn a_session_parked_with_joels_want_open_counts_him_needed_in_the_summary() {
+        let mut inputs = inputs();
+        inputs
+            .sessions
+            .took(&json!({"changed": [{"key": "session:o",
+            "presence": {"addresses": ["O"], "session": "s-o", "owns": ["QEST-O"],
+                "state": "parked", "wants": {"kind": "question"}}}]}));
+        let summary = summary_of(&served(&inputs));
+        let said = summary.as_str().unwrap_or_default();
+        assert!(
+            said.starts_with("1 needs you"),
+            "parked, its open question is still Joel's: {said}"
+        );
+    }
+
+    #[test]
     fn a_carry_the_node_kept_is_served_under_carried_named_as_its_session() {
         let mut inputs = inputs();
         assert!(
