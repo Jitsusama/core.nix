@@ -47,9 +47,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 mod machine;
-use machine::{Unheard, era, runs, within};
 #[cfg(test)]
-use machine::{console_login, era_of, mac_era};
+use machine::{READ_AFTER_END, console_login, era_of, mac_era, read_by};
+use machine::{Unheard, era, runs, within};
 
 /// How many runs a session waits to be started again before it's left:
 /// past that, the node isn't coming, or the folder isn't. At one a minute
@@ -627,14 +627,16 @@ const EVERY_REALM: &str = "every realm";
 /// realm's is, since what the run ends with is written without a time. A
 /// boot that can't be read is told apart from the Mac's busy minutes only
 /// by when, and a read gives up as much as a minute after it began, so it
-/// says when the run `began` as well. It's said once, by `say`, since the
-/// boot is the machine's, not any one realm's.
+/// says when the run began as well, read by `now` before the boot is. It's
+/// said once, by `say`, since the boot is the machine's, not any one
+/// realm's.
 fn boot_told(
-    era: Result<String, Failure>,
-    began: u64,
+    era: impl FnOnce() -> Result<String, Failure>,
+    now: &dyn Fn() -> u64,
     say: &dyn Fn(&str),
 ) -> Result<String, Failure> {
-    era.inspect_err(|failure| say(&format!("{failure}, in a run begun at {}", stamp(began))))
+    let began = now();
+    era().inspect_err(|failure| say(&format!("{failure} (the run began at {})", stamp(began))))
 }
 
 /// Writes a realm's record whole, or not at all, and on the disk before
@@ -786,8 +788,7 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
 /// with. A boot that can't be read is said once, for every realm, before
 /// any of them runs (`boot_told`).
 fn run(mycelium: &str, realms: &[String]) -> Result<(), Failure> {
-    let began = now();
-    let era = boot_told(era(), began, &|line| say(EVERY_REALM, line))?;
+    let era = boot_told(era, &now, &|line| say(EVERY_REALM, line))?;
     let folder = state()?;
     let mut failed = None;
     for realm in realms {

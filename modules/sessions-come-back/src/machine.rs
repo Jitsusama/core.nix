@@ -18,9 +18,10 @@ use terminal_kit::{Exit, Failure};
 
 /// Why a command gave no answer: it failed, saying why; it was still
 /// running at its limit; or it ended, but what it printed didn't come
-/// through in time, as when it leaves a process holding its output, or
-/// when the reader itself is starved. Each was stopped, and the last two
-/// are told apart since only the first is the command's own slowness.
+/// through by its limit, nor `READ_AFTER_END` after it ended, as when it
+/// leaves a process holding its output, or when the reader itself is
+/// starved. Each was stopped, and the last two are told apart since only
+/// the first is the command's own slowness.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Unheard {
     Failed(String),
@@ -35,8 +36,9 @@ impl fmt::Display for Unheard {
             Self::Late(limit) => write!(f, "no answer within {} s", limit.as_secs()),
             Self::Unread(limit) => write!(
                 f,
-                "it ended, but what it printed wasn't read within {} s",
-                limit.as_secs()
+                "it ended, but what it printed wasn't read within {} s, nor {} s after it ended",
+                limit.as_secs(),
+                READ_AFTER_END.as_secs()
             ),
         }
     }
@@ -122,6 +124,17 @@ const KILL: &str = if cfg!(target_os = "macos") {
     "kill"
 };
 
+/// How long what a command printed has to come through once it ended,
+/// whatever its limit has left, so one that ends just at its limit is
+/// read rather than told as unread: only output held back, or a reader
+/// starved, keeps it longer.
+pub(super) const READ_AFTER_END: Duration = Duration::from_secs(2);
+
+/// When what a command printed has to have been read by, once it ended.
+pub(super) fn read_by(deadline: Instant, ended: Instant) -> Instant {
+    deadline.max(ended + READ_AFTER_END)
+}
+
 /// Reads a pipe whole on a thread of its own, and sends what it read.
 fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<String> {
     let (send, heard) = mpsc::channel();
@@ -171,7 +184,8 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
         }
         thread::sleep(Duration::from_millis(50));
     };
-    let left = || deadline.saturating_duration_since(Instant::now());
+    let read_by = read_by(deadline, Instant::now());
+    let left = || read_by.saturating_duration_since(Instant::now());
     let (Ok(out), Ok(err)) = (out.recv_timeout(left()), err.recv_timeout(left())) else {
         return Err(stop(&mut child, Unheard::Unread));
     };

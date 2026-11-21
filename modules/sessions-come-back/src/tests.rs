@@ -6,7 +6,7 @@
 //! what comes back, so splitting it would copy those or split one path.
 
 use super::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -816,7 +816,7 @@ fn answered(program: &str) -> String {
 }
 
 #[test]
-fn a_macs_boot_read_that_stalls_names_its_program() {
+fn a_macs_boot_reads_name_the_one_that_stalls_and_read_three_answers_as_its_boot() {
     let stalled = Unheard::Late(LOOK_WITHIN);
     let said = mac_era(&mac_reads(|program| match program {
         "/usr/bin/who" => Err(stalled.clone()),
@@ -869,7 +869,14 @@ fn a_boot_that_cant_be_read_is_said_once_with_when_its_run_began() {
     };
     let said = RefCell::new(Vec::new());
     let say = |line: &str| said.borrow_mut().push(line.to_owned());
-    let told = boot_told(Err(unread()), 1_795_215_241, &say);
+    // The read takes a minute, so a stamp read after it says 22:55:01.
+    let clock = Cell::new(1_795_215_241);
+    let now = || clock.get();
+    let read = || {
+        clock.set(clock.get() + 60);
+        Err(unread())
+    };
+    let told = boot_told(read, &now, &say);
     assert_eq!(
         told.map_err(|failure| failure.to_string()),
         Err(unread().to_string()),
@@ -878,13 +885,13 @@ fn a_boot_that_cant_be_read_is_said_once_with_when_its_run_began() {
     assert_eq!(
         said.take(),
         vec![format!(
-            "{}, in a run begun at 2026-11-20T22:54:01Z",
+            "{} (the run began at 2026-11-20T22:54:01Z)",
             unread()
         )],
-        "said once, with when the run began"
+        "said once, with when the run began, before the read"
     );
     assert_eq!(
-        boot_told(Ok("a boot".into()), 1_795_215_241, &say).ok(),
+        boot_told(|| Ok("a boot".into()), &now, &say).ok(),
         Some("a boot".to_owned())
     );
     assert!(said.take().is_empty(), "a boot read says nothing");
@@ -962,6 +969,41 @@ fn a_command_that_answers_in_time_is_read_and_one_that_fails_says_why() {
         ),
         Err(Unheard::Failed("exit status: 3".into())),
         "one that said nothing is told by how it ended"
+    );
+    assert_eq!(
+        within(
+            Command::new("sh").args(["-c", "kill -9 $$"]),
+            Duration::from_secs(10)
+        ),
+        Err(Unheard::Failed("signal: 9 (SIGKILL)".into())),
+        "or by the signal that stopped it"
+    );
+}
+
+#[test]
+fn a_read_still_running_and_one_whose_output_never_came_read_apart_in_the_log() {
+    let limit = Duration::from_secs(20);
+    assert_eq!(Unheard::Late(limit).to_string(), "no answer within 20 s");
+    assert_eq!(
+        Unheard::Unread(limit).to_string(),
+        "it ended, but what it printed wasn't read within 20 s, nor 2 s after it ended"
+    );
+}
+
+#[test]
+fn a_command_that_ends_at_its_limit_still_has_its_output_read() {
+    let ended = Instant::now();
+    let deadline = ended + Duration::from_millis(10);
+    assert_eq!(
+        read_by(deadline, ended),
+        ended + READ_AFTER_END,
+        "what it printed has time to come through after its limit"
+    );
+    let deadline = ended + Duration::from_secs(15);
+    assert_eq!(
+        read_by(deadline, ended),
+        deadline,
+        "and the whole limit before it"
     );
 }
 
