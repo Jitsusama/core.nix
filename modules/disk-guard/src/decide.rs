@@ -7,12 +7,6 @@ use crate::clock::Awake;
 use crate::moments::{Power, Pressure};
 use crate::units::float;
 
-/// How a filesystem's free space is being used up, in bytes a second:
-/// averaged over about two minutes, so one burst doesn't set it but a
-/// pass can answer a band before it arrives; and over about two hours, the
-/// trend a person is told, since a disk whose builds write and free
-/// gigabytes every few minutes swings by tens of gigabytes an hour over
-/// two.
 /// What a filesystem's trend says comes next, in seconds: it's full, or it
 /// reaches the floor Nix keeps, never both.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -21,6 +15,12 @@ pub struct Ahead {
     pub floor_in: Option<f64>,
 }
 
+/// How a filesystem's free space is being used up, in bytes a second:
+/// averaged over about two minutes, so one burst doesn't set it but a
+/// pass can answer a band before it arrives; and over about two hours, the
+/// trend a person is told, since a disk whose builds write and free
+/// gigabytes every few minutes swings by tens of gigabytes an hour over
+/// two.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Fill {
     rate: Option<f64>,

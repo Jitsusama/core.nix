@@ -138,6 +138,12 @@ fn a_disk_above_nixs_floor_counts_to_the_floor_not_to_full() {
         (until - expected).abs() < expected * 0.05,
         "{until} against {expected}"
     );
+    let at = fill.ahead(free, Some(free));
+    assert_eq!(
+        (at.floor_in, at.full_in),
+        (None, fill.steady_until(free, 0)),
+        "at the floor, it's reached, so when it fills"
+    );
     let under = fill.ahead(free, Some(free + GIB));
     assert_eq!(under.floor_in, None, "under the floor, it's reached");
     assert_eq!(
