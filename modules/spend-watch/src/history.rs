@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 9;
+pub const SCHEMA: i64 = 10;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -171,7 +171,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 8] = [
+const UPGRADES: [&str; 9] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -208,6 +208,8 @@ const UPGRADES: [&str; 8] = [
     ),
     crossings!(),
     unresolved!(),
+    // A session read before machines were is this machine's.
+    "ALTER TABLE sessions ADD COLUMN machine TEXT;",
 ];
 
 const TABLES: &str = concat!(
@@ -218,7 +220,8 @@ CREATE TABLE files (
     carry TEXT NOT NULL, session TEXT);
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY, cwd TEXT NOT NULL, repo TEXT NOT NULL, started REAL NOT NULL,
-    kind TEXT, name TEXT);
+    kind TEXT, name TEXT,
+    machine TEXT);
 CREATE TABLE turns (
     session TEXT NOT NULL, at REAL NOT NULL, hour INTEGER NOT NULL, model TEXT NOT NULL,
     provider TEXT NOT NULL, kind TEXT NOT NULL, quest TEXT,
@@ -538,13 +541,19 @@ impl History {
     pub fn add_event(&self, event: &crate::logs::Event) -> Result<(), String> {
         use crate::logs::Event;
         match event {
-            Event::Session { id, cwd, at, kind } => {
+            Event::Session {
+                id,
+                cwd,
+                at,
+                kind,
+                machine,
+            } => {
                 // A log read again keeps the name its session was given.
                 self.db
                     .execute(
                         "INSERT OR REPLACE INTO sessions VALUES (?1, ?2, ?3, ?4, ?5,
-                         (SELECT name FROM sessions WHERE id = ?1))",
-                        params![id, cwd, crate::logs::repo_of(cwd), at, kind],
+                         (SELECT name FROM sessions WHERE id = ?1), ?6)",
+                        params![id, cwd, crate::logs::repo_of(cwd), at, kind, machine],
                     )
                     .map_err(sql)?;
             }
@@ -906,6 +915,9 @@ mod tests {
     /// What shape 6 added to a turn.
     const TURNS_6: &str = ",\n    budget TEXT";
 
+    /// What shape 10 added to a session.
+    const SESSIONS_10: &str = ",\n    machine TEXT";
+
     /// The tables as the fifth shape kept them.
     fn fifth_shape() -> String {
         sixth_shape()
@@ -939,6 +951,7 @@ mod tests {
         TABLES
             .replace(crossings!(), "")
             .replace(unresolved!(), "")
+            .replace(SESSIONS_10, "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1066,6 +1079,7 @@ mod tests {
             cwd: "/x".into(),
             at: 1.0,
             kind: Some("swarm".into()),
+            machine: None,
         };
         history.add_event(&session).unwrap();
         history
@@ -1094,7 +1108,7 @@ mod tests {
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace(unresolved!(), ""))
+            db.execute_batch(&TABLES.replace(unresolved!(), "").replace(SESSIONS_10, ""))
                 .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '8');
@@ -1121,6 +1135,48 @@ mod tests {
             )
             .unwrap();
         assert_eq!(kept, (1, 1));
+    }
+
+    // The ninth shape knew no machine; its sessions are this machine's,
+    // and a session read after is kept under the machine its log was on.
+    #[test]
+    fn the_ninth_shape_gains_machines() {
+        use crate::logs::Event;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(&TABLES.replace(SESSIONS_10, "")).unwrap();
+            db.execute_batch(
+                "INSERT INTO meta VALUES ('schema', '9');
+                 INSERT INTO sessions VALUES ('here', '/x', 'x', 1.0, NULL, NULL);",
+            )
+            .unwrap();
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        history
+            .add_event(&Event::Session {
+                id: "there".into(),
+                cwd: "/x".into(),
+                at: 2.0,
+                kind: None,
+                machine: Some("teal".into()),
+            })
+            .unwrap();
+        let machines: Vec<(String, Option<String>)> = history
+            .db
+            .prepare("SELECT id, machine FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            machines,
+            [("here".into(), None), ("there".into(), Some("teal".into()))],
+            "a session kept before machines wasn't this machine's, or one read after lost its own"
+        );
     }
 
     #[test]

@@ -171,7 +171,7 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
 
 /// Tells the loop whenever pi's logs change: inotify on the sessions
 /// directory and each directory in it, adding one as it appears, and on
-/// each directory an agent's log is in.
+/// each directory an agent's log or another machine's is in.
 #[cfg(target_os = "linux")]
 fn watch(config: Config, wake: Sender<Wake>) {
     use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
@@ -187,8 +187,8 @@ fn watch(config: Config, wake: Sender<Wake>) {
         let mut watched: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
         let mut looked: Option<Instant> = None;
         // A directory counts as watched only once inotify has it. The
-        // agents' patterns are followed again at most once a pass, since
-        // pi's own logs change many times a minute.
+        // agents' patterns and other machines' logs are followed again at
+        // most once a pass, since pi's own logs change many times a minute.
         let add = |watched: &mut std::collections::HashSet<PathBuf>,
                    looked: &mut Option<Instant>| {
             let mut paths: Vec<PathBuf> = std::iter::once(sessions.clone())
@@ -203,7 +203,7 @@ fn watch(config: Config, wake: Sender<Wake>) {
                 .collect();
             if looked.is_none_or(|at| at.elapsed() >= BUSY) {
                 *looked = Some(Instant::now());
-                paths.extend(crate::ingest::agents_directories(&config));
+                paths.extend(crate::ingest::followed_directories(&config));
             }
             for path in paths {
                 if !watched.contains(&path) && inotify::add_watch(&fd, &path, flags).is_ok() {

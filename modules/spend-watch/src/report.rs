@@ -124,10 +124,11 @@ pub enum Cut {
     Day,
     Source,
     Budget,
+    Machine,
 }
 
 impl Cut {
-    pub const ALL: [Cut; 9] = [
+    pub const ALL: [Cut; 10] = [
         Cut::Quest,
         Cut::Model,
         Cut::Agent,
@@ -137,6 +138,7 @@ impl Cut {
         Cut::Day,
         Cut::Source,
         Cut::Budget,
+        Cut::Machine,
     ];
 
     pub fn id(self) -> &'static str {
@@ -150,6 +152,7 @@ impl Cut {
             Cut::Day => "day",
             Cut::Source => "source",
             Cut::Budget => "budget",
+            Cut::Machine => "machine",
         }
     }
 
@@ -164,6 +167,7 @@ impl Cut {
             Cut::Day => &["day", "days", "daily"],
             Cut::Source => &["source", "sources"],
             Cut::Budget => &["budget", "budgets"],
+            Cut::Machine => &["machine", "machines", "host", "hosts"],
         }
     }
 
@@ -277,6 +281,7 @@ fn fields(cut: Cut, piece: &Piece) -> Fields<'_> {
         Cut::Day => ([""; 4], piece.hour),
         Cut::Source => ([piece.source.name(), "", "", ""], 0),
         Cut::Budget => ([&piece.budget, "", "", ""], 0),
+        Cut::Machine => ([&piece.machine, &piece.session, &piece.tool, ""], 0),
     }
 }
 
@@ -319,6 +324,22 @@ fn key(picture: &Picture, cut: Cut, piece: &Piece) -> String {
         Cut::Source => piece.source.name().into(),
         // By the name the harness and pi's footer know it by.
         Cut::Budget => piece.budget.clone(),
+        Cut::Machine => machine_name(picture, piece),
+    }
+}
+
+/// The machine a piece's work was done on: another machine by its name,
+/// pi's spend no log here knows as elsewhere, another tool's as no
+/// machine, since its bill doesn't say, and the rest this machine's.
+fn machine_name(picture: &Picture, piece: &Piece) -> String {
+    if !piece.machine.is_empty() {
+        piece.machine.clone()
+    } else if piece.session == crate::config::ELSEWHERE {
+        crate::config::ELSEWHERE.into()
+    } else if piece.tool != "pi" {
+        format!("{} (no machine)", piece.tool)
+    } else {
+        picture.machine.clone()
     }
 }
 
@@ -1428,6 +1449,46 @@ mod tests {
             [3.0],
             "a day's hours weren't one row"
         );
+    }
+
+    // Each machine's sessions are its own under the machine cut: this
+    // machine's by its name, another's by that machine's, and spend no
+    // log explains as elsewhere.
+    #[test]
+    fn each_machine_s_sessions_are_its_own() {
+        use crate::logs::Event;
+        let history = crate::history::History::memory();
+        let config: crate::config::Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC", "machine": "slate",
+        }))
+        .unwrap();
+        for (id, machine) in [("here", None), ("there", Some("teal"))] {
+            history
+                .add_event(&Event::Session {
+                    id: id.into(),
+                    cwd: "/x".into(),
+                    at: NOW - 4.0 * 3600.0,
+                    kind: None,
+                    machine: machine.map(str::to_owned),
+                })
+                .unwrap();
+        }
+        turn(&history, "here", None, NOW - 3.0 * 3600.0);
+        turn(&history, "there", None, NOW - 2.0 * 3600.0);
+        turn(&history, "there", None, NOW - 3600.0);
+        let picture = crate::picture::Picture::read(&history, &config, NOW).unwrap();
+        let rows: Vec<(String, f64)> = cut(&picture, Period::Today, Cut::Machine, 10)
+            .rows
+            .into_iter()
+            .map(|row| (row.name, (row.dollars * 100.0).round() / 100.0))
+            .collect();
+        assert_eq!(
+            rows,
+            [("teal".to_owned(), 2.0), ("slate".to_owned(), 1.0)],
+            "a machine's sessions weren't its own"
+        );
+        assert_eq!(Cut::parse("hosts"), Some(Cut::Machine));
     }
 
     #[test]

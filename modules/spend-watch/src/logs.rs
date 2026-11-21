@@ -45,6 +45,10 @@ pub struct Carry {
     /// Where quests' workspaces are, given afresh each read.
     #[serde(skip)]
     pub workspaces: Option<String>,
+    /// The machine a log was written on, by where it was found; none for
+    /// this one's. Given afresh each read, so never kept.
+    #[serde(skip)]
+    pub machine: Option<String>,
     pub session: Option<String>,
     pub cwd: Option<String>,
     pub quest: Option<String>,
@@ -282,6 +286,8 @@ pub enum Event {
         cwd: String,
         at: f64,
         kind: Option<String>,
+        /// The machine it ran on, where that's another than this one.
+        machine: Option<String>,
     },
     Named {
         session: String,
@@ -558,6 +564,7 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
         cwd,
         at: at.unwrap_or(0.0),
         kind: carry.kind.clone(),
+        machine: carry.machine.clone(),
     });
 }
 
