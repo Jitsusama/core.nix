@@ -1123,7 +1123,7 @@ Provider {
         watching: ({ place: "agents" })
         answersWhole: true
         // Where a cell goes is only true while the daemon answers, so its
-        // records go with it and cellFor's own search decides meanwhile.
+        // records go with it and cellFor's search on the look's quest decides.
         keptThroughGap: false
     }
 

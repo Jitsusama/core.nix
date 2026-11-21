@@ -692,7 +692,8 @@ QtObject {
         // As the agents daemon names it (cells.rs): the cell a look names goes
         // to the live session it is now, running or parked; ended with none
         // to go to, or to one not listed yet, itself, else one on its quest
-        // only; not served yet, or naming no cell, cellOf's search.
+        // only; not served yet, or the daemon away, the same; naming no cell,
+        // cellOf's search over every session.
         const cells = {
             "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
             "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
@@ -738,7 +739,7 @@ QtObject {
         expect("its questInfo's quest before an older quest it names",
             Looks.cellFor(naming("GGGGGG"), cells, [{ address: "PPPPPP",
                 presence: { questInfo: { id: "Q-2" }, quest: "Q-1" } }], []), null);
-        expect("not served yet, cellOf's search over every session, another quest's too",
+        expect("not served yet, a look on no quest, cellOf's search over every session",
             Looks.cellFor({ session: "s-4", cell: "HHHHHH" }, cells, [stranger], []).address,
             "DDDDDD");
         expect("going to a session not listed yet, the cell itself, on another quest too",
@@ -750,9 +751,13 @@ QtObject {
             Looks.cellFor(naming("AAAAAA"), cells, [listing], []), null);
         expect("going to a session not listed yet, one on its quest",
             Looks.cellFor(naming("AAAAAA"), cells, [listing], [resting]).address, "CCCCCC");
-        expect("not served yet, cellOf's search",
+        expect("not served yet, cellOf's search on its quest",
             Looks.cellFor(naming("HHHHHH"), cells, [heir], [leaver]).address,
             "AAAAAA");
+        expect("the daemon away, never one on another quest listing its address",
+            Looks.cellFor(naming("GGGGGG"), {}, [listing], []), null);
+        expect("naming no cell, cellOf's search over every quest",
+            Looks.cellFor(lookLeft, {}, [listing], []).address, "TTTTTT");
         expect("naming no cell, cellOf's search",
             Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
         expect("nothing served, cellOf's search",
