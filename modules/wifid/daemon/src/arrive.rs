@@ -370,7 +370,10 @@ impl Arrivals {
         let asked = now - moving.asked;
         let to = moving.to.clone();
         let reached = on.is_some_and(|on| to.eq_ignore_ascii_case(on));
-        let followed = moving.back && !reached;
+        // A way back joined where wifid can't name is ended, as one at
+        // its point is: its network is held there, and followed it would
+        // be stranded and let go of a join that likely got there.
+        let followed = moving.back && on.is_some() && !reached;
         let done = if followed {
             None
         } else {
@@ -417,11 +420,15 @@ impl Move {
         }
     }
 
-    /// When its time to leave its point began: as the look it waited on
-    /// ended, or as it was asked. Once its card has left, as it was asked.
+    /// When its time began: as the look it waited on ended, or as its
+    /// card left where that end went unheard, since wpa_supplicant moves
+    /// only once a look is done; else as it was asked. A move timed from
+    /// the ask once it left was sent back as it began, the look having
+    /// spent its time.
     fn started(&self) -> Instant {
-        match (self.left, self.looked) {
-            (None, Some(looked)) => looked,
+        match (self.looked, self.looking, self.left) {
+            (Some(looked), _, _) => looked,
+            (None, true, Some(left)) => left,
             _ => self.asked,
         }
     }
@@ -851,6 +858,53 @@ mod tests {
     }
 
     #[test]
+    fn a_move_that_waited_on_a_look_is_timed_from_it_as_it_leaves() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.looking("wlan0");
+        let ended = now + ms(3500);
+        arrivals.looked("wlan0", ended);
+        arrivals.step("wlan0", "authenticating", ended + ms(100));
+
+        let leaving = arrivals.unreached(ended + ms(100));
+        let due = arrivals.due();
+
+        assert_eq!(leaving, [], "not sent back as it starts leaving");
+        assert_eq!(
+            due,
+            Some(ended + BACK_FOR),
+            "a way back's time from the look"
+        );
+
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.looking("wlan0");
+        let left = now + ms(3000);
+        arrivals.step("wlan0", "authenticating", left);
+        let unheard = arrivals.due();
+        assert_eq!(
+            unheard,
+            Some(left + BACK_FOR),
+            "from leaving, the look's end unheard"
+        );
+    }
+
+    #[test]
+    fn a_look_ending_beside_a_move_that_didn_t_wait_on_it_moves_nothing() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+
+        arrivals.looked("wlan0", now + ms(500));
+
+        assert_eq!(
+            arrivals.due(),
+            Some(now + BACK_AFTER),
+            "still a second from the ask"
+        );
+    }
+
+    #[test]
     fn a_move_asked_with_no_point_left_is_never_handed_back() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
@@ -985,6 +1039,27 @@ mod tests {
             }),
             "and then where it was sent back to"
         );
+    }
+
+    #[test]
+    fn a_way_back_joined_where_it_can_t_be_named_ends_there() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.back("wlan0", DESK, now);
+
+        let unnamed = arrivals.joined("wlan0", None, now + ms(300));
+        let stranded = arrivals.stranded(now + BACK_FOR);
+
+        assert_eq!(
+            unnamed,
+            Some(Arrival::Unnamed {
+                to: DESK.into(),
+                asked: ms(300)
+            }),
+            "the join is said"
+        );
+        assert!(!arrivals.moving("wlan0"), "and the way back ended");
+        assert_eq!(stranded, [], "so it's never stranded");
     }
 
     #[test]

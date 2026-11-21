@@ -1654,6 +1654,11 @@ impl Wifid<'_> {
             // as it hears it.
             "fi.w1.wpa_supplicant1" => {
                 air.gone_under("");
+                // Forgotten now, not as the next signal comes, which would
+                // take the holds the cards handed over below have since.
+                for card in std::mem::take(&mut air.gone) {
+                    self.gone(&card);
+                }
                 // It starts again on no network, Joel's pick or another,
                 // and with every network on.
                 self.picked.borrow_mut().clear();
@@ -1744,6 +1749,13 @@ impl Wifid<'_> {
     ) -> Option<Joining> {
         match self.start(&name, password, account, air).await {
             Ok((card, new, since)) => {
+                // Joel's pick ends any move or way back the card was on,
+                // which, stranded later, would let go of the join he
+                // asked for. The join turns the card's networks on as it
+                // ends, however it ends.
+                self.arrivals.borrow_mut().forget(&card);
+                self.alone.borrow_mut().remove(&card);
+                self.let_go(&card, false).await;
                 let joining = Joining {
                     name,
                     card,
@@ -2191,7 +2203,11 @@ impl Wifid<'_> {
                 }
                 // A move asked while the card looks waits for the look.
                 let looking = interface.scanning().await.unwrap_or(false);
-                self.keep_alone(&card, &interface, &network).await;
+                // With nowhere to go back to, a failed move is let join
+                // what it hears, so it keeps nothing off.
+                if from.is_some() {
+                    self.keep_alone(&card, &interface, &network).await;
+                }
                 {
                     let mut arrivals = self.arrivals.borrow_mut();
                     arrivals.asked(&card, from.as_deref(), bssid, Instant::now());
@@ -2359,12 +2375,18 @@ impl Wifid<'_> {
     /// the network Joel picked, its other networks on where it's free, and
     /// its network let go.
     async fn release(&self, card: &str, free: bool) {
+        self.free(card, free).await;
+        self.let_go(card, free).await;
+    }
+
+    /// Takes a card off the network Joel picked and out of a move's
+    /// keeping alone, with its other networks on where it's free.
+    async fn free(&self, card: &str, free: bool) {
         self.alone.borrow_mut().remove(card);
         self.picked.borrow_mut().remove(card);
         if free {
             self.turn_on_networks(card).await;
         }
-        self.let_go(card, free).await;
     }
 
     /// Sends each card whose move is late back to the point it left, and
@@ -2394,7 +2416,12 @@ impl Wifid<'_> {
             "<4>{card} didn't get back to {to} within {} ms, so may join any network",
             arrive::BACK_FOR.as_millis()
         );
-        self.release(card, free).await;
+        self.free(card, free).await;
+        // Not to look again once it's taken another network, as a card
+        // let go of a hold does: that look had it leave the Roadside Inn
+        // for the point that wouldn't answer, 0.2 s after joining (VM,
+        // 2026-11-20).
+        self.let_go(card, false).await;
     }
 
     /// Turns off the card's networks but the one it's moving on, so
