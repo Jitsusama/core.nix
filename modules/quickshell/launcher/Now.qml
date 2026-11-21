@@ -200,8 +200,23 @@ Provider {
     // once its opening work has run.
     property real openingAt: -1
     onAsleepChanged: {
-        if (!asleep && openingAt >= 0 && provider.launcher?.open)
+        if (!asleep)
+            opensIfWaiting();
+    }
+    // Its opening work run now, while it waits for Now to wake in an open
+    // launcher. A notice come or read before then would be held still from
+    // no opening (latelyNotices), so a row read under the cursor would drop
+    // and come back as Now woke.
+    function opensIfWaiting() {
+        if (openingAt >= 0 && provider.launcher?.open)
             provider.feltOpening(() => provider.opens());
+    }
+    Connections {
+        target: Notices
+
+        function onHistoryChanged() {
+            provider.opensIfWaiting();
+        }
     }
 
     // Its work as the launcher opens, felt whole: the bindings on when it
@@ -209,8 +224,10 @@ Provider {
     // it opened is when the launcher did, however late Now woke, so a
     // notice read since still holds still.
     function opens() {
-        provider.openedAt = provider.openingAt >= 0 ? provider.openingAt : Date.now();
+        // Taken before it's set, so what setting it runs finds none waiting.
+        const kept = provider.openingAt;
         provider.openingAt = -1;
+        provider.openedAt = kept >= 0 ? kept : Date.now();
         provider.looksHour = Math.floor(Date.now() / 3600000);
         provider.reweather();
         // Placing the time and the date makes Time's and Today's rows, so
@@ -1677,10 +1694,12 @@ Provider {
     // own place rather than a For You that may hold nothing of them.
     leadsInto: ["forYou", "notices", "onScreen"]
     function leadsTo(name) {
+        // Only those it says, so the chords' places, which read the list
+        // alone, never disagree with where it leads.
+        if (!leadsInto.includes(name))
+            return null;
         if (name === "forYou")
             return [waiting];
-        if (name !== "notices" && name !== "onScreen")
-            return null;
         const { holding } = latelyBands(Date.now());
         const desktop = keptNoticesRow("desktop", Lately.members(holding.desktop, one => one.who),
             { kind: "notice", source: "desktop" });
@@ -2369,7 +2388,9 @@ Provider {
         const critical = latelyCritical;
         if (critical === undefined)
             return;
-        const shut = openedAt === Number.POSITIVE_INFINITY;
+        // Open once the launcher is, though Now's opening work waits for it
+        // to wake (openingAt), so Desktop keeps its place as it would.
+        const shut = openedAt === Number.POSITIVE_INFINITY && openingAt < 0;
         const { inside, underNow } = latelySteps();
         const placed = {};
         for (const source of Lately.SOURCES)

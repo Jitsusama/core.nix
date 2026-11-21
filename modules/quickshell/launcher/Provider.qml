@@ -364,6 +364,10 @@ Scope {
     // whole each time they changed as the launcher opened, about 10 of its
     // 100 ms over twelve of the keys lab's openings (2026-11-20).
     property var leadsInto: []
+    // Whether, saying what it holds at home, it still reads rows home shows
+    // of its own, and so waits its turn to wake as a kept opening fills in
+    // (Wanted.js's wakesInTurn).
+    property bool readsHome: false
 
     // Whether it waits its turn to wake as a kept opening fills in, a few
     // sources a frame (Launcher.qml's wakeNext). Its own, so waking it

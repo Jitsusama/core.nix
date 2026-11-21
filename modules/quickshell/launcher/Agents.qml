@@ -383,7 +383,7 @@ Provider {
         return Wanted.readAt({ cataloguing: launcher.cataloguing, open: launcher.open,
             held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
             typing: launcher.typing, entering: launcher.entering ?? null,
-            viewing: launcher.viewing ?? false, asleep: provider.asleep },
+            viewing: launcher.viewing ?? false },
             [provider, source("now")]);
     }
     // Held as a bool, so a step made again while it stays readable remakes
@@ -394,7 +394,7 @@ Provider {
     // Asleep in a kept opening's waking until its turn, like any source
     // home's rows read (Launcher.qml's wakingOrder), so its own are read
     // in its slice.
-    readonly property bool readsHome: true
+    readsHome: true
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
     // and budgets), as each was last made while anything could read it

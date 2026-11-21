@@ -11937,10 +11937,9 @@ Scope {
     }
 
     // Those home's rows read, in home's order, so the rows shown fill
-    // first, then the rest; none that says what it holds itself, whose rows
-    // home never wants, but one that reads rows home shows of its own as it
-    // wakes (`readsHome`, Agents' Sessions to Reopen and Budgets), which
-    // made them in the turn the launcher opened in, never asleep.
+    // first, then the rest, each that waits its turn (Wanted.js's
+    // wakesInTurn): Agents, reading Sessions to Reopen and Budgets, made
+    // them in the turn the launcher opened in while it was never asleep.
     function wakingOrder() {
         const named = Wanted.sourceNamed(sources, one => one.settings.name,
             id => Words.of(id).provider ?? id);
@@ -11950,7 +11949,7 @@ Scope {
                 : null;
         };
         return Wanted.wakingOrder(Words.home, place, named, sources)
-            .filter(one => !one.saysAtHome || one.readsHome === true);
+            .filter(one => Wanted.wakesInTurn(one));
     }
 
     // Wakes the next of a filling opening's sources, as many as fit in the
