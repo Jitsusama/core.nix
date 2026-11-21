@@ -1798,6 +1798,20 @@ ShellRoot {
                 ["verb:agent:talk", "verb:on:waiting:go:on:look:e"],
                 ["verb:on:waiting:go:on:look:e"]]),
             JSON.stringify([actingLook, askingLook]));
+        // A look done with, as the to-do daemon serves it to History and
+        // held in no file of the shell's, leads to its cell as well, by
+        // the session its row holds: Open, then Talk, then Go To.
+        Sessions.running = [windowed(acted)];
+        Sessions.wanting = [windowed(acted)];
+        const servedActs = now.lookServed({ held: { id: "h", kind: "page", title: "Read H",
+            target: "https://example.com", state: "opened", session: "s-e", cell: "ACTED" } },
+            "row:looks-history:h").verbs().map(act => act.key)
+            .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:")
+                || key.startsWith("verb:on:look:open:"));
+        expect("a look done with offers Open, then Talk to its cell and Go To, from History",
+            JSON.stringify(servedActs) === JSON.stringify(["verb:on:look:open:h",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
+            JSON.stringify(servedActs));
         Sessions.running = [acted];
         Sessions.wanting = [acted];
         WaitingOnYou.sessionOf = { "Sign The Form": acted };
