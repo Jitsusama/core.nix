@@ -265,13 +265,13 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     expect(system_page.locator("#note"), "a with no look didn't say why").to_have_text(
         "Nothing is worth a look."
     )
-    # A machine named before its record may hold a look, so the list says it
-    # is still reading, a says so, and that goes once the list is known again.
+    # A machine named before its record may hold a look, so the list says that
+    # isn't known yet, a says so, and that goes once the list is known again.
     named = ["machine:kestrel", "machine:osprey"]
     coming: list[dict[str, object]] = [{"key": "part:machines", "things": [*named, "machine:wren"]}]
     system_daemon.tell("part", changed=coming)
     expect(system_page.locator("#looks"), "a machine to come was taken as nothing").to_have_text(
-        "Still reading what is worth a look.", timeout=PACE_MS
+        "What is worth a look isn't known yet.", timeout=PACE_MS
     )
     expect(system_page.locator("#note"), "a's note outlived what the list said").not_to_have_text(
         "Nothing is worth a look."

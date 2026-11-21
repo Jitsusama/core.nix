@@ -293,7 +293,7 @@ function lookRow(look: Look): string {
 
 /** What the list, and a, say once nothing is worth a look. */
 const NOTHING = "Nothing is worth a look.";
-/** What a says while a part or machine is still to come, and so may hold a look. */
+/** What the list, and a, say while a part or record to come may hold a look. */
 const NOT_KNOWN = "What is worth a look isn't known yet.";
 
 /**
@@ -304,10 +304,11 @@ const NOT_KNOWN = "What is worth a look isn't known yet.";
  */
 function looksDrawn(list: Looks): string {
   if (list.looks.length === 0) {
-    // Until every part and machine has told, one of them may hold the look.
+    // Until every part and machine has told, and every record could be read,
+    // one of them may hold the look; the note says which couldn't be read.
     return list.settled
       ? `<p class="clear health good">${mark("good")}${NOTHING}</p>`
-      : '<p class="more">Still reading what is worth a look.</p>';
+      : `<p class="more">${NOT_KNOWN}</p>`;
   }
   const more =
     list.more === 0

@@ -96,6 +96,11 @@ it("keys each row by whose it is and its own words, apart from any other", () =>
   );
   const keys = rowsOf(["x#1", "x", "x", "1:x"]);
   assert.equal(new Set(keys).size, keys.length, "words that look like a count key apart");
+  const colons = looksOf(
+    system([machine("a", "watch", ["0:x"]), machine("a:0", "watch", ["x"])]),
+    8,
+  ).looks.map((look) => look.row);
+  assert.equal(new Set(colons).size, 2, "a name holding a colon keys apart from another's");
 });
 
 it("says a part that wasn't read as a look of its own, first, as the daemon ranks it", () => {
@@ -139,7 +144,7 @@ it("says nothing is worth a look only once every part has told", () => {
   assert.ok(looksDrawn(looksOf(quiet, 8)).includes("Nothing is worth a look."), "said so");
   const waiting = system([machine("kestrel", "good")], [], ["network"]);
   assert.ok(
-    looksDrawn(looksOf(waiting, 8)).includes("Still reading what is worth a look."),
+    looksDrawn(looksOf(waiting, 8)).includes("What is worth a look isn't known yet."),
     "a part still to come may hold a look",
   );
   const coming = system([machine("kestrel", "good")]);
@@ -149,7 +154,10 @@ it("says nothing is worth a look only once every part has told", () => {
   };
   assert.equal(looksOf(named, 8).settled, false, "a machine still to come may hold a look");
   const garbled: System = { ...quiet, unread: ["machine:wren has no name"] };
-  assert.equal(looksOf(garbled, 8).settled, false, "a record not read may hold a look");
+  assert.ok(
+    looksDrawn(looksOf(garbled, 8)).includes("What is worth a look isn't known yet."),
+    "a record not read may hold a look, and isn't a wait",
+  );
 });
 
 it("names a part called like an Object key as itself", () => {
@@ -168,7 +176,7 @@ it("draws each look as a row of its own, every word escaped", () => {
   const drawn = looksDrawn(looksOf(read, 8));
   const holds = (words: string, why: string): void => assert.ok(drawn.includes(words), why);
   holds(
-    'data-row="look:machine:&lt;b&gt;kestrel&lt;/b&gt;:0:&quot;out&quot; of reach"',
+    'data-row="look:machine:%3Cb%3Ekestrel%3C%2Fb%3E:0:&quot;out&quot; of reach"',
     "the row keyed",
   );
   holds('<span class="whose" translate="no">&lt;b&gt;kestrel', "the name kept, untranslated");

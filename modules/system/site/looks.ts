@@ -81,7 +81,7 @@ function machineLooks(part: Part, drawn: number): readonly Look[] {
         at < drawn
           ? `#machine-${at + 1}`
           : `../mycelium/#machine=${encodeURIComponent(thing.name)}`,
-      row: `look:machine:${thing.name}:${key}`,
+      row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
     })),
   );
 }
@@ -94,7 +94,7 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
     machine: false,
     words: capital(words),
     href: siteOf(part),
-    row: `look:part:${part.part}:${key}`,
+    row: `look:part:${encodeURIComponent(part.part)}:${key}`,
   };
 }
 

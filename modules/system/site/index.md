@@ -24,7 +24,7 @@ Every health is good, watch, bad or not read, each with its own mark.
   the eight drawn, and a part's to its own site. A part that couldn't be
   read has a row saying why, first. It lists eight at most, then how
   many more; with nothing worth a look, it says so, and until every part
-  and machine has told, it says it is still reading.
+  and machine has told and could be read, it says that isn't known yet.
 - **A standing line:** the machine it was read on, when, and whether
   what it shows is live. When the daemon or the sites' server can't be
   reached, it says since when and why, and keeps showing how things
