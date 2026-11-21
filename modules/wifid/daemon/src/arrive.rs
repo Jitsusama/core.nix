@@ -26,9 +26,11 @@
 //! Every step that gives up comes after one that held a network, so this
 //! is how a failed move is handed back. One still joining is handed back
 //! once `BACK_FOR` is up, and one whose card hasn't left its point within
-//! `BACK_AFTER` is handed back as unstarted. Each is handed back once. The
-//! way back is followed as a move of its own, given `BACK_FOR`, whatever
-//! its steps say.
+//! `BACK_AFTER` is handed back as unstarted, counted from the end of any
+//! look its card was in as it was asked, since wpa_supplicant runs a move
+//! after a look rather than cutting it short. Each is handed back once.
+//! The way back is followed as a move of its own, given `BACK_FOR`,
+//! whatever its steps say.
 //!
 //! Long because its cases, over half of it, stay beside the private
 //! steps they prove, as every module in wifid keeps them.
@@ -62,6 +64,11 @@ pub const BACK_AFTER: Duration = Duration::from_secs(1);
 /// for that (2026-11-20).
 pub const BACK_FOR: Duration = Duration::from_secs(2);
 
+/// How long a move asked while its card looks waits for the look to end,
+/// should its end go unheard. A look over every channel takes 5 to 6 s,
+/// and a move waits at most 2 s for one before it's asked (acts.rs).
+const LOOK_ENDS: Duration = Duration::from_secs(8);
+
 /// Each card's move on its way, by the card's name.
 #[derive(Default)]
 pub struct Arrivals {
@@ -78,6 +85,10 @@ struct Move {
     asked: Instant,
     /// When it was first said to have left the point it was on.
     left: Option<Instant>,
+    /// Whether its card was looking as it was asked, so the move waits
+    /// on the look, and when that look ended, if it has.
+    looking: bool,
+    looked: Option<Instant>,
     /// Whether it's been said lost already.
     lost: bool,
     /// Whether it's a way back, followed past a join elsewhere.
@@ -147,6 +158,8 @@ impl Arrivals {
             from: from.map(str::to_owned),
             asked,
             left: None,
+            looking: false,
+            looked: None,
             lost: false,
             back: false,
         };
@@ -165,6 +178,8 @@ impl Arrivals {
             from: None,
             asked: now,
             left: None,
+            looking: false,
+            looked: None,
             lost: false,
             back: true,
         };
@@ -185,6 +200,8 @@ impl Arrivals {
             from: None,
             asked: now,
             left: Some(now),
+            looking: false,
+            looked: None,
             lost: false,
             back: false,
         };
@@ -200,10 +217,33 @@ impl Arrivals {
                 if moving.back {
                     Some(moving.asked + BACK_FOR)
                 } else {
-                    moving.from.as_ref().map(|_| moving.asked + moving.given())
+                    moving
+                        .from
+                        .as_ref()
+                        .map(|_| moving.started() + moving.given())
                 }
             })
             .min()
+    }
+
+    /// Takes in that the card was looking as its move was asked. A move
+    /// waits behind a look wpa_supplicant is running, so its card leaves
+    /// its point only once the look ends.
+    pub fn looking(&mut self, card: &str) {
+        if let Some(moving) = self.moves.get_mut(card) {
+            moving.looking = true;
+        }
+    }
+
+    /// Takes in that the card's look ended, so a move that waited on it
+    /// has its time from now to leave its point.
+    pub fn looked(&mut self, card: &str, now: Instant) {
+        if let Some(moving) = self.moves.get_mut(card)
+            && moving.looking
+            && moving.looked.is_none()
+        {
+            moving.looked = Some(now);
+        }
     }
 
     /// Whether the card is on its way back to the point it left. Selected
@@ -250,7 +290,7 @@ impl Arrivals {
         let mut unreached: Vec<_> = self
             .moves
             .iter_mut()
-            .filter(|(_, moving)| now >= moving.asked + moving.given())
+            .filter(|(_, moving)| now >= moving.started() + moving.given())
             .filter_map(|(card, moving)| {
                 let from = moving.from.take()?;
                 let card = card.clone();
@@ -365,11 +405,24 @@ impl Move {
     /// back to a point it left lately would be. So it's given what a way
     /// back is, rather than undone as it nears its point. One that gave up
     /// was handed back as its card fell off, so has nothing left to give.
+    /// One waiting on a look is given till the look ends, and `BACK_AFTER`
+    /// from then.
     fn given(&self) -> Duration {
         if self.left.is_some() {
             BACK_FOR
+        } else if self.looking && self.looked.is_none() {
+            LOOK_ENDS
         } else {
             BACK_AFTER
+        }
+    }
+
+    /// When its time to leave its point began: as the look it waited on
+    /// ended, or as it was asked. Once its card has left, as it was asked.
+    fn started(&self) -> Instant {
+        match (self.left, self.looked) {
+            (None, Some(looked)) => looked,
+            _ => self.asked,
         }
     }
 
@@ -755,6 +808,46 @@ mod tests {
         );
         assert_eq!(arrivals.unreached(now + BACK_FOR), [], "handed back once");
         assert_eq!(arrivals.due(), None, "nothing more due");
+    }
+
+    #[test]
+    fn a_move_asked_as_its_card_looks_has_its_second_from_the_look_s_end() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.looking("wlan0");
+
+        let waiting = arrivals.unreached(now + BACK_AFTER);
+        let due = arrivals.due();
+        let ended = now + ms(3500);
+        arrivals.looked("wlan0", ended);
+        let after = arrivals.due();
+        let early = arrivals.unreached(ended + ms(999));
+        let unstarted = arrivals.unreached(ended + BACK_AFTER);
+
+        assert_eq!(waiting, [], "not while its look runs");
+        assert_eq!(
+            due,
+            Some(now + LOOK_ENDS),
+            "due should the look's end go unheard"
+        );
+        assert_eq!(
+            after,
+            Some(ended + BACK_AFTER),
+            "a second from the look's end"
+        );
+        assert_eq!(early, [], "not before that second is up");
+        let whys: Vec<Short> = unstarted.iter().map(|unreached| unreached.why).collect();
+        assert_eq!(whys, [Short::Unstarted], "then still on its point");
+
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.looking("wlan0");
+        let unheard = arrivals.unreached(now + LOOK_ENDS);
+        assert_eq!(
+            unheard.len(),
+            1,
+            "handed back once a look's end goes unheard"
+        );
     }
 
     #[test]

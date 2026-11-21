@@ -2608,9 +2608,13 @@ pub(crate) mod tests {
         let near = [desk, elsewhere()];
         let back = second + Duration::from_secs(60);
         let waits = chooser.choose(back, (HALL, &badly, -50, CH52), &near, false);
+        // Past a span-only hold from the way back, short of the first's settle.
+        let spanned = start + Duration::from_secs(540);
+        let held = chooser.choose(spanned, (HALL, &badly, -50, CH52), &near, false);
         let settled = start + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, (HALL, &badly, -50, CH52), &near, false);
 
+        assert_eq!(held, Choice::Stay, "held to the first move's settle");
         assert_eq!(
             tried_again,
             Choice::Try(elsewhere().point),
@@ -2648,7 +2652,13 @@ pub(crate) mod tests {
         let short = back + SPAN - Duration::from_secs(1);
         let still = chooser.choose(short, (DESK, &badly, -50, CH52), &near, false);
         let spanned = back + SPAN;
+        let hall_only = chooser.choose(spanned, (DESK, &badly, -50, CH52), &hall_alone, false);
         let next = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
+        assert_ne!(
+            hall_only,
+            Choice::Try(HALL.into()),
+            "the hall it missed is kept off"
+        );
 
         assert_eq!(
             waits,
@@ -2659,7 +2669,7 @@ pub(crate) mod tests {
         assert_eq!(
             next,
             Choice::Try(quicker_still().point),
-            "tried a span on, long before a settle, with the hall kept off"
+            "tried a span on, long before a settle"
         );
     }
 
@@ -2676,6 +2686,7 @@ pub(crate) mod tests {
         let on = (third.as_str(), &badly, -55, CH52);
         let minute = start + Duration::from_secs(60);
         let waits = chooser.choose(minute, on, &near, false);
+        let spanned = chooser.choose(minute + SPAN, on, &near, false);
         let settled = start + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, on, &near, false);
 
@@ -2684,6 +2695,7 @@ pub(crate) mod tests {
             Choice::Stay,
             "not back where it began, so it settles"
         );
+        assert_eq!(spanned, Choice::Stay, "held past a span, as a settle");
         assert_eq!(
             next,
             Choice::Try(quicker_still().point),
@@ -2706,8 +2718,11 @@ pub(crate) mod tests {
         let near = [quicker_still()];
         let rejoined = minute + Duration::from_secs(60);
         let waits = chooser.choose(rejoined, (DESK, &badly, -50, CH52), &near, false);
+        let spanned = rejoined + SPAN;
+        let held = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
 
         assert_eq!(stood, Choice::Stay, "on trial on the hall");
+        assert_eq!(held, Choice::Stay, "held past a span, as a settle");
         assert_eq!(
             waits,
             Choice::Stay,

@@ -1,8 +1,9 @@
 """The Wi-Fi test's moves area.
 
 Here the card moves between the access points of one network: on from one that doesn't answer, to
-another when an account asks, keeping its neighbours, and back to the one it left when the one it
-was asked to has gone; a network of another name forgets those neighbours.
+another when an account asks, keeping its neighbours, back to the one it left when the one it was
+asked to has gone, and free to join any network when it can't get back either; a network of
+another name forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The tests run in the order written, each taking the
 machine on from where the one before left it, so one run alone with -k starts from Lantern joined
@@ -279,12 +280,15 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         f"journalctl -o short-unix -u wifid -u wpa_supplicant --after-cursor='{since}'"
     ).splitlines()
     moved = next(line for line in said if "wlan2 moved to 02:00:00:00:05:00, as asked" in line)
+    sent = next(line for line in said if ", so goes back to 02:00:00:00:00:00" in line)
+    late = "didn't reach" in sent
     back = next(
         line
         for line in said
         if "wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:00:00" in line
     )
     took = float(back.split()[0]) - float(moved.split()[0])
+    returned = float(back.split()[0]) - float(sent.split()[0])
     bidden = machine.succeed(
         f"journalctl -k -o cat --after-cursor='{since}'"
         " | sed -n 's/^wlan2: .* rejected association temporarily;.* (\\([0-9]*\\) ms)$/\\1/p'"
@@ -294,11 +298,17 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     waited = sum(int(ms) for ms in bidden) / 1000
     # The plan's bar is back within a second past any wait, judged on the laptop; a guest's
     # clock stretches on a loaded builder, so here the card is held to wifid's own time for a
-    # way back, and the figure is logged against the bar.
-    machine.log(f"back {took:.3f} s after the move was asked, bidden wait {waited} s, bar 1 s")
+    # way back, and the figure is logged against the bar. A card sent back late is sent only
+    # once its move's 2 s are up, so its way back is timed from when it was sent.
+    machine.log(
+        f"back {took:.3f} s after the move was asked and {returned:.3f} s after it was sent,"
+        f" {'late' if late else 'as it fell off'}, bidden wait {waited} s, bar 1 s"
+    )
     stranded = [line for line in said if "so may join any network" in line]
     assert not stranded, f"stranded on the way back: {stranded}"
-    assert took < 2 + waited, f"back {took:.3f} s after the move was asked, bidden wait {waited} s"
+    assert returned < 2 + waited, f"back {returned:.3f} s after it was sent, wait {waited} s"
+    if not late:
+        assert took < 2 + waited, f"back {took:.3f} s after the move was asked, wait {waited} s"
     tried = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn on the way back: {tried}"
     assert inn_is_on(machine), "the Inn is on again once back"
@@ -308,6 +318,41 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00'
     )
     wifid.holds_address("10.42.0.")
+
+
+def test_a_card_that_cant_get_back_either_may_join_any_network(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card that can't get back to the point it left either may join any network."""
+    rejoined_unpicked(machine)
+    machine.succeed("systemctl start lantern-two")
+
+    def hears_the_second(_: bool) -> bool:
+        """Have the cards look, and say whether they heard Lantern's second."""
+        wifid.ask("Scan")
+        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
+
+    retry(hears_the_second, timeout=timedelta(seconds=60))
+    # Stopped, hostapd answers no join, while the kernel still beacons for it and keeps the
+    # card joined, so the card leaves the first point for a gone second and can't get back.
+    machine.succeed("systemctl stop lantern-two && systemctl kill -s STOP lantern")
+    since = wifid.journal_now()
+    try:
+        answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
+        assert answer == {"id": 1, "done": True}, answer
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qE '^wlan2 didn.t get back to 02:00:00:00:00:00 within [0-9]+ ms,"
+            " so may join any network$'",
+            timeout=timedelta(seconds=30),
+        )
+        # Let go with its other networks on, it isn't left held to a point that won't answer.
+        wifid.joined("Roadside Inn")
+        assert inn_is_on(machine), "the Inn is on once the card is let go"
+    finally:
+        machine.succeed("systemctl kill -s CONT lantern")
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
+    rejoined_unpicked(machine)
 
 
 def test_joining_a_network_of_another_name_forgets_the_neighbours_of_the_last(
