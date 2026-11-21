@@ -34,6 +34,15 @@ WOKEN_TIMEOUT = 10
 # through journald, which the kernel's freeze can stop before it does, so it's read from the
 # journal once the machine is awake.
 HOOK_SAW = "last-seconds-sleeps: second [0-9]* says the machine went to sleep"
+# What the kernel says once its test of a sleep has frozen every process, and what is written
+# to its log to pass over what came before.
+FROZEN = "suspend debug: Waiting"
+CONSOLE_MARK = "last-seconds-test-reads-the-console-from-here"
+# How long a sleep woken from stays frozen, in seconds, which is the kernel's own default.
+WAKES_AFTER = 5
+# How long a sleep reset in stays frozen, so a driver slow to see the freeze still resets the
+# machine inside it rather than after its thaw.
+NEVER_WAKES = 600
 # How long a few records may take to come, in seconds, on a loaded builder.
 RECORDS_TIMEOUT = 60
 # What last-seconds exits with when it may not read the rings, as docs/commands.md's table has.
@@ -50,6 +59,26 @@ def asked(machine: BaseMachine, words: str = "") -> dict[str, Any]:
     answer = machine.succeed(f"su {ADMINISTRATOR} -c 'last-seconds {words} --format json'")
     parsed: dict[str, Any] = json.loads(answer)
     return parsed
+
+
+def put_to_sleep(machine: BaseMachine, frozen_for: int) -> QemuMachine:
+    """Put the machine to sleep, returning once every process is frozen for frozen_for seconds.
+
+    QEMU's shared folders can't be put to sleep, so a real suspend is called off after its
+    freeze, at a moment that varies. The kernel's own test of a sleep stops it there instead:
+    every process frozen for as long as it's asked and then thawed, as a sleep does, without
+    the devices.
+    """
+    qemu = cast("QemuMachine", machine)
+    machine.succeed("echo freezer > /sys/power/pm_test")
+    machine.succeed(f"echo {frozen_for} > /sys/module/suspend/parameters/pm_test_delay")
+    # Each wait reads the console on from where the last stopped, so a line an earlier sleep
+    # left is passed over first.
+    machine.succeed(f"echo {CONSOLE_MARK} > /dev/kmsg")
+    qemu.wait_for_console_text(CONSOLE_MARK, timeout=dt.timedelta(seconds=RECORDS_TIMEOUT))
+    machine.succeed("systemctl suspend")
+    qemu.wait_for_console_text(FROZEN, timeout=dt.timedelta(seconds=RECORDS_TIMEOUT))
+    return qemu
 
 
 def seconds_of(machine: BaseMachine, boot: str) -> list[dict[str, Any]]:
@@ -189,16 +218,9 @@ def test_a_recorder_killed_starts_again_by_itself_and_goes_on(machine: BaseMachi
 
 def test_a_sleep_woken_from_goes_on_without_counting_the_sleep(machine: BaseMachine) -> None:
     boot = kept_a_few(machine)
-    qemu = cast("QemuMachine", machine)
-    # A key wakes a laptop, so the keyboard may wake the machine.
-    machine.succeed("for w in /sys/bus/serio/devices/*/power/wakeup; do echo enabled > $w; done")
     recorder = machine.succeed("systemctl show -P MainPID,NRestarts last-seconds").split()
-    machine.succeed("systemctl suspend")
-    qemu.wait_for_console_text("PM: suspend entry", timeout=dt.timedelta(seconds=RECORDS_TIMEOUT))
-    # A key while it's still going to sleep would only stop it going, and
-    # the wait is the driver's, since the sleeping machine runs nothing.
-    time.sleep(5)
-    machine.send_key("shift")
+    # The kernel's test wakes it by itself.
+    qemu = put_to_sleep(machine, WAKES_AFTER)
     qemu.wait_for_console_text("PM: suspend exit", timeout=dt.timedelta(seconds=RECORDS_TIMEOUT))
     asleep = [second for second in seconds_of(machine, boot) if second["asleep"]]
     assert asleep, "no record said the machine went to sleep"
@@ -240,12 +262,10 @@ def test_a_power_off_stops_the_recorder_after_the_services(machine: BaseMachine)
 
 def test_a_sleep_never_woken_from_is_said_asleep(machine: BaseMachine) -> None:
     ended = kept_a_few(machine)
-    qemu = cast("QemuMachine", machine)
-    machine.succeed("systemctl suspend")
     # The hook waited for the recorder's record before the kernel's freeze,
     # which the boot read as asleep below shows.
-    qemu.wait_for_console_text("PM: suspend entry", timeout=dt.timedelta(seconds=RECORDS_TIMEOUT))
-    # Asleep, a reset ends it as a reset on the way out of a sleep would.
+    qemu = put_to_sleep(machine, NEVER_WAKES)
+    # Frozen, a reset ends it as a reset on the way out of a sleep would.
     qemu.crash()
     qemu.start()
     machine.wait_for_unit("last-seconds.service")

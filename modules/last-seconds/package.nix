@@ -11,6 +11,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      # The recorder run whole and signalled as the sleep's hook does.
+      ./tests/each_sleep_is_heard.rs
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

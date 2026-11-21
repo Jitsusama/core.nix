@@ -3,7 +3,10 @@
 # recorder, kills it, puts it to sleep and wakes it and sees it go on,
 # powers the machine off and reads that boot as stopped after the services,
 # puts it to sleep and resets it there, then
-# resets it awake and reads each boot it ended. QEMU has no energy
+# resets it awake and reads each boot it ended. Its sleeps go as far as
+# the kernel's own test of one, every process frozen and thawed, since
+# QEMU's shared folders can't be put to sleep and would call a real one off.
+# QEMU has no energy
 # counters, battery or fans, so those records leave them out;
 # modules/last-seconds/src/sample.rs's tests read them from a stand-in. The
 # script is last-seconds-vm-test.py.

@@ -1736,8 +1736,9 @@
     sleep; and the recorder refuses no seconds, a boot id no folder the reader lists could hold,
     and a stand-in's rings among the machine's own, ends a rest at once when its end has come,
     and lets in signals held back through a second that overran, a sleep and its wake together
-    read as awake; and asking for one boot
-    answers that boot alone
+    read as awake; run whole and signalled as the sleep's hook does, records the next sleep after
+    a wake with no sleep before it and after a sleep let go once sixty reads' time had passed,
+    and not before; and asking for one boot answers that boot alone
   '';
   last-seconds-passes-clippy = ''
     clippy finds nothing in last-seconds or its tests
@@ -6163,9 +6164,10 @@
     to read, where an administrator reads the boot as still recorded and another account is
     refused, and reads what the kernel gives through its sandbox, every rest state it lists
     included; a stop writes a record saying so and a restart goes on after it, a kill restarts
-    it by itself, a sleep waits until the recorder's record says it and a wake has it go on
-    within seconds without counting the sleep, a power off stops it after a service that stops
-    late, a machine reset asleep leaves its boot said asleep, and a machine killed as a reset
+    it by itself, a sleep, as far as the kernel's own test of one freezes every process, waits
+    until the recorder's record says it and a wake has it go on within seconds without counting
+    the sleep, a power off stops it after a service that stops late, a machine reset while frozen
+    in a sleep leaves its boot said asleep, and a machine killed as a reset
     kills it leaves its boot said cut short, its last second read kept
   '';
   vm-root-builds-only-where-it-trusts = ''

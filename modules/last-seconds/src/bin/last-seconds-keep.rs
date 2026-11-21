@@ -33,10 +33,12 @@ use terminal_kit::{Exit, Failure, Help, flags};
 const EVERY: Duration = Duration::from_secs(1);
 
 /// The longest it holds off writing after the machine said it was going
-/// to sleep, awake: a sleep that failed and never said it woke can't leave
-/// the ring unwritten for longer. A sleep's own time doesn't count, since
-/// the clock it's held to stops with the machine.
-const ASLEEP_AT_MOST: Duration = Duration::from_secs(60);
+/// to sleep, awake, in reads' time: a sleep that failed and never said it
+/// woke can't leave the ring unwritten for longer than a minute at one read
+/// a second. A sleep's own time doesn't count, since the clock it's held to
+/// stops with the machine. Nothing is read meanwhile; it's held to reads'
+/// time so a stand-in reading faster, as in the tests, lets one go as soon.
+const ASLEEP_AT_MOST: u32 = 60;
 
 /// Whether it has been asked to stop.
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -140,7 +142,8 @@ fn help() -> Help {
     )
     .option(
         "--every MS",
-        "how often to read it, in milliseconds; 1000 by default",
+        "how often to read it, in milliseconds; 1000 by default. A sleep \
+         that never says it woke is let go after sixty reads' time",
     )
     .option(
         "--seconds N",
@@ -257,6 +260,10 @@ fn keep(asked: &Asked) -> Result<(), Failure> {
     // record saying so.
     let handlers: [extern "C" fn(libc::c_int); 4] = [stop, stop, sleeps, wakes];
     let held = signals(true);
+    // The mask is this thread's alone, while the hook's kill is sent to the
+    // process, which any thread not holding these back could take
+    // mid-second. It holds because the recorder has no other thread: one
+    // added here, or started by a dependency, has to hold them back too.
     // SAFETY: each handler only stores to an atomic, which a signal may,
     // and the signals are held back from here but for each rest.
     unsafe {
@@ -301,7 +308,8 @@ fn keep(asked: &Asked) -> Result<(), Failure> {
         }
         if record.asleep {
             let said = Instant::now();
-            while asleep() && !STOP.load(Ordering::SeqCst) && said.elapsed() < ASLEEP_AT_MOST {
+            let at_most = asked.every * ASLEEP_AT_MOST;
+            while asleep() && !STOP.load(Ordering::SeqCst) && said.elapsed() < at_most {
                 rest(asked.every, || !asleep() || STOP.load(Ordering::SeqCst));
             }
             awake();
