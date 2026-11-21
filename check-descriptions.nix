@@ -4437,7 +4437,8 @@
   '';
   the-launcher-keeps-a-daemons-words-out-of-its-journal = ''
     with reports off, the journal says how many letters a daemon's refusal held, not its words, for
-    an act shut and refused, one withheld, what an act asks besides, and words typed left unanswered
+    an act shut and refused, one withheld, what an act asks besides, words typed left unanswered and
+    a search refused, a search's unserved row by its kind and Wi-Fi's own refused act by its code
   '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
@@ -4445,7 +4446,8 @@
   '';
   the-launcher-keeps-its-trials-one-by-one = ''
     a close adds its own opening's line to the file and rewrites none before it, however many are
-    kept, and a start carries the old list into lines and lets the oldest go
+    kept, and a start carries the old list into lines and lets the oldest go; with reports off, a
+    slow key's line says how many letters, a slow step's keeping its arrow
   '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing

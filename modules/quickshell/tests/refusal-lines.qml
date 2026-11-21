@@ -1,7 +1,8 @@
 // Drives the real ReadyRows.qml, through Wi-Fi's place (launcher/Wireless.qml), to each line
 // its journal says of a daemon's refusal: an act that shuts the launcher refused, one withheld,
-// what an act asks besides refused, words typed in a row that the daemon didn't answer, and a
-// search of the whole place it can't make. Each
+// what an act asks besides refused, words typed in a row that the daemon didn't answer, a
+// search of the whole place it can't make, a search finding a row not served yet, and an act
+// of Wi-Fi's own refused. Each
 // refusal names a network in the daemon's own words, as "couldn't join Harbour House" would,
 // and the check around it reads the shell's output, with reports off, for each line saying how
 // many letters rather than the words (Y2YBTS, 2026-11-20, 41ca61c4). What's told on screen
@@ -82,6 +83,8 @@ ShellRoot {
             alsoRefused();
             typedRefused();
             searchRefused();
+            foundUnserved();
+            wifiRefused();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error} at ${error.stack}`);
@@ -129,5 +132,18 @@ ShellRoot {
         wireless.served.search("door", 0);
         refuse(said => said.ask === "search" && !said.within,
             { code: "unread", said: "couldn't search Harbour House" });
+    }
+
+    // A search's answer naming a row the daemon doesn't serve yet, its key a daemon's.
+    function foundUnserved() {
+        Expect.same("a row not served yet isn't made",
+            wireless.served.foundRows({ keys: ["wifi:Harbour Annex"], rows: {} }), []);
+    }
+
+    // An act of Wi-Fi's own holding no row, refused with a code but no reason of its own.
+    function wifiRefused() {
+        wireless.actOn({ ask: "act", act: "forget", network: "Harbour House" }, []);
+        refuse(said => said.act === "forget",
+            { code: "gone", said: "Harbour House went" });
     }
 }

@@ -252,8 +252,9 @@ in
 
   # The launcher's journal says how many letters a daemon's refusal held, not
   # its words, with reports off, in each line saying one: an act that shuts
-  # the launcher refused, one withheld, what an act asks besides refused, and
-  # words typed in a row left unanswered (modules/quickshell/tests/
+  # the launcher refused, one withheld, what an act asks besides refused,
+  # words typed in a row left unanswered, a search refused, a search's row not
+  # served yet and Wi-Fi's own act refused (modules/quickshell/tests/
   # refusal-lines.qml, read by refusal-lines-heard.sh), since a daemon's words
   # can name a row, as "couldn't join Harbour House" does.
   the-launcher-keeps-a-daemons-words-out-of-its-journal =

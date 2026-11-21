@@ -7,8 +7,9 @@
 // and touches none before it, so what it writes is the same however many
 // are kept; a close after the pipe was killed is kept once it starts
 // again; and a start with too many lines cuts them, the next close
-// adding to the file cut rather than the one it replaced. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// adding to the file cut rather than the one it replaced. Last, a slow key
+// and a slow step are timed, whose lines the check reads with reports off.
+// It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -133,6 +134,12 @@ ShellRoot {
                 root.stage = "closing after the cut";
                 root.openAndClose();
             } else if (root.stage === "closing after the cut" && root.lines.length === 4) {
+                // A slow key and a slow step, said with reports off, which the
+                // check reads: by how many letters, the step keeping its arrow.
+                root.made.opened();
+                root.made.timed(2, 900, null, "Harbour House", null, "");
+                root.made.timed(2, 900, null, "\u2192 Harbour House", null,
+                    "\u2192 Harbour House");
                 root.stage = "done";
                 console.info("every case holds");
                 Qt.callLater(() => Qt.exit(0));

@@ -641,7 +641,9 @@ in
   # before it, so a close costs the same however many are kept: it turned all
   # 1,339 of Joel's into text, 39 ms a close at a load of 66 (2026-11-10). The
   # shell starting carries the old list into lines and lets the oldest go
-  # (modules/quickshell/tests/trials-kept.qml, through Quickshell).
+  # (modules/quickshell/tests/trials-kept.qml, through Quickshell). With
+  # reports off, a slow key's line says how many letters were typed and a
+  # slow step's keeps its arrow, so neither names the row.
   the-launcher-keeps-its-trials-one-by-one =
     # procps gives the case pkill, to end the pipe as a full disk would.
     pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one"
@@ -657,7 +659,11 @@ in
         cp ${../tests/trials-kept.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         ${shellFolderLint}
-        timeout 60 ${qs} -p shell.qml
+        set -o pipefail
+        timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+        grep -aF 'launcher: 13 letters took 900 ms' said
+        grep -aF 'launcher: → 13 letters took 900 ms' said
+        if grep -aF Harbour said; then exit 1; fi
         touch $out
       '';
 

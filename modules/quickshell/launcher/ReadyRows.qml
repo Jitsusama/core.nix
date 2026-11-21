@@ -1004,7 +1004,8 @@ Scope {
     function notOpened(key, one, why) {
         const row = served(key);
         const shown = row?.thing ?? key;
-        console.info(`launcher: ${actSaid(one)} opened nothing, its ${Ready.openedIn(one)} gone`);
+        const gone = Presented.quoted(Ready.openedIn(one)).slice(1, -1);
+        console.info(`launcher: ${actSaid(one)} opened nothing, its ${gone} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
         maker?.refused(shown, why);
     }
