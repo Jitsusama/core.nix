@@ -78,7 +78,7 @@ impl Watch {
         let folder = root.join("camera-holders");
         fs::create_dir_all(&folder).unwrap();
         // What a run killed mid-write would have left.
-        fs::write(folder.join("MX Brio 705 for Business.99"), "").unwrap();
+        fs::write(folder.join(".MX Brio 705 for Business.99"), "").unwrap();
         // What a killed run of a camera since unplugged left, saying the
         // node this one is now, and another camera's, saying its own.
         let devices = folder.join(".devices");
@@ -89,9 +89,9 @@ impl Watch {
         fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
         fs::write(folder.join("Another"), "obs\n").unwrap();
         // And one another camera's run is writing, saying this node too,
-        // as this test's own process, which runs, and a camera named for
-        // a version, which isn't being written, killed the same way.
-        let plugged = format!("Plugged.{}", std::process::id());
+        // and a camera named for a version, which isn't being written,
+        // killed the same way.
+        let plugged = format!(".Plugged.{}", std::process::id());
         fs::write(devices.join(plugged), format!("{}\n", real.display())).unwrap();
         fs::write(devices.join("Webcam 2.0"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
@@ -192,7 +192,7 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     let watch = Watch::start("there");
     watch.until_there(true, "no file while the camera's there");
     assert_eq!(fs::read_to_string(&watch.file).unwrap(), "");
-    let left = watch.file.with_file_name("MX Brio 705 for Business.99");
+    let left = watch.file.with_file_name(".MX Brio 705 for Business.99");
     assert!(!left.exists(), "a killed run's file was left");
     let device = watch.device();
     let devices = device.parent().unwrap();
@@ -217,7 +217,7 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     );
     assert!(
         devices
-            .join(format!("Plugged.{}", std::process::id()))
+            .join(format!(".Plugged.{}", std::process::id()))
             .exists(),
         "a file being written was taken from its writer"
     );
@@ -299,6 +299,46 @@ fn the_file_goes_with_the_node() {
     fs::remove_dir(&watch.node).unwrap();
     watch.until_there(false, "the file outlived the camera");
     assert_eq!(watch.ended(), Some(0));
+}
+
+#[test]
+fn forgetting_a_node_takes_only_what_says_it() {
+    let root = std::env::temp_dir().join(format!("holders-usb-forget-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let folder = root.join("camera-holders");
+    let devices = folder.join(".devices");
+    fs::create_dir_all(&devices).unwrap();
+    // The node is gone, as it is once its camera's unit stops.
+    let node = root.join("dev/video0");
+    let said = format!("{}\n", node.display());
+    for (name, says) in [
+        ("Killed", said.as_str()),
+        ("Webcam 2.0", said.as_str()),
+        (".Written.7", said.as_str()),
+        ("Another", "/dev/video9\n"),
+    ] {
+        fs::write(devices.join(name), says).unwrap();
+        fs::write(folder.join(name), "zoom\n").unwrap();
+    }
+    let status = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .args(["--usb", "--forget"])
+        .arg(&node)
+        .arg(&folder)
+        .status()
+        .unwrap();
+    assert!(status.success(), "forgetting ended {status}");
+    let mut left: Vec<_> = fs::read_dir(&devices)
+        .unwrap()
+        .chain(fs::read_dir(&folder).unwrap())
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    left.sort();
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(
+        left,
+        [".Written.7", ".Written.7", ".devices", "Another", "Another"],
+        "what says the node, and only it, goes, as a file being written is left"
+    );
 }
 
 #[test]
