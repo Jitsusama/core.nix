@@ -726,17 +726,10 @@ fn a_second_stop_ends_health_at_once_leaving_its_follower() {
 #[test]
 fn a_second_stop_after_the_run_returned_says_it_returned() {
     // As one interrupts again while a follower is slow to end, the day
-    // written, so the second stop mustn't say a write was lost.
-    for (asked, said) in [
-        (
-            &[ENDS_NEVER, RETURNS_WELL][..],
-            "its run returned but its followers' end",
-        ),
-        (
-            &[ENDS_NEVER][..],
-            "not waiting to say the error its run returned",
-        ),
-    ] {
+    // written, so the second stop mustn't say a write was lost, nor an
+    // error unsaid once the first stop has said the run's.
+    for asked in [&[ENDS_NEVER, RETURNS_WELL][..], &[ENDS_NEVER][..]] {
+        let said = "its run returned but its followers' end";
         let mut stopped = Stopped::starting(asked);
         stopped.send(libc::SIGTERM, false);
         let since = Instant::now();
@@ -752,7 +745,11 @@ fn a_second_stop_after_the_run_returned_says_it_returned() {
                 && stopped
                     .failed()
                     .lines()
-                    .any(|line| line.starts_with(&format!("health: {SECOND} at once, {said}"))),
+                    .any(|line| line.starts_with(&format!("health: {SECOND} at once, {said}")))
+                && (asked.contains(&RETURNS_WELL)
+                    || stopped
+                        .failed()
+                        .contains(&format!("health: {FAILS_ENDING}"))),
             "a second stop after the run returned ({asked:?}) ended health ({ended}) saying \
              otherwise, or marked: {}",
             stopped.failed()
