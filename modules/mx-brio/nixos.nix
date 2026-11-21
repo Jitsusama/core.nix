@@ -18,8 +18,9 @@
 # opens it: Chrome lists only the loopback, and PipeWire, run as him,
 # offers only the loopback too. Its own watch (../usb-camera-holders) goes
 # on recording how it streams, in a hidden folder, while the loopback's
-# holders say who's on camera. The change takes hold as the Brio is next
-# plugged in, or at the next boot.
+# holders say who's on camera. A switch that brings the sharing in takes
+# hold of a Brio already plugged in, so nobody plugs it in again
+# (take-hold.sh).
 {
   config,
   lib,
@@ -110,6 +111,32 @@ in
       comesAndGoes = true;
       unit = "mx-brio.service";
       ignoreUnits = [ "mx-brio.service" ];
+    };
+
+    # A switch starts it as it's new, and again whenever the rules change. It
+    # runs at every boot too, where udev's first look does this: it finds the
+    # Brio held, or one udev hasn't read yet, whose own add the rules take.
+    systemd.services.mx-brio-take-hold = {
+      description = "Take hold of an MX Brio already plugged in";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "systemd-udevd.service"
+        "systemd-udev-trigger.service"
+      ];
+      restartTriggers = [ rules ];
+      path = [
+        pkgs.acl
+        # The running systemd's udevadm, which speaks to its own udevd.
+        config.systemd.package
+      ];
+      script = builtins.readFile ./take-hold.sh;
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        # A switch waits on it, and udevadm's settling has no bound of its
+        # own; a replay takes seconds, so a minute is a wedged udev.
+        TimeoutStartSec = "1min";
+      };
     };
 
     systemd.services.mx-brio = {

@@ -6029,6 +6029,11 @@
   vm-libvirt-stops-quickly = ''
     libvirt's daemon stops at once, its udev thread starved
   '';
+  vm-a-switch-takes-a-plugged-in-brio = ''
+    a switch that brings in the MX Brio's sharing over a Brio already plugged in and handed to the
+    seat names it for its relay, starts the relay, and takes it back from the seat, with nobody
+    plugging it in again
+  '';
   vm-lid-shuts-with-the-hinge = ''
     logind hears lid-hinge's switch and not the lid's own: a lid shut with the hinge coming down
     sleeps, one shut with the hinge wide open and the light on stays open, and one slammed shut

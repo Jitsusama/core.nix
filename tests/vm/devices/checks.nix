@@ -24,6 +24,11 @@ onLinux {
   vm-loopback-says-who-holds-it = import ./loopback-holders.nix {
     inherit self pkgs;
   };
+  # Whether a switch takes hold of an MX Brio already plugged in shows only
+  # with udev, logind's seat and systemd's devices there.
+  vm-a-switch-takes-a-plugged-in-brio = import ./mx-brio-at-switch.nix {
+    inherit self pkgs;
+  };
   # Whether logind and the compositor hear the lid's own switch or
   # lid-hinge's shows only with udev, uinput and logind there.
   vm-lid-shuts-with-the-hinge = import ./lid-hinge.nix { inherit self pkgs; };
