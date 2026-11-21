@@ -661,7 +661,7 @@ pub fn run(
 /// none of its log: a VM test cut off mid-test on 2 November passed there,
 /// and only its exit said so. One lost while copying up had nothing
 /// building.
-fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u64>) {
+fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u32>) {
     eprintln!(
         "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
          to {} minutes from {}",
