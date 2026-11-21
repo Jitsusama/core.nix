@@ -33,9 +33,16 @@ in
       ExecStart = "${lib.getExe package} follow";
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
       # Each time it starts, after a fault or a stop, it reads today's
-      # journals again from the day's start. What it saw itself since its
-      # last write, as the lid and the disk, is lost to a fault or a stop,
-      # as is what it couldn't write of a day before, held to try again.
+      # journals again from the day's start. What it sees itself, as the
+      # lid and the disk, it writes each half minute. It writes the day as
+      # it ends, by a follower's end or a stop it has three seconds to
+      # write in, so the days before it held to try again, and the short
+      # spells of failed writes it kept unsaid, are lost only to a kill, a
+      # crash, a second stop other than a hangup or a day it can't write.
+      # A stop before its first half minute's tick writes only the days it
+      # holds, as the replay may be under way. A stop just past midnight
+      # also loses the old day's journal lines it hadn't read yet, as a
+      # start reads only today's.
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";
@@ -61,8 +68,9 @@ in
         "follow"
       ];
       RunAtLoad = true;
-      # As on Linux, it reads the day again each time it starts, and loses
-      # the same to a fault or a stop; launchd waits 10 s between starts.
+      # As on Linux, it reads the day again each time it starts, and writes
+      # it as it ends; launchd waits 10 s between starts, and gives a stop
+      # 20 s before it kills.
       KeepAlive = true;
       # Whatever the account runs comes first, as background.slice does on
       # Linux.

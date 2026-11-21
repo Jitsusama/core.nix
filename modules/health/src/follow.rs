@@ -8,8 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::thread;
+use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
 
 use jiff::tz::TimeZone;
@@ -31,8 +30,6 @@ use crate::signals;
 use crate::source::{Followers, Source};
 use crate::trials;
 use crate::typing;
-
-use spell::Spell;
 
 /// How often a changed day is written out and the lid looked at: often
 /// enough that what `health` shows is a moment old, seldom enough to cost
@@ -68,7 +65,7 @@ pub struct Follower {
     write_failed: bool,
     // The days before, oldest first, held until written, so the new day's
     // lines and ticks go on in it; a sleep, which stops `GIVES_UP`'s
-    // clock, can pass more than one midnight. A stop drops them unsaid.
+    // clock, can pass more than one midnight. A kill drops them unsaid.
     held: Vec<Day>,
     into: PathBuf,
     zone: TimeZone,
@@ -640,21 +637,34 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let (lines, read) = mpsc::channel();
     // Dropped however this returns, ending every follower still running.
     let followers = Followers::default();
-    // A stop ends the followers first, then health (`signals.rs`).
+    // What health ends on once the run returns well, kept out of the run's
+    // own error, which a stop says.
+    let mut ended = None;
+    // A stop ends the followers as the run writes the day, then health,
+    // within `WRITES_WITHIN` of the stop (`signals.rs`).
     signals::until_stopped(followers.ender(), || {
-        let ended = ended_by(source.start(&now, &lines, &followers), &lines, FAILS);
+        ended = Some(ended_by(
+            source.start(&now, &lines, &followers),
+            &lines,
+            FAILS,
+        ));
         drop(lines);
         run(
             &mut follower,
             &read,
             || (Instant::now(), Timestamp::now().as_microsecond()),
-            thread::sleep,
+            signals::rest,
             lid::look,
+            signals::stopping,
             &FAILS,
             &NOTICES,
-        )?;
-        Err(ended)
+        )
     })
+    // `until_stopped` runs the run whenever it returns well, so this
+    // default is never said, there only as `ended` can't be known set.
+    .and(Err(
+        ended.unwrap_or_else(|| io::Error::other("its run never began"))
+    ))
 }
 
 /// What health ends on once `run` returns, given how its followers
@@ -682,111 +692,10 @@ fn ended_by(
     }
 }
 
-/// Take the followers' lines until one has ended, which its `None` says,
-/// and health has run `SETTLED` by `now`, the awake clock and the wall's,
-/// in microseconds, and every half minute, however busy the journals are,
-/// look at the lid and write the day. Each follows for as long as health
-/// runs, so an end is a fault, and health starting again follows every one
-/// again.
-///
-/// Health ends no sooner than `SETTLED` from its start, however its
-/// followers end, so the day isn't read again every few seconds where
-/// they end at every start: until then whatever is still heard is taken,
-/// and once nothing can be, health `wait`s out the rest, still looking
-/// every half minute. What went unheard that day is heard from the day's
-/// replay once health starts again.
-///
-/// A day that can't be written, as on a full disk, is said through `say`,
-/// and once written again through `notice`, as `Spell` decides. Health
-/// tries every half minute for as long as `GIVES_UP`, as a start frees no
-/// room and, past midnight, would lose the old day; a new day starts as
-/// ever meanwhile, holding the old, so what's heard and seen goes into it.
-/// Then it tries once more, and carries on if that writes everything.
-///
-/// # Errors
-///
-/// When the day can't be written as health ends, or on that last try.
-fn run(
-    follower: &mut Follower,
-    read: &Receiver<Option<String>>,
-    mut now: impl FnMut() -> (Instant, i64),
-    mut wait: impl FnMut(Duration),
-    mut look: impl FnMut() -> Looked,
-    say: &dyn Fn(&str),
-    notice: &dyn Fn(&str),
-) -> io::Result<()> {
-    let (started, _) = now();
-    let mut ticked = started;
-    let mut ended = false;
-    let mut hearing = true;
-    let mut spell = Spell::default();
-    loop {
-        let (at, wall) = now();
-        let ran = at.saturating_duration_since(started);
-        if spell.gave_up(at) && ran >= SETTLED {
-            spell.last_try(follower, at, wall, say, notice)?;
-        }
-        if ended && !spell.is_on() && ran >= SETTLED {
-            break;
-        }
-        let left = EVERY.saturating_sub(at.saturating_duration_since(ticked));
-        let mut refused = None;
-        if hearing {
-            match read.recv_timeout(left) {
-                // Only a new day's line writes, and only a write that
-                // failed says so, so a line taken without one leaves the
-                // spell as it was.
-                Ok(Some(line)) => refused = follower.take(&line).err(),
-                Ok(None) => ended = true,
-                Err(RecvTimeoutError::Timeout) => {}
-                // Every sender is gone, so nothing more can be heard.
-                Err(RecvTimeoutError::Disconnected) => {
-                    hearing = false;
-                    ended = true;
-                }
-            }
-        } else {
-            // Past `SETTLED`, only a day still unwritten keeps health
-            // here, and the next try is the next tick's, so it never
-            // waits nothing and spins.
-            let settles = SETTLED.saturating_sub(ran);
-            wait(if settles.is_zero() {
-                left
-            } else {
-                left.min(settles)
-            });
-        }
-        // Dated once the line is taken, as the wait for it may be long.
-        let (at, wall) = now();
-        if let Some(error) = refused {
-            spell.tried(Some(&error), at, wall, &follower.into, say, notice);
-        }
-        if at.saturating_duration_since(ticked) >= EVERY {
-            ticked = at;
-            follower.look_at_lid(look(), wall);
-            follower.mind(wall);
-            follower.count_the_dead(wall);
-            follower.weigh(wall);
-            follower.guard(wall);
-            follower.hear_peers(wall);
-            follower.read_reports();
-            follower.feel();
-            follower.time_typing();
-            follower.pool_keys();
-            follower.hear(SESSIONS_A_TICK);
-            let failed = follower.write().err();
-            spell.tried(failed.as_ref(), at, wall, &follower.into, say, notice);
-        }
-    }
-    let written = spell.ending(follower.write(), &follower.into, notice);
-    let lost = spell::losing(&follower.held);
-    written.map_err(|error| {
-        io::Error::new(
-            error.kind(),
-            format!("the day couldn't be written as health ended{lost}: {error}"),
-        )
-    })
-}
+// The run over the followers' lines, follow/run.rs.
+mod run;
+
+use run::run;
 
 // A spell of failed writes and what health says of it, follow/spell.rs.
 mod spell;

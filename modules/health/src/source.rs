@@ -409,8 +409,8 @@ fn named(command: &Command) -> String {
 }
 
 /// A command's output read line by line until it ends, for the replay.
-struct History {
-    child: Child,
+pub(crate) struct History {
+    pub(crate) child: Child,
     out: BufReader<ChildStdout>,
     /// How many lines it has given.
     read: usize,
@@ -422,7 +422,7 @@ struct History {
 
 impl History {
     /// Start `command`, its output to be read.
-    fn of(mut command: Command) -> io::Result<Self> {
+    pub(crate) fn of(mut command: Command) -> io::Result<Self> {
         let greps = command
             .get_args()
             .any(|arg| arg.to_string_lossy().starts_with("--grep="));
@@ -444,18 +444,21 @@ impl History {
         })
     }
 
-    /// Say so when the history ended other than whole: its follower still
-    /// follows on from its last line, but the rest of its day comes at
-    /// that follower's pace rather than in the order it was written.
-    /// Says whether it was whole.
-    fn ended(&mut self) -> bool {
+    /// Say so when the history ended other than whole, unless by a stop to health's whole
+    /// group, waited for as a follower's end waits (`CAUGHT_WITHIN`): its follower still follows
+    /// on from its last line, but the rest of its day comes at that follower's pace rather than
+    /// in the order it was written. Says whether it was whole.
+    pub(crate) fn ended(&mut self) -> bool {
         match self.child.wait() {
             Ok(status) if whole(status.success(), status.code(), self.read, self.greps) => true,
             Ok(status) => {
-                warn(&format!(
-                    "health: the day's history asking {} ended early, {status}",
-                    self.name
-                ));
+                thread::sleep(crate::signals::CAUGHT_WITHIN);
+                if !crate::signals::stopping() {
+                    warn(&format!(
+                        "health: the day's history asking {} ended early, {status}",
+                        self.name
+                    ));
+                }
                 false
             }
             Err(error) => {
@@ -601,17 +604,15 @@ impl Children {
         self.running().children.remove(&id)
     }
 
-    /// Kill and wait on each child still running, and start none after.
+    /// Kill every child still running within the lock, so an end beside
+    /// this can't return before every kill is sent; then wait on each.
     fn end(&self) {
-        let children = {
-            let mut running = self.running();
-            running.ended = true;
-            mem::take(&mut running.children)
-        };
-        for mut child in children.into_values() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
+        let mut running = self.running();
+        running.ended = true;
+        let mut children = mem::take(&mut running.children);
+        children.values_mut().map(Child::kill).for_each(drop);
+        drop(running);
+        children.values_mut().map(Child::wait).for_each(drop);
     }
 }
 
@@ -754,7 +755,7 @@ const _: () = assert!(
 );
 
 /// sd-daemon(3)'s mark for a warning.
-const WARNING: u8 = 4;
+pub(crate) const WARNING: u8 = 4;
 
 /// sd-daemon(3)'s mark for an error.
 pub(crate) const ERROR: u8 = 3;

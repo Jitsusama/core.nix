@@ -268,6 +268,60 @@ fn a_run_that_ends_in_the_quiet_tells_the_short_spells_it_kept() {
 }
 
 #[test]
+fn a_stop_that_cant_write_the_day_ends_the_run_saying_so() {
+    // A day never writable, as on a full disk, a busy journal so it has
+    // lines to write, and a stop past three ticks, so the stop's write
+    // fails as any end's would.
+    let Outcome { result, .. } = Ran {
+        held_for: SETTLED * 2,
+        step: EVERY,
+        busy: true,
+        unwritable_for: usize::MAX,
+        stops: 8,
+        ..Ran::default()
+    }
+    .outcome();
+    let error = result.map_err(|error| error.to_string());
+    assert!(
+        error
+            .as_ref()
+            .is_err_and(|error| error.starts_with("the day couldn't be written as health ended")),
+        "a stop that couldn't write the day ended the run as if it had: {error:?}"
+    );
+}
+
+#[test]
+fn a_stop_ends_a_run_at_once_telling_the_short_spells_it_kept() {
+    // As a restart or a reboot stops health: its followers still hold
+    // their senders, and the second spell is a minute old, well within
+    // the quiet, so only the stop's write can tell it. The stop comes at
+    // the clock's 18th look, the ninth tick's first, 17 half minutes in,
+    // and the run ends at it, with no tick more.
+    let Outcome {
+        result,
+        ran,
+        noticed,
+        ..
+    } = Ran {
+        held_for: SETTLED * 2,
+        step: EVERY,
+        busy: true,
+        flaps: &[3, 4, 5, 6],
+        stops: 18,
+        ..Ran::default()
+    }
+    .outcome();
+    assert!(
+        result.is_ok()
+            && ran <= EVERY * 17
+            && noticed.len() == 2
+            && noticed[1].ends_with("again, after a short spell failing that went unsaid"),
+        "a stop didn't end the run at once, writing the day and telling the short spell it \
+         kept: {result:?}, {ran:?}, {noticed:?}"
+    );
+}
+
+#[test]
 fn how_long_a_spell_lasted_reads_to_the_minute() {
     let read = |seconds| spell::lasting(Duration::from_secs(seconds));
     assert_eq!(
