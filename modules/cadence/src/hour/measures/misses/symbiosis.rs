@@ -303,7 +303,10 @@ fn listed(
     for folder in folders {
         for entry in std::fs::read_dir(&folder).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') || !name.ends_with(".json") {
+            let json = Path::new(&name)
+                .extension()
+                .is_some_and(|ext| ext == "json");
+            if name.starts_with('.') || !json {
                 continue;
             }
             if let Some(from) = name.split('-').nth(1).filter(|from| is_address(from)) {
@@ -412,18 +415,15 @@ fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>
     for one in posted {
         let thread = ancestors(&by_id, one).find_map(|id| counted_as.get(id).copied());
         if is_finding(one) && !withdrawn(one) {
-            match thread.filter(|&at| found[at].landed.is_none()) {
-                Some(at) => {
-                    counted_as.insert(&one.id, at);
-                }
-                None => {
-                    counted_as.insert(&one.id, found.len());
-                    found.push(Finding {
-                        posted: one.clone(),
-                        owner: owner(one, orchestrator, known),
-                        landed: None,
-                    });
-                }
+            if let Some(at) = thread.filter(|&at| found[at].landed.is_none()) {
+                counted_as.insert(&one.id, at);
+            } else {
+                counted_as.insert(&one.id, found.len());
+                found.push(Finding {
+                    posted: one.clone(),
+                    owner: owner(one, orchestrator, known),
+                    landed: None,
+                });
             }
         } else if let Some(at) = thread.filter(|_| opens_with(one, "landed")) {
             found[at].landed = one.text.lines().next().map(str::to_owned);
