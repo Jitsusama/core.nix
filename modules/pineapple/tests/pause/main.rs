@@ -300,12 +300,14 @@ fn a_stop_says_everything_stops_and_pauses_only_agents_work() {
                 failed: vec![],
                 recorded: true,
                 reached: true,
+                realm: None,
             },
             Took {
                 machine: "mac".to_owned(),
                 failed: vec![],
                 recorded: true,
                 reached: true,
+                realm: None,
             },
         ],
         "both machines took it"

@@ -195,6 +195,59 @@ fn the_script_a_machine_runs_writes_the_stop_and_stops_its_starts() {
 }
 
 #[test]
+fn a_realm_refused_before_the_stop_leaves_every_realm_it_never_refused() {
+    let home = scratch("script-realms-kept");
+    let said = pause::record("stop-all-1", "here", 1);
+    let work = script_in(&home, &said, "stop", Some("work"), true, 0);
+    assert_eq!(
+        work.asked, "starts list --realm work\n",
+        "a realm whose starts Joel already refused isn't refused again"
+    );
+    let personal = script_in(&home, &said, "resume", Some("personal"), false, 0);
+    assert_eq!(
+        personal.asked, "",
+        "nor is a realm the stop never refused let go, though the stop refused none"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_lets_go_whole_a_stop_made_before_stops_noted_their_realms() {
+    let home = scratch("script-realms-older");
+    let said = pause::record("stop-all-1", "here", 1);
+    script_in(&home, &said, "stop", Some("work"), false, 0);
+    let stops = home.join(".local/state/pineapple/stops");
+    for note in ["stop-all-1.realms-noted", "stop-all-1.stopped-work"] {
+        fs::remove_file(stops.join(note)).expect("the stop's note of its realms");
+    }
+    assert_eq!(
+        script_in(&home, &said, "resume", Some("personal"), false, 0).asked,
+        "starts resume --realm personal\n",
+        "an older stop says nothing of the realms it refused, so each is let go"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_stop_that_failed_refusing_starts_still_has_them_let_go() {
+    let home = scratch("script-stop-failed");
+    let said = pause::record("stop-all-1", "here", 1);
+    let stop = script_in(&home, &said, "stop", None, false, 1);
+    assert_eq!(
+        stop.ended,
+        Some(70),
+        "the stop ends failed: {:?}",
+        stop.said
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", false),
+        "starts resume\n",
+        "starts it may have refused before failing are let go on the resume"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
 fn the_script_leaves_starts_refused_there_before_it_refused() {
     let home = scratch("script-kept");
     let said = pause::record("stop-all-1", "here", 1);

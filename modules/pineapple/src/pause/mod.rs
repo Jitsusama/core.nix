@@ -105,6 +105,9 @@ pub struct Took {
     /// Whether what was asked reached the machine, or may have: false only
     /// when it never ran there, so nothing of it is there to undo.
     pub reached: bool,
+    /// The realm it was asked in, when the plan names realms, so a machine
+    /// in two that took one and not the other says which; none for here.
+    pub realm: Option<String>,
 }
 
 /// What [`tend`] did: the work it froze, and how each machine took a
@@ -219,6 +222,7 @@ pub fn stop(
         failed,
         recorded: true,
         reached: true,
+        realm: None,
     }];
     let mut kept = Vec::new();
     for machine in &asked {
@@ -290,6 +294,7 @@ fn undo(
         failed,
         recorded: true,
         reached: true,
+        realm: None,
     }];
     let said = fs::read_to_string(state.join("stops").join(format!("{}.json", file_of(&id))))
         .ok()
@@ -303,6 +308,7 @@ fn undo(
                 failed: vec!["its stop's record here can't be read".to_owned()],
                 recorded: false,
                 reached: true,
+                realm: machine.realm.clone(),
             },
         };
         if one.failed.is_empty() {
@@ -526,7 +532,11 @@ pub fn said(act: &str, took: &[Took], sessions: Option<usize>) -> String {
         } else {
             ", so its agents may run on"
         };
-        line = format!("{line}; {} {}{so}", one.machine, one.failed.join(", "));
+        let at = one.realm.as_ref().map_or_else(
+            || one.machine.clone(),
+            |realm| format!("{} in {realm}", one.machine),
+        );
+        line = format!("{line}; {at} {}{so}", one.failed.join(", "));
     }
     line
 }

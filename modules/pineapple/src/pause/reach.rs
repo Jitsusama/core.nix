@@ -268,19 +268,21 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     // A resume of a stop that never reached this machine has nothing to
     // undo here, and letting its starts go would undo Joel's own refusal.
     // So too for a realm whose starts the stop never refused, though it
-    // reached another: only a stop noted before this one was kept leaves
-    // no word of which realms it refused, and is let go whole.
-    let unreached = if act == "resume" {
-        format!("[ -e \"$d/{}.json\" ] || exit 0\n", file_of(id))
+    // reached another: only a stop made before each noted its realms says
+    // nothing of which it refused, and is let go whole.
+    let (unreached, note) = if act == "resume" {
+        (
+            format!("[ -e \"$d/{}.json\" ] || exit 0\n", file_of(id)),
+            "",
+        )
     } else {
-        String::new()
+        (String::new(), ": > \"$noted\"\n")
     };
     let starts = if act == "resume" {
         format!(
             "resumed=\"$d/{file}.resumed{mark}\"\n\
-             set -- \"$d/{file}.stopped\"*\n\
              if [ -e \"$resumed\" ] || [ -e \"$kept\" ] || \
-             {{ [ ! -e \"$stopped\" ] && [ -e \"$1\" ]; }}; then : > \"$resumed\"; \
+             {{ [ -e \"$noted\" ] && [ ! -e \"$stopped\" ]; }}; then : > \"$resumed\"; \
              else \"$m\" starts resume{flag} >/dev/null || exit {OWN_FAILURE}; \
              : > \"$resumed\"; fi\n",
             file = file_of(id),
@@ -302,6 +304,8 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
          mv \"$d/{file}.new\" \"$d/{file}.json\"\n\
          kept=\"$d/{file}.starts-kept{mark}\"\n\
          stopped=\"$d/{file}.stopped{mark}\"\n\
+         noted=\"$d/{file}.realms-noted\"\n\
+         {note}\
          m=\n\
          for c in \"$(command -v mycelium || true)\" \
          \"/etc/profiles/per-user/$(id -un)/bin/mycelium\" \
@@ -323,6 +327,7 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
             failed: vec!["this machine names no mycelium to reach it".to_owned()],
             recorded: false,
             reached: false,
+            realm: at.realm.clone(),
         };
     };
     let mut args = asked(&["run"], at.realm.as_deref());
@@ -346,6 +351,7 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
         recorded: failed.is_empty(),
         failed,
         reached,
+        realm: at.realm.clone(),
     }
 }
 

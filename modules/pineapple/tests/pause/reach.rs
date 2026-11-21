@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use pineapple::pause;
+use pineapple::pause::{self, Took};
 use serde_json::Value;
 
 use super::{DROPPED, Machine, NEVER_RAN, asked_with, json, machine, plan, resumed, scratch, tend};
@@ -162,6 +162,34 @@ fn a_stop_that_cannot_note_whom_it_reached_still_stops_and_resumes_each() {
         "the note from before the asks stands, so the Mac is resumed until it can be: {paused}"
     );
     let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_machine_in_two_realms_says_which_its_stop_never_reached() {
+    let took = |machine: &str, realm: Option<&str>, failed: Vec<String>| Took {
+        machine: machine.to_owned(),
+        recorded: failed.is_empty(),
+        reached: failed.is_empty(),
+        failed,
+        realm: realm.map(str::to_owned),
+    };
+    let both = [
+        took("here", None, vec![]),
+        took("mac", Some("work"), vec![]),
+        took(
+            "mac",
+            Some("personal"),
+            vec![format!("couldn't stop there: {NEVER_RAN}")],
+        ),
+    ];
+    assert_eq!(
+        pause::said("stopping", &both, Some(2)),
+        format!(
+            "stopping 2 sessions on here and mac; mac in personal couldn't stop there: \
+             {NEVER_RAN}, so its agents run on"
+        ),
+        "Joel is told which of the Mac's realms runs on, not that the whole Mac does"
+    );
 }
 
 /// Stops `stop-all-1` with the Mac taking it, resumes it, and answers the
