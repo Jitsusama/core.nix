@@ -270,8 +270,9 @@
 
   # call-transcripts tells the far end's voices apart on the same three AMI
   # meetings at least as well as it last did: their side cut into takes as
-  # a call's is, each take embedded with TitaNet small on the CPU and the
-  # takes grouped with no count of the people, of the speech given a voice
+  # a call's is, each take embedded in 3 s pieces with TitaNet small on
+  # the CPU and the pieces grouped with no count of the people, a piece
+  # left out taking its take's nearest voice, of the speech given a voice
   # at least `right` is its voice's speaker's, and at least `handled` of
   # the speech is handled as it should be: given a voice, or left under
   # Others where one talker holds all but a tenth of a far end, as
@@ -279,14 +280,16 @@
   # floors to what it reaches, and one that trades naming for words heard
   # lowers them, saying so: a second's pause before a take is cut hears
   # a point more of the words and names the voices worse. Each sits half
-  # a point under what was measured on 2026-11-20, 82.7% and 96.9%.
+  # a point under what was measured on 2026-11-21, 85.6% and 97.1%;
+  # whole takes gave 82.7% and 96.9%, and 2 s pieces 37.3% and 43.8%,
+  # TitaNet hearing one talker as several in pieces that short.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "82.2";
-      handled = "96.4";
+      right = "85.1";
+      handled = "96.6";
     in
     pkgs.runCommand "call-transcripts-tells-voices-apart-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts voices ${voices} ${meetings} \
@@ -301,7 +304,9 @@
   # came. Of the speech given a name, at least `right` is that person's,
   # and at least `named` of the speech is given one. A change that names
   # better raises the floors to what it reaches; each sits half a point
-  # under what the last measurement on 2026-11-21 gave, 83.5% and 27.9%.
+  # under what the last measurement on 2026-11-21 gave, 84.5% and 30.6%,
+  # with takes embedded in pieces as the voices check's are; whole takes
+  # gave 83.5% and 27.9%.
   # Waiting a second before cutting a take lowered `right` from 93.4%:
   # a take that runs through a short pause holds more of a second voice.
   # TS3003a names none, since one talker holds nearly all of its far end.
@@ -310,8 +315,8 @@
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "83.0";
-      named = "27.4";
+      right = "84.0";
+      named = "30.1";
     in
     pkgs.runCommand "call-transcripts-names-voices-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts names ${voices} ${meetings} \
