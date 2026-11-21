@@ -1480,11 +1480,11 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
                 )
                 return out.strip() if status == 0 else f"unread, stopping with {status}"
 
-            shown = read("qs ipc call launcher showing")
-            ran = read(f"cat {said}/installed")
+            showing = read("qs ipc call launcher showing")
+            installed = read(f"cat {said}/installed")
             failed = (
                 "the journal never said the gone row's Return was taken,"
-                f" the launcher showing {shown} and the stand-in run as {ran}"
+                f" the launcher showing {showing} and the stand-in run as {installed}"
             )
             raise AssertionError(failed) from unheard
         shown = desktop.showing()
