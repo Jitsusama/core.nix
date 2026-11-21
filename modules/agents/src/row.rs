@@ -346,10 +346,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         .orchestrates
         .then(|| (known.shape)(session.id()))
         .flatten();
-    let wears = session.stands_to_joel(known.joel_can, known.jobs);
-    // A want Joel put off still waits, so its row keeps his mark, but in
-    // its own hue, lighting nothing above it (top.rs) until the hour is up.
-    let put_off = wears == Stands::Needs && (known.put_off)(session);
+    let (wears, put_off, hue) = worn(session, known, !full.is_empty());
     let waits_on_joel = wears == Stands::Needs && !put_off;
     let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
@@ -366,11 +363,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         glyph,
         mark: shape.unwrap_or("agent"),
         mark_hue: standing::unwaited_hue(stands, !full.is_empty()),
-        hue: if put_off {
-            standing::unwaited_hue(wears, !full.is_empty())
-        } else {
-            standing::hue(wears, !full.is_empty())
-        },
+        hue,
         side: said_of(&items),
         side_items: items,
         note: noted.clone(),
@@ -446,6 +439,21 @@ impl Row {
 /// folder under a trees folder, as the harness's and World's trees both
 /// are cut, else its folder, and its quest's to-dos; "" for one
 /// elsewhere, which has no Close.
+/// How a session stands to Joel, whether he put off what it wants of
+/// him, and the hue its row wears. A want put off still waits, so its row
+/// keeps his mark, but in its own hue, lighting nothing above it (top.rs)
+/// until the hour is up.
+fn worn(session: Session, known: &Known, warns: bool) -> (Stands, bool, &'static str) {
+    let wears = session.stands_to_joel(known.joel_can, known.jobs);
+    let put_off = wears == Stands::Needs && (known.put_off)(session);
+    let hue = if put_off {
+        standing::unwaited_hue(wears, warns)
+    } else {
+        standing::hue(wears, warns)
+    };
+    (wears, put_off, hue)
+}
+
 fn leaves(session: Session, known: &Known, words: &Words) -> String {
     if !session.here() {
         return String::new();
@@ -869,6 +877,7 @@ mod tests {
             sharing: false,
             needs: &|_| 0,
             shape: &|_| None,
+            put_off: &|_| false,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
@@ -908,6 +917,7 @@ mod tests {
             sharing: false,
             needs: &|_| 0,
             shape: &|_| None,
+            put_off: &|_| false,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
@@ -958,6 +968,7 @@ mod tests {
             sharing: false,
             needs: &|_| 0,
             shape: &|_| None,
+            put_off: &|_| false,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
