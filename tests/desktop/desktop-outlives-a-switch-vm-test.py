@@ -187,6 +187,17 @@ def test_a_sessions_window_is_told_nothing_of_the_kittys_unit(desktop: Desktop) 
         )
         units = [line for line in told if line.split("=", 1)[0] in UNITS_OWN]
         assert not units, f"a session's window is told the kitty's unit: {units}"
+        # Beyond the names listed, no value may name the unit, its invocation or its folder,
+        # so a variable systemd adds for a directive the unit gains later is caught too.
+        # kitty's own, which a window needs to reach it, aren't the unit's.
+        invocation = shown(desktop, "sessions-kitty", "InvocationID")["InvocationID"]
+        marks = ("sessions-kitty.service", "/pi-sessions", invocation)
+        named = [
+            line
+            for line in told
+            if not line.startswith("KITTY_") and any(mark in line for mark in marks)
+        ]
+        assert not named, f"a session's window is told of the kitty's unit: {named}"
     finally:
         for window in desktop.windows():
             if window["title"] == title:

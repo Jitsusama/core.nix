@@ -2381,9 +2381,11 @@ in
         # session's window, where a program reading it took the unit as its
         # own: warp-cli took the sessions' socket folder as its runtime folder
         # (OSPHT4, 2026-11-20), and one watching memory pressure would watch
-        # the kitty's. Its own lines use %t instead. A switch keeps the running
-        # kitty (keep-old, below), so this reaches its windows at the next
-        # login; restarting the unit sooner closes every session's window.
+        # the kitty's. The manager's pid goes too, since it marks a program as
+        # one systemd started, which a window's isn't. Its own lines use %t
+        # instead. A switch keeps the running kitty (keep-old, in Unit above),
+        # so this reaches its windows at the next login; restarting the unit
+        # sooner closes every session's window.
         ExecStart = lib.concatStringsSep " " [
           (lib.concatStringsSep " " (
             [ (lib.getExe' pkgs.coreutils "env") ]
