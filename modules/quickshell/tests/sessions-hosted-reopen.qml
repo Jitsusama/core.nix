@@ -629,6 +629,9 @@ ShellRoot {
         Niri.windows = Object.assign({}, Niri.windows, { "65": window });
         Niri.revision += 1;
         stage = "chief";
+        // A session's window is the one the windows daemon says is its,
+        // so the daemon tells it too, or the orchestrator has none.
+        windowsTell({ changed: [windowRecord(65, "pi-hosted.s-chief", waitedOn)] });
         Watch.tell(root.watch, { changed: [Object.assign(hosted("s-chief", "CHIEF"),
             { told: "0000000000000010" })] });
     }
