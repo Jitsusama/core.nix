@@ -373,6 +373,7 @@ mod tests {
                     up_delay_ms: Some(delay(t)),
                     down_delay_ms: None,
                     gateway_ms: None,
+                    gateway_most_ms: None,
                     up_ours: None,
                     vpn_ms: None,
                     ceiling: None,

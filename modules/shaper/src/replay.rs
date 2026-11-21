@@ -61,6 +61,11 @@ pub struct Second {
     pub down_delay_ms: Option<f64>,
     /// The gateway's round trip, in ms, when it answered in the second.
     pub gateway_ms: Option<f64>,
+    /// The most the gateway's round trip took in the second, in ms: a busy
+    /// access point's waits land on some of a second's probes and not
+    /// others, the reflectors' as much as the gateway's, so the download is
+    /// judged on its delay less this (src/oneway.rs's Air).
+    pub gateway_most_ms: Option<f64>,
     /// Whose the upload's queue was, as only the live shaper sees it; the
     /// recorder's lines don't say, so a replay leaves it None.
     pub up_ours: Option<crate::oneway::Ours>,
@@ -371,6 +376,12 @@ impl Reading {
                 up_delay_ms: median(tick.up.values().copied()),
                 down_delay_ms: median(tick.down.values().copied()),
                 gateway_ms: median(tick.gateway.iter().copied()),
+                // The air's bursts raise only some of a second's round
+                // trips, as they do the reflectors' probes, so the median
+                // missed what the reflectors met. On the evening of 19
+                // November a busy access point's air read as the download's
+                // own, and cut it as low as 2.4 Mbit/s.
+                gateway_most_ms: tick.gateway.iter().copied().reduce(f64::max),
                 up_ours: None,
                 vpn_ms: None,
                 ceiling: None,
@@ -1740,6 +1751,216 @@ mod tests {
             &Pen::plain(),
         );
         assert!(text.contains(&table.join("\n")), "{table:#?} in:\n{text}");
+    }
+
+    /// Seconds of a quiet access point before its air turns busy.
+    const QUIET_S: u64 = 30;
+
+    /// The recorded lines of a download carrying 40 Mbit/s for two and a
+    /// half minutes, the last two on a busy access point, as on the evening
+    /// of 19 November: two of the three reflectors' replies wait 120 ms more
+    /// in three seconds of each four, and with `the_air_s` one of the
+    /// gateway's three round trips meets that wait too. That evening no more
+    /// than three seconds running met the air's wait on the reflectors and
+    /// not the gateway's median. Without `the_air_s`, the gateway stays at
+    /// 4 ms, as it does under a queue past the Wi-Fi.
+    fn bursts(the_air_s: bool) -> Vec<String> {
+        let counters = constant(500, 40_000);
+        let mut lines = Vec::new();
+        for t in 0..QUIET_S + 120 {
+            let burst = |i: u64| {
+                let busy = t >= QUIET_S && (t - QUIET_S) % 4 != 3;
+                busy.then(|| usize::try_from((t + i) % 3).expect("under 3"))
+            };
+            for (i, (address, offset)) in REFLECTORS.iter().enumerate() {
+                let at = NOV3 + t * 1_000 + 100 + 300 * i as u64;
+                let back = if burst(0).is_none_or(|b| b == i) {
+                    0.0
+                } else {
+                    120.0
+                };
+                lines.push(stamp(
+                    at,
+                    address,
+                    (10.0 + offset, 12.0 - offset + back),
+                    counters(at),
+                ));
+            }
+            for i in 0..3_u64 {
+                let at = NOV3 + t * 1_000 + 200 + 300 * i;
+                let met = the_air_s && burst(i) == Some(0);
+                lines.push(gateway(at, if met { 124.0 } else { 4.0 }, counters(at)));
+            }
+        }
+        lines
+    }
+
+    // The air's wait lands on some of a second's probes and not others, so
+    // the gateway's median missed it while the reflectors' met it, and on
+    // 19 November the download was cut as low as 2.4 Mbit/s for the air's.
+    #[test]
+    fn the_air_s_bursts_in_a_second_cut_no_download() {
+        let mut stays = read_lines(&bursts(true));
+        let rates = one_way(&mut stays, &bars::Anchors::new(), &bars::Anchors::new());
+        let downs: Vec<_> = rates[0].iter().filter_map(|r| r.down).collect();
+        assert!(downs.is_empty(), "cut for the air's wait: {downs:?}");
+        let busy = &stays[0].seconds[usize::try_from(QUIET_S).expect("small")..];
+        let gateway: Vec<_> = busy
+            .iter()
+            .map(|s| (s.gateway_ms, s.gateway_most_ms))
+            .collect();
+        assert!(
+            gateway.iter().enumerate().all(|(t, &(usual, most))| {
+                near_some(usual, 4.0) && near_some(most, if t % 4 == 3 { 4.0 } else { 124.0 })
+            }),
+            "{gateway:?}"
+        );
+    }
+
+    // The same reflectors' waits with the gateway's round trips all quick
+    // are a queue past the Wi-Fi, which a cut drains, so the most a quiet
+    // gateway took hides none of it.
+    #[test]
+    fn a_wait_past_the_wi_fi_still_cuts_the_download() {
+        let mut stays = read_lines(&bursts(false));
+        let rates = one_way(&mut stays, &bars::Anchors::new(), &bars::Anchors::new());
+        assert!(
+            rates[0].iter().any(|r| r.down.is_some()),
+            "no cut for a wait of ours"
+        );
+    }
+
+    /// The recorded lines of a download carrying 40 Mbit/s for two and a
+    /// half minutes, the last two with every reflector's reply waiting
+    /// `back` ms more, while one of the gateway's three round trips meets a
+    /// 120 ms burst in each second `bursts` takes.
+    fn a_download_queue_in_bursty_air(back: f64, bursts: fn(u64) -> bool) -> Vec<String> {
+        let counters = constant(500, 40_000);
+        let mut lines = Vec::new();
+        for t in 0..QUIET_S + 120 {
+            let busy = t >= QUIET_S;
+            let waits = if busy { back } else { 0.0 };
+            for (i, (address, offset)) in REFLECTORS.iter().enumerate() {
+                let at = NOV3 + t * 1_000 + 100 + 300 * i as u64;
+                lines.push(stamp(
+                    at,
+                    address,
+                    (10.0 + offset, 12.0 - offset + waits),
+                    counters(at),
+                ));
+            }
+            for i in 0..3_u64 {
+                let at = NOV3 + t * 1_000 + 200 + 300 * i;
+                let met = busy && bursts(t) && i == 0;
+                lines.push(gateway(at, if met { 124.0 } else { 4.0 }, counters(at)));
+            }
+        }
+        lines
+    }
+
+    // A burst hides as much of a queue of ours as it is long, and no more:
+    // 200 ms waits beside a 120 ms burst leave 88 ms of ours past the
+    // air's margin, which is cut, and by that much.
+    #[test]
+    fn a_download_queue_past_the_air_s_burst_is_cut() {
+        let mut stays = read_lines(&a_download_queue_in_bursty_air(200.0, |_| true));
+        let rates = one_way(&mut stays, &bars::Anchors::new(), &bars::Anchors::new());
+        let first = rates[0].iter().find_map(|r| r.down);
+        // A cut drains the share of a second the queue waits, so one made
+        // for 88 ms takes the 40 Mbit/s to 32.8, and one for the whole
+        // 200 ms to 28.8.
+        assert!(
+            first.is_some_and(|first| (32_500..33_200).contains(&first)),
+            "the first cut, to {first:?} kbit/s, wasn't for 88 ms"
+        );
+    }
+
+    /// The download's limits in each second of a queue of ours under the
+    /// bursts in the seconds `bursts` takes.
+    fn downs_under(bursts: fn(u64) -> bool) -> Vec<Option<u64>> {
+        let mut stays = read_lines(&a_download_queue_in_bursty_air(60.0, bursts));
+        let rates = one_way(&mut stays, &bars::Anchors::new(), &bars::Anchors::new());
+        rates[0].iter().map(|r| r.down).collect()
+    }
+
+    // A burst in every second for longer than a few hides no queue of
+    // ours for good: past ten seconds passed over, the eleventh is judged
+    // on the median and finds the queue, which is cut once it has stood.
+    #[test]
+    fn a_download_queue_under_a_burst_in_every_second_is_cut() {
+        let first = downs_under(|_| true).iter().position(Option::is_some);
+        assert_eq!(
+            first,
+            usize::try_from(QUIET_S + 11).ok(),
+            "the first cut for a queue under a burst in every second"
+        );
+    }
+
+    // A second between bursts that finds a queue of ours doesn't start
+    // the seconds passed over again from none, so bursts in all but one
+    // second of each eleven are cut as a burst in every second is.
+    #[test]
+    fn a_download_queue_seen_between_long_runs_of_bursts_is_cut_as_soon() {
+        assert_eq!(
+            downs_under(|t| t % 11 != 0),
+            downs_under(|_| true),
+            "a queue seen between bursts held its cuts off"
+        );
+    }
+
+    // A burst every other second mustn't keep a queue of ours standing
+    // between them from being cut: the burst's seconds say nothing of it.
+    #[test]
+    fn a_download_queue_between_the_air_s_bursts_is_cut() {
+        let mut stays = read_lines(&a_download_queue_in_bursty_air(60.0, |t| t % 2 == 0));
+        let rates = one_way(&mut stays, &bars::Anchors::new(), &bars::Anchors::new());
+        assert_eq!(
+            rates[0].iter().position(|r| r.down.is_some()),
+            usize::try_from(QUIET_S + 3).ok(),
+            "no cut, or a late one, for a queue between bursts"
+        );
+    }
+
+    /// The recorded lines of an upload carrying 10 Mbit/s for two and a half
+    /// minutes, the last two with a queue of ours past the Wi-Fi: every
+    /// reflector's probe waits 60 ms more going out, while one of the
+    /// gateway's three round trips each second meets a busy access point's
+    /// burst.
+    fn an_upload_queue_in_bursty_air() -> Vec<String> {
+        let counters = constant(10_000, 500);
+        let mut lines = Vec::new();
+        for t in 0..QUIET_S + 120 {
+            let busy = t >= QUIET_S;
+            let out = if busy { 60.0 } else { 0.0 };
+            for (i, (address, offset)) in REFLECTORS.iter().enumerate() {
+                let at = NOV3 + t * 1_000 + 100 + 300 * i as u64;
+                lines.push(stamp(
+                    at,
+                    address,
+                    (10.0 + offset + out, 12.0 - offset),
+                    counters(at),
+                ));
+            }
+            for i in 0..3_u64 {
+                let at = NOV3 + t * 1_000 + 200 + 300 * i;
+                let met = busy && (t + i) % 3 == 0;
+                lines.push(gateway(at, if met { 124.0 } else { 4.0 }, counters(at)));
+            }
+        }
+        lines
+    }
+
+    // The upload's cuts keep a call's packets ahead of a queue past the
+    // Wi-Fi, and the bursts seen came down, so a burst in one of the
+    // gateway's round trips mustn't hide a queue of ours going up.
+    #[test]
+    fn an_upload_queue_is_cut_through_the_air_s_bursts() {
+        let mut stays = read_lines(&an_upload_queue_in_bursty_air());
+        let rates = one_way(&mut stays, &bars::Anchors::new(), &bars::Anchors::new());
+        assert!(
+            rates[0].iter().any(|r| r.up.is_some()),
+            "no cut for an upload queue of ours"
+        );
     }
 
     // A network's ceiling holds a replayed stay under it, as it holds the
