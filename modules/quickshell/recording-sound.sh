@@ -20,18 +20,20 @@
 
 help() {
   cat << 'EOF'
-recording-sound  run a recording with the microphone and the desktop's sound
+recording-sound  run a recording with your sound
 
-  Mixes the default microphone and what the default speakers play into
-  one source of the recording's own, names it in RECORDING_SOUND, and
-  runs the command given. The mix goes once the command ends. Without
-  a sound server the command runs with RECORDING_SOUND unset.
+  Mixes the default microphone and what the default
+  speakers play into a source of the recording's own,
+  names it in RECORDING_SOUND, and runs the command
+  given. The mix goes once the command ends. Without a
+  sound server, RECORDING_SOUND is left unset.
 
 EXAMPLES
-  recording-sound sh -c 'wf-recorder --audio="$RECORDING_SOUND" -f a.mp4'
+  recording-sound record-window 4 800 600 a.mp4
 
 EXIT
-  the command's own, or 64 when none was given
+  the command's own, 64 when none was given, or 130
+  when stopped
 EOF
 }
 

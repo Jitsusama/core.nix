@@ -303,9 +303,9 @@ mod tests {
 
     #[test]
     fn a_screen_recordings_mix_is_no_call_though_its_client_would_be() {
-        // The mix's loops run inside pipewire-pulse, which no list knows,
-        // so only the name each loop gives itself keeps a recording from
-        // reading as a call.
+        // The mix's loops run inside PipeWire's pulse server, read today as
+        // pipewire; named for themselves, they read as no call whatever the
+        // server runs as, and a client no list knows would make them one.
         let mut recording = Recording::default();
         let mut unnamed = native(70, 69);
         unnamed["info"]["props"]["node.name"] = json!("loopback-1-12");
