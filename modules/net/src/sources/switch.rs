@@ -373,7 +373,10 @@ pub fn read(report: Result<Report, String>, now: u64) -> (Source, Option<Device>
                     report.state
                 },
                 read_at: None,
-                since: Some(report.read_at),
+                // The report says only when its reader last looked, not
+                // when this began, so this minute it is, and the daemon
+                // carries the earlier minute's over.
+                since: Some(now),
                 reason: report
                     .reason
                     .or_else(|| Some("its reader gave no status".into())),
@@ -637,6 +640,11 @@ mod tests {
         let (source, device) = read(Ok(report), 1_794_700_005);
         assert_eq!(source.state, SourceState::SignedOut);
         assert_eq!(source.reason.as_deref(), Some("no password is set for it"));
+        assert_eq!(
+            source.since,
+            Some(1_794_700_005),
+            "the reader's last look was taken for when the switch stopped answering"
+        );
         assert!(
             device.is_none(),
             "a signed-out switch gave a device: {device:?}"
