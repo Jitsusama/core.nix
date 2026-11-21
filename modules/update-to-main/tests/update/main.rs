@@ -4095,6 +4095,19 @@ fn a_refusal_record_it_cant_trust_or_keep_refuses_nothing_for_good() {
 
 const HOUR: u64 = 60 * 60;
 
+/// A Mac's logs carry no time of their own, so the daemon and the
+/// follower stamp their lines with the time now, in UTC.
+#[test]
+fn a_log_stamp_is_the_time_now_in_utc() {
+    let before = now();
+    let stamp = update_to_main::stamp();
+    let after = now();
+    assert!(
+        (before..=after).any(|at| terminal_kit::time::rfc3339(i64::try_from(at).unwrap()) == stamp),
+        "{stamp} isn't the time in UTC between {before} and {after}"
+    );
+}
+
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
