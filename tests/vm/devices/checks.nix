@@ -37,4 +37,7 @@ onLinux {
   # Whether udev turns a root hub's wakeup on shows only with a USB
   # controller and udev there.
   vm-plugging-in-wakes-it = import ./usb-wake.nix { inherit self pkgs; };
+  # Whether the hold on the cores' rest bounds their exit latency shows
+  # only with the kernel's latency requests and systemd there.
+  vm-the-cores-stay-out-of-deep-rest = import ./deep-rest.nix { inherit pkgs; };
 }
