@@ -54,9 +54,10 @@ const TAKEN: &str = "nix-offload: building on ";
 /// Mac's take says: a `TAKEN` line saying it took no Mac.
 const LENT: &str = "nix-offload: building on the lent builder ";
 
-/// What nix-offload says as a lent builder begins naming a Mac's changed
-/// checks. It says nothing more until a Mac takes what was named, and the
-/// naming can hang there, so the clocks start here as they do at `TAKEN`.
+/// What nix-offload says before a lent builder names a Mac's changed
+/// checks. It may then wait here, silent, for a turn to send them, so the
+/// naming's clocks start only at changed-checks' first line from there:
+/// the naming can hang, and nothing of nix-offload's says it took the run.
 const NAMES: &str = "nix-offload: no lent builder builds for ";
 
 /// What nix-offload says, every five minutes, while a run a builder took
@@ -175,7 +176,9 @@ impl Clock {
     /// other lines, as that it may wait for room, say neither.
     fn heard_line(&mut self, line: &str, now: Instant) {
         let line = line.trim();
-        if says_a_mac_took(line) && !self.nearby {
+        if line.starts_with(NAMES) {
+            self.naming = true;
+        } else if says_a_mac_took(line) && !self.nearby {
             // A Mac's turn and its two hours begin at its own take, not
             // at the naming before it, which took up to 20 minutes.
             self.nearby = true;
@@ -183,14 +186,17 @@ impl Clock {
             self.waits = None;
             self.building = Some(now);
         } else if says_taken(line) {
-            self.naming |= line.starts_with(NAMES);
             self.taken.get_or_insert(now);
             self.waits = None;
             self.building.get_or_insert(now);
         } else if says_waits(line) {
             self.waits = Some(now);
             self.building = None;
-        } else if self.taken.is_some() && !line.is_empty() && !line.starts_with(OWN) {
+        } else if (self.taken.is_some() || self.naming)
+            && !line.is_empty()
+            && !line.starts_with(OWN)
+        {
+            self.taken.get_or_insert(now);
             self.waits = None;
             self.building.get_or_insert(now);
         }
@@ -870,11 +876,9 @@ fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
     read
 }
 
-/// Whether a line is nix-offload's saying a builder took the run, a lent
-/// builder's beginning to name a Mac's checks among them.
+/// Whether a line is nix-offload's saying a builder took the run.
 fn says_taken(line: &str) -> bool {
-    let line = line.trim_start();
-    line.starts_with(TAKEN) || line.starts_with(NAMES)
+    line.trim_start().starts_with(TAKEN)
 }
 
 /// Whether a line is nix-offload's saying a machine nearby, not a lent
@@ -2039,6 +2043,37 @@ mod tests {
     }
 
     #[test]
+    fn a_run_on_a_lent_builder_too_long_is_overdue() {
+        let log = std::env::temp_dir().join(format!("merge-net-lent-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = String::from("nix-offload: building on the lent builder lb-1\n");
+        let mut now = start;
+        while now <= start + LONGEST {
+            text.push_str("vm-test> still going\n");
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "a lent builder's run under two hours is overdue"
+            );
+            now += Duration::from_mins(10);
+        }
+        text.push_str("vm-test> still going\n");
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "a lent builder's run past two hours went on, though never silent"
+        );
+        assert_eq!(
+            clock.stopped,
+            Some("it built past two hours"),
+            "a lent builder's run past two hours was told as something else"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
     fn a_log_never_names_the_machine_it_ran_from() {
         assert_eq!(
             unnamed("built on Here, then here", "here"),
@@ -2565,6 +2600,32 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
     fn printed(log: &Path, line: &str) {
         let mut kept = fs::OpenOptions::new().append(true).open(log).unwrap();
         writeln!(kept, "{line}").unwrap();
+    }
+
+    #[test]
+    fn a_naming_waiting_here_for_a_turn_to_send_it_is_never_overdue() {
+        let log =
+            std::env::temp_dir().join(format!("merge-net-sending-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(
+            &log,
+            "nix-offload: no lent builder builds for aarch64-darwin and a machine nearby does, \
+             so changed-checks only names what changed, and what it names builds nearby\n\
+             nix-offload: 8 changed-checks runs already go out from this machine, so this \
+             waits its turn\n",
+        )
+        .unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        assert!(
+            !clock.overdue(&log, start + WAITS_AT_MOST + Duration::from_secs(1)),
+            "a naming waiting silently here for a turn to send it was stopped"
+        );
+        let _ = fs::remove_file(&log);
     }
 
     #[test]
