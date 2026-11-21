@@ -19,6 +19,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests/words.json
+      # Its tests hold the marks it serves to the theme's (standing.rs).
+      ../theme/glyphs.nix
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
       ../ready-rows/Cargo.toml

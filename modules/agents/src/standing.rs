@@ -465,4 +465,38 @@ mod tests {
             "one off has nothing to lose"
         );
     }
+
+    #[test]
+    fn every_mark_a_session_wears_is_one_the_theme_draws() {
+        // The launcher draws a served mark by its theme key, falling back
+        // to the agent's where none matches, so a mark named out of step
+        // with the theme would wear the agent's with nothing going red.
+        let theme = include_str!("../../theme/glyphs.nix");
+        let keys: Vec<&str> = theme
+            .lines()
+            .filter_map(|line| line.strip_prefix("  ")?.strip_suffix(" = {"))
+            .collect();
+        let shapes = [
+            "square",
+            "triangle",
+            "plus",
+            "hexagon",
+            "circle",
+            "down-triangle",
+            "star",
+        ];
+        let worn = shapes
+            .iter()
+            .map(|shape| crate::shape::mark(shape).expect("the theme marks each shape"));
+        for shape in std::iter::once(None).chain(worn.map(Some)) {
+            for stands in RUNNING.into_iter().chain([Stands::Off]) {
+                let mark = glyph(stands, shape);
+                assert!(
+                    keys.contains(&mark),
+                    "one {} wears {mark}, which the theme doesn't draw",
+                    stands.id()
+                );
+            }
+        }
+    }
 }
