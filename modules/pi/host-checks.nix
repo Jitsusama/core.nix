@@ -298,9 +298,15 @@ in
         (account (bareNixos [
           self.nixosModules.workstation
           {
-            home-manager.users.someone.jitsusama.pi.hosts.one = {
-              inherit pi node proof;
-              environment.PROXY_ORIGIN = "https://proxy.example.com";
+            home-manager.users.someone.jitsusama.pi = {
+              hosts.one = {
+                inherit pi node proof;
+                conversationHeapMb = 3072;
+                asyncContextFrame = true;
+                environment.PROXY_ORIGIN = "https://proxy.example.com";
+              };
+              # Where pi's SSH agent proxy runs.
+              agentProxy.builderKey = "/builders/key";
             };
           }
         ])).systemd.user.services;
@@ -329,15 +335,18 @@ in
         && service.KillMode or null == "mixed"
         && service.TimeoutStopSec or null == "60s"
         && service.MemoryHigh or null == "12G"
+        && service.LimitCORE or null == "infinity"
         && unit.Unit.X-SwitchMethod or null == "keep-old"
+        # A missing program fails the start rather than passing it.
+        && !(unit.Unit ? ConditionPathExists)
         # Started by its host alone, and stopped with nothing else.
         && !(unit ? Install)
         && !(unit.Unit ? PartOf)
         && !(unit.Unit ? BindsTo)
-        && lib.hasPrefix "${node} --disable-sigusr1 " execStart
-        && lib.hasInfix " '--max-old-space-size=4096' /" execStart
+        && lib.hasPrefix "${node} --disable-sigusr1 --experimental-async-context-frame " execStart
+        && !(lib.hasInfix "--inspect" (lib.replaceStrings [ "_" ] [ "-" ] execStart))
+        && lib.hasInfix " '--max-old-space-size=3072' /" execStart
         && lib.hasSuffix "/scripts/pi-host.ts --child" execStart
-        && lib.hasSuffix "/scripts/pi-host.ts" (first (unit.Unit.ConditionPathExists or ""))
         &&
           lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ]))
           == lib.sort lib.lessThan ([ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode)
@@ -349,11 +358,14 @@ in
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
         && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
-        && lib.elem ''"PI_CODEMODE_MAX_WORKERS=16"'' environment
-        && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment;
+        && lib.elem ''"SSH_AUTH_SOCK=%t/pi-agent.sock"'' environment
+        && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
+        # One conversation keeps a plain pi's pools, not a host's.
+        && !(lib.any (lib.hasPrefix ''"PI_CODEMODE_MAX_WORKERS='') environment)
+        && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);
     in
     holds "pi-conversations-run-apart"
-      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory ceiling, or a Mac gets one."
+      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, can't keep its core, passes its start with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
       (
         runsApart "attended"
         && runsApart "background"

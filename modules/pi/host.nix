@@ -169,10 +169,13 @@ let
 
   # The environment a host and a conversation's own process share, quoted,
   # as systemd splits an unquoted entry at its spaces; `own` comes last.
+  # `many` is whether the process holds many conversations, as a host does,
+  # and so wants the pools sized for them; a conversation's own process
+  # keeps the defaults a plain pi has.
   environmentOf =
-    realm: host: own:
+    realm: host: many: own:
     lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
-      {
+      lib.optionalAttrs many {
         # The host reads its conversations' mesh folders off its loop, on
         # libuv's pool, which is four threads by default. On 16 November a
         # stalled disk held those reads for up to 17 s, and four stalled
@@ -240,7 +243,17 @@ let
   # its runtime folder, before it starts the instance, and the process
   # listens on KEY.d/SLOT.sock beside it (the harness's
   # host/service/child-units.ts). Its environment is the host's, so nothing
-  # secret passes through the host's code or a unit's record.
+  # secret passes through the host's code or a unit's record. It starts the
+  # harness `current` names then, so after an install a host may hold
+  # children of another version: the two read each other's slot and socket
+  # leniently, passing over what they don't know, and nothing more pins
+  # them. Each resume is a new slot, so systemd's start limit never trips;
+  # the host retries a child that dies at once only at its conversation's
+  # next wake, and bounds no more than that yet. Each realm's
+  # conversations stop together with `systemctl --user stop
+  # 'pi-conversation-KEY@*'`, which parks each one. jobs-sorter knows only
+  # `pi-host-*` units so far, so a conversation's busy commands stay in its
+  # own unit, held back by its memory throttle below.
   conversationOf =
     realm: host: kind:
     let
@@ -250,8 +263,10 @@ let
       name = "pi-conversation-${key}@";
       value = {
         Unit = {
+          # No ConditionPathExists, unlike the host's: only a running host
+          # starts one, so a missing program fails the start, which the host
+          # sees, rather than passing with nothing run.
           Description = "Holds one of ${kinds.${kind}} in the ${realm} realm, in slot %i";
-          ConditionPathExists = entry;
           # A restart would end the conversation's turn, so a switch leaves a
           # running one be; the next conversation it takes up runs the new pi.
           X-SwitchMethod = "keep-old";
@@ -260,7 +275,7 @@ let
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
           ExecStart = startOf host host.conversationHeapMb [ "--child" ];
-          Environment = environmentOf realm host {
+          Environment = environmentOf realm host false {
             PI_HOST_CHILD_KEY = key;
             PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
             # The stop limit below, which it parks within.
@@ -285,6 +300,10 @@ let
           # killed, so one conversation's build can't take the memory every
           # other conversation runs in. A default, so a machine may move it.
           MemoryHigh = lib.mkDefault "12G";
+          # It keeps its core as its host does, and for the same native fault
+          # (LimitCORE on the host says why), which runs here once a
+          # conversation does.
+          LimitCORE = "infinity";
           Slice = "agents.slice";
         };
       };
@@ -328,7 +347,7 @@ let
         Type = "notify";
         NotifyAccess = "all";
         ExecStart = startOf host host.heapMb [ kind ];
-        Environment = environmentOf realm host {
+        Environment = environmentOf realm host true {
           # The stop limit below, which the host parks within.
           PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
           # A host restarts itself onto a new pi or harness once it's
@@ -492,7 +511,10 @@ in
               The most JavaScript heap each conversation's own process may
               hold, in MB: about node's own default, which a plain pi in a
               terminal runs with. One past it aborts alone, and its host
-              resumes the conversation in a new process.
+              resumes the conversation in a new process. These heaps are each
+              conversation's own, so unlike heapMb they don't add up to a
+              share of agents.slice: the slice's ceiling slows them all
+              together once they pass it.
             '';
           };
           asyncContextFrame = lib.mkOption {
