@@ -491,6 +491,7 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
 
     # Gone once its time is up, and held till then.
     copied = copy_a_password(desktop)
+
     def cleared(_: bool) -> bool:
         """Say whether the clipboard no longer holds the password."""
         return desktop.as_account("wl-paste --no-newline 2>/dev/null || true") != STAND_IN
