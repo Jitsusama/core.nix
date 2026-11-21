@@ -104,8 +104,14 @@ def test_the_switch_leaves_every_other_camera_with_the_seat(
 
 
 def test_udev_no_longer_hands_the_brio_to_the_seat(machine: BaseMachine, switched: str) -> None:
-    """Udev keeps no uaccess tag on the Brio, which logind would hand the seat again."""
-    tags = machine.succeed(f"udevadm info --query=property --property=TAGS --value {switched}")
+    """Udev keeps no uaccess tag on the Brio, which logind would hand the seat again.
+
+    logind and the rule that hands a node to the seat read the current tags. TAGS keeps every
+    tag an event added, the one 70-uaccess adds before mx-brio's rule takes it off among them.
+    """
+    tags = machine.succeed(
+        f"udevadm info --query=property --property=CURRENT_TAGS --value {switched}"
+    )
     assert ":uaccess:" not in tags, f"udev still tags the Brio for the seat: {tags.strip()}"
 
 

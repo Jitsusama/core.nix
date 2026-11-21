@@ -1,11 +1,12 @@
 # shellcheck shell=bash
 # Takes hold of an MX Brio already plugged in as the rules that share it
-# arrive with a switch. udev reads a rule only as an event comes, and an
-# added tag sticks to a device until it's removed, so a Brio the seat was
-# handed is replayed as removed and then added: the removal takes its old
-# watch with its device unit and drops what udev knew of it, uaccess tag and
-# all, and the add keeps it from the seat, marks it relayed and names its
-# capture node for the relay, which systemd then starts. A Brio already held,
+# arrive with a switch. udev reads a rule only as an event comes, so a Brio
+# the seat was handed is replayed as removed and then added: the removal
+# takes its old watch with its device unit, and the add keeps it from the
+# seat, marks it relayed and names its capture node for the relay, which
+# systemd then starts. The seat is handed what holds the uaccess tag now,
+# CURRENT_TAGS; TAGS keeps every tag an event added, the one systemd's
+# 70-uaccess adds before mx-brio's rule takes it off among them. A Brio already held,
 # as at every boot after the first, only has its rules read again, so its
 # relay keeps running. What logind handed the seat stays on the node, since
 # nothing takes an ACL back as a tag goes, so it's taken back here; a program
@@ -21,7 +22,7 @@ for node in /dev/video*; do
   grep -qx 'ID_MODEL_ID=091d' <<<"$facts" || continue
   path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
   brios+=("/sys$path")
-  if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || grep -q '^TAGS=.*:uaccess:' <<<"$facts"; then
+  if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || grep -q '^CURRENT_TAGS=.*:uaccess:' <<<"$facts"; then
     held=no
   fi
 done
