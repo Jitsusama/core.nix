@@ -98,7 +98,10 @@ function viewersDue(kept, sessions, now, screen) {
                 // Asked too long ago, or back as a plain pi: let go.
             } else if (!ours || joelThere) {
                 still[id] = place;
-            } else if (into !== null && !parkedHere(session) && (viewable || words)) {
+            } else if (into !== null && (viewable || words)
+                && (!parkedHere(session) || place.asked === true)) {
+                // One Joel asked for is viewed parked too, which wakes it,
+                // as the walk does where he isn't.
                 open.push(viewable ? { session, into } : { id, place, into });
             } else if (place.there === true) {
                 // Left, it can't open yet: ASKED_FOR runs from now. An

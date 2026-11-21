@@ -1995,7 +1995,8 @@ Singleton {
         // One asked of moments ago, by Go To or viewKept, is opening it:
         // that window is the one niri lists, so the walk doesn't wait on it.
         if (!asked) {
-            console.info(`sessions: ${id}'s viewer not opened, since one asked for is opening`);
+            console.info(`sessions: ${id}'s viewer not opened, since niri lists it open `
+                + "or one asked for is opening");
             reopenNext();
             return;
         }
@@ -2421,7 +2422,14 @@ Singleton {
     // never on whichever workspace Joel is on.
     function goTo(session) {
         if (session.presence?.hosted && !session.window) {
-            view(session, root.goesTo(session));
+            // niri may list its viewer before the windows daemon does, as
+            // just after a crash: that one is raised, never a second.
+            const listed = Object.values(Niri.windows)
+                .find(window => window.opened === viewerOf(session.presence));
+            if (listed)
+                Niri.act({ FocusWindow: { id: listed.id } });
+            else
+                view(session, root.goesTo(session));
             return;
         }
         if (!session.here && !session.window && !session.kitty) {
@@ -2624,8 +2632,13 @@ Singleton {
                         : "kept, since one asked for is opening"));
             } else if (one.session.held && !one.session.presence?.hosted) {
                 attach(one.session.held, one.into);
-            } else {
-                view(one.session, one.into);
+            } else if (!view(one.session, one.into)
+                && !root.openNamed(viewerOf(one.session.presence))) {
+                // Refused while one asked for is opening, it stays kept, so a
+                // viewer that never opens still leaves its place to open by.
+                const id = String(one.session.presence?.session ?? "");
+                kept[id] = keptPlaces[id];
+                console.info(`sessions: ${id}'s kept viewer kept, since one asked for is opening`);
             }
         }
         // What's let go is said, so a viewer Joel asked for that never
