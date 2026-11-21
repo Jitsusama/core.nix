@@ -1279,7 +1279,7 @@ def unshared_and_closed(shell: Shell, stood: CastsStandIn) -> None:
 
 @pytest.mark.parametrize(
     ("way", "keys"),
-    # Ids as a part's list could name them, with no space or +.
+    # Ids with no space, as a part's `every` is passed as one list split on spaces.
     [
         pytest.param("Ctrl+I", ("ctrl-i",), id="ctrl-i"),
         pytest.param("Space Tab", ("spc", "tab"), id="space-tab"),
