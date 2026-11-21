@@ -42,7 +42,6 @@ function element<T extends Element>(selector: string, kind: new () => T): T {
 
 const list = element("#parts", HTMLDivElement);
 const title = element("#headline", HTMLHeadingElement);
-const looking = element("#looking", HTMLElement);
 const looks = element("#looks", HTMLDivElement);
 const standingLine = element("#standing", HTMLParagraphElement);
 const standingWords = element("#standing-words", HTMLSpanElement);
@@ -116,6 +115,8 @@ const MINUTE = 60_000;
 
 /** A look's link to a machine drawn on this page, its section's id caught. */
 const MACHINE_HERE = /^#(machine-\d+)$/u;
+/** What a says while a part or machine is still to come, and so may hold a look. */
+const NOT_KNOWN = "What is worth a look isn't known yet.";
 
 /** A time as the ties say it, from now. */
 function when(at: string): string {
@@ -158,8 +159,8 @@ function sayWhen(): void {
 
 /**
  * Redraws what is worth a look, only when it reads differently, the cursor
- * kept on its row or the one now in its place. Hidden only while a part is
- * still to come, which may be the one to name.
+ * kept on its row or the one now in its place. A note that the list wasn't
+ * known yet goes once it is drawn again, since it may be known now.
  */
 function drawLooks(read: System): void {
   const drawn = looksDrawn(looksOf(read, MACHINES_DRAWN));
@@ -169,8 +170,11 @@ function drawLooks(read: System): void {
   drawnLooks = drawn;
   cursor.across(() => {
     looks.innerHTML = drawn;
-    looking.hidden = drawn === "";
   });
+  if (note.textContent === NOT_KNOWN) {
+    noteSaid = undefined;
+    sayWhen();
+  }
 }
 
 /** Redraws the machines, only when they read differently, the cursor kept. */
@@ -371,9 +375,7 @@ function nextLook(): void {
     return;
   }
   note.textContent =
-    looks.querySelector(".clear") === null
-      ? "What is worth a look isn't known yet."
-      : "Nothing is worth a look.";
+    looks.querySelector(".clear") === null ? NOT_KNOWN : "Nothing is worth a look.";
 }
 
 /** Copies `command`, and says whether it could. */

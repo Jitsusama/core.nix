@@ -246,9 +246,31 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     expect(system_page.locator("#looks"), "an empty list didn't say so").to_have_text(
         "Nothing is worth a look.", timeout=PACE_MS
     )
+    # The cursor was on a look; with none left it rests on the list, not a row below.
+    held = system_page.evaluate("document.activeElement?.id ?? null")
+    assert held == "looks", "focus left the emptied list for another region"
     keyboard.press("a")
     expect(system_page.locator("#note"), "a with no look didn't say why").to_have_text(
         "Nothing is worth a look."
+    )
+    # A machine named before its record may hold a look, so the list says it
+    # is still reading, a says so, and that goes once the list is known again.
+    named = ["machine:kestrel", "machine:osprey"]
+    coming: list[dict[str, object]] = [{"key": "part:machines", "things": [*named, "machine:wren"]}]
+    system_daemon.tell("part", changed=coming)
+    expect(system_page.locator("#looks"), "a machine to come was taken as nothing").to_have_text(
+        "Still reading what is worth a look.", timeout=PACE_MS
+    )
+    keyboard.press("a")
+    expect(system_page.locator("#note"), "a claimed more than the list knew").to_have_text(
+        "What is worth a look isn't known yet."
+    )
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": named}])
+    expect(system_page.locator("#looks"), "the list didn't settle again").to_have_text(
+        "Nothing is worth a look.", timeout=PACE_MS
+    )
+    expect(system_page.locator("#note"), "a stale note outlived the list").not_to_have_text(
+        "What is worth a look isn't known yet."
     )
 
 

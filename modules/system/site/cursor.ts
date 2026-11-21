@@ -2,8 +2,10 @@
 // step through, in reading order, what is worth a look first and then each
 // machine. The cursor is focus itself, so Return follows the link it is on;
 // what it keeps is the row's key, so a redraw that replaces the rows puts
-// focus back on the one it was on, or the one now in its place, and a
-// machine moving never moves what Joel is reading.
+// focus back on the one it was on, or the one now in its place within the
+// same region (the looks, or the machines), and a machine moving never
+// moves what Joel is reading. A region left with no row takes focus
+// itself, so what it says now is read, rather than a row far below.
 
 /** The cursor over the rows `selector` finds. */
 interface Cursor {
@@ -73,14 +75,21 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
       }
     },
     across: (redraw) => {
-      const focused = rows().findIndex((row) => row === document.activeElement);
+      const active = document.activeElement;
+      const region =
+        active instanceof HTMLAnchorElement && rows().includes(active)
+          ? active.closest<HTMLElement>("[data-rows]")
+          : null;
+      const inRegion = (): HTMLAnchorElement[] =>
+        region === null ? [] : [...region.querySelectorAll<HTMLAnchorElement>("a[data-row]")];
+      const focused = inRegion().findIndex((row) => row === active);
       redraw();
-      if (focused < 0) {
+      if (region === null) {
         return;
       }
-      const now = rows();
-      const same = now.find((row) => row.dataset["row"] === key);
-      (same ?? now[Math.min(focused, now.length - 1)])?.focus({ preventScroll: true });
+      const same = rows().find((row) => row.dataset["row"] === key);
+      const now = inRegion();
+      (same ?? now[Math.min(focused, now.length - 1)] ?? region).focus({ preventScroll: true });
     },
   };
 }

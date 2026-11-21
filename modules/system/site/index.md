@@ -20,10 +20,11 @@ Every health is good, watch, bad or not read, each with its own mark.
   While it reads, it says it is reading your machines.
 - **What is worth a look, under it:** a row for each thing a machine or
   a part has worth a look, the worst first: its mark, whose it is, and
-  what. A machine's row goes to its section below, and a part's to its
-  own site. A part that couldn't be read has a row saying why. It lists
-  eight at most, then how many more; with nothing worth a look, it says
-  so.
+  what. A machine's row goes to its section below, or to the map past
+  the eight drawn, and a part's to its own site. A part that couldn't be
+  read has a row saying why, first. It lists eight at most, then how
+  many more; with nothing worth a look, it says so, and until every part
+  and machine has told, it says it is still reading.
 - **A standing line:** the machine it was read on, when, and whether
   what it shows is live. When the daemon or the sites' server can't be
   reached, it says since when and why, and keeps showing how things
