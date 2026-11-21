@@ -715,8 +715,11 @@ impl Chooser {
         // points tries one a span at most, each kept off once missed.
         if point != trial.to {
             if point == trial.from && !trial.stood {
-                let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
-                self.moved = trial.moved_before.max(spanned);
+                // Within that of the clock's start, as in a boot's first
+                // minutes, no such instant is, so the move holds a whole
+                // settle rather than none.
+                let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN)).unwrap_or(now);
+                self.moved = trial.moved_before.max(Some(spanned));
             }
             let kept = Kept {
                 until: now + SPURNED,
