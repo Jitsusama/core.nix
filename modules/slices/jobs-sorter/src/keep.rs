@@ -39,9 +39,10 @@ use serde_json::Value;
 pub const FLOOR: u64 = 1 << 30;
 
 /// The memory any other window running a pi keeps under pressure, softly
-/// and without oomd's avoid. On 21 November at 06:50, 15 of Joel's 19
-/// windows' pis had no floor and held 150 to 430 MB each in swap, and a
-/// stall counts against his window whether he's at it or not.
+/// and without oomd's avoid. Only an orchestrator's window kept a floor
+/// of its own here, and on 21 November at 07:15, 17 of Joel's 20 windows'
+/// pis held 196 to 448 MB each in swap; a stall counts against his window
+/// whether he's at it or not.
 pub const PI_FLOOR: u64 = 512 << 20;
 
 /// The floor a window keeps, by what it holds.
