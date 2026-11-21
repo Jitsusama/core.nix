@@ -283,6 +283,83 @@ in
     touch $out
   '';
 
+  # Each realm-kind host gets a template its conversations' own processes
+  # start from, which its host's code names: run by the host's program as a
+  # child of the host's key, listening in the slot systemd names, with the
+  # host's environment and its inspector shut, among the agents, never
+  # restarted by systemd or watched, forgotten once ended, and left be by a
+  # switch, a host's restart or a command the kernel kills for memory.
+  pi-hosts-run-each-conversation-apart =
+    let
+      pi = "${pkgs.emptyDirectory}/pi";
+      node = "${pkgs.emptyDirectory}/node";
+      proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
+      services =
+        (account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.pi.hosts.one = {
+              inherit pi node proof;
+              environment.PROXY_ORIGIN = "https://proxy.example.com";
+            };
+          }
+        ])).systemd.user.services;
+      mac =
+        (account (bareDarwin [
+          self.darwinModules.workstation
+          {
+            home-manager.users.someone.jitsusama.pi.hosts.one = { inherit pi node proof; };
+          }
+        ])).systemd.user.services;
+      first = value: lib.head (lib.toList value);
+      runsApart =
+        kind:
+        let
+          unit = services."pi-conversation-one-${kind}@" or { Service = { }; };
+          service = unit.Service;
+          execStart = first (service.ExecStart or "");
+          environment = lib.toList (service.Environment or [ ]);
+        in
+        service.Type or null == "exec"
+        && service.Slice or null == "agents.slice"
+        && service.Restart or null == "no"
+        && !(service ? WatchdogSec)
+        && service.CollectMode or null == "inactive-or-failed"
+        && service.OOMPolicy or null == "continue"
+        && service.KillMode or null == "mixed"
+        && service.TimeoutStopSec or null == "60s"
+        && service.MemoryHigh or null == "12G"
+        && unit.Unit.X-SwitchMethod or null == "keep-old"
+        # Started by its host alone, and stopped with nothing else.
+        && !(unit ? Install)
+        && !(unit.Unit ? PartOf)
+        && !(unit.Unit ? BindsTo)
+        && lib.hasPrefix "${node} --disable-sigusr1 " execStart
+        && lib.hasInfix " '--max-old-space-size=4096' /" execStart
+        && lib.hasSuffix "/scripts/pi-host.ts --child" execStart
+        && lib.hasSuffix "/scripts/pi-host.ts" (first (unit.Unit.ConditionPathExists or ""))
+        &&
+          lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ]))
+          == lib.sort lib.lessThan ([ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode)
+        # The names host/service/child.ts reads, and the slot
+        # child-units.ts writes beside the socket.
+        && lib.elem ''"PI_HOST_CHILD_KEY=one-${kind}"'' environment
+        && lib.elem ''"PI_HOST_CHILD_SOCKET=%t/pi-host/one-${kind}.d/%i.sock"'' environment
+        && lib.elem ''"PI_HOST_STOP_USEC=60000000"'' environment
+        && lib.elem ''"MYCELIUM_REALM=one"'' environment
+        && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
+        && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
+        && lib.elem ''"PI_CODEMODE_MAX_WORKERS=16"'' environment
+        && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment;
+    in
+    holds "pi-hosts-run-each-conversation-apart"
+      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory ceiling, or a Mac gets one."
+      (
+        runsApart "attended"
+        && runsApart "background"
+        && lib.filter (lib.hasPrefix "pi-conversation-") (lib.attrNames mac) == [ ]
+      );
+
   # A realm a machine names gets two hosts, attended and background, started
   # with the account's session once the harness is installed, run by the
   # host's own pi and node, said ready by the host, among the agents'
