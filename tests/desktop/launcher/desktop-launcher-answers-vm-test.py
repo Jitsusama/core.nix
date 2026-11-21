@@ -1422,21 +1422,18 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.shoot("launcher-firmware-install-asks")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         # Return again writes its line, banged, since the step was the asking, and a fresh
-        # Return there installs, keeping the launcher and saying so; a third Return, as it
-        # goes in or once it's in, installs nothing more, at most writing the line again,
-        # which Escape lets go.
+        # Return there installs, keeping the launcher and saying so.
         desktop.line("install!")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: shown["footer"] == "installing" and shown["command"] is None
         )
-        machine.send_key("ret")
 
         # Once in, Install offers nothing more, so the launcher leaves the asking by itself, as
         # a held step whose row offers nothing now is left (launcher/Held.js), back to the
-        # device's step: Install waits for the restart there, dimmed in place. Nothing but
-        # Escape is pressed, since a minus would leave the device's step too once the asking
+        # device's step: Install waits for the restart there, dimmed in place. Nothing is
+        # pressed meanwhile, since a minus would leave the device's step too once the asking
         # was left, so only the launcher can bring Install back.
         def stepped_back(shown: Json) -> bool:
             return (
@@ -1446,49 +1443,23 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
                 and shown["command"] is None
             )
 
-        # Nothing says when the shell took the third Return, so its line may show before the
-        # step back is seen. The wait acts on the state it saw pass rather than asking again,
-        # since the launcher may have moved on since. A line seen is the third Return's, which
-        # Escape lets go; nothing else closes a line, so the Escape can't land on the step
-        # instead. It's banged where the asking still showed, and plain where the step back
-        # came first, as on the builders' runs of 20 Nov. Only that one Return can write one,
-        # so a second line fails the wait for the step back. Its line can open after the step
-        # back is seen too, so the screen is let stand still and read again before the shot,
-        # said where it never stood still. A Return the guest takes later still goes unseen
-        # here, and close_launcher lets its line go. The plain line is the launcher's fault, as
-        # a gone row should write none; the launcher's fix for it brings the assert that none
-        # opens.
-        shown = desktop.launcher_until(
-            lambda shown: shown["command"] is not None or stepped_back(shown)
+        desktop.launcher_until(stepped_back)
+        # A third Return there lands on a row that has gone, which runs nothing: it writes no
+        # line and installs nothing more, at most the foot saying why (Y2YBTS, 2026-11-20).
+        # The launcher's journal says when it took that Return, so the screen read after it
+        # shows what the Return left, and a line it wrote fails the step back.
+        since = desktop.mark()
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user -u quickshell --no-pager -o cat"
+                f" --after-cursor={shlex.quote(since)}"
+                " | grep -q -F 'launcher: Return on a gone row did nothing'"
+            ),
+            timeout=dt.timedelta(seconds=30),
         )
-        seen = "before the step back was seen"
-        if shown["command"] is None:
-            if not desktop.held_still():
-                print("firmware: the screen never stood still after the step back")
-            shown = desktop.showing()
-            assert shown["command"] is not None or stepped_back(shown), shown
-            seen = "after the step back, once the screen was let stand still"
-        if shown["command"] is not None:
-            line = shown["command"].get("line")
-            assert line in {"install", "install!"}, shown["command"]
-            # Said so the net's logs count which line comes, over what, and when it's seen.
-            # The footer is the one shown as the line was seen, which needn't be the one shown
-            # as the Return was taken.
-            beneath = {**shown, "command": None}
-            if stepped_back(beneath):
-                under = "the step back"
-            elif shown["rows"][:1] == [asked]:
-                under = "the asking"
-            else:
-                under = f"{shown['rows'][:1]!r}"
-            print(
-                f"firmware: the third Return wrote {line!r} over {under}, the footer"
-                f" {shown['footer']!r} as it was seen {seen}, let go with Escape"
-            )
-            machine.send_key("esc")
-            desktop.launcher_until(stepped_back)
-        else:
-            print(f"firmware: the third Return wrote no line seen {seen}")
+        shown = desktop.showing()
+        assert stepped_back(shown), shown
         desktop.shoot("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()
         assert ran == ["update bios --assume-yes --no-reboot-check"], ran
