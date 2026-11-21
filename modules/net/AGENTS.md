@@ -32,7 +32,7 @@ TV are net's alone, and `eero` keeps only what's eero's.
 - `sources`: each source, whether it's answering, unreachable or signed
   out, and why. A source reads only the minute it's in, so the daemon
   carries each over from the record before, the one an earlier daemon
-  wrote included: one still not answering in the same way keeps when
+  wrote in the last five minutes included: one still not answering in the same way keeps when
   that began, and one that didn't answer keeps when it last did.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
