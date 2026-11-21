@@ -21,7 +21,8 @@
 # network before the work he started, and a write a program makes behind an
 # upload goes out soon after, and a socket that asks for no receive buffer
 # has room for a burst, so a VPN over QUIC waits rather than drops; lag-watch keeps a standing watch on whether
-# they wait, and load-proof proves on demand that they don't under full load;
+# they wait, load-proof proves on demand that they don't under full load,
+# and call-under-load makes a test call each hour under whatever load there is;
 # pi-keys samples four times a day what a key typed into pi waits on, and
 # pain-points names the launcher's openings that slowed Joel most each day.
 # Where fwupd runs, each firmware update it offers is said once, as a notice.
@@ -72,6 +73,7 @@
   home-manager.sharedModules = [
     homeModules.agents
     homeModules.backlight
+    homeModules.call-under-load
     homeModules.call-transcripts
     homeModules.camera
     homeModules.dictation

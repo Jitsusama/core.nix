@@ -1,0 +1,127 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>call under load</title>
+<script>
+// Both ends of the hour's test call, as a Meet call sends: VP9 SVC both ways, each end's stats
+// sampled each second. The near end offers with Chrome's fake camera; the far end, a second
+// Chrome, answers with its own and sends its samples back over a data channel. call-under-load
+// drives both over DevTools. Nothing here writes a frame anywhere.
+window.samples = [];
+window.remote = [];
+let pc, dc, last = {};
+
+const b64 = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+const unb64 = (s) => JSON.parse(decodeURIComponent(escape(atob(s))));
+
+function preferVp9(transceiver) {
+  const codecs = RTCRtpReceiver.getCapabilities('video').codecs;
+  const vp9 = codecs.filter((c) => c.mimeType === 'video/VP9'
+    && /profile-id=0/.test(c.sdpFmtpLine || 'profile-id=0'));
+  const rest = codecs.filter((c) => /rtx|red|ulpfec/i.test(c.mimeType));
+  transceiver.setCodecPreferences([...vp9, ...rest]);
+}
+
+function gathered() {
+  return new Promise((done) => {
+    if (pc.iceGatheringState === 'complete') return done();
+    pc.addEventListener('icegatheringstatechange',
+      () => pc.iceGatheringState === 'complete' && done());
+  });
+}
+
+async function camera(width, height, fps) {
+  return navigator.mediaDevices.getUserMedia({
+    video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } },
+  });
+}
+
+// The near end: open the camera, send it as Meet does, and offer.
+window.offer = async (width, height, fps, maxBitrate, scaleDown) => {
+  pc = new RTCPeerConnection();
+  dc = pc.createDataChannel('stats');
+  dc.onmessage = (m) => window.remote.push(JSON.parse(m.data));
+  const stream = await camera(width, height, fps);
+  const track = stream.getVideoTracks()[0];
+  track.contentHint = 'motion';
+  const t = pc.addTransceiver(track, {
+    direction: 'sendrecv',
+    streams: [stream],
+    sendEncodings: [{ scalabilityMode: 'L3T3_KEY', maxBitrate, scaleResolutionDownBy: scaleDown }],
+  });
+  preferVp9(t);
+  await pc.setLocalDescription(await pc.createOffer());
+  await gathered();
+  return { offer: b64(pc.localDescription), label: track.label };
+};
+
+window.accept = async (answer) => {
+  await pc.setRemoteDescription(unb64(answer));
+  setInterval(sample, 1000);
+  return 'accepted';
+};
+
+// The far end: answer with its own camera, and send each second's sample back.
+window.answer = async (offer, maxBitrate) => {
+  pc = new RTCPeerConnection();
+  pc.ondatachannel = (e) => (dc = e.channel);
+  await pc.setRemoteDescription(unb64(offer));
+  const stream = await camera(1280, 720, 30);
+  const track = stream.getVideoTracks()[0];
+  const t = pc.getTransceivers().find((x) => x.receiver.track.kind === 'video');
+  t.direction = 'sendrecv';
+  await t.sender.replaceTrack(track);
+  preferVp9(t);
+  await pc.setLocalDescription(await pc.createAnswer());
+  const p = t.sender.getParameters();
+  p.encodings = [{ ...(p.encodings[0] || {}), maxBitrate, scalabilityMode: 'L3T3_KEY' }];
+  await t.sender.setParameters(p).catch(() => {});
+  await gathered();
+  setInterval(sample, 1000);
+  return b64(pc.localDescription);
+};
+
+const pick = (r, keys) =>
+  Object.fromEntries(keys.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
+const rate = (id, bytes, ts) => {
+  const was = last[id];
+  last[id] = { bytes, ts };
+  return was && ts > was.ts ? Math.round(((bytes - was.bytes) * 8) / (ts - was.ts)) : null;
+};
+
+async function sample() {
+  const stats = await pc.getStats();
+  const s = { t: Date.now(), state: pc.connectionState };
+  stats.forEach((r) => {
+    if (r.kind && r.kind !== 'video') return;
+    if (r.type === 'outbound-rtp') {
+      s.out = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'qualityLimitationReason',
+        'scalabilityMode', 'targetBitrate', 'framesEncoded']);
+      s.out.kbps = rate('out', r.bytesSent, r.timestamp);
+    } else if (r.type === 'inbound-rtp') {
+      s.in = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'framesDecoded',
+        'framesDropped', 'freezeCount', 'totalFreezesDuration', 'packetsLost', 'jitter']);
+      s.in.kbps = rate('in', r.bytesReceived, r.timestamp);
+    } else if (r.type === 'media-source') {
+      s.src = pick(r, ['width', 'height', 'framesPerSecond', 'frames']);
+    }
+  });
+  window.samples.push(s);
+  if (dc && dc.readyState === 'open') dc.send(JSON.stringify(s));
+}
+
+// A stand-in for how quickly Chrome answers Joel's input while a call runs: the near end is
+// clicked through DevTools every 5 s, and each click records its wait for the handler and its
+// time to the frame after the change it makes.
+window.taps = [];
+let tapped = 0;
+document.addEventListener('pointerdown', (e) => {
+  const start = performance.now(), at = e.timeStamp;
+  document.title = 'call under load ' + ++tapped;
+  requestAnimationFrame(() => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () =>
+      window.taps.push({ at, delay: start - at, frame: performance.now() - at });
+    ch.port2.postMessage(0);
+  });
+});
+</script>
