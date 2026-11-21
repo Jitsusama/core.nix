@@ -182,7 +182,8 @@ impl Holding {
     }
 
     /// The scopes to change, each with whether to hold it, from those to
-    /// hold now.
+    /// hold now: those to give back first, so a hard floor given back is
+    /// free for a hold after it.
     pub fn changes(&self, wanted: &[PathBuf]) -> Vec<(PathBuf, bool)> {
         let hold = wanted
             .iter()
@@ -193,7 +194,7 @@ impl Holding {
             .iter()
             .filter(|scope| !wanted.contains(scope))
             .map(|scope| (scope.clone(), false));
-        hold.chain(give_back).collect()
+        give_back.chain(hold).collect()
     }
 
     /// Notes a scope as held or given back.
@@ -220,6 +221,22 @@ impl Holding {
             .iter()
             .filter(|scope| hard_for(scope, pis) > 0)
             .count()
+    }
+
+    /// The hard floor to hold `scope` with: [`hard_for`]'s while fewer
+    /// than [`crate::focus::MOST`] other scopes held keep one, as a
+    /// give-back that fails still does, and none past them.
+    pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
+        let others = self
+            .held
+            .iter()
+            .filter(|held| *held != scope && hard_for(held, pis) > 0)
+            .count();
+        if others < crate::focus::MOST {
+            hard_for(scope, pis)
+        } else {
+            0
+        }
     }
 
     /// Forgets the scopes that have gone.
@@ -305,8 +322,8 @@ mod tests {
             "the first viewers, of the window Joel is at and then those left latest, get theirs"
         );
         assert!(
-            shares(3, &viewers).is_empty(),
-            "three pis held hard leave none"
+            shares(3, &viewers).is_empty() && shares(4, &viewers).is_empty(),
+            "three pis held hard leave none, and a fourth, as a give-back fails, takes none away"
         );
     }
 
@@ -339,7 +356,8 @@ mod tests {
         assert_eq!(holding.changes(only(&a)), []);
         assert_eq!(
             holding.changes(only(&b)),
-            [(b.clone(), true), (a.clone(), false)]
+            [(a.clone(), false), (b.clone(), true)],
+            "a give-back goes first, so its hard floor is free for the next hold"
         );
         holding.done(&a, false);
         assert!(!holding.holds("kitty-1-1.scope"), "given back once done");
@@ -360,12 +378,43 @@ mod tests {
         holding.done(&pi, true);
         holding.done(Path::new("/cg/app.slice/app-kitty-1.scope"), true);
         assert_eq!(
+            holding.changes(&[]).len(),
+            2,
+            "both are offered for giving back"
+        );
+        assert_eq!(
             holding.hard(&pis),
             1,
-            "a pi held hard counts, its window's own scope not, while a give-back fails too"
+            "a pi held hard counts, its window's own scope not, while its give-back fails"
         );
         holding.done(&pi, false);
         assert_eq!(holding.hard(&pis), 0, "given back, it counts no more");
+    }
+
+    #[test]
+    fn a_new_pi_is_held_hard_only_while_fewer_than_most_others_are() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        let mut holding = Holding::default();
+        for n in 1..=3 {
+            holding.done(&pi(n), true);
+        }
+        assert_eq!(
+            holding.hard_floor(&pi(4), &pis),
+            0,
+            "three pis still held hard, as a give-back fails, leave a fourth none"
+        );
+        assert_eq!(
+            holding.hard_floor(&pi(1), &pis),
+            HARD,
+            "a pi held again keeps its own"
+        );
+        holding.done(&pi(1), false);
+        assert_eq!(
+            holding.hard_floor(&pi(4), &pis),
+            HARD,
+            "one given back leaves its floor to the next"
+        );
     }
 
     #[test]

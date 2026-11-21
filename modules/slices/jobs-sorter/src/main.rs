@@ -1061,7 +1061,7 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let hard = hold.then(|| holds::hard_for(&scope, pis));
+        let hard = hold.then(|| ranks.holding.hard_floor(&scope, pis));
         let result = Command::new("busctl")
             .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
             .stdout(Stdio::null())
@@ -1400,6 +1400,9 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
                     signs.shown,
                     signs.orchestrators
                 );
+                // A failure after this one is said again, as a hard floor that can't be given
+                // back would otherwise stay silent.
+                ranks.hosts.failed = false;
                 ranks.hosts.done(unit, rank);
             }
             Ok(output) => {
@@ -1452,9 +1455,6 @@ fn own_of(
     })
 }
 
-/// The units among `units` each window `held` shows, and each window
-/// shows at all, one for each viewer in it. A window showing a
-/// conversation that runs in a unit of its own gives that unit what it
 /// How many hard floors each of `units` keeps for the `viewers` in the
 /// windows Joel is at: the held windows' are shared out across every
 /// unit, after the `pis` held hard (`set_holds`), to units in agents.slice
@@ -2792,6 +2792,17 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_units_in_agents_slice_take_a_hard_floors_share() {
+        let units = ["/cg/agents.slice/a.service", "/cg/app.slice/b.service"].map(PathBuf::from);
+        let viewers = ["b.service", "a.service"].map(str::to_owned);
+        assert_eq!(
+            shares(2, &units, &viewers),
+            HashMap::from([("a.service".to_owned(), 1)]),
+            "the unit in app.slice takes no share, nor the one floor left"
+        );
+    }
 
     fn settings() -> Settings {
         Settings {
