@@ -528,16 +528,22 @@ impl Held {
 /// Whether a command, by its words, is a hosted session's viewer: node
 /// running the harness's `scripts/host-join.ts`, as the launcher's
 /// waiting viewers do inside a shell that titles their window, or
-/// `mycelium attach` (or `holds ID attach`, as mycelium spells it now).
+/// `mycelium attach` (or `holds ID attach`, as mycelium spells it now),
+/// inside that shell too, as the launcher runs every viewer.
 #[must_use]
 pub fn views<W: AsRef<[u8]>>(words: &[W]) -> bool {
     let mycelium = words
-        .first()
-        .is_some_and(|program| program.as_ref().rsplit(|&b| b == b'/').next() == Some(b"mycelium"));
+        .iter()
+        .position(|word| word.as_ref().rsplit(|&b| b == b'/').next() == Some(b"mycelium"));
     words
         .iter()
         .any(|word| word.as_ref().ends_with(b"/scripts/host-join.ts"))
-        || (mycelium && words.iter().any(|word| word.as_ref() == b"attach"))
+        || mycelium.is_some_and(|at| {
+            words
+                .iter()
+                .skip(at + 1)
+                .any(|word| word.as_ref() == b"attach")
+        })
 }
 
 /// How `seen` is held: by the node's `holders` where it lists them, else
