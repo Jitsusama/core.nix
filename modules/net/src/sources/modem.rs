@@ -186,8 +186,8 @@ fn single_carrier_down(row: &Value) -> Channel {
         modulation: None,
         power_dbmv: real(row, "signalStrength"),
         snr_db: real(row, "snr"),
-        corrected: whole(row, "correcteds"),
-        uncorrectable: whole(row, "uncorrect"),
+        corrected: count(row, "correcteds"),
+        uncorrectable: count(row, "uncorrect"),
         active: true,
         lost_lately: None,
     }
@@ -204,8 +204,8 @@ fn ofdm_down(row: &Value) -> Channel {
         modulation: None,
         power_dbmv: real(row, "plcpower"),
         snr_db: real(row, "SNR"),
-        corrected: whole(row, "correcteds"),
-        uncorrectable: whole(row, "uncorrect"),
+        corrected: count(row, "correcteds"),
+        uncorrectable: count(row, "uncorrect"),
         active: text(row, "plclock").map(str::trim) == Some("YES"),
         lost_lately: None,
     }
@@ -329,6 +329,14 @@ fn whole<T: std::str::FromStr>(row: &Value, key: &str) -> Option<T> {
     text(row, key)?.trim().parse().ok()
 }
 
+/// A channel's count of pieces of data, which the modem keeps in 32 bits:
+/// one climbing tens of thousands a second reads only hundreds of millions
+/// after weeks up, so it wraps. Now and then a page gives one past 32 bits,
+/// a small count echoed in the high half, which is a misread and so none.
+fn count(row: &Value, key: &str) -> Option<u64> {
+    whole::<u32>(row, key).map(u64::from)
+}
+
 fn real(row: &Value, key: &str) -> Option<f64> {
     whole::<f64>(row, key).filter(|figure| figure.is_finite())
 }
@@ -369,6 +377,21 @@ mod tests {
             tag(said, "CM-VER"),
             Some("3.1"),
             "the DOCSIS version wasn't found"
+        );
+    }
+
+    #[test]
+    fn a_count_past_what_the_modem_keeps_is_a_misread() {
+        let row = serde_json::json!({
+            "Subcarr0freqFreq": " 635600000",
+            "correcteds": "528562409",
+            "uncorrect": "309237645385",
+        });
+        let channel = ofdm_down(&row);
+        assert_eq!(
+            (channel.corrected, channel.uncorrectable),
+            (Some(528_562_409), None),
+            "a count the modem can't hold was taken as real, or a real one lost"
         );
     }
 

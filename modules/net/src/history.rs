@@ -41,14 +41,27 @@ pub struct Moment {
 pub struct Lost {
     pub kind: String,
     pub channel: Option<u32>,
+    /// A day file written before net kept it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frequency_hz: Option<u64>,
     pub uncorrectable: u64,
 }
 
 impl Lost {
     /// Whether this is the count of that channel: channels are told apart
-    /// by kind and number, since an OFDM channel has no number.
+    /// by kind, number and frequency, since an OFDM channel has no number
+    /// and a modem locks to more than one.
     pub fn of(&self, channel: &Channel) -> bool {
-        self.kind == channel.kind && self.channel == channel.channel
+        self.kind == channel.kind
+            && self.channel == channel.channel
+            && self.frequency_hz == channel.frequency_hz
+    }
+
+    /// Whether this and `other` count the same channel.
+    fn same(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.channel == other.channel
+            && self.frequency_hz == other.frequency_hz
     }
 }
 
@@ -70,6 +83,7 @@ impl Moment {
                 Some(Lost {
                     kind: channel.kind.clone(),
                     channel: channel.channel,
+                    frequency_hz: channel.frequency_hz,
                     uncorrectable: channel.uncorrectable?,
                 })
             })
@@ -184,11 +198,9 @@ fn lately(modem: &mut Modem, day: &[Moment], now: u64) {
     let mut base: Option<&Moment> = None;
     for moment in day.iter().rev().filter(|moment| moment.at < now) {
         let started_since = moment.lost.iter().any(|earlier| {
-            later.iter().any(|each| {
-                each.kind == earlier.kind
-                    && each.channel == earlier.channel
-                    && earlier.uncorrectable > each.uncorrectable
-            })
+            later
+                .iter()
+                .any(|each| each.same(earlier) && earlier.uncorrectable > each.uncorrectable)
         });
         if started_since {
             break;
@@ -231,6 +243,7 @@ mod tests {
             lost: vec![Lost {
                 kind: "sc-qam".into(),
                 channel: Some(16),
+                frequency_hz: Some(483_000_000),
                 uncorrectable: lost,
             }],
             busy: vec![Busy {
@@ -352,6 +365,30 @@ mod tests {
             "The modem's downstream channel 16 has lost 878 pieces of data it couldn't repair \
              since the modem started, against at most 18 on any other, 78 of them in the last 5 \
              hours; Example ISP can check the line."
+        );
+    }
+
+    #[test]
+    fn each_ofdm_channel_counts_what_it_lost_on_its_own() {
+        // Neither has a number, so only the frequency tells them apart.
+        let now = network();
+        let mut then = earlier(&now, 5 * HOUR, 878, 41);
+        for lost in &mut then.lost {
+            if lost.frequency_hz == Some(635_600_000) {
+                lost.uncorrectable = 10;
+            }
+        }
+        let network = recalled(now, &[then]);
+        let lately: Vec<(Option<u64>, Option<u64>)> = modem(&network)
+            .downstream
+            .iter()
+            .filter(|channel| channel.kind == "ofdm")
+            .map(|channel| (channel.frequency_hz, channel.lost_lately))
+            .collect();
+        assert_eq!(
+            lately,
+            [(Some(455_600_000), Some(0)), (Some(635_600_000), Some(8))],
+            "one OFDM channel's loss was counted against the other's"
         );
     }
 
