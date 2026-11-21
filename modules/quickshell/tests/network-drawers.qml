@@ -14,6 +14,7 @@
 import qs
 import Quickshell
 import QtQuick
+import KeyTimes
 import "launcher" as Launcher
 import "launcher/WirelessPlate.js" as Plate
 import "Expect.js" as Expect
@@ -24,7 +25,21 @@ ShellRoot {
     Launcher.Networks {
         id: networks
 
-        settings: ({ lookups: false })
+        launcher: theLauncher
+        settings: ({ name: "networks", lookups: false })
+    }
+
+    // A shut launcher that records the spans Network's work is felt by, as
+    // Launcher.qml's feltSpan does while an opening is felt.
+    QtObject {
+        id: theLauncher
+
+        property bool open: false
+        property bool spansHeard: true
+        property var spans: []
+        function feltSpan(name, from) {
+            spans = spans.concat([{ name, from, to: KeyTimes.now() }]);
+        }
     }
 
     Launcher.Traffic {
@@ -113,8 +128,18 @@ ShellRoot {
         Expect.expect("as a connection changes, its drawer stays whole until made again",
             kept.includes("MTU=1,500 bytes") && kept.includes("Address=192.168.4.37/22"),
             kept.join("; "));
+        const before = theLauncher.spans.length;
         waits.until("the changed connection's facts made again",
-            () => glanced(0).includes("MTU=1,400 bytes"), () => Qt.exit(0));
+            () => glanced(0).includes("MTU=1,400 bytes"), () => root.glancedFelt(before));
+    }
+
+    // Its facts made again by its own timer are felt by their name, so an
+    // opening's stall says when they held it.
+    function glancedFelt(before) {
+        const since = theLauncher.spans.slice(before).map(span => span.name);
+        Expect.expect("a connection's facts made again are felt as Network's glancing",
+            since.includes("networks glancing"), JSON.stringify(since));
+        Qt.exit(0);
     }
 
     // A row's drawer as the launcher would draw it, or null where it draws

@@ -334,7 +334,10 @@ Provider {
         id: glancing
 
         interval: provider.launcher?.open ? 250 : 1000
-        onTriggered: provider.makeGlances()
+        // Felt by its name, since open it runs about a quarter second into
+        // each opening, where eleven of Joel's longest stalls, 173 to 270 ms
+        // in, left 72 to 174 ms of theirs unnamed (2026-11-20).
+        onTriggered: provider.felt("glancing", () => provider.makeGlances())
     }
     // A link that changes most often changes the routes with it.
     onLinksChanged: {
