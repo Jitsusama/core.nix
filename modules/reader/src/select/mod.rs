@@ -209,9 +209,8 @@ pub struct Layout {
     /// Each span of code: its words, and the bytes it takes with its
     /// backticks.
     code: Vec<(Range<usize>, Range<usize>)>,
-    /// Which of the page's settings its lines were read from, given once
-    /// they're back, so a key reading a line with the page's links knows
-    /// both are of one setting.
+    /// Which of the page's settings its lines were read from, so a key
+    /// reading a line with the page's links knows both are of one setting.
     pub version: u32,
 }
 
@@ -353,8 +352,9 @@ pub fn units(frame: &Frame) -> Vec<Unit> {
 }
 
 impl Layout {
-    /// The page's words, read off its frame, with the file it was set from.
-    pub fn read(frame: &Frame, source: String) -> Self {
+    /// The page's words, read off its frame, with the file it was set from,
+    /// for the page's `version`.
+    pub fn read(frame: &Frame, source: String, version: u32) -> Self {
         let lines = crate::text::lines(crate::text::runs(frame));
         let starts: Vec<f64> = crate::place::starts(frame)
             .into_iter()
@@ -476,7 +476,7 @@ impl Layout {
             words,
             spans,
             code,
-            version: 0,
+            version,
         }
     }
 

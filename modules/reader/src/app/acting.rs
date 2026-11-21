@@ -307,6 +307,9 @@ impl App {
     /// with the cursor on a whole line, the first link from it down, in
     /// view.
     fn follow_link_here(&mut self) {
+        if self.character_waits() {
+            return self.say(super::STILL_READING);
+        }
         let page = self.painter.page();
         let frame = &page.frame;
         let (link, missing) = if let Some((line, x_pt)) = self.character_on() {

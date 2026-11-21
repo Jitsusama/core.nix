@@ -612,7 +612,7 @@ fn set(name: &str, markdown: &str) -> Layout {
         .set()
         .expect("set");
     std::fs::remove_dir_all(&dir).expect("cleaned");
-    Layout::read(&page.frame, markdown.to_string())
+    Layout::read(&page.frame, markdown.to_string(), 0)
 }
 
 /// The page's line holding `words`, past the eyebrow, which names the

@@ -64,17 +64,16 @@ impl App {
             .name("layout".into())
             .spawn(move || {
                 let source = std::fs::read_to_string(&file).unwrap_or_default();
-                let _ = to.send((version, select::Layout::read(&page.frame, source)));
+                let _ = to.send((version, select::Layout::read(&page.frame, source, version)));
             });
     }
 
     /// The page's words for selecting have been read. A selection holds
     /// while its lines are the same on the new page, and ends otherwise.
-    pub(crate) fn layout_read(&mut self, version: u32, mut layout: select::Layout) {
+    pub(crate) fn layout_read(&mut self, version: u32, layout: select::Layout) {
         if version != self.painter.version {
             return;
         }
-        layout.version = version;
         if let (Some(selection), Some(old)) = (&self.selection, &self.layout) {
             let (from, to) = selection.ends();
             if !(layout.same_line(old, from.line) && layout.same_line(old, to.line)) {
@@ -311,6 +310,18 @@ impl App {
         }
         let line = layout.lines.get(at.line)?;
         Some((line, crate::text::middle_of(line, at.ch)?))
+    }
+
+    /// Whether a character stands but the page was set again and its lines
+    /// aren't read yet, so what it's under can't be said: gf and Ctrl+]
+    /// say so rather than fall back to the whole line, which may take a
+    /// link behind it.
+    pub(crate) fn character_waits(&self) -> bool {
+        self.standing().is_some()
+            && self
+                .layout
+                .as_ref()
+                .is_some_and(|layout| layout.version != self.painter.version)
     }
 
     /// Lets the character go once the cursor has left its line, so it

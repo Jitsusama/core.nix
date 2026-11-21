@@ -13,28 +13,35 @@ impl App {
     /// file: markdown in this window, and anything else as the desktop
     /// opens it.
     pub(crate) fn follow_file(&mut self) {
+        if self.character_waits() {
+            return self.say(super::STILL_READING);
+        }
         let page = self.painter.page();
         // The file a name stands for, when it's one on this machine.
         let file_of =
             |name: &links::Name| links::file_of(name, &self.file).filter(|file| file.is_file());
         let found = if let Some((line, x_pt)) = self.character_on() {
-            // The name is settled first and only then asked of the disk, so
-            // a missing one is said rather than passed for the next.
-            let Some(name) = links::name_here(&links::pieces(&page.frame), line, x_pt) else {
-                self.say("E446: No file name under cursor");
-                return;
-            };
-            let Some(file) = file_of(&name) else {
-                let (links::Name::Link(said) | links::Name::Written(said)) = name;
-                self.say(&format!("E447: Can't find file \"{said}\" in path"));
-                return;
-            };
-            Some(file)
+            let pieces = links::pieces(&page.frame);
+            match links::file_here(&pieces, line, x_pt, &self.file, std::path::Path::is_file) {
+                Ok(file) => Some(file),
+                Err(None) => return self.say("E446: No file name under cursor"),
+                Err(Some(said)) => {
+                    return self.say(&format!("E447: Can't find file \"{said}\" in path"));
+                }
+            }
         } else {
             let (from, (_, foot)) = (self.cursor_pt(), self.view_pt());
             let mut named: Vec<(f64, f64, std::path::PathBuf)> = links::links(&page.frame)
                 .into_iter()
                 .filter(|link| link.baseline_pt > from && link.top_pt < foot)
+                // A heading here is Ctrl+]'s to go to; gf from a line wants
+                // another file.
+                .filter(|link| {
+                    !matches!(
+                        links::target(&link.href, &self.file),
+                        links::Target::Here(_)
+                    )
+                })
                 .filter_map(|link| {
                     let file = file_of(&links::Name::Link(link.href))?;
                     Some((link.baseline_pt.round(), link.left_pt, file))
