@@ -50,6 +50,11 @@ const SILENT: Duration = Duration::from_mins(30);
 /// the queue takes, so neither clock may start until it's said.
 const TAKEN: &str = "nix-offload: building on ";
 
+/// What nix-offload says once a lent builder has taken a run. A Mac's
+/// comparison says it first, while a lent builder names what changed, so
+/// only a later `TAKEN` says a Mac took it.
+const LENT: &str = "nix-offload: building on the lent builder ";
+
 /// What nix-offload says, every five minutes, while a run a builder took
 /// waits there for one of its turns. It says that after `TAKEN`, so a
 /// busy Mac's two hours of waiting would read as two hours of building.
@@ -104,6 +109,10 @@ struct Clock {
     /// Why the net stopped the run, once it has: a stall's log says so,
     /// since the runs after it on the same merge write on after it.
     stopped: Option<&'static str>,
+    /// Whether a machine nearby took the run, rather than only the lent
+    /// builder that names a Mac's changed checks: only then can a Mac's
+    /// comparison have stalled there.
+    nearby: bool,
 }
 
 impl Clock {
@@ -120,6 +129,7 @@ impl Clock {
             written,
             heard: now,
             stopped: None,
+            nearby: false,
         }
     }
 
@@ -158,6 +168,7 @@ impl Clock {
     fn heard_line(&mut self, line: &str, now: Instant) {
         let line = line.trim();
         if says_taken(line) {
+            self.nearby |= says_a_mac_took(line);
             self.taken.get_or_insert(now);
             self.waits = None;
             self.building.get_or_insert(now);
@@ -806,17 +817,20 @@ impl Real {
 /// How a Mac's comparison that ended with `code` is read, from its own
 /// part of `log`, which the runs before it on the same merge share.
 fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
-    // One stopped once its turn came is a stall, though nothing it built
-    // printed a line and the last its log says is that it waits.
+    // One stopped once its turn came on a Mac is a stall, though nothing it
+    // built printed a line and the last its log says is that it waits.
     let read = match code {
-        None if clock.turn_came() => None,
+        None if clock.turn_came() && clock.nearby => None,
         code => mac_ending(code, clock.ours(log).as_deref()),
     };
     // net.log points at the run's log for why it compared nothing, and a
-    // run ended before a builder took it printed nothing that says so.
+    // run ended before a Mac took it printed nothing that says so. One the
+    // net stopped says why, as a wait for a turn that never came.
     if read == Some(UNCOMPARED) {
         let why = if code.is_none() {
-            "it was ended before any Mac took it, or while it waited there for a turn"
+            clock.stopped.unwrap_or(
+                "it was ended before any Mac took it, or while it waited there for a turn",
+            )
         } else {
             "it failed only on reaching a cache, which says nothing of the change"
         };
@@ -844,6 +858,12 @@ fn says_taken(line: &str) -> bool {
     line.trim_start().starts_with(TAKEN)
 }
 
+/// Whether a line is nix-offload's saying a machine nearby, not a lent
+/// builder, took the run.
+fn says_a_mac_took(line: &str) -> bool {
+    says_taken(line) && !line.trim_start().starts_with(LENT)
+}
+
 /// Whether a line is nix-offload's saying the run waits there for a turn,
 /// rather than a build's printing the same words.
 fn says_waits(line: &str) -> bool {
@@ -851,9 +871,10 @@ fn says_waits(line: &str) -> bool {
     line.starts_with(OWN) && line.contains(WAITS)
 }
 
-/// Whether a run's part of its log says a builder took it.
+/// Whether a run's part of its log says a Mac took it: the lent builder
+/// that names what changed builds nothing for a Mac.
 fn taken_in(ours: &[u8]) -> bool {
-    String::from_utf8_lossy(ours).lines().any(says_taken)
+    String::from_utf8_lossy(ours).lines().any(says_a_mac_took)
 }
 
 /// Whether a run's part of its log says it still waits for a turn on the
@@ -2498,6 +2519,55 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             mac_ending(None, Some(text.as_bytes())),
             Some(UNCOMPARED),
             "a run stopped while it waited compared nothing, so it rests"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a run the net stopped while it waited compared nothing"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this compared nothing: it waited for a turn past three hours"),
+            "a wait the net gave up on reads like a stop from outside"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    /// What nix-offload says while a lent builder names a Mac's changed
+    /// checks, before any Mac takes them.
+    const NAMING: &str = "nix-offload: no lent builder builds for aarch64-darwin and a machine \
+        nearby does, so changed-checks only names what changed, and what it names builds nearby\n\
+        nix-offload: building on the lent builder lb-1\n";
+
+    #[test]
+    fn a_mac_comparison_stopped_while_a_lent_builder_named_it_compared_nothing() {
+        assert_eq!(
+            mac_ending(None, Some(NAMING.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison no Mac took was read as a Mac's stall"
+        );
+        let log = std::env::temp_dir().join(format!("merge-net-naming-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        assert!(
+            clock.overdue(&log, start + SILENT + Duration::from_secs(1)),
+            "a naming silent half an hour went on"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a run the net stopped while a lent builder named it was read as a Mac's stall"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this compared nothing: it printed nothing for half an hour"),
+            "a naming the net stopped doesn't say why"
         );
         let _ = fs::remove_file(&log);
     }
