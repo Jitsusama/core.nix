@@ -51,6 +51,10 @@ type Box = tuple[int, int, int, int]
 # The loudest a recording's sound may peak and still count as silence, in dB: the
 # microphone's test tone peaks near 0, and silence at minus infinity.
 SILENT = -60.0
+# The quietest a tone held for seconds may be on average over a whole recording and still
+# count as heard, in dB: the speakers' tone, at -6 dB for 3 s of a minute, averages near
+# -24, while a click or the start of a wave, a few samples long, averages under -70.
+HEARD = -40.0
 # The speakers' tone, in Hz, and the cuts that keep only one tone: four high-pass filters at
 # 3 kHz take the microphone's 440 Hz down past 130 dB, and four low-pass filters at 1.5 kHz
 # take this one down past 90.
@@ -60,6 +64,12 @@ BELOW_THE_SPEAKERS = ",".join(["lowpass=f=1500"] * 4)
 # What records from a microphone without being a call, as the calls crate's NOT_CALLS has
 # it: the recording's own mix, and pw-record, which stands in for a call here.
 NO_CALL = frozenset({"recording-sound", "pw-record"})
+# How many of a recording's mixes PipeWire holds, failing where pw-dump does rather than
+# counting none.
+MIXES = (
+    "pw-dump > /run/user/1000/dump.json"
+    " && { grep -c 'recording-[0-9]' /run/user/1000/dump.json || true; }"
+)
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -126,7 +136,7 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
     # A mix left by a recording killed outright, which no trap saw, for this one to sweep.
     desktop.as_account("recording-sound sh -c 'kill -KILL $PPID' || true")
-    left = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
+    left = desktop.as_account(MIXES)
     assert int(left) > 0, "a recording-sound killed outright left no mix to sweep"
     bare, seen, shown = the_launcher_on_a_row(desktop)
     # The margin wears recording's mark from the start, as niri says it records.
@@ -155,7 +165,9 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     assert not recording - NO_CALL, f"the recording reads as a call from {sorted(recording)}"
     # What the desktop plays goes in too: a tone the microphone has nothing near.
     tone = "/run/user/1000/tone.wav"
-    machine.succeed(f"{ffmpeg} -f lavfi -i sine=frequency={SPEAKERS_TONE}:duration=2 -y {tone}")
+    machine.succeed(
+        f"{ffmpeg} -f lavfi -i sine=frequency={SPEAKERS_TONE}:duration=3,volume=4 -y {tone}"
+    )
     desktop.as_account(f"pw-play --target stand-in-speakers {tone}")
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Its notice comes once the file is finished, which its process outlives, waiting on
@@ -179,13 +191,14 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     # no recording did (Joel, 2026-11-20: "why does a screen recording not record audio?").
     peak = loudest(machine, ffmpeg, video)
     assert peak > SILENT, f"the recording's sound peaks at {peak} dB, silence"
-    played = loudest(machine, ffmpeg, video, ABOVE_THE_MICROPHONE)
-    assert played > SILENT, f"what the speakers played peaks at {played} dB, unheard"
-    spoken = loudest(machine, ffmpeg, video, BELOW_THE_SPEAKERS)
-    assert spoken > SILENT, f"the microphone peaks at {spoken} dB, unheard"
+    # Each half alone, by its average, which a click can't lift as it can a peak.
+    played = loudest(machine, ffmpeg, video, ABOVE_THE_MICROPHONE, "mean_volume")
+    assert played > HEARD, f"what the speakers played averages {played} dB, unheard"
+    spoken = loudest(machine, ffmpeg, video, BELOW_THE_SPEAKERS, "mean_volume")
+    assert spoken > HEARD, f"the microphone averages {spoken} dB, unheard"
     # The mix it was made from goes with it, its sink and both loops, and so does the one left
     # before it.
-    mixes = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
+    mixes = desktop.as_account(MIXES)
     assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
 
 
@@ -217,15 +230,17 @@ def callers(dump: list[Json]) -> set[str]:
     return named
 
 
-def loudest(machine: BaseMachine, ffmpeg: str, recorded: str, cut: str = "") -> float:
-    """Give the peak of a recording's first sound, in dB, past the cut given if any.
+def loudest(
+    machine: BaseMachine, ffmpeg: str, recorded: str, cut: str = "", measure: str = "max_volume"
+) -> float:
+    """Give the peak of a recording's first sound in dB, or the measure named, past a cut.
 
     It fails where the recording has no sound.
     """
     filters = f"{cut},volumedetect" if cut else "volumedetect"
     heard = machine.succeed(
         f"{ffmpeg} -v info -i {recorded} -map 0:a:0 -af {filters} -f null - 2>&1"
-        " | grep -o 'max_volume: [-0-9.]*'"
+        f" | grep -o '{measure}: [-0-9.]*'"
     )
     return float(heard.split()[-1])
 
