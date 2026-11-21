@@ -1897,6 +1897,13 @@ fn paired(settings: Settings) -> Result<Settings, Failure> {
             "--quick names where programs ask for a short slice, and --quick-name which",
         ));
     }
+    // The kernel keeps a process's name to 15 bytes, so a longer one could
+    // never be matched and would leave that program unasked unseen.
+    if settings.quick_names.iter().any(|name| name.len() > 15) {
+        return Err(wrongly(
+            "--quick-name is a program's name as the kernel keeps it, at most 15 bytes",
+        ));
+    }
     if settings.sessions.is_some() && settings.weigh.is_empty() {
         return Err(wrongly(
             "--sessions names a session's scope by a --weigh prefix, and none is given",
@@ -1962,6 +1969,15 @@ mod settings_tests {
                 "{alone} alone is refused"
             );
         }
+        assert!(
+            settings(
+                "--quick app.slice --quick-name google-chrome-st"
+                    .split_whitespace()
+                    .map(str::to_owned)
+            )
+            .is_err(),
+            "a name longer than the kernel keeps, which nothing could match, is refused"
+        );
     }
 
     #[test]

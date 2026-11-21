@@ -1571,8 +1571,8 @@
     within half an hour or that orchestrates is spared as the account's
   '';
   joels-programs-ask-short-slices = ''
-    the sorter has the threads of Joel's Chrome and Slack in his programs' slice, and only those,
-    ask for a short slice
+    the sorter is told that Chrome and Slack, and no other programs, ask for a short slice, and
+    only in his programs' slice
   '';
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
