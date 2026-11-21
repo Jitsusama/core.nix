@@ -2,13 +2,17 @@
 //! it remembers between ticks so each is asked once: the session keeping
 //! the cycle fast, or the one switching the machine for an alarm only a
 //! switch answers, and the orchestrator above them when the one asked
-//! doesn't answer or isn't there.
+//! doesn't answer or isn't there. A budget nearing its allowance is told
+//! to the orchestrator alone, as a finding nothing waits on.
+
+mod budgets;
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::watch::{Snapshot, breaches};
+use crate::watch::Snapshot;
+use budgets::{budgeting, standing};
 
 /// The card is overdue when neither the watcher nor cadence sent one this
 /// long, in seconds; cadence then sends its own, since asking the watcher
@@ -49,6 +53,18 @@ pub struct State {
     /// When cadence last sent the orchestrator the card itself.
     #[serde(default)]
     pub carded: Option<i64>,
+    /// For how many milliseconds of waking time no budget has been watched,
+    /// as spend-watch's standing couldn't be read.
+    #[serde(default)]
+    pub unwatched_ms: Option<i64>,
+    /// When cadence last ticked, so where the clocks can't be read, a long
+    /// gap between ticks is read as a sleep.
+    #[serde(default)]
+    pub ticked: Option<i64>,
+    /// The machine's sleep at the last tick, so a sleep or a boot between
+    /// ticks is told from a tick skipped while awake.
+    #[serde(default)]
+    pub asleep: Option<crate::watch::asleep::Asleep>,
 }
 
 /// Who a question goes to.
@@ -193,32 +209,51 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     let mut ask = |state: &mut State, key: String, text: String| {
         if !state.seen.contains_key(&key) {
             state.seen.insert(key.clone(), s.now);
+            let to = if holding(&key) {
+                To::Holder
+            } else if s.switcher.is_some() && switching(&key) {
+                To::Switcher
+            } else if budgeting(&key) {
+                To::Orchestrator
+            } else {
+                To::Watcher
+            };
             out.push(Question {
-                to: if holding(&key) {
-                    To::Holder
-                } else if s.switcher.is_some() && switching(&key) {
-                    To::Switcher
-                } else {
-                    To::Watcher
-                },
-                key: Some(key),
+                to,
+                // The orchestrator is told, and nothing waits on its answer.
+                key: (to != To::Orchestrator).then_some(key),
                 text,
             });
         }
     };
-    for breach in breaches(s) {
+    for breach in standing(s, state) {
         ask(
             state,
             format!("alarm:{}", breach.key),
             format!("Cadence alarm: {}.", breach.text),
         );
+        budgets::remember(state, &breach.key, s.now);
     }
 
+    forget(s, state);
+    out
+}
+
+/// Forgets what's older than `REMEMBER`, but a budget's alarm by
+/// [`budgets::rests`] alone: the first tick after a sleep reads the file
+/// from before it, and a level still standing would otherwise be told
+/// again on waking, after a weekend as after a night.
+fn forget(s: &Snapshot, state: &mut State) {
     let keep = |at: &i64| s.now - *at < REMEMBER;
-    state.seen.retain(|_, at| keep(at));
+    state.seen.retain(|key, at| {
+        if budgeting(key) {
+            budgets::rests(s, key, *at)
+        } else {
+            keep(at)
+        }
+    });
     state.escalated.retain(|_, at| keep(at));
     state.asked.retain(|_, q| keep(&q.at));
-    out
 }
 
 /// Ends each held net's question whose hold has ended, as ending it is the
@@ -367,6 +402,10 @@ mod tests {
         s.switcher = Some("SWITCH".into());
         let asked = tick(&s, &mut State::default());
         assert_eq!(asked[0].to, To::Switcher, "the switcher named");
+    }
+
+    pub(in crate::asking) fn told_whom(questions: &[Question]) -> Vec<(To, bool)> {
+        questions.iter().map(|q| (q.to, q.key.is_some())).collect()
     }
 
     #[test]

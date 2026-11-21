@@ -561,6 +561,12 @@ fn gather(
     let net = state_home.join("net");
     let round = core.round(&fs::read_to_string(net.join("state.json")).unwrap_or_default());
     let held = fs::read_to_string(net.join("held.json")).unwrap_or_default();
+    let budgets = watch::budgets::gather(
+        std::env::var_os("XDG_RUNTIME_DIR")
+            .as_deref()
+            .map(Path::new),
+        now,
+    );
     let (available_gib, swap_gib) =
         records::memory(&fs::read_to_string("/proc/meminfo").unwrap_or_default());
     let kernel = journal(&[
@@ -605,6 +611,9 @@ fn gather(
         net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
         net_held: records::net_held(&held),
         net_held_since: watch::held::read(&held),
+        budgets_unwatched: budgets.as_ref().err().cloned(),
+        asleep: watch::asleep::now(),
+        budgets: budgets.unwrap_or_default(),
         net_hung: crate::net::hung(&net.join("findings"), now - 3600),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
             Path::new(&format!("/proc/{pid}")).exists()

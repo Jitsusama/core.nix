@@ -6,6 +6,8 @@ use crate::net::{Round, lag};
 use crate::records::{Follower, Look, Merge, NetHold, Run};
 use crate::stats::spread;
 
+pub mod asleep;
+pub mod budgets;
 pub mod held;
 
 /// A merge not on the machine this long after it merged, in minutes.
@@ -64,6 +66,14 @@ pub struct Snapshot {
     pub net_held: Option<i64>,
     /// That hold, once the net says since when it stood and who sent it.
     pub net_held_since: Option<held::NetHeld>,
+    /// Each budget's allowances as spend-watch last stood them.
+    pub budgets: Vec<budgets::Allowance>,
+    /// Why spend-watch's standing couldn't be read, or wasn't fresh, so no
+    /// budget is watched.
+    pub budgets_unwatched: Option<String>,
+    /// The machine's sleep in this boot, or None where the kernel's boot or
+    /// clocks can't be read.
+    pub asleep: Option<asleep::Asleep>,
     pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
@@ -153,6 +163,7 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
         out.push(breach);
     }
     out.extend(held::stalled(s));
+    out.extend(budgets::standing(s));
     out.extend(s.net_hung.as_ref().map(crate::net::hang));
     if let Some(hold) = s.net_hold.as_ref().filter(|h| {
         let patience = if h.landing {
