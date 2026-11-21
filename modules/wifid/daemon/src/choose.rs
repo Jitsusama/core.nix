@@ -482,21 +482,43 @@ impl Chooser {
         let Some(chosen) = chosen else {
             return self.unchosen(now, on, others, (bad, holds_wide && !queued), crowded);
         };
-        let yielded = self.spurned.contains_key(&chosen.point);
-        self.yielded = yielded.then(|| chosen.point.clone());
+        let banded = banded.is_some() && used(measured);
+        let widened = !wide(frequency) && wide(chosen.frequency);
+        let usual = trial_bar(usual, measured);
+        self.try_point(
+            now,
+            (point, measured),
+            &chosen.point,
+            usual,
+            (banded, widened),
+        )
+    }
+
+    /// Moves the card on trial to `to` from what it carried on `from`,
+    /// judged against `usual` where that's the bar: a point kept off is
+    /// tried as yielding, and the hold of any back before it ends.
+    fn try_point(
+        &mut self,
+        now: Instant,
+        (from, before): (&str, &Measured),
+        to: &str,
+        usual: Option<Measured>,
+        (banded, widened): (bool, bool),
+    ) -> Choice {
+        self.yielded = self.spurned.contains_key(to).then(|| to.to_owned());
         let moved_before = self.moved.replace(now);
         self.back_to = None;
         self.trial = Some(Trial {
-            from: point.to_owned(),
-            to: chosen.point.clone(),
-            before: measured.clone(),
-            usual: trial_bar(usual, measured),
+            from: from.to_owned(),
+            to: to.to_owned(),
+            before: before.clone(),
+            usual,
             moved_before,
             stood: false,
-            banded: banded.is_some() && used(measured),
-            widened: !wide(frequency) && wide(chosen.frequency),
+            banded,
+            widened,
         });
-        Choice::Try(chosen.point.clone())
+        Choice::Try(to.to_owned())
     }
 
     /// Whether the card stays where it is whatever else it hears: a link
@@ -3553,6 +3575,8 @@ pub(crate) mod tests {
             to: HALL.into(),
             before,
             usual,
+            moved_before: None,
+            stood: false,
             banded,
             widened: false,
         });
@@ -3625,6 +3649,8 @@ pub(crate) mod tests {
                 to: HALL.into(),
                 before: unloaded(76),
                 usual: Some(unloaded(14)),
+                moved_before: None,
+                stood: false,
                 banded: false,
                 widened: false,
             });
