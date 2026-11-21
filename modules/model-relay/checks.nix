@@ -18,8 +18,8 @@ onLinux {
   # sends it, another host refused, many
   # requests at once on a few connections, an answer streamed as it comes, a
   # connection the origin lets go opened again, a request the origin reset
-  # before its answer, or left out of a goodbye saying nothing was wrong,
-  # sent once more on another connection, one already open, even beside one
+  # before its answer, or left out of a goodbye saying nothing was wrong or
+  # a protocol error, sent once more on another connection, one already open, even beside one
   # kept, or one opened for a burst of them together, a single attempt heard
   # by all when it fails, and sent direct with the relay's own 421 when
   # reset or left out again, or lost, when its connection was kept with no

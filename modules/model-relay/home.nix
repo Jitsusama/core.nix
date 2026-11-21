@@ -23,7 +23,8 @@
 # refused or a protocol error, goes once more, on another connection, and
 # the one that reset it takes no more; so does one left out of a goodbye
 # saying nothing was wrong, as a drain before a deploy or a connection's
-# rotation is, as that promises the origin did nothing with it. Reset or
+# rotation is, or a protocol error, as that promises the origin did nothing
+# with it. Reset or
 # left out again the same way, lost on its path when sent again, or with no
 # other connection to go on, it's the relay's own 421, so pi sends it direct
 # at once. Reset or said goodbye to saying anything else, first or again,
@@ -31,11 +32,11 @@
 # finished in ten minutes, 20 at least, it stands down, sending each request
 # direct with its 421. After a minute, longer as stand-downs double, and
 # every half minute after, it tries its path on a connection of its own, and
-# takes requests again once the origin answers three in a row; a stand-down
-# begun while it waits to try its path again waits its own first trial from
-# when it began. Otherwise it stands down ten minutes, or twice as long as
-# the last when that ended within the hour, to an hour, while it runs: one that
-# leaves once idle, or is restarted, starts over. The journal says when it
+# takes requests again once the origin answers three in a row. Otherwise it
+# stands down ten minutes, or twice as long as the last when that ended
+# within the hour, to an hour, while it runs: one that leaves once idle, or
+# is restarted, starts over. A stand-down begun while it waits to try its
+# path again waits its own first trial from when it began. The journal says when it
 # stands down, each trial, and when it takes requests again; restarting it
 # ends a stand-down.
 #

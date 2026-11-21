@@ -8,8 +8,9 @@
 //! request the origin resets before its answer retires its connection and
 //! goes once more on another, never one kept after a reset, with a burst
 //! of them sharing one opened for them, and goes direct with the relay's
-//! own 421 when reset again or with nowhere to go, one a fallen connection
-//! lost is a 502 and no reset,
+//! own 421 when reset again or with nowhere to go, one a goodbye left out,
+//! against an origin writing its frames by hand, goes once more and then
+//! direct, never judged, one a fallen connection lost is a 502 and no reset,
 //! the origin hearing a lost one once, a body too large or left unfinished
 //! goes nowhere, the latter as pi's cancel, never a 421, a relay failing
 //! past its share stands down, sending pi direct, tries its path as it
@@ -980,8 +981,8 @@ async fn a_request_the_origin_resets_twice_goes_direct_and_retires_its_connectio
     // saved.
     assert!(
         said.contains(
-            "3 asked, 0 refused, 1 failed, 1 of them reset; 0 reset and sent again; pi \
-             cancelled 0"
+            "3 asked, 0 refused, 1 failed, 1 of them reset or left out; 0 reset or left out \
+             and sent again; pi cancelled 0"
         ),
         "a resend reset again wasn't counted as failed: {said}"
     );
@@ -1229,8 +1230,8 @@ async fn a_burst_reset_on_one_connection_shares_the_one_opened_for_it() {
     let said = relay.said();
     assert!(
         said.contains(
-            "4 asked, 0 refused, 0 failed, 0 of them reset; 4 reset and sent again; pi \
-             cancelled 0"
+            "4 asked, 0 refused, 0 failed, 0 of them reset or left out; 4 reset or left out \
+             and sent again; pi cancelled 0"
         ),
         "the burst wasn't each reset and sent again once, by the counts: {said}"
     );
@@ -1286,8 +1287,8 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
     );
     assert!(
         said.contains(
-            "3 asked, 0 refused, 3 failed, 3 of them reset; 0 reset and sent again; pi \
-             cancelled 0"
+            "3 asked, 0 refused, 3 failed, 3 of them reset or left out; 0 reset or left out \
+             and sent again; pi cancelled 0"
         ),
         "a request reset and not sent again was counted as sent: {said}"
     );
@@ -1743,8 +1744,8 @@ async fn a_relay_leaving_says_its_trials_apart_from_its_connections_in_its_count
 }
 
 /// The counts said as it left give its trials a figure of their own, one
-/// for each trial connection it said, and count as opened only the
-/// connections for requests.
+/// for each trial it said, whether or not its connection opened, and count
+/// as opened only the connections for requests.
 fn counts_trials_apart(said: &str) {
     let counts = said
         .lines()
@@ -1763,7 +1764,14 @@ fn counts_trials_apart(said: &str) {
             .filter(|line| line.starts_with(by) && line.contains(" opened"))
             .count()
     };
-    let trials = said_opened("model-relay: trial connection ");
+    // Each trial's number, from any line it said, so one whose connection
+    // wasn't made, as on a slow machine, is a trial too.
+    let trials = said
+        .lines()
+        .filter_map(|line| line.strip_prefix("model-relay: trial connection "))
+        .filter_map(|rest| rest.split(' ').next())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
     assert!(trials > 0, "no trial connection was said: {said}");
     assert_eq!(
         (figure(" trials of its path"), figure(" connections opened")),
@@ -1775,9 +1783,9 @@ fn counts_trials_apart(said: &str) {
 /// A relay whose stand-down ends on its timer while its trial loop waits
 /// on a trial, and which stands down again then, is told of the new one:
 /// its loop waits that stand-down's own first trial from when it began,
-/// rather than sleeping out the old wait first. The requests it answered
-/// since count toward its share, so it's reset until it says it stands
-/// down, rather than a set number of times.
+/// rather than sleeping out the old wait first. None is answered after its
+/// first stand-down, so exactly twenty resets stand it down again, but it's
+/// reset until it says so, rather than a set number of times.
 #[tokio::test(flavor = "current_thread")]
 async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_from_then() {
     let origin = origin().await;
@@ -1798,7 +1806,8 @@ async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_
     tokio::time::sleep_until((stood_down + Duration::from_millis(15_500)).into()).await;
     assert!(
         trials() > 0,
-        "its first trial didn't come before its stand-down ended"
+        "its first trial didn't come before its stand-down ended, or its timer woke over 1 s \
+         late, as a trial woken past its stand-down is skipped"
     );
 
     // Failing again as soon as it takes requests, it stands down doubled,
@@ -1837,7 +1846,8 @@ async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_
     tokio::time::sleep_until((again + Duration::from_secs(31)).into()).await;
     assert!(
         trials() > before,
-        "a stand-down begun while it waited on a trial waited out the old wait first"
+        "a stand-down begun while it waited on a trial waited out the old wait first, or its \
+         timer woke over 2 s late, as a trial woken past its stand-down is skipped"
     );
     let said = relay.said();
     assert!(
@@ -1885,6 +1895,211 @@ async fn stands_down_doubled_and_waits_twice_as_long(relay: &Relay, origin: &Ori
     assert!(
         trials() > before,
         "a doubled stand-down never tried its path"
+    );
+}
+
+/// Which requests a draining origin leaves out of a goodbye, counted
+/// across its connections from 0.
+#[derive(Clone, Copy)]
+enum Drains {
+    /// Every other, the first of each pair, as rotations crossing each
+    /// request's first try would.
+    EveryOther,
+    /// Every one, as a drain before a deploy that ends every connection.
+    All,
+}
+
+/// Requests past the stand-down's least judged, 20, so judged as failures
+/// they'd stand the relay down.
+const PAST_JUDGED: usize = 25;
+
+/// What a draining origin was asked, and how many it left out.
+struct Draining {
+    address: SocketAddr,
+    asked: Arc<AtomicUsize>,
+    left_out: Arc<AtomicUsize>,
+}
+
+/// An origin writing HTTP/2 by hand over `tls`, leaving out what `drains`
+/// says of a goodbye saying nothing was wrong and answering the rest 200
+/// with no body: h2's own server counts a request it has read as begun,
+/// so it won't leave one out.
+async fn draining_origin(drains: Drains, tls: Tls) -> Draining {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its address");
+    let (asked, left_out) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let (counted, dropped) = (Arc::clone(&asked), Arc::clone(&left_out));
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let acceptor = tls.acceptor.clone();
+            let (asked, left_out) = (Arc::clone(&counted), Arc::clone(&dropped));
+            tokio::spawn(async move {
+                if let Ok(mut stream) = acceptor.accept(stream).await {
+                    Box::pin(drain_frames(&mut stream, drains, &asked, &left_out)).await;
+                }
+            });
+        }
+    });
+    Draining {
+        address,
+        asked,
+        left_out,
+    }
+}
+
+/// Reads a connection's frames, answering them as `draining_origin` says,
+/// until the client leaves.
+async fn drain_frames<S>(
+    stream: &mut S,
+    drains: Drains,
+    asked: &AtomicUsize,
+    left_out: &AtomicUsize,
+) where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    /// The bytes a client opens HTTP/2 with, before its first frame.
+    const PREFACE: usize = 24;
+    /// A frame's head: its length, type, flags and stream.
+    const HEAD: usize = 9;
+    const DATA: u8 = 0;
+    const HEADERS: u8 = 1;
+    const SETTINGS: u8 = 4;
+    const PING: u8 = 6;
+    const GOAWAY: u8 = 7;
+    /// A frame's flag ending its stream, or acknowledging, by its type.
+    const END_STREAM_OR_ACK: u8 = 1;
+    const END_HEADERS: u8 = 4;
+    /// `:status: 200`, from HPACK's static table.
+    const OK: u8 = 0x88;
+
+    if stream
+        .write_all(&[0, 0, 0, SETTINGS, 0, 0, 0, 0, 0])
+        .await
+        .is_err()
+    {
+        return;
+    }
+    let (mut read, mut at, mut said_goodbye) = (Vec::new(), PREFACE, false);
+    let mut piece = [0; 16_384];
+    loop {
+        while read.len() >= at + HEAD {
+            let length = (usize::from(read[at]) << 16)
+                | (usize::from(read[at + 1]) << 8)
+                | usize::from(read[at + 2]);
+            if read.len() < at + HEAD + length {
+                break;
+            }
+            let (kind, flags) = (read[at + 3], read[at + 4]);
+            let id = u32::from_be_bytes([read[at + 5], read[at + 6], read[at + 7], read[at + 8]])
+                & 0x7fff_ffff;
+            let payload = read[at + HEAD..at + HEAD + length].to_vec();
+            at += HEAD + length;
+            let reply = match kind {
+                SETTINGS if flags & END_STREAM_OR_ACK == 0 => {
+                    vec![0, 0, 0, SETTINGS, END_STREAM_OR_ACK, 0, 0, 0, 0]
+                }
+                PING if flags & END_STREAM_OR_ACK == 0 => {
+                    [vec![0, 0, 8, PING, END_STREAM_OR_ACK, 0, 0, 0, 0], payload].concat()
+                }
+                // Once it has said goodbye, the client fails what it sends
+                // after on its own.
+                HEADERS | DATA if flags & END_STREAM_OR_ACK != 0 && !said_goodbye => {
+                    if matches!(drains, Drains::All)
+                        || asked.fetch_add(1, Ordering::SeqCst).is_multiple_of(2)
+                    {
+                        if matches!(drains, Drains::All) {
+                            asked.fetch_add(1, Ordering::SeqCst);
+                        }
+                        left_out.fetch_add(1, Ordering::SeqCst);
+                        said_goodbye = true;
+                        // It names the last stream begun before this
+                        // one, so it leaves this one out, saying nothing
+                        // was wrong.
+                        let last = id.saturating_sub(2).to_be_bytes();
+                        [&[0, 0, 8, GOAWAY, 0, 0, 0, 0, 0][..], &last, &[0, 0, 0, 0]].concat()
+                    } else {
+                        let head = [0, 0, 1, HEADERS, END_HEADERS | END_STREAM_OR_ACK];
+                        [&head[..], &id.to_be_bytes(), &[OK]].concat()
+                    }
+                }
+                _ => Vec::new(),
+            };
+            if stream.write_all(&reply).await.is_err() {
+                return;
+            }
+        }
+        match stream.read(&mut piece).await {
+            Ok(got) if got > 0 => read.extend_from_slice(&piece[..got]),
+            _ => return,
+        }
+    }
+}
+
+/// A request a goodbye saying nothing was wrong left out goes once more,
+/// on another connection, and is answered there; never judged, so
+/// rotations crossing every request's first try never stand it down.
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_a_goodbye_left_out_goes_once_more_and_stands_nothing_down() {
+    let tls = tls();
+    let origin = draining_origin(Drains::EveryOther, tls.clone()).await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 2);
+    for _ in 0..PAST_JUDGED {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hello")).await;
+        assert_eq!(
+            got.status,
+            StatusCode::OK,
+            "a request a goodbye left out wasn't answered once more: {}",
+            String::from_utf8_lossy(&got.body)
+        );
+    }
+    assert_eq!(
+        (
+            origin.asked.load(Ordering::SeqCst),
+            origin.left_out.load(Ordering::SeqCst)
+        ),
+        (2 * PAST_JUDGED, PAST_JUDGED),
+        "each request wasn't left out once and answered once"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("left a request out of its goodbye")
+            && said.contains("left out on connection")
+            && !said.contains("so it stands down"),
+        "requests a goodbye left out weren't said sent again, unjudged: {said}"
+    );
+}
+
+/// A request goodbyes saying nothing was wrong left out twice goes direct
+/// with the relay's 421, and a drain of every connection never stands the
+/// relay down.
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_left_out_again_goes_direct_and_stands_nothing_down() {
+    let tls = tls();
+    let origin = draining_origin(Drains::All, tls.clone()).await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 2);
+    for _ in 0..PAST_JUDGED {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hello")).await;
+        assert_eq!(
+            (got.status, got.body.as_ref()),
+            (
+                StatusCode::MISDIRECTED_REQUEST,
+                b"this relay can't carry a request to its origin, so go directly\n".as_slice()
+            ),
+            "a request left out twice didn't go direct"
+        );
+    }
+    assert_eq!(
+        origin.left_out.load(Ordering::SeqCst),
+        2 * PAST_JUDGED,
+        "each request wasn't left out twice"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("couldn't be carried again, so pi goes directly")
+            && !said.contains("so it stands down"),
+        "requests left out twice weren't said sent direct, unjudged: {said}"
     );
 }
 
@@ -2372,7 +2587,8 @@ async fn a_body_pi_leaves_unfinished_is_counted_as_a_cancel() {
     let said = relay.said();
     assert!(
         said.contains(
-            "1 asked, 0 refused, 0 failed, 0 of them reset; 0 reset and sent again; pi cancelled 1"
+            "1 asked, 0 refused, 0 failed, 0 of them reset or left out; 0 reset or left out and \
+             sent again; pi cancelled 1"
         ),
         "a body pi left unfinished wasn't counted as its cancel: {said}"
     );
