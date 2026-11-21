@@ -13,7 +13,9 @@ const STUCK: i64 = 60 * 60;
 const TRIES: i64 = 3;
 
 /// What a host's starting or stopping may take beside its tries, for what
-/// its unit's limits leave out, such as the jobs a start waits on.
+/// its unit's limits leave out, such as the jobs a start waits on, and a
+/// start renewing its ask past its limit, which host.nix allows a host
+/// still resuming conversations. Starts have taken 8 to 9 minutes.
 const SLACK: i64 = 15 * 60;
 
 /// How long a host may be starting or stopping when its unit's limits
@@ -131,13 +133,20 @@ fn resumed(shown: &str, now: i64) -> Option<i64> {
     }
 }
 
-/// A span as `systemctl show` prints one, such as `2min 30s`, in whole
-/// seconds rounded up, or `None` for one it doesn't read, as `infinity`.
+/// A span as `systemctl show` prints one, such as `2min 30s`, `3month` or
+/// `2min 30.500000s`, in whole seconds rounded up, or `None` for one it
+/// doesn't read, as `infinity`. Zero it prints as a bare `0`.
 fn span(text: &str) -> Option<i64> {
-    let mut micros = 0;
+    if text == "0" {
+        return Some(0);
+    }
+    let mut micros: i64 = 0;
+    let mut parts = 0;
     for part in text.split_whitespace() {
-        let digits = part.find(|c: char| !c.is_ascii_digit())?;
+        let digits = part.find(|c: char| !c.is_ascii_digit() && c != '.')?;
         let (count, unit) = part.split_at(digits);
+        // As systemd's own table has them, a month and a year in days of
+        // 24 hours.
         let each: i64 = match unit {
             "us" | "µs" => 1,
             "ms" => 1_000,
@@ -145,11 +154,22 @@ fn span(text: &str) -> Option<i64> {
             "min" => 60_000_000,
             "h" => 3_600_000_000,
             "d" => 86_400_000_000,
+            "w" => 604_800_000_000,
+            "month" => 2_629_800_000_000,
+            "y" => 31_557_600_000_000,
             _ => return None,
         };
-        micros += count.parse::<i64>().ok()?.checked_mul(each)?;
+        let (whole, fraction) = count.split_once('.').unwrap_or((count, ""));
+        let mut part_micros = whole.parse::<i64>().ok()?.checked_mul(each)?;
+        if !fraction.is_empty() {
+            let scale = 10_i64.checked_pow(u32::try_from(fraction.len()).ok()?)?;
+            let numerator = fraction.parse::<i64>().ok()?;
+            part_micros = part_micros.checked_add(numerator.checked_mul(each)? / scale)?;
+        }
+        micros = micros.checked_add(part_micros)?;
+        parts += 1;
     }
-    (micros > 0).then(|| (micros + 999_999) / 1_000_000)
+    (parts > 0).then(|| (micros + 999_999) / 1_000_000)
 }
 
 #[cfg(test)]
@@ -329,10 +349,16 @@ mod tests {
             ("5s", Some(5)),
             ("100ms", Some(1)),
             ("1h 30min", Some(5_400)),
+            ("0", Some(0)),
+            ("2min 30.500000s", Some(151)),
+            ("1.5s", Some(2)),
+            ("2w", Some(1_209_600)),
+            ("3month", Some(7_889_400)),
+            ("1y", Some(31_557_600)),
             ("infinity", None),
             ("", None),
             ("5", None),
-            ("1.5s", None),
+            (".s", None),
             ("5x", None),
         ] {
             assert_eq!(span(text), seconds, "{text:?} was misread");
