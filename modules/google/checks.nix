@@ -86,8 +86,10 @@ onLinux {
   # Which meeting is next, when it is in words, or was once it's over, and
   # whether it's about to start are Calendar.js's, and which Meet call a
   # window is, which held meetings Meet's Recent lists and who each was with
-  # Meet.js's, run in Qt's own engine over meetings like the program's
-  # (tests/calendar.qml).
+  # Meet.js's, and which calls the program follows and for how long
+  # Following.js's, run in Qt's own engine over meetings like the program's
+  # (tests/calendar.qml). Following.js's LASTS must be the program's own
+  # FOLLOW_LASTS, or its cases prove a lapse the program doesn't keep.
   the-desktop-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -97,7 +99,11 @@ onLinux {
       cp ${./Calendar.js} Calendar.js
       cp ${./Repeats.js} Repeats.js
       cp ${./Meet.js} Meet.js
+      cp ${./Following.js} Following.js
       cp ${../quickshell/When.js} When.js
+      lasts=$(sed -n 's/^const FOLLOW_LASTS: i64 = \([0-9_]*\);$/\1/p' ${./src/watch.rs})
+      grep -qx "const LASTS = $lasts;" Following.js \
+        || { echo "Following.js's LASTS isn't watch.rs's FOLLOW_LASTS, '$lasts'"; exit 1; }
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

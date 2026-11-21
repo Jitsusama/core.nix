@@ -11,7 +11,8 @@
 // the Microphone, a switch that keeps its name as it flips; People, how
 // many are in it on its side and their names after its own, each a step in
 // since when they're in or when they left, as Meet says it to the google
-// program (src/meet.rs) while the launcher is open; then going to the
+// program (src/meet.rs) while the launcher is open or the call is
+// recorded (Following.js); then going to the
 // call's window, and Leave It, which closes the window as Meet's own Leave
 // does and, as it ends the call, Return only writes `:leave` for (the key
 // language's leave-call); and copying its link last. Its plate says the rest (Meet.js's

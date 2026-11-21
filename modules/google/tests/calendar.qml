@@ -2,16 +2,18 @@
 // start, said as a notice or told already by another, and joined by
 // Return, its day in full, how Joel answered it, its details for the
 // drawer, and which Meet call a window is and
-// whose, from meetings like the google program's, run in Qt's own
+// whose, and which calls the google program follows and for how long,
+// from meetings like the google program's, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-desktop-tells-the-next-meeting` check copies Calendar.js,
-// Repeats.js and Meet.js beside this file and runs `qml -platform
+// Repeats.js, Meet.js and Following.js beside this file and runs `qml -platform
 // offscreen calendar.qml`. Times are made on the local clock, so the
 // cases hold in whatever zone the check runs in.
 import QtQuick
 import "Calendar.js" as Calendar
 import "Repeats.js" as Repeats
 import "Meet.js" as Meet
+import "Following.js" as Following
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -429,6 +431,7 @@ QtObject {
                 .map(fact => fact.label), ["Started", "Code"]);
 
         heldCases(check, at, now, meeting);
+        followingCases(check);
 
         for (const failure of failures)
             console.warn(failure);
@@ -438,6 +441,65 @@ QtObject {
 
     // The meetings over, as Calendar's Recent and Meet's say them: when each
     // was held, which of them were calls on Meet, and who each was with.
+    // Which Meet calls are followed, and for how long the program keeps
+    // following them once the shell stops saying so.
+    function followingCases(check) {
+        const calls = [{ code: "abc-defg-hij" }, { code: "xyz-abcd-efg" }];
+        const codes = ["abc-defg-hij", "xyz-abcd-efg"];
+        const RENEW = Following.RENEW;
+        const LASTS = Following.LASTS;
+        const told = (at, said) => ({ at: at, codes: said });
+
+        check("the launcher open alone follows every call",
+            Following.followed(calls, true, false), codes);
+        check("the launcher open alone says it again each minute",
+            Following.renews(Following.followed(calls, true, false)), true);
+        check("a call recorded alone follows every call",
+            Following.followed(calls, false, true), codes);
+        check("a call recorded alone says it again each minute",
+            Following.renews(Following.followed(calls, false, true)), true);
+        check("said again each minute, a follow never lapses between",
+            Following.following(told(0, codes), RENEW), codes);
+
+        // Neither: nothing is followed or said again, and a follow the
+        // shell said last, as one gone away did, lapses within LASTS.
+        check("neither follows nothing", Following.followed(calls, false, false), []);
+        check("neither says nothing again",
+            Following.renews(Following.followed(calls, false, false)), false);
+        check("a follow unsaid holds until LASTS",
+            Following.following(told(1_000, codes), 1_000 + LASTS), codes);
+        check("a follow unsaid lapses after LASTS",
+            Following.following(told(1_000, codes), 1_000 + LASTS + 1), []);
+        check("never told, nothing is followed", Following.following(null, 0), []);
+
+        // A recording that ends, with the launcher shut: said at once as
+        // nothing, and not said again, so Meet is asked no more from the
+        // next renewal on; were that lost, the last renewal lapses too.
+        const ended = Following.followed(calls, false, false);
+        check("a recording ended follows nothing at once",
+            Following.following(told(RENEW + 5_000, ended), RENEW + 5_000), []);
+        check("a recording ended isn't said again", Following.renews(ended), false);
+        check("a recording ended lapses unsaid within LASTS of the last renewal",
+            Following.following(told(RENEW, codes), RENEW + LASTS + 1), []);
+
+        // Whether a call's recorded, from the calls call-transcripts
+        // serves: none served where calls.sock isn't, so the launcher
+        // alone decides, as before.
+        const served = (recording) => ({
+            "call:e1": { key: "call:e1", recording: false },
+            "call:e2": { key: "call:e2", recording: recording }
+        });
+        check("a call served as recording is recorded", Following.recording(served(true)), true);
+        check("calls served, none recording", Following.recording(served(false)), false);
+        check("a call served with no word of recording isn't",
+            Following.recording({ "call:e1": { key: "call:e1" } }), false);
+        check("with no calls.sock, nothing is recorded", Following.recording({}), false);
+        check("with no calls.sock, the launcher open follows as before",
+            Following.followed(calls, true, Following.recording({})), codes);
+        check("with no calls.sock, the launcher shut follows nothing, as before",
+            Following.followed(calls, false, Following.recording({})), []);
+    }
+
     function heldCases(check, at, now, meeting) {
         // How the launcher says when, as Mail.qml gives it, and who a call
         // was with, as Meet.qml gives it: the vocabulary's words, and the

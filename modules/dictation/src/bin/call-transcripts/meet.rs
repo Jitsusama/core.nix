@@ -4,9 +4,10 @@
 //! the names Meet shows them by. Being in the call says more than being
 //! invited to it, so a followed Meet's people stand for their side in
 //! place of its invitation's (meeting.rs). The shell has a call followed
-//! only while the launcher is open, and a little after, so a Meet is
-//! known from when it last was; a Meet in a browser's tab isn't followed
-//! at all. Where nothing is, the invitation stands.
+//! while this daemon records one, which it serves as `recording`
+//! (book.rs), or while the launcher is open, and a little after either
+//! (the google module's Following.js); a Meet in a browser's tab isn't
+//! followed at all. Where nothing is, the invitation stands.
 
 use std::path::Path;
 
