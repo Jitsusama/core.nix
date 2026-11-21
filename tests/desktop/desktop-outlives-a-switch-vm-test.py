@@ -5,7 +5,7 @@ every session's window in it. The machine boots on the unit as it was before, wi
 method, so a change restarted it and closed every session's window, as at 06:46 on 2026-11-09.
 Its specialisation is the unit as modules/quickshell keeps it, with a changed command line as a
 new kitty brings, so only the switch method keeps it. A session's window opened in it isn't told
-the kitty's own runtime folder, which systemd tells the kitty, as its own.
+what systemd tells the kitty of its own unit, its runtime folder among it, as its own.
 
 And a switch changing the shell beside a unit slow to stop leaves the shell running until that
 stop is done, then hands it over to a new one, so it's never gone. Stopped with the slow unit,
@@ -33,6 +33,19 @@ TITLES = ("Session one", "Session two")
 # A window of the sessions' kitty, asked over its own socket as the shell asks.
 IN_SESSIONS = "kitten @ --to unix:$XDG_RUNTIME_DIR/pi-sessions/kitty.sock launch --type=os-window"
 
+# What systemd tells a service of its own unit (systemd.exec(5)'s environment), which a
+# session's window must not be told as its own.
+UNITS_OWN = frozenset(
+    {
+        "RUNTIME_DIRECTORY",
+        "INVOCATION_ID",
+        "JOURNAL_STREAM",
+        "SYSTEMD_EXEC_PID",
+        "MANAGERPID",
+        "MEMORY_PRESSURE_WATCH",
+        "MEMORY_PRESSURE_WRITE",
+    }
+)
 
 # How long the slow unit's stop takes (tests/desktop.nix).
 SLOW_STOP = 30
@@ -144,20 +157,22 @@ def test_a_switch_keeps_the_sessions_kitty_and_its_windows(desktop: Desktop) -> 
         machine.succeed(f"{booted}/bin/switch-to-configuration test")
 
 
-def test_a_sessions_window_is_given_no_runtime_folder_of_the_kittys(desktop: Desktop) -> None:
-    """A program in a session's window isn't told the kitty's runtime folder is its own.
+def test_a_sessions_window_is_told_nothing_of_the_kittys_unit(desktop: Desktop) -> None:
+    """A program in a session's window isn't told what systemd tells the kitty of its unit.
 
     systemd tells a unit with a RuntimeDirectory where it is, and the kitty passed it on to
     every window's shell, so a program reading it, as warp-cli does, took the sessions' socket
     folder as its own, and Joel's VPN diagnostics from a session's window broke (OSPHT4,
-    2026-11-20).
+    2026-11-20). The unit's other variables, its invocation, journal stream and memory
+    pressure, would have a program in the window take the kitty's unit as its own the same way.
     """
     machine = desktop.machine
     desktop.as_account("systemctl --user start sessions-kitty")
     machine.wait_until_succeeds(
         desktop.in_session("systemctl --user is-active sessions-kitty"), timeout=STARTING
     )
-    said = "/run/user/1000/in-a-session.env"
+    runtime = f"/run/user/{desktop.as_account('id -u').strip()}"
+    said = f"{runtime}/in-a-session.env"
     title = "Session told"
     desktop.as_account(f"rm -f {said}")
     try:
@@ -170,12 +185,13 @@ def test_a_sessions_window_is_given_no_runtime_folder_of_the_kittys(desktop: Des
         assert any(line.startswith("XDG_RUNTIME_DIR=") for line in told), (
             f"the window's shell was told nothing of where it runs: {told}"
         )
-        folders = [line for line in told if line.startswith("RUNTIME_DIRECTORY=")]
-        assert not folders, f"a session's window is told the kitty's runtime folder: {folders}"
+        units = [line for line in told if line.split("=", 1)[0] in UNITS_OWN]
+        assert not units, f"a session's window is told the kitty's unit: {units}"
     finally:
         for window in desktop.windows():
             if window["title"] == title:
                 desktop.close(window)
+        desktop.as_account(f"rm -f {said} {said}.part")
 
 
 def test_a_switch_hands_the_shell_over_once_a_slow_stop_is_done(desktop: Desktop) -> None:

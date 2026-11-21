@@ -5894,7 +5894,8 @@
     kept through a switch, with a changed command line, leaves the same kitty running with the
     same sessions' windows in it, and a switch changing the shell beside a unit 30 s slow to stop
     hands the shell over once that stop is done, reloading its unit, never stopping it, onto a
-    new main process
+    new main process; and a session's window opened in that kitty is told nothing systemd tells
+    the kitty of its own unit, its runtime folder among it
   '';
   vm-desktop-reopens-under-orchestrators = ''
     sessions come back, or start, on their orchestrator's workspace by themselves: what
