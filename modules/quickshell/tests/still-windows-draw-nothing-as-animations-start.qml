@@ -6,9 +6,10 @@
 // shell's reading slide does (ReadsOn.qml). Once each has drawn and all
 // have gone quiet, both squares start moving ten times. It fails, exiting
 // 2, if the still window drew any frame then, if either moving window drew
-// fewer than two frames for any start, or if the still window draws none
-// when its colour then changes, which shows it's still shown and still
-// draws for a change of its own once the starts no longer ask it.
+// no frame for a start, or fewer than two for more than one start, or if
+// the still window draws none when its colour then changes, which shows
+// it's still shown and still draws for a change of its own once the starts
+// no longer ask it.
 import Quickshell
 import QtQuick
 
@@ -27,17 +28,17 @@ ShellRoot {
     property int movingBefore: 0
     property int slidingBefore: 0
     property int starts: 0
-    // The starts a moving window drew no frame for, as "3 (moving 0)".
-    property var shortStarts: []
+    // The starts a moving window drew no frame for, and those it drew
+    // fewer than two for, as "3 (moving 0, sliding 4)".
+    property var emptyStarts: []
+    property var thinStarts: []
     readonly property int startsAsked: 10
-    // Each start's first frame drawn, and over the starts at least one of
-    // each start's ticks too: a 250 ms animation draws about fifteen at
-    // 60 Hz, but a loaded builder once drew one in a start (21 November),
-    // so the ticks are counted over all the starts, not in each.
-    readonly property int fewestOverall: 2
-    // The frames each moving window drew over the starts ended so far.
-    property int movedOverall: 0
-    property int slidOverall: 0
+    // Each start's first frame drawn, and one of its ticks beside it in
+    // every start but one: a 250 ms animation draws about fifteen at 60 Hz,
+    // but a loaded builder once drew one in a start (21 November). Its
+    // first frame alone may be the NumberAnimation's `from` written on the
+    // GUI thread, so only the second shows the start's ticks reached it.
+    readonly property int thinAllowed: 1
 
     function fail(why: string): void {
         console.error(why);
@@ -52,11 +53,11 @@ ShellRoot {
     function startEnded(): void {
         const movedFrames = root.movingDrawn - root.movingBefore;
         const slidFrames = root.slidingDrawn - root.slidingBefore;
-        root.movedOverall += movedFrames;
-        root.slidOverall += slidFrames;
+        const said = `${root.starts} (moving ${movedFrames}, sliding ${slidFrames})`;
         if (movedFrames < 1 || slidFrames < 1)
-            root.shortStarts.push(
-                `${root.starts} (moving ${movedFrames}, sliding ${slidFrames})`);
+            root.emptyStarts.push(said);
+        if (movedFrames < 2 || slidFrames < 2)
+            root.thinStarts.push(said);
     }
 
     PanelWindow {
@@ -217,14 +218,13 @@ ShellRoot {
         console.log(`Over ${root.starts} starts the still window drew ${still} frames; `
             + `since the shell started, the moving one drew ${root.movingDrawn} `
             + `and the sliding one ${root.slidingDrawn}.`);
-        if (root.shortStarts.length > 0) {
-            root.fail(`A moving window drew no frame for starts ${root.shortStarts.join(", ")}.`);
+        if (root.emptyStarts.length > 0) {
+            root.fail(`A moving window drew no frame for starts ${root.emptyStarts.join(", ")}.`);
             return;
         }
-        const fewest = root.fewestOverall * root.starts;
-        if (root.movedOverall < fewest || root.slidOverall < fewest) {
-            root.fail(`Over ${root.starts} starts the moving windows drew ${root.movedOverall} `
-                + `and ${root.slidOverall} frames, fewer than ${fewest}.`);
+        if (root.thinStarts.length > root.thinAllowed) {
+            root.fail(`A moving window drew fewer than two frames for starts `
+                + `${root.thinStarts.join(", ")}, more than ${root.thinAllowed}.`);
             return;
         }
         if (still > 0) {

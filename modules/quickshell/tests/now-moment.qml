@@ -288,8 +288,9 @@ ShellRoot {
         // Now's tell is one function queued once a turn, so a later ask for
         // it, as the notices' daemon answering late, moves it behind this:
         // a loaded builder found nothing told yet (21 November). So this
-        // waits up to 20 turns for a tell, and heldHears still wants one.
-        if (root.nowSaid.every(why => why === "") && root.turnsForATell < 20) {
+        // waits 20 turns, told or not, so a second tell queued behind the
+        // first is counted too, and heldHears still wants exactly one.
+        if (root.turnsForATell < 20) {
             root.turnsForATell += 1;
             Qt.callLater(root.afterwards);
             return;
@@ -2505,7 +2506,7 @@ ShellRoot {
         const turned = now.minuteNow() !== root.heldMinute;
         expect("and For You held hears it once the change is done", told.length === 1
             && (told[0] === "the rows it holds" || turned && told[0] === "its own rows"),
-            JSON.stringify([moved, turned]));
+            `${JSON.stringify([moved, turned])} after ${root.turnsForATell} turns`);
         // Said last with nothing held, Now stepped into For You since
         // compares what For You shows, as the launcher made it stepping
         // in: Joel's journal timed For You drawn again as Return's act
