@@ -6,7 +6,8 @@
 //! the reason `managed` gives; the Chromes named below are these. A call of Joel's stops it within
 //! fifteen seconds, from its first step to its last: the watch asks every
 //! five, an ask has five to answer, and a step still going five more on
-//! has its Weston and Chromes ended under it.
+//! has its Weston and Chromes ended under it. While asks go unanswered
+//! it runs on through three of them, so then it stops within 35 s.
 
 use crate::cdp::{self, Browser};
 use crate::gate::{self, Call};
@@ -36,7 +37,7 @@ pub const STAND_IN: &str = "Chromium's fake camera at 1080p30, sent as Meet send
                             here";
 
 /// How often the call is checked for one of Joel's, and his click stood in for.
-const TICK: Duration = Duration::from_secs(5);
+pub const TICK: Duration = Duration::from_secs(5);
 
 /// How long Chrome is given to answer on its pipe: a loaded machine has
 /// taken 20 s to start one.
@@ -51,8 +52,9 @@ const GRACE: Duration = Duration::from_secs(5);
 /// one of Joel's began. One alone doesn't: under the heaviest load a
 /// single ask can outlast its 5 s, and ending on it would drop just the
 /// hours this measures. The test never touches a real camera, so waiting
-/// out three costs his call only 15 s more of the test's load.
-const UNSURE: usize = 3;
+/// out three, each up to five to answer and five to the next, costs a
+/// call of his that began meanwhile at most 20 s more of the test's load.
+pub const UNSURE: usize = 3;
 
 /// The folders Chrome maps writable and keeps writing, kept in memory and
 /// linked from the profile on disk, as Joel's own Chrome has them.

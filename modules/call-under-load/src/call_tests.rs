@@ -72,11 +72,32 @@ fn one_unanswered_ask_lets_the_call_go_on_and_a_run_of_them_ends_it() {
         "one slow ask ended the hour"
     );
     drop(watch);
+    let watch = Watch::asking(unsure_twice_then_off, Duration::from_millis(10));
+    let started = Instant::now();
+    assert!(
+        watch
+            .wait_until(started + Duration::from_millis(300))
+            .is_ok(),
+        "unanswered asks with answers between them were counted as a run"
+    );
+    drop(watch);
     let watch = Watch::asking(unsure, Duration::from_millis(10));
     assert!(
         heard(&watch),
         "asks that never answered let the call run on"
     );
+}
+
+static FLAKY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Two unanswered asks, then an answer, over and over, which never makes
+/// three in a row.
+fn unsure_twice_then_off() -> Call {
+    if FLAKY.fetch_add(1, Ordering::SeqCst) % 3 == 2 {
+        Call::Off
+    } else {
+        unsure()
+    }
 }
 
 #[test]

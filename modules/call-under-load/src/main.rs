@@ -228,7 +228,17 @@ fn run(context: &Context) -> Result<(), Failure> {
             .say(&format!("no test call this hour: {why}\n"))
             .map_err(|error| unwritten(&error))
     };
-    match gate::a_call() {
+    // Asked up to three times, as the watch does during the call, since
+    // one slow answer under the heaviest load would drop just that hour.
+    let mut asked = gate::a_call();
+    for _ in 1..call::UNSURE {
+        if !matches!(asked, gate::Call::Unknown(_)) {
+            break;
+        }
+        std::thread::sleep(call::TICK);
+        asked = gate::a_call();
+    }
+    match asked {
         gate::Call::Off => {}
         gate::Call::On => return skip("Joel is in a call".into()),
         gate::Call::Unknown(why) => {
@@ -283,8 +293,8 @@ fn run(context: &Context) -> Result<(), Failure> {
     let call = figures::call(&mine, &far, &clicks);
     let at = seconds_now();
     let watched = state().join("lag-watch");
-    let chrome_waits = history::waits(&watched, "chrome-ui", at, started);
-    let slack_waits = history::waits(&watched, "slack-ui", at, started);
+    let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST);
+    let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST);
     let measures = hour::measures(
         &call,
         call::STAND_IN,

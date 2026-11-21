@@ -24,14 +24,15 @@ pub struct Waits {
     pub unwatched: usize,
 }
 
-/// The waits of the app lag-watch labels `label` over the hour before
-/// `now`, from the history in `folder`, leaving out every window that
-/// ended after `busy_since`, when the test call began: a window ending
-/// then holds the test's own two browsers, and the test's minutes are more
-/// than the hour's top 1%, so its p99 could be the test's load alone. Its
-/// files are named by the UTC day, so the newest two hold the last hour
-/// whenever it falls.
-pub fn waits(folder: &Path, label: &str, now: u64, busy_since: u64) -> Waits {
+/// The waits of the app lag-watch labels `label` over the hour before the
+/// test call `began`, from the history in `folder`, leaving out the
+/// test's own minutes at either end: windows ending after it began, and
+/// those up to `longest` after the last hour's began, an hour before, when
+/// that one may still have been running. Those windows hold a test's own
+/// two browsers, and a test's minutes are more than the hour's top 1%, so
+/// its p99 could be a test's load alone. Its files are named by the UTC
+/// day, so the newest two hold the last hour whenever it falls.
+pub fn waits(folder: &Path, label: &str, began: u64, longest: u64) -> Waits {
     let mut days: Vec<_> = fs::read_dir(folder)
         .into_iter()
         .flatten()
@@ -47,11 +48,12 @@ pub fn waits(folder: &Path, label: &str, now: u64, busy_since: u64) -> Waits {
         .filter_map(|path| fs::read_to_string(path).ok())
         .collect::<Vec<_>>()
         .join("\n");
-    of(&text, label, now, busy_since)
+    of(&text, label, began, longest)
 }
 
 /// The same, from the history's lines.
-pub fn of(lines: &str, label: &str, now: u64, busy_since: u64) -> Waits {
+pub fn of(lines: &str, label: &str, began: u64, longest: u64) -> Waits {
+    let after = began.saturating_sub(HOUR) + longest;
     let mut worst = Vec::new();
     let mut found = Waits::default();
     for window in lines
@@ -59,7 +61,7 @@ pub fn of(lines: &str, label: &str, now: u64, busy_since: u64) -> Waits {
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
     {
         let ended = window["ended"].as_u64().unwrap_or(0);
-        if ended + HOUR < now || ended > now.min(busy_since) {
+        if ended <= after || ended > began {
             continue;
         }
         if let Some(us) = window["waits"][label]["worst_us"].as_f64() {
@@ -95,12 +97,12 @@ mod tests {
         lines.push(window(now - 5, Some(40_000.0)));
         // An hour and more ago, and lag-watch's other waits, are left out.
         lines.push(window(now - HOUR - 1, Some(900_000.0)));
-        let waits = of(&lines.join("\n"), "chrome-ui", now, now);
+        let waits = of(&lines.join("\n"), "chrome-ui", now, 0);
         assert_eq!(waits.windows, 100);
         assert_eq!(waits.worst_p99, Some(1.0));
         lines.push(window(now - 6, Some(30_000.0)));
         assert_eq!(
-            of(&lines.join("\n"), "chrome-ui", now, now).worst_p99,
+            of(&lines.join("\n"), "chrome-ui", now, 0).worst_p99,
             Some(30.0)
         );
     }
@@ -113,11 +115,13 @@ mod tests {
             .map(|i| window(now - i * 10, Some(1_000.0)))
             .collect();
         lines.extend((0..15).map(|i| window(now - i * 10, Some(80_000.0))));
-        let waits = of(&lines.join("\n"), "chrome-ui", now, began);
+        // The last hour's test, begun an hour before this one, ran 300 s.
+        lines.extend((1..=30).map(|i| window(began - HOUR + i * 10, Some(70_000.0))));
+        let waits = of(&lines.join("\n"), "chrome-ui", began, 600);
         assert_eq!(
             (waits.windows, waits.worst_p99),
             (84, Some(1.0)),
-            "a window holding the test's own browsers was counted"
+            "a window holding a test's own browsers was counted"
         );
     }
 
@@ -133,12 +137,12 @@ mod tests {
             "not json".into(),
         ]
         .join("\n");
-        let chrome = of(&lines, "chrome-ui", now, now);
+        let chrome = of(&lines, "chrome-ui", now, 0);
         assert_eq!(
             (chrome.windows, chrome.lowered, chrome.unwatched),
             (1, 1, 0)
         );
-        let slack = of(&lines, "slack-ui", now, now);
+        let slack = of(&lines, "slack-ui", now, 0);
         assert_eq!(
             (slack.windows, slack.worst_p99, slack.unwatched),
             (0, None, 1)
@@ -166,7 +170,7 @@ mod tests {
         )
         .unwrap();
         fs::write(root.join("status.json"), window(now - 1, Some(77_000.0))).unwrap();
-        let waits = waits(&root, "chrome-ui", now, now);
+        let waits = waits(&root, "chrome-ui", now, 0);
         fs::remove_dir_all(&root).unwrap();
         assert_eq!((waits.windows, waits.worst_p99), (2, Some(5.0)));
     }
