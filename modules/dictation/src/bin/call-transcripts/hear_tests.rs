@@ -315,19 +315,29 @@ fn a_voice_is_named_from_what_a_look_at_the_meet_saw() {
     let look = Seen {
         people: vec!["Ada".to_owned(), "Bo".to_owned()],
         known: Some(Known::Meet),
-        present: vec![present("Ada", 0), present("Bo", 1000)],
+        // Ada's takes are 20 s and 25 s in, and Bo's 30 s and 35 s; Bo
+        // joining 58 s in is after the first two by more than DRIFT.
+        present: vec![present("Ada", 0), present("Bo", 58)],
     };
     book.lock().saw("call:e1", look, STARTED + HOUR);
     let mut writing = Writing {
         whole: true,
         ..Writing::default()
     };
-    hear_takes(&mut writing, &[(ADA, true), (ADA, true)]);
+    hear_takes(
+        &mut writing,
+        &[(ADA, true), (ADA, true), (BO, true), (BO, true)],
+    );
     tell_apart(&book, "call:e1", &mut writing, "Joel");
     assert_eq!(
         names(&writing.lines),
-        [Some("Ada"), Some("Ada")],
+        [Some("Ada"), Some("Ada"), None, None],
         "a voice heard while only Ada was in, by the Meet's last look, wasn't named for her"
+    );
+    assert_eq!(
+        writing.guesses.as_deref(),
+        Some("Voice 2 is likely Bo."),
+        "the voice heard once Bo was in too wasn't said likely Bo"
     );
 }
 
