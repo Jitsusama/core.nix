@@ -418,7 +418,17 @@ fn forget_gone_trees_keeps_what_a_gone_trees_own_ref_alone_holds() {
 
 #[test]
 fn forget_gone_trees_counts_no_reflog_entry_git_would_expire() {
-    let running = Running::new("code-forget-expiring");
+    // gc expires an entry no ref reaches past the one, and any past the
+    // other, so each alone lets the entry go.
+    expiring("code-forget-unreached", "gc.reflogExpireUnreachable");
+    expiring("code-forget-expiring", "gc.reflogExpire");
+}
+
+/// Forget, in a checkout whose `key` expires every reflog entry now, is
+/// refused for a commit only the checkout's own reflog besides a gone
+/// tree reaches.
+fn expiring(name: &str, key: &str) {
+    let running = Running::new(name);
     let behind = Behind::new(&running);
     let here = behind.here.clone();
     // A commit the checkout's own HEAD reflog alone reaches, besides a
@@ -435,12 +445,12 @@ fn forget_gone_trees_counts_no_reflog_entry_git_would_expire() {
     );
     std::fs::remove_dir_all(&resting).unwrap();
     // Every reflog entry past git's keeping, as its gc would expire them.
-    behind.git(&here, &["config", "gc.reflogExpireUnreachable", "now"]);
+    behind.git(&here, &["config", key, "now"]);
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
     assert_eq!(
         said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
-        "Forget Gone Trees counted a reflog entry git would expire: {said}"
+        "Forget Gone Trees counted a reflog entry {key} would expire: {said}"
     );
 }
 

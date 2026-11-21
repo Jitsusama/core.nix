@@ -92,7 +92,7 @@ Provider {
     }
 
     // The row a link landed on before Code's rows were read whole, kept
-    // until the watch answers whole, so a key it lacks is said then
+    // until a moment after the watch answers whole, so a key it lacks is said then
     // (CodeLinks.js's missed); none while no link waits.
     property string linkWaiting: ""
 
@@ -102,18 +102,44 @@ Provider {
         linkWaiting = ready.link?.answeredThisWatch === true ? "" : (row ?? "");
     }
 
+    // The daemon answers a later watch whole from the rows it held, and
+    // reads the disk again behind that, telling only what moved, so a
+    // repository cloned since comes a moment after. A miss is judged this
+    // long after the whole answer, then, rather than at it; the row coming
+    // in between lands the link.
+    Timer {
+        id: linkSettles
+
+        interval: 3000
+        onTriggered: {
+            const waiting = provider.linkWaiting;
+            provider.linkWaiting = "";
+            const served = ready.rows().map(row => row?.servedKey ?? "");
+            if (Links.missed(waiting, served, ready.link?.answeredThisWatch === true))
+                provider.launcher?.codeLinkMissed();
+        }
+    }
+
     Connections {
         target: ready.link
 
         function onAnsweredThisWatchChanged() {
-            const fresh = ready.link?.answeredThisWatch === true;
-            if (!fresh || provider.linkWaiting === "")
+            if (ready.link?.answeredThisWatch !== true)
+                linkSettles.stop();
+            else if (provider.linkWaiting !== "")
+                linkSettles.restart();
+        }
+    }
+
+    // A link waits only on the opening it came with.
+    Connections {
+        target: provider.launcher ?? null
+
+        function onOpenChanged() {
+            if (provider.launcher?.open === true)
                 return;
-            const waiting = provider.linkWaiting;
+            linkSettles.stop();
             provider.linkWaiting = "";
-            const served = ready.rows().map(row => row?.servedKey ?? "");
-            if (Links.missed(waiting, served, fresh))
-                provider.launcher?.codeLinkMissed();
         }
     }
 

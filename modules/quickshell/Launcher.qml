@@ -1712,7 +1712,8 @@ Scope {
             prompt.linked();
             return { done: false, said: `${words.unlisted ?? ""}: ${words.unlistedWhy ?? ""}` };
         }
-        intoOn("code", code.lands(row));
+        codeLanding = code.lands(row);
+        intoOn("code", codeLanding);
         // Judged again once Code's watch answers whole, as a link followed
         // with the launcher shut is judged before that watch begins.
         code.awaitLink(row);
@@ -1723,11 +1724,13 @@ Scope {
     // Says a link's repository unlisted once Code's rows, read whole after
     // it landed, lack it, while the landing still waits, so Joel's click
     // never goes nowhere unsaid. A key pressed since let the landing go,
-    // and the cursor is his, so nothing's said then.
+    // and the cursor is his, so nothing's said then; nor once another
+    // landing took its place, which is that one's to say.
     function codeLinkMissed() {
-        if (landOn === null)
+        if (landOn === null || landOn !== codeLanding)
             return;
         landOn = null;
+        codeLanding = null;
         const words = Words.of("code").said ?? {};
         toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
     }
@@ -10522,6 +10525,9 @@ Scope {
     // once, as they did through the held notices (Joel, 2026-11-14), and /
     // finds; the opening took the keys already, so normal holds.
     property var landOn: null
+    // The landing a repository's link set, so Code says its miss over
+    // that landing alone (codeLinkMissed).
+    property var codeLanding: null
     // Closed, it draws the place as it kept it, as a chord does
     // (intoKept), landing there and again once the fill has stepped into
     // it anew (filled): Super+N into the notices on screen opened whole
