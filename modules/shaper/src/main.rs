@@ -234,7 +234,9 @@ fn wrongly(command: &str, what: impl Into<String>) -> Failure {
     Failure::new(Exit::Usage, what).try_this(format!("shaper {command} --help"))
 }
 
-/// Runs a command, saying what it said when it fails.
+/// Runs a command, saying what it said when it fails, on one line: the
+/// journal splits at each newline, and a line of the command's own apart
+/// from what the shaper made of it reads as a failure of its own.
 fn sh(words: &[String]) -> Result<String, String> {
     let out = Command::new(&words[0])
         .args(&words[1..])
@@ -247,7 +249,9 @@ fn sh(words: &[String]) -> Result<String, String> {
         Err(format!(
             "{}: {}",
             words.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
+            String::from_utf8_lossy(&out.stderr)
+                .trim()
+                .replace('\n', " ")
         ))
     }
 }
@@ -259,9 +263,6 @@ fn queues_of(device: &str) -> Option<String> {
     let read = sh(&words(&format!("tc -j qdisc show dev {device}")));
     let seen = seen_queues(read.clone());
     if let (None, Err(e)) = (&seen, &read) {
-        // On one line, since the journal splits at each newline, and a
-        // line of tc's own apart from this one reads as a failure of its own.
-        let e = e.replace('\n', " ");
         eprintln!("{e}: {device}'s queues are left as they are");
     }
     seen
@@ -959,10 +960,15 @@ fn run(options: &Options) -> Result<(), Failure> {
             last_look = Some(now);
             let order = look(&mut shaped, options, &send);
             // A read of the routes that failed leaves the links as they
-            // are, and the VPNs on the link they rode.
+            // are, and the VPNs on the link they rode, as does a first link
+            // not taken up yet, since letting them go would tear them down.
             if let Some(order) = &order {
                 follow_leaders(&mut shaped, order);
-                primary = order.first().cloned();
+                primary = order
+                    .first()
+                    .filter(|f| shaped.contains_key(*f))
+                    .cloned()
+                    .or(primary);
             }
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
             let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
@@ -1204,7 +1210,7 @@ type Vpns = (BTreeMap<String, Vpn>, cost::Cost);
 /// holds. Lets go of one that's gone or has no uplink to ride. What a VPN
 /// receives goes straight in, past its IFB, while the uplink's does. Read
 /// at `t` seconds. Gives whether every VPN there was taken up: one whose
-/// read failed is left as it was, and one with no link to ride waits.
+/// read failed is left as it was, and one with no link to ride is let go.
 fn follow_vpns(
     (applied, spent): &mut Vpns,
     names: &[String],
@@ -2336,8 +2342,7 @@ mod tests {
     }
 
     // A read of the routes that failed says nothing of the links, where an
-    // empty one says there are none, and a restart's sweep waits for the
-    // one and for every link the routes name.
+    // empty one says there are none.
     #[test]
     fn a_failed_read_of_the_routes_names_no_links() {
         let killed = || Err::<String, _>("ip -6 -j route show default: ".to_string());
@@ -2356,6 +2361,8 @@ mod tests {
         );
     }
 
+    // A restart's sweep waits for the routes, every VPN there and every
+    // link the routes name, since any not taken up yet would go with it.
     #[test]
     fn a_sweep_waits_for_every_link_the_routes_name() {
         let order = ["eth0".to_string(), "wlan0".to_string()];
