@@ -207,15 +207,17 @@ function shown(name, now, option) {
 // What an option's answer that comes after the line is done does with
 // its words, as a screen's setting answers once niri has (Launcher.qml's
 // commandSetSteps): { say } while the prompt still holds the keys that
-// ran it, so a refusal is said where the line was; { journal } once Joel
-// has typed on, so a late one never writes over what he's doing, said
-// in the journal instead; and null where it has no words.
-function later(option, words, ranAt, keysNow) {
+// ran it (`held`), so a refusal is said where the line was; { journal }
+// once Joel has typed on, so a late one never writes over what he's
+// doing, said in the journal instead, as `journalled` says them (the
+// launcher gives Presented.typedShown's, so reports off keep a daemon's
+// words out of it); and null where it has no words.
+function later(option, words, held, journalled = words) {
     if (words === "") {
         return null;
     }
-    return keysNow === ranAt ? { say: words }
-        : { journal: `launcher: ${option} refused after Joel typed on: ${words}` };
+    return held ? { say: words }
+        : { journal: `launcher: ${option} refused after Joel typed on: ${journalled}` };
 }
 
 const escapedSpace = /\s/g;

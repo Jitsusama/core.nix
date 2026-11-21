@@ -4997,7 +4997,8 @@ Scope {
         for (const { change, to } of steps) {
             if (to !== undefined) {
                 const later = (words, failed) => {
-                    const heard = SetWords.later(change.option, words, ranAt, prompt.keysTaken);
+                    const heard = SetWords.later(change.option, words,
+                        prompt.keysTaken === ranAt, Presented.typedShown(words, Options.reports));
                     if (heard?.say !== undefined)
                         commandSay(heard.say, failed);
                     else if (heard?.journal !== undefined)
@@ -6462,7 +6463,8 @@ Scope {
         if (answersLate !== null && answersLate.sources.includes(source)) {
             const late = Date.now() - answersLate.began;
             console.info(`launcher: ${source.settings?.name ?? ""} answered`
-                + ` "${answersLate.text}" ${late} ms after its key, past the`
+                + ` ${Presented.typedShown(answersLate.text, Options.reports)} ${late} ms after its`
+                + ` key, past the`
                 + ` ${answersWaitedFor} ms its list waited`);
             Report.say(`answered late ${source.settings?.name ?? ""}`);
             answersLate.sources = answersLate.sources.filter(one => one !== source);
@@ -7223,13 +7225,15 @@ Scope {
     // slowest keys waited on it, traced in the lab (2026-11-12), and his
     // own line says which.
     // `stepped` when it's a step in or out, which its line says as it
-    // is presented, rather than typed words that look like one.
+    // is presented, rather than typed words that look like one, or "own"
+    // when it's a key the launcher names itself, an arrow or a vi move,
+    // which its line says whole, since nobody wrote it.
     // `thread` is the shell thread's clocks as the key began (threadNow), so
     // its line says what of its searching the thread ran, waited for a CPU
     // and slept (launcher/Thread.js).
     function keyTimed(typed, began, heard, pressed, collected, stepped, thread) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
-            step: stepped === true ? typed : "",
+            step: stepped === true ? typed : "", own: stepped === "own",
             searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
             parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, stamped: pressed > 0,
@@ -7351,7 +7355,7 @@ Scope {
                 keyFrame: newest.frame ?? 0,
                 keyHeard: newest.heard,
                 timesOf: frame => surface.FramePresentation.timesOf(frame)
-            }, frameSplit(newest, shown)));
+            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true);
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {
@@ -7492,7 +7496,7 @@ Scope {
         movingFrom = pressed > 0 ? pressed : heard;
         current = to;
         movingFrom = 0;
-        keyTimed(arrow, began, heard, pressed, collected, false, thread);
+        keyTimed(arrow, began, heard, pressed, collected, "own", thread);
     }
     property real movingFrom: 0
 
@@ -8101,7 +8105,9 @@ Scope {
             waited.firedAt = KeyTimes.now();
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
-            console.info(`launcher: "${waited.text}" listed without`
+            // The words as Trials's slow key says them (Presented.typedShown).
+            const words = Presented.typedShown(waited.text, Options.reports);
+            console.info(`launcher: ${words} listed without`
                 + ` ${waited.sources.map(one => one.settings?.name ?? "").join(", ")},`
                 + ` which hadn't answered in ${root.answersWaitedFor} ms`);
             Report.say("listed without answers");

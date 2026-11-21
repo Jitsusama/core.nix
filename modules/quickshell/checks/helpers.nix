@@ -39,7 +39,10 @@ let
   # whose imports aren't what imports.nix says fails the check instead,
   # naming what differs, so the table can't drift from the files. The
   # launcher's words.json is the one its places' files join to
-  # (launcher/words.nix), as the shell reads it.
+  # (launcher/words.nix), as the shell reads it. Options.qml, which the
+  # account's configuration writes, is a stand-in holding only whether
+  # reports are on, and they're off, as on a machine that hasn't chosen,
+  # for a check whose files say a line by it (Presented.rowShown).
   copied =
     files:
     let
@@ -50,11 +53,20 @@ let
       wrong = lib.filter (
         file:
         (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
+        && file != "Options.qml"
         && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
       ) every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
-      source = file: if file == "launcher/words.json" then words else ../. + "/${file}";
+      options = singleton "Options.qml" "readonly property bool reports: false";
+      source =
+        file:
+        if file == "launcher/words.json" then
+          words
+        else if file == "Options.qml" then
+          options
+        else
+          ../. + "/${file}";
     in
     if wrong == [ ] then
       lib.concatStringsSep "\n" (
@@ -514,6 +526,7 @@ let
         "Daemon.qml"
         "ForYouHolds.qml"
         "Location.qml"
+        "Options.qml"
         "Timekeeping.qml"
         "Words.qml"
         "launcher/Explainer.qml"

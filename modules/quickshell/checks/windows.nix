@@ -76,6 +76,7 @@
       # Capture's Recent reads its rows ready, through ReadyRows.
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/AgentsFold.qml"
         "launcher/Capture.qml"
