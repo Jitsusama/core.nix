@@ -4,39 +4,43 @@ after the hold ended now doubles the hold, as one at the same budget
 always did, so a need that wanders as the GPU's other work comes and
 goes no longer resets the hold to a second at each miss and lets the
 budget decay into the next. Within the hold, a miss at its floor doubles
-it as before, and the climb that follows is held for a minute at most,
-so a burst that meets a hold at its floor doesn't keep its budget for
-the ten minutes a steady need's hold grows to. A burst soon after a hold
-ended can't be told from a need that came back, so it keeps the doubled
-hold: up to ten minutes of a larger budget, a few milliseconds of the
-deadline's gain but no misses. On Joel's own GPU, on a 60 Hz screen, the
-deadline missed 3,832 vblanks in its first 2.5 hours after a boot
-(20 November), one in at most 51 deferred frames, each shown a refresh
-late. In the tests' model, a need of 3 ms and 6 ms by turns every 7 s
-missed 1364 vblanks in half an hour and now misses 52; one jittering
-from 2.5 to 5.5 ms missed 338 in ten minutes and now misses 27, each
-with a mean budget under 0.1 ms over the larger need. A half-second
-burst once the hold has grown costs a mean budget of 3.15 ms over the
-half hour, where keeping the hold it came in cost 3.54 with five
-minutes of that hold still to run. A steady need, one slow frame within
-it, or a GPU too slow for the deadline, misses as many as before. Ours,
-made on the rest.
+it as before, and the climb that follows is held for about a minute,
+longer for one that levels off just above the floor its last miss
+left, so a burst that meets a hold at its floor doesn't keep its
+budget for the ten minutes a steady need's hold grows to. A burst soon
+after a hold ended can't be told from a need that came back, so it
+keeps the doubled hold: up to ten minutes of a larger budget, a few
+milliseconds of the deadline's gain but no misses. On Joel's own GPU,
+on a 60 Hz screen, the deadline missed 3,832 vblanks in its first 2.5
+hours after a boot (20 November), one in at most 51 deferred frames,
+each shown a refresh late. In the tests' model, a need of 3 ms and
+6 ms by turns every 7 s missed 1364 vblanks in half an hour and now
+misses 52; one jittering from 2.5 to 5.5 ms missed 338 in ten minutes
+and now misses 27, each with a mean budget under 0.1 ms over the
+larger need. A half-second burst once the hold has grown costs a mean
+budget of 3.15 ms over the half hour, where keeping the hold it came
+in cost 3.54 with five minutes of that hold still to run. A steady
+need, one slow frame within it, or a GPU too slow for the deadline,
+misses as many as before. Ours, made on the rest.
 
 diff --git a/src/render_deadline.rs b/src/render_deadline.rs
-index 4b884dc..ee9b652 100644
+index 4b884dc..1da5848 100644
 --- a/src/render_deadline.rs
 +++ b/src/render_deadline.rs
-@@ -20,6 +20,9 @@ const MAX_IDLE_TIME: Duration = Duration::from_millis(35);
+@@ -20,6 +20,12 @@ const MAX_IDLE_TIME: Duration = Duration::from_millis(35);
  const COOLDOWN_MIN: Duration = Duration::from_secs(1);
  const COOLDOWN_MAX: Duration = Duration::from_secs(600);
  const MISS_HEADROOM: Duration = Duration::from_micros(50);
-+/// The longest the climb after a miss at a hold's floor is held, so one burst of the GPU's other
-+/// work inside a long hold gives up the deadline's gain for a minute at most.
++/// The longest a miss above a hold's floor, in a climb that began at it, holds the budget, so one
++/// burst of the GPU's other work inside a long hold gives up the deadline's gain for about a
++/// minute. A miss at the floor its last miss left still doubles the hold, so a burst that levels
++/// off just above that floor, at whatever level, can hold for two minutes, or more if it levels
++/// off more than once.
 +const RISE_HOLD_MAX: Duration = Duration::from_secs(60);
  
  #[derive(Debug, Clone, Copy)]
  enum Deadline {
-@@ -39,6 +42,9 @@ pub struct RenderDeadline {
+@@ -39,6 +45,9 @@ pub struct RenderDeadline {
      /// (budget, presentation_time)
      last_presentation_miss: Option<(Duration, Duration)>,
      cooldown: Duration,
@@ -46,7 +50,7 @@ index 4b884dc..ee9b652 100644
  }
  
  impl Default for RenderDeadline {
-@@ -50,6 +56,7 @@ impl Default for RenderDeadline {
+@@ -50,6 +59,7 @@ impl Default for RenderDeadline {
              next_presentation_time: None,
              last_presentation_miss: None,
              cooldown: COOLDOWN_MIN,
@@ -54,7 +58,7 @@ index 4b884dc..ee9b652 100644
          }
      }
  }
-@@ -127,14 +134,33 @@ impl RenderDeadline {
+@@ -127,14 +137,33 @@ impl RenderDeadline {
          self.budget = match self.next_presentation_time {
              // Rendered with deferral but missed the vblank, raise the budget.
              Some(target) if presentation_time > target + refresh / 2 => {
@@ -68,11 +72,11 @@ index 4b884dc..ee9b652 100644
 +                // and each later miss within that hold above its floor holds for at most
 +                // RISE_HOLD_MAX. A long hold's budget sits at its floor nearly all the time, so a
 +                // burst within one doesn't keep the budget it climbs to for the ten minutes a
-+                // steady need's hold grows to; after that minute, the steady need's hold grows
-+                // back from a shorter one. A burst whose first miss comes soon after a hold ended,
-+                // or while the budget is still above the floor of a hold begun that way, keeps the
-+                // hold, as a need that came back must: a few milliseconds of the deadline's gain
-+                // for up to COOLDOWN_MAX, but no misses.
++                // steady need's hold grows to; after the burst's hold, the steady need's hold
++                // grows back from a shorter one. A burst whose first miss comes soon after a hold
++                // ended, or while the budget is still above the floor of a hold begun that way,
++                // keeps the hold, as a need that came back must: a few milliseconds of the
++                // deadline's gain for up to COOLDOWN_MAX, but no misses.
 +                let since_miss = self
 +                    .last_presentation_miss
 +                    .map(|(_, time)| presentation_time.saturating_sub(time));
@@ -94,7 +98,7 @@ index 4b884dc..ee9b652 100644
                  };
  
                  self.last_presentation_miss = Some((self.budget, presentation_time));
-@@ -303,26 +329,40 @@ mod tests {
+@@ -303,26 +332,40 @@ mod tests {
          need: Duration,
          secs: u64,
      ) -> u32 {
@@ -138,7 +142,7 @@ index 4b884dc..ee9b652 100644
      }
  
      #[test]
-@@ -417,4 +457,74 @@ mod tests {
+@@ -417,4 +460,74 @@ mod tests {
          let mut rd = RenderDeadline::default();
          assert_eq!(simulate_renders(&mut rd, REFRESH_60, ms(14), 600), 52);
      }
@@ -157,7 +161,7 @@ index 4b884dc..ee9b652 100644
 +    }
 +
 +    #[test]
-+    fn a_lone_burst_holds_a_minute_at_most() {
++    fn a_half_second_burst_holds_about_a_minute() {
 +        // 3 ms, but 6 ms for half a second 25 minutes in, once the steady need's hold has grown
 +        // to ten minutes: kept at that hold, the budget would stay at 6 ms past the run's end,
 +        // five minutes on, for a mean of 3.54 ms over the half hour.
