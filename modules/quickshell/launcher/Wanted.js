@@ -62,11 +62,11 @@ function wanted(stands, source) {
 // Opened by a chord straight into another place, as Super+V opens Copies,
 // they aren't, where Agents made its own rows (Sessions to Reopen, Landed,
 // Recent, Start and Budgets) as any opening began (H6EDLC, 2026-11-11).
-// At home, a reader asleep (`stands.asleep`) reads them once it, or another
-// of the readers home names, wakes in its turn, or something's typed: read
-// as the launcher opened, Agents'
-// made about 6 of its 100 ms over twelve of the keys lab's openings, in
-// the turn the launcher opened in (its profile, 2026-11-20).
+// At home, the first reader, whose rows they are, reads them only once it
+// wakes in its turn, or something's typed. Read as the launcher opened,
+// Agents' made about 6 of its 100 ms over twelve of the keys lab's
+// openings (its profile, 2026-11-20), and read as Now woke, they made
+// Now's turn the longest.
 function readAt(stands, readers) {
     if (stands.cataloguing) {
         return true;
@@ -76,8 +76,18 @@ function readAt(stands, readers) {
     }
     // Opening into a place, nothing is held yet but home isn't shown either.
     const home = stands.held.length === 0 && !stands.entering;
-    return (home && (stands.typing || !stands.asleep))
-        || readers.some(one => one !== null && wanted(stands, one));
+    if (home && !stands.typing && readers[0]?.asleep === true) {
+        return false;
+    }
+    return home || readers.some(one => one !== null && wanted(stands, one));
+}
+
+// Whether a source waits its turn to wake as a kept opening fills in: any
+// home's rows read but one that says what it holds itself, whose rows home
+// never wants, unless it reads rows home shows of its own as it wakes
+// (`readsHome`), as Agents' Sessions to Reopen and Budgets are.
+function wakesInTurn(source) {
+    return !source.saysAtHome || source.readsHome === true;
 }
 
 // The source a step into `from` holds anew, read just before the step is

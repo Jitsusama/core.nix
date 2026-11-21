@@ -1088,7 +1088,26 @@ ShellRoot {
                 === "held \u00b7 battery", "it wasn't drawn");
         expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
         // Opened while Now waits its turn to wake, its opening work waits
-        // too, and once it wakes it says it opened when the launcher did.
+        // too, and once it wakes it says it opened when the launcher did;
+        // shut before it wakes, it never opened. A notice told before it
+        // wakes runs its opening work then, so the notice read holds still
+        // from the opening.
+        now.asleep = true;
+        theLauncher.open = true;
+        const toldOpening = now.openingAt - 60000;
+        now.openingAt = toldOpening;
+        Notices.history = Notices.history.slice();
+        expect("a notice told while Now sleeps in an open launcher opens it then",
+            now.openedAt === toldOpening && now.openingAt === -1,
+            JSON.stringify([now.openedAt, toldOpening, now.openingAt]));
+        theLauncher.open = false;
+        now.asleep = true;
+        theLauncher.open = true;
+        theLauncher.open = false;
+        now.asleep = false;
+        expect("shut before Now woke, it never opened",
+            now.openedAt === Number.POSITIVE_INFINITY && now.openingAt === -1,
+            JSON.stringify([now.openedAt, now.openingAt]));
         const shutBefore = Date.now();
         now.asleep = true;
         theLauncher.open = true;
@@ -1096,10 +1115,13 @@ ShellRoot {
         expect("opened asleep, Now keeps when it opened and does nothing yet",
             keptOpening >= shutBefore && now.openedAt === Number.POSITIVE_INFINITY,
             JSON.stringify([keptOpening, now.openedAt]));
+        // Said a minute back, so the moment kept tells from the wake's.
+        now.openingAt = keptOpening - 60000;
         now.asleep = false;
         expect("and woken, it opened when the launcher did",
-            now.openedAt === keptOpening && now.openingAt === -1,
+            now.openedAt === keptOpening - 60000 && now.openingAt === -1,
             JSON.stringify([now.openedAt, keptOpening, now.openingAt]));
+        now.openedAt = keptOpening;
         expect("and turns while it's open", now.drawing, "it rested");
         expect("opening reads the weather, before the meeting",
             JSON.stringify(names())

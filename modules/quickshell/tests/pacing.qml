@@ -405,19 +405,30 @@ QtObject {
         check(failures, "though opening into one that reads them they are",
             read({ entering: now }), true);
         // As a kept opening fills in, the reader waits its turn to wake, and
-        // reads them then, not in the turn the launcher opened in.
+        // reads them then, not in the turn the launcher opened in, nor in
+        // the turn another reader wakes in.
         const dozing = { saysAtHome: true, asleep: true };
+        const woken = { saysAtHome: true, asleep: false };
         const nowDozing = { saysAtHome: false, asleep: true };
-        const readDozing = (fields, readers) => Wanted.readAt(
-            at(Object.assign({ asleep: true }, fields)), readers);
+        const readDozing = (fields, readers) => Wanted.readAt(at(fields), readers);
         check(failures, "at home, a reader not yet woken reads none",
             readDozing({}, [dozing, nowDozing]), false);
-        check(failures, "unless something's typed",
+        check(failures, "not even once another reader home names has woken",
+            readDozing({}, [dozing, now]), false);
+        check(failures, "but once woken itself it does",
+            readDozing({}, [woken, nowDozing]), true);
+        check(failures, "as it does when something's typed",
             readDozing({ typing: true }, [dozing, nowDozing]), true);
-        check(failures, "or another reader home names has woken",
-            readDozing({}, [dozing, now]), true);
         check(failures, "and held in it, it reads them though not woken",
             readDozing({ held: [{ row: { from: dozing } }] }, [dozing, nowDozing]), true);
+        // Which sources wait their turn: any home reads, and of those that
+        // say what they hold at home, only one reading rows of its own.
+        check(failures, "a source home reads waits its turn to wake",
+            Wanted.wakesInTurn({ saysAtHome: false }), true);
+        check(failures, "one that says what it holds at home doesn't",
+            Wanted.wakesInTurn({ saysAtHome: true, readsHome: false }), false);
+        check(failures, "unless it reads rows home shows of its own",
+            Wanted.wakesInTurn({ saysAtHome: true, readsHome: true }), true);
         const warming = { saysAtHome: false, warming: true };
         check(failures, "shut, one warming for home is", wanted({ open: false }, warming), true);
         check(failures, "and no other", wanted({ open: false }, people), false);
