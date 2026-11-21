@@ -113,8 +113,9 @@ in
       ignoreUnits = [ "mx-brio.service" ];
     };
 
-    # A switch starts it as it's new, and again whenever the rules change;
-    # at boot, udev's own first look has already done what it does.
+    # A switch starts it as it's new, and again whenever the rules change. It
+    # runs at every boot too, where udev's first look has already done this:
+    # it finds the Brio held, or none, and waits only on the Brio's events.
     systemd.services.mx-brio-take-hold = {
       description = "Take hold of an MX Brio already plugged in";
       wantedBy = [ "multi-user.target" ];
@@ -125,7 +126,8 @@ in
       restartTriggers = [ rules ];
       path = [
         pkgs.acl
-        pkgs.systemd
+        # The running systemd's udevadm, which speaks to its own udevd.
+        config.systemd.package
       ];
       script = builtins.readFile ./take-hold.sh;
       serviceConfig = {
