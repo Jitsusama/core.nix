@@ -363,14 +363,14 @@ mod tests {
             .count()
             + at;
         let (from, to) = line.spans[ch];
-        let links = pieces.iter().map(|link| {
+        let linked = pieces.iter().map(|link| {
             let right = link.left_pt + link.width_pt;
             (link.baseline_pt, link.left_pt, right, link.href.clone())
         });
         let written = crate::moves::written_paths(line)
             .into_iter()
             .map(|(path, left, right)| (line.baseline_pt, left, right, path));
-        under_or_after(links.chain(written), line, f64::midpoint(from, to))
+        under_or_after(linked.chain(written), line, f64::midpoint(from, to))
             .unwrap_or_else(|| format!("nothing at {words:?}"))
     }
 
