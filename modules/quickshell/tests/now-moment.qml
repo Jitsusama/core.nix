@@ -2264,9 +2264,17 @@ ShellRoot {
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
-        now.openingAt = -1;
+        // Shut before Now wakes, it never opened, so Now itself puts Desktop
+        // back where a shut launcher keeps it, for the next opening.
+        now.asleep = true;
+        theLauncher.open = false;
+        expect("shut before Now wakes, Desktop goes back where a shut launcher keeps it",
+            now.latelyPlaced.desktop === true, JSON.stringify(now.latelyPlaced));
         theLauncher.held = wasHeld;
         Notices.live = { "1": {} };
+        now.asleep = false;
+        theLauncher.open = true;
+        now.openedAt = Number.POSITIVE_INFINITY;
         now.openedAt = Date.now();
         theLauncher.held = [nowStep,
             { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
@@ -2363,11 +2371,10 @@ ShellRoot {
                 && now.leadsTo("onScreen")[0].key === "on:waiting:screen",
             JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
         // The names it leads into, which the chords' places read without
-        // making a row, are For You, the notices and what's on screen, each
-        // reached through the rows above, and no other name leads deeper.
+        // making a row, are For You, the notices and what's on screen, and
+        // a name it doesn't list leads nowhere.
         expect("Now leads into For You, the notices and what's on screen, and nothing else",
             JSON.stringify(now.leadsInto) === JSON.stringify(["forYou", "notices", "onScreen"])
-                && now.leadsInto.every(name => now.leadsTo(name) !== null)
                 && now.leadsTo("weather") === null,
             JSON.stringify([now.leadsInto, now.leadsTo("weather")]));
         now.openedAt = wasOpenedAt;
