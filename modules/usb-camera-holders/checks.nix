@@ -44,6 +44,7 @@ onLinux {
         in
         lib.hasSuffix " --usb /dev/%I ${folder}" config.ExecStart
         && (config.Restart or null) == "on-failure"
+        && (services.${unit}.unitConfig.StartLimitBurst or null) == 3
         && lib.any (line: lib.hasSuffix " --usb --forget /dev/%I ${folder}" line) (
           lib.toList (config.ExecStopPost or [ ])
         );

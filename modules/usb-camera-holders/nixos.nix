@@ -40,6 +40,8 @@ let
     # It goes when the camera does, and a camera plugged in again starts it
     # afresh, whatever node it's given.
     bindsTo = [ "dev-%i.device" ];
+    startLimitIntervalSec = 60;
+    startLimitBurst = 3;
     after = [
       "dev-%i.device"
       "systemd-tmpfiles-setup.service"
@@ -53,8 +55,9 @@ let
       ExecStopPost = "${lib.getExe holders} --usb --forget /dev/%I ${folder}";
       # A run that crashes with its camera still plugged in starts again
       # once its files are forgotten, rather than leaving the camera
-      # unwatched until it's plugged in again; the start limit ends a
-      # run that can never start.
+      # unwatched until it's plugged in again; the start limit, three a
+      # minute, ends one that keeps failing, even ten seconds into a
+      # stream, rather than flicker the light all call.
       Restart = "on-failure";
       RestartSec = "1s";
       # The same reach as a loopback's watch, every process's open files,

@@ -438,3 +438,23 @@ fn the_file_goes_when_it_is_stopped() {
     assert!(!watch.file.exists());
     assert!(!watch.device().exists(), "its node was still said");
 }
+
+#[test]
+fn a_file_that_cant_go_keeps_what_finds_it() {
+    let mut watch = Watch::start("stuck");
+    watch.until_there(true, "no file while the camera's there");
+    // A folder full where its file was, which removing a file can't take.
+    fs::remove_file(&watch.file).unwrap();
+    fs::create_dir(&watch.file).unwrap();
+    fs::write(watch.file.join("inside"), "").unwrap();
+    watch.stop();
+    assert_ne!(
+        watch.ended(),
+        Some(0),
+        "a file it couldn't remove went unsaid"
+    );
+    assert!(
+        watch.device().exists(),
+        "the node file went, so nothing can find what was left"
+    );
+}

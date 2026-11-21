@@ -245,6 +245,8 @@ fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
         // swapping nodes as a hub comes back might, reads unplugged until
         // it streams: a run killed and a swap at once, which is accepted.
         let holders = folder.parent().map(|above| above.join(entry.file_name()));
+        // A holders file that can't go keeps its node file too, so a later
+        // forget can still find it.
         let mut removed = true;
         for gone in holders.iter().chain([&path]) {
             if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
@@ -253,6 +255,7 @@ fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
             {
                 complain(format_args!("{}: {error}", gone.display()));
                 removed = false;
+                break;
             }
         }
         // Quoted, as the record quotes a holder, since a USB camera names
@@ -464,7 +467,18 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         .because(format!("{}: {error}", output.display()))),
         _ => {
             say_device(&output, None);
-            Ok(())
+            // A watch that ended with the camera still there, as one that
+            // couldn't be made does, fails, so the unit starts it again
+            // rather than leaving the camera unwatched.
+            if matches!(ended, Ended::Gone) && node.exists() {
+                Err(Failure::new(
+                    Exit::Failed,
+                    "loopback-holders stopped watching a camera that's still there",
+                )
+                .because(node.display().to_string()))
+            } else {
+                Ok(())
+            }
         }
     }
 }
