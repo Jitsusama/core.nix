@@ -223,40 +223,60 @@ fn named(said: &str) -> bool {
         && said.bytes().any(|byte| byte != b'0')
 }
 
-/// The commits git's records of the gone trees of the checkout whose git
-/// folder is `common` hold, as `worktree prune` would take them: each
-/// unlocked record whose folder is gone, or never said. Each holds its
-/// HEAD, where it's at a commit, and its own reflog's commits, those
-/// written since `since`, as git's gc keeps them.
-fn held_by_gone(common: &Path, since: u64) -> Vec<String> {
-    let Ok(records) = std::fs::read_dir(common.join("worktrees")) else {
-        return Vec::new();
+/// The commits git's records of a checkout's trees hold, apart by
+/// whether `worktree prune` would take the record: gone are those
+/// unlocked whose folder is gone, or never said, and kept the rest.
+struct Held {
+    gone: Vec<String>,
+    kept: Vec<String>,
+}
+
+/// The commits the records of the trees of the checkout whose git folder
+/// is `common` hold, each its HEAD, where it's at a commit, and its own
+/// reflog's commits, those written since `since`, as git's gc keeps them.
+fn held_by_trees(common: &Path, since: u64) -> Held {
+    let mut held = Held {
+        gone: Vec::new(),
+        kept: Vec::new(),
     };
-    let mut held = Vec::new();
+    let Ok(records) = std::fs::read_dir(common.join("worktrees")) else {
+        return held;
+    };
     for record in records.flatten().map(|record| record.path()) {
         let there = std::fs::read_to_string(record.join("gitdir"));
         let gone = !there.is_ok_and(|there| record.join(there.trim()).exists());
-        if record.join("locked").exists() || !gone {
-            continue;
-        }
-        let tip = std::fs::read_to_string(record.join("HEAD")).unwrap_or_default();
-        held.push(tip.trim().to_owned());
-        let log = std::fs::read_to_string(record.join("logs/HEAD")).unwrap_or_default();
-        for entry in log.lines() {
-            let said = entry.split('\t').next().unwrap_or_default();
-            let words: Vec<&str> = said.split_whitespace().collect();
-            let at = words
-                .len()
-                .checked_sub(2)
-                .and_then(|at| words[at].parse().ok());
-            if at.is_some_and(|at: u64| at >= since) {
-                held.extend(words.iter().take(2).map(|commit| (*commit).to_owned()));
-            }
+        let side = if record.join("locked").exists() || !gone {
+            &mut held.kept
+        } else {
+            &mut held.gone
+        };
+        side.extend(held_by_record(&record, since));
+    }
+    for side in [&mut held.gone, &mut held.kept] {
+        side.retain(|commit| named(commit));
+        side.sort();
+        side.dedup();
+    }
+    held
+}
+
+/// The commits one tree's `record` holds: its HEAD and its reflog's
+/// entries written since `since`, unchecked.
+fn held_by_record(record: &Path, since: u64) -> Vec<String> {
+    let tip = std::fs::read_to_string(record.join("HEAD")).unwrap_or_default();
+    let mut held = vec![tip.trim().to_owned()];
+    let log = std::fs::read_to_string(record.join("logs/HEAD")).unwrap_or_default();
+    for entry in log.lines() {
+        let said = entry.split('\t').next().unwrap_or_default();
+        let words: Vec<&str> = said.split_whitespace().collect();
+        let at = words
+            .len()
+            .checked_sub(2)
+            .and_then(|at| words[at].parse().ok());
+        if at.is_some_and(|at: u64| at >= since) {
+            held.extend(words.iter().take(2).map(|commit| (*commit).to_owned()));
         }
     }
-    held.retain(|commit| named(commit));
-    held.sort();
-    held.dedup();
     held
 }
 
@@ -265,16 +285,21 @@ fn held_by_gone(common: &Path, since: u64) -> Vec<String> {
 /// as a tree worked in at no branch, or rebased, leaves. That record,
 /// which `worktree prune` takes, holds its HEAD and its reflog, roots
 /// git's gc walks from, so once it's taken, gc drops what only it held.
-/// Nothing a ref reaches is lost, and an entry git would expire anyway
-/// is left out, so a tree is held no longer than git would hold it.
+/// Nothing a ref, a ref's own reflog, the checkout's HEAD or a kept
+/// tree reaches is lost, as an amended branch's old tip is not, and an
+/// entry git would expire anyway is left out, so a tree is held no
+/// longer than git would hold it.
 fn stranding(git: &str, folder: &Path) -> Result<bool, Refused> {
-    let held = held_by_gone(&folder.join(".git"), kept_since(git, folder));
-    if held.is_empty() {
+    let held = held_by_trees(&folder.join(".git"), kept_since(git, folder));
+    if held.gone.is_empty() {
         return Ok(false);
     }
     let mut args = vec!["rev-list", "--ignore-missing", "--max-count=1"];
-    args.extend(held.iter().map(String::as_str));
-    args.extend(["--not", "--glob=*"]);
+    args.extend(held.gone.iter().map(String::as_str));
+    // Run from the checkout's own folder, a single worktree's refs and
+    // reflogs are every ref's and its own HEAD's, but no tree's record.
+    args.extend(["--not", "--single-worktree", "--all", "--reflog"]);
+    args.extend(held.kept.iter().map(String::as_str));
     let left = ran(git, folder, &args, Some(READ)).map_err(|_| Refused::Failed)?;
     Ok(!left.trim().is_empty())
 }
@@ -307,9 +332,12 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
 /// does, with the git at `git`, where it's due: git's `gc` task, at the
 /// checkout's config, waited on rather than left in the background. A
 /// store read the same after as before was left untouched, whatever git's
-/// exit said, since git's upkeep is quiet when it passes one by. Its gc
-/// forgets no tree, as it would forget those gone past three months, so
-/// only Forget Gone Trees forgets one, and keeps what one alone holds.
+/// exit said, since git's upkeep is quiet when it passes one by. Its
+/// upkeep forgets no tree, as its worktree-prune task would forget those
+/// gone past three months, or never checked out, so only Forget Gone
+/// Trees forgets one. A gc task a checkout's config turns on still
+/// forgets a gone tree git can't date, so it's refused, as Forget is,
+/// while a gone tree alone holds some commits.
 ///
 /// # Errors
 ///
@@ -335,7 +363,12 @@ pub fn gather(git: &str, folder: &Path, wait: Duration) -> Result<Tended, Refuse
         Ok(_) | Err(Some(1)) => {}
         Err(_) => return Err(Refused::Failed),
     }
+    if stranding(git, folder)? {
+        return Err(Refused::Stranded);
+    }
     let args = [
+        "-c",
+        "maintenance.worktree-prune.enabled=false",
         "-c",
         "gc.worktreePruneExpire=never",
         "maintenance",

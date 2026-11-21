@@ -7,8 +7,8 @@
 //! found there by name or folder as they're typed; New Terminal Here
 //! and Edit Here started by a stand-in for niri as they're asked; and
 //! Pull bringing a checkout forward by fast-forward alone, saying why
-//! where it won't; and Forget Gone Trees and Gather Its Store offered
-//! where a checkout wants them, doing as git would and saying what changed.
+//! where it won't. Forget Gone Trees and Gather Its Store, which tend a
+//! checkout as git's upkeep does, are tested beside it (tend.rs).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -198,15 +198,15 @@ pub(super) fn git_command(home: &Path, folder: &Path, args: &[&str]) -> Command 
 
 /// Joel's checkout of a repository, cloned from a bare remote and one
 /// commit behind it, which a checkout elsewhere pushed.
-struct Behind {
+pub(super) struct Behind {
     home: PathBuf,
     upstream: PathBuf,
     elsewhere: PathBuf,
-    here: PathBuf,
+    pub(super) here: PathBuf,
 }
 
 impl Behind {
-    fn new(running: &Running) -> Behind {
+    pub(super) fn new(running: &Running) -> Behind {
         let behind = Behind {
             home: running.path(""),
             upstream: running.path("up.git"),
@@ -229,17 +229,17 @@ impl Behind {
         behind
     }
 
-    fn git(&self, folder: &Path, args: &[&str]) -> String {
+    pub(super) fn git(&self, folder: &Path, args: &[&str]) -> String {
         git_alone(&self.home, folder, args)
     }
 
-    fn commit(&self, folder: &Path, file: &str) {
+    pub(super) fn commit(&self, folder: &Path, file: &str) {
         std::fs::write(folder.join(file), file).unwrap();
         self.git(folder, &["add", file]);
         self.git(folder, &["commit", "--quiet", "-m", file]);
     }
 
-    fn head(&self, folder: &Path) -> String {
+    pub(super) fn head(&self, folder: &Path) -> String {
         self.git(folder, &["rev-parse", "HEAD"])
     }
 }
@@ -498,342 +498,6 @@ fn whats_typed_in_open_a_file_by_name_finds_its_files_by_name_or_folder() {
         said["keys"].as_array().map(Vec::len),
         Some(1),
         "a search typed in a step found more than it was asked for: {said}"
-    );
-}
-
-/// The acts on a repository's row, by their keys, as a watch is told them.
-fn acts_of(row: &Value) -> Vec<String> {
-    row["row"]["acts"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|act| act["key"].as_str().map(str::to_owned))
-        .collect()
-}
-
-#[test]
-fn forget_gone_trees_has_git_forget_them_keeping_the_locked_and_the_branches() {
-    let running = Running::new("code-forget");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    let git = |folder: &Path, args: &[&str]| behind.git(folder, args);
-    // Named as git lists them, with no link in the case's folder, which a
-    // gone tree's own path can't be resolved through.
-    let cases = real(&running.path(""));
-    let cut = |name: &str| {
-        let tree = cases.join(name);
-        git(
-            &here,
-            &[
-                "worktree",
-                "add",
-                "--quiet",
-                "-b",
-                name,
-                tree.to_str().unwrap(),
-            ],
-        );
-        tree
-    };
-    let (gone, locked, standing) = (cut("gone"), cut("locked"), cut("standing"));
-    git(&here, &["worktree", "lock", locked.to_str().unwrap()]);
-    std::fs::remove_dir_all(&gone).unwrap();
-    std::fs::remove_dir_all(&locked).unwrap();
-    let mut watcher = running.client();
-    let answer = watcher.ask(&json!({"id": 9, "ask": "watch", "kind": "row", "place": "code"}));
-    let alpha = answer["records"]
-        .as_array()
-        .and_then(|records| {
-            records
-                .iter()
-                .find(|record| record["row"]["name"] == "alpha")
-        })
-        .cloned()
-        .unwrap_or_else(|| panic!("the checkout has no row: {answer}"));
-    assert!(
-        acts_of(&alpha).contains(&"verb:code:forget".to_owned()),
-        "Forget Gone Trees isn't offered where git lists a tree that's gone: {alpha}"
-    );
-    let key = alpha["key"].as_str().unwrap().to_owned();
-
-    let mut client = running.client();
-    let mut forget = |id: u64, folder: &Path| {
-        client.ask(&json!({"id": id, "ask": "code:forget", "path": folder}))
-    };
-    let said = forget(1, &here);
-    assert_eq!(
-        said["said"], "forgot 1 gone tree, kept 1 locked",
-        "Forget Gone Trees didn't say what git forgot and kept: {said}"
-    );
-    let listed = git(&here, &["worktree", "list", "--porcelain"]);
-    assert!(
-        !listed.contains(gone.to_str().unwrap()),
-        "git still lists the gone tree: {listed}"
-    );
-    assert!(
-        listed.contains(locked.to_str().unwrap()) && listed.contains(standing.to_str().unwrap()),
-        "a locked or standing tree was forgotten: {listed}"
-    );
-    assert!(
-        standing.join(".git").is_file(),
-        "a standing tree was touched"
-    );
-    assert_eq!(
-        git(&here, &["branch", "--list", "gone"]),
-        "gone",
-        "a gone tree's branch went with it"
-    );
-    let said = forget(2, &here);
-    assert_eq!(
-        said["said"], "no gone trees to forget, kept 1 locked",
-        "{said}"
-    );
-    git(&here, &["worktree", "unlock", locked.to_str().unwrap()]);
-    let said = forget(3, &here);
-    assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
-    // The disk is read again, so the row no longer offers what's done.
-    let forgotten = watcher.changed(&key);
-    assert!(
-        !acts_of(&forgotten).contains(&"verb:code:forget".to_owned()),
-        "the row still offers Forget Gone Trees with none gone: {forgotten}"
-    );
-    let said = forget(4, &standing);
-    assert_eq!(
-        said["error"]["refused"], "tree",
-        "a tree cut from a checkout was tended: {said}"
-    );
-}
-
-#[test]
-fn gather_its_store_runs_gits_upkeep_where_its_due_and_says_so() {
-    let running = Running::new("code-gather");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    let git = |folder: &Path, args: &[&str]| behind.git(folder, args);
-    // Due at more than one pack, so two make it due.
-    git(&here, &["config", "gc.autoPackLimit", "1"]);
-    git(&here, &["repack", "--quiet", "-a", "-d"]);
-    behind.commit(&here, "three");
-    git(&here, &["repack", "--quiet", "-d"]);
-    let packs = || {
-        std::fs::read_dir(here.join(".git/objects/pack"))
-            .unwrap()
-            .flatten()
-            .filter(|entry| entry.path().extension().is_some_and(|it| it == "idx"))
-            .count()
-    };
-    assert_eq!(packs(), 2, "the case's store isn't in two packs");
-    let mut watcher = running.client();
-    let answer = watcher.ask(&json!({"id": 9, "ask": "watch", "kind": "row", "place": "code"}));
-    let alpha = answer["records"]
-        .as_array()
-        .and_then(|records| {
-            records
-                .iter()
-                .find(|record| record["row"]["name"] == "alpha")
-        })
-        .cloned()
-        .unwrap_or_else(|| panic!("the checkout has no row: {answer}"));
-    assert!(
-        acts_of(&alpha).contains(&"verb:code:gather".to_owned()),
-        "Gather Its Store isn't offered where upkeep is due: {alpha}"
-    );
-    let key = alpha["key"].as_str().unwrap().to_owned();
-
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
-    assert_eq!(said["said"], "gathered its store", "{said}");
-    assert_eq!(packs(), 1, "git's upkeep didn't gather the packs");
-    let gathered = watcher.changed(&key);
-    assert!(
-        !acts_of(&gathered).contains(&"verb:code:gather".to_owned()),
-        "the row still offers Gather Its Store once gathered: {gathered}"
-    );
-    let said = client.ask(&json!({"id": 2, "ask": "code:gather", "path": here}));
-    assert_eq!(said["said"], "nothing was due", "{said}");
-}
-
-#[test]
-fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
-    let running = Running::new("code-gather-untouched");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    // Due by loose objects in the folder git counts, each reached by
-    // nothing and too young for git to drop: its upkeep runs, leaves the
-    // store as it was, and exits 0 all the same. These three blobs' names
-    // begin 17, the folder of 256 git's count reads.
-    behind.git(&here, &["repack", "--quiet", "-a", "-d"]);
-    behind.git(&here, &["config", "gc.auto", "1"]);
-    let blobs = real(&running.path("")).join("blobs");
-    std::fs::create_dir_all(&blobs).unwrap();
-    for number in [857, 868, 1169] {
-        let blob = blobs.join(number.to_string());
-        std::fs::write(&blob, format!("blob {number}\n")).unwrap();
-        behind.git(&here, &["hash-object", "-w", blob.to_str().unwrap()]);
-    }
-    let counted = behind.git(&here, &["count-objects", "-v"]);
-    assert!(
-        counted.lines().any(|line| line == "count: 3"),
-        "the store holds loose objects besides the three unreached blobs: {counted}"
-    );
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
-    assert_eq!(
-        said["said"], "git left its store as it was",
-        "Gather Its Store said it gathered a store git left: {said}"
-    );
-}
-
-#[test]
-fn gather_its_store_is_refused_while_another_upkeep_holds_it() {
-    let running = Running::new("code-gather-held");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    due_by_its_packs(&behind);
-    // Held by another upkeep's lock, which git's own upkeep passes by in
-    // silence.
-    let lock = here.join(".git/objects/maintenance.lock");
-    std::fs::write(&lock, "").unwrap();
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
-    assert_eq!(
-        said["error"]["said"], "not gathered: git is already at work in it",
-        "Gather Its Store didn't say another upkeep holds the store: {said}"
-    );
-    // A lock older than any gathering is one a killed upkeep left.
-    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(2);
-    let held = std::fs::File::options().write(true).open(&lock).unwrap();
-    held.set_modified(long_ago).unwrap();
-    let said = client.ask(&json!({"id": 2, "ask": "code:gather", "path": here}));
-    assert_eq!(
-        said["error"]["said"],
-        "not gathered: git left its upkeep's lock behind, in .git/objects/maintenance.lock",
-        "Gather Its Store called a lock left behind one at work: {said}"
-    );
-}
-
-/// Makes the checkout behind `behind` due by its packs alone, two where
-/// its config allows one.
-fn due_by_its_packs(behind: &Behind) {
-    let git = |args: &[&str]| behind.git(&behind.here, args);
-    git(&["config", "gc.autoPackLimit", "1"]);
-    git(&["repack", "--quiet", "-a", "-d"]);
-    behind.commit(&behind.here, "three");
-    git(&["repack", "--quiet", "-d"]);
-}
-
-#[test]
-fn gather_its_store_runs_no_program_its_config_names() {
-    let running = Running::new("code-gather-hooked");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    due_by_its_packs(&behind);
-    let ran = real(&running.path("")).join("ran");
-    let hook = format!("touch {}", ran.display());
-    behind.git(&here, &["config", "gc.recentObjectsHook", &hook]);
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
-    assert_eq!(
-        said["error"]["said"], "not gathered: its config names a program git's gc would run",
-        "Gather Its Store ran upkeep under a config naming a program: {said}"
-    );
-    assert!(!ran.exists(), "the program the checkout's config names ran");
-}
-
-#[test]
-fn gather_its_store_forgets_no_tree_however_long_gone() {
-    let running = Running::new("code-gather-keeps-trees");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    due_by_its_packs(&behind);
-    let old = real(&running.path("")).join("old");
-    let path = old.to_str().unwrap();
-    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
-    std::fs::remove_dir_all(&old).unwrap();
-    // Gone past git's three months, which its upkeep forgets on its own.
-    let index = here.join(".git/worktrees/old/index");
-    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(24 * 120);
-    let file = std::fs::File::options().write(true).open(&index).unwrap();
-    file.set_modified(long_ago).unwrap();
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
-    assert_eq!(said["said"], "gathered its store", "{said}");
-    let listed = behind.git(&here, &["worktree", "list", "--porcelain"]);
-    assert!(
-        listed.contains(path),
-        "Gather Its Store forgot a gone tree: {listed}"
-    );
-}
-
-#[test]
-fn forget_gone_trees_keeps_a_tree_whose_commits_nothing_else_holds() {
-    let running = Running::new("code-forget-stranded");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    let cases = real(&running.path(""));
-    let pinned = cases.join("pinned");
-    let path = pinned.to_str().unwrap();
-    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
-    behind.commit(&pinned, "only-here");
-    let commit = behind.head(&pinned);
-    std::fs::remove_dir_all(&pinned).unwrap();
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
-    assert_eq!(
-        said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
-        "Forget Gone Trees forgot a tree holding the only way to its commits: {said}"
-    );
-    let listed = behind.git(&here, &["worktree", "list", "--porcelain"]);
-    assert!(
-        listed.contains(path),
-        "git no longer lists the pinned tree: {listed}"
-    );
-    // Once a branch holds its commit, it's forgotten as any gone tree is.
-    behind.git(&here, &["branch", "kept", &commit]);
-    let said = client.ask(&json!({"id": 2, "ask": "code:forget", "path": here}));
-    assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
-    // A tree worked in and moved back to a commit a branch has keeps
-    // that work in its own reflog alone, until git would expire it.
-    let moved = cases.join("moved");
-    let path = moved.to_str().unwrap();
-    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
-    behind.commit(&moved, "moved-off");
-    let main = behind.head(&here);
-    behind.git(&moved, &["checkout", "--quiet", "--detach", &main]);
-    std::fs::remove_dir_all(&moved).unwrap();
-    let said = client.ask(&json!({"id": 3, "ask": "code:forget", "path": here}));
-    assert_eq!(
-        said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
-        "Forget Gone Trees forgot a tree whose reflog alone holds its work: {said}"
-    );
-    behind.git(&here, &["config", "gc.reflogExpireUnreachable", "now"]);
-    let said = client.ask(&json!({"id": 4, "ask": "code:forget", "path": here}));
-    assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
-}
-
-#[test]
-fn forget_gone_trees_passes_a_locked_tree_by_whatever_it_holds() {
-    let running = Running::new("code-forget-locked-stranded");
-    let behind = Behind::new(&running);
-    let here = behind.here.clone();
-    let cases = real(&running.path(""));
-    // A locked tree's work no branch has: git never forgets it, so it
-    // holds no Forget back.
-    let locked = cases.join("locked");
-    let path = locked.to_str().unwrap();
-    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
-    behind.commit(&locked, "only-here");
-    behind.git(&here, &["worktree", "lock", path]);
-    std::fs::remove_dir_all(&locked).unwrap();
-    let plain = cases.join("plain");
-    let plain = plain.to_str().unwrap();
-    behind.git(&here, &["worktree", "add", "--quiet", "-b", "plain", plain]);
-    std::fs::remove_dir_all(plain).unwrap();
-    let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
-    assert_eq!(
-        said["said"], "forgot 1 gone tree, kept 1 locked",
-        "Forget Gone Trees was held back by a tree git keeps: {said}"
     );
 }
 

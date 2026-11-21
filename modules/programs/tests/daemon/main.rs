@@ -16,8 +16,9 @@
 //! without the agents' panes (agents.rs), every open tab in one place
 //! (tabs.rs), the tab in front of one of Chrome's windows (front.rs),
 //! every repository's row (code.rs), a checkout's branches and the
-//! switch between them (switch.rs), and a page's list read again while
-//! it's refused (refused.rs).
+//! switch between them (switch.rs), a checkout's gone trees and store
+//! tended (tend.rs), and a page's list read again while it's refused
+//! (refused.rs).
 
 mod agents;
 mod chrome;
@@ -31,6 +32,7 @@ mod search;
 mod switch;
 mod tabs;
 mod taken;
+mod tend;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
