@@ -138,7 +138,10 @@ fn stepping(sound: &[f32], gain: f32) -> Vec<f32> {
 /// `seconds` of a room's rumble at `level`: white noise through a filter
 /// that passes little above 50 Hz, so its loudness swells and fades by
 /// several decibels from one fifth of a second to the next.
-#[expect(clippy::cast_precision_loss, reason = "a test's few seconds of samples")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a test's few seconds of samples"
+)]
 fn rumble(seconds: f32, level: f32) -> Vec<f32> {
     let mut low = 0.0;
     let raw: Vec<f32> = noise(seconds, 1.0, false)
@@ -554,7 +557,9 @@ fn a_short_answer_on_a_rumbling_line_after_a_mute_is_a_take() {
     let takes = cut(&sound);
     let take = takes
         .iter()
-        .find(|take| take.start <= answer && take.start + take.samples.len() >= answer + RATE * 3 / 10)
+        .find(|take| {
+            take.start <= answer && take.start + take.samples.len() >= answer + RATE * 3 / 10
+        })
         .expect("the answer in the rumble");
     assert!(
         seconds(take.samples.len()) < 2.0,
