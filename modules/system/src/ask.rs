@@ -4,6 +4,7 @@
 //! the clock each leave an answer saying why, never a hang.
 
 use std::io::{self, Read};
+use std::iter::Peekable;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
@@ -24,6 +25,11 @@ const SAID_OF_ITS_COMPLAINT: usize = 160;
 /// How much of an owner's complaint is kept: far more than its first line
 /// needs, so a chatty owner's log costs the daemon no more than this.
 const COMPLAINT_KEPT: u64 = 4096;
+/// How long an owner's streams may stay open once it has ended. It has
+/// written all it will by then, so one still open is held by a helper it
+/// left, and that's given only a moment, past the clock if need be, so an
+/// owner ending right at it still has its answer read.
+const STREAMS_AFTER_IT_ENDS: Duration = Duration::from_secs(1);
 
 /// Each command's answer, in the order asked.
 pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
@@ -45,8 +51,8 @@ pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
 }
 
 /// The answer of the command `words`, or why there is none, within
-/// `clock`: the command's own run and its streams' closing both count, as
-/// a helper it left holding one would otherwise hold the ask.
+/// `clock` and a moment more for its streams to close, so a helper it left
+/// holding one never holds the ask.
 fn one(words: &[String], clock: Duration) -> Answer {
     let said = words.join(" ");
     let mut child = Command::new(&words[0])
@@ -81,19 +87,20 @@ fn one(words: &[String], clock: Duration) -> Answer {
         }
         thread::sleep(LOOK);
     };
+    let until = Instant::now() + STREAMS_AFTER_IT_ENDS;
     if !status.success() {
-        // A complaint not had in time leaves the failure said as it ended.
-        let complaint = taken(&complaining, deadline).and_then(Result::ok);
-        return Err(failed(&said, status.code(), &complaint.unwrap_or_default()));
+        // What it wrote of its complaint is said, held open or not.
+        let complaint = gathered(&complaining, until);
+        return Err(failed(&said, status.code(), &complaint.bytes));
     }
-    let bytes = taken(&reading, deadline)
-        .ok_or_else(|| {
-            // It ended well, but something it left holds its answer open,
-            // so what it wrote may not be the whole of it.
-            format!("{said} left its answer open past {} s", clock.as_secs())
-        })?
-        .map_err(|error| error.to_string())?;
-    first(&said, &bytes)
+    let answer = gathered(&reading, until);
+    match answer.end {
+        Some(Ok(())) => first(&said, &answer.bytes),
+        Some(Err(error)) => Err(format!("{said}'s answer couldn't be read: {error}")),
+        // It ended well, but something it left holds its answer open, so
+        // what it wrote may not be the whole of it.
+        None => Err(format!("{said} left its answer open after it ended")),
+    }
 }
 
 /// Ends a child that won't be waited for, so nothing of it outlives the
@@ -105,30 +112,65 @@ fn end(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// What `stream` writes, up to `kept` bytes and the rest drained unread,
-/// sent once it closes.
-fn reader(stream: impl Read + Send + 'static, kept: u64) -> Receiver<io::Result<Vec<u8>>> {
+/// What a reader heard of a stream: some of what it wrote, or its end.
+enum Heard {
+    Bytes(Vec<u8>),
+    End(io::Result<()>),
+}
+
+/// What `stream` writes, sent as it's read, up to `kept` bytes and the
+/// rest drained unread, then its end.
+fn reader(stream: impl Read + Send + 'static, kept: u64) -> Receiver<Heard> {
     let (send, receive) = mpsc::channel();
     thread::spawn(move || {
         let mut stream = stream;
-        let mut bytes = Vec::new();
-        let read = (&mut stream)
-            .take(kept)
-            .read_to_end(&mut bytes)
-            .and_then(|_| io::copy(&mut stream, &mut io::sink()))
-            .map(|_| bytes);
-        // The ask may have stopped waiting, which leaves no one to tell.
-        let _ = send.send(read);
+        let mut room = kept;
+        let mut buffer = [0; 8192];
+        let end = loop {
+            match stream.read(&mut buffer) {
+                Ok(0) => break Ok(()),
+                Ok(read) => {
+                    let keep = read.min(usize::try_from(room).unwrap_or(usize::MAX));
+                    room = room.saturating_sub(u64::try_from(keep).unwrap_or(u64::MAX));
+                    if keep > 0 {
+                        // The ask may have stopped waiting, which leaves no
+                        // one to tell; the stream is still drained.
+                        let _ = send.send(Heard::Bytes(buffer[..keep].to_vec()));
+                    }
+                }
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                Err(error) => break Err(error),
+            }
+        };
+        // As above, no one may be left to tell.
+        let _ = send.send(Heard::End(end));
     });
     receive
 }
 
-/// What a reader sent by `deadline`, or none when its stream was still open
-/// then, as it is while a helper the owner left holds it.
-fn taken<T>(receive: &Receiver<T>, deadline: Instant) -> Option<T> {
-    receive
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .ok()
+/// What a reader heard of its stream by `until`.
+struct Gathered {
+    bytes: Vec<u8>,
+    /// How the stream ended, or none while it was still open then, as it
+    /// is while a helper the owner left holds it.
+    end: Option<io::Result<()>>,
+}
+
+/// All a reader has heard by `until`.
+fn gathered(receive: &Receiver<Heard>, until: Instant) -> Gathered {
+    let mut bytes = Vec::new();
+    loop {
+        match receive.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            Ok(Heard::Bytes(more)) => bytes.extend(more),
+            Ok(Heard::End(end)) => {
+                return Gathered {
+                    bytes,
+                    end: Some(end),
+                };
+            }
+            Err(_) => return Gathered { bytes, end: None },
+        }
+    }
 }
 
 /// Why an owner that ended badly gave no answer: how it ended, and the
@@ -152,29 +194,75 @@ fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
 }
 
 /// `line` as plain words: a terminal's escape sequences gone whole, as a
-/// coloured complaint writes them, and with them every control character
-/// and every one that turns or hides text, so a row reads as it's written.
+/// coloured or linked complaint writes them, and with them every control
+/// character and the format characters that turn, hide or break text, so a
+/// row reads as it's written.
 fn plain(line: &str) -> String {
     let mut kept = String::new();
-    let mut chars = line.chars();
+    let mut chars = line.chars().peekable();
     while let Some(each) = chars.next() {
         match each {
-            // A control sequence runs to its final character, '@' to '~';
-            // any other escape takes the one character after it.
-            '\u{1b}' => {
-                if chars.next() == Some('[') {
-                    chars.by_ref().find(|end| ('@'..='~').contains(end));
-                }
-            }
-            '\u{200b}'..='\u{200f}'
-            | '\u{202a}'..='\u{202e}'
-            | '\u{2060}'..='\u{2069}'
-            | '\u{feff}' => {}
-            each if each.is_control() => {}
+            '\u{1b}' => escape(&mut chars),
+            // The one-character forms of a control sequence and a string.
+            '\u{9b}' => control_sequence(&mut chars),
+            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => string(&mut chars),
+            each if hides(each) || each.is_control() => {}
             each => kept.push(each),
         }
     }
     kept.trim().to_owned()
+}
+
+/// Passes over an escape sequence's rest, its escape already taken: a
+/// control sequence such as a colour, a string such as a title or a link,
+/// or one that runs through intermediates to its final character, such as
+/// a character set chosen; any other takes the one character after it.
+fn escape(chars: &mut Peekable<std::str::Chars>) {
+    match chars.next() {
+        Some('[') => control_sequence(chars),
+        Some(']' | 'P' | 'X' | '^' | '_') => string(chars),
+        Some(' '..='/') => {
+            chars.find(|end| ('0'..='~').contains(end));
+        }
+        _ => {}
+    }
+}
+
+/// Passes over a control sequence's rest, to its final character.
+fn control_sequence(chars: &mut Peekable<std::str::Chars>) {
+    chars.find(|end| ('@'..='~').contains(end));
+}
+
+/// Passes over a string's rest, to the bell or string terminator ending it.
+fn string(chars: &mut Peekable<std::str::Chars>) {
+    while let Some(each) = chars.next() {
+        match each {
+            '\u{7}' | '\u{9c}' => return,
+            '\u{1b}' => {
+                chars.next_if_eq(&'\\');
+                return;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether `each` is a format character that turns, hides or breaks text:
+/// a soft hyphen, direction marks and overrides, joiners and invisible
+/// operators, a line or paragraph separator, annotation marks, and tags.
+fn hides(each: char) -> bool {
+    matches!(
+        each,
+        '\u{ad}'
+            | '\u{61c}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0000}'..='\u{e007f}'
+    )
 }
 
 /// The document an owner's answer opens with. An owner may say more on
@@ -190,7 +278,7 @@ fn first(said: &str, bytes: &[u8]) -> Answer {
 
 #[cfg(test)]
 mod tests {
-    use super::{COMPLAINT_KEPT, failed, first, one, reader};
+    use super::{COMPLAINT_KEPT, failed, first, gathered, one, reader};
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -229,39 +317,63 @@ mod tests {
 
     #[test]
     fn a_helper_left_holding_a_stream_never_holds_the_ask() {
-        let held_complaint = "sleep 30 >/dev/null & exit 1";
+        // A helper left holding a stream costs a moment once its owner has
+        // ended, well inside the clock; only an owner still running costs
+        // the clock itself.
+        let held_complaint = "echo 'say which realm' >&2; sleep 30 >/dev/null & exit 1";
         let held_answer = "sleep 30 2>/dev/null & echo '{}'";
+        let complaint_held_by_a_good_answer = "sleep 30 >/dev/null & echo '{}'";
         let slow = "exec sleep 30";
-        for (script, why) in [
+        for (script, why, within) in [
             (
                 held_complaint,
-                format!("sh -c {held_complaint} ended with 1"),
+                Err(format!(
+                    "sh -c {held_complaint} ended with 1: say which realm"
+                )),
+                SHORT,
             ),
             (
                 held_answer,
-                format!("sh -c {held_answer} left its answer open past 3 s"),
+                Err(format!(
+                    "sh -c {held_answer} left its answer open after it ended"
+                )),
+                SHORT,
             ),
-            (slow, format!("sh -c {slow} gave no answer in 3 s")),
+            (complaint_held_by_a_good_answer, Ok(json!({})), SHORT),
+            (
+                slow,
+                Err(format!("sh -c {slow} gave no answer in 3 s")),
+                SHORT + Duration::from_secs(2),
+            ),
         ] {
             let started = Instant::now();
             let said = one(&shell(script), SHORT);
             assert!(
-                started.elapsed() < SHORT + Duration::from_secs(2),
-                "{script} held the ask {:?}, past its clock",
+                started.elapsed() < within,
+                "{script} held the ask {:?}, past {within:?}",
                 started.elapsed()
             );
-            assert_eq!(said, Err(why), "{script} is said for what held it");
+            assert_eq!(said, why, "{script} is said for what held it");
         }
     }
 
     #[test]
     fn a_complaint_is_kept_to_its_room() {
         let long = vec![b'x'; 10_000];
-        let kept = reader(std::io::Cursor::new(long), COMPLAINT_KEPT).recv();
+        let receive = reader(std::io::Cursor::new(long), COMPLAINT_KEPT);
+        let kept = gathered(&receive, Instant::now() + SHORT);
         assert_eq!(
-            kept.ok().and_then(Result::ok).map(|bytes| bytes.len()),
-            Some(4096),
+            kept.bytes.len(),
+            4096,
             "a long complaint costs no more than its room"
+        );
+        // A reason written past the room is never read, which shows an
+        // owner's own complaint is kept to it.
+        let past = "{ head -c 5000 /dev/zero | tr '\\0' '\\n'; echo 'past its room'; } >&2; exit 1";
+        assert_eq!(
+            one(&shell(past), SHORT),
+            Err(format!("sh -c {past} ended with 1")),
+            "an owner's complaint is read no further than its room"
         );
     }
 
@@ -307,6 +419,24 @@ mod tests {
             ),
             "net --json ended with 1: gone",
             "a line of only control characters is passed over, and text that turns or hides goes"
+        );
+        assert_eq!(
+            failed(
+                "net --json",
+                Some(1),
+                b"\x1b]8;;https://x\x1b\\link\x1b]8;;\x1b\\ broke\x1b(B\x1b[m"
+            ),
+            "net --json ended with 1: link broke",
+            "a linked complaint keeps its words, not the link's address"
+        );
+        assert_eq!(
+            failed(
+                "net --json",
+                Some(1),
+                "\x1b]0;a title\x07said\u{e0041}\u{2028}\u{ad}".as_bytes()
+            ),
+            "net --json ended with 1: said",
+            "a title set, tags and separators go"
         );
     }
 
