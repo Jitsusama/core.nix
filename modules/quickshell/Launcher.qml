@@ -7463,7 +7463,7 @@ Scope {
                 keyFrame: newest.frame ?? 0,
                 keyHeard: newest.heard,
                 timesOf: frame => surface.FramePresentation.timesOf(frame)
-            }, frameSplit(newest, shown)));
+            }, frameSplit(newest, shown)), newest.step ?? "");
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {

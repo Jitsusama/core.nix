@@ -24,6 +24,9 @@ heard "a daemon's error, its code whole" \
 heard "a daemon's search refused, its code whole" \
   "launcher: wifi's daemon can't search, asked again a minute on: "\
 '{"code":"unread","said":"29 letters"}'
+heard "a row a search found, not served yet" \
+  "launcher: wifi's search found \"wifi\", which isn't served yet"
+heard "an act of Wi-Fi's own, refused by its code" "launcher: wifi forget refused: gone"
 
 if grep -a 'launcher:' "$said" | grep -aF 'Harbour'; then
   echo "a line says the daemon's words with reports off"

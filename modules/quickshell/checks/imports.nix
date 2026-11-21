@@ -151,6 +151,7 @@
     "Fuzzy.js"
     "Hearing.js"
     "launcher/Order.js"
+    "launcher/Presented.js"
     "launcher/Seen.js"
   ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
@@ -345,6 +346,7 @@
     "Fuzzy.js"
     "launcher/ActForms.js"
     "launcher/Order.js"
+    "launcher/Presented.js"
     "launcher/ReadyRows.js"
     "launcher/WirelessPlate.js"
   ];

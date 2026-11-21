@@ -1153,8 +1153,11 @@ in
       id, of letters, digits, dots and hyphens, even with an empty title,
       and otherwise as window, as where it names no app or its key holds
       nothing past the app; a place's own answer as answer; a row of no
-      kind as row; and no drawer's page. A slow key's line still says what
-      was typed, and the launcher's other lines aren't held to this.
+      kind as row; and no drawer's page. Its lines of words typed, a slow
+      key's and an answer's, say how many letters, a slow step keeping its
+      arrow; and a daemon's refusal says how many letters its words held,
+      its codes whole. Lines naming what was asked from outside, by a
+      terminal or another program, aren't held to this.
     '';
   };
 

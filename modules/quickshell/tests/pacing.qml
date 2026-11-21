@@ -1130,10 +1130,18 @@ QtObject {
         // may be anything Joel searches for.
         check(failures, "words typed are said by how many letters with reports off",
             Presented.typedShown("pirate", false), "6 letters");
-        check(failures, "an emoji counting as one",
+        check(failures, "an emoji of one code point counting as one",
             Presented.typedShown("\ud83d\ude00", false), "1 letter");
         check(failures, "and quoted while they're on, so they can't forge a line",
             Presented.typedShown('say "hi"\nlauncher: x', true), '"say \\"hi\\"\\nlauncher: x"');
+        // A step a slow key took is said by its arrow, so it isn't read as
+        // words typed, and the row it named by how many letters.
+        check(failures, "a slow step keeps its arrow with reports off",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false), "\u2192 7 letters");
+        check(failures, "and a slow key that took no step is said as typed words",
+            Presented.timedShown("pirate", "", false), "6 letters");
+        check(failures, "and a step is quoted whole while they're on",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", true), '"\u2192 Harbour"');
         check(failures, "words typed in a row say the row by its kind with reports off",
             Presented.typedInSaid("door", "wifi:Harbour House", false),
             '4 letters typed in "wifi"');
@@ -1173,6 +1181,9 @@ QtObject {
             Presented.errorShown("couldn't join Harbour", false), '"21 letters"');
         check(failures, "and is whole while they're on",
             Presented.errorShown(busy, true), JSON.stringify(busy));
+        check(failures, "its line ends that JSON leaves raw escaped",
+            Presented.errorShown({ said: "a\u2028launcher: b" }, true),
+            '{"said":"a\\u2028launcher: b"}');
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

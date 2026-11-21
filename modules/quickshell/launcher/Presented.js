@@ -327,6 +327,13 @@ function typedShown(typed, whole) {
     return letters === 1 ? "1 letter" : `${letters} letters`;
 }
 
+// A slow key's line says what was typed as typedShown does, or for a step ("→ Programs") its
+// arrow, and the row it named counted where not `whole`, so a step still reads as one.
+function timedShown(typed, step, whole) {
+    return step && !whole ? `${step.slice(0, 1)} ${typedShown(step.slice(2), false)}`
+        : typedShown(typed, whole);
+}
+
 // Words typed inside a row's step (ready-rows.md's within) as a line may say them, as typedShown
 // does, and the row quoted, by its key as a drawer's is.
 function typedInSaid(typed, within, whole) {
@@ -353,14 +360,14 @@ function codeShown(answer) {
 // reports setting: its code, its kind, and a refusal's own, as wifid's WrongPassword.
 const errorCodes = new Set(["code", "kind", "refused"]);
 
-// A daemon's error as a line in the journal may say it: whole as JSON where `whole`, and otherwise
-// with its codes, numbers and truths whole and each of its words as typedShown says typed words,
-// since a daemon's own words can name a row, as "couldn't join Harbour House" (Y2YBTS, 2026-11-20,
-// 41ca61c4). An error that's words alone, against the contract, is said as those words are.
+// A daemon's error as a line in the journal may say it, quoted as JSON: whole where `whole`, and
+// otherwise its codes, numbers and truths whole and each of its words as typedShown says typed
+// words, since a daemon's own words can name a row, as "couldn't join Harbour House" (Y2YBTS,
+// 2026-11-20, 41ca61c4). An error that's words alone, against the contract, is said as those are.
 function errorShown(error, whole) {
     if (whole || error === null || typeof error !== "object") {
         const words = typeof error === "string" && !whole;
-        return JSON.stringify(words ? typedShown(error, false) : (error ?? null));
+        return quoted(words ? typedShown(error, false) : (error ?? null));
     }
     const told = {};
     for (const [field, value] of Object.entries(error)) {
@@ -368,7 +375,7 @@ function errorShown(error, whole) {
         told[field] = errorCodes.has(field) || plain ? value
             : typedShown(typeof value === "string" ? value : JSON.stringify(value), false);
     }
-    return JSON.stringify(told);
+    return quoted(told);
 }
 
 // The drawers presented since the launcher opened, a line a place, as a place's changes are, each
