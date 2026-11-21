@@ -244,6 +244,8 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
     let _held = File::open(&watch.node).unwrap();
     fs::write(&watch.streaming, " 1\n").unwrap();
     watch.until_named(true, "the test isn't named");
+    // Time for the watch to read the count at nothing, so the 300 frames
+    // that follow are counted as the stream's.
     sleep(Duration::from_secs(2));
     watch.count(300);
     // The first line comes ten seconds after the stream was first seen, so
@@ -414,7 +416,12 @@ fn a_node_a_loopback_has_is_left_to_it() {
 #[test]
 fn a_camera_whose_run_crashed_reads_unplugged_rather_than_held() {
     // The camera stayed plugged in, and no run is left to rewrite its files.
-    let (_, left) = forgetting("crashed", &Then::Camera, &[("Crashed", "NODE")]);
+    let (said, left) = forgetting("crashed", &Then::Camera, &[("Crashed", "NODE")]);
+    assert_eq!(
+        said,
+        ["forgot \"Crashed\", whose node file said NODE"],
+        "what it forgot went unsaid"
+    );
     assert_eq!(
         left,
         [".devices"],

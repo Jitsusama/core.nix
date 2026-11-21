@@ -32,7 +32,8 @@ onLinux {
 
   # A run killed before it removes its files leaves its camera said there;
   # each watch forgets its node as its unit stops, in the folder it writes,
-  # so the relayed camera's watch forgets in its own and not the shared one.
+  # so the relayed camera's watch forgets in its own and not the shared one,
+  # and one that crashed starts again.
   usb-camera-holders-forget-a-killed-run =
     let
       services = graphical.config.systemd.services;
@@ -42,12 +43,13 @@ onLinux {
           config = services.${unit}.serviceConfig;
         in
         lib.hasSuffix " --usb /dev/%I ${folder}" config.ExecStart
+        && (config.Restart or null) == "on-failure"
         && lib.any (line: lib.hasSuffix " --usb --forget /dev/%I ${folder}" line) (
           lib.toList (config.ExecStopPost or [ ])
         );
     in
     holds "usb-camera-holders-forget-a-killed-run"
-      "A USB camera's watch doesn't forget its node, in the folder it writes, as its unit stops."
+      "A USB camera's watch doesn't forget its node in its own folder as it stops, or start again."
       (
         forgets "usb-camera-holders@" "/run/camera-holders"
         && forgets "usb-camera-holders-relayed@" "/run/camera-holders/.relayed"

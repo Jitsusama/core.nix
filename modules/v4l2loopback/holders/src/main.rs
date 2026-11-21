@@ -36,6 +36,7 @@
 //! With --forget, it removes the files in FOLDER that say NODE, and ends:
 //! a USB camera's unit runs it as it stops, so a run killed before it
 //! could remove its own leaves nothing to say the camera is still there.
+//! A loopback that has NODE by then keeps its files, which say it rightly.
 //!
 //! A file is written beside the one it replaces under a dotted name,
 //! `.<its name>.<pid>`, which every reader of the folder passes over, so
@@ -142,6 +143,11 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
     }
     if forget && !usb {
         return Err(wrongly("--forget goes with --usb".to_owned()));
+    }
+    if forget && (card.is_some() || !units.is_empty()) {
+        return Err(wrongly(
+            "--forget takes no --card or --ignore-unit".to_owned(),
+        ));
     }
     let [source, output] = <[PathBuf; 2]>::try_from(places).map_err(|places| {
         wrongly("loopback-holders takes a SOURCE and an OUTPUT".to_owned())
@@ -448,17 +454,19 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         say(&line);
     }
     // Its holders file first, as forget_node removes them, so a run killed
-    // between the two leaves the node file that finds the holders file.
-    let removed = match fs::remove_file(&output) {
+    // between the two, or one that can't remove it, leaves the node file
+    // that finds the holders file.
+    match fs::remove_file(&output) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
             Exit::Failed,
             "loopback-holders can't remove the camera's file",
         )
         .because(format!("{}: {error}", output.display()))),
-        _ => Ok(()),
-    };
-    say_device(&output, None);
-    removed
+        _ => {
+            say_device(&output, None);
+            Ok(())
+        }
+    }
 }
 
 /// How a node file says its node.
@@ -732,7 +740,10 @@ mod tests {
         );
         assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
         let forgetting = given("--usb --forget /dev/video0 /run/camera-holders").unwrap();
-        assert!(forgetting.usb && forgetting.forget);
+        assert!(
+            forgetting.usb && forgetting.forget,
+            "--usb --forget wasn't read as both"
+        );
     }
 
     #[test]
@@ -744,6 +755,8 @@ mod tests {
             "-x /a /b",
             "/a /b /c",
             "--forget /a /b",
+            "--usb --forget --card Camera /a /b",
+            "--usb --forget --ignore-unit a.service /a /b",
         ] {
             let ending = terminal_kit::run(
                 &help(),
