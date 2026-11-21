@@ -306,16 +306,19 @@ let
         # minutes; the watchdog aborted it at 120 s and systemd waited 150 s
         # more before the kill, since an abort's timeout is the stop's
         # (TimeoutStopSec below) unless set apart. A node without the listener
-        # still aborts at once, and it dumps no core (LimitCORE below), so
-        # the kill 10 s on loses nothing: the host's hold watcher has written
-        # what held the loop by then.
+        # still aborts at once, and systemd-coredump keeps no core of it
+        # (LimitCORE below), so the kill 10 s on loses nothing: the host's
+        # hold watcher has written what held the loop by then.
         TimeoutAbortSec = "10s";
         # A host keeps no core. A core holds every hosted conversation's keys
         # and tokens, and writing one held a crashed host down for minutes:
         # on 16 November an out-of-memory abort streamed 12.5 GB for three
         # minutes before the watchdog's kill. The commands a host runs
-        # inherit the limit. A native fault is hunted with perf and /proc
-        # on the live process instead, which hold no secrets on disk.
+        # inherit the limit, and its hard limit is 0 too, so none can raise
+        # it. A native fault then leaves no stack trace in the journal either:
+        # it is hunted on the live process with /proc and perf, whose call
+        # graphs copy raw stack into perf.data, so that file holds the host's
+        # secrets too and is deleted once read.
         LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
