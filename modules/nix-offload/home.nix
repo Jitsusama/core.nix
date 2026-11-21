@@ -482,9 +482,9 @@ in
       description = ''
         Builders past the two lent, at most ${toString runLenders}, the first
         lent from /run/nix-offload-run-1, each only while a `nix-offload
-        there` run waits on one, and given back idle. `there --run` spreads
-        its runs over every line, these included, so one session's suite
-        doesn't wait behind another's.
+        there` run waits on one, and given back idle. A run waits on the one
+        its `NIX_OFFLOAD_DIR` names, such as /run/nix-offload-run-2, so one
+        session's suite needn't wait behind another's on the first.
       '';
     };
     standing = lib.mkOption {
