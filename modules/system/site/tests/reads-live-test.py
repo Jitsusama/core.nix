@@ -192,10 +192,11 @@ LOOKED_AT = [
     ("Network", "The attic's radio is busy 53% of the time"),
     ("Network", "And 3 more worth a look"),
 ]
-# The rows' keys a steps through: whose each is, then its own words.
-KESTREL_LOOK = "look:machine:kestrel:booted 3 hours ago after a firmware error"
-OSPREY_LOOK = "look:machine:osprey:code wants a look"
-MYCELIUM_LOOK = "look:part:mycelium:4 sessions say they run with their processes gone"
+# The rows' keys a steps through: whose each is, then how many the same came
+# before it, then its own words.
+KESTREL_LOOK = "look:machine:kestrel:0:booted 3 hours ago after a firmware error"
+OSPREY_LOOK = "look:machine:osprey:0:code wants a look"
+MYCELIUM_LOOK = "look:part:mycelium:0:4 sessions say they run with their processes gone"
 
 
 def focused_row(page: Page) -> str | None:
@@ -234,8 +235,15 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     for _ in LOOKED_AT:
         keyboard.press("a")
     assert focused_row(system_page) == KESTREL_LOOK, "a didn't go round to the first"
-    # A look that clears under the cursor leaves it on the one now in its place.
+    # A look clearing before the cursor's leaves it on its own look, not on
+    # whichever now stands where it stood.
     keyboard.press("a")
+    system_daemon.tell("machine", changed=[{"key": "machine:kestrel", "side": []}])
+    expect(
+        system_page.locator("#looks a[data-row^='look:machine:kestrel:']"), "kestrel's look stayed"
+    ).to_have_count(0, timeout=PACE_MS)
+    assert focused_row(system_page) == OSPREY_LOOK, "the cursor left a look that still stands"
+    # One that clears under the cursor leaves it on the one now in its place.
     system_daemon.tell("machine", changed=[{"key": "machine:osprey", "side": []}])
     system_page.wait_for_function(
         "row => document.activeElement?.dataset?.row === row", arg=MYCELIUM_LOOK, timeout=PACE_MS
