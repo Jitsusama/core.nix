@@ -1321,7 +1321,8 @@ pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
 
 /// Whether switching from `old` to `new` restarts an account's unit:
 /// home-manager restarts one whose file or drop-ins changed, or that only
-/// one system has, unless the new file says `X-RestartIfChanged=false`.
+/// one system has, unless sd-switch keeps the new unit running as it was,
+/// as the sessions' kitty holding every session's window is (2026-11-21).
 /// Each system's `home-manager-<account>.service` names the generation
 /// whose home holds the unit's file.
 pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) -> bool {
@@ -1339,8 +1340,70 @@ pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) 
     let kept = after
         .0
         .as_deref()
-        .is_some_and(|file| file.lines().any(|l| l.trim() == "X-RestartIfChanged=false"));
+        .is_some_and(|file| keeps_old(file, &after.1));
     before != after && !kept
+}
+
+/// Whether sd-switch keeps a changed unit running as it was, read in its
+/// order (sd-switch 0.6.4's `UnitFile::switch_method`): a unit refusing a
+/// manual start is stopped; a set `X-SwitchMethod` decides; else the legacy
+/// keys, where `X-ReloadIfChanged=true` reloads before
+/// `X-RestartIfChanged=false` keeps. A drop-in that won't read as text
+/// keeps nothing, since sd-switch fails on it rather than skip it, and its
+/// method can't be known.
+fn keeps_old(file: &str, drop_ins: &BTreeMap<String, Option<String>>) -> bool {
+    const YES: &[&str] = &["1", "yes", "y", "true", "t", "on"];
+    const NO: &[&str] = &["0", "no", "n", "false", "f", "off"];
+    if drop_ins
+        .iter()
+        .any(|(name, text)| is_drop_in(name) && text.is_none())
+    {
+        return false;
+    }
+    let says = |key| unit_says(file, drop_ins, key);
+    let is = |key, truth: &[&str]| {
+        says(key).is_some_and(|value| truth.contains(&value.to_ascii_lowercase().as_str()))
+    };
+    if is("RefuseManualStart", YES) {
+        return false;
+    }
+    match says("X-SwitchMethod") {
+        Some(method) => method == "keep-old",
+        None => !is("X-ReloadIfChanged", YES) && is("X-RestartIfChanged", NO),
+    }
+}
+
+/// Whether a file in a unit's `.d` folder is one of its drop-ins: `.conf`
+/// alone, as written, as sd-switch and systemd read them; `.CONF` isn't.
+fn is_drop_in(name: &str) -> bool {
+    Path::new(name).extension().is_some_and(|e| e == "conf")
+}
+
+/// What a unit's `[Unit]` section says `key` is, as sd-switch reads it, as
+/// systemd does: the file, then its `.conf` drop-ins in name order, the
+/// last saying it winning, so a drop-in setting another method is heard.
+fn unit_says(file: &str, drop_ins: &BTreeMap<String, Option<String>>, key: &str) -> Option<String> {
+    let mut said = None;
+    let read = std::iter::once(file).chain(
+        drop_ins
+            .iter()
+            .filter(|(name, _)| is_drop_in(name))
+            .filter_map(|(_, text)| text.as_deref()),
+    );
+    for text in read {
+        let mut in_unit = false;
+        for line in text.lines().map(str::trim) {
+            if line.starts_with('[') {
+                in_unit = line == "[Unit]";
+            } else if let Some((name, value)) = line.split_once('=')
+                && in_unit
+                && name.trim() == key
+            {
+                said = Some(value.trim().to_owned());
+            }
+        }
+    }
+    said
 }
 
 /// The home-manager generation a NixOS system activates for an account, as

@@ -320,8 +320,13 @@ in
         Units of an account's own systemd, by the account, that a switch
         mustn't restart through home-manager until an asker grants it, as
         holdRestarts' daemons wait, such as one a person's windows run
-        under. A unit whose new file says `X-RestartIfChanged=false` isn't
-        restarted, so it needs no grant. NixOS only.
+        under. A unit sd-switch keeps isn't restarted, so it needs no
+        grant: one whose new [Unit] section, drop-ins included, says
+        `X-SwitchMethod=keep-old`, or names no method and says
+        `X-RestartIfChanged=false` without `X-ReloadIfChanged=true`, and
+        doesn't refuse a manual start. The running unit stays as it was
+        until it next starts. Such a unit, as the example is while it keeps
+        old, is held only once it stops saying so. NixOS only.
       '';
     };
     holdChanges = mkOption {
