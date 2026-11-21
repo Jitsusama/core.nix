@@ -35,10 +35,11 @@
 # has read unreachable for ten minutes since, with a desktop notice to
 # Joel, once, and again once it's back: its owner is the one `owners`
 # names for `down:<machine>`. A machine with no work, or on battery with
-# its lid shut, sleeps unsaid. This machine reaching nothing its node
-# probes, or, with none ready, two machines down last heard within minutes
-# of each other, is read as this one cut off; where it can't tell, as when
-# a realm doesn't answer, nothing new is told.
+# its lid shut, sleeps unsaid. With none ready, this machine may be the
+# one cut off, so nothing is told unless every network its node probes
+# for it reads reached and no two machines down were last heard within
+# minutes of each other; where it can't tell, as when a realm doesn't
+# answer, nothing new is told.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches, each
