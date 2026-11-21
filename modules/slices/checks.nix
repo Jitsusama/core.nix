@@ -244,9 +244,9 @@
       ((graphical.config.systemd.user.slices.background.sliceConfig.CPUQuota or null) == "800%");
 
   # A woken drawing thread of Joel's Chrome or Slack runs sooner under load
-  # when it asks for a short slice, so the sorter has them ask, in his apps'
+  # when it asks for a short slice, so the sorter has them ask, in his programs'
   # slice only: an agent's asking would run sooner beside his.
-  joels-apps-ask-short-slices =
+  joels-programs-ask-short-slices =
     let
       sorter = graphical.config.systemd.user.services.jobs-sorter.serviceConfig;
       # The word after each of a flag's appearances, as the unit quotes it.
@@ -256,7 +256,7 @@
           lib.drop 1 (lib.splitString " ${flag} " sorter.ExecStart)
         );
     in
-    holds "joels-apps-ask-short-slices"
+    holds "joels-programs-ask-short-slices"
       "Joel's Chrome or Slack don't ask for a short slice, so their drawing threads wait longer under load, or another slice's programs ask too."
       (
         after "--quick" == [ (lib.escapeShellArg "app.slice") ]

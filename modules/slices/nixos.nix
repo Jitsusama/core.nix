@@ -817,8 +817,8 @@ in
             "jobs.slice/jobs-timed.slice"
             # Joel's Chrome and Slack ask for a half-millisecond slice, so a
             # woken drawing thread runs sooner under load. An agent's Chrome
-            # that moves itself into his apps' slice goes back to jobs
-            # earlier in the same pass, so it isn't asked.
+            # that moves itself into his programs' slice is judged by what
+            # started it, so it isn't asked.
             "--quick"
             "app.slice"
             "--quick-name"

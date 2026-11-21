@@ -1,21 +1,34 @@
-//! Has the threads of Joel's own apps named by `--quick-name`, under a
+//! Has the threads of Joel's own programs named by `--quick-name`, under a
 //! `--quick` cgroup, ask the scheduler for a short slice. The kernel's
 //! EEVDF scheduler gives a thread woken behind others a deadline one slice
 //! after it becomes eligible, so a shorter slice puts a woken drawing
-//! thread ahead sooner. Under full load on 20 November, with his Chrome's
-//! and Slack's threads asking for half a millisecond against the default
-//! two, their worst 1% of waits for a processor fell, at every load, from
-//! 2.6 to 0.5 ms (Chrome) and 1.1 to 0.5 ms (Slack) under 30 loaded, and
-//! from 8.8 to 4.1 ms and 28.2 to 0.25 ms at 60 and over.
+//! thread ahead sooner. On 20 November, with every thread of his Chrome
+//! and Slack asking for half a millisecond against the default two, in an
+//! hour of alternating quarters, their worst 1% of waits for a processor
+//! fell from 1.6 to 0.45 ms (Chrome) and 0.74 to 0.26 ms (Slack) under a
+//! load of 30, and from 4.6 to 1.1 ms and 17.7 to 0.59 ms at 60 and over;
+//! between, Slack's was about even, 0.62 against 0.52 ms.
 //!
 //! A slice is inherited by the threads and processes a thread starts, so
 //! once a process's threads ask, what it starts after asks too. A thread
-//! the app puts on another policy loses its slice, so each is read again
-//! every few passes, and asked again if it lost it. Only ordinary and
-//! batch threads ask: a real-time thread has no slice, and an idle one
-//! runs only when nothing else would. Each keeps its nice, which the app
+//! the program puts on another policy loses its slice, so each is read
+//! again every few passes, and asked again if it lost it. Only ordinary
+//! and batch threads ask: a real-time thread has no slice, and an idle one
+//! runs only when nothing else would. Each keeps its nice, which Chrome
 //! sets to lower a hidden tab, and asks without privilege, since every
 //! process here is the account's own.
+//!
+//! Only Joel's own ask. An agent's Chrome moves itself into his programs'
+//! slice as his does, and the sorter sends back only one started from
+//! jobs, so a program is his only when what started its first process
+//! there is his user manager, his session, or another of his programs,
+//! never a terminal or a pi session, where agents work. A program of the
+//! name that isn't his is given the kernel's default back, so a slice it
+//! inherited goes. A terminal's own programs don't ask either: the sorter
+//! moves a terminal's busy work to jobs, where a short slice would run
+//! beside his. A program whose starter has ended is judged by his user
+//! manager, which takes it in, so it counts as his. Taking the flags away
+//! leaves the slices asked until each program restarts.
 
 use std::ffi::{c_int, c_long, c_uint};
 use std::fs;
@@ -25,8 +38,8 @@ use std::path::Path;
 use crate::real_time;
 
 /// Looked for on every fifth pass, as real time is: a new thread asks at
-/// once from the one that started it, so only a thread the app moved to
-/// another policy and back waits these few seconds.
+/// once from the one that started it, so only a thread the program moved
+/// to another policy and back waits these few seconds.
 pub const EVERY: u32 = 5;
 
 /// The slice asked for, in nanoseconds: half a millisecond, the one
@@ -47,6 +60,9 @@ const SYS_SCHED_SETATTR: c_long = 274;
 #[cfg(target_arch = "aarch64")]
 const SYS_SCHED_GETATTR: c_long = 275;
 
+/// How far up a program's own processes its starter is looked for.
+const DEEPEST: usize = 64;
+
 /// A thread's scheduling attributes, as the kernel's `struct sched_attr`
 /// lays them out.
 #[repr(C)]
@@ -64,22 +80,28 @@ pub struct Attr {
     util_max: u32,
 }
 
+// The kernel's second version of the struct is 56 bytes; one laid out
+// otherwise would be read as other fields, or refused.
+const _: () = assert!(size_of::<Attr>() == 56, "sched_attr is 56 bytes");
+
 unsafe extern "C" {
     fn syscall(number: c_long, ...) -> c_long;
 }
 
-/// What a thread holding `got` asks for instead, or none when it already
-/// asks for the short slice or isn't an ordinary or batch thread. Its
-/// policy, nice and reset-on-fork are kept; the rest is the kernel's.
-pub fn asked(got: &Attr) -> Option<Attr> {
-    if !matches!(got.policy, SCHED_OTHER | SCHED_BATCH) || got.runtime == SLICE_NS {
+/// What a thread holding `got` is set to so it asks for `slice`, zero
+/// being the kernel's default, or none when it already does or isn't an
+/// ordinary or batch thread. Its policy, nice and reset-on-fork are kept;
+/// the rest is the kernel's.
+fn wanted(got: &Attr, slice: u64) -> Option<Attr> {
+    let default = slice == 0 && got.runtime != SLICE_NS;
+    if !matches!(got.policy, SCHED_OTHER | SCHED_BATCH) || got.runtime == slice || default {
         return None;
     }
     Some(Attr {
         policy: got.policy,
         flags: got.flags & SCHED_FLAG_RESET_ON_FORK,
         nice: got.nice,
-        runtime: SLICE_NS,
+        runtime: slice,
         ..Attr::default()
     })
 }
@@ -110,24 +132,112 @@ fn set(tid: c_int, attr: &Attr) -> io::Result<()> {
     }
 }
 
-/// Has one thread ask for the short slice; whether it had to.
-fn ask_one(tid: c_int) -> io::Result<bool> {
-    let Some(wanted) = asked(&get(tid)?) else {
-        return Ok(false);
-    };
-    set(tid, &wanted)?;
-    Ok(true)
+/// What asking one thread came to.
+#[derive(Debug, PartialEq)]
+enum Asked {
+    /// It already asked for that slice, or can't ask.
+    No,
+    /// It asks now.
+    Yes,
+    /// The kernel took the call but doesn't hold the slice, as one older
+    /// than fair slices does.
+    Unheard,
 }
 
-/// Has every thread of the processes named `names` under `dir` ask for
-/// the short slice, saying how many had to. A process or thread that left
-/// meanwhile is no loss; anything else is said once.
-pub fn ask(dir: &Path, names: &[String], warned: &mut bool) {
-    for pid in real_time::processes_under(dir) {
+/// Has one thread ask for `slice`.
+fn ask_one(tid: c_int, slice: u64) -> io::Result<Asked> {
+    let Some(attr) = wanted(&get(tid)?, slice) else {
+        return Ok(Asked::No);
+    };
+    set(tid, &attr)?;
+    if slice == 0 || get(tid)?.runtime == slice {
+        Ok(Asked::Yes)
+    } else {
+        Ok(Asked::Unheard)
+    }
+}
+
+/// Whether a process's name, as the kernel gives it, is one of `names`.
+fn named(comm: &str, names: &[String]) -> bool {
+    names.iter().any(|name| name == comm.trim_end_matches('\n'))
+}
+
+/// Whether a scope or service, the last part of a cgroup, is one of the
+/// windows' own, a terminal's or a pi session's, by its `windows` prefix.
+fn a_window(cgroup: &str, windows: &[String]) -> bool {
+    let unit = cgroup.rsplit('/').next().unwrap_or(cgroup);
+    windows
+        .iter()
+        .any(|prefix| unit.starts_with(prefix.as_str()))
+}
+
+/// Whether a program is Joel's to ask, from its own cgroup and the one of
+/// what started its first process outside its own, both as
+/// /proc/<pid>/cgroup gives them below the user manager's.
+fn his(quick: &str, own: &str, starter: &str, windows: &[String]) -> bool {
+    let programs = format!("/{}/", quick.trim_matches('/'));
+    let from_his = starter == "/init.scope"
+        || starter == "/session.slice"
+        || starter.starts_with("/session.slice/")
+        || starter.starts_with(&programs);
+    from_his && !a_window(own, windows) && !a_window(starter, windows)
+}
+
+/// The cgroup of what started a program's first process: up through its
+/// parents of the same name, to the first of another.
+fn starter(pid: u32, names: &[String], manager: &str) -> Option<String> {
+    let mut at = pid;
+    for _ in 0..DEEPEST {
+        let parent = crate::parse_stat(&fs::read_to_string(format!("/proc/{at}/stat")).ok()?)?.ppid;
+        if parent == 0 {
+            return None;
+        }
+        let comm = fs::read_to_string(format!("/proc/{parent}/comm")).ok()?;
+        if !named(&comm, names) {
+            return crate::cgroup_of(parent, manager);
+        }
+        at = parent;
+    }
+    None
+}
+
+/// Where and whom to ask.
+pub struct Asking<'a> {
+    /// The cgroup asked in, below the user manager's, as the flag names it.
+    pub quick: &'a str,
+    /// Its directory.
+    pub dir: &'a Path,
+    /// The user manager's cgroup.
+    pub manager: &'a str,
+    /// The programs that ask.
+    pub names: &'a [String],
+    /// The windows' scope prefixes, whose programs never ask.
+    pub windows: &'a [String],
+}
+
+/// Has every thread of Joel's programs named in `asking` ask for the short
+/// slice, and gives any other of the name the default back, saying how
+/// many had to. Whether the kernel held every slice asked. A process or
+/// thread that left meanwhile is no loss; anything else is said once.
+pub fn ask(asking: &Asking, warned: &mut bool) -> bool {
+    let mut heard = true;
+    for pid in real_time::processes_under(asking.dir) {
         let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
-        if !names.iter().any(|name| name == comm.trim()) {
+        if !named(&comm, asking.names) {
             continue;
         }
+        // One whose parents can't be read is left as it is this pass.
+        let (Some(own), Some(from)) = (
+            crate::cgroup_of(pid, asking.manager),
+            starter(pid, asking.names, asking.manager),
+        ) else {
+            continue;
+        };
+        let slice = if his(asking.quick, &own, &from, asking.windows) {
+            SLICE_NS
+        } else {
+            0
+        };
         let Ok(entries) = fs::read_dir(format!("/proc/{pid}/task")) else {
             continue;
         };
@@ -137,9 +247,10 @@ pub fn ask(dir: &Path, names: &[String], warned: &mut bool) {
             .filter_map(Result::ok)
             .filter_map(|entry| entry.file_name().to_str()?.parse::<c_int>().ok())
         {
-            match ask_one(tid) {
-                Ok(true) => asked += 1,
-                Ok(false) => {}
+            match ask_one(tid, slice) {
+                Ok(Asked::Yes) => asked += 1,
+                Ok(Asked::No) => {}
+                Ok(Asked::Unheard) => heard = false,
                 Err(error) if error.raw_os_error() == Some(ESRCH) => {}
                 Err(error) => failed = Some(error),
             }
@@ -147,7 +258,9 @@ pub fn ask(dir: &Path, names: &[String], warned: &mut bool) {
         // A name is the program's own to choose, so one that holds a
         // newline can't start a journal line of its own.
         let comm = comm.trim().escape_debug();
-        if asked > 0 {
+        if asked > 0 && slice == 0 {
+            eprintln!("Gave {asked} threads of {comm} ({pid}), not Joel's, the default slice.");
+        } else if asked > 0 {
             eprintln!(
                 "Asked {asked} threads of {comm} ({pid}) for a {} µs slice.",
                 SLICE_NS / 1000
@@ -159,7 +272,11 @@ pub fn ask(dir: &Path, names: &[String], warned: &mut bool) {
             eprintln!("Couldn't have {comm} ({pid}) ask for a short slice: {error}");
             *warned = true;
         }
+        if !heard {
+            break;
+        }
     }
+    heard
 }
 
 #[cfg(test)]
@@ -181,12 +298,16 @@ mod tests {
         }
     }
 
+    fn windows() -> Vec<String> {
+        vec!["kitty-".to_owned(), "mycelium-pi-".to_owned()]
+    }
+
     #[test]
     fn an_ordinary_thread_asks_and_keeps_its_nice() {
-        let wanted = asked(&ordinary(5, 2_000_000)).expect("an ordinary thread asks");
-        assert_eq!(wanted.runtime, SLICE_NS, "it asks for the short slice");
-        assert_eq!(wanted.nice, 5, "a hidden tab's nice is kept");
-        assert_eq!(wanted.policy, SCHED_OTHER, "its policy is kept");
+        let got = wanted(&ordinary(5, 2_000_000), SLICE_NS).expect("an ordinary thread asks");
+        assert_eq!(got.runtime, SLICE_NS, "it asks for the short slice");
+        assert_eq!(got.nice, 5, "a hidden tab's nice is kept");
+        assert_eq!(got.policy, SCHED_OTHER, "its policy is kept");
     }
 
     #[test]
@@ -195,9 +316,9 @@ mod tests {
             policy: SCHED_BATCH,
             ..ordinary(-8, 2_000_000)
         };
-        let wanted = asked(&got).expect("a batch thread asks");
+        let got = wanted(&got, SLICE_NS).expect("a batch thread asks");
         assert_eq!(
-            (wanted.policy, wanted.nice),
+            (got.policy, got.nice),
             (SCHED_BATCH, -8),
             "batch, nice -8 kept"
         );
@@ -209,16 +330,20 @@ mod tests {
             flags: SCHED_FLAG_RESET_ON_FORK | 0x60,
             ..ordinary(0, 2_000_000)
         };
-        let wanted = asked(&got).expect("it asks");
+        let got = wanted(&got, SLICE_NS).expect("it asks");
         assert_eq!(
-            wanted.flags, SCHED_FLAG_RESET_ON_FORK,
+            got.flags, SCHED_FLAG_RESET_ON_FORK,
             "only reset-on-fork is kept"
         );
     }
 
     #[test]
     fn one_already_asking_asks_nothing() {
-        assert_eq!(asked(&ordinary(0, SLICE_NS)), None, "already short");
+        assert_eq!(
+            wanted(&ordinary(0, SLICE_NS), SLICE_NS),
+            None,
+            "already short"
+        );
     }
 
     #[test]
@@ -228,13 +353,81 @@ mod tests {
                 policy,
                 ..ordinary(0, 2_000_000)
             };
-            assert_eq!(asked(&got), None, "policy {policy} asks nothing");
+            assert_eq!(wanted(&got, SLICE_NS), None, "policy {policy} asks nothing");
         }
+    }
+
+    #[test]
+    fn only_the_short_slice_is_given_back() {
+        let back = wanted(&ordinary(4, SLICE_NS), 0).expect("the short slice goes");
+        assert_eq!(
+            (back.runtime, back.nice),
+            (0, 4),
+            "the default, its nice kept"
+        );
+        assert_eq!(
+            wanted(&ordinary(0, 3_000_000), 0),
+            None,
+            "a slice the program chose is its own"
+        );
+    }
+
+    #[test]
+    fn a_name_is_matched_whole_without_its_newline() {
+        let names = ["chrome".to_owned(), "slack".to_owned()];
+        assert!(
+            named("chrome\n", &names),
+            "the kernel's newline is no part of it"
+        );
+        assert!(
+            !named("chromedriver\n", &names),
+            "a longer name is another program"
+        );
+        assert!(!named("Slack\n", &names), "names are matched as given");
+    }
+
+    #[test]
+    fn a_program_started_by_his_manager_session_or_programs_is_his() {
+        let own = "/app.slice/app-com.google.Chrome-20682.scope";
+        for starter in [
+            "/init.scope",
+            "/session.slice/niri.service",
+            "/app.slice/app-launcher.scope",
+        ] {
+            assert!(his("app.slice", own, starter, &windows()), "from {starter}");
+        }
+    }
+
+    #[test]
+    fn a_program_an_agent_or_a_window_started_is_not_his() {
+        let own = "/app.slice/app-com.google.Chrome-7.scope";
+        for starter in [
+            "/agents.slice/pi-host-work-attended.service",
+            "/jobs.slice/jobs-work.slice/work-3.scope",
+            "/app.slice/kitty-12-0.scope",
+            "/app.slice/mycelium-pi-4.scope",
+            "/app.slicex/app-a.scope",
+        ] {
+            assert!(
+                !his("app.slice", own, starter, &windows()),
+                "from {starter}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_terminals_own_program_is_not_his_to_ask() {
+        let own = "/app.slice/kitty-12-0.scope";
+        assert!(
+            !his("app.slice", own, "/init.scope", &windows()),
+            "a terminal's"
+        );
     }
 
     /// A thread of its own, niced as a hidden tab is, asks for the short
     /// slice through the kernel, keeps its nice, and a thread it starts
-    /// afterwards inherits the slice.
+    /// afterwards inherits the slice. On a kernel that holds no fair
+    /// slice, or in a build run at idle policy, it says so instead.
     #[test]
     fn a_thread_asks_through_the_kernel_and_what_it_starts_inherits() {
         let (tell, heard) = mpsc::channel();
@@ -244,8 +437,9 @@ mod tests {
             let tid = unsafe { gettid() };
             let mut got = get(tid).expect("its own attributes read");
             got.nice = 3;
+            got.runtime = 0;
             set(tid, &got).expect("it lowers its own nice");
-            assert!(ask_one(tid).expect("it asks"), "it had to ask");
+            let outcome = ask_one(tid, SLICE_NS).expect("it asks");
             let (child_tell, child_heard) = mpsc::channel();
             let (child_done, child_finish) = mpsc::channel::<()>();
             let child = thread::spawn(move || {
@@ -258,19 +452,28 @@ mod tests {
             let child_attr = get(child_tid);
             child_done.send(()).ok();
             child.join().expect("its child ends");
-            tell.send((get(tid).expect("read again"), child_attr))
+            tell.send((outcome, get(tid).expect("read again"), child_attr))
                 .expect("heard");
             finish.recv().ok();
         });
-        let (own, child) = heard.recv().expect("the thread answers");
+        let (outcome, own, child) = heard.recv().expect("the thread answers");
         done.send(()).ok();
         worker.join().expect("the thread ends");
-        assert_eq!(own.runtime, SLICE_NS, "it holds the short slice");
         assert_eq!(own.nice, 3, "it keeps its nice");
-        assert_eq!(
-            child.expect("its child read").runtime,
-            SLICE_NS,
-            "its child inherits"
-        );
+        match outcome {
+            Asked::Yes => {
+                assert_eq!(own.runtime, SLICE_NS, "it holds the short slice");
+                assert_eq!(
+                    child.expect("its child read").runtime,
+                    SLICE_NS,
+                    "its child inherits"
+                );
+            }
+            Asked::Unheard => assert_ne!(own.runtime, SLICE_NS, "unheard means not held"),
+            Asked::No => assert!(
+                !matches!(own.policy, SCHED_OTHER | SCHED_BATCH),
+                "only a thread that can't ask asks nothing"
+            ),
+        }
     }
 }
