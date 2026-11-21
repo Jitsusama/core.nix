@@ -483,15 +483,26 @@ QtObject {
         // Only the empty workspace it found takes the kept name, and only
         // while unnamed: the last with windows may be one Joel named.
         const emptied = { id: 9 };
+        const mine = { id: 9, name: "MINE" };
         expect("the kept name goes only to the empty, unnamed workspace found",
             [Reopening.keptName({ name: "REEF" }, emptied, emptied),
                 Reopening.keptName({ name: "REEF" }, { id: 4 }, emptied),
                 Reopening.keptName({ name: "REEF" }, { id: 4, name: "MINE" }, null),
-                Reopening.keptName({ name: "REEF" }, { id: 9, name: "MINE" },
-                    { id: 9, name: "MINE" }),
+                Reopening.keptName({ name: "REEF" }, mine, mine),
                 Reopening.keptName({ join: 5 }, emptied, emptied),
                 Reopening.keptName(null, emptied, emptied)],
             ["REEF", "", "", "", "", ""]);
+        // One sent by name to a workspace on another screen than it was
+        // kept on stays there, or placing it would pull it off again.
+        expect("one on the workspace named as kept holds there, on any screen",
+            [Reopening.onNamed({ output: "DP-4", workspaceName: "KELP" },
+                { id: 5, name: "KELP", output: "eDP-1" }),
+                Reopening.onNamed({ output: "DP-4", workspaceName: "KELP" },
+                    { id: 6, name: "REEF", output: "DP-4" }),
+                Reopening.onNamed({ output: "DP-4" }, { id: 7, output: "DP-4" }),
+                Reopening.onNamed({ workspaceName: "" }, { id: 8, name: "" }),
+                Reopening.onNamed(null, { id: 5, name: "KELP" })],
+            [true, false, false, false, false]);
         // One handed over while Reopen Them All already holds it, or has
         // begun it, joins nothing, or two pis would write one log.
         const asked = id => ({ one: { id } });

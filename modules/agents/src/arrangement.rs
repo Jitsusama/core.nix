@@ -47,7 +47,7 @@ pub const STILL: Duration = Duration::from_secs(2);
 /// (modules/systemd/nixos.nix), and a hosted session's viewer stays open
 /// through its host's stop of up to 150 s (modules/pi/host.nix), so a
 /// window gone for longer was closed while the boot ran on: after the
-/// 10:05 restart on 2026-11-21, five sessions whose windows had been
+/// 10:05 restart on 2026-11-21, six sessions whose windows had been
 /// closed hours before came back in windows.
 pub const CLOSED_FOR: Duration = Duration::from_secs(180);
 
@@ -206,6 +206,17 @@ pub struct Windowless {
     /// Those whose window can't be said to be closed by hand, so their
     /// places stay as they are.
     pub unsure: HashSet<String>,
+    /// Every session the node has said, wherever and however it stands,
+    /// so one it hasn't, as before its sessions are heard, keeps its mark.
+    pub heard: HashSet<String>,
+}
+
+/// A session's id, as pi's presence says it.
+fn id_of(one: &Session) -> Option<String> {
+    one.presence()
+        .and_then(|presence| presence.get("session"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 /// The addresses whose window windows.rs couldn't tell from another's.
@@ -244,7 +255,10 @@ pub fn unwindowed<'a>(
         .filter_map(|one| Some((one["address"].as_str()?, one["kitty"]["within"].as_str()?)))
         .collect();
     let untold = untold_of(paired);
+    let sessions: Vec<Session> = sessions.collect();
     let running: Vec<Session> = sessions
+        .iter()
+        .copied()
         .filter(|one| one.here() && one.lives() == Lives::Running)
         .collect();
     let shown = |one: &Session| {
@@ -264,22 +278,21 @@ pub fn unwindowed<'a>(
         .filter(|one| shown(one))
         .map(terminal)
         .collect();
-    let mut seen = Windowless::default();
+    let mut seen = Windowless {
+        heard: sessions.iter().filter_map(id_of).collect(),
+        ..Windowless::default()
+    };
     for one in running
         .iter()
         .filter(|one| !shown(one) && !untold.contains(one.address()))
     {
-        let Some(id) = one
-            .presence()
-            .and_then(|presence| presence.get("session"))
-            .and_then(Value::as_str)
-        else {
+        let Some(id) = id_of(one) else {
             continue;
         };
         if lit.contains(&terminal(one)) {
-            seen.closed.insert(id.to_owned());
+            seen.closed.insert(id);
         } else {
-            seen.unsure.insert(id.to_owned());
+            seen.unsure.insert(id);
         }
     }
     seen
@@ -574,6 +587,12 @@ mod tests {
         one
     }
 
+    /// A pairing in the kitty whose socket is `unix:@kitty-<pid>`.
+    fn in_kitty(mut one: Value, pid: &str) -> Value {
+        one["kitty"] = json!({"id": "1", "within": format!("unix:@kitty-{pid}")});
+        one
+    }
+
     fn session(address: &str, id: &str, standing: &str, under: &str) -> Value {
         json!({"key": format!("session:{address}"), "standing": standing, "here": true,
                "presence": {"addresses": [address], "session": id, "orchestratedBy": under}})
@@ -701,16 +720,62 @@ mod tests {
             away,
         ];
         let paired = [
-            json!({"address": "SHOWN", "window": "window:7"}),
-            json!({"address": "SHUT", "window": null}),
-            json!({"address": "LAPSED", "window": "window:44"}),
+            in_kitty(json!({"address": "SHOWN", "window": "window:7"}), "5"),
+            in_kitty(json!({"address": "SHUT", "window": null}), "5"),
+            in_kitty(json!({"address": "LAPSED", "window": "window:44"}), "5"),
             untold("UNTOLD"),
         ];
+        let seen = unwindowed(records.iter().map(Session), &paired, &desk);
         assert_eq!(
-            unwindowed(records.iter().map(Session), &paired, &desk).closed,
+            seen.closed,
             HashSet::from(["s-shut".to_owned(), "s-lapsed".to_owned()]),
             "one with no window paired, or one niri no longer lists; never one shown, parked, \
              ended or elsewhere, nor one whose window can't be told from another's"
+        );
+        assert_eq!(
+            seen.heard,
+            [
+                "s-shown", "s-shut", "s-lapsed", "s-parked", "s-ended", "s-untold", "s-away"
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<HashSet<_>>(),
+            "every session the node said is heard, however it stands"
+        );
+    }
+
+    #[test]
+    fn plain_pis_are_told_apart_by_the_kitty_drawing_them() {
+        let (windows, workspaces, screens) = desk_parts();
+        let desk = Desk {
+            windows: &windows,
+            workspaces: &workspaces,
+            screens: &screens,
+        };
+        // NAMELESS is shown with no kitty said, which windows.rs never
+        // pairs, so it lights no terminal for BARE, whose kitty is unknown.
+        let records = [
+            session("SHOWN", "s-shown", "running", ""),
+            session("SHUT", "s-shut", "running", ""),
+            session("OTHER", "s-other", "running", ""),
+            session("NAMELESS", "s-nameless", "running", ""),
+            session("BARE", "s-bare", "running", ""),
+        ];
+        let paired = [
+            in_kitty(json!({"address": "SHOWN", "window": "window:7"}), "5"),
+            in_kitty(json!({"address": "SHUT", "window": null}), "5"),
+            in_kitty(json!({"address": "OTHER", "window": null}), "9"),
+            json!({"address": "NAMELESS", "window": "window:9"}),
+        ];
+        let seen = unwindowed(records.iter().map(Session), &paired, &desk);
+        assert_eq!(
+            (seen.closed, seen.unsure),
+            (
+                HashSet::from(["s-shut".to_owned()]),
+                HashSet::from(["s-other".to_owned(), "s-bare".to_owned()]),
+            ),
+            "a pi gone from a kitty still drawing another was closed by hand; one whose kitty \
+             draws none, or that no kitty is known for, may have gone with it"
         );
     }
 
@@ -727,8 +792,8 @@ mod tests {
             session("LAPSED", "s-lapsed", "running", ""),
         ];
         let paired = [
-            json!({"address": "SHUT", "window": null}),
-            json!({"address": "LAPSED", "window": "window:44"}),
+            in_kitty(json!({"address": "SHUT", "window": null}), "5"),
+            in_kitty(json!({"address": "LAPSED", "window": "window:44"}), "5"),
         ];
         assert_eq!(
             unwindowed(records.iter().map(Session), &paired, &desk).closed,
@@ -760,22 +825,21 @@ mod tests {
         ];
         let own = json!({"address": "OWN", "window": "window:3",
                          "kitty": {"id": "1", "within": "unix:@kitty-5"}});
+        let crashed = unwindowed(records.iter().map(Session), &[own.clone()], &desk);
         assert_eq!(
-            unwindowed(records.iter().map(Session), &[own.clone()], &desk),
-            Windowless {
-                closed: HashSet::new(),
-                unsure: HashSet::from(["s-reef".to_owned(), "s-kelp".to_owned()]),
-            },
+            (crashed.closed, crashed.unsure),
+            (
+                HashSet::new(),
+                HashSet::from(["s-reef".to_owned(), "s-kelp".to_owned()]),
+            ),
             "every window one terminal drew gone at once is that terminal gone, though \
              another's still shows"
         );
         let kelp = json!({"address": "KELP", "window": "window:7"});
+        let shut = unwindowed(records.iter().map(Session), &[own, kelp], &desk);
         assert_eq!(
-            unwindowed(records.iter().map(Session), &[own, kelp], &desk),
-            Windowless {
-                closed: HashSet::from(["s-reef".to_owned()]),
-                unsure: HashSet::new(),
-            },
+            (shut.closed, shut.unsure),
+            (HashSet::from(["s-reef".to_owned()]), HashSet::new()),
             "one viewer gone while another of that terminal's shows was closed by hand"
         );
     }
@@ -841,8 +905,8 @@ mod tests {
             "boots": {"this": {"s-shut": {"column": 4, "closed": 1_000},
                                "s-last": {"column": 5}}}}));
         let unsure = Windowless {
-            closed: HashSet::new(),
             unsure: HashSet::from(["s-shut".to_owned(), "s-last".to_owned()]),
+            ..Windowless::default()
         };
         let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
         let first = kept.kept("this", "", Map::new(), Vec::new(), &unsure, 2_000);
@@ -856,6 +920,89 @@ mod tests {
             gone.boots["this"],
             json!({"s-last": {"column": 5}}),
             "one marked while others showed is let go when its time comes"
+        );
+    }
+
+    #[test]
+    fn a_window_shown_again_leaves_the_rest_its_terminal_lost_unsure() {
+        let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-reef": {"column": 1}, "s-kelp": {"column": 2}}}}));
+        let both = HashSet::from(["s-reef".to_owned(), "s-kelp".to_owned()]);
+        let crashed = Windowless {
+            unsure: both.clone(),
+            heard: both.clone(),
+            ..Windowless::default()
+        };
+        let kelp_back = Windowless {
+            closed: HashSet::from(["s-reef".to_owned()]),
+            heard: both.clone(),
+            ..Windowless::default()
+        };
+        let kelp = || Map::from_iter([("s-kelp".to_owned(), json!({"column": 3}))]);
+        let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+        let first = kept.kept("this", "", Map::new(), Vec::new(), &crashed, 1_000);
+        let second = first.kept("this", "", kelp(), Vec::new(), &kelp_back, 2_000);
+        assert_eq!(
+            second.boots["this"]["s-reef"].get("closed"),
+            None,
+            "one whose window went with its whole terminal isn't taken as closed by hand when \
+             another of that terminal's is opened again"
+        );
+        let later = second.kept("this", "", kelp(), Vec::new(), &kelp_back, 2_000 + grace);
+        assert!(
+            later.boots["this"].get("s-reef").is_some(),
+            "so its place stays"
+        );
+        let reef_shown = Map::from_iter([
+            ("s-reef".to_owned(), json!({"column": 1})),
+            ("s-kelp".to_owned(), json!({"column": 3})),
+        ]);
+        let heard = Windowless {
+            heard: both,
+            ..Windowless::default()
+        };
+        let shown = later.kept("this", "", reef_shown, Vec::new(), &heard, 3_000);
+        let shut = shown.kept("this", "", kelp(), Vec::new(), &kelp_back, 4_000);
+        assert_eq!(
+            shut.boots["this"]["s-reef"]["closed"],
+            json!(4_000),
+            "once shown again, closing it by hand marks it"
+        );
+    }
+
+    #[test]
+    fn a_mark_stands_for_one_the_node_hasnt_said() {
+        let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-shut": {"column": 4, "closed": 1_000}}}}));
+        let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+        let unheard = Windowless::default();
+        assert_eq!(
+            kept.kept("this", "", Map::new(), Vec::new(), &unheard, 2_000)
+                .boots["this"],
+            kept.boots["this"],
+            "a keep before the node's sessions are heard leaves each mark as it was"
+        );
+        assert_eq!(
+            kept.kept("this", "", Map::new(), Vec::new(), &unheard, 1_000 + grace)
+                .boots["this"],
+            json!({}),
+            "and one comes due all the same"
+        );
+    }
+
+    #[test]
+    fn one_with_no_place_now_leaves_the_restored_boots_place_to_stand() {
+        let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {}, "last": {"s-float": {"column": 2}}}}));
+        let now = Map::from_iter([
+            ("s-float".to_owned(), json!({"unplaced": true})),
+            ("s-new".to_owned(), json!({"unplaced": true})),
+        ]);
+        let after = kept.kept("this", "last", now, Vec::new(), &Windowless::default(), 0);
+        assert_eq!(
+            after.boots["this"],
+            json!({"s-new": {"unplaced": true}}),
+            "one the boot being restored placed keeps going back there, rather than home"
         );
     }
 
@@ -880,7 +1027,7 @@ mod tests {
             "boots": {"this": {"s-shut": {"column": 4}, "s-ended": {"column": 5}}}}));
         let shut = Windowless {
             closed: HashSet::from(["s-shut".to_owned()]),
-            unsure: HashSet::new(),
+            ..Windowless::default()
         };
         let at = 1_000_000;
         let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
@@ -926,7 +1073,10 @@ mod tests {
             "",
             Map::new(),
             Vec::new(),
-            &Windowless::default(),
+            &Windowless {
+                heard: HashSet::from(["s-shut".to_owned()]),
+                ..Windowless::default()
+            },
             at + 1,
         );
         assert_eq!(

@@ -551,7 +551,7 @@ ShellRoot {
         // nowhere got windows.
         expect("each says the way it came",
             Sessions.lastBoot.every(Reopening.satHere)
-            && Sessions.apart.every(one => one.way !== undefined),
+            && Sessions.apart.every(one => one.way !== undefined && !Reopening.satHere(one)),
             JSON.stringify(Sessions.toReopen.map(one => [one.id, one.way])));
         expect("the boot they're of, which places are kept by",
             Sessions.restoring.boot === "an-earlier-boot", JSON.stringify(Sessions.restoring));

@@ -1127,8 +1127,11 @@ Singleton {
         const found = Places.whereBack(entry.at, beside);
         const where = found.make ? Object.assign({}, found,
             { output: found.output ?? entry.at.output }) : found;
+        // One sent to a workspace by its kept name holds there, though
+        // that workspace stands on another screen than the one kept.
         const holds = entry.quiet === true && !where.make ? workspace.id === where.join
-            : Places.holds(where, { workspace, column }, beside);
+            : where.make && Reopening.onNamed(entry.at, workspace)
+                || Places.holds(where, { workspace, column }, beside);
         // One that holds on a screen standing in for its own, gone as it
         // opened, only stands there: it hasn't landed, so settling places
         // it again once its screen is back. Taken as landed, two sessions

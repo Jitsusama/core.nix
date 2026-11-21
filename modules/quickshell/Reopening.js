@@ -170,6 +170,13 @@ function namedBack(at, workspaces) {
     return named ? { join: named.id } : { name };
 }
 
+// Whether a window on `workspace`, niri's, sits where its place `at` sent
+// it by name (namedBack), on whatever screen that workspace is now, so
+// placing it moves it no further.
+function onNamed(at, workspace) {
+    return Boolean(at?.workspaceName) && workspace?.output === at.output;
+}
+
 // How long a session started without a window is taken as begun, though
 // its pi hasn't said so yet, in milliseconds: nothing on screen says it
 // started, so Reopen Them All pressed again meanwhile would begin a second
