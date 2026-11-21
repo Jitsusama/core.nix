@@ -12299,10 +12299,26 @@ Scope {
     onRowsChanged: {
         if (homeHeld)
             keepHome();
+        fitOpen();
     }
     onRowSizesChanged: {
         if (homeHeld)
             keepHome();
+        fitOpen();
+    }
+
+    // An open card keeps the height it opened at, so its rows never jump
+    // as Joel reads them, but a screen that shrinks under it (a dock, a
+    // new scale, a smaller output taking focus) fits it again to as many
+    // of home's rows as now fit, or it stands taller than the screen: the
+    // net's Networks card stood 493.5 tall, its top 53 above a screen 388
+    // high (2026-11-19 and 20). Only as the room drops below it, so a
+    // screen that grows under it leaves it as it stands until it closes.
+    // Before an opening has found home, the room alone, which its find
+    // sizes again.
+    function fitOpen() {
+        if ((open || opening) && tall > listRoom)
+            tall = homeKept.length > 0 ? sizedFor(homeKept) : Math.floor(listRoom);
     }
 
     function keepHome() {

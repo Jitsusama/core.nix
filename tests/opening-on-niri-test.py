@@ -589,6 +589,51 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
         shell.as_account("niri msg output winit scale 1")
 
 
+def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
+    """Open at one scale and shrunk under it to a larger, the card refits inside the screen.
+
+    The card keeps the height it opened at, so its rows never jump as Joel reads them, and a
+    screen that shrank under it (a dock, a new scale, a smaller output taking focus) left it
+    taller than the screen: Networks' card stood 493.5 tall, its top 53 above a screen 388 high
+    (the net, 2026-11-19 and 20, at d1061758 and ed3c8438). It refits only as the room drops
+    below it, so a screen that grows under it leaves it as it stands until it closes.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    settled(shell)
+    before = shell.showing()["card"]
+    since = shell.mark()
+    shell.as_account("niri msg output winit scale 2")
+    try:
+        shell.launcher_until(lambda shown: shown["card"]["screen"] < before["screen"])
+        try:
+            shell.launcher_until(
+                lambda shown: (
+                    0 <= shown["card"]["top"]
+                    and shown["card"]["foot"] <= shown["card"]["screen"]
+                    and shown["restsOnARow"]
+                    and shown["cut"] == []
+                )
+            )
+        except AssertionError as missed:
+            card = shell.showing()["card"]
+            failed = f"open at 1 and shrunk to 2, the card ran off the screen: {card}"
+            raise AssertionError(failed) from missed
+        fitted = shell.showing()["card"]
+        warned = shell.log.read_text(errors="replace")[since:].splitlines()
+        looped = [line for line in warned if "Binding loop" in line]
+        assert not looped, f"refitting, it looped: {looped}"
+        shell.as_account("niri msg output winit scale 1")
+        shell.launcher_until(lambda shown: shown["card"]["screen"] > fitted["screen"])
+        grown = shell.showing()["card"]
+        assert grown["foot"] - grown["top"] == fitted["foot"] - fitted["top"], (
+            f"the screen grew under it and the card grew with it: {fitted} to {grown}"
+        )
+    finally:
+        shell.as_account("niri msg output winit scale 1")
+        shell.close_launcher()
+
+
 def test_a_chord_into_a_place_finds_no_home_first(shell: Shell) -> None:
     """Opened into a place by its chord, the launcher searches the place alone, not home first.
 
