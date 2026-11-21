@@ -162,21 +162,20 @@ fn a_picture_alone_is_a_figure_and_one_among_words_stays_in_its_line() {
 }
 
 #[test]
-fn a_page_ends_with_its_mark_after_its_last_word() {
+fn a_page_ends_with_its_mark_on_a_line_of_its_own() {
     let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
     let walk = |markdown: &str| walked(&world, markdown);
     let words = walk("First.\n\n---\n\nLast words.\n");
     assert!(words.contains("#rule()"), "{words}");
+    let before = words.trim_end().strip_suffix("#the-end()");
     assert!(
-        words
-            .trim_end()
-            .ends_with("#\"Last words.\"#h(0.3em)#the-end]"),
+        before.is_some_and(|before| before.trim_end().ends_with("#\"Last words.\"]")),
         "{words}"
     );
     let code = walk("Words.\n\n```\ncode\n```\n");
-    assert!(code.trim_end().ends_with("#par[#the-end]"), "{code}");
+    assert!(code.trim_end().ends_with("\n#the-end()"), "{code}");
     assert_eq!(code.matches("#the-end").count(), 1, "{code}");
-    assert!(!walk("").contains("#the-end]"), "an empty page has no end");
+    assert!(!walk("").contains("#the-end"), "an empty page has no end");
 }
 
 #[test]

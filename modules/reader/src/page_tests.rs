@@ -310,6 +310,74 @@ fn a_line_holding_a_key_steps_one_line_as_any_other() {
 }
 
 #[test]
+fn a_line_all_of_code_steps_one_line_as_any_other() {
+    // The mono's capitals stand at their own height, not the words', so a
+    // line wrapped inside a long piece of code, with no words on it, once
+    // stepped its own distance and put every line after it off the grid.
+    let command = "nix-offload there --here-when-idle . checks.x86_64-linux.reader-sets-its-pages";
+    let markdown = format!(
+        "{OPENING}Run `{command} {command} {command}` to check it, in a paragraph that ends at Omega.\n"
+    );
+    let (pitch, lines) = baselines("code-lines", &markdown, "opening", "Omega");
+    let steps = steps(pitch, &lines);
+    assert!(steps.len() >= 6, "too few lines: {steps:?}");
+    assert!(
+        steps.iter().all(|s| *s == 100 || *s == 150),
+        "a line of code stepped its own distance: {steps:?}"
+    );
+}
+
+/// Each piece of text the page draws, with the family of the face it's
+/// drawn in, stepping into every group it's set in.
+fn faces_of(frame: &typst::layout::Frame, out: &mut Vec<(String, String)>) {
+    for (_, item) in frame.items() {
+        match item {
+            typst::layout::FrameItem::Group(group) => faces_of(&group.frame, out),
+            typst::layout::FrameItem::Text(text) => {
+                out.push((text.text.to_string(), text.font.info().family.clone()));
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn an_emoji_is_drawn_in_the_colour_face_and_keeps_its_line() {
+    let markdown = format!(
+        "{OPENING}A party 🎉, a thumb 👍🏽, a flag 🇨🇦, a coder 👩\u{200d}💻 and a warning ⚠\u{fe0f} sit in a line, an arrow → and a mark ™ stay words, in a paragraph long enough to wrap, before it ends at Omega.\n"
+    );
+    let (pitch, lines) = baselines("emoji", &markdown, "opening", "Omega");
+    let steps = steps(pitch, &lines);
+    assert!(steps.len() >= 4, "too few lines: {steps:?}");
+    assert!(
+        steps.iter().all(|s| *s == 100 || *s == 150),
+        "an emoji's taller face grew its line: {steps:?}"
+    );
+    let mut faces = Vec::new();
+    faces_of(&page_of("emoji-faces", &markdown).frame, &mut faces);
+    let face = |wanted: &str| {
+        faces
+            .iter()
+            .find(|(text, _)| text.contains(wanted))
+            .map(|(_, family)| family.clone())
+    };
+    for emoji in ["🎉", "👍🏽", "🇨🇦", "👩\u{200d}💻", "⚠\u{fe0f}"] {
+        assert_eq!(
+            face(emoji).as_deref(),
+            Some("Noto Color Emoji"),
+            "{emoji} is drawn in another face: {faces:?}"
+        );
+    }
+    for words in ["→", "™"] {
+        assert_ne!(
+            face(words).as_deref(),
+            Some("Noto Color Emoji"),
+            "{words} is drawn as a picture: {faces:?}"
+        );
+    }
+}
+
+#[test]
 fn a_theme_whose_words_give_no_strong_weight_still_sets_a_strong_span() {
     let theme = crate::theme::Theme::read(
         &serde_json::json!({"levels": {"words": {"strong": null}}}).to_string(),
@@ -407,6 +475,23 @@ fn a_tables_lines_land_on_the_pitch() {
     assert!(
         steps.iter().all(|s| *s == 100 || *s == 150),
         "a line in a table steps one pitch or, past a hairline, one and a half: {steps:?}"
+    );
+}
+
+#[test]
+fn what_follows_a_table_stands_where_it_would_after_words() {
+    let markdown = format!(
+        "{OPENING}| Alpha | Beta |\n|---|---|\n| one | two |\n\n## Section\n\nWords.\n\n| Gamma | Delta |\n|---|---|\n| three | four |\n\nOmega.\n"
+    );
+    let (pitch, lines) = baselines("after-table", &markdown, "opening", "Omega");
+    let steps = steps(pitch, &lines);
+    // A table two lines from the words either side, its rows one and a
+    // half apart past their hairline, and a section three lines under it
+    // as under words.
+    assert_eq!(
+        steps[steps.len() - 7..],
+        [200, 150, 300, 100, 200, 150, 200],
+        "a table two lines off, a section three under it: {steps:?}"
     );
 }
 

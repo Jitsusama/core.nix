@@ -22,6 +22,7 @@
   makeDesktopItem,
   makeWrapper,
   nerd-fonts,
+  noto-fonts-color-emoji,
   pkg-config,
   runCommand,
   rustPlatform,
@@ -48,7 +49,10 @@ let
   # the serif as its two variable files, upright and italic, which the page
   # sets at its own axes, without the static cuts that share their family
   # name (../fonts/system.nix says why); and the mono face as the terminal
-  # has it, without its narrower and proportional cuts.
+  # has it, without its narrower and proportional cuts. Beside them the
+  # colour emoji the desktop draws its emoji in, so a page's are the same
+  # pictures as everywhere else.
+  emoji = faces "noto-color-emoji" noto-fonts-color-emoji "noto/NotoColorEmoji.ttf";
   faces =
     name: package: glob:
     runCommand name { } ''
@@ -58,6 +62,7 @@ let
   fonts = [
     (faces "fraunces-variable" fraunces "truetype/*'[SOFT,WONK,opsz,wght].ttf'")
     (faces "monaspace-xenon" nerd-fonts.monaspace "opentype/NerdFonts/*/MonaspiceXeNerdFont-*.otf")
+    emoji
   ];
 in
 (callPackage ../cargo/dependencies.nix { }).build rustPlatform
@@ -105,9 +110,12 @@ in
       libxkbcommon
       wayland
     ];
-    # The page's tests set pages, which takes MiTeX.
+    # The page's tests set pages, which takes MiTeX, and draw emoji, which
+    # takes their face. Their words are Typst's own faces, the same
+    # whatever the theme's are.
     preCheck = ''
       export READER_MITEX=${mitex}
+      export READER_FONTS=${emoji}
     '';
     desktopItems = [
       (makeDesktopItem {

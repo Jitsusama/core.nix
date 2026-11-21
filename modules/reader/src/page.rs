@@ -144,9 +144,30 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // gives no strong weight keep Typst's.
 #set strong(delta: level.words.strong - level.words.text.weight) if level.words.strong != none
 #show strong: set text(fill: ink.strong)
+// Where the capitals of the words around stand: a line's top edge, which
+// every run on it keeps, so a line steps one pitch whatever face its runs
+// are in. Read in a context outside what it's for, since inside a show
+// rule on raw the face is raw's own.
+#let line-top() = measure([H]).height
 // Code at its level, in the colour of what's around it and with no box.
 // Typst's raw takes 0.8 em of its own, so the size is said whole.
 #show raw: it => context text(..level.code.text, fill: text.fill, it)
+// Code in a line stands at the line's top edge rather than the mono's
+// lower capitals, so a line that is all code steps as far as one of
+// words.
+#let code(s) = context text(top-edge: line-top(), raw(s))
+// An emoji in the colour face, whichever face the words around it are
+// set in, as the desktop draws them: a pictograph drawn as one, with
+// its skin tone, its joined people and its keycap, or a flag's pair of
+// letters. A pictograph that reads as text unless asked, an arrow or a
+// trademark, stays in the words' face. Its top edge is the line's, so
+// its taller box never pushes its line down.
+#let emoji-face = "Noto Color Emoji"
+#let dressed = "\\p{Emoji_Modifier}?\\x{FE0F}?[\\x{E0020}-\\x{E007F}]*"
+#let pictograph = "(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic}\\x{FE0F})" + dressed
+#let joined = "(?:\\x{200D}\\p{Extended_Pictographic}\\x{FE0F}?" + dressed + ")*"
+#let emoji = regex("\\p{Regional_Indicator}{2}|[#*0-9]\\x{FE0F}?\\x{20E3}|" + pictograph + joined)
+#show emoji: it => context text(font: emoji-face, top-edge: line-top(), bottom-edge: "baseline", it)
 // Headings, set by lines: more room above a heading than below it, so it
 // belongs to what follows. A section sits a line over its first block, as
 // a group's heading sits a pitch above its first thing, nearer it than one
@@ -233,8 +254,19 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   })
 }
 #let rule() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, fleuron))
-// The page ends with a small accent lozenge after its last word.
-#let the-end = box(polygon(fill: ink.accent, (0pt, 0.21em), (0.15em, 0pt), (0.3em, 0.21em), (0.15em, 0.42em)))
+// The page ends with its mark, centred under its last block as a break
+// stands between two: the accent lozenge, as tall as the capitals, between
+// two hairlines in the rule's ink that thin away from it. It reads as the
+// end at a glance and never as a break, which is stars.
+#let the-end() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, {
+  let (diamond, hair, air, thick) = (0.72 * cap, 2.5em, 0.5em, 0.9pt)
+  let wide = 2 * (hair + air) + diamond
+  box(width: wide, height: cap, {
+    place(left + horizon, polygon(fill: ink.rule, (0pt, 0pt), (hair, -thick / 2), (hair, thick / 2)))
+    place(center + horizon, polygon(fill: ink.accent, (0pt, cap / 2), (diamond / 2, 0pt), (diamond, cap / 2), (diamond / 2, cap)))
+    place(right + horizon, polygon(fill: ink.rule, (0pt, -thick / 2), (hair, 0pt), (0pt, thick / 2)))
+  })
+}))
 // A key, as code is set, framed: the frame stands outside the line's room,
 // over the capitals and under the descenders, so a line with one still
 // steps one line.
@@ -316,11 +348,13 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let details(body) = block(body)
 #let rule-ink = ink.rule
 #let sheet-gap = 18pt
-// A table's first baseline stands two lines under the one before it and
-// the next two lines under its last, past each row's half-line inset, so
-// the page's grid runs through it.
+// A table's first baseline stands two lines under the one before it,
+// past its first row's half-line inset, so the page's grid runs through
+// it. It ends on its last baseline, as a paragraph does, the last row's
+// inset taken back, so what follows it, a heading as much as words,
+// stands where its own room puts it from a baseline.
 #let sheet-air = 2 * pitch - (1.5 * pitch + cap) / 2
-#let sheet(numeric: (), words: (), head: none, rows: ()) = block(above: sheet-air, below: sheet-air, layout(size => {
+#let sheet(numeric: (), words: (), head: none, rows: ()) = block(above: sheet-air, below: 2 * pitch - cap, layout(size => {
   let n = words.len()
   let all = if head == none { rows } else { (head,) + rows }
   let cell(row, i) = row.at(i, default: [])
@@ -400,6 +434,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     let spread-out = fit(size.width + 2 * spread)
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
+  v(-half)
 }))
 // A code block: the listing's mono on a 15 pt line, its words on the
 // column the paragraphs start at, as a quote's are. Its sunken ground

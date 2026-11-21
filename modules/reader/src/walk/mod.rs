@@ -364,23 +364,10 @@ pub fn picture_kind(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Ends the page with its mark: after the last word when the last block is
-/// a paragraph, else on a line of its own.
+/// Ends the page with its mark, centred on a line of its own under the
+/// last block whatever that block is, as a break stands between two.
 fn end_with_its_mark(out: &mut String) {
-    let last = out.rfind("\n// block\n").unwrap_or(0);
-    let body = out[last..]
-        .split_once(")\n")
-        .map_or("", |(_, body)| body)
-        .trim_end();
-    let words = body.starts_with("#par[") || body.starts_with("#lede[");
-    if words
-        && body.ends_with(']')
-        && let Some(close) = out.rfind(']')
-    {
-        out.insert_str(close, "#h(0.3em)#the-end");
-    } else {
-        out.push_str("\n#par[#the-end]\n");
-    }
+    out.push_str("\n#the-end()\n");
 }
 
 /// A figure's caption as Typst content: empty when there are no words.
@@ -562,7 +549,7 @@ impl Walker<'_> {
                     self.equation(&text_of(node), style == "display");
                 } else {
                     let t = text_of(node);
-                    let _ = write!(self.out, "#raw({})", literal(&t));
+                    let _ = write!(self.out, "#code({})", literal(&t));
                 }
             }
             "pre" => self.pre(node),
