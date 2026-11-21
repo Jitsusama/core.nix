@@ -1312,8 +1312,10 @@ const UPLINK_LOOKS_EVERY: Duration = Duration::from_secs(1);
 /// net's go ahead of sessions'. A run that finds every turn taken takes
 /// whichever frees first: on 21 November sixteen runs waited over half an
 /// hour on two held turns, each on the one its process id chose, while
-/// the third stood free. When none can be had, the copy goes on without
-/// one.
+/// the third stood free. A turn whose file can't be opened is left out,
+/// so the rest still keep copies to a few at once. When none can be had,
+/// or a lock fails other than by being held, the copy goes on without
+/// one, since waiting could then never end.
 fn uplink_turn(rank: Rank) -> Option<fs::File> {
     if rank == Rank::First {
         return None;
@@ -1330,25 +1332,45 @@ fn uplink_turn(rank: Rank) -> Option<fs::File> {
             .open(turns.join(format!("uplink-{turn}")))
             .ok()
     };
-    let mut turns: Vec<fs::File> = (1..=UPLOADS).map(open).collect::<Option<_>>()?;
-    let mut free = || {
-        let at = turns.iter().position(|turn| turn.try_lock().is_ok())?;
-        Some(turns.swap_remove(at))
-    };
-    if let Some(held) = free() {
-        return Some(held);
+    let mut turns: Vec<fs::File> = (1..=UPLOADS).filter_map(open).collect();
+    if turns.is_empty() {
+        return None;
     }
-    eprintln!(
-        "nix-offload: {UPLOADS} copies already go up from this machine, so this waits its turn \
-         to send"
-    );
-    // flock waits on one file alone, so a turn freed elsewhere is found by
-    // looking again.
-    loop {
-        thread::sleep(UPLINK_LOOKS_EVERY);
-        if let Some(held) = free() {
-            return Some(held);
+    let taken = turns.len();
+    let mut free = || {
+        for at in 0..turns.len() {
+            match turns[at].try_lock() {
+                Ok(()) => return Ok(Some(turns.swap_remove(at))),
+                Err(fs::TryLockError::WouldBlock) => {}
+                Err(fs::TryLockError::Error(error)) => return Err(error),
+            }
         }
+        Ok(None)
+    };
+    let mut said = false;
+    loop {
+        match free() {
+            Ok(Some(held)) => return Some(held),
+            Ok(None) if said => {}
+            Ok(None) => {
+                eprintln!(
+                    "nix-offload: {} copies already go up from this machine, so this waits its \
+                     turn to send",
+                    taken
+                );
+                said = true;
+            }
+            Err(error) => {
+                eprintln!(
+                    "nix-offload: a turn to send couldn't be locked ({error}), so this sends \
+                     without one"
+                );
+                return None;
+            }
+        }
+        // flock waits on one file alone, so a turn freed elsewhere is found
+        // by looking again.
+        thread::sleep(UPLINK_LOOKS_EVERY);
     }
 }
 

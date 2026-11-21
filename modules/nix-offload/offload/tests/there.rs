@@ -563,6 +563,46 @@ fn a_copy_up_waits_its_turn_while_three_go_up() {
 }
 
 #[test]
+fn a_turn_that_cant_be_opened_leaves_the_rest_to_wait_on() {
+    // Every turn once had to open for any to be waited on, so one
+    // unopenable file sent every copy up at once.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let turns = folder.path().join("nix-offload-there");
+    fs::create_dir_all(turns.join("uplink-2")).unwrap();
+    let held: Vec<fs::File> = [1, 3]
+        .into_iter()
+        .map(|turn| {
+            let file = fs::File::create(turns.join(format!("uplink-{turn}"))).unwrap();
+            file.lock().unwrap();
+            file
+        })
+        .collect();
+    let letting_go = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(3));
+        drop(held);
+    });
+    let began = std::time::Instant::now();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .output()
+        .unwrap();
+    let took = began.elapsed();
+    letting_go.join().unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("2 copies already go up"), "{said}");
+    assert!(
+        took >= Duration::from_secs(3),
+        "sent before a turn was free: {took:?}"
+    );
+}
+
+#[test]
 fn a_copy_up_takes_whichever_turn_frees_first() {
     // On 21 November sixteen runs waited on two held turns for over half an
     // hour while the third stood free, since each waited on one turn its
