@@ -27,6 +27,27 @@ pub struct Pass {
     pub turns: u64,
     /// Whether any log has more left to read than this pass took.
     pub behind: bool,
+    /// Whether a log read is still waiting on the parent it names.
+    pub waiting: bool,
+}
+
+impl Pass {
+    /// Adds what one log's read took, saying whether that log still waits
+    /// on its parent.
+    fn add(&mut self, found: &Found, one: Result<Pass, String>) -> bool {
+        match one {
+            Ok(one) => {
+                self.bytes += one.bytes;
+                self.turns += one.turns;
+                self.behind |= one.behind;
+                one.waiting
+            }
+            Err(error) => {
+                eprintln!("reading {}: {error}", found.path.display());
+                false
+            }
+        }
+    }
 }
 
 /// A log to read, the kind of work it is where an agent's it is, and the
@@ -251,15 +272,17 @@ pub fn logs(dir: &Path) -> Vec<PathBuf> {
 /// over, so the logs after it are still read; it's tried again next pass.
 pub fn scan(history: &History, logs: &[Found], reading: Reading) -> Result<Pass, String> {
     let mut total = Pass::default();
+    let mut waiting = Vec::new();
     for found in logs {
-        match scan_one(history, found, reading) {
-            Ok(one) => {
-                total.bytes += one.bytes;
-                total.turns += one.turns;
-                total.behind |= one.behind;
-            }
-            Err(error) => eprintln!("reading {}: {error}", found.path.display()),
+        if total.add(found, scan_one(history, found, reading)) {
+            waiting.push(found);
         }
+    }
+    // A copy passed over as waiting on its parent is checked again once
+    // every log has been read, so a parent read later in the same scan
+    // never leaves this pass counting its turns under the copy as well.
+    for found in waiting {
+        total.add(found, scan_one(history, found, reading));
     }
     Ok(total)
 }
@@ -303,7 +326,10 @@ fn line_end(file: &mut std::fs::File, from: u64, slice: u64) -> Result<Option<u6
 /// log's header is the other machine's to write, so for a session of this
 /// machine's it drops what was counted only when it began when this
 /// machine's own log says, as a copy of it does: a header naming another
-/// time can't take what this machine counted.
+/// time can't take what this machine counted. Brought machines are
+/// trusted among themselves, as their folders are: a session only
+/// elsewhere takes its start from whichever log was last read from its
+/// start, so no start held could guard one from another.
 fn check_copies(
     history: &History,
     found: &Found,
@@ -385,7 +411,10 @@ fn scan_slice(
         carry = Carry::default();
     }
     if metadata.len() == offset {
-        return Ok(Pass::default());
+        return Ok(Pass {
+            waiting: !carry.copies_known,
+            ..Pass::default()
+        });
     }
     let want = (metadata.len() - offset).min(slice);
     let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
@@ -455,6 +484,7 @@ fn scan_slice(
         bytes: used as u64,
         turns,
         behind: offset + (used as u64) < metadata.len() && want == slice,
+        waiting: !carry.copies_known,
     })
 }
 
@@ -776,14 +806,17 @@ mod tests {
         let history = History::memory();
         scan(&history, &logs(), Reading::default()).unwrap();
         std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
-        for _ in 0..3 {
+        // The parent is read after the fork in the same scan, which has
+        // to count it once by its end, not a scan later.
+        for scans in 1..=3 {
             scan(&history, &logs(), Reading::default()).unwrap();
+            assert_eq!(
+                turns(&history),
+                2,
+                "a fork of a brought session counted its parent's turn again after {scans} \
+                 scans"
+            );
         }
-        assert_eq!(
-            turns(&history),
-            2,
-            "a fork of a brought session counted its parent's turn again"
-        );
     }
 
     // A brought log's header is the other machine's to write, so naming a

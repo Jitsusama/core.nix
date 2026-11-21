@@ -108,7 +108,10 @@ feed speaks.
   and a session two other machines both carry on then takes the machine
   of whichever log was read last.
   A brought folder is trusted as fully as
-  this machine's own: its refusals, budgets and workspaces count here.
+  this machine's own: its refusals, budgets and workspaces count here,
+  and its headers can drop what another brought machine's logs were
+  counted for; only this machine's counts are guarded. A copy cleared
+  away while it still waits on its parent keeps the parent's turns.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each
   turn's budget is worked out: the budget claiming its provider, since
