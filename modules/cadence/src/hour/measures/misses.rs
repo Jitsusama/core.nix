@@ -18,9 +18,11 @@ use crate::{axes, command, write_whole};
 
 mod held;
 mod running;
+mod symbiosis;
 
 pub use held::{BLIND, HELD, held};
 pub use running::{UNRUN, UNSEEN, hosts_started};
+pub use symbiosis::symbiosis;
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -188,6 +190,18 @@ pub fn checked(
     checkouts: &[String],
     switches: &str,
 ) -> io::Result<Measure> {
+    judged(text, folder, checkouts, switches, open_misses)
+}
+
+/// What `then` makes of the lines of `text`, each shaped as a miss, once
+/// their checks are judged as `checked` judges the misses'.
+fn judged<T>(
+    text: &str,
+    folder: &Path,
+    checkouts: &[String],
+    switches: &str,
+    then: impl FnOnce(&str, &Checkouts, &Judged<'_>) -> T,
+) -> io::Result<T> {
     let mut repos = Checkouts::from([
         ("core".to_owned(), folder.join("core.git")),
         ("harness".to_owned(), axes::landings::harness_mirror()),
@@ -215,7 +229,7 @@ pub fn checked(
         unrun: &unrun,
         here: here.trim(),
     };
-    Ok(open_misses(text, &repos, &judged))
+    Ok(then(text, &repos, &judged))
 }
 
 /// The changes the misses' checks name now that have merged: only these

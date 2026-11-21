@@ -94,6 +94,16 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         checkouts,
         &mut kept.fetched,
     )?;
+    // The work system's findings count against their owners, and one
+    // naming none is the orchestrator's to assign.
+    measures.push(measures::symbiosis(
+        &state_home.join("pi/agentic-harness.pi"),
+        &folder,
+        checkouts,
+        &fs::read_to_string(state_home.join("integration/switches.jsonl")).unwrap_or_default(),
+        now,
+        to.unwrap_or_default(),
+    ));
     for m in measures
         .iter_mut()
         .filter(|m| !whole && m.class == Class::Miss)
