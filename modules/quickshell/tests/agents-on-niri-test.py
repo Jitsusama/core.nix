@@ -2920,6 +2920,31 @@ def test_the_first_letter_typed_at_home_makes_no_rows_after_one_arrived_while_sh
     assert made == 0, f"typing at home made {made} of Agents' rows: {made_lately(shell)}"
 
 
+def test_a_step_out_of_now_makes_none_of_agents_rows_as_home_is_held(shell: Shell) -> None:
+    """- out of Now, opened by its chord, makes none of Agents' rows as home is held.
+
+    Joel's - out of Now held 72, 53 and 47 ms, Agents making 6 rows within each, where every
+    other step out held 2 to 4 ms with none (his journal, 2026-11-21 13:13). Home names what
+    Agents holds from the daemon's rows, never from rows made of them, so a row made as it's held
+    is made for nobody (Y2YBTS, 2026-11-21 [8c306245]). The step's line counts them, as
+    stepHolding says.
+    """
+    shell.launcher_closed()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
+    made_settled(shell)
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    holding = json.loads(shell.as_account(shell.ipc("laidOut")))["stepHolding"]
+    lately = made_lately(shell)
+    shell.close_launcher()
+    assert holding is not None, "- out of Now counted nothing as it held"
+    made = holding["rows"].get("agents", 0)
+    assert made == 0, f"- out of Now made {made} of Agents' rows as it held: {lately}"
+
+
 # How long Agents makes no row before an opening's work is taken as done: many frames.
 SETTLED = 0.5
 
