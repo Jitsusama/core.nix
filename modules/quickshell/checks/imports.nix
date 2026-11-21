@@ -273,6 +273,7 @@
     "launcher/Beneath.js"
     "launcher/Found.js"
     "launcher/Moved.js"
+    "launcher/Presented.js"
     "launcher/ReadyRows.js"
   ];
   "launcher/RealmMachines.js" = [

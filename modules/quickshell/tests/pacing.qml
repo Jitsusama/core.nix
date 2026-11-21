@@ -977,6 +977,26 @@ QtObject {
         check(failures, "and both whole while they're on",
             Presented.typedInSaid("door", "wifi:Harbour House", true),
             '"door" typed in "wifi:Harbour House"');
+        // An act's key is said bare while reports are on, as the desktop's
+        // tests read it, but a calendar's words in it still can't end the line.
+        check(failures, "an act's key is said by its verb with reports off",
+            Presented.actShown("verb:calendar:standup", false), "verb:calendar");
+        check(failures, "and bare while they're on",
+            Presented.actShown("verb:wifi-join", true), "verb:wifi-join");
+        check(failures, "its line breaks and quotes escaped",
+            Presented.actShown('verb:calendar:a "b"\nlauncher: x', true),
+            'verb:calendar:a \\"b\\"\\nlauncher: x');
+        // A daemon's error says its codes whole, being no one's words, and
+        // its words by how many letters, since they can name a row.
+        const busy = { code: "busy", refused: "WrongPassword", said: "Harbour is busy", at: 2 };
+        check(failures, "a daemon's error keeps its codes and numbers with reports off",
+            Presented.errorShown(busy, false),
+            '{"code":"busy","refused":"WrongPassword","said":"15 letters","at":2}');
+        check(failures, "and says the words of what it holds by how many letters",
+            Presented.errorShown({ code: "x", detail: { name: "Harbour" } }, false),
+            '{"code":"x","detail":"18 letters"}');
+        check(failures, "and is whole while they're on",
+            Presented.errorShown(busy, true), JSON.stringify(busy));
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

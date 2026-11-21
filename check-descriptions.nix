@@ -4435,6 +4435,10 @@
     it stands, and its drawer from what moves most to the model's identifier, leaving out what no
     node said, says how an update it was asked for ended, and how Start a Session says each machine
   '';
+  the-launcher-keeps-a-daemons-words-out-of-its-journal = ''
+    with reports off, the journal says how many letters a daemon's refusal held, not its words, for
+    an act shut and refused, one withheld, what an act asks besides, and words typed left unanswered
+  '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
     miss only where letters were typed and nothing picked, and the file gains a close's line alone

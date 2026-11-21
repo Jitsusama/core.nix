@@ -179,6 +179,7 @@
         mkdir -p launcher runtime/daemons && chmod -R 700 runtime
         ${copied [
           "Daemon.qml"
+          "Options.qml"
           "Words.qml"
           "launcher/Machine.qml"
           "launcher/Provider.qml"
