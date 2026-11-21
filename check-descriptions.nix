@@ -2934,7 +2934,7 @@
     quits, builds nothing an extension asks of it once stopped and tells every screen of a
     theme change, while ordinary pi keeps its process exits
   '';
-  pi-hosts-run-each-conversation-apart = ''
+  pi-conversations-run-apart = ''
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's

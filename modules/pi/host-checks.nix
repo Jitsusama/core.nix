@@ -289,7 +289,7 @@ in
   # host's environment and its inspector shut, among the agents, never
   # restarted by systemd or watched, forgotten once ended, and left be by a
   # switch, a host's restart or a command the kernel kills for memory.
-  pi-hosts-run-each-conversation-apart =
+  pi-conversations-run-apart =
     let
       pi = "${pkgs.emptyDirectory}/pi";
       node = "${pkgs.emptyDirectory}/node";
@@ -352,7 +352,7 @@ in
         && lib.elem ''"PI_CODEMODE_MAX_WORKERS=16"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment;
     in
-    holds "pi-hosts-run-each-conversation-apart"
+    holds "pi-conversations-run-apart"
       "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory ceiling, or a Mac gets one."
       (
         runsApart "attended"
