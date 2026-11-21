@@ -172,19 +172,33 @@ def test_a_sessions_window_is_told_nothing_of_the_kittys_unit(desktop: Desktop) 
     """
     machine = desktop.machine
     desktop.as_account("systemctl --user start sessions-kitty")
-    machine.wait_until_succeeds(
-        desktop.in_session("systemctl --user is-active sessions-kitty"), timeout=STARTING
-    )
     runtime = f"/run/user/{desktop.as_account('id -u').strip()}"
+    # The case before it switches back, which restarts the kitty, and the unit is active
+    # before kitty listens: a launch asked of no socket yet fails unseen.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"test -S {runtime}/pi-sessions/kitty.sock"), timeout=STARTING
+    )
     said = f"{runtime}/in-a-session.env"
     title = "Session told"
-    desktop.as_account(f"rm -f {said}")
+    desktop.as_account(f"rm -f {said} {said}.pid")
     try:
         desktop.as_account(
             f"niri msg action spawn -- {IN_SESSIONS} --os-window-class kitty --title '{title}'"
-            f" sh -c 'env > {said}.part && mv {said}.part {said} && exec sleep infinity'"
+            f" sh -c 'echo $$ > {said}.pid && env > {said}.part && mv {said}.part {said}"
+            " && exec sleep infinity'"
         )
         machine.wait_until_succeeds(desktop.in_session(f"test -s {said}"), timeout=STARTING)
+        # kitty puts each window in a scope of its own over the user bus, never by what
+        # its environment says, so a window told nothing of the unit still leaves its cgroup.
+        cgroup = f"/proc/$(cat {said}.pid)/cgroup"
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -q '/kitty-[0-9]*-[0-9]*[.]scope$' {cgroup}"),
+            timeout=STARTING,
+        )
+        scoped = desktop.as_account(f"cat {cgroup}").strip()
+        assert "sessions-kitty.service" not in scoped, (
+            f"a session's window runs in the kitty's own unit: {scoped}"
+        )
         told = desktop.as_account(f"cat {said}").splitlines()
         assert any(line.startswith("XDG_RUNTIME_DIR=") for line in told), (
             f"the window's shell was told nothing of where it runs: {told}"
@@ -192,8 +206,10 @@ def test_a_sessions_window_is_told_nothing_of_the_kittys_unit(desktop: Desktop) 
         units = [line for line in told if line.split("=", 1)[0] in UNITS_OWN]
         assert not units, f"a session's window is told the kitty's unit: {units}"
         # Beyond the names listed, no value may name the unit, its invocation or its folder,
-        # so a variable systemd adds for a directive the unit gains later is caught too.
-        # kitty's own, which a window needs to reach it, aren't the unit's.
+        # which caught the memory and CPU pressure ones the list missed. It can't see one
+        # whose value names none of these, a number or NOTIFY_SOCKET's shared path, so a
+        # directive the unit gains (Type=notify, sockets, a watchdog) adds its variables to
+        # both lists. kitty's own, which a window needs to reach it, aren't the unit's.
         invocation = shown(desktop, "sessions-kitty", "InvocationID")["InvocationID"]
         marks = ("sessions-kitty.service", "/pi-sessions", invocation)
         named = [
@@ -206,7 +222,7 @@ def test_a_sessions_window_is_told_nothing_of_the_kittys_unit(desktop: Desktop) 
         for window in desktop.windows():
             if window["title"] == title:
                 desktop.close(window)
-        desktop.as_account(f"rm -f {said} {said}.part")
+        desktop.as_account(f"rm -f {said} {said}.part {said}.pid")
 
 
 def test_a_switch_hands_the_shell_over_once_a_slow_stop_is_done(desktop: Desktop) -> None:
