@@ -25,14 +25,25 @@ pub enum Call {
     Unknown(String),
 }
 
-/// How long `a-call-is-on` is given to answer: it answers in about 0.2 s
-/// under load, and one that hangs would leave the call running blind.
+/// How long `a-call-is-on` is given to answer: asked about this machine
+/// alone it reads only PipeWire, at most about 2 s plus a pw-dump, and one
+/// that hangs would leave the call running blind.
 const ASKING: Duration = Duration::from_secs(5);
 
-/// Asks `a-call-is-on`, which exits 0 for a call, 1 for none and 69 when
-/// it can't tell; one that doesn't answer in time can't tell either.
+/// Asks `a-call-is-on` about this machine alone, since the test call loads
+/// this machine and never the line, so a call on another of Joel's
+/// machines isn't one it could spoil, and asking the peers waits up to 5 s
+/// on a node slowed by a build.
 pub fn a_call() -> Call {
-    let mut child = match Command::new("a-call-is-on")
+    asking("a-call-is-on", &["--here"], ASKING)
+}
+
+/// Runs `program` with `args`, which exits 0 for a call, 1 for none and 69
+/// when it can't tell; one that doesn't answer within `deadline` can't
+/// tell either.
+fn asking(program: &str, args: &[&str], deadline: Duration) -> Call {
+    let mut child = match Command::new(program)
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -40,7 +51,7 @@ pub fn a_call() -> Call {
         Ok(child) => child,
         Err(error) => return Call::Unknown(format!("a-call-is-on couldn't run: {error}")),
     };
-    let until = Instant::now() + ASKING;
+    let until = Instant::now() + deadline;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -58,8 +69,8 @@ pub fn a_call() -> Call {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Call::Unknown(format!(
-                    "a-call-is-on didn't answer in {} s",
-                    ASKING.as_secs()
+                    "a-call-is-on didn't answer in {} ms",
+                    deadline.as_millis()
                 ));
             }
             Err(error) => return Call::Unknown(format!("a-call-is-on: {error}")),
@@ -165,6 +176,27 @@ mod tests {
     use serde_json::json;
 
     const MIN: u64 = 60_000;
+
+    #[test]
+    fn the_ask_reads_each_exit_and_a_late_answer_as_can_t_tell() {
+        let ask = |script: &str| asking("sh", &["-c", script], Duration::from_millis(300));
+        assert_eq!(ask("exit 0"), Call::On);
+        assert_eq!(ask("exit 1"), Call::Off);
+        assert_eq!(
+            ask("exit 69"),
+            Call::Unknown("a-call-is-on exited Some(69)".into())
+        );
+        let started = Instant::now();
+        assert_eq!(
+            ask("sleep 5"),
+            Call::Unknown("a-call-is-on didn't answer in 300 ms".into())
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a late ask was waited on for {:?}",
+            started.elapsed()
+        );
+    }
 
     fn meeting(title: &str, start: u64, end: u64) -> Value {
         json!({"key": "meeting:1", "kind": "meeting",

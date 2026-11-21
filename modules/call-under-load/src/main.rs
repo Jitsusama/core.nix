@@ -11,8 +11,8 @@
 //! lag-watch's history and the launcher's openings from the journal, to
 //! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges.
 //!
-//! It keeps out of Joel's calls: it asks `a-call-is-on`, which hears a
-//! call by its microphone, before it starts and every five seconds after,
+//! It keeps out of Joel's calls: it asks `a-call-is-on --here`, which hears
+//! a call on this machine by its microphone, before it starts and every five seconds after,
 //! and the calendar, keeping ten minutes clear of any meeting there. A run
 //! stopped or skipped writes nothing.
 //!
@@ -189,7 +189,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             return Err(
                 Failure::new(Exit::Unavailable, "whether Joel is in a call can't be told")
                     .because(why)
-                    .try_this("a-call-is-on"),
+                    .try_this("a-call-is-on --here"),
             );
         }
     }

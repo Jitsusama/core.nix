@@ -148,7 +148,8 @@ pub fn measures(
 pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::Result<()> {
     fs::create_dir_all(folder)?;
     let hour = json!({"at": at, "measures": measures});
-    let part = folder.join("hour.json.part");
+    // Named for this run, so a run by hand beside the hour's can't take it.
+    let part = folder.join(format!("hour.json.{}.part", std::process::id()));
     fs::write(&part, serde_json::to_vec_pretty(&hour)?)?;
     fs::rename(&part, folder.join("hour.json"))?;
     let figures: serde_json::Map<String, Value> = measures

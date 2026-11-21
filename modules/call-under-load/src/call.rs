@@ -194,7 +194,12 @@ pub fn run(
     let watch = Watch::start();
     sweep(runtime, "call-under-load-");
     sweep(cache, "profile-");
-    steps(chrome, page, seconds, runtime, cache, &watch).or_else(|step| match step {
+    settled(steps(chrome, page, seconds, runtime, cache, &watch), &watch)
+}
+
+/// How the call's steps ended, as the run says it.
+fn settled(steps: Result<Ended, Step>, watch: &Watch) -> Result<Ended, String> {
+    steps.or_else(|step| match step {
         Step::Stopped(ended) => Ok(ended),
         // A step the watch broke off by ending its processes fails, but
         // the call stopped for Joel's, and counts for nothing.
@@ -543,6 +548,23 @@ mod tests {
             started.elapsed()
         );
         assert!(watch.stop().is_err(), "the call didn't hear why it stopped");
+    }
+
+    #[test]
+    fn a_step_broken_off_for_joel_s_call_counts_as_stopped_and_any_other_as_failed() {
+        let broken = || Err(Step::Failed("Chrome's DevTools pipe closed".into()));
+        let watch = Watch::asking(on, Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(100));
+        assert!(
+            matches!(settled(broken(), &watch), Ok(Ended::Stopped(ref why)) if why == "Joel's call began"),
+            "a step the watch broke off read as a failed hour"
+        );
+        drop(watch);
+        let watch = Watch::asking(off, Duration::from_millis(10));
+        assert!(
+            matches!(settled(broken(), &watch), Err(ref why) if why.contains("pipe closed")),
+            "a step that failed by itself read as stopped"
+        );
     }
 
     #[test]
