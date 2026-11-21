@@ -246,6 +246,23 @@ impl Arrivals {
         }
     }
 
+    /// Takes back a move handed back unstarted, its card found looking, so
+    /// it waits on that look as one asked during a look does, its way back
+    /// kept: wpa_supplicant runs the move once the look ends. Only a move
+    /// that hadn't waited on a look already does, so looks without end
+    /// can't keep it followed. Says whether it waits.
+    pub fn waits_on_look(&mut self, card: &str, from: &str) -> bool {
+        let Some(moving) = self.moves.get_mut(card) else {
+            return false;
+        };
+        if moving.looking || moving.left.is_some() || moving.back {
+            return false;
+        }
+        moving.from = Some(from.to_owned());
+        moving.looking = true;
+        true
+    }
+
     /// Whether the card is on its way back to the point it left. Selected
     /// there alone, wpa_supplicant starts its join over, and says the card
     /// disconnected meanwhile, twice in a test, 117 and 18 ms in, before it
@@ -823,6 +840,36 @@ mod tests {
         );
         assert_eq!(arrivals.unreached(now + BACK_FOR), [], "handed back once");
         assert_eq!(arrivals.due(), None, "nothing more due");
+    }
+
+    #[test]
+    fn a_move_found_behind_a_look_as_its_second_ends_waits_on_it_once() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        let unstarted = arrivals.unreached(now + BACK_AFTER);
+
+        let waits = arrivals.waits_on_look("wlan0", DESK);
+        let due = arrivals.due();
+        let ended = now + ms(3000);
+        arrivals.looked("wlan0", ended);
+        let again = arrivals.unreached(ended + BACK_AFTER);
+        let twice = arrivals.waits_on_look("wlan0", DESK);
+
+        assert_eq!(unstarted.len(), 1, "handed back unstarted at its second");
+        assert!(waits, "found looking, it waits on the look");
+        assert_eq!(
+            due,
+            Some(now + LOOK_ENDS),
+            "due should the look's end go unheard"
+        );
+        let whys: Vec<Short> = again.iter().map(|unreached| unreached.why).collect();
+        assert_eq!(
+            whys,
+            [Short::Unstarted],
+            "handed back a second after the look, its way back kept"
+        );
+        assert!(!twice, "but waits on a look only once");
     }
 
     #[test]
