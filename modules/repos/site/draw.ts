@@ -444,7 +444,7 @@ function changeRow(change: Change): string {
 function workingIn(repository: Repository): string {
   const said = usedBriefly(repository.using);
   if (said === UNREAD) {
-    return " What its processes take hasn't been read for some minutes.";
+    return " What its processes take isn't known just now: the reading of them hasn't answered.";
   }
   return said === ""
     ? ""
