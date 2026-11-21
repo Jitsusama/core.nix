@@ -216,24 +216,23 @@ fn a_piece_wider_than_two_thirds_of_the_measure_breaks_where_it_can_and_keeps_to
     );
 }
 
-#[test]
-fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
-    // Over two thirds of a 360 pt window's measure, and under all of it,
-    // in a list twice nested, which has less room than two thirds.
-    let name = ["a-name"; 5].join("-");
+/// How a list with `name` in its fourth item sets: where the item starts
+/// across, how wide the name sets, and where the furthest line ends.
+fn set_in_a_list(name: &str, width: Width) -> (f64, f64, f64) {
     let markdown = format!("{OPENING}- One\n  - Two\n    - Three\n      - Four `{name}` here\n");
-    let dir = std::env::temp_dir().join(format!("reader-nested-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "reader-nested-{}-{}",
+        std::process::id(),
+        name.len()
+    ));
     std::fs::create_dir_all(&dir).expect("a folder");
     let file = dir.join("page.md");
     std::fs::write(&file, &markdown).expect("the file");
     let mut setter = Setter::new(file.to_str().expect("a path"));
-    let width = Width::for_window(360.0);
     setter.fit(width);
     let (page, _) = setter.set().expect("set");
     std::fs::remove_dir_all(&dir).expect("cleaned");
     let runs = crate::text::runs(&page.frame);
-    // The case is reached only when the name is wider than the list's
-    // room, from where its item's words start, but not than the measure.
     let item = runs
         .iter()
         .find(|run| {
@@ -253,6 +252,30 @@ fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
         })
         .flat_map(|run| run.chars.iter().map(|c| c.2 - c.1))
         .sum();
+    let right = runs
+        .iter()
+        .flat_map(|run| run.chars.iter().map(|c| c.2))
+        .fold(0.0, f64::max);
+    (item, name_pt, right)
+}
+
+#[test]
+fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
+    // Over two thirds of a 360 pt window's measure, and under all of it,
+    // in a list twice nested, which has less room than two thirds. The
+    // name is sized from a first setting, as the gap between the list's
+    // room and the measure is a few characters of whatever mono is set.
+    let width = Width::for_window(360.0);
+    let (item, probe_pt, _) = set_in_a_list(&"a-name".repeat(4), width);
+    let room = width.measure_pt - item;
+    let per_char = probe_pt / 24.0;
+    let wanted = (room + width.measure_pt) / 2.0 / per_char;
+    let name: String = "a-name"
+        .repeat(20)
+        .chars()
+        .take(crate::numbers::usize_of(wanted.round()))
+        .collect();
+    let (item, name_pt, right) = set_in_a_list(&name, width);
     let room = width.measure_pt - item;
     assert!(
         name_pt > room && name_pt < width.measure_pt,
@@ -263,10 +286,6 @@ fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
         format!("|run +{name}!"),
         "the name is left unboxed"
     );
-    let right = runs
-        .iter()
-        .flat_map(|run| run.chars.iter().map(|c| c.2))
-        .fold(0.0, f64::max);
     assert!(
         right <= width.measure_pt + 0.01,
         "a line runs to {right} pt, past the {} pt measure",

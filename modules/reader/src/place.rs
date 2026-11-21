@@ -239,13 +239,13 @@ pub fn letter(said: &str) -> Option<char> {
 }
 
 /// Where a file opens: the block the view's top is in, how far into it,
-/// and whether at the page's end, from the mark kept under `letter` when
-/// one is asked for, or else where it was left; and the letter asked for,
-/// when no mark is kept under it, to be said.
-pub fn opening(
-    kept: Option<&Place>,
-    letter: Option<char>,
-) -> (Option<(usize, f64, Option<f64>, bool)>, Option<char>) {
+/// how tall the block stood when kept, and whether at the page's end.
+pub type Opening = (usize, f64, Option<f64>, bool);
+
+/// Where a file opens, from the mark kept under `letter` when one is
+/// asked for, or else where it was left; and the letter asked for, when
+/// no mark is kept under it, to be said.
+pub fn opening(kept: Option<&Place>, letter: Option<char>) -> (Option<Opening>, Option<char>) {
     let left = kept.map(|place| (place.block, place.into_pt, place.block_pt, place.at_end));
     let Some(letter) = letter else {
         return (left, None);

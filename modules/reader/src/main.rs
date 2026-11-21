@@ -357,7 +357,7 @@ struct Feedback(u64);
 /// Where on the first page the view opens for a place kept, in points.
 /// Kept at the end, it opens at the end, however the window or the page
 /// has changed since: the first frame clamps it there.
-fn start_at(kept: (usize, f64, Option<f64>, bool), starts: &[(usize, f64)]) -> Option<f64> {
+fn start_at(kept: place::Opening, starts: &[(usize, f64)]) -> Option<f64> {
     let (block, into_pt, block_pt, at_end) = kept;
     if at_end {
         Some(f64::INFINITY)
@@ -382,10 +382,7 @@ type KeptMark = (char, usize, f64, Option<f64>);
 /// Where the view opens: the mark asked for, or where the file was left.
 /// A letter with no mark kept says so, as Vim does, and opens where the
 /// file was left, as a file opened plainly does.
-fn opening_at(
-    kept: Option<&place::Place>,
-    letter: Option<char>,
-) -> Option<(usize, f64, Option<f64>, bool)> {
+fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<place::Opening> {
     let (opens, unmarked) = place::opening(kept, letter);
     if let Some(letter) = unmarked {
         eprintln!("reader: E20: Mark not set: {letter}");
