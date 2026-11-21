@@ -69,11 +69,17 @@
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
+      # What's asked of the quests, one landed before the daemon starts,
+      # which What Moved says nothing of.
+      export ASKS=$TMPDIR/asks.jsonl
+      echo '{"at": "2026-11-20T10:00:00-05:00", "owner": "LAPTOP", "words": "the first",'\
+        '"landed": "2026-11-20T10:00:00-05:00"}' > $ASKS
       # The daemon follows the node the shell stands in, trying again
       # until it listens.
       ${quests} --vocabulary ${(import ../launcher/words.nix).file} \
         --node $XDG_RUNTIME_DIR/mycelium/harbour.sock \
-        --socket $XDG_RUNTIME_DIR/daemons/quests.sock &
+        --socket $XDG_RUNTIME_DIR/daemons/quests.sock \
+        --asks $ASKS --looked $TMPDIR/looked &
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';

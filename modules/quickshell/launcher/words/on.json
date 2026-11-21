@@ -697,6 +697,17 @@
       }
     },
     {
+      "id": "on:moved",
+      "in": "on",
+      "name": "What Moved",
+      "verb": "more",
+      "glyph": "agent",
+      "empty": "Nothing moved since you last looked.",
+      "said": {
+        "count": "{count} moved"
+      }
+    },
+    {
       "id": "verb:on:look:open",
       "command": "open",
       "in": "on",

@@ -93,6 +93,7 @@ Provider {
         // own, so each is read through `standing`, which makes it as it
         // stands when the launcher lists Now shut (Provider's asItStands).
         return [standing("waiting", waiting)].concat(momentAt(standing("location", location)),
+            [standing("moved", movedRow)].filter(row => row !== null),
             latelyRows(Date.now()).filter(row => !latelyInForYou(row)),
             Groups.ordered(rows).map(each => each.row));
     })
@@ -181,6 +182,13 @@ Provider {
 
         function onOpenChanged() {
             if (!provider.launcher.open) {
+                // What Moved stepped into is looked at once he's done, as
+                // it was shown as he stepped in.
+                if (provider.movedStepped) {
+                    provider.movedStepped = false;
+                    provider.source("quests")?.looked(provider.movedSeen);
+                    provider.movedSeen = [];
+                }
                 // Shut before Now woke, when it opened never left infinity,
                 // so nothing else puts Desktop back where a shut launcher
                 // keeps it (replaceLately), and the next opening would
@@ -966,6 +974,47 @@ Provider {
         targets: () => WaitingOnYou.later.map(each => provider.item(each)),
         run: () => provider.launcher?.enter(provider.laterRow)
     })))
+    // What moved for each workstream since Joel last looked, one row
+    // stepping into a row for each quest, as the quests daemon serves them
+    // (Quests.qml's moved), so he needn't ask for updates (Joel,
+    // 2026-11-16: "i ask for updatees all the time. that is a waste"). It
+    // asks nothing of him, so it stands among Now's own rows, never in For
+    // You or its count (2026-11-19: a row asking nothing comes off For
+    // You). Stepping in counts what it showed then as looked at once the
+    // launcher shuts, so no row goes while he reads, and what moved after
+    // he stepped in is said again; until then it stays, though it then
+    // holds nothing.
+    property bool movedStepped: false
+    property var movedSeen: []
+    readonly property var movedRow: whileWanted("moved", () => {
+        void source("quests")?.movedRevision;
+        const rows = source("quests")?.moved() ?? [];
+        if (rows.length === 0 && !provider.movedStepped)
+            return null;
+        const said = Words.of("on:moved").said ?? {};
+        return member({
+            key: "on:moved",
+            verb: "more",
+            stays: true,
+            name: Words.name("on:moved"),
+            glyph: Words.glyph("on:moved"),
+            hue: "muted",
+            side: ForYou.filled(said.count ?? "{count}", { count: rows.length }),
+            // A row holding parts names its members, by whole names
+            // (VKCF3Z, 2026-11-08).
+            note: rows.map(one => one.name).join(", "),
+            empty: Words.of("on:moved").empty,
+            nested: true,
+            verbs: () => rows,
+            targets: () => rows,
+            stepped: () => {
+                provider.movedStepped = true;
+                provider.movedSeen = source("quests")?.movedSeen() ?? [];
+            },
+            run: () => provider.launcher?.enter(provider.movedRow)
+        });
+    })
+
     // For You's own rows, Later and For You itself, each kept while what
     // it says reads the same: each was made anew as anything it counts
     // moved, and For You's with it all of what's on (2026-11-10). Plain,
