@@ -24,7 +24,7 @@
 //!   With neither, a window that only shows one adds [`keep::PI_FLOOR`],
 //!   once, as a window running a pi of its own keeps.
 //! - While any hold it, it keeps a hard floor of [`holds::HARD`] for each
-//!   window holding it, at most [`focus::MOST`], beside the unit's own.
+//!   viewer [`holds::shares`] gives it, beside the unit's own.
 //! - While any but the last hold it, nothing of it is written to the
 //!   disk's swap and systemd-oomd ends it last, as a held window's.
 //!
@@ -422,7 +422,7 @@ mod tests {
             wanted(
                 &own,
                 Signs {
-                    viewed,
+                    viewed: 3,
                     held: viewed,
                     current,
                     ..Signs::default()
@@ -449,7 +449,7 @@ mod tests {
         assert_eq!(
             held(0, Some(GIB)),
             64 << 20,
-            "none held keeps the unit's own"
+            "none given keeps the unit's own, however many windows Joel is at show it"
         );
     }
 
@@ -464,6 +464,7 @@ mod tests {
                 },
                 Signs {
                     viewed: 1,
+                    held: 1,
                     current: Some(current),
                     ..Signs::default()
                 },

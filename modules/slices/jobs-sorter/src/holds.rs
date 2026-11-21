@@ -3,7 +3,7 @@
 //! the user manager's runtime properties, through busctl. Which windows
 //! those are is `src/focus.rs`'s to say.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::focus::FLOOR;
@@ -84,23 +84,16 @@ pub fn hard_for(scope: &Path, pis: &[String]) -> u64 {
 
 /// How many of the units windows Joel is at show, `viewers`, one for each
 /// viewer, keep a hard floor: of the at most [`crate::focus::MOST`] held
-/// windows' hard floors, what the `pis` held hard leave, given out in the
-/// units' order. A window can hold several viewers, so counting each
-/// unit's alone would let them claim past agents.slice's.
+/// windows' hard floors, what the `pis` held hard leave, one to each
+/// viewer as listed: the window Joel is at first, then those he left
+/// latest. A window can hold several viewers, so counting each unit's
+/// alone would let them claim past agents.slice's.
 pub fn shares(pis: usize, viewers: &[String]) -> HashMap<String, usize> {
-    let mut counts = BTreeMap::new();
-    for unit in viewers {
-        *counts.entry(unit.clone()).or_insert(0) += 1;
+    let mut given = HashMap::new();
+    for unit in viewers.iter().take(crate::focus::MOST.saturating_sub(pis)) {
+        *given.entry(unit.clone()).or_insert(0) += 1;
     }
-    let mut left = crate::focus::MOST.saturating_sub(pis);
-    counts
-        .into_iter()
-        .map(|(unit, count): (String, usize)| {
-            let given = count.min(left);
-            left -= given;
-            (unit, given)
-        })
-        .collect()
+    given
 }
 
 /// Whether the cgroup at `path` sits right in agents.slice, whose own
@@ -220,6 +213,15 @@ impl Holding {
             .any(|scope| scope.file_name().is_some_and(|name| name == unit))
     }
 
+    /// How many of the scopes held keep a hard floor ([`hard_for`]),
+    /// whether wanted now or still held as a give-back fails.
+    pub fn hard(&self, pis: &[String]) -> usize {
+        self.held
+            .iter()
+            .filter(|scope| hard_for(scope, pis) > 0)
+            .count()
+    }
+
     /// Forgets the scopes that have gone.
     pub fn keep_only(&mut self, there: impl Fn(&Path) -> bool) {
         self.held.retain(|scope| there(scope));
@@ -298,12 +300,12 @@ mod tests {
             "a pi held hard leaves two for the units the windows show, however many viewers"
         );
         assert_eq!(
-            given.get("a"),
-            Some(&2),
-            "the units are given theirs in order"
+            (given.get("b"), given.get("a")),
+            (Some(&1), Some(&1)),
+            "the first viewers, of the window Joel is at and then those left latest, get theirs"
         );
         assert!(
-            shares(3, &viewers).values().all(|held| *held == 0),
+            shares(3, &viewers).is_empty(),
             "three pis held hard leave none"
         );
     }
@@ -348,6 +350,22 @@ mod tests {
             [],
             "a scope gone is nobody's to give back"
         );
+    }
+
+    #[test]
+    fn a_pi_held_hard_counts_until_it_is_given_back() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = PathBuf::from("/cg/agents.slice/mycelium-pi-1.scope");
+        let mut holding = Holding::default();
+        holding.done(&pi, true);
+        holding.done(Path::new("/cg/app.slice/app-kitty-1.scope"), true);
+        assert_eq!(
+            holding.hard(&pis),
+            1,
+            "a pi held hard counts, its window's own scope not, while a give-back fails too"
+        );
+        holding.done(&pi, false);
+        assert_eq!(holding.hard(&pis), 0, "given back, it counts no more");
     }
 
     #[test]

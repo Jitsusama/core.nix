@@ -231,7 +231,8 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     """Apps keep a hard share of memory, agents' sessions and system services a soft one.
 
-    Agents' sessions keep a hard floor only as large as the sessions' kitty's own.
+    Agents' sessions keep a hard floor as large as the sessions' kitty's own and jobs-sorter's
+    three 512M hard floors on the windows Joel is at.
     Every slice above both claims them too. system.slice claims what its
     services' floors add up to, at least those running now, so theirs hold.
     The remount that turns favordynmods on keeps memory_recursiveprot, without

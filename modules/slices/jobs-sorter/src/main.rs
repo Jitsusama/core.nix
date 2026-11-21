@@ -902,9 +902,9 @@ fn started_with(scopes: &[PathBuf]) -> Vec<(String, Vec<String>)> {
 /// niri's focus says, keeps in memory each he was at within
 /// [`focus::KEEP`], gives back each that aged out, and says which units
 /// are held. A failure is said once, and tried again on the next look.
-fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
+fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> Vec<String> {
     let Some(following) = windows.focus else {
-        return HashSet::new();
+        return Vec::new();
     };
     let now = std::time::Instant::now();
     let wanted = following.held(now);
@@ -1076,8 +1076,9 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
                 // so it's kept again from nothing once given back.
                 ranks.keeping.done(&unit, keep::Floor::Nothing);
                 match hard {
+                    Some(0) => eprintln!("Held {unit}, a window Joel is or was just at."),
                     Some(hard) => eprintln!(
-                        "Held {unit}, a window Joel is at, {} MiB of it hard.",
+                        "Held {unit}, a window Joel is or was just at, {} MiB of it hard.",
                         hard >> 20
                     ),
                     None => eprintln!("Gave back {unit}, a window Joel was just at."),
@@ -1323,7 +1324,7 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
 /// windows `held` as ones Joel is at, the windows showing each, and the
 /// orchestrators last counted. A failure is said once, and tried again on
 /// the next look.
-fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
+fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Ranks) {
     let units: Vec<PathBuf> = windows
         .under
         .iter()
@@ -1336,7 +1337,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         })
         .collect();
     let (viewers, shown) = viewers_and_shown(windows, prefix, held, &units);
-    let shares = shares(windows, held, &units, &viewers);
+    let shares = shares(ranks.holding.hard(windows.pis), &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
@@ -1454,27 +1455,11 @@ fn own_of(
 /// The units among `units` each window `held` shows, and each window
 /// shows at all, one for each viewer in it. A window showing a
 /// conversation that runs in a unit of its own gives that unit what it
-/// gives, and its host nothing.
 /// How many hard floors each of `units` keeps for the `viewers` in the
-/// windows Joel is at, `held`: the held windows' are shared out across
-/// every unit, after the pis held hard (`set_holds`), to units in
-/// agents.slice alone, whose own hard floor backs them.
-fn shares(
-    windows: &Windows,
-    held: &HashSet<String>,
-    units: &[PathBuf],
-    viewers: &[String],
-) -> HashMap<String, usize> {
-    let pis = held
-        .iter()
-        .filter(|unit| {
-            windows
-                .under
-                .iter()
-                .map(|slice| slice.join(unit))
-                .any(|scope| scope.exists() && holds::hard_for(&scope, windows.pis) > 0)
-        })
-        .count();
+/// windows Joel is at: the held windows' are shared out across every
+/// unit, after the `pis` held hard (`set_holds`), to units in agents.slice
+/// alone, whose own hard floor backs them.
+fn shares(pis: usize, units: &[PathBuf], viewers: &[String]) -> HashMap<String, usize> {
     let in_agents: Vec<String> = viewers
         .iter()
         .filter(|unit| {
@@ -1488,10 +1473,14 @@ fn shares(
     holds::shares(pis, &in_agents)
 }
 
+/// The units among `units` each window `held` shows, and each window
+/// shows at all, one for each viewer in it, in the order the windows are
+/// held. A window showing a conversation that runs in a unit of its own
+/// gives that unit what it gives, and its host nothing.
 fn viewers_and_shown(
     windows: &Windows,
     prefix: &str,
-    held: &HashSet<String>,
+    held: &[String],
     units: &[PathBuf],
 ) -> (Vec<String>, Vec<String>) {
     let names: HashSet<&str> = units
@@ -1504,10 +1493,9 @@ fn viewers_and_shown(
         })
     };
     let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
-    let viewers = windows
-        .under
+    let viewers = viewing
         .iter()
-        .flat_map(|slice| viewing.iter().map(|unit| slice.join(unit)))
+        .flat_map(|unit| windows.under.iter().map(move |slice| slice.join(unit)))
         .flat_map(|scope| joined(&scope, &joins))
         .collect();
     let shown = windows
