@@ -416,6 +416,14 @@ fn serve_notices(args: &Args) -> Result<(), Failure> {
         held.unserved(served.unserved());
         told
     };
+    // The first records, the history kept, are made before anything can ask:
+    // a watch answered on the socket, or a notice sent once the bus name is
+    // taken, between listening and this making was answered with no records
+    // at all, the history as if it were empty (bus.rs's
+    // one_done_with_a_day_ago_is_historys_row_but_no_record_the_shell_watches,
+    // failing on a builder, 2026-11-21).
+    let first = records(&mut state.lock().unwrap_or_else(PoisonError::into_inner));
+    shared.change(first, json!({}));
     let listener = serve::listen(&args.socket).map_err(|why| {
         let socket = args.socket.display();
         Failure::new(Exit::Failed, format!("notices couldn't listen on {socket}"))
@@ -428,8 +436,6 @@ fn serve_notices(args: &Args) -> Result<(), Failure> {
         changed,
     })
     .map_err(|why| Failure::new(Exit::Failed, "notices couldn't take the bus").because(why))?;
-    let first = records(&mut state.lock().unwrap_or_else(PoisonError::into_inner));
-    shared.change(first, json!({}));
     // Everything changed meanwhile is taken at once, so a burst is told
     // and written once; each burst is written as it's told, so a notice
     // that's arrived is never lost to a stop. It's written first, so a
