@@ -2099,7 +2099,7 @@ Singleton {
             const id = Places.freshId(Date.now(), Math.random);
             console.info(`sessions: ${next.one.id}'s folder, ${next.one.cwd}, is gone, so `
                 + `${quest} starts afresh in ${start}, as ${id}`);
-            reopening.queue = [Object.assign({}, next, { one: Places.afresh(next.one, start, id) })]
+            reopening.queue = [Object.assign({}, next, { back: undefined, one: Places.afresh(next.one, start, id) })]
                 .concat(reopening.queue);
             reopenNext();
         });
