@@ -570,9 +570,9 @@ in
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
-  # launcher/Collector.js, launcher/Flash.js, launcher/Pacing.js, launcher/Presented.js,
-  # launcher/Spots.js,
-  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
+  # launcher/Collector.js, launcher/Flash.js, launcher/Pacing.js,
+  # launcher/Presented.js, launcher/Spots.js, launcher/Thread.js and
+  # launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;

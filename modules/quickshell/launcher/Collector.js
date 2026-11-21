@@ -16,9 +16,12 @@ function collectorSaid(inStall, inAll) {
 
 // Where the heap stood against the collector as the opening was asked, as
 // Heap.standing says it, said after the collector's part when it took a
-// millisecond or more of the longest stall, or nothing. It's the room
-// each limit had then, not which the opening's own work went on to meet,
-// and a collection begun after the ask isn't said under way. Collections ran
+// millisecond or more of the longest stall, or nothing. It's read once
+// the opening's room is left (Heap.leaveRoom), so it's the room each
+// limit had as the opening began: outside, always the room or more; the
+// chunks, the room unless their cap holds them nearer. It isn't which
+// limit the opening's own work went on to meet, nor what the time while
+// shut left, and a collection begun after the ask isn't said under way. Collections ran
 // inside 19 of 670 of Joel's openings' stalls, 57 to 136 ms each, and
 // were most of the slowest, but which limit started them, the chunks', the
 // strings' outside the heap, or one begun while the launcher was shut,

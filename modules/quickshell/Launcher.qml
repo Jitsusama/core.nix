@@ -11117,7 +11117,7 @@ Scope {
     // once its room was left, so an opening the collector stalled says how
     // much room each limit had then (Collector.standingSaid). Read without
     // walking the heap, and kept for its own opening as it's felt
-    // (feltAskedHeap), since the next ask reads it again.
+    // (Pacing.feltBegun's `asked`), since the next ask reads it again.
     property var openAskedHeap: null
     property var openParts: ({})
     property real openWorked: 0
@@ -12890,9 +12890,9 @@ Scope {
         const listening = spansHeard;
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now(), feltClocks());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(),
+            Object.assign(feltClocks(), { asked: openAskedHeap }));
         feltCollectedFrom = feltTicks.collected;
-        feltAskedHeap = openAskedHeap;
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
@@ -12912,9 +12912,6 @@ Scope {
     // The collector's count when the opening began, so its line says what
     // collecting took of it.
     property real feltCollectedFrom: 0
-    // Where the heap stood as the opening being felt was asked, so a
-    // second ask before its line is said doesn't say its own instead.
-    property var feltAskedHeap: null
     function feltSpan(name, from) {
         if (!spansHeard)
             return;
@@ -12988,7 +12985,7 @@ Scope {
             : "";
         const collecting = Collector.collectorSaid(feltTicks.stallCollected,
             Heap.collected() - feltCollectedFrom)
-            + Collector.standingSaid(feltTicks.stallCollected, feltAskedHeap)
+            + Collector.standingSaid(feltTicks.stallCollected, feltTicks.asked)
             + Thread.said(feltTicks.stall, feltTicks.stallThread, "the stall");
         feltSpans = [];
         console.info(usable >= 0

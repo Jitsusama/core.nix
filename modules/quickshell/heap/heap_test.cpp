@@ -24,8 +24,9 @@
 // grows by a block kept, and what's freed and kept by one let go, and
 // neither is more than what's resident. And where it stands, read without a
 // walk, is where weigh() says the collector starts, and says a collection
-// under way while one is left between its slices, and none once it's ended. It exits 0 once all of it holds,
-// and otherwise 1, saying what didn't. Long because each case reads one
+// under way while one is left between its slices, and none once it's
+// ended. It exits 0 once all of it holds, and otherwise 1, saying what
+// didn't. Long because each case reads one
 // engine's heap through the same helpers, in the one program linked with
 // Qt's private engine and jemalloc as the shell is: split, each part would
 // build and link that again.

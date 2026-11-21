@@ -18,7 +18,9 @@
 // (launcher/Presented.js). A closing makes again only the spots of the
 // things whose stamp moved (launcher/Spots.js). y's flash starts its
 // time a turn after the frame that draws it, only for the newest yank
-// (launcher/Flash.js). Long because its cases
+// (launcher/Flash.js). An opening the collector stalled says where the
+// heap stood at its own ask, not a later one's (launcher/Collector.js).
+// Long because its cases
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
@@ -237,14 +239,24 @@ QtObject {
             "; the collector 30 ms of the stall, 38 of the opening");
         check(failures, "an opening the collector didn't reach says nothing of it",
             Collector.collectorSaid(0, 0.4), "");
-        const stoodAtAsk = { chunks: 300.4, collectsAt: 331.6, outside: 27.2,
-            collectsOutsideAt: 56, collecting: false };
+        // Read once the room is left, so outside has the room or more and
+        // the chunks, here, less, their cap holding them nearer.
+        const stoodAtAsk = { chunks: 300.4, collectsAt: 321.6, outside: 27.2,
+            collectsOutsideAt: 59.2, collecting: false };
         check(failures, "a stall the collector ran in says where the heap stood at the ask",
             Collector.standingSaid(30, stoodAtAsk),
-            "; at the ask, chunks 300 of 332 MB and outside 27 of 56 MB");
+            "; at the ask, chunks 300 of 322 MB and outside 27 of 59 MB");
         check(failures, "and says a collection was under way as it was asked",
             Collector.standingSaid(30, Object.assign({}, stoodAtAsk, { collecting: true })),
-            "; at the ask, chunks 300 of 332 MB and outside 27 of 56 MB, a collection under way");
+            "; at the ask, chunks 300 of 322 MB and outside 27 of 59 MB, a collection under way");
+        const stoodLater = Object.assign({}, stoodAtAsk, { chunks: 12 });
+        const carried = Pacing.feltTicked(Pacing.feltBegun(0, { asked: stoodAtAsk }), 16, pace,
+            { asked: stoodLater, collected: 0 });
+        check(failures, "an opening keeps the heap read at its own ask, not a later one's",
+            Collector.standingSaid(30, carried.asked),
+            Collector.standingSaid(30, stoodAtAsk));
+        check(failures, "and one begun with none read says nothing of the heap",
+            Collector.standingSaid(30, Pacing.feltBegun(0).asked), "");
         check(failures, "a stall the collector didn't run in says nothing of the heap",
             Collector.standingSaid(0.4, stoodAtAsk), "");
         check(failures, "nor does one with no standing read",
