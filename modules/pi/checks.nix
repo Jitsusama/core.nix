@@ -378,6 +378,18 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi runs a folder's own extensions' commands only through the
+  # exec a user extension sets, which the harness keeps in the sandbox, so a
+  # folder's extension can't run a program outside that a sandboxed command
+  # has set up.
+  pi-hosted-fences-a-folders-extensions =
+    pkgs.runCommandLocal "pi-hosted-fences-a-folders-extensions" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-fences-a-folders-extensions.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one

@@ -1,0 +1,122 @@
+A host runs a folder's own extensions' commands through the exec a user
+extension sets, and refuses them until one does.
+
+A host runs every agent command in a sandbox, but pi.exec ran outside it for
+every extension. So a folder's own extension, such as one that lints each
+file the agent writes, could run a program whose settings any sandboxed
+command can write, and those settings could run code outside the sandbox.
+
+pi.setProjectExec lets a user extension, once loaded, set how a project
+extension's exec runs; the harness sets one that runs it in the session's
+sandbox. A project extension's exec goes through it, given the folder it
+would run in, and is refused while none is set. pi names an extension's
+scope only after every extension has loaded, so while loading, one under the
+folder's own .pi, where pi installs a folder's packages, counts as the
+folder's. No extension may set it while loading, and only a user extension
+may set it at all. User and command-line extensions run commands as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -33,6 +33,7 @@
+ 	MarkdownTransformer,
+ 	MarkdownTransformerOptions,
+ 	MessageRenderer,
++	ProjectExec,
+ 	ProviderConfig,
+ 	RegisteredCommand,
+ 	ToolDefinition,
+@@ -260,6 +261,22 @@
+ 	const pendingRuntimeChanges: Array<() => void> = [];
+ 	const loadingUnsubscribers: Array<() => void> = [];
+ 	let state: "loading" | "active" | "failed" = "loading";
++	// pi-host: a host runs every agent command in a sandbox, but an extension's exec ran outside
++	// it, so a folder's own extension could run a linter whose settings, written by any sandboxed
++	// command, run code outside the sandbox. A folder's extensions now run commands through the
++	// exec a user extension sets, and are refused until one does. pi names an extension's scope
++	// only once every extension has loaded, so until then one under the folder's own .pi, where
++	// pi installs a folder's packages, counts as the folder's.
++	const runsAsProject = (): boolean => {
++		if (state !== "loading") return extension.sourceInfo.scope === "project";
++		const from = path.resolve(extension.path);
++		const within = (folder: string) => {
++			const relative = path.relative(path.resolve(folder), from);
++			const above = relative === ".." || relative.startsWith(`..${path.sep}`);
++			return !above && !path.isAbsolute(relative);
++		};
++		return within(path.join(cwd, CONFIG_DIR_NAME)) && !within(getAgentDir());
++	};
+ 	const assertActive = () => {
+ 		if (state === "failed") {
+ 			throw new Error(`Extension "${extension.path}" failed to load and its API is no longer active.`);
+@@ -422,7 +439,27 @@
+ 
+ 		exec(command: string, args: string[], options?: ExecOptions) {
+ 			assertActive();
+-			return execCommand(command, args, options?.cwd ?? cwd, options);
++			const folder = options?.cwd ?? cwd;
++			if (!runsAsProject()) return execCommand(command, args, folder, options);
++			const projectExec = runtime.projectExec;
++			if (!projectExec) {
++				return Promise.reject(
++					new Error(
++						`Extension "${extension.path}" comes from this folder, and no user extension has said how its commands run, so ${command} was not run.`,
++					),
++				);
++			}
++			return projectExec(command, args, folder, options);
++		},
++
++		setProjectExec(projectExec: ProjectExec) {
++			assertActive();
++			if (state === "loading" || extension.sourceInfo.scope !== "user") {
++				throw new Error(
++					`Extension "${extension.path}" may not set how a folder's extensions run commands: only a user extension may, once loaded.`,
++				);
++			}
++			runtime.projectExec = projectExec;
+ 		},
+ 
+ 		getActiveTools(): string[] {
+--- a/packages/coding-agent/src/core/extensions/types.ts
++++ b/packages/coding-agent/src/core/extensions/types.ts
+@@ -1811,6 +1811,13 @@
+ 	/** Execute a shell command. */
+ 	exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
+ 
++	/**
++	 * pi-host: set how a project extension's exec runs, such as inside a sandbox. Only a
++	 * user extension may set it, and only once loaded; until one does, a project extension's
++	 * exec is refused.
++	 */
++	setProjectExec(exec: ProjectExec): void;
++
+ 	/** Get the names of the active tools, which are the tools declared to the model. */
+ 	getActiveTools(): string[];
+ 
+@@ -2200,6 +2207,14 @@
+  * Shared state created by loader, used during registration and runtime.
+  * Contains flag values (defaults set during registration, CLI values set after).
+  */
++/** pi-host: runs a project extension's exec, given the folder it runs in. */
++export type ProjectExec = (
++	command: string,
++	args: string[],
++	cwd: string,
++	options?: ExecOptions,
++) => Promise<ExecResult>;
++
+ export interface ExtensionRuntimeState {
+ 	flagValues: Map<string, boolean | string>;
+ 	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
+@@ -2227,6 +2242,8 @@
+ 	unregisterProvider: (name: string, extensionPath?: string) => void;
+ 	/** Servers registered with `pi.registerMcpServer()`. */
+ 	mcpServers: McpServerRegistry;
++	/** pi-host: how a project extension's exec runs, set by a user extension. */
++	projectExec?: ProjectExec;
+ 	registerVirtualModel: (definition: VirtualModelDefinition, extensionPath?: string) => void;
+ 	unregisterVirtualModel: (provider: string, id: string) => void;
+ }

@@ -2993,6 +2993,13 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
+  pi-hosted-fences-a-folders-extensions = ''
+    pi built with the host's patches, applied exactly, runs a folder's own extensions' commands
+    only through the exec a user extension sets, given the folder they'd run in, refuses them
+    until one does, refuses one loading from the folder's .pi before pi names its scope, lets no
+    extension set it while loading and no other kind set it at all, and runs a user or
+    command-line extension's commands as before
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
