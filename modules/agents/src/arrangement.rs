@@ -448,7 +448,14 @@ mod tests {
                       "older": {"s-older": {"column": 2}}},
             "others": {"last": [{"app": "slack"}]}}));
         let now = Map::from_iter([("s-new".to_owned(), json!({"column": 3}))]);
-        let after = kept.kept("this", "last", now, vec![json!({"app": "chrome"})]);
+        let after = kept.kept(
+            "this",
+            "last",
+            now,
+            vec![json!({"app": "chrome"})],
+            &HashSet::new(),
+            0,
+        );
         assert_eq!(
             after.said(),
             json!({"v": 1,
@@ -466,6 +473,83 @@ mod tests {
             Arrangement::of(&json!({"v": 2, "boots": {}})),
             Arrangement::default(),
             "another version is kept as none"
+        );
+    }
+
+    #[test]
+    fn a_session_running_here_with_no_window_is_told_apart() {
+        let (windows, workspaces, screens) = desk_parts();
+        let desk = Desk {
+            windows: &windows,
+            workspaces: &workspaces,
+            screens: &screens,
+        };
+        let mut away = session("AWAY", "s-away", "running", "");
+        away["here"] = json!(false);
+        let records = [
+            session("SHOWN", "s-shown", "running", ""),
+            session("SHUT", "s-shut", "running", ""),
+            session("LAPSED", "s-lapsed", "running", ""),
+            session("PARKED", "s-parked", "parked", ""),
+            session("ENDED", "s-ended", "closed", ""),
+            away,
+        ];
+        let paired = [
+            json!({"address": "SHOWN", "window": "window:7"}),
+            json!({"address": "SHUT", "window": null}),
+            json!({"address": "LAPSED", "window": "window:44"}),
+        ];
+        assert_eq!(
+            unwindowed(records.iter().map(Session), &paired, &desk),
+            HashSet::from(["s-shut".to_owned(), "s-lapsed".to_owned()]),
+            "one with no window paired, or one niri no longer lists; never one shown, parked, \
+             ended or elsewhere"
+        );
+    }
+
+    #[test]
+    fn a_window_closed_while_the_boot_runs_on_lets_its_place_go() {
+        let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-shut": {"column": 4}, "s-ended": {"column": 5}}}}));
+        let shut = HashSet::from(["s-shut".to_owned()]);
+        let at = 1_000_000;
+        let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+        let first = kept.kept("this", "", Map::new(), Vec::new(), &shut, at);
+        assert_eq!(
+            first.boots["this"],
+            json!({"s-shut": {"column": 4, "closed": at}, "s-ended": {"column": 5}}),
+            "one whose window closed while its session runs on is marked so; one that ended \
+             keeps its place, as a boot's end ends them"
+        );
+        assert_eq!(
+            first.let_go_at("this"),
+            Some(at + grace),
+            "looked at again once a boot's end would have taken it"
+        );
+        let later = first.kept("this", "", Map::new(), Vec::new(), &shut, at + grace - 1);
+        assert_eq!(
+            later, first,
+            "within that, its first close is kept, not each look"
+        );
+        let gone = later.kept("this", "", Map::new(), Vec::new(), &shut, at + grace);
+        assert_eq!(
+            gone.boots["this"],
+            json!({"s-ended": {"column": 5}}),
+            "past it, its place is let go, so Reopen Them All brings it back with no window"
+        );
+        assert_eq!(gone.let_go_at("this"), None, "and nothing waits");
+        let back = first.kept(
+            "this",
+            "",
+            Map::from_iter([("s-shut".to_owned(), json!({"column": 2}))]),
+            Vec::new(),
+            &HashSet::new(),
+            at + 1,
+        );
+        assert_eq!(
+            back.boots["this"]["s-shut"],
+            json!({"column": 2}),
+            "a window opened again is kept afresh, unmarked"
         );
     }
 
@@ -520,6 +604,27 @@ mod tests {
             still.wait(start + Duration::from_secs(4)),
             None,
             "kept, nothing waits"
+        );
+        still.again(start + Duration::from_secs(60));
+        assert_eq!(
+            still.wait(start + Duration::from_secs(10)),
+            Some(Duration::from_secs(50)),
+            "a place to let go later is waited for too"
+        );
+        still.moved(start + Duration::from_secs(10));
+        assert!(
+            still.due(start + Duration::from_secs(12)),
+            "a move is kept first"
+        );
+        assert_eq!(
+            still.wait(start + Duration::from_secs(12)),
+            None,
+            "and keeping it asks again when the place goes"
+        );
+        still.again(start + Duration::from_secs(60));
+        assert!(
+            still.due(start + Duration::from_secs(60)),
+            "once it's time, its place is kept again"
         );
     }
 
