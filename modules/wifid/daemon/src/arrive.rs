@@ -1003,7 +1003,7 @@ mod tests {
             "timed from its own ask"
         );
         assert_eq!(
-            arrivals.joined("wlan0", Some(DESK), now + ms(2200)),
+            arrivals.joined("wlan0", Some(DESK), now + BACK_FOR + ms(1200)),
             None,
             "ended"
         );
