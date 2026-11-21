@@ -1,7 +1,7 @@
 //! What the window shows of a selection: its lines' extents, keeping its
 //! cursor in view, and what it covers on each line, to draw it.
 
-use super::{Class, Kind, Layout, Pos, Selection, class};
+use super::{BREAK, Class, Kind, Layout, Pos, Selection, class};
 use crate::text::Piece;
 
 impl Layout {
@@ -35,6 +35,22 @@ impl Layout {
             })
         };
         first(true).or_else(|| first(false))
+    }
+
+    /// The word under a place, or the next on its line after it, as Vim's
+    /// star takes, with where it starts across the line: its letters, a
+    /// soft hyphen's break left out.
+    pub fn word_at(&self, at: Pos) -> Option<(String, f64)> {
+        let chars = self.chars.get(at.line)?;
+        let word = |ch: &usize| class(chars[*ch]) == Class::Word;
+        let start = (at.ch..chars.len()).find(word)?;
+        let from = (0..start).rev().take_while(word).last().unwrap_or(start);
+        let to = (start..chars.len())
+            .take_while(word)
+            .last()
+            .unwrap_or(start);
+        let letters = chars[from..=to].iter().filter(|&&c| c != BREAK).collect();
+        Some((letters, self.lines[at.line].spans[from].0))
     }
 
     /// Keeps the cursor in a view from `top_pt` to `foot_pt`, when the view

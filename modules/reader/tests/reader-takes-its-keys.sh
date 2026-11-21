@@ -5,6 +5,11 @@
 # its heading is drawn, and closes it with :q. cage doesn't pass on how this
 # ended, so it leaves ./passed once every key did what it should.
 #
+# Long because it's one reader in one cage, driven key by key, and each
+# case starts where the one before left the view and the cursor: split,
+# each part would start cage and the reader again and replay the keys
+# that brought it there.
+#
 # cage has no keyboard until wtype makes one, so the reader has the
 # keyboard only once the first key is typed: G is pressed until it's taken.
 # Each wtype adds a keyboard of its own and takes it away as it ends, so
@@ -139,8 +144,9 @@ shows '"E"'
 # strong text rather than the page's: of what v changed on the page at
 # rest, that many pixels are each of the two exactly.
 changed_to() {
-  magick v.png -fill black +opaque "$1" -fill white -opaque "$1" \
-    \( at-rest.png v.png -compose difference -composite -colorspace gray -threshold 0 \) \
+  local shot=${2:-v.png}
+  magick "$shot" -fill black +opaque "$1" -fill white -opaque "$1" \
+    \( at-rest.png "$shot" -compose difference -composite -colorspace gray -threshold 0 \) \
     -compose multiply -composite -format '%[fx:round(mean*w*h)]' info:
 }
 deadline=$((SECONDS + 30))
@@ -153,17 +159,113 @@ until grim v.png && [ "$(changed_to "$cursor")" -gt 100 ] \
 done
 act 1 -k Escape
 shows 'nothing'
+# Ending it leaves the cursor on the selection's cursor, as Vim's does.
+stands '"E"'
 act 3 'v}w'
 act 1 iw
 shows '"bold"'
 act 1 y
 copied '"**bold**"'
 shows 'nothing'
-# Ending a selection leaves the cursor on its line, as Neovim's does, so
-# v starts there again, and each selection after starts from gg.
+# y leaves the cursor on the start of what it took, as Vim's does, and
+# Escape at rest then puts the cursor back to being its line, so v starts
+# on its first word again; each selection after starts from gg.
+stands '"b"'
+act 1 -k Escape
+stands 'nothing'
 act 1 v
 shows '"A"'
 act 1 -k Escape
+act 1 -k Escape
+# At rest, the keys along a line put the cursor on a character, from the
+# first word on its line, drawn as v's block is, and v starts there: w to
+# bold's b, e to its end, then v and b select it back to its start.
+act 1 w
+stands '"b"'
+deadline=$((SECONDS + 30))
+while :; do
+  took=0
+  if grim w.png; then took=$(changed_to "$cursor" w.png); fi
+  ((took > 100)) && break
+  ((SECONDS < deadline)) || fail "w's cursor took $took pixels of its colour, not its block"
+  inotifywait -q -q -t 1 -e modify said || true
+done
+act 1 e
+stands '"d"'
+act 1 v
+shows '"d"'
+stands 'nothing'
+act 1 b
+shows '"bold"'
+act 1 y
+copied '"**bold**"'
+# f goes to the character typed, and ; to it again, so v e then takes
+# the rest of second's word.
+act 1 fc
+stands '"c"'
+act 1 ';'
+act 2 ve
+shows '"cond"'
+act 1 -k Escape
+stands '"d"'
+act 1 -k Escape
+# j and k carry the character, its line with it, keeping across, so it
+# comes back to bold's b; Escape puts the cursor back to its line, so v
+# starts on its first word.
+act 1 w
+stands '"b"'
+before=$(cursor)
+act 1 j
+after=$(cursor)
+awk "BEGIN { exit !($after > $before) }" || fail "j left the cursor at $after pt"
+act 1 k
+stands '"b"'
+after=$(cursor)
+awk "BEGIN { exit !($after - $before < 1 && $before - $after < 1) }" \
+  || fail "k put the cursor at $after pt, not $before"
+act 1 -k Escape
+stands 'nothing'
+# And its block goes with it: nothing on the page is in the cursor's
+# colour that wasn't at rest.
+deadline=$((SECONDS + 30))
+while :; do
+  left=999
+  if grim gone.png; then left=$(changed_to "$cursor" gone.png); fi
+  ((left < 20)) && break
+  ((SECONDS < deadline)) || fail "Escape left $left pixels of the cursor's block"
+  inotifywait -q -q -t 1 -e modify said || true
+done
+act 1 v
+shows '"A"'
+act 1 -k Escape
+stands '"A"'
+# A search let go leaves the cursor where it stood, so l goes on from
+# there; F goes back to a character and , on to the next of it, the
+# other way, as Vim's do, so v e takes the second sentence's start.
+cancels=$(how_many '^search Cancelled ')
+act 1 /zzz
+press -k Escape
+logged '^search Cancelled ' $((cancels + 1))
+act 1 l
+stands '" "'
+act 1 FA
+stands '"A"'
+act 1 ,
+act 2 ve
+shows '"A second"'
+act 1 -k Escape
+act 1 -k Escape
+stands 'nothing'
+# A jump from the command line takes the cursor off the character's
+# line, and with it the character, so w goes on from the line it's on.
+press ':1'
+press -k Return
+logged '^command: "1" is Go' 1
+keys=$(how_many '^key ')
+act 1 w
+stands '"K"'
+act 1 -k Escape
+stands 'nothing'
 # m while selecting marks the cursor's line and keeps the selection, as
 # his Neovim's does, so ' and its letter at rest put the cursor back on
 # that line, and the view stays, since the line shows.
@@ -525,7 +627,7 @@ done
 # :1 rather than gg, so the First keys counted on below stay as many.
 press ':1'
 press -k Return
-logged '^command: "1" is Go\(Lines\(1, 1\)\)' 1
+logged '^command: "1" is Go\(Lines\(1, 1\)\)' 2
 lines=$(how_many '^key SelectPieces None')
 press V
 logged '^key SelectPieces None' $((lines + 1))

@@ -746,6 +746,11 @@
       "name": "Searching"
     },
     {
+      "id": "shortcuts:reader:left-right",
+      "in": "shortcuts",
+      "name": "Left and Right"
+    },
+    {
       "id": "shortcuts:reader:selecting",
       "in": "shortcuts",
       "name": "Selecting"

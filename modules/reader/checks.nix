@@ -279,7 +279,10 @@ onLinux {
   # with its blank line and to its end, as markdown, and flash them, 2j
   # and k move the cursor and not the view, so y y copies the line it
   # reaches, Ctrl+E and Ctrl+Y move the view a line alone, v and V select
-  # from the cursor's line, where a selection's end leaves it, and every
+  # from the cursor's line, where a selection's end leaves it, w, e, f, ;
+  # and j k at rest put the cursor on a character drawn as v's block, which
+  # v starts from, a selection's end leaves, a search let go keeps, :1
+  # drops and Escape puts back, and every
   # key of visual mode moves the selection or takes a text object, y and
   # Ctrl+C copy the file's own markdown for it onto the clipboard,
   # Escape ends it, Space ? lists the keys, Escape puts the list away, g x labels the

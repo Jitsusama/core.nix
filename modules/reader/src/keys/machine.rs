@@ -2,16 +2,16 @@
 //! count and a key waiting for its second, and what a press then does.
 
 use super::Key::Char;
-use super::{Act, Key, Slot, table};
+use super::{Act, Key, Slot, Takes, table};
 
-/// A letter slot: these keys take the next letter typed as a mark's name,
-/// where they work.
-fn takes_a_letter(key: Key, selecting: bool) -> Option<Slot> {
+/// A letter slot: these keys take the next letter typed, as a mark's name
+/// or the character f goes to, where they work, with what they take.
+fn takes_a_letter(key: Key, selecting: bool) -> Option<(Slot, Takes)> {
     table()
         .slots
         .iter()
-        .find(|&&(slot, _, held)| slot == key && held.holds(selecting))
-        .map(|&(_, act, _)| act)
+        .find(|&&(slot, _, held, _)| slot == key && held.holds(selecting))
+        .map(|&(_, act, _, takes)| (act, takes))
 }
 
 /// What vi keeps between presses.
@@ -35,9 +35,8 @@ impl Machine {
             return if busy { None } else { Some((Act::Rest, None)) };
         }
         if let Char(digit @ '0'..='9') = key {
-            // A 0 starts no count, as vi's 0 is its own motion: to the
-            // line's start while selecting, and nothing at rest, where the
-            // cursor is a whole line.
+            // A 0 starts no count, as vi's 0 is its own motion, to the
+            // line's start; a digit after f is the character it goes to.
             if self.pending.is_empty() && (digit != '0' || self.count.is_some()) {
                 let value = digit.to_digit(10).unwrap_or(0);
                 let count = self
@@ -63,8 +62,8 @@ impl Machine {
             return None;
         }
         if let [first] = self.pending[..]
-            && let (Some(slot), Char(letter)) = (takes_a_letter(first, selecting), key)
-            && letter.is_ascii_alphabetic()
+            && let (Some((slot, takes)), Char(letter)) = (takes_a_letter(first, selecting), key)
+            && takes.takes(letter)
         {
             return Some(self.finish(slot(letter)));
         }
@@ -95,9 +94,9 @@ impl Machine {
     fn motion(&mut self, (first, act): (Key, Act), key: Key) -> Option<(Act, Option<u32>)> {
         let every = || table().sequences.iter();
         if let [mark] = self.pending[..]
-            && takes_a_letter(mark, false).is_some()
+            && let Some((_, takes)) = takes_a_letter(mark, false)
         {
-            return if matches!(key, Char(letter) if letter.is_ascii_alphabetic()) {
+            return if matches!(key, Char(letter) if takes.takes(letter)) {
                 Some(self.finish(act))
             } else {
                 self.reset();

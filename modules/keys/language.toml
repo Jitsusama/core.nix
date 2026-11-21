@@ -11,7 +11,8 @@
 #
 # An act's keys are pressed in normal mode unless its modes say otherwise.
 # One whose takes is "letter" takes the next letter typed as a name, as m
-# and ' take a mark's. In one mode a key belongs to one act, whatever kind
+# and ' take a mark's; one whose takes is "character" takes any character
+# typed, a stop or a space as much as a letter, as f does. In one mode a key belongs to one act, whatever kind
 # of surface it's pressed on: Vim's l moves right on a page and means
 # nothing on a list, and steps into nothing on either.
 #
@@ -311,28 +312,29 @@ kinds = ["list", "page"]
 
 # On a list f and F go to the next row and the one before whose name begins
 # with the letter typed after, as Vim's go to a letter on the line, never
-# round past an end; ; and , go again, the same way and the other.
+# round past an end; ; and , go again, the same way and the other. On a
+# page they go to the character typed after on the cursor's line, as Vim's.
 [acts.to-letter]
 keys = ["f"]
-takes = "letter"
+takes = "character"
 modes = ["normal", "visual"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.to-letter-backward]
 keys = ["F"]
-takes = "letter"
+takes = "character"
 modes = ["normal", "visual"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.letter-again]
 keys = [";"]
 modes = ["normal", "visual"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 [acts.letter-again-backward]
 keys = [","]
 modes = ["normal", "visual"]
-kinds = ["list"]
+kinds = ["list", "page"]
 
 # The word here, whole, down or up, with case ignored.
 [acts.search-word-forward]
@@ -457,34 +459,38 @@ kinds = ["list", "page"]
 keys = ["gv"]
 kinds = ["list"]
 
-# While selecting, the cursor on by words, to a line's ends, and to the
-# selection's other end; { and } above move it by paragraphs too.
+# On a page, the cursor on by words and to a line's ends, as Vim's, at rest
+# to choose the character a selection starts on (Joel, 2026-11-21: "i
+# also need to be able to have a cursor mode when visually selecting text
+# before i start so that I can choose what character i start at") and
+# while selecting to move its end; { and } above move it by paragraphs too.
 
 [acts.word-on]
 keys = ["w"]
-modes = ["visual"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.word-back]
 keys = ["b"]
-modes = ["visual"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.word-end]
 keys = ["e"]
-modes = ["visual"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.line-start]
 keys = ["0"]
-modes = ["visual"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 [acts.line-end]
 keys = ["$"]
-modes = ["visual"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
+# While selecting, the cursor to the selection's other end.
 [acts.other-end]
 keys = ["o"]
 modes = ["visual"]

@@ -143,6 +143,9 @@ pub enum Motion {
     /// 0 and $.
     LineStart,
     LineEnd,
+    /// f and F: to a character on along the line, or back.
+    ToLetter(char),
+    ToLetterBack(char),
     /// { and }.
     ParagraphBack,
     ParagraphOn,

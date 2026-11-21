@@ -41,8 +41,9 @@ pub enum Key {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Act {
     /// The cursor down or up by the lines shown, the view following it, or
-    /// across by columns, as vi's j, k, l and h; while selecting, the
-    /// selection's cursor.
+    /// across by characters, as vi's j, k, l and h; while selecting, the
+    /// selection's cursor. At rest, h and l put the cursor on a character
+    /// of its line, which j and k then carry, keeping across.
     Down,
     Up,
     Left,
@@ -125,18 +126,26 @@ pub enum Act {
     /// @: the last line the command line ran, run again.
     AgainCommand,
     /// v and V: a selection, of characters or of whole paragraphs, items
-    /// and lines of code, from the first word on the cursor's line, with
-    /// the block cursor there; the same key again ends it, and the other
-    /// turns it into one of the other kind.
+    /// and lines of code, from the cursor's character, or the first word
+    /// on its line, with the block cursor there; the same key again ends
+    /// it, and the other turns it into one of the other kind.
     Select,
     SelectPieces,
-    /// While selecting, the cursor on by words as w, b and e, and to a
-    /// line's ends as 0 and $.
+    /// The cursor on by words as w, b and e, and to a line's ends as 0 and
+    /// $: at rest onto a character of its line, and while selecting the
+    /// selection's end.
     WordOn,
     WordBack,
     WordEnd,
     LineStart,
     LineEnd,
+    /// f and F: the cursor to the character typed after it, on along its
+    /// line or back; ; and , to that character again, the same way or the
+    /// other.
+    ToLetter(char),
+    ToLetterBack(char),
+    LetterAgain,
+    LetterAgainBack,
     /// o: the cursor to the selection's other end.
     OtherEnd,
     /// A text object round the cursor: iw, aw, is, as, ip, ap and `` i` ``.
@@ -192,6 +201,8 @@ impl Act {
                 | Act::WordOn
                 | Act::WordBack
                 | Act::WordEnd
+                | Act::LetterAgain
+                | Act::LetterAgainBack
                 | Act::ZoomIn
                 | Act::ZoomOut
         )
@@ -294,6 +305,8 @@ const SPOKEN: &[(&str, Act)] = &[
     ("word-end", Act::WordEnd),
     ("line-start", Act::LineStart),
     ("line-end", Act::LineEnd),
+    ("letter-again", Act::LetterAgain),
+    ("letter-again-backward", Act::LetterAgainBack),
     ("other-end", Act::OtherEnd),
     ("in-word", Act::Object(Object::InWord)),
     ("a-word", Act::Object(Object::AWord)),
@@ -321,7 +334,41 @@ const SPOKEN: &[(&str, Act)] = &[
 type Slot = fn(char) -> Act;
 
 /// The acts whose key takes a letter after it, by their names.
-const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
+const SLOTS: &[(&str, Slot)] = &[
+    ("set-mark", Act::SetMark),
+    ("go-to-mark", Act::GoToMark),
+    ("to-letter", Act::ToLetter),
+    ("to-letter-backward", Act::ToLetterBack),
+];
+
+/// What a slot takes after its key, as the language's `takes` says: a
+/// mark's name is a letter, as Vim's a to z and A to Z, and f and F go to
+/// any character a line can show, a space or a stop as much as a letter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Takes {
+    Letter,
+    Character,
+}
+
+impl Takes {
+    /// What the language's `takes` names, which no act may leave out or
+    /// name otherwise when the reader gives it a slot.
+    fn of(name: &str, said: Option<&str>) -> Self {
+        match said {
+            Some("letter") => Self::Letter,
+            Some("character") => Self::Character,
+            _ => panic!("{name} takes neither a letter nor a character"),
+        }
+    }
+
+    /// Whether a character typed after the key is one this takes.
+    fn takes(self, typed: char) -> bool {
+        match self {
+            Self::Letter => typed.is_ascii_alphabetic(),
+            Self::Character => !typed.is_control(),
+        }
+    }
+}
 
 /// The acts whose key takes a motion after it, as Vim's operators do, or
 /// acts on a selection at once, by their names.
@@ -418,7 +465,7 @@ pub type Sequence = (Vec<Key>, Act, In);
 /// letter after it, with where each works.
 pub struct Table {
     pub sequences: Vec<Sequence>,
-    slots: Vec<(Key, Slot, In)>,
+    slots: Vec<(Key, Slot, In, Takes)>,
     operators: Vec<(Key, Act, In)>,
     lines: Vec<LineSlot>,
 }
@@ -504,8 +551,12 @@ fn read(language: &str) -> Table {
         .iter()
         .flat_map(|&(name, slot)| {
             let (keys, held) = keys(name);
+            let takes = Takes::of(
+                name,
+                language["acts"][name].get("takes").and_then(|t| t.as_str()),
+            );
             keys.into_iter().map(move |keys| match keys[..] {
-                [key] => (key, slot, held),
+                [key] => (key, slot, held, takes),
                 _ => panic!("{name} takes its letter after one key"),
             })
         })
@@ -673,6 +724,8 @@ fn spoken(act: Act) -> &'static str {
     match act {
         Act::SetMark(_) => "set-mark",
         Act::GoToMark(_) => "go-to-mark",
+        Act::ToLetter(_) => "to-letter",
+        Act::ToLetterBack(_) => "to-letter-backward",
         act => SPOKEN
             .iter()
             .chain(OPERATORS)
@@ -690,7 +743,10 @@ fn operators() -> impl Iterator<Item = (Act, Key)> {
 /// The letter slots as the key list and the key map show them: the act it
 /// starts, and the key.
 fn slots() -> impl Iterator<Item = (Act, Key)> {
-    table().slots.iter().map(|&(key, slot, _)| (slot('a'), key))
+    table()
+        .slots
+        .iter()
+        .map(|&(key, slot, _, _)| (slot('a'), key))
 }
 
 #[cfg(test)]

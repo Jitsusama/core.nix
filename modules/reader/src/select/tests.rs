@@ -200,7 +200,22 @@ fn the_letters_and_arrows_move_by_characters_and_lines_keeping_across() {
     page.moved(&mut s, Motion::LineEnd, 1);
     assert_eq!(s.cursor, at(4, 15));
     page.moved(&mut s, Motion::Up, 3);
-    assert_eq!(s.cursor, at(1, 17));
+    assert_eq!(
+        s.cursor,
+        at(1, 20),
+        "after $, k keeps to the line's end, as Vim's does"
+    );
+    let mut s = Selection::new(Kind::Chars, at(3, 0));
+    page.moved(&mut s, Motion::LineEnd, 1);
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(
+        s.cursor,
+        at(4, 15),
+        "the longer line's end, not across from the short one's"
+    );
+    page.moved(&mut s, Motion::Left, 1);
+    page.moved(&mut s, Motion::Up, 1);
+    assert_eq!(s.cursor, at(3, 9), "h lets the end go, and k goes across");
 }
 
 #[test]
@@ -217,6 +232,78 @@ fn w_b_and_e_go_by_words_as_vi_does() {
     assert_eq!(s.cursor, at(2, 9), "punctuation is a word of its own");
     page.moved(&mut s, Motion::WordBack, 3);
     assert_eq!(s.cursor, at(1, 20));
+}
+
+#[test]
+fn star_takes_the_word_under_the_character_or_the_next_on_its_line() {
+    let page = page();
+    // "Some bold words and a"
+    assert_eq!(page.word_at(at(1, 7)), Some(("bold".into(), 30.0)));
+    assert_eq!(
+        page.word_at(at(1, 9)),
+        Some(("words".into(), 60.0)),
+        "from a space, the next word"
+    );
+    assert_eq!(page.word_at(at(2, 20)), None, "nothing after the stop");
+}
+
+#[test]
+fn j_and_k_in_a_table_go_to_the_cell_under_never_the_one_beside() {
+    let lines = vec![
+        line(20.0, "Name"),
+        indented(20.0, 100.0, "Size"),
+        line(41.0, "one"),
+        indented(41.0, 100.0, "1 KB"),
+        line(62.0, "two"),
+        indented(62.0, 100.0, "2 KB"),
+    ];
+    let page = Layout::new(lines, Vec::new(), &[], String::new());
+    let mut s = Selection::new(Kind::Chars, at(1, 1));
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(s.cursor, at(3, 1), "the size under, not the name beside");
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(s.cursor, at(5, 1));
+    page.moved(&mut s, Motion::Up, 2);
+    assert_eq!(s.cursor, at(1, 1), "a count goes up by rows");
+    let mut s = Selection::new(Kind::Chars, at(0, 2));
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(
+        s.cursor,
+        at(2, 2),
+        "the name under, the first cell of its row"
+    );
+    page.moved(&mut s, Motion::Up, 1);
+    assert_eq!(s.cursor, at(0, 2));
+}
+
+#[test]
+fn f_and_f_back_go_to_a_character_on_the_line_or_nowhere() {
+    let page = page();
+    // "Some bold words and a"
+    let mut s = Selection::new(Kind::Chars, at(1, 0));
+    page.moved(&mut s, Motion::ToLetter('o'), 1);
+    assert_eq!(s.cursor, at(1, 1));
+    page.moved(&mut s, Motion::ToLetter('o'), 2);
+    assert_eq!(s.cursor, at(1, 11), "a count goes on to that many");
+    page.moved(&mut s, Motion::ToLetter(' '), 1);
+    assert_eq!(s.cursor, at(1, 15), "a space is a character too");
+    page.moved(&mut s, Motion::ToLetter('o'), 1);
+    assert_eq!(
+        s.cursor,
+        at(1, 15),
+        "none on along the line, so it stays, never going to the next"
+    );
+    page.moved(&mut s, Motion::ToLetterBack('S'), 1);
+    assert_eq!(s.cursor, at(1, 0), "back, and in its case");
+    page.moved(&mut s, Motion::ToLetter('d'), 3);
+    assert_eq!(s.cursor, at(1, 18));
+    page.moved(&mut s, Motion::LineStart, 1);
+    page.moved(&mut s, Motion::ToLetter('d'), 4);
+    assert_eq!(
+        s.cursor,
+        at(1, 0),
+        "fewer than the count on along it, so it stays, as Vim's fails whole"
+    );
 }
 
 #[test]

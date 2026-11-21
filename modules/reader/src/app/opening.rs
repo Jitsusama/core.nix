@@ -110,6 +110,8 @@ impl App {
             layout: None,
             layout_to: senders.layout_to,
             selection: None,
+            character: None,
+            letter: None,
             flash: None,
             chosen: None,
             rule: None,

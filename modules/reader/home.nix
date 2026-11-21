@@ -26,9 +26,13 @@
 # :g/pat/, :marks and :ju, which list the lines they name in gO's place,
 # Return going to one, saying Vim's error of anything else, E492 for a
 # command it hasn't. Each
-# search, heading, mark or jump puts the cursor on the line it lands on. v
-# and V select, from the cursor's line, with the terminal's cursor, moved
-# by the arrows and h j k l, w b e, 0 $ and { }, with iw aw, is as, ip ap
+# search, heading, mark or jump puts the cursor on the line it lands on.
+# Along it, h l, w b e, 0 $, f F and ; , put the cursor on a character, a
+# block in the terminal's cursor colours, which j and k carry, keeping
+# across, and anything else that moves it, or Escape, puts back. v and V
+# select from it, or the first word on the cursor's line, with the
+# terminal's cursor, moved by the arrows and h j k l, w b e, 0 $, f F ; ,
+# and { }, with iw aw, is as, ip ap
 # and i` for text objects and o for the other end; y or Ctrl+C copies the
 # selection as the file's markdown through wl-copy, and at rest y y, y i p,
 # y a p and y } copy the block the cursor is in, its paragraph, that and
@@ -39,8 +43,9 @@
 # E21: Cannot make changes, as a buffer that can't be modified does. A
 # link to another markdown file sets it in the same window, as Neovim's
 # gf, keeping the place on the first, and Ctrl+O and Ctrl+I go back and
-# forth across files. Escape only cancels: at rest it does nothing, as
-# Vim's does, and :noh puts the search's marks away. The find line and
+# forth across files. Escape only cancels: at rest it does nothing but put
+# the cursor back from a character, as Vim's does nothing, and :noh puts
+# the search's marks away. The find line and
 # the command line take the key language's keys, as Vim's command line:
 # Escape or Ctrl+C drops one, Backspace or Ctrl+H takes a letter and
 # leaves an empty line, Ctrl+W a word, Ctrl+U the rest, and Return makes
@@ -291,6 +296,8 @@ let
   jumping = key "jumping";
   links = key "links";
   searching = key "searching";
+  # Vim's own name for them, its left-right motions.
+  leftRight = key "left-right";
   selecting = key "selecting";
   objects = key "objects";
   copying = key "copying";
@@ -351,15 +358,19 @@ let
     (searching "search-backward" "?" "Search up the page")
     (searching "next" "n" "On to the next match")
     (searching "previous" "N" "Back to the match before")
-    (selecting "select" "v" "Select from the cursor's line")
+    (leftRight "left" "h" "A character left")
+    (leftRight "right" "l" "A character right")
+    (leftRight "word-on" "w" "On to the next word")
+    (leftRight "word-back" "b" "Back to a word's start")
+    (leftRight "word-end" "e" "On to a word's end")
+    (leftRight "line-start" "0" "To the line's start")
+    (leftRight "line-end" "$" "To the line's end")
+    (leftRight "to-letter" "f" "On to the character typed")
+    (leftRight "to-letter-backward" "F" "Back to the character typed")
+    (leftRight "letter-again" ";" "To that character again")
+    (leftRight "letter-again-backward" "," "Back to that character again")
+    (selecting "select" "v" "Select from the cursor")
     (selecting "select-lines" "V" "Select whole paragraphs, items and lines")
-    (selecting "left" "h" "A character left")
-    (selecting "right" "l" "A character right")
-    (selecting "word-on" "w" "On to the next word")
-    (selecting "word-back" "b" "Back to a word's start")
-    (selecting "word-end" "e" "On to a word's end")
-    (selecting "line-start" "0" "To the line's start")
-    (selecting "line-end" "$" "To the line's end")
     (selecting "other-end" "o" "To the selection's other end")
     (objects "in-word" "i w" "A word")
     (objects "a-word" "a w" "A word and the space after it")

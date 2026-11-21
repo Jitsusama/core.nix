@@ -3,17 +3,36 @@
 
 use super::{Class, Layout, Motion, Pos, Selection};
 
+/// Lines whose baselines are this close are one row of the page, as a
+/// table's cells or a bullet and its item are.
+const ROW_PT: f64 = 2.0;
+
+/// Further across than any line goes: after $, j and k keep to each
+/// line's end, as Vim's curswant past every column does.
+const LINE_END_PT: f64 = 1.0e6;
+
 impl Layout {
     /// Moves the cursor `count` times.
     pub fn moved(&self, selection: &mut Selection, motion: Motion, count: usize) {
+        // f and F with a count go to that many of the character on, or
+        // nowhere when the line has fewer, as Vim's fail whole.
+        if let Motion::ToLetter(letter) | Motion::ToLetterBack(letter) = motion {
+            let on = matches!(motion, Motion::ToLetter(_));
+            if let Some(at) = self.letter_from(selection.cursor, letter, on, count.max(1)) {
+                selection.put(at);
+            }
+            return;
+        }
         let mut at = selection.cursor;
         let vertical = matches!(motion, Motion::Down | Motion::Up);
-        if vertical {
+        let want = if vertical {
             let want = selection.want_pt.unwrap_or_else(|| self.across(at));
             selection.want_pt = Some(want);
+            want
         } else {
             selection.want_pt = None;
-        }
+            0.0
+        };
         for _ in 0..count.max(1) {
             let next = match motion {
                 Motion::Left => (at.ch > 0).then(|| Pos {
@@ -24,12 +43,11 @@ impl Layout {
                     ch: at.ch + 1,
                     ..at
                 }),
-                Motion::Down => (at.line + 1..self.lines.len())
-                    .find(|&line| self.len(line) > 0)
+                Motion::Down => self
+                    .row_from(at.line, true, want)
                     .map(|line| Pos { line, ch: 0 }),
-                Motion::Up => (0..at.line)
-                    .rev()
-                    .find(|&line| self.len(line) > 0)
+                Motion::Up => self
+                    .row_from(at.line, false, want)
                     .map(|line| Pos { line, ch: 0 }),
                 Motion::WordOn => self.word_on(at),
                 Motion::WordBack => self.word_back(at),
@@ -41,6 +59,7 @@ impl Layout {
                 }),
                 Motion::ParagraphOn => self.paragraph_on(at),
                 Motion::ParagraphBack => self.paragraph_back(at),
+                Motion::ToLetter(_) | Motion::ToLetterBack(_) => None,
                 Motion::First => (0..self.lines.len())
                     .find(|&line| self.len(line) > 0)
                     .map(|line| Pos { line, ch: 0 }),
@@ -56,6 +75,52 @@ impl Layout {
         }
         selection.cursor = at;
         selection.taken = None;
+        if matches!(motion, Motion::LineEnd) {
+            selection.want_pt = Some(LINE_END_PT);
+        }
+    }
+
+    /// j and k: the line of the next row down the page that has any
+    /// characters, or up, and of its lines the one across from `want_pt`
+    /// or nearest it, so a table's j goes to the cell under, never the
+    /// one beside.
+    fn row_from(&self, line: usize, down: bool, want_pt: f64) -> Option<usize> {
+        let baseline = |line: usize| self.lines[line].baseline_pt;
+        let here = baseline(line);
+        let filled = || (0..self.lines.len()).filter(|&line| self.len(line) > 0);
+        let rows = filled().map(baseline);
+        let row = if down {
+            rows.filter(|&row| row > here + ROW_PT)
+                .min_by(f64::total_cmp)
+        } else {
+            rows.filter(|&row| row < here - ROW_PT)
+                .max_by(f64::total_cmp)
+        }?;
+        filled()
+            .filter(|&line| (baseline(line) - row).abs() < ROW_PT)
+            .min_by(|&a, &b| self.off(a, want_pt).total_cmp(&self.off(b, want_pt)))
+    }
+
+    /// How far across a line is from a place, none when the place is on it.
+    fn off(&self, line: usize, x_pt: f64) -> f64 {
+        let spans = &self.lines[line].spans;
+        match (spans.first(), spans.last()) {
+            (Some(&(from, _)), Some(&(_, to))) => (from - x_pt).max(x_pt - to).max(0.0),
+            _ => f64::INFINITY,
+        }
+    }
+
+    /// f and F: the `count`th of a character on along the line from a
+    /// place, or back, never past the line's ends.
+    fn letter_from(&self, from: Pos, letter: char, on: bool, count: usize) -> Option<Pos> {
+        let chars = &self.chars[from.line];
+        let found = |&ch: &usize| chars[ch] == letter;
+        let ch = if on {
+            (from.ch + 1..chars.len()).filter(found).nth(count - 1)
+        } else {
+            (0..from.ch).rev().filter(found).nth(count - 1)
+        }?;
+        Some(Pos { ch, ..from })
     }
 
     /// w: the next word's start, a line's end counting as a blank.
