@@ -41,35 +41,57 @@ if [ "$ran" -ne 0 ]; then
   exit 1
 fi
 
-# Without these, the case is another loop's, or fewer windows', or starts
-# that never reached the patched branch, which it says nothing about. A
-# start in which Qt starts its timer with all three windows shown reaches
-# the patch's early return, where unpatched Qt asks every window for a
-# frame, so the still window drawing nothing then shows the patch held.
-# A start whose timer was still going may reach it too, but says nothing
-# Qt logs, and one under a single window's loop never does. So each of
-# the case's starts, from its own line to the next start's or the count's,
-# is asked for Qt's timer line, and at least half its starts must have
-# one. Not every start: on a loaded builder Qt logged its timer start 8
-# times over a run of ten starts, one stop finding a window not shown,
-# its cause not known (2026-11-21). A window shown again inside a start
-# could log the line too, which this can't tell from the start's own.
-# The timer's line is Qt's own wording, which a Qt bump may change.
+# Without these, the case is another loop's, or fewer windows', or the
+# still window wasn't shown as the squares started, which it says nothing
+# about: a start that misses the patch's early return asks every shown
+# window for a frame, so the case fails on its own, but a window not
+# shown draws nothing patched or not. Qt's line starting its timer with
+# all three windows shown, inside a start, shows all three were shown
+# then. So each of the case's starts, from its own line to the next
+# start's or the count's, is asked for that line, and at least half of
+# the starts the case counted must have one. Not every start: Qt logs it
+# only as it starts the timer, and on a loaded builder it logged it 8
+# times over a whole run of ten starts, one stop finding a window not
+# shown, its cause not known (2026-11-21). The timer's line is Qt's own
+# wording, which a Qt bump may change.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
 fi
-read -r starts timed < <(awk '
+# Prints the starts the case logged, the starts it counted, those with
+# Qt's line, and the numbers of those without it.
+counts=$(awk '
   /The case starts its squares moving, start / { inside = 1; starts++; next }
-  /Over [0-9]+ starts the still window drew/ { inside = 0 }
+  /Over [0-9]+ starts the still window drew/ {
+    inside = 0
+    counted = $0
+    sub(/.*Over /, "", counted)
+    sub(/ .*/, "", counted)
+  }
   inside && /Starting system \(not vsync-based\) animation timer \(exposedWindows=3 / {
     timed[starts] = 1
   }
-  END { n = 0; for (each in timed) n++; print starts + 0, n }' "$said")
+  END {
+    n = 0
+    missing = ""
+    for (s = 1; s <= starts; s++) {
+      if (s in timed) {
+        n++
+      } else {
+        missing = missing " " s
+      }
+    }
+    print starts + 0, counted + 0, n, missing
+  }' "$said")
+read -r starts counted timed missing <<< "$counts"
+if [ "$counted" -eq 0 ] || [ "$starts" -ne "$counted" ]; then
+  echo "The case counted $counted starts but logged 'The case starts its squares moving'" \
+    "for $starts, so the log can't say which of Qt's lines came in which start." >&2
+  exit 1
+fi
 echo "Qt started its animation timer with all three windows shown in $timed of $starts starts."
-if [ "$starts" -eq 0 ] || [ $((timed * 2)) -lt "$starts" ]; then
-  echo "That's fewer than half the case's starts: 'Starting system (not vsync-based)" \
-    "animation timer (exposedWindows=3 ...)' after its 'The case starts its squares" \
-    "moving' lines." >&2
+if [ $((timed * 2)) -lt "$starts" ]; then
+  echo "That's fewer than half: 'Starting system (not vsync-based) animation timer" \
+    "(exposedWindows=3 ...)' never came in starts $missing." >&2
   exit 1
 fi

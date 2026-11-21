@@ -180,7 +180,8 @@ ShellRoot {
     // Each animation ends well before the next starts, so every start is
     // one the animation driver hears as animations starting again. Each
     // says so before it starts them, so the script can tell which of Qt's
-    // timer starts came in which of the case's starts.
+    // timer starts came in which of the case's starts; the script matches
+    // that line's wording and the count's, "Over N starts".
     Timer {
         id: started
 
