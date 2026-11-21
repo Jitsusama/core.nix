@@ -308,12 +308,18 @@ fn a_line_all_of_short_code_steps_one_line_as_any_other() {
 fn code_in_a_narrow_column_keeps_to_it() {
     // One kept whole; one long enough to break, whose widest run is the
     // triple's longest name held to the short pieces beside it; and a name
-    // too wide to box, with nowhere to break, which the column must hold.
+    // with nowhere to break, boxed in this wide a window, which the column
+    // must hold whole.
     let hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     assert_eq!(
         held(&format!("sha256 {hash} here"), 2560.0),
+        format!("|sha256 |{hash} |here"),
+        "in the table's window the hash is boxed, so its column counts it whole"
+    );
+    assert_eq!(
+        held(&format!("sha256 {hash} here"), 360.0),
         format!("|sha256 |{hash}! |here"),
-        "the hash is too wide to box, so the column holds it unboxed"
+        "in a narrow window the hash is unboxed, and counts its widest stretch"
     );
     for (i, code) in [
         "cargo build --release",
