@@ -4415,7 +4415,7 @@ fn an_account_unit_a_switch_keeps_needs_no_hold() {
 }
 
 /// Gives a system's account unit a drop-in, `name`, saying `says`.
-fn account_drop_in(system: &Path, name: &str, says: &str) {
+fn account_drop_in(system: &Path, name: &str, says: impl AsRef<[u8]>) {
     let drop_ins = system.join("home-manager-generation/home-files/.config/systemd/user");
     let drop_ins = drop_ins.join("windows.service.d");
     fs::create_dir_all(&drop_ins).unwrap();
@@ -4466,8 +4466,9 @@ fn switch_to(new: &NewUnit) -> (World, String) {
 /// What doesn't keep the unit as sd-switch reads it is held: keep-old
 /// dropped, as a revert drops it; said outside [Unit]; overridden by a
 /// drop-in later by name; said only in a file systemd doesn't read as a
-/// drop-in; a legacy keep under a method that restarts; a unit refusing a
-/// start, which sd-switch stops; or the unit gone from the new system.
+/// drop-in; a legacy keep under a method that restarts, or beside a legacy
+/// reload; a unit refusing a start, which sd-switch stops; or the unit
+/// gone from the new system.
 #[test]
 fn an_account_unit_a_switch_doesnt_keep_waits_for_a_hold() {
     let new = "[Service]\nExecStart=new\n";
@@ -4498,6 +4499,11 @@ fn an_account_unit_a_switch_doesnt_keep_waits_for_a_hold() {
             drop_ins: &[],
         },
         NewUnit {
+            case: "reloads",
+            file: Some("[Unit]\nX-ReloadIfChanged=true\nX-RestartIfChanged=false\n"),
+            drop_ins: &[],
+        },
+        NewUnit {
             case: "refuses-a-start",
             file: Some("[Unit]\nX-SwitchMethod=keep-old\nRefuseManualStart=yes\n"),
             drop_ins: &[],
@@ -4511,6 +4517,20 @@ fn an_account_unit_a_switch_doesnt_keep_waits_for_a_hold() {
     for new in &cases {
         held_for_windows(&switch_to(new).0, new.case);
     }
+}
+
+/// A drop-in that won't read as text could say any method, and sd-switch
+/// fails on it, so a unit with one is held though its file keeps.
+#[test]
+fn an_account_unit_with_an_unread_drop_in_waits_for_a_hold() {
+    let unread = NewUnit {
+        case: "unread",
+        file: Some(KEPT),
+        drop_ins: &[],
+    };
+    let (world, head) = switch_to(&unread);
+    account_drop_in(&world.system(&head), "later.conf", [0xff, 0xfe, b'\n']);
+    held_for_windows(&world, unread.case);
 }
 
 /// What keeps it as sd-switch reads it needs no hold: a drop-in adding
