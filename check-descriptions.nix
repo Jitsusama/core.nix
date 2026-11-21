@@ -1836,9 +1836,11 @@
     the launcher's Machines makes again only the row of the machine a node change names, keeping
     the others, and none while the launcher doesn't want it
   '';
-  a-carrier-keeps-its-memory = ''
-    a service named as carrying Joel's traffic never swaps, keeps a hard memory floor that
-    system.slice claims, and comes first for the disk, and a name no service has is refused
+  a-vpn-service-keeps-its-memory = ''
+    a VPN's service named for it never swaps, keeps a hard memory floor that system.slice
+    claims for each, and comes ahead of the other system services for the disk; with none named
+    system.slice claims no floor; a packaged service is taken, and a name no service has or one
+    the slices module sets itself is refused
   '';
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session

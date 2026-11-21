@@ -435,45 +435,76 @@
         && (daemon.Slice or "") == "machine.slice"
       );
 
-  # A service Joel's own traffic passes through, as a tunnel's daemon does,
-  # keeps its memory out of swap and under a hard floor, and comes first for
-  # the disk, so agents' load can't leave it waiting on its own pages. The
-  # kernel keeps a floor only as far as every slice above claims one, so
-  # system.slice claims the carriers' floors too. A name no service has is
-  # refused, since it would make an empty unit rather than protect one.
-  a-carrier-keeps-its-memory =
+  # A VPN's service, which Joel's own traffic passes through, keeps its
+  # memory out of swap and under a hard floor, and comes ahead of the other
+  # system services for the disk, so agents' load can't leave it waiting on
+  # its own pages. The kernel keeps a floor only as far as every slice above
+  # claims one, so system.slice claims each VPN's floor, and none with no
+  # VPN named. A service whose command comes from its package's own unit,
+  # as tailscaled's does, is taken. A name no service has is refused, since
+  # it would make an empty unit rather than protect one, and so is a service
+  # the slices module defines itself, whose settings the VPN's would replace.
+  a-vpn-service-keeps-its-memory =
     let
       machine =
-        carriers: extra:
+        vpnServices: extra:
         (bareNixos [
           self.nixosModules.nix-daemon
           self.nixosModules.slices
-          { jitsusama.slices.carriers = carriers; }
+          { jitsusama.slices.vpnServices = vpnServices; }
           extra
         ]).config;
-      inherit (machine [ "tunnel" ] { systemd.services.tunnel.serviceConfig.ExecStart = "/bin/true"; })
+      inherit (machine [ "vpn" ] { systemd.services.vpn.serviceConfig.ExecStart = "/bin/true"; })
         systemd
         ;
-      tunnel = systemd.services.tunnel.serviceConfig;
-      refused = lib.any (claim: !claim.assertion) (machine [ "none-such" ] { }).assertions;
-      # WARP's daemon is one wherever it runs, unless the machine says otherwise.
-      warp =
-        (bareNixos [
-          self.nixosModules.nix-daemon
-          self.nixosModules.slices
-          { services.cloudflare-warp.enable = true; }
-        ]).config.jitsusama.slices.carriers;
+      vpn = systemd.services.vpn.serviceConfig;
+      # What the module says of the names it's given, apart from every
+      # other assertion a bare machine makes.
+      refusals =
+        vpnServices: extra:
+        map (claim: claim.message) (
+          lib.filter (
+            claim: !claim.assertion && lib.hasInfix "vpnServices" claim.message
+          ) (machine vpnServices extra).assertions
+        );
+      # Its command in its package's unit, as nixpkgs' tailscaled has it.
+      packaged = {
+        systemd.services.packaged.wantedBy = [ "multi-user.target" ];
+      };
+      both = {
+        imports = [
+          packaged
+          { systemd.services.vpn.serviceConfig.ExecStart = "/bin/true"; }
+        ];
+      };
+      two = machine [ "vpn" "packaged" ] both;
+      none = (machine [ ] { }).systemd.slices.system.sliceConfig;
+      # Each claim by what it means, so a failure names the one that broke.
+      claims = {
+        "it can swap" = (vpn.MemorySwapMax or null) == 0;
+        "it has no hard floor" = (vpn.MemoryMin or null) == "256M";
+        "it isn't ahead for the disk" = (vpn.IOWeight or null) == 1000;
+        "system.slice doesn't claim its floor" =
+          (systemd.slices.system.sliceConfig.MemoryMin or null) == "256M";
+        "system.slice doesn't claim each of two" =
+          (two.systemd.slices.system.sliceConfig.MemoryMin or null) == "512M";
+        "system.slice claims a floor with no VPN named" = !(none ? MemoryMin);
+        "a running or packaged service was refused" = refusals [ "vpn" "packaged" ] both == [ ];
+        "a name no service has was taken" =
+          refusals [ "none-such" ] { } == [
+            "jitsusama.slices.vpnServices names none-such, which no system service runs."
+          ];
+        # journald's command is in systemd's own unit, so it's refused as
+        # unrun too; this asks only that it's refused as the module's own.
+        "the slices module's own service was taken" =
+          lib.elem "jitsusama.slices.vpnServices names systemd-journald, which the slices module sets itself."
+            (refusals [ "systemd-journald" ] { });
+      };
+      broken = lib.attrNames (lib.filterAttrs (_: held: !held) claims);
     in
-    holds "a-carrier-keeps-its-memory"
-      "A carrier of Joel's traffic can swap, has no hard floor or one system.slice doesn't claim, isn't first for the disk, or a name no service has was taken."
-      (
-        (tunnel.MemorySwapMax or null) == 0
-        && (tunnel.MemoryMin or null) == "256M"
-        && (tunnel.IOWeight or null) == 1000
-        && (systemd.slices.system.sliceConfig.MemoryMin or null) == "256M"
-        && refused
-        && warp == [ "cloudflare-warp" ]
-      );
+    holds "a-vpn-service-keeps-its-memory"
+      "A VPN's service doesn't keep its memory: ${lib.concatStringsSep "; " broken}."
+      (broken == [ ]);
 
   # systemd-run, in front of a stand-in that says what it was given, adds
   # --slice-inherit for an agent's --user call alone: not Joel's terminal
