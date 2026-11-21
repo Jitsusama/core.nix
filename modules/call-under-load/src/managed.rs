@@ -115,16 +115,19 @@ fn gathered(state: &Path) -> std::io::Result<()> {
 }
 
 /// What to look at for an enrolment `why` names, and what to clear once
-/// it's been read: the kept folder, and the call's cache too where a
-/// profile still holds one. The command only lists, so pasting it can't
-/// remove the evidence before anyone has read it.
-pub fn look_at(why: &str, state: &Path, cache: &Path) -> (String, String) {
-    let kept = kept(state);
-    let folders = if why.contains("stays at") {
-        format!("{} {}", kept.display(), cache.display())
-    } else {
-        kept.display().to_string()
-    };
+/// it's been read: the kept folder, and each profile `why` says still
+/// holds one, wherever it is, since a killed run's profile may be in the
+/// runtime folder rather than the cache. The command only lists, so
+/// pasting it can't remove the evidence before anyone has read it.
+pub fn look_at(why: &str, state: &Path) -> (String, String) {
+    let mut folders = vec![kept(state).display().to_string()];
+    for after in why.split("stays at ").skip(1) {
+        let profile = after.split(['\n', ';']).next().unwrap_or_default().trim();
+        if !profile.is_empty() && !folders.iter().any(|folder| folder == profile) {
+            folders.push(profile.to_string());
+        }
+    }
+    let folders = folders.join(" ");
     let clear = format!("Once it's been read, removing {folders} lets the hour's test go on.");
     (format!("ls -R {folders}"), clear)
 }
@@ -144,10 +147,17 @@ fn copy(from: &Path, to: &Path) -> bool {
         whole &= if path.is_dir() {
             copy(&path, &into)
         } else {
-            // An earlier look's copy may be read-only, which a copy onto
-            // it would fail on.
-            let _ = fs::remove_file(&into);
-            fs::copy(&path, &into).is_ok()
+            // Copied beside it and renamed over it, so an earlier look's
+            // copy that's read-only is still replaced, and one whose
+            // source has gone since stays rather than being lost.
+            let mut name = entry.file_name();
+            name.push(".new");
+            let new = to.join(name);
+            let replaced = fs::copy(&path, &new).is_ok() && fs::rename(&new, &into).is_ok();
+            if !replaced {
+                let _ = fs::remove_file(&new);
+            }
+            replaced
         };
     }
     whole
@@ -228,7 +238,13 @@ mod tests {
             .permissions();
         read_only.set_readonly(true);
         fs::set_permissions(&copied, read_only).expect("the copy is made read-only");
+        fs::write(profile.join("Policy/Enrollment/token"), "t2").expect("the token changes");
         let again = keep(&state, &profile).is_ok();
+        // A token that can't be read at a later look leaves the earlier copy.
+        let far_token = far.join("Policy/Enrollment/token");
+        fs::remove_file(&far_token).expect("the far token goes");
+        std::os::unix::fs::symlink("/nonexistent/token", &far_token).expect("a link is made");
+        let _ = keep(&state, &far);
         let off = stays_off(&state);
         let token = |of: &Path| {
             fs::read_to_string(kept_from(&state, of).join("Policy/Enrollment/token")).ok()
@@ -243,22 +259,25 @@ mod tests {
         );
         assert_eq!(
             tokens,
-            (Some("t".into()), Some("f".into())),
-            "an end's enrolment wasn't kept"
+            (Some("t2".into()), Some("f".into())),
+            "an end's enrolment wasn't kept as last read, or an earlier copy was lost"
         );
     }
 
     #[test]
     fn the_hint_only_lists_so_pasting_it_removes_nothing() {
-        let (state, cache) = (Path::new("/s"), Path::new("/c"));
-        let (kept_look, kept_clear) = look_at("what it was given is kept in /s", state, cache);
-        let (stays_look, _) = look_at("its profile stays at /c/p", state, cache);
+        let state = Path::new("/s");
+        let (kept_look, kept_clear) = look_at("what it was given is kept in /s", state);
+        let (stays_look, _) = look_at(
+            "its profile stays at /run/p\nits profile stays at /c/far-1; and more",
+            state,
+        );
         assert_eq!(
             kept_look, "ls -R /s/call-under-load/enrolled",
             "the hint does more than list"
         );
         assert_eq!(
-            stays_look, "ls -R /s/call-under-load/enrolled /c",
+            stays_look, "ls -R /s/call-under-load/enrolled /run/p /c/far-1",
             "the hint misses the profile that still holds it"
         );
         assert!(

@@ -185,7 +185,7 @@ fn said(hour: &Value, age: u64) -> String {
 /// given, or where Chromium's own machine policy could enrol it.
 fn unmanaged() -> Result<(), Failure> {
     if let Some(why) = managed::stays_off(&state()) {
-        let (look, clear) = managed::look_at(&why, &state(), &cache());
+        let (look, clear) = managed::look_at(&why, &state());
         return Err(Failure::new(Exit::Refused, "the test call stays off")
             .because(format!("{}. {clear}", why.trim_end()))
             .try_this(look));
@@ -204,7 +204,7 @@ fn unmanaged() -> Result<(), Failure> {
 /// the run's own words, which say where the evidence is, kept or still in
 /// its profile.
 fn enrolled(why: &str) -> Failure {
-    let (look, clear) = managed::look_at(why, &state(), &cache());
+    let (look, clear) = managed::look_at(why, &state());
     Failure::new(Exit::Refused, "a test browser enrolled")
         .because(format!("{why}. {clear}"))
         .try_this(look)
