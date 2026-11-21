@@ -583,6 +583,8 @@ fn a_turn_that_cant_be_opened_leaves_the_rest_to_wait_on() {
         })
         .collect();
     let letting_go = std::thread::spawn(move || {
+        // The held turns stay held 3 s, which the send must wait out:
+        // that wait is what this proves.
         std::thread::sleep(Duration::from_secs(3));
         drop(held);
     });
@@ -4976,6 +4978,8 @@ fn gone_pid() -> u32 {
 fn vm_lender_back(vm: &Path) -> std::thread::JoinHandle<()> {
     let vm = vm.to_owned();
     std::thread::spawn(move || {
+        // The lender is away a second, as one a switch restarts is,
+        // while the send waits for it to stand again.
         std::thread::sleep(std::time::Duration::from_secs(1));
         fs::write(
             vm.join("store"),
