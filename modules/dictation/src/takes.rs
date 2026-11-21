@@ -45,7 +45,8 @@ pub const LONGEST: usize = LONGEST_FRAMES * FRAME;
 const CUT_WITHIN_FRAMES: usize = 5 * 50;
 /// Less speech than this, a cough or a click, isn't a take.
 const LEAST_SPEECH_FRAMES: usize = 15;
-/// How far back the floor is judged from.
+/// How far back the floor is judged from: ten seconds of the line's
+/// sound, so lost packets, which hold nothing, stretch it a little.
 const FLOOR_FRAMES: usize = 10 * 50;
 /// How far above the floor speech is.
 const ABOVE_FLOOR_DB: f32 = 12.0;
@@ -79,6 +80,11 @@ const MUTE_FRAMES: usize = 20;
 /// so a packet lost on a hissy line doesn't make its hiss speech. A fifth
 /// of a second is longer than a word's unvoiced sounds.
 const OWN_SOUND_FRAMES: usize = 10;
+/// A run of the line's own sound loud enough to be speech holds within
+/// this, from its quietest frame to its loudest, as a hiss or a fan does
+/// and a laugh, a cough or a long "s" doesn't: each rises and falls.
+/// A line's hiss wanders a decibel or two over a fifth of a second.
+const STEADY_DB: f32 = 3.0;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
 /// lone "Yeah." holds several times as much. Five left out 13 of the
@@ -141,8 +147,10 @@ pub struct Cutter {
     since_nothing: Option<usize>,
     /// Frames of nothing in a row, up to the one just fed.
     nothing_run: usize,
-    /// Frames of the line's own sound in a row, up to the one just fed.
+    /// Frames of the line's own sound in a row, up to the one just fed,
+    /// and the quietest and loudest of them.
     own_run: usize,
+    own_levels: (f32, f32),
     /// The frame fed before this one, which voicing is read with.
     last: Vec<f32>,
 }
@@ -197,7 +205,7 @@ impl Cutter {
                 self.own_run = 0;
             } else {
                 let own = level <= QUIETEST_SPEECH_DB || !voiced(&self.last, &frame);
-                self.own_run = if own { self.own_run + 1 } else { 0 };
+                self.own_run = if own { self.own_sound(level) } else { 0 };
                 self.recent
                     .push_back((level, self.own_run >= OWN_SOUND_FRAMES));
                 if self.recent.len() > FLOOR_FRAMES {
@@ -259,8 +267,10 @@ impl Cutter {
             }
         }
         let spoken = ended.iter().filter(|(_, _, speech)| *speech).count();
-        // Voicing is the dearer test, so it's asked only of a take loud for
-        // long enough, and only until enough frames are voiced.
+        // Voicing is asked again of a take loud for long enough, of its
+        // loud frames, and only until enough are voiced: a few frames'
+        // more reckoning, where keeping each frame's answer would carry
+        // it through every take.
         let needed = LEAST_VOICED_FRAMES.max(spoken.div_ceil(LOUD_PER_VOICED));
         let heard = spoken >= LEAST_SPEECH_FRAMES
             && ended
@@ -273,6 +283,24 @@ impl Cutter {
             start,
             samples: ended.into_iter().flat_map(|(frame, _, _)| frame).collect(),
         })
+    }
+
+    /// Lengthens the run of the line's own sound by a frame at `level`,
+    /// or starts it afresh there when the run is loud and doesn't hold
+    /// steady, giving how long it now is.
+    fn own_sound(&mut self, level: f32) -> usize {
+        let (quietest, loudest) = if self.own_run == 0 {
+            (level, level)
+        } else {
+            (self.own_levels.0.min(level), self.own_levels.1.max(level))
+        };
+        if loudest <= QUIETEST_SPEECH_DB || loudest - quietest <= STEADY_DB {
+            self.own_levels = (quietest, loudest);
+            self.own_run + 1
+        } else {
+            self.own_levels = (level, level);
+            1
+        }
     }
 
     fn threshold(&self) -> f32 {

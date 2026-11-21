@@ -123,6 +123,18 @@ fn voice(seconds: f32, pitch: f32) -> Vec<f32> {
         .collect()
 }
 
+/// `sound` with every other frame's level taken down by `gain`.
+fn stepping(sound: &[f32], gain: f32) -> Vec<f32> {
+    sound
+        .chunks(FRAME)
+        .enumerate()
+        .flat_map(|(i, frame)| {
+            let gain = if i % 2 == 0 { 1.0 } else { gain };
+            frame.iter().map(move |sample| sample * gain)
+        })
+        .collect()
+}
+
 /// A room's quiet, about -70 dBFS.
 fn quiet(seconds: f32) -> Vec<f32> {
     tone(seconds, 0.0004, 1.3)
@@ -379,12 +391,14 @@ fn a_lost_packet_adds_no_hiss_to_a_take() {
     // to just short of a mute, so its hiss after them is no more
     // speech than before: the take is the word and its edges, where a
     // cleared floor would add a fifth of a second of hiss at least.
+    // The hiss wanders, as a line's does, by 1.4 dB a frame.
+    let hiss = stepping(&noise(3.0, 0.005, false), 0.85);
     for lost in [2, MUTE_FRAMES - 1] {
         let sound = [
-            noise(3.0, 0.005, false),
+            hiss.clone(),
             voice(0.4, 150.0),
             vec![0.0; FRAME * lost],
-            noise(3.0, 0.005, false),
+            hiss.clone(),
             quiet(1.0),
         ]
         .concat();
@@ -461,18 +475,10 @@ fn a_laugh_on_a_gated_line_keeps_it_gated() {
     // hiss doesn't: it mustn't be taken for the line's own sound and
     // set a floor the words after it are lost under. This one's level
     // steps 6 dB from one frame to the next.
-    let laugh: Vec<f32> = noise(0.3, 0.045, false)
-        .chunks(FRAME)
-        .enumerate()
-        .flat_map(|(i, frame)| {
-            let gain = if i % 2 == 0 { 1.0 } else { 0.5 };
-            frame.iter().map(move |sample| sample * gain)
-        })
-        .collect();
     let sound = [
         vec![0.0; RATE * 2],
         voice(0.7, 150.0),
-        laugh,
+        stepping(&noise(0.3, 0.045, false), 0.5),
         voice(0.8, 150.0),
         vec![0.0; RATE * 2],
     ]
