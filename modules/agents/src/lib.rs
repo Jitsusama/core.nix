@@ -33,6 +33,7 @@
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
 //! - `talks`: Joel's talks with each session, as rows inside its step.
 //! - `windows`: which kitty pane and window each session here is in.
+//! - `cells`: which live session each cell is now, for a look to go to.
 //! - `arrangement`: where each session's window sat, kept to put it back.
 //! - `kept_places`: where a session moving onto pi's host sat, for its
 //!   viewer.
@@ -50,6 +51,7 @@ pub mod arrangement;
 pub mod asker;
 pub mod carried;
 pub mod carries;
+pub mod cells;
 pub mod clock;
 pub mod closed;
 pub mod drawer;
