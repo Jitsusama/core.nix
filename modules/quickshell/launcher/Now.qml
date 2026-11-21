@@ -1114,7 +1114,7 @@ Provider {
     // Which live session each cell is now, as the agents daemon serves it
     // (modules/agents/src/cells.rs). A look's row is kept by the address
     // its cell goes to (keptLook), so only a look whose cell moved is made
-    // again; Talk and Go To read the cell as they're pressed.
+    // again; Talk and Go To read the cell again as they're pressed.
     Daemon {
         id: cellsDaemon
 
@@ -1133,11 +1133,12 @@ Provider {
         return Looks.cellFor(one, cellsDaemon.held, Sessions.running, Sessions.parked);
     }
 
-    // The address the daemon says a look's cell goes to, or "" (Looks.js's
-    // cellGoes), read through its revision as lookCell is.
+    // The address the daemon says a look's cell goes to, "null" where it
+    // says nowhere, or "" (Looks.js's cellGoes), read through its revision
+    // as lookCell is.
     function lookGoes(one) {
         void cellsDaemon.revision;
-        return Looks.cellGoes(one, cellsDaemon.held);
+        return String(Looks.cellGoes(one, cellsDaemon.held));
     }
 
     // Goes to the window of the cell a look leads to, as it stands when
@@ -1409,8 +1410,8 @@ Provider {
         return keptAlike(looksKept, one.file,
             // Kept by the cell it leads to too, so Talk goes to the cell
             // it is now rather than the one it was when the row was made.
-            // A keyed read rather than lookCell's search, which runs only as
-            // a row is stepped into or pressed.
+            // A keyed read, cheaper than lookCell's search, which For You's
+            // cell headings already run for every look (cellsTold).
             [text, lookSide(one, now, forYouSaid(now)), lookAsker(one), lookGoes(one)],
             () => lookRow(one, now));
     }

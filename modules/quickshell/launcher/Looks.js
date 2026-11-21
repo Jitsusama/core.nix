@@ -136,26 +136,31 @@ function cellOf(one, running, parked) {
 
 // The address the agents daemon says the cell a look names (`cell`) goes
 // to now, by its `agent-cell` records by key, `cells`
-// (modules/agents/src/cells.rs): "" where it names no cell, the daemon
-// holds no record of it, or the record says it goes nowhere.
+// (modules/agents/src/cells.rs): null where the record says it goes
+// nowhere, and "" where it names no cell or the daemon holds no record.
 function cellGoes(one, cells) {
     const cell = typeof one.cell === "string" ? one.cell : "";
     const record = cell === "" ? undefined : cells?.[`agent-cell:agents:${cell}`];
+    if (record !== undefined && record !== null && record.goes === null)
+        return null;
     return typeof record?.goes === "string" ? record.goes : "";
 }
 
 // The cell a look leads to as the agents daemon names it (cellGoes): the
 // live session found among `running` and `parked` by the address it goes
 // to. Where the daemon names none, or a session those lists don't hold
-// yet, cellOf's search decides: the daemon and the lists each read the
-// node and either can be a beat behind, so a look the daemon says goes
-// nowhere still reaches a session the lists hold on its quest. The
-// search for a look naming no cell goes once every look names its cell,
-// by Mon 23 Nov 2026.
+// yet, cellOf's search decides, since the daemon and the lists each read
+// the node and either can be a beat behind. Where the daemon says it goes
+// nowhere, only the cell itself, back in the lists, is found: the search
+// would find a session on another quest that merely lists its address,
+// which cells.rs refuses. The search for a look naming no cell goes once
+// every look names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
     const goes = cellGoes(one, cells);
     const held = goes === "" ? [] : (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
+    if (goes === null)
+        return held.find(session => session.address === one.cell) ?? null;
     return held.find(session => session.address === goes) ?? cellOf(one, running, parked);
 }
 

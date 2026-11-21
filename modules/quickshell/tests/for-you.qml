@@ -691,7 +691,8 @@ QtObject {
         expect("nothing held, none", Looks.cellOf(lookLeft, undefined, undefined), null);
         // As the agents daemon names it (cells.rs): the cell a look names goes
         // to the live session it is now, running or parked; ended with none
-        // to go to, none; not served yet, or naming no cell, cellOf's search.
+        // to go to, none but itself; not served yet, or naming no cell,
+        // cellOf's search.
         const cells = {
             "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
             "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
@@ -705,11 +706,18 @@ QtObject {
             Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
         expect("ended with none to go to, none where the lists hold none",
             Looks.cellFor(naming("GGGGGG"), cells, [stranger], []), null);
-        expect("ended with none to go to, the lists' search, which may be ahead",
-            Looks.cellFor(naming("GGGGGG"), cells, [leaver], []).address, "AAAAAA");
+        expect("ended with none to go to, none, though a session the lists hold left it",
+            Looks.cellFor(naming("GGGGGG"), cells, [leaver], []), null);
+        const lister = { address: "TTTTTT",
+            presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "GGGGGG"] } };
+        expect("ended with none to go to, never one on another quest listing its address",
+            Looks.cellFor(naming("GGGGGG"), cells, [lister], []), null);
+        expect("ended with none to go to, itself where the lists hold it back",
+            Looks.cellFor(naming("GGGGGG"), cells, [lister],
+                [{ address: "GGGGGG", presence: { session: "s-10" } }]).address, "GGGGGG");
         expect("the address a cell goes to, keyed", Looks.cellGoes(naming("AAAAAA"), cells),
             "BBBBBB");
-        expect("none for one going nowhere", Looks.cellGoes(naming("GGGGGG"), cells), "");
+        expect("null for one going nowhere", Looks.cellGoes(naming("GGGGGG"), cells), null);
         expect("none for one not served", Looks.cellGoes(naming("HHHHHH"), cells), "");
         expect("none for one naming no cell", Looks.cellGoes(naming(7), cells), "");
         expect("going to a session not listed yet, cellOf's search",
