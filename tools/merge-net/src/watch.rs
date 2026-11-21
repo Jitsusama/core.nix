@@ -3201,13 +3201,51 @@ mod tests {
         .exits("m1", &check, &[STALL, UNCOMPARED]);
         rounds_past_rests(&world, &state, "s", 3);
         let told = findings(&state);
+        let log = state.log("m1", &check, 1).display().to_string();
         assert!(
             told.iter().any(|finding| finding["kind"] == "mac-unrun"
                 && finding["commit"] == "m1"
                 && finding["stalled_once"] == true
+                && finding["log"] == log.as_str()
                 && finding.get("stalled").is_none()),
-            "a stall before a day of comparing nothing was told as no Mac comparing it, or \
-             as two stalls: {told:?}"
+            "a stall before a day of comparing nothing was told as no Mac comparing it, as \
+             two stalls, or without the log it wrote, {log}: {told:?}"
+        );
+    }
+
+    #[test]
+    fn a_stall_after_a_failure_names_the_log_it_wrote() {
+        // Each run appends to the log of the failures before it, plus one,
+        // so a stall after a failure wrote the second.
+        let state = state("mac-failed-then-stalled");
+        let check = crate::macs::check("s");
+        state.set_heads("h", "h").unwrap();
+        state
+            .keep_settling(
+                &check,
+                &json!({"kind": "mac", "merge": "m1", "test": check, "since": 0, "after": 0}),
+            )
+            .unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m1", &check, &[1, STALL, UNCOMPARED]);
+        rounds_past_rests(&world, &state, "s", 4);
+        let (failed, stalled) = (
+            state.log("m1", &check, 1).display().to_string(),
+            state.log("m1", &check, 2).display().to_string(),
+        );
+        let told = findings(&state);
+        assert!(
+            told.iter().any(|finding| finding["kind"] == "mac-unrun"
+                && finding["failed_log"] == failed.as_str()
+                && finding["stalled_once"] == true
+                && finding["log"] == stalled.as_str()),
+            "a stall after a failure wasn't told with both logs, {failed} and {stalled}: \
+             {told:?}"
         );
     }
 
@@ -3612,6 +3650,33 @@ mod tests {
                 "a comparison with a {kind} finding was handed again"
             );
         }
+    }
+
+    #[test]
+    fn a_mac_comparison_failed_twice_is_not_handed_again_with_no_finding() {
+        // A revert dropped as the check is flaky at main's newest head
+        // writes nothing at the merge, yet its revert was decided.
+        let state = state("mac-failed-twice");
+        let check = crate::macs::check("s");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            mac_skipped: names("m1"),
+            ..Stand::default()
+        };
+        let log = state.log("m1", &check, 1);
+        for _ in 0..FAILURES {
+            state
+                .record("m1", &check, Ran::Failed, Some(1), &log, 60)
+                .unwrap();
+        }
+        let settler = Settler::new(&world, &state);
+        hand_skipped_macs(&world, &settler, "s", "h").unwrap();
+        assert!(
+            !settler.holds(&check) && state.settling().is_empty(),
+            "a comparison failed twice was handed again for its revert to be decided again"
+        );
     }
 
     #[test]
