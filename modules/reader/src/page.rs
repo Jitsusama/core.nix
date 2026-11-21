@@ -92,6 +92,16 @@ impl Width {
         }
     }
 
+    /// The page the first screen is set at: for the window's width when
+    /// the reader last closed, `kept_pt`, which niri most likely opens it
+    /// at again, or else for the one a window has until niri names it, so
+    /// the first configure finds the page already set for it. A window
+    /// niri opens at another width, with none kept, sets it once more.
+    pub fn first(kept_pt: Option<f64>) -> Width {
+        let unnamed_pt = f64::from(crate::app::UNNAMED_SIZE.0) * crate::theme::PT_A_PX;
+        Width::for_window(kept_pt.unwrap_or(unnamed_pt))
+    }
+
     /// The page for a window this many points of the page wide at zoom 1.
     /// A wider window than the whole page's widens the measure by half of
     /// what it has past it, three characters at a time, up to 80. A narrower one has no
@@ -242,14 +252,16 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   text(top-edge: line-top(), code-pieces(s).map(set-piece).join())
 }
 // The least room a table's column needs for a span: its widest run of
-// pieces held together, since only between those can it break.
+// pieces held together, since only between those can it break. A piece
+// too wide to box counts whole, with what's held to it, as a cell sets
+// it unhyphenated and a name with nowhere to break can't.
 #let least-code(s) = context {
   let widest = 0pt
   let run = 0pt
   for p in code-pieces(s) {
     let width = measure(raw(p.piece)).width
     let by = if p.by == " " { measure(raw(" ")).width } else { 0pt }
-    run = if not p.whole { 0pt } else if p.held { run + by + width } else { width }
+    run = if p.held { run + by + width } else { width }
     widest = calc.max(widest, run)
   }
   box(width: widest)

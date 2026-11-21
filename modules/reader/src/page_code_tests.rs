@@ -5,6 +5,59 @@
 use super::super::pitch_pt;
 use super::{OPENING, Setter, Width, baselines, steps};
 
+/// How the page splits `code` into pieces on the measure a window
+/// `window_pt` wide gets, as the template's own `code-pieces` says: each
+/// piece after a `+` where it's held to the one before, or a `|` where a
+/// line may break before it, and a `!` after one too wide to box, all on
+/// one line.
+fn held(code: &str, window_pt: f64) -> String {
+    let theme = crate::theme::Theme::read("{}");
+    let mut world = super::super::new_world();
+    let (ink, look) = super::super::look(&theme, &world);
+    // Set at a width no line of pieces reaches, so they read back as one.
+    let program = format!(
+        "{}#context text(size: 2pt, code-pieces({}).map(p => (if p.held {{ \"+\" }} else {{ \"|\" }}) + p.piece + (if p.whole {{ \"\" }} else {{ \"!\" }})).join(\" \"))",
+        super::super::at_width(&ink, &look, Width::for_window(window_pt)),
+        crate::walk::literal(code)
+    );
+    let page = super::super::set_page(&mut world, &program).expect("the page sets");
+    crate::text::lines(crate::text::runs(&page.frame))
+        .iter()
+        .map(|line| line.text.trim_end().to_owned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn short_pieces_hold_in_pairs_a_paths_opening_to_its_path_and_the_last_to_those_before() {
+    assert_eq!(
+        held("ls -l -a -h -t -r -S -R -1 -d -F -G -i", 300.0),
+        "|ls +-l |-a +-h |-t +-r |-S +-R |-1 +-d |-F +-G +-i",
+        "short flags pair, and the last joins the pair before it"
+    );
+    assert_eq!(
+        held(
+            "nix build --keep-going ~/.cache/pi/agentic | tee out",
+            300.0
+        ),
+        "|nix +build |--keep-going +~/ +.cache/ |pi/ +agentic || +tee +out",
+        "a path's opening holds to the rest of its path, and a pipe to what follows it"
+    );
+    assert_eq!(
+        held(
+            "cd modules/reader/src/page.rs && ./configure --prefix",
+            300.0
+        ),
+        "|cd +modules/ |reader/ |src/ |page.rs +&& |./ +configure |--prefix",
+        "a piece after a held pair stands free"
+    );
+    assert_eq!(
+        held("git  log --oneline -n 20", 300.0),
+        "|git + |log +--oneline |-n +20",
+        "a doubled space is a piece of none, held to the word before it"
+    );
+}
+
 /// A page's lines, set for a window `window_pt` wide, from the first
 /// holding `from` on, each without the spaces it ends on, and their
 /// baselines.
@@ -110,6 +163,20 @@ fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap
 }
 
 #[test]
+fn a_doubled_space_in_code_reads_back_as_written() {
+    let code = "cargo test --package reader  --lib page::tests --no-fail-fast -- --nocapture";
+    let lines = lines_from(
+        "doubled",
+        &format!("Run this:\n\n`{code}`\n"),
+        "cargo",
+        300.0,
+    );
+    let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
+    assert!(texts.len() >= 2, "the code took one line: {texts:?}");
+    assert_eq!(texts.join(" "), code, "the code reads otherwise");
+}
+
+#[test]
 fn a_span_of_short_flags_still_breaks_between_them() {
     // Every piece short: held to each other without end, they would run
     // off the page on one line.
@@ -136,19 +203,75 @@ fn a_piece_wider_than_two_thirds_of_the_measure_breaks_where_it_can_and_keeps_to
         "a-name",
         360.0,
     );
-    let measure = Width::for_window(360.0).measure_pt;
     assert!(lines.len() >= 2, "the name took {lines:?}");
     let read = lines
         .iter()
         .map(|(text, _)| text.as_str())
         .collect::<String>();
     assert_eq!(read, name, "the name reads otherwise");
-    for (text, _) in &lines {
-        assert!(
-            text.chars().count() < name.chars().count(),
-            "a line held the whole name on a {measure} pt measure: {text:?}"
-        );
-    }
+    assert_eq!(
+        held(&format!("run {name}"), 360.0),
+        format!("|run +{name}!"),
+        "a piece wider than two thirds of the measure is left unboxed"
+    );
+}
+
+#[test]
+fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
+    // Over two thirds of a 360 pt window's measure, and under all of it,
+    // in a list twice nested, which has less room than two thirds.
+    let name = ["a-name"; 5].join("-");
+    let markdown = format!("{OPENING}- One\n  - Two\n    - Three\n      - Four `{name}` here\n");
+    let dir = std::env::temp_dir().join(format!("reader-nested-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, &markdown).expect("the file");
+    let mut setter = Setter::new(file.to_str().expect("a path"));
+    let width = Width::for_window(360.0);
+    setter.fit(width);
+    let (page, _) = setter.set().expect("set");
+    std::fs::remove_dir_all(&dir).expect("cleaned");
+    let runs = crate::text::runs(&page.frame);
+    // The case is reached only when the name is wider than the list's
+    // room, from where its item's words start, but not than the measure.
+    let item = runs
+        .iter()
+        .find(|run| {
+            run.chars
+                .iter()
+                .map(|c| c.0)
+                .collect::<String>()
+                .contains("Four")
+        })
+        .map(|run| run.x_pt)
+        .expect("the item is set");
+    let name_pt: f64 = runs
+        .iter()
+        .filter(|run| {
+            let text: String = run.chars.iter().map(|c| c.0).collect();
+            !text.trim().is_empty() && text.trim().chars().all(|c| "a-nme".contains(c))
+        })
+        .flat_map(|run| run.chars.iter().map(|c| c.2 - c.1))
+        .sum();
+    let room = width.measure_pt - item;
+    assert!(
+        name_pt > room && name_pt < width.measure_pt,
+        "the name is {name_pt} pt, not between the list's {room} pt and the measure"
+    );
+    assert_eq!(
+        held(&format!("run {name}"), 360.0),
+        format!("|run +{name}!"),
+        "the name is left unboxed"
+    );
+    let right = runs
+        .iter()
+        .flat_map(|run| run.chars.iter().map(|c| c.2))
+        .fold(0.0, f64::max);
+    assert!(
+        right <= width.measure_pt + 0.01,
+        "a line runs to {right} pt, past the {} pt measure",
+        width.measure_pt
+    );
 }
 
 #[test]
@@ -164,11 +287,13 @@ fn a_line_all_of_short_code_steps_one_line_as_any_other() {
 
 #[test]
 fn code_in_a_narrow_column_keeps_to_it() {
-    // One kept whole, and one long enough that the column measures its
-    // widest held run and breaks it.
+    // One kept whole; one long enough to break, whose widest run is the
+    // triple's longest name held to the short pieces beside it; and a name
+    // too wide to box, with nowhere to break, which the column must hold.
     for (i, code) in [
         "cargo build --release",
-        "cargo build --release --features a-wide-column --target x86_64-unknown-linux-gnu",
+        "cargo build --release --features a-wide-column --target x86_64-unknown-linux-gnu -o out",
+        "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 here",
     ]
     .into_iter()
     .enumerate()

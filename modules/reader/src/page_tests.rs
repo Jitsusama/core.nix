@@ -121,6 +121,21 @@ fn a_page_set_for_a_wide_window_is_its_widened_measure_wide() {
 }
 
 #[test]
+fn the_first_page_is_set_for_the_kept_window_or_else_the_one_niri_has_yet_to_name() {
+    let (unnamed, _) = crate::app::UNNAMED_SIZE;
+    assert_eq!(
+        Width::first(None),
+        Width::for_window(f64::from(unnamed) * crate::theme::PT_A_PX),
+        "with none kept, the page a window of the unnamed size fits"
+    );
+    assert_eq!(
+        Width::first(Some(300.0)),
+        Width::for_window(300.0),
+        "the kept one"
+    );
+}
+
+#[test]
 fn a_page_set_for_a_narrow_window_is_its_measure_wide_and_keeps_to_it() {
     let dir = std::env::temp_dir().join(format!("reader-narrow-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");

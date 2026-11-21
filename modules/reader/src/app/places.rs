@@ -107,8 +107,10 @@ impl App {
             Landing::At(pt, _) => *pt,
             Landing::Kept => match place::read(file) {
                 Some(kept) if kept.at_end => most_pt,
-                Some(kept) => place::pt_of(&place::starts(&page.frame), kept.block, kept.into_pt)
-                    .unwrap_or(0.0),
+                Some(kept) => {
+                    let starts = place::starts(&page.frame);
+                    place::pt_of(&starts, kept.block, kept.into_pt, kept.block_pt).unwrap_or(0.0)
+                }
                 None => 0.0,
             },
         };
@@ -207,10 +209,9 @@ impl App {
         self.painter.take(incoming.page, incoming.version);
         if let Some(before) = before {
             let after = place::starts(&self.painter.page().frame);
-            // The cursor's line goes with its block too.
+            // The cursor's line goes with its block too, as far through it.
             for pt in self.marks.values_mut().chain(self.aim.as_mut()) {
-                let (block, into_pt) = place::at(&before, *pt);
-                *pt = place::pt_of(&after, block, into_pt).unwrap_or(*pt);
+                *pt = place::moved(&before, &after, *pt).unwrap_or(*pt);
             }
         }
         self.offset = incoming.offset;
@@ -283,15 +284,16 @@ impl App {
         }
         let starts = place::starts(&self.painter.page().frame);
         let marks = &mut self.marks;
-        self.kept_marks.retain(|(letter, block, into_pt)| {
-            match place::pt_of(&starts, *block, *into_pt) {
-                Some(pt) => {
-                    marks.entry(*letter).or_insert(pt);
-                    false
+        self.kept_marks
+            .retain(|(letter, block, into_pt, block_pt)| {
+                match place::pt_of(&starts, *block, *into_pt, *block_pt) {
+                    Some(pt) => {
+                        marks.entry(*letter).or_insert(pt);
+                        false
+                    }
+                    None => true,
                 }
-                None => true,
-            }
-        });
+            });
     }
 
     /// Keeps where the view is on the file shown, and its marks, for the
@@ -343,6 +345,7 @@ impl App {
             &place::Place {
                 block,
                 into_pt,
+                block_pt: place::height_of(&starts, block),
                 at_end,
                 marks,
                 said: said(block, here),

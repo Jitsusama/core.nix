@@ -23,6 +23,10 @@ use typst::layout::{Frame, FrameItem, Point};
 pub struct Place {
     pub block: usize,
     pub into_pt: f64,
+    /// How tall its block was where it was kept, so a page set at another
+    /// width finds it as far through the block; a place kept before this
+    /// was written, or in the page's last block, has none.
+    pub block_pt: Option<f64>,
     pub at_end: bool,
     /// Each letter's mark, kept the same way.
     pub marks: Vec<Mark>,
@@ -39,6 +43,7 @@ pub struct Mark {
     pub letter: char,
     pub block: usize,
     pub into_pt: f64,
+    pub block_pt: Option<f64>,
     pub said: Said,
 }
 
@@ -183,6 +188,7 @@ pub fn mark(blocks: &[Block], letter: char, line: (f64, f64), height_pt: Option<
         letter,
         block,
         into_pt: below_its_top - (baseline - top),
+        block_pt: height_of(&starts, block),
         said: Said {
             heading: heading_of(blocks, block),
             through: height_pt.map(|height| share(top, height)),
@@ -239,13 +245,13 @@ pub fn letter(said: &str) -> Option<char> {
 pub fn opening(
     kept: Option<&Place>,
     letter: Option<char>,
-) -> (Option<(usize, f64, bool)>, Option<char>) {
-    let left = kept.map(|place| (place.block, place.into_pt, place.at_end));
+) -> (Option<(usize, f64, Option<f64>, bool)>, Option<char>) {
+    let left = kept.map(|place| (place.block, place.into_pt, place.block_pt, place.at_end));
     let Some(letter) = letter else {
         return (left, None);
     };
     match kept.and_then(|place| place.marks.iter().find(|mark| mark.letter == letter)) {
-        Some(mark) => (Some((mark.block, mark.into_pt, false)), None),
+        Some(mark) => (Some((mark.block, mark.into_pt, mark.block_pt, false)), None),
         None => (left, Some(letter)),
     }
 }
@@ -259,12 +265,37 @@ pub fn now() -> Option<u64> {
 }
 
 /// Where a block and a distance into it are on a page, if the page has the
-/// block.
-pub fn pt_of(starts: &[(usize, f64)], block: usize, into_pt: f64) -> Option<f64> {
-    starts
-        .iter()
-        .find(|(b, _)| *b == block)
-        .map(|(_, top)| top + into_pt)
+/// block. Kept where the block stood `block_pt` tall, and set now at
+/// another height, as a page set at another width sets it, the distance
+/// is taken as far through it, so a place on its fourth line of eight
+/// lands on the middle of it however its lines wrap now.
+pub fn pt_of(
+    starts: &[(usize, f64)],
+    block: usize,
+    into_pt: f64,
+    block_pt: Option<f64>,
+) -> Option<f64> {
+    let top = starts.iter().find(|(b, _)| *b == block)?.1;
+    let into_pt = match (block_pt, height_of(starts, block)) {
+        (Some(was), Some(now)) if was > 0.0 && (now - was).abs() >= 0.01 => into_pt * now / was,
+        _ => into_pt,
+    };
+    Some(top + into_pt)
+}
+
+/// How tall a block stands, from its top to the next block's; the page's
+/// last block, or one the page lacks, says none.
+pub fn height_of(starts: &[(usize, f64)], block: usize) -> Option<f64> {
+    let at = starts.iter().position(|(b, _)| *b == block)?;
+    let next = starts.get(at + 1)?;
+    Some(next.1 - starts[at].1)
+}
+
+/// Where a point on a page set `before` lands on the same page set again
+/// `after`, at another width: as far through the same block.
+pub fn moved(before: &[(usize, f64)], after: &[(usize, f64)], pt: f64) -> Option<f64> {
+    let (block, into_pt) = at(before, pt);
+    pt_of(after, block, into_pt, height_of(before, block))
 }
 
 /// The state home, where places are kept.
@@ -313,6 +344,7 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
                         letter: mark.get("letter")?.as_str()?.chars().next()?,
                         block: usize::try_from(mark.get("block")?.as_u64()?).ok()?,
                         into_pt: mark.get("into_pt")?.as_f64()?,
+                        block_pt: block_pt_of(mark),
                         said: said_of(mark),
                     })
                 })
@@ -322,6 +354,7 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
     Some(Place {
         block,
         into_pt: kept.get("into_pt")?.as_f64()?,
+        block_pt: block_pt_of(kept),
         at_end: kept
             .get("at_end")
             .and_then(serde_json::Value::as_bool)
@@ -330,6 +363,13 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
         said: said_of(kept),
         left: kept.get("left").and_then(serde_json::Value::as_u64),
     })
+}
+
+/// How tall a place's or a mark's block was, where it was kept.
+fn block_pt_of(kept: &serde_json::Value) -> Option<f64> {
+    kept.get("block_pt")
+        .and_then(serde_json::Value::as_f64)
+        .filter(|pt| pt.is_finite() && *pt > 0.0)
 }
 
 /// What a place or a mark says of where it is, whatever of it was kept.
@@ -378,11 +418,14 @@ fn write_in(state: &Path, file: &Path, place: &Place) -> std::io::Result<()> {
         .marks
         .iter()
         .map(|mark| {
-            let fields = serde_json::json!({
+            let mut fields = serde_json::json!({
                 "letter": mark.letter.to_string(),
                 "block": mark.block,
                 "into_pt": mark.into_pt,
             });
+            if let Some(block_pt) = mark.block_pt {
+                fields["block_pt"] = serde_json::json!(block_pt);
+            }
             with_said(fields, &mark.said)
         })
         .collect();
@@ -395,6 +438,9 @@ fn write_in(state: &Path, file: &Path, place: &Place) -> std::io::Result<()> {
     });
     if let Some(left) = place.left {
         fields["left"] = serde_json::json!(left);
+    }
+    if let Some(block_pt) = place.block_pt {
+        fields["block_pt"] = serde_json::json!(block_pt);
     }
     let text = with_said(fields, &place.said);
     if let Some(folder) = kept.parent() {
@@ -508,285 +554,5 @@ fn keep_window_in(state: &Path, pt: f64) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        Block, Mark, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in, mark,
-        opening, pt_of, read_in, through, window_in, write_in,
-    };
-
-    /// A block of a page, a heading's words given.
-    fn block(number: usize, heading: Option<&str>) -> Block {
-        Block {
-            number,
-            top_pt: f64::from(u32::try_from(number).unwrap_or(0)) * 100.0,
-            lines: None,
-            heading: heading.map(|words| (2, words.to_string())),
-        }
-    }
-
-    #[test]
-    fn a_place_sits_under_the_nearest_heading_at_or_before_it() {
-        let blocks = [
-            block(0, None),
-            block(1, Some("Installing")),
-            block(2, None),
-            block(3, Some("Using It")),
-        ];
-        assert_eq!(heading_of(&blocks, 2).as_deref(), Some("Installing"));
-        assert_eq!(
-            heading_of(&blocks, 3).as_deref(),
-            Some("Using It"),
-            "a heading's own block is under it"
-        );
-        assert_eq!(
-            heading_of(&blocks, 0),
-            None,
-            "above the first heading, none"
-        );
-        assert_eq!(heading_of(&blocks, 9), None, "a block the page lacks, none");
-    }
-
-    #[test]
-    fn a_mark_on_a_headings_line_is_kept_under_that_heading() {
-        // A heading's block starts at its capitals, a few points below its
-        // line's top, which is where the cursor's line and so the mark are.
-        let blocks = [
-            block(0, Some("A Page")),
-            block(1, None),
-            block(2, Some("Further On")),
-        ];
-        let kept = mark(&blocks, 'a', (196.0, 210.0), Some(1000.0));
-        assert_eq!(kept.said.heading.as_deref(), Some("Further On"), "{kept:?}");
-        assert_eq!(kept.block, 2, "{kept:?}");
-        assert_eq!(
-            pt_of(
-                &[(0, 0.0), (1, 100.0), (2, 200.0)],
-                kept.block,
-                kept.into_pt
-            ),
-            Some(196.0),
-            "it's kept where its line's top is"
-        );
-        let words = mark(&blocks, 'b', (120.0, 134.0), Some(1000.0));
-        assert_eq!(
-            (words.block, words.said.heading.as_deref()),
-            (1, Some("A Page")),
-            "a line of words under a heading is in its own block"
-        );
-    }
-
-    #[test]
-    fn a_mark_says_its_lines_share_of_the_whole_page() {
-        // The view goes no further than 700 down a 1000-point page, so a
-        // view's share of 950 would be all of it; a mark there is a point.
-        let blocks = [block(0, None), block(9, None)];
-        let kept = mark(&blocks, 'a', (950.0, 964.0), Some(1000.0));
-        let share = kept
-            .said
-            .through
-            .expect("a whole page's mark says how far down");
-        assert!((share - 0.95).abs() < 1e-9, "{share} isn't 950 of 1000");
-        assert_eq!(
-            mark(&blocks, 'a', (950.0, 964.0), None).said.through,
-            None,
-            "a page not yet set whole can't say"
-        );
-    }
-
-    #[test]
-    fn how_far_down_is_a_share_of_the_furthest_the_view_goes() {
-        assert!(
-            (through(400.0, 1000.0) - 0.4).abs() < 1e-9,
-            "400 down of 1000 is two fifths"
-        );
-        assert!(
-            (through(1000.0, 1000.0) - 1.0).abs() < 1e-9,
-            "the end is the whole"
-        );
-        assert!(
-            (through(1200.0, 1000.0) - 1.0).abs() < 1e-9,
-            "never past the whole"
-        );
-        assert!(
-            (through(0.0, 0.0) - 1.0).abs() < 1e-9,
-            "a page within its window is read"
-        );
-    }
-
-    #[test]
-    fn a_file_opens_at_the_mark_asked_for_or_where_it_was_left() {
-        let place = Place {
-            block: 9,
-            into_pt: 4.0,
-            at_end: true,
-            marks: vec![Mark {
-                letter: 'a',
-                block: 3,
-                into_pt: 7.0,
-                said: Said::default(),
-            }],
-            said: Said::default(),
-            left: None,
-        };
-        assert_eq!(
-            opening(Some(&place), Some('a')),
-            (Some((3, 7.0, false)), None)
-        );
-        assert_eq!(
-            opening(Some(&place), Some('b')),
-            (Some((9, 4.0, true)), Some('b')),
-            "no mark b, so where it was left, saying so"
-        );
-        assert_eq!(opening(Some(&place), None), (Some((9, 4.0, true)), None));
-        assert_eq!(opening(None, Some('a')), (None, Some('a')), "nothing kept");
-        assert_eq!(letter("a"), Some('a'));
-        assert_eq!(letter("Q"), Some('Q'));
-        assert_eq!(letter("ab"), None, "one letter alone");
-        assert_eq!(letter("1"), None);
-        assert_eq!(letter(""), None);
-    }
-
-    #[test]
-    fn a_place_kept_before_it_said_where_still_reads() {
-        let dir = std::env::temp_dir().join(format!("reader-old-place-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("a folder");
-        let file = dir.join("page.md");
-        std::fs::write(&file, "# A page").expect("the file");
-        let state = dir.join("state");
-        let kept = kept_at(&state, &file).expect("where it's kept");
-        std::fs::create_dir_all(kept.parent().expect("its folder")).expect("made");
-        let old = serde_json::json!({
-            "file": file.to_string_lossy(),
-            "block": 4,
-            "into_pt": 2.5,
-            "at_end": false,
-            "marks": [{"letter": "a", "block": 1, "into_pt": 0.0}],
-        });
-        std::fs::write(&kept, old.to_string()).expect("kept");
-        let place = read_in(&state, &file).expect("read");
-        assert_eq!(
-            (place.block, place.left, place.said),
-            (4, None, Said::default())
-        );
-        assert_eq!(place.marks.len(), 1);
-        assert_eq!(place.marks[0].said, Said::default());
-        let listed = listed_in(&state, 9);
-        assert_eq!(listed.len(), 1, "listed by its file's time");
-        let line: serde_json::Value = serde_json::from_str(&listed[0]).expect("JSON");
-        assert!(line["left"].as_u64().is_some_and(|left| left > 0), "{line}");
-        assert!(
-            line.get("heading").is_none() && line.get("through").is_none(),
-            "{line}"
-        );
-        std::fs::remove_dir_all(&dir).expect("cleaned");
-    }
-
-    #[test]
-    fn the_places_are_listed_newest_left_first_without_a_file_gone() {
-        let dir = std::env::temp_dir().join(format!("reader-listed-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("a folder");
-        let state = dir.join("state");
-        let keep = |name: &str, left: u64, heading: Option<&str>| {
-            let file = dir.join(name);
-            std::fs::write(&file, "# A page").expect("the file");
-            let said = Said {
-                heading: heading.map(str::to_string),
-                through: Some(0.4),
-            };
-            let place = Place {
-                block: 2,
-                into_pt: 0.0,
-                at_end: false,
-                marks: vec![Mark {
-                    letter: 'b',
-                    block: 1,
-                    into_pt: 0.0,
-                    said: said.clone(),
-                }],
-                said,
-                left: Some(left),
-            };
-            write_in(&state, &file, &place).expect("kept");
-            file
-        };
-        keep("older.md", 100, None);
-        keep("newer.md", 300, Some("Installing"));
-        let gone = keep("gone.md", 200, None);
-        std::fs::remove_file(gone).expect("gone");
-        let listed: Vec<serde_json::Value> = listed_in(&state, 9)
-            .iter()
-            .map(|line| serde_json::from_str(line).expect("JSON"))
-            .collect();
-        let files: Vec<&str> = listed
-            .iter()
-            .filter_map(|line| line["file"].as_str()?.rsplit('/').next())
-            .collect();
-        assert_eq!(files, ["newer.md", "older.md"]);
-        assert_eq!(listed[0]["heading"], "Installing");
-        assert_eq!(listed[0]["through"], 0.4);
-        assert_eq!(listed[0]["left"], 300);
-        assert_eq!(listed[0]["marks"][0]["letter"], "b");
-        assert_eq!(listed[0]["marks"][0]["heading"], "Installing");
-        assert!(listed[1].get("heading").is_none(), "no heading, none said");
-        assert_eq!(listed_in(&state, 1).len(), 1, "no more than asked");
-        std::fs::remove_dir_all(&dir).expect("cleaned");
-    }
-
-    #[test]
-    fn the_windows_width_is_kept_and_taken_back() {
-        let state = std::env::temp_dir().join(format!("reader-window-{}", std::process::id()));
-        assert_eq!(window_in(&state), None, "nothing kept yet");
-        keep_window_in(&state, 360.0).expect("kept");
-        assert_eq!(window_in(&state), Some(360.0));
-        std::fs::remove_dir_all(&state).expect("cleaned");
-    }
-
-    #[test]
-    fn a_place_is_the_last_block_starting_above_it_and_the_way_into_it() {
-        let starts = [(0, 36.0), (1, 120.0), (2, 400.0)];
-        assert_eq!(at(&starts, 130.0), (1, 10.0));
-        assert_eq!(at(&starts, 400.0), (2, 0.0));
-        assert_eq!(
-            at(&starts, 10.0),
-            (0, 10.0),
-            "above the first block is the page's top"
-        );
-        assert_eq!(pt_of(&starts, 1, 10.0), Some(130.0));
-        assert_eq!(
-            pt_of(&starts, 7, 0.0),
-            None,
-            "a block the page lacks has no place"
-        );
-    }
-
-    #[test]
-    fn a_place_kept_is_the_place_read_back() {
-        let dir = std::env::temp_dir().join(format!("reader-place-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("a folder");
-        let file = dir.join("page.md");
-        std::fs::write(&file, "# A page").expect("the file");
-        let state = dir.join("state");
-        let place = Place {
-            block: 12,
-            into_pt: 40.5,
-            at_end: false,
-            marks: vec![Mark {
-                letter: 'a',
-                block: 3,
-                into_pt: 7.0,
-                said: Said {
-                    heading: Some("Before".to_string()),
-                    through: Some(0.1),
-                },
-            }],
-            said: Said {
-                heading: Some("Installing".to_string()),
-                through: Some(0.4),
-            },
-            left: Some(1_700_000_000),
-        };
-        write_in(&state, &file, &place).expect("kept");
-        assert_eq!(read_in(&state, &file), Some(place));
-        std::fs::remove_dir_all(&dir).expect("cleaned");
-    }
-}
+#[path = "place_tests.rs"]
+mod tests;

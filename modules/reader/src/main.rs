@@ -187,7 +187,7 @@ struct App {
     /// last closed the file. Taken at the first frame.
     start_pt: Option<f64>,
     /// Marks kept from the last time, whose blocks aren't set yet.
-    kept_marks: Vec<(char, usize, f64)>,
+    kept_marks: Vec<KeptMark>,
     /// The places jumped from, oldest first, each with its file, and where
     /// Ctrl+O and Ctrl+I stand in them; at its length, past the newest.
     jumps: Vec<Spot>,
@@ -357,27 +357,35 @@ struct Feedback(u64);
 /// Where on the first page the view opens for a place kept, in points.
 /// Kept at the end, it opens at the end, however the window or the page
 /// has changed since: the first frame clamps it there.
-fn start_at(block: usize, into_pt: f64, at_end: bool, starts: &[(usize, f64)]) -> Option<f64> {
+fn start_at(kept: (usize, f64, Option<f64>, bool), starts: &[(usize, f64)]) -> Option<f64> {
+    let (block, into_pt, block_pt, at_end) = kept;
     if at_end {
         Some(f64::INFINITY)
     } else {
-        place::pt_of(starts, block, into_pt)
+        place::pt_of(starts, block, into_pt, block_pt)
     }
 }
 
 /// What a place kept says of its marks, as the page takes them back.
-fn kept_marks(place: &place::Place) -> Vec<(char, usize, f64)> {
+fn kept_marks(place: &place::Place) -> Vec<KeptMark> {
     place
         .marks
         .iter()
-        .map(|mark| (mark.letter, mark.block, mark.into_pt))
+        .map(|mark| (mark.letter, mark.block, mark.into_pt, mark.block_pt))
         .collect()
 }
+
+/// A mark kept from the last time: its letter, its block, how far into it
+/// and how tall the block was then.
+type KeptMark = (char, usize, f64, Option<f64>);
 
 /// Where the view opens: the mark asked for, or where the file was left.
 /// A letter with no mark kept says so, as Vim does, and opens where the
 /// file was left, as a file opened plainly does.
-fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<(usize, f64, bool)> {
+fn opening_at(
+    kept: Option<&place::Place>,
+    letter: Option<char>,
+) -> Option<(usize, f64, Option<f64>, bool)> {
     let (opens, unmarked) = place::opening(kept, letter);
     if let Some(letter) = unmarked {
         eprintln!("reader: E20: Mark not set: {letter}");
@@ -432,16 +440,6 @@ fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>,
         ),
         _ => return Err(usage()),
     }))
-}
-
-/// The width the first screen is set at: the window's when the reader last
-/// closed, which niri most likely opens it at again, so the first screen
-/// seldom sets twice; measuring, or with none kept, the one a window has
-/// until niri names it.
-fn first_width(measuring: bool) -> page::Width {
-    let unnamed = f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX;
-    let kept = if measuring { None } else { place::window_pt() };
-    page::Width::for_window(kept.unwrap_or(unnamed))
 }
 
 fn help() -> Help {
@@ -502,7 +500,8 @@ fn show(
     } else {
         place::read(std::path::Path::new(file))
     };
-    let width = first_width(measuring);
+    // Measuring, a headless window's is named by nobody.
+    let width = page::Width::first(if measuring { None } else { place::window_pt() });
     let opens_at = opening_at(kept.as_ref(), letter);
     // Connecting before the page is set lets the GL driver come up beside it.
     let conn = Connection::connect_to_env()?;
@@ -514,8 +513,7 @@ fn show(
     }
     let first = first?;
     let starts = place::starts(&first.page.frame);
-    let start_pt =
-        opens_at.and_then(|(block, into_pt, at_end)| start_at(block, into_pt, at_end, &starts));
+    let start_pt = opens_at.and_then(|kept| start_at(kept, &starts));
     let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
     let page::First {
         page,
@@ -709,7 +707,7 @@ struct Opening {
     scale: f64,
     measuring: bool,
     start_pt: Option<f64>,
-    kept_marks: Vec<(char, usize, f64)>,
+    kept_marks: Vec<KeptMark>,
     set_ms: f64,
     set_parts: Vec<(&'static str, f64, f64)>,
     width: page::Width,
