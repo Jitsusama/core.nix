@@ -570,6 +570,13 @@ ShellRoot {
             viewerSpawns("s-asked").length === 0, Niri.spawns.join("\n"));
         Expect.expect("and the walk goes on without waiting out its patience for it",
             Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
+        // niri opens s-next's viewer, so the walk is done with it rather
+        // than waiting out its patience behind the stages after.
+        const next = { id: 66, pid: 660, workspace_id: waitedOn, session: true,
+            opened: "pi-hosted.s-next", layout: { pos_in_scrolling_layout: [5, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "66": next });
+        Niri.revision += 1;
+        Niri.windowOpenedOrChanged(next);
         // Two kept with words to wait by on a workspace Joel isn't on: one
         // whose viewer is open already, which viewKept leaves be, and one
         // whose viewer was asked for moments ago, which stays kept, so a
@@ -630,9 +637,11 @@ ShellRoot {
     // boot ended: one it leads, kept on a workspace of its own, and two
     // kept nowhere, one of them in a folder given back since.
     function chief() {
-        if (find("CHIEF")?.window?.id !== 65)
+        if (find("CHIEF")?.window?.id !== 65 || Sessions.reopening !== null)
             return;
         actsFrom = Niri.acts.length;
+        heldBefore = Object.keys(Sessions.startedHeld);
+        adriftBefore = startedOn("QEST-ADRIFT").length;
         stage = "led";
         Sessions.reopenAll([{ id: "s-led", cwd: "/tmp", way: "boot", orchestratedBy: "CHIEF" },
             { id: "s-unwindowed", cwd: "/tmp", way: "boot" },
@@ -641,8 +650,16 @@ ShellRoot {
             kept({ "s-led": keptOn(2) }), Sessions.carryOn);
     }
     property int actsFrom: 0
-    property real unwindowedAt: 0
-    property real lostAt: 0
+    // The sessions started held before this walk, so the one it starts
+    // afresh is told by its new id.
+    property var heldBefore: []
+    // How many were started on QEST-ADRIFT before it, s-adrift's in a window.
+    property int adriftBefore: 0
+    property bool unarrangedAsked: false
+    function startedOn(quest) {
+        return Niri.spawns.filter(command =>
+            command.includes(`QUEST_WORKFLOW_AUTOLOAD_ID=${quest} `));
+    }
 
     // niri opens a walk's plain pi where it was asked, as its kitty does,
     // so the walk goes on without waiting out its patience.
@@ -659,7 +676,7 @@ ShellRoot {
     }
     function heldFor(word) {
         return Niri.spawns.filter(command => command.includes(word)
-            && command.includes("holds add --detached --folder "));
+            && command.includes('holds add --detached --folder "$1" -- '));
     }
 
     // The one it leads opens where it was kept, ahead of its orchestrator's
@@ -669,13 +686,13 @@ ShellRoot {
     // afresh, held too.
     function led() {
         opensWaiting("s-led", 64, 41);
-        if (unwindowedAt === 0 && piFor("s-unwindowed").length > 0)
-            unwindowedAt = Date.now();
-        // The first started on its quest was s-adrift's, in a window.
-        if (lostAt === 0 && Niri.spawns.filter(command =>
-            command.includes("QUEST_WORKFLOW_AUTOLOAD_ID=QEST-ADRIFT ")).length > 1)
-            lostAt = Date.now();
-        if (piFor("s-led").length === 0 || unwindowedAt === 0 || lostAt === 0)
+        // When each began, as the walk stamps a held start.
+        const unwindowedAt = Sessions.startedHeld["s-unwindowed"] ?? 0;
+        const fresh = Object.keys(Sessions.startedHeld).filter(id => id !== "s-unwindowed"
+            && !heldBefore.includes(id));
+        const lostAt = fresh.length === 1 ? Sessions.startedHeld[fresh[0]] : 0;
+        if (piFor("s-led").length === 0 || unwindowedAt === 0
+            || startedOn("QEST-ADRIFT").length === adriftBefore)
             return;
         const classed = asOpened(piFor("s-led")[0]);
         const acts = Niri.acts.slice(actsFrom);
@@ -684,12 +701,6 @@ ShellRoot {
             classed !== "" && opens.length === 1 && opens[0].OpenNextWindowOn.reference.Id === 41
             && !acts.some(act => act.SetWorkspaceName),
             `${classed} ${JSON.stringify(Niri.acts)}`);
-        Expect.expect("one kept nowhere comes back held, with no window",
-            heldFor(" pi --session s-unwindowed ").length === 1
-            && piFor("s-unwindowed").length === 1, Niri.spawns.join("\n"));
-        Expect.expect("and the next is begun at the walk's pace, not its patience",
-            lostAt - unwindowedAt >= Sessions.reopenPace - 200
-            && lostAt - unwindowedAt < 10000, `${lostAt - unwindowedAt} ms`);
         const lost = heldFor("QEST-ADRIFT");
         Expect.expect("one kept nowhere whose folder went starts its quest afresh, held",
             lost.length === 1 && lost[0].startsWith("env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-ADRIFT ")
@@ -697,12 +708,14 @@ ShellRoot {
             && lost[0].endsWith(`${Quickshell.env("XDG_STATE_HOME")}/trees/keel`)
             && !Niri.spawns.some(command => command.includes("s-lost")),
             Niri.spawns.join("\n"));
+        Expect.expect("one kept nowhere after another begins at the walk's pace, not its patience",
+            lostAt - unwindowedAt >= Sessions.reopenPace - 200
+            && lostAt - unwindowedAt < 10000, `${lostAt - unwindowedAt} ms`);
         // Asked as the launcher asks, with no places of its own, and no
         // boot's places kept here, one that sat here kept nowhere can't be
         // told from one whose place went unrecorded, so it opens in a window.
+        // Asked once this walk is done, as the launcher's press comes.
         stage = "unarranged";
-        Sessions.reopenAll([{ id: "s-unarranged", cwd: "/tmp", way: "boot" }],
-            (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`), undefined, Sessions.carryOn);
     }
     // The app id a spawn opens its window with, or "".
     function asOpened(command) {
@@ -710,6 +723,15 @@ ShellRoot {
     }
 
     function unarranged() {
+        if (!unarrangedAsked) {
+            if (Sessions.reopening !== null)
+                return;
+            unarrangedAsked = true;
+            Sessions.reopenAll([{ id: "s-unarranged", cwd: "/tmp", way: "boot" }],
+                (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`), undefined,
+                Sessions.carryOn);
+            return;
+        }
         const started = piFor("s-unarranged");
         if (started.length === 0)
             return;
