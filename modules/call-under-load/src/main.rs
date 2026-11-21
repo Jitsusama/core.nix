@@ -185,10 +185,10 @@ fn said(hour: &Value, age: u64) -> String {
 /// given, or where Chromium's own machine policy could enrol it.
 fn unmanaged() -> Result<(), Failure> {
     if let Some(why) = managed::stays_off(&state()) {
-        let kept = managed::kept(&state());
+        let look = managed::look_at(&why, &state(), &cache());
         return Err(Failure::new(Exit::Refused, "the test call stays off")
             .because(why.trim_end())
-            .try_this(format!("ls -R {0}; rm -r {0}", kept.display())));
+            .try_this(look));
     }
     if let Some(why) = managed::could_enrol(Path::new(managed::POLICIES)) {
         return Err(
@@ -204,23 +204,22 @@ fn unmanaged() -> Result<(), Failure> {
 /// the run's own words, which say where the evidence is, kept or still in
 /// its profile.
 fn enrolled(why: String) -> Failure {
-    let kept = managed::kept(&state());
-    let look = if why.contains("stays at") {
-        let cache = env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load");
-        format!("ls -R {} {}", cache.display(), kept.display())
-    } else {
-        format!("ls -R {0}; rm -r {0}", kept.display())
-    };
+    let look = managed::look_at(&why, &state(), &cache());
     Failure::new(Exit::Refused, "a test browser enrolled")
         .because(why)
         .try_this(look)
+}
+
+/// Where the call's profiles are made.
+fn cache() -> PathBuf {
+    env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load")
 }
 
 /// The hour's test call, and the figures written for cadence.
 fn run(context: &Context) -> Result<(), Failure> {
     unmanaged()?;
     let runtime = env_dir("XDG_RUNTIME_DIR", ".cache");
-    let cache = env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load");
+    let cache = cache();
     // What a killed run left is looked in before the gates, so an hour
     // skipped for a meeting still finds an enrolment it holds.
     call::swept(&runtime, &cache, &state()).map_err(enrolled)?;

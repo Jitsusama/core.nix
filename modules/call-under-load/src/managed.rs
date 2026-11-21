@@ -10,7 +10,6 @@
 //! more the next hour.
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Where Chromium on Linux reads its machine policy.
@@ -71,24 +70,22 @@ pub fn kept_from(state: &Path, profile: &Path) -> PathBuf {
 
 /// Keeps what an enrolled browser's profile was given, its `Policy`
 /// folder, so the evidence outlives the profile the call's end removes,
-/// and adds why to the reasons the test stays off. The reason is written
-/// once the copy is tried, so it says truly where the evidence is: kept
-/// beside it, or still in the profile. Ok only when the copy is whole and
-/// noted, so a caller removes the profile only then; a profile already
-/// kept whole is not copied or noted again.
+/// and notes why the test stays off. Each look copies again, so the last
+/// look, after the browser has stopped, keeps what it last wrote. The
+/// reason is written once the copy is tried, so it says truly where the
+/// evidence is: kept beside it, or still in the profile. It's the
+/// profile's own, written over at each look, so a later look that keeps
+/// what an earlier one couldn't takes the earlier word back. Ok only when
+/// the copy is whole and noted, so a caller removes the profile only then.
 pub fn keep(state: &Path, profile: &Path) -> Result<String, String> {
     let into = kept_from(state, profile);
-    let kept_here = format!(
-        "a test browser enrolled with a management service; what it was given is kept in {}",
-        into.display()
-    );
-    if into.join(WHOLE).exists() {
-        return Ok(kept_here);
-    }
     let whole =
         fs::create_dir_all(&into).is_ok() && copy(&profile.join("Policy"), &into.join("Policy"));
     let why = if whole {
-        kept_here
+        format!(
+            "a test browser enrolled with a management service; what it was given is kept in {}",
+            into.display()
+        )
     } else {
         format!(
             "a test browser enrolled with a management service and it couldn't be kept, so \
@@ -96,22 +93,41 @@ pub fn keep(state: &Path, profile: &Path) -> Result<String, String> {
             profile.display()
         )
     };
-    let reasons = fs::create_dir_all(kept(state)).and_then(|()| {
-        fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(kept(state).join("why"))
-    });
-    let noted = reasons.is_ok_and(|mut file| writeln!(file, "{why}").is_ok());
-    if whole && noted && fs::write(into.join(WHOLE), "").is_ok() {
-        Ok(why)
-    } else {
-        Err(why)
-    }
+    let noted = fs::create_dir_all(&into).is_ok()
+        && fs::write(into.join("why"), format!("{why}\n")).is_ok()
+        && gathered(state).is_ok();
+    if whole && noted { Ok(why) } else { Err(why) }
 }
 
-/// Marks a profile's evidence as kept whole and noted, once.
-const WHOLE: &str = "whole";
+/// Writes the reasons the test stays off, read by `stays_off`: every kept
+/// profile's own, in the order of their names.
+fn gathered(state: &Path) -> std::io::Result<()> {
+    let mut reasons: Vec<PathBuf> = fs::read_dir(kept(state))?
+        .flatten()
+        .map(|entry| entry.path().join("why"))
+        .collect();
+    reasons.sort();
+    let all: String = reasons
+        .iter()
+        .filter_map(|reason| fs::read_to_string(reason).ok())
+        .collect();
+    fs::write(kept(state).join("why"), all)
+}
+
+/// What to look at, and clear, for an enrolment `why` names: the kept
+/// folder, and the call's cache too where a profile still holds one.
+pub fn look_at(why: &str, state: &Path, cache: &Path) -> String {
+    let kept = kept(state);
+    if why.contains("stays at") {
+        format!(
+            "ls -R {0} {1}; rm -r {0} {1}",
+            kept.display(),
+            cache.display()
+        )
+    } else {
+        format!("ls -R {0}; rm -r {0}", kept.display())
+    }
+}
 
 /// Copies the folder `from` to `to`, true only when every file was copied.
 fn copy(from: &Path, to: &Path) -> bool {
@@ -231,6 +247,11 @@ mod tests {
         std::os::unix::fs::symlink("/nonexistent/token", &token).expect("the link is made");
         let kept_it = keep(&state, &profile);
         let off = stays_off(&state);
+        // The token is readable by the next look, which keeps it.
+        fs::remove_file(&token).expect("the link is removed");
+        fs::write(&token, "t").expect("the token is written");
+        let kept_later = keep(&state, &profile);
+        let off_later = stays_off(&state);
         let _ = (fs::remove_dir_all(&state), fs::remove_dir_all(&profile));
         assert!(
             kept_it.is_err_and(|why| why.contains("stays at")),
@@ -239,6 +260,11 @@ mod tests {
         assert!(
             off.is_some_and(|why| why.contains("stays at") && !why.contains("kept in")),
             "a failed copy let the test go on, or said it was kept"
+        );
+        assert!(kept_later.is_ok(), "a later whole copy wasn't kept");
+        assert!(
+            off_later.is_some_and(|why| why.contains("kept in") && !why.contains("stays at")),
+            "a later look that kept it left the earlier word that it stayed"
         );
     }
 }
