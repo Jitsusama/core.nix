@@ -152,6 +152,17 @@ pub fn hue(stands: Stands, warns: bool) -> &'static str {
     }
 }
 
+/// The hue its row would wear if it didn't wait on Joel, the program's or,
+/// as its limit nears, the warning's: what For You keeps, since every row
+/// there waits (row.rs `mark_hue`).
+pub fn unwaited_hue(stands: Stands, warns: bool) -> &'static str {
+    if stands == Stands::Needs {
+        hue(Stands::Listening, warns)
+    } else {
+        hue(stands, warns)
+    }
+}
+
 /// The mark its row wears: the agent's, or the shape an orchestrator's
 /// network is drawn by (`shape`), and for one waiting on Joel his own,
 /// the person with a clock that For You's to-dos wear, over either. The

@@ -353,14 +353,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         also: format!("{address} {folder} {quest}{known_as}"),
         glyph,
         mark: shape.unwrap_or("agent"),
-        mark_hue: standing::hue(
-            if stands == Stands::Needs {
-                Stands::Listening
-            } else {
-                stands
-            },
-            !full.is_empty(),
-        ),
+        mark_hue: standing::unwaited_hue(stands, !full.is_empty()),
         hue: standing::hue(stands, !full.is_empty()),
         side: said_of(&items),
         side_items: items,
