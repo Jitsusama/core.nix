@@ -52,6 +52,7 @@ onLinux {
         "Applications.qml"
         "ReadyRows.qml"
         "ReadyRows.js"
+        "Presented.js"
         "ActForms.js"
         "Moved.js"
         "Beneath.js"
@@ -124,6 +125,8 @@ onLinux {
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      # Reports are off, as on a machine that hasn't chosen.
+      cp ${singleton "Options.qml" "readonly property bool reports: false"} Options.qml
       cp ${../quickshell/Copied.qml} Copied.qml
       cp ${../quickshell/Copied.js} Copied.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
