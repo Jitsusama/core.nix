@@ -2509,10 +2509,12 @@ Singleton {
     // niri lists its window (viewerCame), or for viewPatience, as long as
     // the walk waits for a window, since the sessions' kitty may be
     // starting again after a crash. Within attachPatience alone, a second
-    // would open beside a viewer slow to come.
+    // would open beside a viewer slow to come. Nor while niri lists one
+    // open already (openNamed), which a served session's record, read
+    // from the windows daemon's lagging index, may not say yet.
     readonly property int viewPatience: 30000
     function viewWith(words, named, into, title) {
-        if (Date.now() - (attaching[named] ?? 0) < viewPatience)
+        if (root.openNamed(named) || Date.now() - (attaching[named] ?? 0) < viewPatience)
             return false;
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
         root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
