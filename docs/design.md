@@ -1537,10 +1537,10 @@ works the same way everywhere.
   the warning's, since the word saying so is the first a narrow row cuts
   (Joel, 2026-11-20: "no clue how to see from that view that a thing is
   waiting"). An orchestration's row wears it while any session in it
-  waits, so the map's shape gives way only then; one out of reach wears
-  it dimmed, since something there still waits on him. For You keeps
-  each session's own mark, since every row there waits and the person
-  with a clock is a to-do's. Its drawer's
+  waits, and so does a session a step in while any under it waits, so
+  the map's shape gives way only then. For You keeps each session's own
+  mark and hue, the warning's as its limit nears, since every row there
+  waits and the person with a clock is a to-do's. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
   2026-11-07), as a glance of six facts at most (VKCF3Z, 2b03e43c):
   Needs You For where it needs him, else Doing, its step alone ("edit

@@ -118,6 +118,9 @@ pub struct Row {
     /// waits on him, and the person with a clock is a to-do's there
     /// (ForYou.js).
     pub mark: &'static str,
+    /// The hue it wears while it doesn't wait on Joel, the warning's as its
+    /// limit nears, which For You keeps with its mark.
+    pub mark_hue: &'static str,
     pub hue: &'static str,
     pub side: String,
     pub side_items: Vec<Item>,
@@ -350,6 +353,14 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         also: format!("{address} {folder} {quest}{known_as}"),
         glyph,
         mark: shape.unwrap_or("agent"),
+        mark_hue: standing::hue(
+            if stands == Stands::Needs {
+                Stands::Listening
+            } else {
+                stands
+            },
+            !full.is_empty(),
+        ),
         hue: standing::hue(stands, !full.is_empty()),
         side: said_of(&items),
         side_items: items,
@@ -678,6 +689,14 @@ mod tests {
             ],
             ["agent", "shapeSquare"],
             "the mark it wears when it doesn't wait is kept for For You"
+        );
+        assert_eq!(
+            [
+                made(&asking, Place::default(), &given()).mark_hue,
+                made(&working(), Place::default(), &given()).mark_hue
+            ],
+            ["warning", "program"],
+            "and the hue, so For You's rows aren't all alert, its nearing limit still warned"
         );
     }
 

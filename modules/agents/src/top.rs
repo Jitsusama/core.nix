@@ -150,16 +150,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     if !members.is_empty() {
         acts.push(more());
     }
-    // One of its sessions waiting on Joel puts his mark on the row, as its
-    // lead waiting does, since the row is all he sees of them folded.
-    let (glyph, hue) = if members.iter().any(|one| one.state == "needs") {
-        (
-            standing::glyph(Stands::Needs, None),
-            standing::hue(Stands::Needs, false),
-        )
-    } else {
-        (row.glyph, row.hue)
-    };
+    let (glyph, hue) = worn(row, members.iter().any(|one| one.state == "needs"));
     acts.extend(
         row.acts
             .iter()
@@ -177,6 +168,38 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
         }),
     )
+}
+
+/// The mark and hue a row with sessions under it wears: Joel's where any
+/// of them waits on him, as its own waiting does, since the row is all he
+/// sees of them folded; its own otherwise, so a team's shape gives way
+/// only then.
+fn worn(row: &Row, under_waits: bool) -> (&'static str, &'static str) {
+    if under_waits {
+        (
+            standing::glyph(Stands::Needs, None),
+            standing::hue(Stands::Needs, false),
+        )
+    } else {
+        (row.glyph, row.hue)
+    }
+}
+
+/// Whether a row laid in `shown` waits on Joel: a session that needs him,
+/// or a fold any of whose sessions does.
+fn waits(one: &Shown) -> bool {
+    match one {
+        Shown::Session(row) => row.state == "needs",
+        Shown::Fold(fold) => fold.held.iter().any(waits),
+    }
+}
+
+/// How deep a row is laid in `shown`.
+fn depth_of(one: &Shown) -> usize {
+    match one {
+        Shown::Session(row) => row.depth,
+        Shown::Fold(fold) => fold.depth,
+    }
 }
 
 /// The `entry` with the talk its session's row holds, where one waits.
@@ -264,16 +287,18 @@ fn talks_inside(head: &Row, members: &[&Row], known: &Known, words: &Words, rows
 /// A session inside an orchestration: a look at its drawer first, gone to
 /// or talked to only where it needs Joel (VKCF3Z: he acts at a leaf only
 /// where it needs his own hands there), then what pauses, wakes or ends
-/// it.
-fn member(row: &Row, parent: &str, depth: usize) -> Value {
+/// it. One with sessions under it wears Joel's mark while any of them
+/// waits (`worn`), as the orchestration's row does.
+fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
     let address = address(row);
+    let (glyph, hue) = worn(row, under_waits);
     let mut acts = vec![peek()];
     acts.extend(member_acts(row).map(|id| row.act(id)));
     talking(
         row,
         json!({
             "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
-            "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
+            "kind": "session", "name": row.name, "glyph": glyph, "hue": hue,
             "depth": depth, "side": items(&row.side_items), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
@@ -287,7 +312,7 @@ fn member(row: &Row, parent: &str, depth: usize) -> Value {
 /// laid from depth 0 again (tree.rs), stay under the fold.
 fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
     let mut stack = above.to_vec();
-    for one in shown {
+    for (at, one) in shown.iter().enumerate() {
         let (depth, key) = match one {
             Shown::Session(row) => (row.depth, key_of(address(row))),
             Shown::Fold(fold) => (fold.depth, key_of(fold.key.trim_start_matches("agents:"))),
@@ -300,7 +325,13 @@ fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
             .map_or_else(String::new, |(_, key)| key.clone());
         let steps = stack.len();
         match one {
-            Shown::Session(row) => rows.push(member(row, &parent, steps)),
+            Shown::Session(row) => {
+                let under_waits = shown[at + 1..]
+                    .iter()
+                    .take_while(|below| depth_of(below) > row.depth)
+                    .any(waits);
+                rows.push(member(row, &parent, steps, under_waits));
+            }
             Shown::Fold(fold) => {
                 rows.push(json!({
                     "key": key, "place": PLACE, "parent": parent, "kind": "fold",
@@ -427,6 +458,7 @@ mod tests {
             also: address.to_owned(),
             glyph: "agent",
             mark: "agent",
+            mark_hue: "program",
             hue: "program",
             side: state.to_owned(),
             side_items: vec![Item {
@@ -704,20 +736,55 @@ mod tests {
         );
     }
 
+    /// `shown`'s session row wearing `glyph` in `hue`, as row.rs dresses a
+    /// team's lead or one waiting on Joel.
+    fn wearing(mut shown: Shown, glyph: &'static str, hue: &'static str) -> Shown {
+        if let Shown::Session(row) = &mut shown {
+            row.glyph = glyph;
+            row.hue = hue;
+        }
+        shown
+    }
+
     #[test]
     fn an_orchestration_wears_joels_mark_while_any_session_in_it_waits_on_him() {
-        let mark = |shown: &[Shown]| {
+        let mark = |shown: &[Shown], key: &str| {
             let rows = top(shown);
-            let head = found(&rows, "row:agents-top:O");
+            let head = found(&rows, key);
             format!("{}:{}", head["glyph"], head["hue"])
+        };
+        let lead = || wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning");
+        let asking =
+            |at: &str, depth| wearing(row(at, "needs", depth, LIVE), "waitsOnJoel", "alert");
+        let head = "row:agents-top:O";
+        assert_eq!(
+            [
+                mark(&[lead(), asking("A", 1)], head),
+                mark(&[lead(), row("A", "working", 1, LIVE)], head),
+                mark(&[asking("O", 0), row("A", "working", 1, LIVE)], head),
+            ],
+            [
+                "\"waitsOnJoel\":\"alert\"",
+                "\"shapeSquare\":\"warning\"",
+                "\"waitsOnJoel\":\"alert\"",
+            ],
+            "a session inside waiting marks the folded row; none waiting leaves its own shape and \
+             hue; a lead waiting keeps its own mark"
+        );
+        let team = |deepest: Shown| {
+            [
+                row("O", "listening", 0, LIVE),
+                wearing(row("S", "working", 1, LIVE), "shapeCircle", "program"),
+                deepest,
+            ]
         };
         assert_eq!(
             [
-                mark(&[row("O", "listening", 0, LIVE), row("A", "needs", 1, LIVE)]),
-                mark(&[row("O", "listening", 0, LIVE), row("A", "working", 1, LIVE)]),
+                mark(&team(asking("T", 2)), "row:agents-top:S"),
+                mark(&team(row("T", "working", 2, LIVE)), "row:agents-top:S"),
             ],
-            ["\"waitsOnJoel\":\"alert\"", "\"agent\":\"program\""],
-            "a session inside waiting marks the folded row; none waiting leaves its own"
+            ["\"waitsOnJoel\":\"alert\"", "\"shapeCircle\":\"program\""],
+            "a session two steps in waiting marks the one it sits under, a step in, too"
         );
     }
 

@@ -907,8 +907,10 @@ Provider {
             // made ready to match, since a member keeps its words as given.
             also: Fuzzy.prepare(String(held.also ?? "")),
             glyph: Theme.glyph[served.glyph] ?? Theme.glyph.agent,
-            // The mark it wears not waiting on Joel, which For You keeps.
-            mark: Theme.glyph[held.mark] ?? Theme.glyph.agent,
+            // The mark and hue it wears not waiting on Joel, which For You
+            // keeps; none served, For You keeps the row's own.
+            mark: Theme.glyph[held.mark],
+            markHue: held.markHue,
             hue: served.hue,
             side: said(served.side),
             sideItems: served.side ?? [],
