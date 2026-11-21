@@ -818,10 +818,13 @@ fn answered(program: &str) -> String {
 #[test]
 fn a_macs_boot_reads_name_the_one_that_stalls_and_read_three_answers_as_its_boot() {
     let stalled = Unheard::Late(LOOK_WITHIN);
-    let said = mac_era(&mac_reads(|program| match program {
-        "/usr/bin/who" => Err(stalled.clone()),
-        _ => Ok(answered(program)),
-    }))
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/bin/who" => Err(stalled.clone()),
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
     .expect_err("a stalled read fails")
     .to_string();
     assert!(
@@ -829,7 +832,7 @@ fn a_macs_boot_reads_name_the_one_that_stalls_and_read_three_answers_as_its_boot
         "said {said:?}, not which read stalled"
     );
     assert_eq!(
-        mac_era(&mac_reads(|program| Ok(answered(program)))).ok(),
+        mac_era(&mac_reads(|program| Ok(answered(program))), &|_| {}).ok(),
         Some("40DCF87A-79B7-469D-80E0-C06F4FAACF06 Nov 19 12:42".to_owned()),
         "three answers read as the boot and login"
     );
@@ -837,22 +840,28 @@ fn a_macs_boot_reads_name_the_one_that_stalls_and_read_three_answers_as_its_boot
 
 #[test]
 fn a_macs_boot_read_that_fails_names_its_program_and_keeps_its_words() {
-    let said = mac_era(&mac_reads(|program| match program {
-        "/usr/sbin/sysctl" => Err(Unheard::Failed(
-            "sysctl: unknown oid 'kern.bootsessionuuid'".into(),
-        )),
-        _ => Ok(answered(program)),
-    }))
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/sbin/sysctl" => Err(Unheard::Failed(
+                "sysctl: unknown oid 'kern.bootsessionuuid'".into(),
+            )),
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
     .expect_err("a failed read fails")
     .to_string();
     assert!(
         said.contains("/usr/sbin/sysctl: sysctl: unknown oid 'kern.bootsessionuuid'"),
         "said {said:?}"
     );
-    let said = mac_era(&mac_reads(|program| match program {
-        "/usr/bin/id" => Err(Unheard::Failed("exit status: 1".into())),
-        _ => Ok(answered(program)),
-    }))
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/bin/id" => Err(Unheard::Failed("exit status: 1".into())),
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
     .expect_err("the last read failing fails")
     .to_string();
     assert!(
@@ -981,9 +990,40 @@ fn a_command_that_answers_in_time_is_read_and_one_that_fails_says_why() {
 }
 
 #[test]
+fn a_macs_boot_read_that_answers_slowly_is_told_with_how_long_it_took() {
+    let said = RefCell::new(Vec::new());
+    let slow = |line: &str| said.borrow_mut().push(line.to_owned());
+    let boot = mac_era(
+        &mac_reads(|program| {
+            if program == "/usr/bin/who" {
+                thread::sleep(SLOW_READ + Duration::from_millis(100));
+            }
+            Ok(answered(program))
+        }),
+        &slow,
+    );
+    assert!(boot.is_ok(), "a slow read still reads the boot");
+    let said = said.take();
+    assert!(
+        said.len() == 1 && said[0].starts_with("/usr/bin/who answered the boot read, but took 1."),
+        "only the slow read is told, with its time: {said:?}"
+    );
+}
+
+#[test]
 fn a_read_still_running_and_one_whose_output_never_came_read_apart_in_the_log() {
     let limit = Duration::from_secs(20);
     assert_eq!(Unheard::Late(limit).to_string(), "no answer within 20 s");
+    assert_eq!(
+        late(limit, Duration::from_millis(30)),
+        Unheard::Late(limit),
+        "a read started at once is plain late"
+    );
+    assert_eq!(
+        late(limit, Duration::from_millis(19_400)).to_string(),
+        "no answer within 20 s, 19.4 s of which went on starting it",
+        "a read whose start took most of its limit says so"
+    );
     assert_eq!(
         Unheard::Unread(limit).to_string(),
         "it ended, but what it printed wasn't read within 20 s, nor 2 s after it ended"

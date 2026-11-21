@@ -48,7 +48,7 @@ use terminal_kit::{Exit, Failure, Help};
 
 mod machine;
 #[cfg(test)]
-use machine::{READ_AFTER_END, console_login, era_of, mac_era, read_by};
+use machine::{READ_AFTER_END, SLOW_READ, console_login, era_of, late, mac_era, read_by};
 use machine::{Unheard, era, runs, within};
 
 /// How many runs a session waits to be started again before it's left:
@@ -786,9 +786,10 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
 /// keeps none of the others' sessions from coming back. Each failure is
 /// said, stamped and named by its realm; the first is what the run ends
 /// with. A boot that can't be read is said once, for every realm, before
-/// any of them runs (`boot_told`).
+/// any of them runs (`boot_told`), as is a boot read slow to answer.
 fn run(mycelium: &str, realms: &[String]) -> Result<(), Failure> {
-    let era = boot_told(era, &now, &|line| say(EVERY_REALM, line))?;
+    let told = |line: &str| say(EVERY_REALM, line);
+    let era = boot_told(|| era(&told), &now, &told)?;
     let folder = state()?;
     let mut failed = None;
     for realm in realms {
