@@ -95,26 +95,62 @@ function mayBegin(text, now) {
 // without one, for Go To to join; should it open a window all the same,
 // as a parked one woken does, it goes home as before. That holds only
 // within the walk (`walk`), whose places are the boot's own; only for one
-// that sat here in that boot (`satHere`), since one carried from another
-// machine or given back by a host was never kept here; and only while
+// that sat here in that boot (`sat`, as satHere says), since one carried
+// from another machine or given back by a host was never kept here; and
+// only while
 // the boot's places are known (`arranged`): with none, as when the agents
 // daemon kept nothing, every session reads as kept nowhere, so each opens
 // as before. Anything else, handed over or started alone, opens as it
 // always did, going home first.
 //
+// A window the daemon saw but couldn't place, floating or drawn by a kitty
+// beside another, is kept `unplaced`: it comes back in a window, going home
+// first, as one with no place would have.
+//
 // Its limits, as the daemon keeps places: a place outlives its window for
-// three minutes, a boot's end's time, so one whose window Joel closed just
-// before a restart comes back in a window; and a window floating, or
-// opened in the last still moment before the crash, was never kept, so its
-// session comes back without one.
-function broughtBack(walk, kept, arranged, satHere) {
+// three minutes, a boot's end's time, and a window closed while no other
+// its terminal draws still shows reads as that terminal gone, as a crash
+// takes them; so one whose window Joel closed just before a restart, or the
+// last of a terminal's he closed, comes back in a window. One opened in the
+// last still moment before the crash was never kept, so its session comes
+// back without one.
+function broughtBack(walk, kept, arranged, sat) {
     if (!walk) {
         return { window: true, home: true };
     }
     if (kept !== null && kept !== undefined) {
-        return { window: true, home: false };
+        return { window: true, home: kept.unplaced === true };
     }
-    return { window: !(arranged && satHere), home: true };
+    return { window: !(arranged && sat), home: true };
+}
+
+// The place a kept one opens at: none for one kept `unplaced`, which says
+// only that it had a window (broughtBack).
+function placeOf(kept) {
+    return kept?.unplaced === true ? null : kept;
+}
+
+// Whether a session to reopen sat here in the boot being restored, so one
+// kept nowhere had no window (broughtBack): the way the daemon's offered
+// record says it came, kept on each by Sessions.qml's wayCame.
+function satHere(one) {
+    return one?.way === "boot";
+}
+
+// Where a session's place says it opens, as each of the walk's ways opens
+// one (a kitty, a viewer, a wake), its workspace's name kept with it
+// (namedBack); null for none.
+function atOf(at) {
+    return at ? { output: at.output, workspace: at.workspace,
+        workspaceName: at.workspaceName, column: at.column, tile: at.tile ?? 1 } : null;
+}
+
+// The name the workspace a place went back to takes: the kept one, `back`
+// as namedBack gives it, only on the screen's empty workspace it found
+// (`emptied`), and only while that's unnamed, as homeToName names; the
+// last with windows may be one Joel named. "" for none.
+function keptName(back, there, emptied) {
+    return back?.name && there === emptied && !there?.name ? back.name : "";
 }
 
 // Where a place kept on a named workspace, an orchestrator's, goes back to,
@@ -126,7 +162,7 @@ function broughtBack(walk, kept, arranged, satHere) {
 // workspace named nothing, which goes by its number. `workspaces` are
 // niri's, { id, name } each.
 function namedBack(at, workspaces) {
-    const name = typeof at?.named === "string" ? at.named : "";
+    const name = typeof at?.workspaceName === "string" ? at.workspaceName : "";
     if (name === "") {
         return null;
     }

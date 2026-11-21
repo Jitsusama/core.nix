@@ -119,7 +119,7 @@ impl Desk<'_> {
         // another order, so the name says where it goes better than the
         // number (Reopening.js's namedBack).
         if let Some(name) = workspace["name"].as_str().filter(|name| !name.is_empty()) {
-            place.insert("named".into(), json!(name));
+            place.insert("workspaceName".into(), json!(name));
         }
         place.insert("column".into(), json!(column));
         place.insert("tile".into(), json!(tile));
@@ -127,9 +127,19 @@ impl Desk<'_> {
     }
 }
 
+/// What's kept of a session whose window can't be placed: one floating, on
+/// a workspace niri hasn't listed, or one its kitty draws beside another
+/// (windows.rs's [`UNTOLD`]). It has a window all the same, so Reopen Them
+/// All brings it back in one rather than taking it for one with none
+/// (Reopening.js's broughtBack).
+fn unplaced() -> Value {
+    json!({"unplaced": true})
+}
+
 /// Where each running session here sits now, by pi's id for it: its window
 /// as `paired` names it by the session's address (the `agent-window`
 /// records), and whether it leads one of the sessions running or parked.
+/// One with a window that can't be placed is kept as [`unplaced`].
 pub fn now<'a>(
     sessions: impl Iterator<Item = Session<'a>> + Clone,
     paired: &[Value],
@@ -146,11 +156,19 @@ pub fn now<'a>(
         .iter()
         .filter_map(|one| Some((one["address"].as_str()?, one["window"].as_str()?)))
         .collect();
+    let untold = untold_of(paired);
     sessions
         .filter(|one| one.here() && one.lives() == Lives::Running)
         .filter_map(|one| {
             let id = one.presence()?.get("session")?.as_str()?;
-            let window = desk.windows.get(windows.get(one.address())?)?;
+            let window = windows
+                .get(one.address())
+                .and_then(|window| desk.windows.get(window));
+            let Some(window) = window else {
+                return untold
+                    .contains(one.address())
+                    .then(|| (id.to_owned(), unplaced()));
+            };
             let addresses = one.presence()?.get("addresses").and_then(Value::as_array);
             let leads = addresses.map_or_else(
                 || leaders.contains(&one.address().to_uppercase()),
@@ -160,7 +178,9 @@ pub fn now<'a>(
                         .any(|address| leaders.contains(&address.to_uppercase()))
                 },
             );
-            let mut place = desk.at(window, Map::new())?;
+            let Some(mut place) = desk.at(window, Map::new()) else {
+                return Some((id.to_owned(), unplaced()));
+            };
             place.insert("leads".into(), json!(leads));
             // The orchestrator it sits under, so Reopen Them All puts it
             // back on that one's workspace whatever number the workspace
@@ -188,11 +208,28 @@ pub struct Windowless {
     pub unsure: HashSet<String>,
 }
 
+/// The addresses whose window windows.rs couldn't tell from another's.
+fn untold_of(paired: &[Value]) -> HashSet<&str> {
+    paired
+        .iter()
+        .filter(|one| one[UNTOLD] == true)
+        .filter_map(|one| one["address"].as_str())
+        .collect()
+}
+
+/// The terminal a session opened with an app id is drawn in: the sessions
+/// kitty, as Sessions.qml's inSessions opens each, every viewer too. No
+/// kitty's socket is named so.
+const SESSIONS_KITTY: &str = "the sessions kitty";
+
 /// The sessions running here now with no window, by pi's id: none paired
 /// with it, or one niri no longer lists. One whose window windows.rs
-/// couldn't tell from another's isn't among them, and none is while no
-/// session here has a window: every one gone at once is the sessions'
-/// kitty or niri gone, as a crash takes them, not windows closed by hand.
+/// couldn't tell from another's isn't among them. One is closed by hand
+/// only while another session its terminal draws still shows: every
+/// window one terminal drew gone at once is that terminal or niri gone,
+/// as a crash takes them, so those are unsure. The terminal is the
+/// sessions kitty for one opened with an app id, else the kitty its pair
+/// names.
 pub fn unwindowed<'a>(
     sessions: impl Iterator<Item = Session<'a>>,
     paired: &[Value],
@@ -202,11 +239,11 @@ pub fn unwindowed<'a>(
         .iter()
         .filter_map(|one| Some((one["address"].as_str()?, one["window"].as_str()?)))
         .collect();
-    let untold: HashSet<&str> = paired
+    let kitties: HashMap<&str, &str> = paired
         .iter()
-        .filter(|one| one[UNTOLD] == true)
-        .filter_map(|one| one["address"].as_str())
+        .filter_map(|one| Some((one["address"].as_str()?, one["kitty"]["within"].as_str()?)))
         .collect();
+    let untold = untold_of(paired);
     let running: Vec<Session> = sessions
         .filter(|one| one.here() && one.lives() == Lives::Running)
         .collect();
@@ -215,17 +252,37 @@ pub fn unwindowed<'a>(
             .get(one.address())
             .is_some_and(|window| desk.windows.get(window).is_some())
     };
-    if !running.iter().any(shown) {
-        return Windowless::default();
+    let terminal = |one: &Session| {
+        if one.opened().is_empty() {
+            kitties.get(one.address()).copied()
+        } else {
+            Some(SESSIONS_KITTY)
+        }
+    };
+    let lit: HashSet<Option<&str>> = running
+        .iter()
+        .filter(|one| shown(one))
+        .map(terminal)
+        .collect();
+    let mut seen = Windowless::default();
+    for one in running
+        .iter()
+        .filter(|one| !shown(one) && !untold.contains(one.address()))
+    {
+        let Some(id) = one
+            .presence()
+            .and_then(|presence| presence.get("session"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if lit.contains(&terminal(one)) {
+            seen.closed.insert(id.to_owned());
+        } else {
+            seen.unsure.insert(id.to_owned());
+        }
     }
-    Windowless {
-        closed: running
-            .iter()
-            .filter(|one| !shown(one) && !untold.contains(one.address()))
-            .filter_map(|one| Some(one.presence()?.get("session")?.as_str()?.to_owned()))
-            .collect(),
-        unsure: HashSet::new(),
-    }
+    seen
 }
 
 /// Every tiled window but kitty's, whose windows are sessions or a
@@ -311,9 +368,12 @@ impl Arrangement {
 
     /// The places kept once `now` and `others` are at `at` (ms since the
     /// epoch), this boot's added to what it kept already, so one that's
-    /// ended keeps its place. One of the sessions `unwindowed`, running on
-    /// with its window closed, is marked `closed` when first seen so, and
-    /// let go once it has been for [`CLOSED_FOR`].
+    /// ended keeps its place, and one now [`unplaced`] keeps the place it
+    /// had. One `unwindowed` closed, running on with its window closed by
+    /// hand, is marked `closed` when first seen so, and let go once it has
+    /// been for [`CLOSED_FOR`]; one unsure keeps its place as it is, a mark
+    /// set before running its course, since its window went as its whole
+    /// terminal did.
     #[must_use]
     pub fn kept(
         &self,
@@ -331,27 +391,30 @@ impl Arrangement {
             .cloned()
             .unwrap_or_default();
         this.retain(|id, place| {
-            if now.contains_key(id) {
-                return true;
-            }
             let Some(place) = place.as_object_mut() else {
                 return !unwindowed.closed.contains(id);
             };
-            // One no longer windowless here, parked, ended or gone, keeps
-            // its place as it was kept, unmarked, so no mark outlives what
-            // set it and comes due at once, again and again.
-            if !unwindowed.closed.contains(id) {
+            // One in a window again, parked, ended or gone keeps its place
+            // as it was kept, unmarked, so no mark outlives what set it and
+            // comes due at once, again and again.
+            let windowless = unwindowed.closed.contains(id) || unwindowed.unsure.contains(id);
+            if now.contains_key(id) || !windowless {
                 place.remove("closed");
                 return true;
             }
-            let closed = place
-                .entry("closed")
-                .or_insert_with(|| json!(at))
-                .as_u64()
-                .unwrap_or(at);
-            at.saturating_sub(closed) < closed_for()
+            let closed = if unwindowed.closed.contains(id) {
+                place.entry("closed").or_insert_with(|| json!(at)).as_u64()
+            } else {
+                place.get("closed").and_then(Value::as_u64)
+            };
+            closed.is_none_or(|closed| at.saturating_sub(closed) < closed_for())
         });
-        this.extend(now);
+        for (id, place) in now {
+            if place["unplaced"] == true && this.contains_key(&id) {
+                continue;
+            }
+            this.insert(id, place);
+        }
         let mut kept = Self::default();
         kept.boots.insert(boot.to_owned(), Value::Object(this));
         kept.others.insert(boot.to_owned(), Value::Array(others));
@@ -435,14 +498,13 @@ impl Still {
     }
 
     /// How long from `at` until they've been still long enough, or none
-    /// while nothing waits to be kept.
+    /// while nothing waits to be kept. A place to let go while they move
+    /// waits until they're still, when keeping them asks again.
     pub fn wait(&self, at: Instant) -> Option<Duration> {
-        let still = self.moved.map(|moved| moved + STILL);
-        match (still, self.again) {
-            (Some(one), Some(other)) => Some(one.min(other)),
-            (one, other) => one.or(other),
-        }
-        .map(|due| due.saturating_duration_since(at))
+        self.moved
+            .map(|moved| moved + STILL)
+            .or(self.again)
+            .map(|due| due.saturating_duration_since(at))
     }
 
     /// Its places are to be kept again at `at`, as a place closed is let

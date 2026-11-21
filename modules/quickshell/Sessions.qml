@@ -1035,7 +1035,7 @@ Singleton {
             // Only the empty workspace it found takes the kept name, and
             // only unnamed, as homeToName names: the last with windows may
             // be one Joel named. opensOn sends it, so it's sent once.
-            const name = back?.name && there === emptied && !there.name ? back.name : "";
+            const name = Reopening.keptName(back, there, emptied);
             return { workspace: there.id, column: Math.max(0, ...columns) + 1, name };
         }
         const asked = { from: one.from ?? "", quest: one.quest ?? "",
@@ -1543,14 +1543,15 @@ Singleton {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
-        const places = Places.placed(keptPlaces, screens, Niri.workspace()?.output ?? null,
+        const placeable = keptPlaces.map(Reopening.placeOf);
+        const places = Places.placed(placeable, screens, Niri.workspace()?.output ?? null,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
-            kept: keptPlaces[at], gone, told,
+            kept: placeable[at], gone, told,
             back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true,
-                one.way === "boot") }))
+                Reopening.satHere(one)) }))
             .sort(order));
         if (reopening !== null) {
             reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
@@ -1887,8 +1888,7 @@ Singleton {
             // goes beside those given the same screen, a gone one's too.
             // Its workspace's name too, which says where it goes better
             // than the number (Reopening.namedBack).
-            const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-                named: next.at.named, column: next.at.column, tile: next.at.tile ?? 1 } : null;
+            const at = Reopening.atOf(next.at);
             // It opens where it goes, its orchestrator's workspace first
             // (opensOn), and never where Joel is unless he asked for it by
             // itself, handed over to be focused with no home and no place.
@@ -1966,8 +1966,7 @@ Singleton {
     function reopenViewer(next) {
         const id = next.one.id;
         const session = root.hostedHere(id);
-        const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-            named: next.at.named, column: next.at.column, tile: next.at.tile ?? 1 } : null;
+        const at = Reopening.atOf(next.at);
         const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
             next.back?.home === false ? "" : undefined) : null;
         if (session?.window || into === null) {
@@ -2043,8 +2042,7 @@ Singleton {
     // November until it was woken by hand (OSPHT4, [58d7fa8e]).
     function wakeReopened(session, next) {
         const id = next.one.id;
-        const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-            named: next.at.named, column: next.at.column, tile: next.at.tile ?? 1 } : null;
+        const at = Reopening.atOf(next.at);
         const slept = keptPlaces[id]?.slept === true ? keptPlaces[id] : null;
         const into = slept ? null
             : root.opensOn(next.one, at, root.besideOf(reopening.placed),
