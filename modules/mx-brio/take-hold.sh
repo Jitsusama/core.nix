@@ -74,6 +74,14 @@ replay() {
   fi
 }
 
+# Whether a node's facts are the Brio's: the same match as mx-brio's rule
+# in nixos.nix; change both together.
+the_brio() {
+  grep -qx 'ID_USB_DRIVER=uvcvideo' <<<"$1" &&
+    grep -qx 'ID_VENDOR_ID=046d' <<<"$1" &&
+    grep -qx 'ID_MODEL_ID=091d' <<<"$1"
+}
+
 nodes=()
 paths=()
 watches=()
@@ -82,10 +90,7 @@ removed=no
 for node in /dev/video*; do
   # A node can go as it's read, the Brio unplugged mid-loop; it's skipped.
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
-  # The same match as mx-brio's rule in nixos.nix; change both together.
-  grep -qx 'ID_USB_DRIVER=uvcvideo' <<<"$facts" || continue
-  grep -qx 'ID_VENDOR_ID=046d' <<<"$facts" || continue
-  grep -qx 'ID_MODEL_ID=091d' <<<"$facts" || continue
+  the_brio "$facts" || continue
   path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
   nodes+=("$node")
   paths+=("/sys$path")
@@ -124,6 +129,9 @@ fi
 
 for node in "${nodes[@]}"; do
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
+  # Replugged mid-run, the name can now be another camera's, which stays
+  # the seat's.
+  the_brio "$facts" || continue
   if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || the_seats "$facts"; then
     # <4> has the journal keep it as a warning.
     echo "<4>The MX Brio at $node isn't held:" \

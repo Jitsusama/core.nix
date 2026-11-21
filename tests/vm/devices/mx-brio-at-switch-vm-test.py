@@ -139,6 +139,10 @@ def test_the_seat_loses_the_brio_before_its_arrival_is_replayed(
     assert lines.index(took) < lines.index(REPLAYING), (
         f"the seat's access was taken back only once the replay began: {lines}"
     )
+    # A loose Brio is only a warning, so the run succeeds either way; its
+    # words are the one sign the replay left it unheld.
+    loose = [line for line in lines if "isn't held" in line or "can still open" in line]
+    assert not loose, f"the switch's run left the Brio loose: {loose}"
 
 
 def test_the_switch_leaves_every_other_camera_with_the_seat(
