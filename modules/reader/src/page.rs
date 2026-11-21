@@ -234,10 +234,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // the first two lines beside it. Typst flows no words round a shape, so
 // the paragraph is set in two: as many of its words as fill two lines
 // beside the letter, then the rest at the whole measure, a line under.
-#let drop-size = (pitch + cap) / caps
-// The letter's air, which the reader's lines know too (text.rs), to read
-// a word of one letter apart from the next.
-#let drop-air = 0.08 * drop-size
+// Its size is read from the title's own capitals, which an optical size
+// or another face sets apart from the words'.
+#let drop-size() = (pitch + cap) / (measure(text(..level.title.text, size: 100pt, top-edge: "cap-height", bottom-edge: "baseline", "H")).height / 100pt)
 // A paragraph's pieces: each word and each space of its words alone, and
 // whatever else it holds whole, so it can be cut between two words.
 #let pieces-of(it) = if it.func() == [].func() {
@@ -254,10 +253,13 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   if word == none or word.func() != text or word.text.match(regex("^\\p{Lu}")) == none { return plain }
   let letter = word.text.clusters().first()
   let after = word.text.slice(letter.len())
-  let big = text(..level.title.text, size: drop-size, top-edge: "cap-height", bottom-edge: "baseline", letter)
-  // A letter that is a word of its own stands a space from the next.
+  let size-of = drop-size()
+  let big = text(..level.title.text, size: size-of, top-edge: "cap-height", bottom-edge: "baseline", letter)
+  // A letter that is a word of its own stands a space from the next. The
+  // letter's air is known to the reader's lines too (text.rs), which read
+  // a word of one letter apart from the next by it.
   let alone = after == ""
-  let indent = measure(big).width + drop-air + if alone { 0.25em } else { 0pt }
+  let indent = measure(big).width + 0.08 * size-of + if alone { 0.25em } else { 0pt }
   let pieces = pieces.slice(0, first) + if alone { () } else { (text(after),) } + pieces.slice(first + 1)
   let pieces = if alone and pieces.at(first, default: none) == [ ] { pieces.slice(0, first) + pieces.slice(first + 1) } else { pieces }
   let fits(k) = measure(block(width: size.width - indent, par(pieces.slice(0, k).join()))).height < pitch + cap + 0.01pt

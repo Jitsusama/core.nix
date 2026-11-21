@@ -494,6 +494,32 @@ impl Walker<'_> {
         }
     }
 
+    /// Where a block stands in the page's head: whether it's the title
+    /// opening the page, under the eyebrow; the title's lede, the paragraph
+    /// right after it; or the page's first paragraph of words, which opens
+    /// on a drop cap when it's long enough for one, with nothing before it
+    /// but headings.
+    fn headed(&mut self, node: &Handle, name: &str, top: bool) -> (bool, bool, bool) {
+        let lede = top && self.head == Head::Titled && name == "p";
+        let opening = top && self.blocks == 1 && name == "h1";
+        if opening {
+            self.titled = true;
+        }
+        let first_words =
+            top && name == "p" && !lede && self.head != Head::Begun && !lone_picture(node);
+        if top && BLOCKS.contains(&name) {
+            let heading = matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
+            self.head = if opening {
+                Head::Titled
+            } else if (lede || heading) && self.head != Head::Begun {
+                Head::Headings
+            } else {
+                Head::Begun
+            };
+        }
+        (opening, lede, first_words)
+    }
+
     fn element(&mut self, node: &Handle) {
         let name = tag(node).unwrap_or_default();
         let top = parent_tag(node).as_deref() == Some("body");
@@ -510,27 +536,7 @@ impl Walker<'_> {
             );
             self.blocks += 1;
         }
-        // The paragraph right after the title is its lede, and a title
-        // opening the page sits under the eyebrow.
-        let lede = top && self.head == Head::Titled && name == "p";
-        let opening = top && self.blocks == 1 && name == "h1";
-        if opening {
-            self.titled = true;
-        }
-        // The page's first paragraph of words opens it, on a drop cap when
-        // it's long enough for one, with nothing before it but headings.
-        let first_words =
-            top && name == "p" && !lede && self.head != Head::Begun && !lone_picture(node);
-        if top && BLOCKS.contains(&name.as_str()) {
-            let heading = matches!(name.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
-            self.head = if opening {
-                Head::Titled
-            } else if (lede || heading) && self.head != Head::Begun {
-                Head::Headings
-            } else {
-                Head::Begun
-            };
-        }
+        let (opening, lede, first_words) = self.headed(node, &name, top);
         match name.as_str() {
             "html" | "body" | "span" | "section" | "picture" | "thead" | "tbody" => {
                 if let Some(style) = attr(node, "data-math-style") {

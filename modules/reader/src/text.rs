@@ -93,7 +93,7 @@ const BREAK: char = '\u{ad}';
 const DROPPED: f64 = 2.0;
 
 /// The air the page sets after a drop cap, in ems of its size, as
-/// page.rs's `drop-air` says; a word after it a space further on starts a
+/// page.rs's opening sets it; a word after it a space further on starts a
 /// word of its own.
 const DROP_AIR_EM: f64 = 0.08;
 
