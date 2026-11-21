@@ -5984,23 +5984,20 @@ fn a_commands_paths_sent_again_after_their_keepalive_went_unanswered_wait_a_minu
     );
 }
 
-// On 20 November a run whose 844 MiB copy ran out of time waited for the
-// builder that had answered it to stand again, and sent it again, for
-// as long as it was let wait.
-#[test]
-fn a_commands_paths_that_cant_go_to_a_builder_that_answered_end_it_at_once() {
-    let folder = tempfile::tempdir().unwrap();
-    let bin = folder.path().join("bin");
-    fs::create_dir(&bin).unwrap();
+/// A `--run --copy` of `pnpm test` from a pushed tree, its stand-ins in
+/// `folder`'s `bin` and its lender's folder at `offload`.
+fn copied_run(folder: &Path) -> Command {
+    let bin = folder.join("bin");
+    fs::create_dir_all(&bin).unwrap();
     stand_ins(&bin, 0);
-    let config = folder.path().join("gitconfig");
+    let config = folder.join("gitconfig");
     fs::write(
         &config,
         "[user]\nname = Tester\nemail = tester@example.com\n",
     )
     .unwrap();
-    let tree = folder.path().join("tree");
-    fs::create_dir(&tree).unwrap();
+    let tree = folder.join("tree");
+    fs::create_dir_all(&tree).unwrap();
     let git = |arguments: &[&str]| git(&tree, &config, arguments);
     git(&["init", "-q", "-b", "main"]);
     git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
@@ -6009,28 +6006,83 @@ fn a_commands_paths_that_cant_go_to_a_builder_that_answered_end_it_at_once() {
     git(&["commit", "-q", "-m", "pushed"]);
     let head = git(&["rev-parse", "HEAD"]);
     git(&["update-ref", "refs/remotes/origin/main", &head]);
-    let offload = folder.path().join("offload");
-    fs::create_dir(&offload).unwrap();
+    let offload = folder.join("offload");
+    fs::create_dir_all(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
     fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
-    fs::write(bin.join("nix-status"), "1").unwrap();
-    let began = std::time::Instant::now();
-    let ran = there_command(&bin, &offload, folder.path())
-        .args(["--never-ask", "--run", "--copy", "/nix/store/a-runtime"])
+    copied_run_again(folder)
+}
+
+/// Another of the `--run --copy` that `copied_run(folder)` made, from the
+/// same tree, stand-ins and lender.
+fn copied_run_again(folder: &Path) -> Command {
+    let mut run = there_command(&folder.join("bin"), &folder.join("offload"), folder);
+    run.args(["--never-ask", "--run", "--copy", "/nix/store/a-runtime"])
         .args(["--longest", "60", "--", "pnpm", "test"])
-        .current_dir(&tree)
-        .env("GIT_CONFIG_GLOBAL", &config)
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .output()
+        .current_dir(folder.join("tree"))
+        .env("GIT_CONFIG_GLOBAL", folder.join("gitconfig"))
+        .env("GIT_CONFIG_NOSYSTEM", "1");
+    run
+}
+
+// On 20 November four runs sent one closure to one builder at once over
+// one uplink, and none finished.
+#[test]
+fn a_runs_copy_waits_for_another_runs_copy_to_the_same_builder() {
+    use std::os::fd::AsRawFd;
+    let folder = tempfile::tempdir().unwrap();
+    let first = copied_run(folder.path()).output().unwrap();
+    assert_eq!(first.status.code(), Some(0), "{first:?}");
+    let turns = folder.path().join("nix-offload-there");
+    let lock = fs::read_dir(&turns)
+        .unwrap()
+        .map(|each| each.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("sending-"))
+        })
+        .expect("the run's copy took no turn at its builder");
+    let held = fs::File::open(&lock).unwrap();
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX) }, 0);
+    let mut second = copied_run_again(folder.path())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .unwrap();
-    let said = String::from_utf8_lossy(&ran.stderr);
-    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    std::thread::sleep(std::time::Duration::from_secs(3));
     assert!(
-        !said.contains("waits for one to stand") && began.elapsed().as_secs() < 30,
+        second.try_wait().unwrap().is_none(),
+        "a run sent to the builder while another run's copy there held its turn"
+    );
+    drop(held);
+    let second = second.wait_with_output().unwrap();
+    let said = String::from_utf8_lossy(&second.stderr);
+    assert_eq!(second.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("so this waits its turn"),
+        "it waited without saying so: {said}"
+    );
+}
+
+// On 20 November a run whose 844 MiB copy ran out of time waited for the
+// builder that had answered it to stand again, and sent it again, for
+// as long as it was let wait.
+#[test]
+fn a_commands_paths_that_run_out_of_time_going_to_a_builder_that_answered_end_it_at_once() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    let began = std::time::Instant::now();
+    let mut run = copied_run(folder.path());
+    fs::write(bin.join("copy-takes"), "30").unwrap();
+    let ran = run.env("NIX_OFFLOAD_SEND_WITHIN", "1").output().unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(1), "{ran:?}");
+    assert!(
+        !said.contains("waits for one to stand") && began.elapsed().as_secs() < 25,
         "it waited to send again: {said}"
     );
     assert!(
-        said.contains("/nix/store/a-runtime couldn't be sent to the builder")
+        said.contains("/nix/store/a-runtime couldn't be sent to the builder within")
             && said.contains("send its derivations"),
         "it didn't say why, or what to do instead: {said}"
     );
@@ -6097,7 +6149,8 @@ fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
         "{calls}"
     );
 
-    // Paths that can't go keep it from running anywhere.
+    // Paths that can't go keep it from running anywhere, and a copy that
+    // failed rather than ran out of time leaves it to be tried again.
     fs::remove_file(bin.join("ssh-was-given")).unwrap();
     fs::write(bin.join("nix-status"), "1").unwrap();
     let ran = run();
@@ -6105,6 +6158,10 @@ fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
     assert!(
         !bin.join("ssh-was-given").exists(),
         "it ran without its paths"
+    );
+    assert!(
+        !String::from_utf8_lossy(&ran.stderr).contains("send its derivations"),
+        "a failed copy ended the run as one that ran out of time: {ran:?}"
     );
     fs::remove_file(bin.join("nix-status")).unwrap();
 

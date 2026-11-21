@@ -1556,9 +1556,9 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
     if let Some(bundle) = &sending.bundle {
         archived::gone(bundle);
     }
-    // Paths that couldn't go to a builder that answered end the run, since
-    // sending them again, there or to another over the same uplink, would
-    // only run out of time again: on 20 November runs sending a tool's
+    // Paths that ran out of time going to a builder that answered end the
+    // run, since a copy sent again, there or to another over the same
+    // uplink, meets the same limit: on 20 November runs sending a tool's
     // 844 MiB closure did so for as long as they were let wait.
     let (status, unsent) = match status {
         Some(Ok(status)) => (Some(status), None),
@@ -1587,12 +1587,23 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         (Some(status), _) => ended::status(status, || {
             format!("{} failed on a lent builder", asked.words.join(" "))
         }),
-        (None, Some(why)) => Err(not_run(&format!(
-            "{why}, and sending it again would go no faster; to build on a builder rather than \
-             send what's built, send its derivations, as `nix-offload there -L <drv>^*`"
-        ))),
+        (None, Some(why)) => Err(ran_out_sending(&why)),
         (None, None) => Err(not_run("no lent builder took it")),
     }
+}
+
+/// How a run whose paths ran out of time going to a builder that answered
+/// ends, for `why`: not with the try-again its callers wait out, since
+/// waiting gets it no further.
+fn ran_out_sending(why: &str) -> Failure {
+    ended::backs_off(
+        Exit::Failed,
+        format!(
+            "{why}; a copy sent again keeps only the paths that finished and meets the same \
+             limit, so nothing ran. To build on a builder rather than send what's built, send \
+             its derivations, as `nix-offload there -L <drv>^*`"
+        ),
+    )
 }
 
 /// How a changed-checks run that went to no builder ends, for `why`: its

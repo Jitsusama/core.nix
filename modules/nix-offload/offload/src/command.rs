@@ -238,9 +238,10 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
 
 /// Runs `sending` for `asked` on the lent builder `store` names, as the run
 /// `run`, its paths sent first, and gives its status; none when ssh
-/// couldn't reach it or lost it sending its paths, which another builder,
-/// or this one standing again, may take; or why its paths couldn't go to
-/// a builder that answered, which sending again would only repeat.
+/// couldn't reach it, or its paths didn't go for a reason another builder,
+/// or this one standing again, may get past; or why its paths ran out of
+/// time going to a builder that answered all along, which a copy sent
+/// again over the same uplink runs into again.
 /// `[ssh, nix]` are the programs run, and `cuts` the run's copies up its
 /// keepalive cut.
 pub fn on(
@@ -263,7 +264,7 @@ pub fn on(
         if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
         {
             eprintln!("nix-offload: {why}");
-            return (!why.lost).then_some(Err(why.why));
+            return why.late.then_some(Err(why.why));
         }
     }
     eprintln!("nix-offload: building on the lent builder {}", lent.host);

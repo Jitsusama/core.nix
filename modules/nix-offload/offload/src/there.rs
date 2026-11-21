@@ -911,6 +911,7 @@ struct Uncopied {
     why: String,
     lost: bool,
     cut: bool,
+    late: bool,
 }
 
 impl Uncopied {
@@ -919,6 +920,15 @@ impl Uncopied {
             why,
             lost: false,
             cut: false,
+            late: false,
+        }
+    }
+
+    /// [`Uncopied::of`] a copy stopped as it ran past its time.
+    fn timed_out(why: String, copying: &Copying) -> Self {
+        Self {
+            late: true,
+            ..Self::of(why, copying)
         }
     }
 
@@ -930,6 +940,7 @@ impl Uncopied {
                 why: format!("{why}, since ssh lost it"),
                 lost,
                 cut,
+                late: false,
             }
         } else {
             Self::failed(why)
@@ -1039,19 +1050,20 @@ pub fn paths_up(
     sent_up(sent, lent, nix, within, &cuts.alive()).map_err(|uncopied| {
         cuts.heard(&uncopied);
         Unsent {
-            lost: uncopied.lost || uncopied.cut,
+            late: uncopied.late && !uncopied.lost,
             why: uncopied.why,
         }
     })
 }
 
-/// Why paths didn't go to a builder, and whether ssh lost it or its
-/// keepalive went unanswered on the way, which a try once it stands again
-/// may get past. A copy that ran out of time with the builder answering
-/// would only run out again.
+/// Why paths didn't go to a builder, and whether the copy ran out of time
+/// with the builder answering all along, which a copy sent again over the
+/// same uplink runs into again. One ssh lost, or that failed on its own
+/// account, a try once the builder stands again, or another builder, may
+/// get past.
 pub struct Unsent {
     pub why: String,
-    pub lost: bool,
+    pub late: bool,
 }
 
 impl std::fmt::Display for Unsent {
@@ -1074,7 +1086,7 @@ fn sent_up(
     }
     // Held until the copy ends, and its clock starts only once it's held,
     // so a run waiting its turn isn't timed out by another's copy.
-    let _turn = sending_to(Path::new(SENDS_FOLDER), &lent.host);
+    let _turn = sending_to(&turns_folder(), &lent.host);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copying = Copying::start(
         upload(nix, alive)
@@ -1085,16 +1097,30 @@ fn sent_up(
     .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
     match finished_within(&mut copying.child, within) {
         Some(status) if status.success() => Ok(()),
-        _ => Err(Uncopied::of(
+        Some(_) => Err(Uncopied::of(
             format!("{} couldn't be sent to the builder", sent.join(", ")),
+            &copying,
+        )),
+        None => Err(Uncopied::timed_out(
+            format!(
+                "{} couldn't be sent to the builder within {}",
+                sent.join(", "),
+                lasting(within)
+            ),
             &copying,
         )),
     }
 }
 
-/// Where runs here take their turns sending to a builder, which every
-/// run of the account shares, as ssh's control sockets do.
-const SENDS_FOLDER: &str = "/tmp";
+/// Where runs here take their turns sending up: the account's own runtime
+/// folder, which no other account can reach, or the temporary folder
+/// where there's none. Every run of the account shares it, and a test
+/// gives each run its own.
+fn turns_folder() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(std::env::temp_dir, PathBuf::from)
+        .join("nix-offload-there")
+}
 
 /// A turn sending to the builder `host`, held until it's dropped, taken
 /// from a lock in `folder` that every run sending there here shares. On
@@ -1103,9 +1129,12 @@ const SENDS_FOLDER: &str = "/tmp";
 /// quarter of it, ssh timed out after 18 minutes, and none ran. One at a
 /// time, the first sends the closure whole and the rest find it there.
 /// Where the lock can't be taken, the send goes on without one, as
-/// before.
+/// before, and says so. The wait has no limit of its own, since the run
+/// holding the turn holds it only while its copy runs, which
+/// [`send_within`] bounds.
 fn sending_to(folder: &Path, host: &str) -> Option<fs::File> {
     use std::os::fd::AsRawFd;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let name: String = host
         .chars()
         .map(|each| {
@@ -1116,14 +1145,46 @@ fn sending_to(folder: &Path, host: &str) -> Option<fs::File> {
             }
         })
         .collect();
-    let lock = fs::File::create(folder.join(format!("nix-offload-sending-{name}.lock"))).ok()?;
+    let untaken = |why: String| {
+        eprintln!(
+            "nix-offload: its turn sending to {host} couldn't be taken ({why}), so it sends \
+             without one"
+        );
+        None
+    };
+    if let Err(error) = fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(folder)
+    {
+        return untaken(error.to_string());
+    }
+    // Never through a link, and readable by this account alone.
+    let lock = match fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(folder.join(format!("sending-{name}.lock")))
+    {
+        Ok(lock) => lock,
+        Err(error) => return untaken(error.to_string()),
+    };
     // SAFETY: flock only locks the file it's given, open until dropped.
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
         return Some(lock);
     }
+    let busy = std::io::Error::last_os_error();
+    if busy.raw_os_error() != Some(libc::EWOULDBLOCK) {
+        return untaken(busy.to_string());
+    }
     eprintln!("nix-offload: another run here is sending to {host}, so this waits its turn");
     // SAFETY: as above.
-    (unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0).then_some(lock)
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0 {
+        return Some(lock);
+    }
+    untaken(std::io::Error::last_os_error().to_string())
 }
 
 /// Why no builder took a build: one a builder standing again may take, or
@@ -1339,6 +1400,9 @@ fn derivations_up(
                 .args(paths)
         }
     };
+    // The builder's turn first, so a run waiting on it holds no turn at
+    // the uplink that another run's copy elsewhere could use.
+    let _builder = sending_to(&turns_folder(), &lent.host);
     let _turn = uplink_turn(rank);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
@@ -1366,9 +1430,7 @@ fn uplink_turn(rank: Rank) -> Option<fs::File> {
     if rank == Rank::First {
         return None;
     }
-    let turns = std::env::var_os("XDG_RUNTIME_DIR")
-        .map_or_else(std::env::temp_dir, PathBuf::from)
-        .join("nix-offload-there");
+    let turns = turns_folder();
     fs::create_dir_all(&turns).ok()?;
     let open = |turn: u32| {
         fs::OpenOptions::new()
@@ -1534,7 +1596,8 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     let _turn = if sending.is_empty() {
         None
     } else {
-        uplink_turn(rank(asked))
+        let builder = sending_to(&turns_folder(), &lent.host);
+        Some((builder, uplink_turn(rank(asked))))
     };
     while !sending.is_empty()
         && !sent_held(
@@ -5040,13 +5103,18 @@ mod tests {
             "a run sending to another builder waited on the first's turn"
         );
         let (said, heard) = mpsc::channel();
+        let (asking, asked) = mpsc::channel();
         let path = folder.path().to_owned();
         let second = std::thread::spawn(move || {
+            asking.send(()).unwrap();
             let turn = sending_to(&path, "hook@builder-1");
             said.send(turn.is_some()).unwrap();
         });
+        // Timed from when the second asks, so a thread started late can't
+        // pass it by not having asked yet.
+        asked.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(
-            heard.recv_timeout(Duration::from_millis(300)).is_err(),
+            heard.recv_timeout(Duration::from_secs(1)).is_err(),
             "a second run sent to a builder while the first still was"
         );
         drop(first);
