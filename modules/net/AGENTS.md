@@ -168,8 +168,9 @@ what net says of the day.
   daemon runs: a minute it's silent, or answers as something else, keeps
   its name, role and model and says it isn't answering as a TV. A TV
   asleep stays on eero's list but goes silent, so silence leaves the
-  source answering; only an answer that isn't a TV's, while no TV answers
-  as one, makes it unreachable. A TV switched off leaves eero's list, so
+  source answering, with no reading time; only an answer that isn't a
+  TV's (another page, an error status, a redirect or a page past 64 KB),
+  while no TV answers as one, makes it unreachable. A TV switched off leaves eero's list, so
   it isn't asked, and is forgotten. The answer stays as
   `detail.samsung`, but for its ids and the addresses eero gives. Sending
   it a key waits on Joel pressing Allow on the TV, so none is sent.

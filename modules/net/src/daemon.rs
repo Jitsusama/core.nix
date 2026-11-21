@@ -243,9 +243,11 @@ fn read_apple_tv(agent: &Agent, address: &str) -> Result<airplay::Answer, String
 }
 
 /// What a Samsung TV says of itself, as its text, which samsung.rs reads,
-/// no longer than a TV's answer could be.
-fn read_television(agent: &Agent, address: &str) -> Result<samsung::Answer, String> {
-    agent
+/// no longer than a TV's answer could be. An error status, a redirect or
+/// a page past that is the box answering with something else, so a TV
+/// that starts refusing isn't taken for one asleep.
+fn read_television(agent: &Agent, address: &str) -> samsung::Reply {
+    let read = agent
         .get(&samsung::url(address))
         .call()
         .and_then(|mut answer| {
@@ -254,8 +256,20 @@ fn read_television(agent: &Agent, address: &str) -> Result<samsung::Answer, Stri
                 .with_config()
                 .limit(samsung::LONGEST)
                 .read_to_string()
-        })
-        .map_err(|error| format!("it didn't answer: {error}"))
+        });
+    match read {
+        Ok(page) => samsung::Reply::Page(page),
+        Err(ureq::Error::StatusCode(status)) => {
+            samsung::Reply::Refused(format!("it says {status}"))
+        }
+        Err(ureq::Error::TooManyRedirects) => {
+            samsung::Reply::Refused("it sends it elsewhere".into())
+        }
+        Err(ureq::Error::BodyExceedsLimit(_)) => {
+            samsung::Reply::Refused("it says more than a TV does".into())
+        }
+        Err(error) => samsung::Reply::Silent(format!("it didn't answer: {error}")),
+    }
 }
 
 /// What a receiver answers: its description first, since it names where
