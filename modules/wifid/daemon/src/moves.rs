@@ -11,7 +11,7 @@ use tokio::time::Instant;
 
 use crate::acts;
 use crate::air::Heard;
-use crate::choose::{self, Choice, Chooser, Other};
+use crate::choose::{self, Against, Choice, Chooser, Other};
 use crate::learn::Learned;
 use crate::measure::{self, Measured, Measures};
 use crate::service::Ask;
@@ -48,6 +48,13 @@ struct Asked {
 /// what it usually carries. Under load, one learned to carry badly idle
 /// and never learned under load is known by that, since a radio slow
 /// idle is no quicker bringing a download down, and isn't tried blind.
+/// The card's own is too, where slow, so a download queued on it weighs
+/// another against that floor rather than its minute, lest it leave as at
+/// 04:48 on 19 Nov 2026: a floor is the least it carries loaded, so
+/// another beating it by the quicker margin beats it loaded too. One
+/// quick idle but lossy is no floor, and would hold the download however
+/// slow. The chooser leaves a floor out of a trial's bar, where it would
+/// send a download back for carrying worse than no download could.
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
@@ -68,7 +75,15 @@ fn known<'a>(
                 learned
                     .loaded(point, signal)
                     .map(|measured| (measured, Whence::Loaded))
-                    .or_else(|| idle().filter(|(measured, _)| choose::badly(measured)))
+                    .or_else(|| {
+                        idle().filter(|(measured, _)| {
+                            if own {
+                                choose::slow(measured)
+                            } else {
+                                choose::badly(measured)
+                            }
+                        })
+                    })
             } else {
                 idle()
             }
@@ -151,11 +166,8 @@ fn chosen(
     let busy = here.radio.load.map(|load| load.busy);
     let from = (measured, here.frequency, busy);
     let choice = chooser.choose(now, card, &others, call);
-    if let Some(unreached) = chooser.unreached() {
-        println!("<6>{}", kept_off(on, &unreached));
-    }
-    if let Some(narrower) = chooser.began_keeping_wide() {
-        println!("<6>{}", kept_wide(on, measured, here.signal, &narrower));
+    for aside in asides(chooser, on, measured, here.signal) {
+        println!("<6>{aside}");
     }
     match choice {
         Choice::Stay => None,
@@ -166,10 +178,7 @@ fn chosen(
             Some(Next::Move(to))
         }
         Choice::Back(to) => {
-            println!(
-                "<6>{} goes back to {to}, as {} carried worse",
-                on.card, on.point
-            );
+            println!("<6>{}", said_back(chooser, now, (on, measured), &to));
             Some(Next::Move(to))
         }
         Choice::Look => {
@@ -248,6 +257,44 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
     }
 }
 
+/// What the journal says beside the choice itself, each said once: an
+/// access point kept off as a move never reached it, a narrower one a
+/// wider band holding well keeps off, a failing link held as the card was
+/// just sent back there, a keep-off giving way to a failing link, and one
+/// a trial standing as the usual ended early.
+fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) -> Vec<String> {
+    let mut said = Vec::new();
+    if let Some(unreached) = chooser.unreached() {
+        said.push(kept_off(on, &unreached));
+    }
+    if let Some(narrower) = chooser.began_keeping_wide() {
+        said.push(kept_wide(on, measured, signal, &narrower));
+    }
+    if let Some(point) = chooser.held() {
+        said.push(format!(
+            "{} stays on {point} though it loses {:.1}%, as it was sent back there under {} s \
+             ago and echoes lost on the way may be among them",
+            on.card,
+            measured.lost,
+            measure::SPAN.as_secs()
+        ));
+    }
+    if let Some(point) = chooser.yielded() {
+        said.push(format!(
+            "{} may try {point} though it kept it off, as its link on {} has failed a whole \
+             span",
+            on.card, on.point
+        ));
+    }
+    if let Some((point, from)) = chooser.freed() {
+        said.push(format!(
+            "{} no longer keeps off {point}, as it carried as {from} usually does",
+            on.card
+        ));
+    }
+    said
+}
+
 /// Why a card keeps off an access point it was moved to: it's somewhere
 /// else since, whether the move failed or something moved it on, and the
 /// chooser can't tell which.
@@ -274,6 +321,85 @@ fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> S
         choose::heard(measured, signal),
         measure::ms(measured.p50)
     )
+}
+
+/// What the journal says of a card the chooser has just sent back from the
+/// point it tried: why, and whether it now keeps that point off.
+fn said_back(
+    chooser: &mut Chooser,
+    now: Instant,
+    (on, measured): (&Joined, &Measured),
+    to: &str,
+) -> String {
+    let why = chooser.went_back();
+    let kept = chooser.keeps_off(&on.point, now);
+    went_back(on, measured, to, (why.as_ref(), kept))
+}
+
+/// Why a card goes back from a trial: what the point tried carried, and
+/// what it was judged against, so a trial judged on what the point left
+/// usually carries can be read from the journal, and whether the card
+/// keeps off the point tried.
+fn went_back(
+    on: &Joined,
+    measured: &Measured,
+    to: &str,
+    (why, kept): (Option<&Against>, bool),
+) -> String {
+    let carried = format!(
+        "{} carried {} at p95 with {:.1}% lost",
+        on.point,
+        measure::ms(measured.p95),
+        measured.lost
+    );
+    let spurned = format!(
+        "; it keeps off {} for {} minutes",
+        on.point,
+        choose::SPURNED.as_secs() / 60
+    );
+    let because = match why {
+        Some(Against::Worse(than)) => format!(
+            "{carried}, worse than the {} with {:.1}% lost {to} carried before{spurned}",
+            measure::ms(than.p95),
+            than.lost
+        ),
+        Some(Against::Usually(than)) => {
+            // The usual is as loaded as the minute: under load what the
+            // point carried loaded at any hour, else idle at this hour.
+            let when = if choose::loaded(measured) {
+                "under load"
+            } else {
+                "at this hour"
+            };
+            // A failing link leaves for the point tried once a whole span
+            // on whatever point the card is on says so (choose.rs).
+            let after = if kept {
+                format!(
+                    "{spurned} unless the card's link fails a whole span, having gone \
+                     back from it once already"
+                )
+            } else {
+                format!(
+                    "; it may try {} again once settled, or sooner should {to} fail a whole span",
+                    on.point
+                )
+            };
+            format!(
+                "{carried}, worse than the {} {to} usually carries {when} at p95, with the \
+                 {:.1}% lost it carried before{after}",
+                measure::ms(than.p95),
+                than.lost
+            )
+        }
+        Some(Against::Slowed(before)) => format!(
+            "{} moved {} Mbit/s under load, where {to} moved {before}{spurned}",
+            on.point,
+            measured.moving.unwrap_or(0)
+        ),
+        Some(Against::Badly) => format!("{carried}, badly for a wider band's room{spurned}"),
+        None => carried,
+    };
+    format!("{} goes back to {to}, as {because}", on.card)
 }
 
 /// Why a card tries another access point: what the one it's on carried,
@@ -532,6 +658,60 @@ mod tests {
         let (hall, whence) = known(HALL, -50, LOADED).expect("119 ms idle is slow loaded");
         assert_eq!(hall.p95, Some(ms(119)), "so it isn't tried as untried");
         assert_eq!(whence, Whence::Learned);
+        let own = Asked {
+            own: true,
+            ..LOADED
+        };
+        let (own, _) = known(HALL, -50, own).expect("the card's own is known by it too");
+        assert_eq!(
+            own.p95,
+            Some(ms(119)),
+            "so a download queued on it weighs another by its floor, not the minute"
+        );
+    }
+
+    #[test]
+    fn under_load_a_point_quick_idle_but_lossy_is_kept_off_yet_no_floor_of_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join("carried"));
+        let lossy = Measured {
+            lost: 3.0,
+            ..idle(15)
+        };
+        hall_carried(&mut learned, 20, &lossy);
+        let lately = Measures::default();
+
+        let known = known(&lately, &learned, (Instant::now(), 20));
+
+        let (hall, _) = known(HALL, -50, LOADED).expect("a lossy point isn't tried blind");
+        assert_eq!(hall.p95, Some(ms(15)), "so it's known by what it lost");
+        let own = Asked {
+            own: true,
+            ..LOADED
+        };
+        assert_eq!(
+            known(HALL, -50, own),
+            None,
+            "but 15 ms is no floor on a download, which it would hold however slow"
+        );
+    }
+
+    #[test]
+    fn under_load_the_cards_own_idle_figure_is_a_floor_only_past_slow() {
+        let floor = |p95| {
+            let dir = tempfile::tempdir().unwrap();
+            let learned = the_hall_at_eight(dir.path(), p95);
+            let lately = Measures::default();
+            let known = known(&lately, &learned, (Instant::now(), 20));
+            let own = Asked {
+                own: true,
+                ..LOADED
+            };
+            known(HALL, -50, own).and_then(|(measured, _)| measured.p95)
+        };
+
+        assert_eq!(floor(40), None, "40 ms idle is no floor");
+        assert_eq!(floor(41), Some(ms(41)), "41 is");
     }
 
     #[test]
@@ -760,6 +940,178 @@ mod tests {
             why.contains("heard at -61 dBm,"),
             "it says the station's own signal where fainter than the scan's: {why}"
         );
+    }
+
+    #[test]
+    fn a_card_going_back_says_what_judged_its_trial_and_how_long_it_keeps_off() {
+        let on = joined(HALL);
+        let before = Measured {
+            lost: 1.5,
+            ..carried(76)
+        };
+        let line = |why: &Against| went_back(&on, &idle(50), DESK, (Some(why), true));
+        let usual = Measured {
+            p95: Some(ms(14)),
+            ..before.clone()
+        };
+
+        let worse = line(&Against::Worse(before));
+        let usually_again = line(&Against::Usually(usual.clone()));
+        let loaded_usually = went_back(
+            &on,
+            &carried(50),
+            DESK,
+            (Some(&Against::Usually(usual.clone())), false),
+        );
+        let usually = went_back(
+            &on,
+            &idle(50),
+            DESK,
+            (Some(&Against::Usually(usual)), false),
+        );
+        let cut = Measured {
+            moving: Some(30),
+            ..carried(50)
+        };
+        let slowed = went_back(&on, &cut, DESK, (Some(&Against::Slowed(52)), true));
+        let badly = line(&Against::Badly);
+
+        let carried =
+            format!("goes back to {DESK}, as {HALL} carried 50.0 ms at p95 with 0.0% lost");
+        let kept = format!("; it keeps off {HALL} for 60 minutes");
+        assert!(
+            worse.ends_with(&format!(
+                "{carried}, worse than the 76.0 ms with 1.5% lost {DESK} carried before{kept}"
+            )),
+            "a worse trial says what it left carried, and its hour off: {worse}"
+        );
+        let usual_line = |when: &str| {
+            format!(
+                "{carried}, worse than the 14.0 ms {DESK} usually carries {when} at p95, with \
+                 the 1.5% lost it carried before"
+            )
+        };
+        assert!(
+            usually.ends_with(&format!(
+                "{}; it may try {HALL} again once settled, or sooner should {DESK} fail a whole \
+                 span",
+                usual_line("at this hour")
+            )),
+            "a trial judged on the usual says so, and that it isn't kept off: {usually}"
+        );
+        assert!(
+            loaded_usually.contains(&usual_line("under load")),
+            "a download's usual says it was learned under load: {loaded_usually}"
+        );
+        assert!(
+            usually_again.ends_with(&format!(
+                "{}{kept} unless the card's link fails a whole span, having gone back from it \
+                 once already",
+                usual_line("at this hour")
+            )),
+            "a second back on the usual says it keeps off the point: {usually_again}"
+        );
+        assert!(
+            slowed.ends_with(&format!(
+                "goes back to {DESK}, as {HALL} moved 30 Mbit/s under load, where {DESK} \
+                 moved 52{kept}"
+            )),
+            "a download cut says what each moved: {slowed}"
+        );
+        assert!(
+            badly.ends_with(&format!("{carried}, badly for a wider band's room{kept}")),
+            "a trial for a wider band's room says it carried badly there: {badly}"
+        );
+    }
+
+    #[test]
+    fn a_card_sent_back_says_why_and_keeps_off_the_point_it_tried() {
+        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(Instant::now());
+        let line = said_back(&mut chooser, again, (&joined(HALL), &idle(50)), DESK);
+
+        assert!(
+            line.contains("usually carries at this hour")
+                && line.contains(&format!("; it keeps off {HALL} for 60 minutes unless")),
+            "a second back on the usual says so, and keeps the hall it tried off: {line}"
+        );
+        assert!(chooser.went_back().is_none(), "why is said once");
+    }
+
+    #[test]
+    fn a_failing_link_held_after_a_back_and_a_keep_off_giving_way_are_each_said_once() {
+        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(Instant::now());
+        chooser.went_back();
+        let failing = Measured {
+            lost: 15.0,
+            ..idle(400)
+        };
+        let around = [
+            Other {
+                frequency: 5260,
+                ..other(DESK, None)
+            },
+            Other {
+                frequency: 5260,
+                ..other(HALL, None)
+            },
+        ];
+        let on = joined(DESK);
+        let at = (DESK, &failing, -50, 5260);
+
+        let held = chooser.choose(again + Duration::from_secs(60), at, &around, false);
+        let held_said = asides(&mut chooser, &on, &failing, -50);
+        let held_again = asides(&mut chooser, &on, &failing, -50);
+        let yielded = chooser.choose(again + measure::SPAN, at, &around, false);
+        let yielded_said = asides(&mut chooser, &on, &failing, -50);
+        let yielded_again = asides(&mut chooser, &on, &failing, -50);
+
+        assert_eq!(
+            held,
+            Choice::Stay,
+            "a desk failing just after the back holds"
+        );
+        assert_eq!(
+            held_said,
+            [format!(
+                "wlan2 stays on {DESK} though it loses 15.0%, as it was sent back there under \
+                 120 s ago and echoes lost on the way may be among them"
+            )],
+            "and says only why"
+        );
+        assert_eq!(held_again, Vec::<String>::new(), "once");
+        assert_eq!(
+            yielded,
+            Choice::Try(HALL.into()),
+            "a whole span on, it tries the hall"
+        );
+        assert_eq!(
+            yielded_said,
+            [format!(
+                "wlan2 may try {HALL} though it kept it off, as its link on {DESK} has failed \
+                 a whole span"
+            )],
+            "and says only that the keep-off gave way"
+        );
+        assert_eq!(yielded_again, Vec::<String>::new(), "once");
+    }
+
+    #[test]
+    fn a_keep_off_a_trial_ends_is_said_once_naming_the_point_freed_and_the_one_left() {
+        let mut chooser = choose::tests::hall_freed(Instant::now());
+        let quick = idle(20);
+        let on = joined(HALL);
+
+        let said = asides(&mut chooser, &on, &quick, -45);
+        let again = asides(&mut chooser, &on, &quick, -45);
+
+        assert_eq!(
+            said,
+            [format!(
+                "wlan2 no longer keeps off {HALL}, as it carried as {DESK} usually does"
+            )],
+            "a trial standing as the desk usually carries frees the hall, and says only that"
+        );
+        assert_eq!(again, Vec::<String>::new(), "once");
     }
 
     #[test]
