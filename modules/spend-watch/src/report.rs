@@ -1463,7 +1463,12 @@ mod tests {
             "state": "/none", "zone": "UTC", "machine": "slate",
         }))
         .unwrap();
-        for (id, machine) in [("here", None), ("there", Some("teal"))] {
+        let sentinel = crate::config::ELSEWHERE;
+        for (id, machine) in [
+            ("here", None),
+            ("there", Some("teal")),
+            (sentinel, Some("umber")),
+        ] {
             history
                 .add_event(&Event::Session {
                     id: id.into(),
@@ -1477,16 +1482,46 @@ mod tests {
         turn(&history, "here", None, NOW - 3.0 * 3600.0);
         turn(&history, "there", None, NOW - 2.0 * 3600.0);
         turn(&history, "there", None, NOW - 3600.0);
+        turn(&history, sentinel, None, NOW - 3.5 * 3600.0);
         let picture = crate::picture::Picture::read(&history, &config, NOW).unwrap();
-        let rows: Vec<(String, f64)> = cut(&picture, Period::Today, Cut::Machine, 10)
+        let mut rows: Vec<(String, f64)> = cut(&picture, Period::Today, Cut::Machine, 10)
             .rows
             .into_iter()
             .map(|row| (row.name, (row.dollars * 100.0).round() / 100.0))
             .collect();
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(
             rows,
-            [("teal".to_owned(), 2.0), ("slate".to_owned(), 1.0)],
-            "a machine's sessions weren't its own"
+            [
+                ("elsewhere".to_owned(), 1.0),
+                ("slate".to_owned(), 1.0),
+                ("teal".to_owned(), 2.0)
+            ],
+            "a machine's sessions weren't its own, or a brought log took elsewhere's spend"
+        );
+        // Each way a piece's machine is named: another machine's by its
+        // name, spend no log knows as elsewhere, another tool's as its
+        // tool's, and the rest this machine's.
+        let mut piece = picture.pieces[0].clone();
+        let named = |piece: &Piece| machine_name(&picture, piece);
+        piece.session = "here".into();
+        piece.machine = String::new();
+        assert_eq!(named(&piece), "slate", "this machine's work wasn't its");
+        "teal".clone_into(&mut piece.machine);
+        assert_eq!(named(&piece), "teal", "another machine's work wasn't its");
+        piece.machine = String::new();
+        piece.session = sentinel.into();
+        assert_eq!(
+            named(&piece),
+            "elsewhere",
+            "unexplained spend wasn't elsewhere's"
+        );
+        piece.session = String::new();
+        "codex".clone_into(&mut piece.tool);
+        assert_eq!(
+            named(&piece),
+            "codex (no machine)",
+            "another tool's bill was put on a machine"
         );
         assert_eq!(Cut::parse("hosts"), Some(Cut::Machine));
     }

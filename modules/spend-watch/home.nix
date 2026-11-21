@@ -383,10 +383,12 @@ in
     machines = lib.mkOption {
       description = ''
         Other machines whose pi logs are brought here, by name, each counted as
-        this machine's logs are and shown under its own name, so a machine
-        elsewhere is counted whole rather than as a bill nothing here explains.
-        Each keeps its logs where they're brought to, by default a folder of its
-        own in spend-watch's state laid out as `sessions` and `review`.
+        this machine's logs are and shown under its own name, rather than as a
+        bill nothing here explains. Only their logs are read: their subagent
+        runs and quests' workspaces stay there, so a run's spend there is told
+        by its session alone. Each keeps its logs where they're brought to, by
+        default a folder of its own in spend-watch's state laid out as
+        `sessions`, and `review` as the harness lays out its state's own.
       '';
       type = lib.types.attrsOf (
         lib.types.submodule (
@@ -415,11 +417,11 @@ in
                 );
                 default = [
                   {
-                    pattern = "${root}/review/*/reviewers/*/session/*.jsonl";
+                    pattern = "${root}/review/transcripts/runs/*/reviewers/*/session/*.jsonl";
                     kind = "review";
                   }
                 ];
-                defaultText = lib.literalMD "its review transcripts, under its folder's `review`";
+                defaultText = lib.literalMD "its review transcripts, under its folder's `review/transcripts/runs`";
               };
             };
           }

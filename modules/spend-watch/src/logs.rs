@@ -49,6 +49,10 @@ pub struct Carry {
     /// this one's. Given afresh each read, so never kept.
     #[serde(skip)]
     pub machine: Option<String>,
+    /// Where that machine's sessions are brought, so a parent its log
+    /// names is found there. Given afresh each read, so never kept.
+    #[serde(skip)]
+    pub brought: Option<String>,
     pub session: Option<String>,
     pub cwd: Option<String>,
     pub quest: Option<String>,
@@ -376,13 +380,29 @@ pub fn read_after(
 }
 
 /// Whether a header is that of a log pi carried a session into, from a
-/// parent whose log is still there to count what was copied.
-pub fn carried(header: &Value) -> bool {
+/// parent whose log is still there to count what was copied. A log
+/// brought from another machine names its parent by that machine's path,
+/// so its parent is looked for where that machine's sessions are brought,
+/// in the same project folder under the same name.
+pub fn carried(header: &Value, brought: Option<&std::path::Path>) -> bool {
     header.get("type").and_then(Value::as_str) == Some("session")
         && header
             .get("parentSession")
             .and_then(Value::as_str)
-            .is_some_and(|parent| std::path::Path::new(parent).is_file())
+            .is_some_and(|parent| here(std::path::Path::new(parent), brought).is_file())
+}
+
+/// Where a parent a log names is on this machine: where it says, or, for
+/// a brought log, its project folder and name under the brought sessions.
+fn here(parent: &std::path::Path, brought: Option<&std::path::Path>) -> std::path::PathBuf {
+    let Some(brought) = brought else {
+        return parent.to_path_buf();
+    };
+    let name = parent.file_name().unwrap_or_default();
+    match parent.parent().and_then(std::path::Path::file_name) {
+        Some(project) => brought.join(project).join(name),
+        None => brought.join(name),
+    }
 }
 
 /// The quest whose workspace `cwd` is in: the directory under `workspaces`
@@ -550,7 +570,7 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
     carry.session = Some(id.clone());
     carry.cwd = Some(cwd.clone());
     carry.copies_known = true;
-    if carried(entry) {
+    if carried(entry, carry.brought.as_deref().map(std::path::Path::new)) {
         carry.copied_until = at;
     }
     if carry.quest.is_none() {

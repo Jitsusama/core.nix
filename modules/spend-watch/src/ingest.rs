@@ -32,6 +32,9 @@ pub struct Found {
     pub path: PathBuf,
     pub kind: Option<String>,
     pub machine: Option<String>,
+    /// Where another machine's sessions are brought, so a log carried
+    /// from a parent there finds it there; none for this machine's.
+    pub brought: Option<PathBuf>,
 }
 
 /// What every log is read with.
@@ -71,18 +74,23 @@ fn machine_logs<'a>(
     agents: &'a [crate::config::AgentLogs],
     machine: Option<&'a String>,
 ) -> impl Iterator<Item = Found> + 'a {
+    let brought = machine.map(|_| sessions.to_path_buf());
+    let own_brought = brought.clone();
     let own = logs(sessions).into_iter().map(move |path| Found {
         path,
         kind: None,
         machine: machine.cloned(),
+        brought: own_brought.clone(),
     });
     let agents = agents.iter().flat_map(move |agents| {
+        let brought = brought.clone();
         matching(&agents.pattern)
             .into_iter()
             .map(move |path| Found {
                 path,
                 kind: Some(agents.kind.clone()),
                 machine: machine.cloned(),
+                brought: brought.clone(),
             })
     });
     own.chain(agents)
@@ -295,7 +303,9 @@ fn scan_slice(
     if offset > 0 && !carry.copies_known {
         // Held from before copies were told apart: a carried log is read
         // again for its own turns, and any other is marked as checked.
-        if header(path).is_some_and(|header| crate::logs::carried(&header)) {
+        if header(path)
+            .is_some_and(|header| crate::logs::carried(&header, found.brought.as_deref()))
+        {
             history.forget_file(&name)?;
             offset = 0;
             carry = Carry::default();
@@ -320,6 +330,10 @@ fn scan_slice(
         .map_err(|error| error.to_string())?;
     carry.kind.clone_from(&found.kind);
     carry.machine.clone_from(&found.machine);
+    carry.brought = found
+        .brought
+        .as_ref()
+        .map(|brought| brought.to_string_lossy().into_owned());
     carry.workspaces = reading
         .workspaces
         .map(|workspaces| workspaces.to_string_lossy().into_owned());
@@ -459,6 +473,36 @@ mod tests {
         std::fs::write(&path, format!("{HEADER}\n{ochre}\n")).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(unresolved(&history), ["ochre"]);
+    }
+
+    // A log carried from a parent on another machine names that parent by
+    // the other machine's path; brought here, the parent is found in the
+    // same project folder, so what was copied is counted once.
+    #[test]
+    fn a_brought_copy_finds_its_parent_among_the_brought() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("teal/project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let header = serde_json::json!({
+            "type": "session", "id": "s2", "timestamp": "2026-10-14T10:30:00Z",
+            "cwd": "/y", "parentSession": "/home/elsewhere/sessions/project/2026_s1.jsonl",
+        });
+        let later = TURN.replace("10:01:00", "10:31:00");
+        std::fs::write(
+            project.join("2026_s2.jsonl"),
+            format!("{header}\n{TURN}\n{later}\n"),
+        )
+        .unwrap();
+        let history = History::memory();
+        let teal = "teal".to_owned();
+        let logs: Vec<Found> = machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a brought copy's copied turn was counted beside its parent's"
+        );
     }
 
     // A history from before copies were told apart holds a carried log's
@@ -642,6 +686,7 @@ mod tests {
             path: session.join("2026_s1.jsonl"),
             kind: Some("swarm".into()),
             machine: None,
+            brought: None,
         }];
         let reading = Reading {
             refusals: &[],

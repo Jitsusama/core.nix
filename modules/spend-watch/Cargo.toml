@@ -18,7 +18,8 @@ jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
 ready-rows = { path = "../ready-rows" }
 # The history, with SQLite built in.
 rusqlite = { version = "0.37", features = ["bundled"] }
-rustix = { version = "1.1", features = ["fs", "process"] }
+# The host name too, read alike wherever the program runs.
+rustix = { version = "1.1", features = ["fs", "process", "system"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The shape every command of ours takes (docs/commands.md).

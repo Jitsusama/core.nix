@@ -134,6 +134,11 @@
       "id": "spend:most-budget",
       "in": "spend",
       "name": "Most by Budget"
+    },
+    {
+      "id": "spend:most-machine",
+      "in": "spend",
+      "name": "Most by Machine"
     }
   ]
 }
