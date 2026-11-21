@@ -54,7 +54,7 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
     from launcher_on_niri import Json, Shell
 
@@ -2026,15 +2026,29 @@ def test_a_networks_drawer_glances_in_its_order_and_y_copies_its_short_name(
     shell.close_launcher()
 
 
+def scaled(shell: Shell, scales: Mapping[str, object]) -> None:
+    """Set each output named to its scale, and wait until the shell has heard its new height.
+
+    niri answers once it has taken a scale, before the shell hears the screen's new size, and
+    the launcher keeps the height it opened at until it closes (Launcher.qml's tall). Opened in
+    between, Networks stood as tall as the screen at 1 on the screen at 2: on 19 and 20
+    November it rested on all three rows whole, its card 493.5 tall and its top 53 above a
+    screen 388 high (the net, at d1061758 and ed3c8438).
+    """
+    for name, scale in scales.items():
+        shell.as_account(f"niri msg output {name} scale {scale}")
+    height = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["height"]
+    # Within a pixel, as Qt and niri may round a fractional scale's height apart.
+    shell.launcher_until(lambda shown: abs(shown["card"]["screen"] - height) <= 1)
+
+
 @pytest.fixture
 def at_twice(shell: Shell) -> Iterator[None]:
     """Hold niri's screen at twice its size, where the card holds three rows' room."""
     outputs = json.loads(shell.as_account("niri msg --json outputs"))
-    for name in outputs:
-        shell.as_account(f"niri msg output {name} scale 2")
+    scaled(shell, dict.fromkeys(outputs, 2))
     yield
-    for name, output in outputs.items():
-        shell.as_account(f"niri msg output {name} scale {output['logical']['scale']}")
+    scaled(shell, {name: output["logical"]["scale"] for name, output in outputs.items()})
 
 
 # The rows Networks rests on as it's stepped into, each numbered and neither cut.
@@ -2055,8 +2069,9 @@ def test_networks_never_rests_with_a_row_or_a_heading_cut(shell: Shell) -> None:
     shell.step_in()
     shell.launcher_until(lambda shown: shown["selected"]["name"] == "core.nix")
     shell.normal()
-    # Read once it rests on its two rows: a frame caught as the step in lays the rows out drew
-    # three (2026-11-20, under a load of 50), and the asserts below say what it rested on.
+    # Read once it rests on its two rows, so a frame caught as the step in lays them out isn't
+    # what's asserted. The three it rested on in the net's failures were a card kept from the
+    # screen at 1, which at_twice now waits out (scaled).
     shell.launcher_until(
         lambda shown: (
             shown["restsOnARow"]
@@ -2857,12 +2872,13 @@ def shoot() -> Callable[[str], None]:
 def at_shots_scale(shell: Shell) -> Iterator[None]:
     """Hold niri's screen at SHOTS_SCALE through a case pictured there, then as it was."""
     scale = os.environ.get("SHOTS_SCALE", "")
-    outputs = json.loads(shell.as_account("niri msg --json outputs")) if scale else {}
-    for name in outputs:
-        shell.as_account(f"niri msg output {name} scale {scale}")
+    if not scale:
+        yield
+        return
+    outputs = json.loads(shell.as_account("niri msg --json outputs"))
+    scaled(shell, dict.fromkeys(outputs, scale))
     yield
-    for name, output in outputs.items():
-        shell.as_account(f"niri msg output {name} scale {output['logical']['scale']}")
+    scaled(shell, {name: output["logical"]["scale"] for name, output in outputs.items()})
 
 
 @pytest.fixture(scope="module")
@@ -2870,8 +2886,7 @@ def said_over(shell: Shell) -> Iterator[str]:
     """Give the title of a window Super+S's line is said over, with the void standing at the top."""
     if os.environ.get("SHOTS_SCALE"):
         outputs = json.loads(shell.as_account("niri msg --json outputs"))
-        for name in outputs:
-            shell.as_account(f"niri msg output {name} scale {os.environ['SHOTS_SCALE']}")
+        scaled(shell, dict.fromkeys(outputs, os.environ["SHOTS_SCALE"]))
     lay("VOID", "Void Quest", {"state": "listening", "standsAtTop": {"name": "The Void"}})
     # Only that Agents has heard of the void, whatever else earlier cases laid beside it.
     shell.as_account(shell.ipc("collection", "agents"))
