@@ -1067,6 +1067,16 @@ short = "swi"
 kinds = ["list"]
 changes = true
 
+# A checkout's store gathered as git's own upkeep gathers it, where it's
+# due, as git's maintenance run --auto does: Code's Gather Its Store. It
+# drops nothing a ref or a tree still reaches, and nothing takes it back.
+# :ga is Neovim's :ascii.
+[acts.gather]
+command = "gather"
+short = "gat"
+kinds = ["list"]
+changes = true
+
 # A new window, as Vim's :new opens one: New Window, Start a Session and
 # Wherever It Fits, and New Window Here as :new . for the folder; beside
 # kitty's New Window, New Window in a Repository is :new repository and

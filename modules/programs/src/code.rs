@@ -28,7 +28,9 @@
 //! lock, and served inside the row. Once no watch names the row, its
 //! files go. A checkout's branches are listed the same way, while a watch
 //! holds its Switch Branch row ahead (switch.rs). A Pull or a switch
-//! lists both again, since each moves what the checkout holds.
+//! lists both again, since each moves what the checkout holds. Forget Gone
+//! Trees and Gather Its Store (tend.rs) read the disk again once git has
+//! acted, so the row and its page no longer say they're wanted.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -36,7 +38,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use programs::{code_rows, command, pull, repositories, switch};
+use programs::{code_rows, command, pull, repositories, switch, tend};
 use repos::model::Record;
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
@@ -83,6 +85,8 @@ pub struct Code {
     pulled: pull::Words,
     /// What Switch to It's answer says.
     switched: switch::Words,
+    /// What Forget Gone Trees' and Gather Its Store's answers say.
+    tended: tend::Words,
     /// Whether the disk has been read once, so a watch knows whether rows
     /// are held to answer with.
     read_once: AtomicBool,
@@ -92,8 +96,8 @@ pub struct Code {
     /// Whether the disk is to be read again, asked while a read was under
     /// way, which may have read it before what moved it.
     wanted: AtomicBool,
-    /// The checkouts a Pull or a switch is under way in, so a second
-    /// waits for none and neither races the other.
+    /// The checkouts a Pull, a switch or a tending is under way in, so a
+    /// second waits for none and none races another.
     busy: Mutex<BTreeSet<String>>,
     /// Held for the whole of a listing, so two at once, as the watches
     /// moving and a switch's give, never keep each other's older list.
@@ -132,6 +136,7 @@ impl Code {
             words: code_rows::Words::read(vocabulary),
             pulled: pull::Words::read(vocabulary),
             switched: switch::Words::read(vocabulary),
+            tended: tend::Words::read(vocabulary),
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
@@ -444,6 +449,28 @@ pub fn pull(shared: &Arc<Shared>, id: &Value, folder: &str) -> Value {
         moved(shared, folder);
     }
     shared.code.pulled.answer(id, pulled)
+}
+
+/// Forget Gone Trees or Gather Its Store on a repository's row, answered
+/// on a thread of its own as Pull is (main.rs says it's slow), since a
+/// store of millions takes minutes to gather, and never beside a Pull, a
+/// switch or another tending of the checkout. The disk is read again
+/// behind any that reached git, so the row and its page say what's left.
+pub fn tend(shared: &Arc<Shared>, id: &Value, act: tend::Act, folder: &str) -> Value {
+    let tended = {
+        let Some(_held) = Holding::take(&shared.code, folder) else {
+            return shared.code.tended.answer(id, act, Err(tend::Refused::Busy));
+        };
+        let folder = Path::new(folder);
+        match act {
+            tend::Act::Forget => tend::forget(&git(), folder),
+            tend::Act::Gather => tend::gather(&git(), folder, tend::GATHER),
+        }
+    };
+    if !matches!(tended, Err(tend::Refused::Tree)) {
+        again(shared);
+    }
+    shared.code.tended.answer(id, act, tended)
 }
 
 /// Switch to It on a branch's row, answered on a thread of its own as

@@ -15,6 +15,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "CodeLinks.js" as Links
 
 Provider {
     id: provider
@@ -75,6 +76,71 @@ Provider {
 
     function everything() {
         return ready.rows();
+    }
+
+    // The row a mycelium:repository/ link lands on, by the key its
+    // repository's row is served by, or none for a key no row read whole
+    // in this watch has (CodeLinks.js's linked).
+    function linked(said) {
+        const served = ready.rows().map(row => row?.servedKey ?? "");
+        return Links.linked(served, said, ready.link?.answeredThisWatch === true);
+    }
+
+    // Whether a row is the one that link lands on (CodeLinks.js's lands).
+    function lands(row) {
+        return Links.lands(row);
+    }
+
+    // The row a link landed on before Code's rows were read whole, kept
+    // until a moment after the watch answers whole, so a key it lacks is said then
+    // (CodeLinks.js's missed); none while no link waits.
+    property string linkWaiting: ""
+
+    // Keeps the row a link lands on to judge once the rows are read whole,
+    // unless they're read whole already, as linked judged them.
+    function awaitLink(row) {
+        linkWaiting = ready.link?.answeredThisWatch === true ? "" : (row ?? "");
+    }
+
+    // The daemon answers a later watch whole from the rows it held, and
+    // reads the disk again behind that, telling only what moved, so a
+    // repository cloned since comes a moment after. A miss is judged this
+    // long after the whole answer, then, rather than at it; the row coming
+    // in between lands the link.
+    Timer {
+        id: linkSettles
+
+        interval: 3000
+        onTriggered: {
+            const waiting = provider.linkWaiting;
+            provider.linkWaiting = "";
+            const served = ready.rows().map(row => row?.servedKey ?? "");
+            if (Links.missed(waiting, served, ready.link?.answeredThisWatch === true))
+                provider.launcher?.codeLinkMissed();
+        }
+    }
+
+    Connections {
+        target: ready.link
+
+        function onAnsweredThisWatchChanged() {
+            if (ready.link?.answeredThisWatch !== true)
+                linkSettles.stop();
+            else if (provider.linkWaiting !== "")
+                linkSettles.restart();
+        }
+    }
+
+    // A link waits only on the opening it came with.
+    Connections {
+        target: provider.launcher ?? null
+
+        function onOpenChanged() {
+            if (provider.launcher?.open === true)
+                return;
+            linkSettles.stop();
+            provider.linkWaiting = "";
+        }
     }
 
     // Its repositories, as the programs daemon ranks them for what's typed.

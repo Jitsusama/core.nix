@@ -1614,10 +1614,10 @@ Scope {
     }
 
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking
-    // talkTo, goToCell, showNetwork or showMachine, never opens over: what he's typed, and
-    // where he is, stay as they are, and the link opens nothing (ISXEG8's ruling, 2026-11-15
-    // [dd375f5e]). A link opens either only from closed, holding his first keys back
-    // (Prompt.qml's linked). One still opening counts, since open is set only once its
+    // talkTo, goToCell, showNetwork, showMachine or showCode, never opens over: what he's
+    // typed, and where he is, stay as they are, and the link opens nothing (ISXEG8's ruling,
+    // 2026-11-15 [dd375f5e]). A link opens either only from closed, holding his first keys
+    // back (Prompt.qml's linked). One still opening counts, since open is set only once its
     // first frame is drawn, and his keys are already the launcher's before then.
     function inUse() {
         return open || opening || talkLine.up;
@@ -1691,6 +1691,48 @@ Scope {
         intoOn("machines", machines.lands(key));
         prompt.linked();
         return { done: true, said: `opening Machines \u203a ${name}` };
+    }
+
+    // Opens Code on a repository's row by its key, selected, as a
+    // mycelium:repository/ link from Code's page asks: it runs nothing, and a
+    // key no row has opens Code saying so in the foot, never a guess
+    // (Y2YBTS, 2026-11-20 [423fc9fa]).
+    function showCode(said) {
+        const code = collections.find(one => one.settings.name === "code") ?? null;
+        if (code === null)
+            return { error: "the launcher has no Code" };
+        const { key, row, unlisted } = code.linked(said);
+        console.info(`launcher: asked from outside to show the repository ${JSON.stringify(key)}`);
+        if (inUse())
+            return inUseSaid;
+        if (unlisted) {
+            const words = Words.of("code").said ?? {};
+            toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
+            into("code");
+            prompt.linked();
+            return { done: false, said: `${words.unlisted ?? ""}: ${words.unlistedWhy ?? ""}` };
+        }
+        codeLanding = code.lands(row);
+        intoOn("code", codeLanding);
+        // Judged again once Code's watch answers whole, as a link followed
+        // with the launcher shut is judged before that watch begins.
+        code.awaitLink(row);
+        prompt.linked();
+        return { done: true, said: `opening Code \u203a ${key}` };
+    }
+
+    // Says a link's repository unlisted once Code's rows, read whole after
+    // it landed, lack it, while the landing still waits, so Joel's click
+    // never goes nowhere unsaid. A key pressed since let the landing go,
+    // and the cursor is his, so nothing's said then; nor once another
+    // landing took its place, which is that one's to say.
+    function codeLinkMissed() {
+        if (landOn === null || landOn !== codeLanding)
+            return;
+        landOn = null;
+        codeLanding = null;
+        const words = Words.of("code").said ?? {};
+        toldThat(words.unlisted ?? "", words.unlistedWhy ?? "");
     }
 
     function catalogueRunWalked(id, words) {
@@ -8698,6 +8740,12 @@ Scope {
             return JSON.stringify(root.showMachine(name));
         }
 
+        // Opens Code on a repository's row by its key, selected, its acts a
+        // step in (root's showCode).
+        function code(key: string): string {
+            return JSON.stringify(root.showCode(key));
+        }
+
         // What a place or a row shows, its drawer and the rows inside it,
         // for `launcher show` in a terminal, as JSON: the path's steps
         // joined by a "\u203a", each a row's name or its steady id, and
@@ -10477,6 +10525,9 @@ Scope {
     // once, as they did through the held notices (Joel, 2026-11-14), and /
     // finds; the opening took the keys already, so normal holds.
     property var landOn: null
+    // The landing a repository's link set, so Code says its miss over
+    // that landing alone (codeLinkMissed).
+    property var codeLanding: null
     // Closed, it draws the place as it kept it, as a chord does
     // (intoKept), landing there and again once the fill has stepped into
     // it anew (filled): Super+N into the notices on screen opened whole

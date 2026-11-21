@@ -7,7 +7,8 @@
 //! found there by name or folder as they're typed; New Terminal Here
 //! and Edit Here started by a stand-in for niri as they're asked; and
 //! Pull bringing a checkout forward by fast-forward alone, saying why
-//! where it won't.
+//! where it won't. Forget Gone Trees and Gather Its Store, which tend a
+//! checkout as git's upkeep does, are tested beside it (tend.rs).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -197,15 +198,15 @@ pub(super) fn git_command(home: &Path, folder: &Path, args: &[&str]) -> Command 
 
 /// Joel's checkout of a repository, cloned from a bare remote and one
 /// commit behind it, which a checkout elsewhere pushed.
-struct Behind {
+pub(super) struct Behind {
     home: PathBuf,
     upstream: PathBuf,
     elsewhere: PathBuf,
-    here: PathBuf,
+    pub(super) here: PathBuf,
 }
 
 impl Behind {
-    fn new(running: &Running) -> Behind {
+    pub(super) fn new(running: &Running) -> Behind {
         let behind = Behind {
             home: running.path(""),
             upstream: running.path("up.git"),
@@ -228,17 +229,17 @@ impl Behind {
         behind
     }
 
-    fn git(&self, folder: &Path, args: &[&str]) -> String {
+    pub(super) fn git(&self, folder: &Path, args: &[&str]) -> String {
         git_alone(&self.home, folder, args)
     }
 
-    fn commit(&self, folder: &Path, file: &str) {
+    pub(super) fn commit(&self, folder: &Path, file: &str) {
         std::fs::write(folder.join(file), file).unwrap();
         self.git(folder, &["add", file]);
         self.git(folder, &["commit", "--quiet", "-m", file]);
     }
 
-    fn head(&self, folder: &Path) -> String {
+    pub(super) fn head(&self, folder: &Path) -> String {
         self.git(folder, &["rev-parse", "HEAD"])
     }
 }

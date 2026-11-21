@@ -52,7 +52,8 @@
 }
 
 .open-lede,
-.joined {
+.joined,
+.acts {
   margin: var(--tie) 0 0;
   font-family: var(--serif);
   font-style: italic;

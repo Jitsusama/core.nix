@@ -451,6 +451,25 @@ function workingIn(repository: Repository): string {
     : ` ${counted(`Its processes take ${said}, not counting builds the Nix daemon runs for it.`)}`;
 }
 
+/** The longest key a mycelium: link names a repository by, as mycelium-link takes one. */
+const LONGEST_KEY = 200;
+/** A key as mycelium-link takes one: a lowercase place, then a path of plain letters. */
+const LINKED_KEY = /^[a-z0-9][a-z0-9.-]*:[A-Za-z0-9~/][A-Za-z0-9._~/-]*$/u;
+
+/**
+ * Where the launcher takes the repository up, since a page never acts: its row in Code, where
+ * it's pulled, its gone trees forgotten and its store gathered. Nothing for a key the link
+ * couldn't carry whole, which the launcher would refuse.
+ */
+function tending(repository: Repository): string {
+  const { key } = repository;
+  if (key.length > LONGEST_KEY || !LINKED_KEY.test(key)) {
+    return "";
+  }
+  const link = `<a href="mycelium:repository/${escaped(key)}" data-key="launcher:${escaped(key)}">Open it in the launcher</a>`;
+  return `<p class="acts">${link} to pull it, forget its gone trees or gather its store.</p>`;
+}
+
 /** The repository open beside the list. */
 function drawer(
   repository: Repository,
@@ -504,6 +523,7 @@ function drawer(
     <h2 class="open-title" id="open-title" tabindex="-1">${escaped(repository.name)}</h2>
     <p class="open-lede">${escaped(repository.trunk === undefined ? "No trunk named" : `Its trunk is ${repository.trunk}`)}; ${escaped(plural(repository.trees.length, "tree"))} cut from ${escaped(plural(repository.checkouts.length, "checkout"))}${repository.cutIn === undefined ? "" : `, most in <span class="path" translate="no">${escaped(tilde(repository.cutIn, home))}</span>`}.${escaped(workingIn(repository))}</p>
     ${threads}
+    ${tending(repository)}
     <ul class="checkouts">${checkouts}</ul>
     ${changes}
     ${treeGroups(repository, drawing, open)}

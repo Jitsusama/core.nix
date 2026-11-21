@@ -224,6 +224,15 @@ pub struct Found {
     elsewhere: BTreeSet<String>,
 }
 
+impl Found {
+    /// The checkout as it was read, as an act on it reads it before and
+    /// after (the launcher's Code, modules/programs).
+    #[must_use]
+    pub fn checkout(&self) -> &Checkout {
+        &self.checkout
+    }
+}
+
 /// One checkout, read from its own git folder, as `commons` finds them:
 /// itself, its remotes, its trunk and its key.
 pub fn checkout(common: &Path, home: Option<&Path>) -> Found {

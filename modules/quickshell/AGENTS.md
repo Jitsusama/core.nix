@@ -99,14 +99,20 @@ into kinds at a quiet moment its owner chooses, not alongside other work.
   the rows Return would take. `machine` and a machine's name opens
   Machines on its row, selected, by `launcher/RealmMachines.js`'s
   `linked` and `lands`; a name no node lists opens Machines with its
-  foot saying so in Machines' own words. A link while the launcher is
+  foot saying so in Machines' own words. `code` and a repository's key
+  opens Code on its row, selected, by `launcher/CodeLinks.js`'s `linked`
+  and `lands`, running nothing; a key no row read whole in the watch
+  now running has opens Code with its foot saying so, and judged by rows
+  held from an earlier watch it lands on the row as it comes. A link
+  while the launcher is
   open, opening or under the talk line opens nothing.
 - [`mycelium-link/`][mycelium-link]: the Rust program a `mycelium:` link
   runs, through the desktop entry home.nix declares: `mycelium:cell/<ADDRESS>`
   asks `talkTo` and its `/go` asks `goTo`, a notice's whole
   `<ADDRESS>@<machine>#<anchor>` by its address alone, and
-  `mycelium:network/<name>` asks `network` and `mycelium:machine/<name>`
-  asks `machine`, each carrying the name alone;
+  `mycelium:network/<name>` asks `network`, `mycelium:machine/<name>`
+  asks `machine` and `mycelium:repository/<key>` asks `code`, each
+  carrying the name or key alone;
   `mycelium:sprout?words=<words>&from=<ADDRESS>` asks `newWork`, which
   fills Start New Work's field and starts nothing until Joel's own Return;
   and nothing for a second link within a few seconds.

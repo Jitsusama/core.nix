@@ -48,7 +48,7 @@
         "took": "pulled 1 commit",
         "tookMany": "pulled {count} commits",
         "tree": "not pulled: it isn't a checkout's own folder",
-        "busy": "not pulled: it's being pulled or switched already",
+        "busy": "not pulled: git is already at work in it",
         "detached": "not pulled: it's on no branch",
         "unfollowed": "not pulled: its branch follows no other",
         "unread": "not pulled: git couldn't read it",
@@ -59,12 +59,46 @@
       }
     },
     {
+      "id": "verb:code:forget",
+      "said": {
+        "nothing": "no gone trees to forget",
+        "forgot": "forgot 1 gone tree",
+        "forgotMany": "forgot {count} gone trees",
+        "kept": ", kept 1 locked",
+        "keptMany": ", kept {count} locked",
+        "tree": "not forgotten: it isn't a checkout's own folder",
+        "busy": "not forgotten: git is already at work in it",
+        "stranded": "not forgotten: a gone tree holds commits no branch has",
+        "records": "not forgotten: git's records of its gone trees couldn't all be read",
+        "unmoved": "not forgotten: no gone tree's record could be moved aside",
+        "unread": "not forgotten: git's folder couldn't be read",
+        "failed": "not forgotten: git failed or ran too long"
+      }
+    },
+    {
+      "id": "verb:code:gather",
+      "said": {
+        "gathered": "gathered its store",
+        "gatheredStill": "gathered its store, and git still calls it due",
+        "untouched": "git left its store as it was",
+        "nothing": "nothing was due",
+        "tree": "not gathered: it isn't a checkout's own folder",
+        "busy": "not gathered: git is already at work in it",
+        "left": "not gathered: git left its upkeep's lock behind, in .git/objects/maintenance.lock",
+        "hooked": "not gathered: its config names a program git's gc would run",
+        "stranded": "not gathered: a gone tree holds commits no branch has",
+        "records": "not gathered: git's records of its gone trees couldn't all be read",
+        "unread": "not gathered: its store couldn't be read",
+        "failed": "not gathered: git failed or ran too long"
+      }
+    },
+    {
       "id": "verb:code:switch",
       "said": {
         "switched": "switched to {branch}",
         "here": "already on {branch}",
         "tree": "not switched: it isn't a checkout's own folder",
-        "busy": "not switched: it's being pulled or switched already",
+        "busy": "not switched: git is already at work in it",
         "unknown": "not switched: there's no branch {branch} now",
         "unread": "not switched: git couldn't read it",
         "detached": "not switched: it's on no branch",
