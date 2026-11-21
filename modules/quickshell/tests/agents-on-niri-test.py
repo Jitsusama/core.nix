@@ -4275,10 +4275,13 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         shell.launcher_ready()
         # Named by its row's name, not its address, which means nothing to Joel.
         shell.launcher_until(
-            lambda shown: any(
-                "Asking Quest not opened" in said.replace("\xa0", " ") for said in shown["saying"]
+            lambda shown: (
+                any(
+                    "Asking Quest not opened" in said.replace("\xa0", " ")
+                    for said in shown["saying"]
+                )
+                and not any("ASKING" in said for said in shown["saying"])
             )
-            and not any("ASKING" in said for said in shown["saying"])
         )
     finally:
         (PRESENCE / "asking.json").unlink(missing_ok=True)
