@@ -146,6 +146,10 @@ pub struct Holding {
     /// first time each is wanted, as that sorter may have set fewer
     /// properties than [`hold_call`] does now.
     again: HashSet<PathBuf>,
+    /// The scopes held with a hard floor, or taken up from a sorter
+    /// before this one, which may have set one: what each was held with,
+    /// as a pi held past [`crate::focus::MOST`] gets none.
+    hard: HashSet<PathBuf>,
     /// Whether a failure to hold a window has been said.
     pub failed: bool,
 }
@@ -176,6 +180,7 @@ impl Holding {
         let held: HashSet<PathBuf> = scopes.into_iter().filter(|scope| set(scope)).collect();
         Self {
             again: held.clone(),
+            hard: held.clone(),
             held,
             failed: false,
         }
@@ -183,11 +188,17 @@ impl Holding {
 
     /// The scopes to change, each with whether to hold it, from those to
     /// hold now: those to give back first, so a hard floor given back is
-    /// free for a hold after it.
-    pub fn changes(&self, wanted: &[PathBuf]) -> Vec<(PathBuf, bool)> {
+    /// free for a hold after it. A pi held without the hard floor it
+    /// would have is held again once one is free.
+    pub fn changes(&self, wanted: &[PathBuf], pis: &[String]) -> Vec<(PathBuf, bool)> {
+        let free = self.hard.len() < crate::focus::MOST;
         let hold = wanted
             .iter()
-            .filter(|scope| !self.held.contains(*scope) || self.again.contains(*scope))
+            .filter(|scope| {
+                !self.held.contains(*scope)
+                    || self.again.contains(*scope)
+                    || (free && !self.hard.contains(*scope) && hard_for(scope, pis) > 0)
+            })
             .map(|scope| (scope.clone(), true));
         let give_back = self
             .held
@@ -197,13 +208,19 @@ impl Holding {
         give_back.chain(hold).collect()
     }
 
-    /// Notes a scope as held or given back.
-    pub fn done(&mut self, scope: &Path, hold: bool) {
+    /// Notes a scope as held, with the hard floor it was held with, or
+    /// given back.
+    pub fn done(&mut self, scope: &Path, held: Option<u64>) {
         self.again.remove(scope);
-        if hold {
+        if held.is_some() {
             self.held.insert(scope.to_path_buf());
         } else {
             self.held.remove(scope);
+        }
+        if held.is_some_and(|hard| hard > 0) {
+            self.hard.insert(scope.to_path_buf());
+        } else {
+            self.hard.remove(scope);
         }
     }
 
@@ -214,24 +231,17 @@ impl Holding {
             .any(|scope| scope.file_name().is_some_and(|name| name == unit))
     }
 
-    /// How many of the scopes held keep a hard floor ([`hard_for`]),
-    /// whether wanted now or still held as a give-back fails.
-    pub fn hard(&self, pis: &[String]) -> usize {
-        self.held
-            .iter()
-            .filter(|scope| hard_for(scope, pis) > 0)
-            .count()
+    /// How many of the scopes held keep a hard floor, whether wanted now
+    /// or still held as a give-back fails.
+    pub fn hard(&self) -> usize {
+        self.hard.len()
     }
 
     /// The hard floor to hold `scope` with: [`hard_for`]'s while fewer
     /// than [`crate::focus::MOST`] other scopes held keep one, as a
     /// give-back that fails still does, and none past them.
     pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
-        let others = self
-            .held
-            .iter()
-            .filter(|held| *held != scope && hard_for(held, pis) > 0)
-            .count();
+        let others = self.hard.iter().filter(|held| *held != scope).count();
         if others < crate::focus::MOST {
             hard_for(scope, pis)
         } else {
@@ -243,6 +253,7 @@ impl Holding {
     pub fn keep_only(&mut self, there: impl Fn(&Path) -> bool) {
         self.held.retain(|scope| there(scope));
         self.again.retain(|scope| there(scope));
+        self.hard.retain(|scope| there(scope));
     }
 }
 
@@ -350,21 +361,21 @@ mod tests {
         let b = PathBuf::from("/a/kitty-1-2.scope");
         let mut holding = Holding::default();
         let only = std::slice::from_ref;
-        assert_eq!(holding.changes(only(&a)), [(a.clone(), true)]);
-        holding.done(&a, true);
+        assert_eq!(holding.changes(only(&a), &[]), [(a.clone(), true)]);
+        holding.done(&a, Some(0));
         assert!(holding.holds("kitty-1-1.scope"), "held once done");
-        assert_eq!(holding.changes(only(&a)), []);
+        assert_eq!(holding.changes(only(&a), &[]), []);
         assert_eq!(
-            holding.changes(only(&b)),
+            holding.changes(only(&b), &[]),
             [(a.clone(), false), (b.clone(), true)],
             "a give-back goes first, so its hard floor is free for the next hold"
         );
-        holding.done(&a, false);
+        holding.done(&a, None);
         assert!(!holding.holds("kitty-1-1.scope"), "given back once done");
-        holding.done(&b, true);
+        holding.done(&b, Some(0));
         holding.keep_only(|_| false);
         assert_eq!(
-            holding.changes(&[]),
+            holding.changes(&[], &[]),
             [],
             "a scope gone is nobody's to give back"
         );
@@ -375,20 +386,20 @@ mod tests {
         let pis = ["mycelium-pi-".to_owned()];
         let pi = PathBuf::from("/cg/agents.slice/mycelium-pi-1.scope");
         let mut holding = Holding::default();
-        holding.done(&pi, true);
-        holding.done(Path::new("/cg/app.slice/app-kitty-1.scope"), true);
+        holding.done(&pi, Some(HARD));
+        holding.done(Path::new("/cg/app.slice/app-kitty-1.scope"), Some(0));
         assert_eq!(
-            holding.changes(&[]).len(),
+            holding.changes(&[], &pis).len(),
             2,
             "both are offered for giving back"
         );
         assert_eq!(
-            holding.hard(&pis),
+            holding.hard(),
             1,
             "a pi held hard counts, its window's own scope not, while its give-back fails"
         );
-        holding.done(&pi, false);
-        assert_eq!(holding.hard(&pis), 0, "given back, it counts no more");
+        holding.done(&pi, None);
+        assert_eq!(holding.hard(), 0, "given back, it counts no more");
     }
 
     #[test]
@@ -397,7 +408,7 @@ mod tests {
         let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
         let mut holding = Holding::default();
         for n in 1..=3 {
-            holding.done(&pi(n), true);
+            holding.done(&pi(n), Some(HARD));
         }
         assert_eq!(
             holding.hard_floor(&pi(4), &pis),
@@ -409,7 +420,18 @@ mod tests {
             HARD,
             "a pi held again keeps its own"
         );
-        holding.done(&pi(1), false);
+        holding.done(&pi(4), Some(0));
+        assert_eq!(
+            holding.hard(),
+            3,
+            "the fourth, held with none, isn't counted as keeping one"
+        );
+        holding.done(&pi(1), None);
+        assert_eq!(
+            holding.changes(&[pi(2), pi(3), pi(4)], &pis),
+            [(pi(4), true)],
+            "the fourth is held again once a floor is free"
+        );
         assert_eq!(
             holding.hard_floor(&pi(4), &pis),
             HARD,
@@ -433,7 +455,7 @@ mod tests {
             !holding.holds("kitty-1-2.scope"),
             "an orchestrator's floor is keep.rs's"
         );
-        assert_eq!(holding.changes(&[]), [(held, false)]);
+        assert_eq!(holding.changes(&[], &[]), [(held, false)]);
     }
 
     #[test]
@@ -442,11 +464,11 @@ mod tests {
         let mut holding = Holding::left([held.clone()], |_| Some(FLOOR));
         let wanted = [held.clone()];
         assert_eq!(
-            holding.changes(&wanted),
+            holding.changes(&wanted, &[]),
             [(held.clone(), true)],
             "set again with every property this sorter sets"
         );
-        holding.done(&held, true);
-        assert_eq!(holding.changes(&wanted), [], "once is enough");
+        holding.done(&held, Some(0));
+        assert_eq!(holding.changes(&wanted, &[]), [], "once is enough");
     }
 }

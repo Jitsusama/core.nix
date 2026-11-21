@@ -1055,7 +1055,7 @@ fn children(pid: u32) -> Vec<u32> {
 /// keeping writeback off on one given back that's among `kept`.
 fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
-    for (scope, hold) in ranks.holding.changes(held) {
+    for (scope, hold) in ranks.holding.changes(held, pis) {
         let unit = scope
             .file_name()
             .unwrap_or_default()
@@ -1071,11 +1071,16 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
                 // A failure after this one is said again, so a give-back that keeps failing, as
                 // it would leave a hard floor behind, isn't silent.
                 ranks.holding.failed = false;
-                ranks.holding.done(&scope, hold);
+                ranks.holding.done(&scope, hard);
                 // An orchestrator's window gave its floor up to this one,
                 // so it's kept again from nothing once given back.
                 ranks.keeping.done(&unit, keep::Floor::Nothing);
                 match hard {
+                    Some(0) if holds::hard_for(&scope, pis) > 0 => eprintln!(
+                        "Held {unit}, a window Joel is or was just at, with no hard floor while {} \
+                         others keep theirs.",
+                        focus::MOST
+                    ),
                     Some(0) => eprintln!("Held {unit}, a window Joel is or was just at."),
                     Some(hard) => eprintln!(
                         "Held {unit}, a window Joel is or was just at, {} MiB of it hard.",
@@ -1107,7 +1112,8 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
 /// and back on for each kept no longer ([`focus::KEEP`]).
 fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
     ranks.in_memory.keep_only(Path::exists);
-    for (scope, keep) in ranks.in_memory.changes(kept) {
+    // Keeping a scope in memory holds no floor, so no pi counts here.
+    for (scope, keep) in ranks.in_memory.changes(kept, &[]) {
         let unit = scope
             .file_name()
             .unwrap_or_default()
@@ -1119,7 +1125,7 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
             .output();
         match result {
             Ok(output) if output.status.success() => {
-                ranks.in_memory.done(&scope, keep);
+                ranks.in_memory.done(&scope, keep.then_some(0));
                 let says = if keep {
                     "Keeping in memory"
                 } else {
@@ -1337,7 +1343,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         })
         .collect();
     let (viewers, shown) = viewers_and_shown(windows, prefix, held, &units);
-    let shares = shares(ranks.holding.hard(windows.pis), &units, &viewers);
+    let shares = shares(ranks.holding.hard(), &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
