@@ -19,7 +19,7 @@
 // things whose stamp moved (launcher/Spots.js). y's flash starts its
 // time a turn after the frame that draws it, only for the newest yank
 // (launcher/Flash.js). An opening the collector stalled says where the
-// heap stood at its own ask, not a later one's (launcher/Collector.js).
+// heap stood at the ask its felt record began with (launcher/Collector.js).
 // Long because its cases
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
@@ -240,7 +240,8 @@ QtObject {
         check(failures, "an opening the collector didn't reach says nothing of it",
             Collector.collectorSaid(0, 0.4), "");
         // Read once the room is left, so outside has the room or more and
-        // the chunks, here, less, their cap holding them nearer.
+        // the chunks the room, or more under Qt's own limit, or, as here,
+        // less, their cap holding them nearer.
         const stoodAtAsk = { chunks: 300.4, collectsAt: 321.6, outside: 27.2,
             collectsOutsideAt: 59.2, collecting: false };
         check(failures, "a stall the collector ran in says where the heap stood at the ask",
@@ -252,7 +253,9 @@ QtObject {
         const stoodLater = Object.assign({}, stoodAtAsk, { chunks: 12 });
         const carried = Pacing.feltTicked(Pacing.feltBegun(0, { asked: stoodAtAsk }), 16, pace,
             { asked: stoodLater, collected: 0 });
-        check(failures, "an opening keeps the heap read at its own ask, not a later one's",
+        // The launcher hands its ticks no reading today; this keeps a
+        // tick from taking one in place of the opening's.
+        check(failures, "an opening's ticks keep the heap read as it began, not one handed later",
             Collector.standingSaid(30, carried.asked),
             Collector.standingSaid(30, stoodAtAsk));
         check(failures, "and one begun with none read says nothing of the heap",
