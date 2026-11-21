@@ -54,6 +54,13 @@ const TAKEN: &str = "nix-offload: building on ";
 /// busy Mac's two hours of waiting would read as two hours of building.
 const WAITS: &str = "waits there for its turn";
 
+/// The longest a run a builder took may wait there for a turn before it's
+/// stopped. nix-offload waits for as long as a turn's holder lives, and
+/// the Mac takes one comparison at a time, so a holder that never ends
+/// would otherwise hold every later one. One stopped while it waits
+/// compared nothing (`mac_ending`), so it rests and is tried again.
+const WAITS_AT_MOST: Duration = Duration::from_hours(3);
+
 /// When a run sent to a builder has been there too long, or too quiet.
 struct Clock {
     taken: Option<Instant>,
@@ -99,9 +106,10 @@ impl Clock {
     }
 
     /// Whether the run whose log is `log` should be stopped at `now`: one
-    /// a builder took that went silent, or that built past the longest. A
-    /// wait for a turn there says so every five minutes, so it's never
-    /// silent, and the longest counts only once the wait is over.
+    /// a builder took that went silent, that built past the longest, or
+    /// that waited there for a turn past the most it may. A wait for a
+    /// turn says so every five minutes, so it's never silent, and the
+    /// longest counts only once the wait is over.
     fn overdue(&mut self, log: &Path, now: Instant) -> bool {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         if written != self.written {
@@ -116,11 +124,13 @@ impl Clock {
                 }
             }
         }
-        self.taken.is_some()
-            && (now.duration_since(self.heard) > SILENT
-                || self
-                    .building
-                    .is_some_and(|building| now.duration_since(building) > LONGEST))
+        self.taken.is_some_and(|taken| {
+            now.duration_since(self.heard) > SILENT
+                || match self.building {
+                    Some(building) => now.duration_since(building) > LONGEST,
+                    None => now.duration_since(taken) > WAITS_AT_MOST,
+                }
+        })
     }
 }
 
@@ -2300,7 +2310,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         let mut clock = Clock::new(&log, start);
         let mut text = String::from(WAITING);
         let mut now = start;
-        while now <= start + LONGEST * 2 {
+        while now < start + WAITS_AT_MOST {
             fs::write(&log, &text).unwrap();
             assert!(
                 !clock.overdue(&log, now),
@@ -2324,6 +2334,36 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         assert!(
             clock.overdue(&log, now),
             "past the longest from its turn, though never silent"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_wait_for_a_turn_that_never_comes_is_stopped_as_comparing_nothing() {
+        let log = std::env::temp_dir().join(format!("merge-net-held-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = String::from(WAITING);
+        let mut now = start;
+        while now <= start + WAITS_AT_MOST {
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "stopped before the most it may wait"
+            );
+            text.push_str("nix-offload: ... so this waits there for its turn, held\n");
+            now += Duration::from_mins(5);
+        }
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "a turn held for good would hold the Mac's lane for good"
+        );
+        assert_eq!(
+            mac_ending(None, Some(text.as_bytes())),
+            Some(UNCOMPARED),
+            "a run stopped while it waited compared nothing, so it rests"
         );
         let _ = fs::remove_file(&log);
     }
