@@ -453,19 +453,25 @@ Singleton {
             pi: (fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`) + model };
     }
     // Starts `one` again where it left off, held as every start is but
-    // detached, so no window opens for it and Go To joins it: Reopen Them
-    // All brings back so one that had no window as the boot ended
+    // detached, so no window opens for it and Go To joins it, as Reopen
+    // Them All brings back one that had no window in the boot
     // (Reopening.broughtBack). Its folder goes as the shell's own `$1`, so
     // nothing in it is read as the shell's words, and `told` as `$0`, as
-    // reopened sends it.
+    // reopened sends it. When it started is kept, so it isn't begun again
+    // before its pi says it runs (Reopening.startedHeldLately).
     function reopenedHeld(one, cwd, told) {
         const { env, pi } = resumeWords(one);
         const telling = typeof told === "string" && told !== "";
         Niri.spawn(env.concat(["zsh", "-lic", `exec mycelium --realm ${realm} holds add `
             + `--detached --folder "$1" -- ${telling ? `${pi} -- "$0"` : pi}`,
             telling ? told : "zsh", cwd]));
-        Report.say(`resumed session ${one.id} without a window`);
+        root.startedHeld = Object.assign({}, root.startedHeld, { [one.id]: Date.now() });
+        Report.say(`${one.fresh === true ? "started unsaved" : "resumed"} session ${one.id} `
+            + "without a window");
     }
+    // The sessions started without a window, each to when, in milliseconds
+    // (reopenedHeld).
+    property var startedHeld: ({})
 
     // What a session was started with that it's started with again, from
     // its record's `env` as the harness writes it in restore.json and hands
@@ -967,13 +973,16 @@ Singleton {
             && session.presence.session !== one.id);
         const address = home ?? Places.homeOf(one, null);
         const homed = root.homeSpace(one, others, address);
+        // One put back at its kept place, not sent home (home ""), still
+        // names its workspace for its home should it lead there.
+        const naming = home === "" ? Places.homeOf(one, null) : address;
         if (homed !== null)
             return homed;
         // An orchestrator back before its home is named names the workspace
         // it opens on, so its sessions back before its pi says who it is
         // join it rather than make a workspace of their own (homeSpace).
         const into = root.keptOrKin(one, at, beside, others);
-        const name = into === null ? "" : Places.homeToName(one, address, into.workspace,
+        const name = into === null ? "" : Places.homeToName(one, naming, into.workspace,
             Object.values(Niri.workspaces ?? {}));
         if (name !== "")
             Niri.act({ SetWorkspaceName: { name, workspace: { Id: into.workspace } } });
@@ -1510,7 +1519,8 @@ Singleton {
         const walk = told === root.carryOn;
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: keptPlaces[at], gone, told,
-            back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true) }))
+            back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true,
+                one.way === "boot") }))
             .sort(order));
         if (reopening !== null) {
             reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
@@ -1808,6 +1818,12 @@ Singleton {
         }
         if (found.as === "running") {
             console.info(`sessions: ${next.one.id} not reopened, since it runs here`);
+            reopenNext();
+            return;
+        }
+        if (Reopening.startedHeldLately(root.startedHeld, next.one.id, Date.now())) {
+            console.info(`sessions: ${next.one.id} not reopened, since it was started `
+                + "without a window moments ago");
             reopenNext();
             return;
         }
