@@ -60,7 +60,7 @@ fn every_host_must_have_started_since_its_program_was_installed() {
         "a host started before the install counted as running the new program"
     );
     let stopped = Host {
-        stopped: true,
+        standing: Standing::Stopped,
         ..host(None, Some(50))
     };
     assert_eq!(

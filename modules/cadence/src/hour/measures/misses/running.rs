@@ -63,21 +63,31 @@ const HOSTED_PI: &str = "modules/pi/hosted-pi.nix";
 type Applied = BTreeMap<String, String>;
 
 /// A pi host as listed, before its copies are read: the runtime it loads,
-/// when it started, and whether it was stopped.
-type Listed = (Option<std::path::PathBuf>, Option<i64>, bool);
+/// when it started, and how it stands.
+type Listed = (Option<std::path::PathBuf>, Option<i64>, Standing);
+
+/// How a pi host stands: running, stopped, or failed, which systemd leaves
+/// it at once it restarts past its limit, until someone resets it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Standing {
+    #[default]
+    Running,
+    Stopped,
+    Failed,
+}
 
 /// The states of each patch of a change, by name, that carry it: its
 /// text, or `None` for one the change removed.
 type Wanted = BTreeMap<String, Vec<Option<String>>>;
 
 /// A pi host as cadence reads it: the patches its runtime applied, and
-/// when it started, each `None` where that couldn't be read, and whether
-/// it was stopped, with no process to keep an older unit.
+/// when it started, each `None` where that couldn't be read, and how it
+/// stands: a stopped one has no process to keep an older unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Host {
     applied: Option<Applied>,
     started: Option<i64>,
-    stopped: bool,
+    standing: Standing,
 }
 
 /// Which of `merged` don't run here yet, each with why. A change runs once
@@ -312,8 +322,9 @@ fn judge(
 /// `current` last moved to the version carrying one to their program,
 /// `None` when cadence found neither. For the program, `hosts` holds each
 /// conversation's process too, as `lacking` gives them, and with none
-/// running nothing lacks it. Something lacking outranks what can't be
-/// read, so the owner is asked.
+/// running nothing lacks it. A host failed and left so lacks anything
+/// reaching the hosts until it's reset. Something lacking outranks what
+/// can't be read, so the owner is asked.
 fn hosts_lack(
     hosts: Option<&[Host]>,
     reaches: &Reaches,
@@ -335,8 +346,17 @@ fn hosts_lack(
     if runtime && loaded.contains(&Some(false)) {
         return Some("the pi hosts don't load it yet");
     }
+    // A failed host runs nothing, and judging it as stopped would close a
+    // fix whose own fault failed it, so its owner is asked.
+    if hosts.iter().any(|host| host.standing == Standing::Failed) {
+        return Some("a pi host failed and waits on a reset");
+    }
     // A stopped host keeps no unit: it starts on the one switched in.
-    let running = || hosts.iter().filter(|host| !host.stopped);
+    let running = || {
+        hosts
+            .iter()
+            .filter(|host| host.standing == Standing::Running)
+    };
     let restarts = reaches.unit || reaches.program;
     if restarts
         && let Some(at) = since
@@ -569,10 +589,10 @@ fn read_hosts() -> Option<Vec<Host>> {
     Some(
         hosts()?
             .into_iter()
-            .map(|(runtime, started, stopped)| Host {
+            .map(|(runtime, started, standing)| Host {
                 applied: runtime.and_then(|runtime| applied(&runtime)),
                 started,
-                stopped,
+                standing,
             })
             .collect(),
     )

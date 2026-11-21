@@ -1,19 +1,19 @@
 //! Each pi host as systemd and its process say it runs: the runtime it
-//! loads its pi from, when it started, and whether it was stopped.
+//! loads its pi from, when it started, and how it stands.
 
 use std::path::Path;
 
-use super::Listed;
+use super::{Listed, Standing};
 use crate::command;
 
 /// The runtime each pi host loads its pi from and when it started, each
-/// `None` where it couldn't be read, and whether it was stopped. A host is
+/// `None` where it couldn't be read, and how it stands. A host is
 /// the main process of a unit core's host module names
 /// `pi-host-REALM-KIND`; the conversations it starts are read only for its
 /// program, in `conversations`. A host stopped comes back on the
 /// runtime its unit names, so it's judged by that rather than left out.
-/// One failed or restarting may never load that runtime, as when it
-/// can't start on it, so what it loads can't be told.
+/// One restarting may never load that runtime, as when it can't start on
+/// it, so what it loads can't be told; one failed is told as failed.
 pub(super) fn hosts() -> Option<Vec<Listed>> {
     let units = command(
         "systemctl",
@@ -32,7 +32,7 @@ pub(super) fn hosts() -> Option<Vec<Listed>> {
         units
             .lines()
             .filter_map(listed_host)
-            .map(|(unit, stopped)| {
+            .map(|(unit, standing)| {
                 let shown = command(
                     "systemctl",
                     &[
@@ -57,26 +57,31 @@ pub(super) fn hosts() -> Option<Vec<Listed>> {
                         let runtime = std::fs::read(format!("/proc/{pid}/environ"))
                             .ok()
                             .and_then(|environ| runtime(&environ));
-                        (runtime, started, false)
+                        (runtime, started, Standing::Running)
                     }
-                    None if stopped => (unit_runtime(&shown), None, true),
-                    None => (None, None, false),
+                    None if standing == Standing::Stopped => (unit_runtime(&shown), None, standing),
+                    None => (None, None, standing),
                 }
             })
             .collect(),
     )
 }
 
-/// The host unit a line of `systemctl list-units --all` names, and whether
-/// it was stopped, unless it's one gone from the config and stopped: a host
+/// The host unit a line of `systemctl list-units --all` names, and how it
+/// stands, unless it's one gone from the config and not running: a host
 /// still running after its unit's file went still loads its runtime, so
-/// it's read.
-pub(super) fn listed_host(line: &str) -> Option<(&str, bool)> {
+/// it's read. One failed stays failed until it's reset, whatever restarts
+/// it was given, so it's told rather than waited on.
+pub(super) fn listed_host(line: &str) -> Option<(&str, Standing)> {
     let mut fields = line.split_whitespace();
     let unit = fields.next().filter(|unit| host_unit(unit))?;
     let (load, active) = (fields.next(), fields.next());
-    let stopped = active == Some("inactive");
-    (load == Some("loaded") || !stopped).then_some((unit, stopped))
+    let standing = match active {
+        Some("inactive") => Standing::Stopped,
+        Some("failed") => Standing::Failed,
+        _ => Standing::Running,
+    };
+    (load == Some("loaded") || standing == Standing::Running).then_some((unit, standing))
 }
 
 /// A host unit's main process and when it started, from `systemctl show`:
