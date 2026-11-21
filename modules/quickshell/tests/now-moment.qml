@@ -1830,18 +1830,37 @@ ShellRoot {
         expect("a look done with naming no cell, never one on another quest listing it",
             JSON.stringify(listedActs) === JSON.stringify(["verb:on:look:open:h"]),
             JSON.stringify(listedActs));
+        // A terminal look's Open is its only way to its cell, so it is held
+        // the same way.
+        Sessions.wentTo = null;
+        now.lookServed({ held: { id: "t", kind: "terminal", title: "Read T", target: "",
+            state: "opened", session: "s-old", address: "GONEGO", quest: "QEST-G",
+            cell: null } }, "row:looks-history:t").run();
+        expect("a terminal look done with naming no cell opens no session listing it",
+            Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
+        Sessions.wentTo = null;
         // As the shell makes one itself, the daemon not serving it.
         const textsBefore = now.lookTexts;
-        now.lookTexts = { "o.json": JSON.stringify({ v: 1, id: "o", kind: "page",
-            at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
-            title: "Read O", why: "Because.", state: "opened", session: "s-old",
-            address: "GONEGO", quest: "QEST-G" }) };
-        const apartRow = now.historyRows().find(row => row.key === "on:look:o");
-        const apartActs = apartRow === undefined ? null : apartRow.verbs().map(act => act.key)
-            .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:"));
+        const apartActs = address => {
+            now.lookTexts = { "o.json": JSON.stringify({ v: 1, id: "o", kind: "page",
+                at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
+                title: "Read O", why: "Because.", state: "opened", session: "s-old",
+                address: address, quest: address === "ACTED" ? "QEST-E" : "QEST-G" }) };
+            const row = now.historyRows().find(each => each.key === "on:look:o");
+            return row === undefined ? null : row.verbs().map(act => act.key)
+                .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:")
+                    || key.startsWith("verb:on:look:open:"));
+        };
+        const apartListed = apartActs("GONEGO");
+        const apartLeft = apartActs("ACTED");
         now.lookTexts = textsBefore;
         expect("a look done with the shell makes itself, never one on another quest listing it",
-            apartActs !== null && apartActs.length === 0, JSON.stringify(apartActs));
+            JSON.stringify(apartListed) === JSON.stringify(["verb:on:look:open:o"]),
+            JSON.stringify(apartListed));
+        expect("and leads to the session that left it, by its address",
+            JSON.stringify(apartLeft) === JSON.stringify(["verb:on:look:open:o",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:o"]),
+            JSON.stringify(apartLeft));
         const endedActs = historyActs({ cell: "GONEGO", address: "GONEGO", quest: "QEST-G" });
         expect("a look done with whose cell has ended offers Open alone, never its lister",
             JSON.stringify(endedActs) === JSON.stringify(["verb:on:look:open:h"]),

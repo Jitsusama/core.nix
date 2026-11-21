@@ -190,7 +190,8 @@ function cellFor(one, cells, running, parked) {
 // looks named their cell names it by its address, the session that left
 // it, so cellFor holds it to that cell, the daemon's answer for it and its
 // own quest, never the open search, which History, keeping every look done
-// with, would otherwise keep past Mon 23 Nov 2026.
+// with, would otherwise keep past Mon 23 Nov 2026. One gone quiet and opened
+// is written back naming that cell, as the harness names every look's now.
 function doneWith(one) {
     const named = typeof one.cell === "string" && one.cell !== "";
     return named || typeof one.address !== "string" || one.address === "" ? one

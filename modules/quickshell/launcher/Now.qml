@@ -1617,7 +1617,9 @@ Provider {
     // sent it, as it is now; one naming no cell, by its address (doneWith).
     function lookServed(row, key) {
         const held = row.held ?? {};
-        const one = () => provider.lookHeld(held);
+        // Open and Return lead where Talk does, a terminal look's Open being
+        // its only way to its cell (doneWith).
+        const one = () => Looks.doneWith(provider.lookHeld(held));
         const opens = held.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
         const inside = () => [thing({
             key: `verb:on:look:open:${held.id}`,
@@ -1627,7 +1629,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openServed(one())
-        })].concat(provider.cellActs(Looks.doneWith(one())));
+        })].concat(provider.cellActs(one()));
         return {
             key: `on:look:${held.id}`,
             look: held.id,
