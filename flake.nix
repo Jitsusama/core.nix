@@ -5,7 +5,9 @@
 # darwin.nix, nixos.nix, or system.nix for one file that is both of the last
 # two, and treefmt.nix for how a repository is formatted and linted. A
 # module's other files sit beside it. To see how any file fits, find
-# its path here.
+# its path here. Long because it names every module, role and piece of
+# hardware once, so that every connection is found by opening this one
+# file; split up, they would have to be found again across several.
 {
   description = "Joel's machines as a library: the modules and roles every machine builds from";
 
@@ -187,6 +189,7 @@
           inherit mycelium;
           inherit (self.homeModules) people quickshell;
         };
+        call-under-load = ./modules/call-under-load/home.nix;
         camera = ./modules/camera/home.nix;
         cargo = ./modules/cargo/home.nix;
         chrome = ./modules/chrome/home.nix;

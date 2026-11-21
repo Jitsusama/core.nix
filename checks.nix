@@ -554,6 +554,7 @@ gather {
     ./modules/btrfs/checks.nix
     ./modules/cadence/checks.nix
     ./modules/call-transcripts/checks.nix
+    ./modules/call-under-load/checks.nix
     ./modules/calls/checks.nix
     ./modules/camera/checks.nix
     ./modules/cargo/checks.nix
