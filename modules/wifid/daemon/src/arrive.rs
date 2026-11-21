@@ -75,6 +75,18 @@ pub struct Arrivals {
     moves: HashMap<String, Move>,
 }
 
+/// A card's move as it stood, to put back with `Arrivals::resume` where an
+/// ask meant to replace it fails.
+pub struct Saved(Move);
+
+impl Saved {
+    /// The access point the move was going to.
+    pub fn to(&self) -> &str {
+        &self.0.to
+    }
+}
+
+#[derive(Clone)]
 struct Move {
     /// The access point it was asked to move to.
     to: String,
@@ -275,6 +287,19 @@ impl Arrivals {
     /// Whether a move of the card's, or its way back, is still followed.
     pub fn moving(&self, card: &str) -> bool {
         self.moves.contains_key(card)
+    }
+
+    /// The card's move as it stands, if one is followed, to put back with
+    /// `resume`.
+    pub fn saved(&self, card: &str) -> Option<Saved> {
+        self.moves.get(card).cloned().map(Saved)
+    }
+
+    /// Puts back the card's move as `saved` gave it, as an ask meant to
+    /// replace it failed, so wpa_supplicant carries on with the first,
+    /// and its timer still sends the card back from where it began.
+    pub fn resume(&mut self, card: &str, saved: Saved) {
+        self.moves.insert(card.to_owned(), saved.0);
     }
 
     /// Hands back each card whose way back hasn't reached its point
@@ -744,6 +769,43 @@ mod tests {
                 why: Short::Off
             }),
             "falling off, sent back to the point it left, missing the newer one"
+        );
+    }
+
+    #[test]
+    fn a_move_put_back_after_a_failed_ask_keeps_its_way_and_time() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), HALL, now);
+        arrivals.step("wlan0", "authenticating", now + ms(20));
+        let due = arrivals.due();
+        let saved = arrivals.saved("wlan0");
+
+        // A second ask, made mid-move from no point, then refused.
+        arrivals.asked("wlan0", None, FAR, now + ms(300));
+        let saved = saved.expect("a move followed is saved");
+        let aimed = saved.to().to_owned();
+        arrivals.resume("wlan0", saved);
+        let resumed = arrivals.due();
+        let off = arrivals.fell_off("wlan0");
+
+        assert_eq!(aimed, HALL, "saved going where the first ask sent it");
+        assert_eq!(
+            arrivals.saved("wlan1").map(|saved| saved.0.to),
+            None,
+            "none of another's"
+        );
+        assert!(due.is_some(), "a move with a way back is due to take it");
+        assert_eq!(resumed, due, "due when the first move was");
+        assert_eq!(
+            off,
+            Some(Unreached {
+                card: "wlan0".into(),
+                from: DESK.into(),
+                to: HALL.into(),
+                why: Short::Off
+            }),
+            "put back, sent back to where the first move began"
         );
     }
 

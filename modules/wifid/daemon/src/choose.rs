@@ -316,11 +316,14 @@ struct Trial {
     /// When the card last moved before this one, which counts again where
     /// this one never stood.
     moved_before: Option<Instant>,
-    /// Whether a choice has found the card on the point it tried. One that
+    /// Whether a choice has judged the card on the point it tried. One that
     /// stood there and is later found back where it began went back some
     /// other way, as when that point went or an account moved it, so its
-    /// settle holds. A move that stood less than a minute, and was gone
-    /// before the next choice, is taken as one that never stood.
+    /// settle holds. A move gone before a choice judged it is taken as one
+    /// that never stood: one that stood less than a minute, or only while
+    /// choices passed it over, as through a call or with its own point
+    /// unheard. That costs its settle cut to a span, its point still kept
+    /// off.
     stood: bool,
     /// Whether the move was for a wider band's room, the card using it,
     /// kept unless it carries badly rather than unless it carries worse
@@ -734,14 +737,13 @@ impl Chooser {
         // from choosing again for a settle, only for a `SPAN`: the next
         // choices then judge a span without the failed move's own outage,
         // which would read as loss wifid caused, and a card hearing stale
-        // points tries one a span at most, each kept off once missed.
+        // points on a link that isn't failing tries one a span at most,
+        // each kept off once missed. A failing link holds only after a back
+        // (`holds_still`), so it may try another at each choice.
         if point != trial.to {
             if point == trial.from && !trial.stood {
-                // Within that of the clock's start, as in a boot's first
-                // minutes, no such instant is, so the move holds a whole
-                // settle rather than none.
-                let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN)).unwrap_or(now);
-                self.moved = trial.moved_before.max(Some(spanned));
+                let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
+                self.moved = unmade(now, trial.moved_before, spanned);
             }
             let kept = Kept {
                 until: now + SPURNED,
@@ -1041,6 +1043,15 @@ pub fn slowed_by_its_own(measured: &Measured) -> bool {
         && measured.lost <= LOSSY
         && measured.moving.is_some_and(|moving| moving >= LEAST)
         && measured.p50.is_some_and(|p50| p50 <= steady)
+}
+
+/// When a move never made is taken to have been made, so it holds the
+/// card from choosing again only a `SPAN` (`spanned`, a settle less a span
+/// before now), or till the settle of the move before it, if later. Within
+/// that of the clock's start, as in a boot's first minutes, no such
+/// instant is, so the move holds a whole settle from now rather than none.
+fn unmade(now: Instant, before: Option<Instant>, spanned: Option<Instant>) -> Option<Instant> {
+    before.max(Some(spanned.unwrap_or(now)))
 }
 
 /// Whether a card moves enough for a wider band's room to count, which a
@@ -2568,6 +2579,22 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_move_never_made_just_after_boot_holds_a_whole_settle() {
+        let now = Instant::now();
+        let earlier = now.checked_sub(Duration::from_secs(1));
+
+        let young = unmade(now, None, None);
+        let after_one = unmade(now, earlier, None);
+
+        assert_eq!(
+            young,
+            Some(now),
+            "no instant a span back, so a settle from now"
+        );
+        assert_eq!(after_one, Some(now), "the later of the two holds");
+    }
+
+    #[test]
     fn a_move_never_made_on_a_failing_link_tries_another_at_once() {
         let start = Instant::now();
         let near = [hall(-53, Some(20), None), elsewhere()];
@@ -2635,7 +2662,7 @@ pub(crate) mod tests {
         let back = second + Duration::from_secs(60);
         let waits = chooser.choose(back, (HALL, &badly, -50, CH52), &near, false);
         // Past a span-only hold from the way back, short of the first's settle.
-        let spanned = start + Duration::from_secs(540);
+        let spanned = back + SPAN;
         let held = chooser.choose(spanned, (HALL, &badly, -50, CH52), &near, false);
         let settled = start + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, (HALL, &badly, -50, CH52), &near, false);

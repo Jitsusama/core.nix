@@ -282,20 +282,8 @@ async fn serve(
         .path_namespace("/fi/w1/wpa_supplicant1")?
         .build();
     let signals = drained(MessageStream::for_match_rule(rule, &bus, None).await?);
-    let mut air = Air {
-        points: HashMap::new(),
-        state: state.clone(),
-        cards: HashMap::new(),
-        seen,
-        arrivals: &arrivals,
-        stalls: Stalls::default(),
-        left: Vec::new(),
-        settled: Vec::new(),
-        gone: Vec::new(),
-        at: HashMap::new(),
-        owner: supplicant_owner(&owners).await,
-        departed: VecDeque::new(),
-    };
+    let owner = supplicant_owner(&owners).await;
+    let mut air = Air::new(state.clone(), seen, &arrivals, owner);
     air.hear_all(&bus, &supplicant).await;
 
     let rule = MatchRule::builder()
@@ -762,9 +750,38 @@ struct Air<'a> {
     /// new wpa_supplicant numbers again from nought. Those drain within a
     /// tick or two, so older ones needn't be kept.
     departed: VecDeque<String>,
+    /// The cards a look another account said of was passed over for, at
+    /// the step each was last said at, so a flood of such looks says one
+    /// line rather than crowding wifid's own out of the journal.
+    passed: HashSet<String>,
 }
 
-impl Air<'_> {
+impl<'a> Air<'a> {
+    /// Hears nothing yet, wpa_supplicant held by its owner as wifid starts,
+    /// if it runs.
+    fn new(
+        state: watch::Sender<State>,
+        seen: &'a RefCell<Seen>,
+        arrivals: &'a RefCell<Arrivals>,
+        owner: Option<String>,
+    ) -> Self {
+        Air {
+            points: HashMap::new(),
+            state,
+            cards: HashMap::new(),
+            seen,
+            arrivals,
+            stalls: Stalls::default(),
+            left: Vec::new(),
+            settled: Vec::new(),
+            gone: Vec::new(),
+            at: HashMap::new(),
+            owner,
+            departed: VecDeque::new(),
+            passed: HashSet::new(),
+        }
+    }
+
     /// Reads every access point wpa_supplicant already hears, as it does
     /// when wifid starts while it runs.
     async fn hear_all(&mut self, bus: &Connection, supplicant: &SupplicantProxy<'_>) {
@@ -907,19 +924,20 @@ impl Air<'_> {
             && header
                 .interface()
                 .is_some_and(|interface| interface == "org.freedesktop.DBus.Properties")
-            && let Ok((interface, mut changed, _)) = changed
+            && let Ok((interface, changed, _)) = changed
             && begins_looking(&interface, &changed)
         {
-            let card = self.cards.get(path.as_str());
-            if card.is_some_and(|(card, step)| {
-                may_be_said_looking(step, self.arrivals.borrow().moving(card))
-            }) {
-                changed.retain(|property, _| property == "State");
+            // A path that's none of the cards' is anyone's to make up, so
+            // nothing is said of it.
+            let Some((card, step)) = self.cards.get(path.as_str()) else {
+                return;
+            };
+            let moving = self.arrivals.borrow().moving(card);
+            if let Some(changed) = stranger_look(changed, step, moving) {
                 self.card_changed(bus, path, &changed).await;
-            } else {
-                // Said, so a look passed over as its card still held a
-                // network, or was moving, shows why nothing followed.
-                let card = card.map_or(path.as_str(), |(card, _)| card.as_str());
+            } else if self.passed.insert(card.clone()) {
+                // Said once a step, so a look passed over as its card still
+                // held a network, or was moving, shows why nothing followed.
                 println!("<7>passed over a look another account said of {card}");
             }
         }
@@ -1000,6 +1018,7 @@ impl Air<'_> {
                 // Each step said, so a join that dawdles shows where.
                 if step != before {
                     println!("<7>{card} is {step}");
+                    self.passed.remove(&card);
                 }
                 self.stalls.step(&card, &step, Instant::now());
                 if left {
@@ -1164,6 +1183,20 @@ fn said_by(sender: Option<&str>, owner: Option<&str>) -> bool {
 /// look made up can't end a join or a move, or let its networks on.
 fn may_be_said_looking(step: &str, moving: bool) -> bool {
     !supplicant::holds_a_network(step) && !moving
+}
+
+/// What wifid takes of another account's look at a card at this step, in a
+/// move or not: its step alone, so it can't name a point to credit a join
+/// to or end one, and only of a card that may be said looking.
+fn stranger_look(
+    mut changed: HashMap<String, OwnedValue>,
+    step: &str,
+    moving: bool,
+) -> Option<HashMap<String, OwnedValue>> {
+    may_be_said_looking(step, moving).then(|| {
+        changed.retain(|property, _| property == "State");
+        changed
+    })
 }
 
 /// Whether another account's signal says only what wifid takes from any:
@@ -1542,7 +1575,9 @@ struct Wifid<'a> {
     /// joined again, or are let join whatever they hear.
     alone: RefCell<HashSet<String>>,
     /// The cards Joel took off their network, never nudged to join one
-    /// until they've joined again.
+    /// while that stands: until they've joined again, he's asked one to
+    /// join, or wpa_supplicant has let them go, as a new one starts every
+    /// card with every network on.
     stopped: RefCell<HashSet<String>>,
 }
 
@@ -2023,6 +2058,7 @@ impl Wifid<'_> {
         // stranded later, would let go of the join he asked for, and lets
         // go of its hold first, so the join isn't aimed at a point gone.
         self.arrivals.borrow_mut().forget(&card.name);
+        self.stopped.borrow_mut().remove(&card.name);
         self.let_go(&card.name, false).await;
         let selected = match self.supplicant.get_interface(&card.name).await {
             Ok(at) => match interface(self.bus, at).await {
@@ -2404,10 +2440,11 @@ impl Wifid<'_> {
                 reason: format!("{card} is on its way back to the point it left"),
             });
         }
-        // A move already under way is kept whole if this ask fails, so its
-        // timer still sends the card back, other networks off, should it
-        // reach neither point.
-        let moving = self.arrivals.borrow().moving(&card);
+        // A move already under way is put back as it stood if this ask
+        // fails, held to its point again, so its timer still sends the card
+        // back, other networks off, should it reach neither point.
+        let before = self.arrivals.borrow().saved(&card);
+        let moving = before.is_some();
         let roamed = async {
             let interface =
                 interface(self.bus, self.supplicant.get_interface(&card).await?).await?;
@@ -2457,7 +2494,9 @@ impl Wifid<'_> {
             }
         };
         if let Err(error) = roamed.await {
-            if !moving {
+            if let Some(before) = before {
+                self.resume(&card, before).await;
+            } else {
                 self.together(&card, joining != Some(card.as_str())).await;
                 self.let_go(&card, false).await;
             }
@@ -2602,6 +2641,22 @@ impl Wifid<'_> {
         self.alone.borrow_mut().remove(card);
         self.held.borrow_mut().remove(card);
         self.picked.borrow_mut().remove(card);
+        self.stopped.borrow_mut().remove(card);
+    }
+
+    /// Puts back a card's move an ask meant to replace failed, held to the
+    /// point it was going to again, as the ask held it to its own first.
+    async fn resume(&self, card: &str, before: arrive::Saved) {
+        let network = self.held.borrow().get(card).cloned();
+        if let Some(network) = network
+            && let Err(error) = self.hold(&network, before.to()).await
+        {
+            println!(
+                "<4>{card} couldn't be held to {} again: {error}",
+                before.to()
+            );
+        }
+        self.arrivals.borrow_mut().resume(card, before);
     }
 
     /// Forgets every card's move, hold and pick as wpa_supplicant stops or
@@ -2615,6 +2670,7 @@ impl Wifid<'_> {
         self.alone.borrow_mut().clear();
         self.held.borrow_mut().clear();
         self.picked.borrow_mut().clear();
+        self.stopped.borrow_mut().clear();
         self.arrivals.borrow_mut().clear();
     }
 
@@ -3089,6 +3145,36 @@ mod tests {
             !may_be_said_looking("disconnected", true),
             "nor one in a move, which would be sent back"
         );
+    }
+
+    #[test]
+    fn another_accounts_look_is_taken_as_its_step_alone() {
+        // A look said with a point beside it, which a forger could aim
+        // the next join's credit at.
+        let said = || {
+            let point = ObjectPath::try_from("/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/4")
+                .expect("the path is one");
+            HashMap::from([
+                (
+                    "State".to_owned(),
+                    OwnedValue::from(zvariant::Str::from("scanning")),
+                ),
+                ("CurrentBSS".to_owned(), OwnedValue::from(point)),
+            ])
+        };
+        let properties = |taken: Option<HashMap<String, OwnedValue>>| {
+            taken.map(|taken| taken.into_keys().collect::<Vec<_>>())
+        };
+
+        let off = stranger_look(said(), "disconnected", false);
+        let joined = stranger_look(said(), "completed", false);
+
+        assert_eq!(
+            properties(off),
+            Some(vec!["State".to_owned()]),
+            "of a card off every network, its step alone, never a point"
+        );
+        assert_eq!(properties(joined), None, "of one joined, nothing");
     }
 
     #[test]
