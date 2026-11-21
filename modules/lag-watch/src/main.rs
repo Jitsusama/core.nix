@@ -259,6 +259,25 @@ fn snapshot(
     s
 }
 
+/// Each thread's schedstat now, for a tick's look at whether a read
+/// booked rather than waited.
+fn reads(threads: &[kernel::Thread]) -> BTreeMap<kernel::Thread, kernel::Sched> {
+    threads
+        .iter()
+        .filter_map(|t| {
+            let text = fs::read_to_string(&t.schedstat).ok()?;
+            Some((t.clone(), kernel::sched(&text)?))
+        })
+        .collect()
+}
+
+/// A snapshot's reads of its threads, hidden tabs' included, as a tick's.
+fn read_of(s: &Snapshot) -> BTreeMap<kernel::Thread, kernel::Sched> {
+    let mut all = s.resting.clone();
+    all.extend(s.threads.iter().map(|(k, v)| (k.clone(), *v)));
+    all
+}
+
 /// Tuple's daemon's unit, whose cgroup names its processes.
 fn tuple_unit(account: &Path) -> PathBuf {
     account.join("app.slice/tuple.service")
@@ -458,6 +477,10 @@ fn run() -> Result<(), Failure> {
     );
     let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
     let mut then = snapshot(&cgroups, &account, &threads, apps.unwatched());
+    // Each tick's read of the threads, and what those reads booked rather
+    // than waited, since the window began (`window::book`).
+    let mut read = (then.at, read_of(&then));
+    let mut booked = BTreeMap::new();
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
     let mut tick = 0u32;
@@ -471,10 +494,18 @@ fn run() -> Result<(), Failure> {
         }
         tick += 1;
         if tick < TICKS_A_WINDOW {
+            let at = started().elapsed().as_secs_f64();
+            let after = reads(&threads);
+            window::book(&mut booked, &read.1, &after, at - read.0);
+            read = (at, after);
             continue;
         }
         tick = 0;
-        let now = snapshot(&cgroups, &account, &threads, apps.unwatched());
+        let mut now = snapshot(&cgroups, &account, &threads, apps.unwatched());
+        let after = read_of(&now);
+        window::book(&mut booked, &read.1, &after, now.at - read.0);
+        read = (now.at, after);
+        now.booked = std::mem::take(&mut booked);
         let mut w = window::between(
             &then,
             &now,
@@ -493,6 +524,7 @@ fn run() -> Result<(), Failure> {
         if windows.is_multiple_of(6) {
             threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
             then = snapshot(&cgroups, &account, &threads, apps.unwatched());
+            read = (then.at, read_of(&then));
         } else {
             then = now;
         }

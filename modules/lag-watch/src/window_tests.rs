@@ -423,6 +423,79 @@ fn a_tab_shown_in_a_window_is_counted_from_where_it_rested_hidden() {
     assert!((chrome.worst_us - 2_000.0).abs() < 1e-9, "{chrome:?}");
 }
 
+fn sched(wait_ns: u64, slices: u64) -> Sched {
+    Sched {
+        run_ns: 0,
+        wait_ns,
+        slices,
+    }
+}
+
+#[test]
+fn a_timer_s_sleep_booked_as_one_read_s_wait_is_left_out_and_counted() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    ran(&mut then, "chrome-ui", "Compositor", 0, 0);
+    ran(&mut then, "chrome-ui", "chrome", 0, 0);
+    ran(&mut now, "chrome-ui", "Compositor", 3_000_000, 10);
+    // The main thread ran three times and waited 300 us in all, but one
+    // 2 s read gained its timer's 4 s sleep, which unguarded reads as
+    // 1,333 ms a run, as Chrome's did at 02:47 on 21 Nov.
+    ran(&mut now, "chrome-ui", "chrome", 4_000_300_000, 3);
+    let chrome = now.threads.keys().find(|t| t.name == "chrome").unwrap();
+    let before = BTreeMap::from([(chrome.clone(), sched(100_000, 1))]);
+    let after = BTreeMap::from([(chrome.clone(), sched(4_000_200_000, 2))]);
+    let mut booked = BTreeMap::new();
+    book(&mut booked, &before, &after, 2.0);
+    now.booked = booked;
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    let waits = &w.waits["chrome-ui"];
+    // The main thread keeps 200 us over two runs; the compositor's
+    // 300 us a run is the worst.
+    assert!((waits.worst_us - 300.0).abs() < 1e-9, "{waits:?}");
+    assert!((waits.mean_us - 3_200.0 / 12.0).abs() < 1e-6, "{waits:?}");
+    assert_eq!(waits.doubted, 1, "the booked read wasn't counted");
+    let line = serde_json::to_string(&w).unwrap();
+    assert!(line.contains("\"doubted\":1"), "{line}");
+    // A window with none doubted writes no count, and an older one reads
+    // as none.
+    now.booked.clear();
+    let line = serde_json::to_string(&between(&then, &now, quiet_niri(), 0, "gen")).unwrap();
+    assert!(!line.contains("doubted"), "{line}");
+    let back: Window = serde_json::from_str(&line).unwrap();
+    assert_eq!(back.waits["chrome-ui"].doubted, 0, "{line}");
+}
+
+#[test]
+fn only_a_read_that_waited_longer_than_the_time_between_is_booked() {
+    let thread = |name: &str| Thread {
+        label: "slack-ui",
+        name: name.into(),
+        schedstat: format!("/proc/slack/{name}").into(),
+        call: false,
+    };
+    let before = BTreeMap::from([
+        (thread("starved"), sched(0, 0)),
+        (thread("drifted"), sched(0, 0)),
+        (thread("slept"), sched(0, 0)),
+    ]);
+    let after = BTreeMap::from([
+        // Waited nearly all of a 2 s read: a real starvation, kept.
+        (thread("starved"), sched(1_990_000_000, 1)),
+        // Past it by less than a read's drift: kept.
+        (thread("drifted"), sched(2_040_000_000, 1)),
+        // A 10 s timer's sleep: booked.
+        (thread("slept"), sched(9_999_000_000, 1)),
+        // New since the read before: nothing to compare, so kept.
+        (thread("new"), sched(9_999_000_000, 1)),
+    ]);
+    let mut booked = BTreeMap::new();
+    book(&mut booked, &before, &after, 2.0);
+    let names: Vec<&str> = booked.keys().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["slept"], "{booked:?}");
+    assert_eq!(booked[&thread("slept")], sched(9_999_000_000, 1));
+}
+
 #[test]
 fn an_app_s_processes_that_go_unwatched_are_counted_in_the_window() {
     let then = snapshot(0.0, &[], 0, 0);

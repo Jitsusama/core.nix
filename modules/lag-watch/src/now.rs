@@ -110,6 +110,7 @@ mod tests {
             Wait {
                 mean_us: 14.0,
                 worst_us: 90.0,
+                doubted: 0,
             },
         );
         Window {
