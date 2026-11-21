@@ -705,6 +705,8 @@ QtObject {
             Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
         expect("ended with none to go to, none",
             Looks.cellFor(naming("GGGGGG"), cells, [leaver], []), null);
+        expect("going to a session not listed yet, cellOf's search",
+            Looks.cellFor(naming("AAAAAA"), cells, [leaver], []).address, "AAAAAA");
         expect("not served yet, cellOf's search",
             Looks.cellFor(naming("HHHHHH"), cells, [heir], [leaver]).address,
             "AAAAAA");
