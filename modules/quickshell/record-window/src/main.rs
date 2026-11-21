@@ -282,6 +282,13 @@ async fn told_to_stop(interrupt: &mut Signal, terminate: &mut Signal) {
     }
 }
 
+/// Tells gst-launch to finish its file, and gives it until FINISHING from
+/// the first time it was told.
+fn finish_by(pid: Option<u32>, due: &mut Option<Instant>) {
+    finish(pid);
+    due.get_or_insert_with(|| Instant::now() + FINISHING);
+}
+
 /// Tells gst-launch to finish its file, which its `-e` makes it do on
 /// SIGINT.
 fn finish(pid: Option<u32>) {
@@ -379,13 +386,9 @@ async fn record(asked: &Asked) -> Result<Ended, String> {
             // coming, so the file is finished here rather than waited on.
             _ = closed.next(), if !cast_ended => {
                 cast_ended = true;
-                finish(pid);
-                due.get_or_insert_with(|| Instant::now() + FINISHING);
+                finish_by(pid, &mut due);
             }
-            () = told_to_stop(&mut interrupt, &mut terminate) => {
-                finish(pid);
-                due.get_or_insert_with(|| Instant::now() + FINISHING);
-            }
+            () = told_to_stop(&mut interrupt, &mut terminate) => finish_by(pid, &mut due),
             () = sleep_until(due.unwrap_or_else(Instant::now)), if due.is_some() => {
                 let _ = encoding.start_kill();
                 killed = true;
