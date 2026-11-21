@@ -4880,6 +4880,8 @@ fn gone_pid() -> u32 {
 fn vm_lender_back(vm: &Path) -> std::thread::JoinHandle<()> {
     let vm = vm.to_owned();
     std::thread::spawn(move || {
+        // The run must first find the folder with no lender and start
+        // waiting; a second is far longer than that takes.
         std::thread::sleep(std::time::Duration::from_secs(1));
         fs::write(
             vm.join("store"),
@@ -6049,6 +6051,8 @@ fn a_runs_copy_waits_for_another_runs_copy_to_the_same_builder() {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
+    // Unheld, the run's copy to the stand-in builder ends well inside
+    // three seconds, so a run still going then is waiting on the turn.
     std::thread::sleep(std::time::Duration::from_secs(3));
     assert!(
         second.try_wait().unwrap().is_none(),
