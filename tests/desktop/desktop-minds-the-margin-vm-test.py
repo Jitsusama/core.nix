@@ -255,10 +255,12 @@ def test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera
     """A USB camera's stream shows in the margin too, and leaves with the camera."""
     machine = desktop.machine
     # A camera the machine doesn't name, written as usb-camera-holders
-    # writes one: a file named for the camera, there only while it is.
+    # writes one: a file named for the camera, there only while it is, written under a dotted
+    # name first.
     usb = "/run/camera-holders/MX Brio 705 for Business"
+    written = "/run/camera-holders/.MX Brio 705 for Business.1"
     with desktop.told("drawn margin"):
-        machine.succeed(f"echo zoom > '{usb}.1' && mv '{usb}.1' '{usb}'")
+        machine.succeed(f"echo zoom > '{written}' && mv '{written}' '{usb}'")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("camera")
