@@ -2507,8 +2507,11 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         let start = Instant::now();
         let mut clock = Clock::new(&log, start);
         fs::write(&log, WAITING).unwrap();
-        assert!(!clock.overdue(&log, start));
-        assert!(!clock.overdue(&log, start + SILENT));
+        assert!(!clock.overdue(&log, start), "a run just begun is overdue");
+        assert!(
+            !clock.overdue(&log, start + SILENT),
+            "a run waiting its turn half an hour is overdue"
+        );
         assert!(
             clock.overdue(&log, start + SILENT + Duration::from_secs(1)),
             "silent half an hour once nix-offload stopped saying it waits"
@@ -2529,9 +2532,12 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         let mut clock = Clock::new(&log, start);
         let (first, rest) = WAITING.split_at(WAITING.len() - 30);
         fs::write(&log, first).unwrap();
-        assert!(!clock.overdue(&log, start));
+        assert!(!clock.overdue(&log, start), "half a line read is overdue");
         fs::write(&log, WAITING).unwrap();
-        assert!(!clock.overdue(&log, start + Duration::from_secs(5)));
+        assert!(
+            !clock.overdue(&log, start + Duration::from_secs(5)),
+            "a line finished is overdue"
+        );
         assert!(
             clock.waits.is_some() && !rest.is_empty(),
             "a wait line read in two pieces wasn't read as waiting"
