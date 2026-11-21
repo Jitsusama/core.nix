@@ -452,7 +452,7 @@ Scope {
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `
-                    + `minute on: ${JSON.stringify(answer.error)}`);
+                    + `minute on: ${Presented.errorShown(answer.error, Options.reports)}`);
             searchless = true;
             searchlessAt = Date.now();
             searched(words);
@@ -989,9 +989,13 @@ Scope {
     // Why an act was refused or withheld, as its line in the journal says it: quoted
     // with reports on, and otherwise by how many letters, as typed words are
     // (Presented.typedShown), since a daemon's words can name a row (Y2YBTS,
-    // 2026-11-20, 41ca61c4). A code, no one's words, is said whole by its own lines.
-    function whySaid(why) {
-        return Presented.typedShown(why, Options.reports);
+    // 2026-11-20, 41ca61c4). With them off, a refusal's `answer` gives its code, or
+    // that none came, beside the count (Presented.codeShown), so the line still
+    // tells a daemon refusing from one gone. A code, no one's words, is said whole.
+    function whySaid(why, answer) {
+        const words = Presented.typedShown(why, Options.reports);
+        return Options.reports || answer === undefined ? words
+            : `${Presented.codeShown(answer)}, ${words}`;
     }
 
     // An open whose program went between its rows being listed and Return opens nothing and says
@@ -1067,8 +1071,7 @@ Scope {
             copyWait.stop();
             copyWaiting = null;
             const why = Ready.refusal(answer, words);
-            const code = answer?.error?.code ?? "no answer";
-            console.info(`launcher: ${actSaid(one)} refused: ${code}`);
+            console.info(`launcher: ${actSaid(one)} refused: ${Presented.codeShown(answer)}`);
             launcher?.toldNot(name, "copy", why);
         });
         // Ended at once, as with no connection, it has no wait left to end.
@@ -1118,7 +1121,7 @@ Scope {
         link.ask(also, answer => {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "")
-                console.info(`launcher: ${actSaid(one)}'s also refused: ${whySaid(why)}`);
+                console.info(`launcher: ${actSaid(one)}'s also refused: ${whySaid(why, answer)}`);
         });
     }
 
@@ -1139,8 +1142,8 @@ Scope {
     // launcher, in the daemon's words, so nothing fails silently.
     function shut(key, one) {
         const name = toldName(key);
-        const refused = why => {
-            console.info(`launcher: ${actSaid(one)} refused: ${whySaid(why)}`);
+        const refused = (why, answer) => {
+            console.info(`launcher: ${actSaid(one)} refused: ${whySaid(why, answer)}`);
             maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
         };
         const words = Words.field.becoming ?? {};
@@ -1150,13 +1153,13 @@ Scope {
             return;
         }
         if (!link) {
-            refused(Ready.refusal(null, words));
+            refused(Ready.refusal(null, words), null);
             return;
         }
         link.ask(ask, answer => {
             const why = Ready.refusal(answer, words);
             if (why !== "")
-                refused(why);
+                refused(why, answer);
         });
     }
 
@@ -1239,8 +1242,7 @@ Scope {
                 return;
             const why = Ready.refusal(answer, words);
             if (why !== "") {
-                const code = answer?.error?.refused ?? answer?.error?.code ?? "no answer";
-                console.info(`launcher: ${actSaid(one)} refused: ${code}`);
+                console.info(`launcher: ${actSaid(one)} refused: ${Presented.codeShown(answer)}`);
                 said(key, why);
                 return;
             }
