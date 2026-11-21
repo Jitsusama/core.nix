@@ -432,9 +432,8 @@ async fn follow(
                 // out, the signal still queued, would otherwise be sent
                 // back off the point it reached. Only what's queued now is,
                 // so signals coming without end can't hold the judging off.
-                // The tasks reading the bus run first, so a signal read in
-                // the same tick is queued by then; one still on its way
-                // across the bus isn't, which a scheduler's tick makes rare.
+                // One still on its way across the bus isn't, so `overdue`
+                // asks wpa_supplicant where each card is before acting.
                 tokio::task::yield_now().await;
                 for _ in 0..signals.len() {
                     if let Ok(Ok(message)) = signals.try_recv() {
@@ -800,18 +799,21 @@ impl Air<'_> {
                 // parent's naming every card, so it's taken only from
                 // wpa_supplicant as it runs now, asked of the bus itself,
                 // which starts nothing. One from a wpa_supplicant since
-                // stopped is left to the restart, which forgets every card.
+                // stopped is kept here, as its name going forgets every
+                // card (`owner_changed`).
                 let owner = match DBusProxy::new(bus).await {
                     Ok(proxy) => proxy.get_name_owner(SUPPLICANT.into()).await.ok(),
                     Err(_) => None,
                 };
-                let sender = header.sender();
-                let from_it = sender
-                    .zip(owner.as_ref())
-                    .is_some_and(|(sender, owner)| sender.as_str() == owner.as_str());
-                if !from_it {
-                    let sender = sender.map_or("nobody named", |sender| sender.as_str());
-                    println!("<6>{card} was said gone by {sender}, not wpa_supplicant, so kept");
+                let sender = header.sender().map(zbus::names::UniqueName::as_str);
+                let owner = owner.as_ref().map(|owner| owner.as_str());
+                if !said_by(sender, owner) {
+                    let sender = sender.unwrap_or("nobody named");
+                    let owner = owner.unwrap_or("nobody");
+                    println!(
+                        "<6>{card} was said gone by {sender}, where wpa_supplicant is {owner}, \
+                         so kept"
+                    );
                     return;
                 }
                 self.gone_under(&format!("{}/", card.as_str()));
@@ -909,10 +911,10 @@ impl Air<'_> {
                 }
                 if step == "completed" && before != "completed" {
                     landed = true;
-                    let said = match changed.get("CurrentBSS").map(|point| &**point) {
-                        Some(zvariant::Value::ObjectPath(point)) => Some(point.to_string()),
-                        _ => self.at.get(path.as_str()).cloned(),
-                    };
+                    let said = credited(
+                        changed.get("CurrentBSS").map(|point| &**point),
+                        self.at.get(path.as_str()).map(String::as_str),
+                    );
                     let on = self.joined(bus, path, said.as_deref()).await;
                     let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
                     if let Some(arrived) = arrived {
@@ -1075,6 +1077,25 @@ impl Air<'_> {
         self.at.retain(|card, _| !under(card, path));
         self.points.retain(|point, _| !point.starts_with(path));
         change(&self.state, |state| state.unheard_under(path));
+    }
+}
+
+/// Whether a signal is wpa_supplicant's own: its sender is the account
+/// that holds wpa_supplicant's name now. With no sender named, or nobody
+/// holding the name, it isn't.
+fn said_by(sender: Option<&str>, owner: Option<&str>) -> bool {
+    sender
+        .zip(owner)
+        .is_some_and(|(sender, owner)| sender == owner)
+}
+
+/// The path of the access point a card's completed join is credited to:
+/// the one the same signal names, or else the last one said, or where
+/// neither is, none, so wpa_supplicant is asked.
+fn credited(said: Option<&zvariant::Value<'_>>, at: Option<&str>) -> Option<String> {
+    match said {
+        Some(zvariant::Value::ObjectPath(point)) => Some(point.to_string()),
+        _ => at.map(str::to_owned),
     }
 }
 
@@ -1713,12 +1734,11 @@ impl Wifid<'_> {
         networks: &mut Networks,
     ) {
         let Ok(args) = change.args() else { return };
-        if args.new_owner().is_none() {
-            return;
-        }
+        let started = args.new_owner().is_some();
         match args.name().as_str() {
-            // It starts again hearing nothing, and says each access point
-            // as it hears it.
+            // Stopped, it holds none of the cards, networks or points it
+            // had, whether or not it comes back; started again, it hears
+            // nothing yet, and says each access point as it hears it.
             "fi.w1.wpa_supplicant1" => {
                 air.gone_under("");
                 // Forgotten now, not as the next signal comes, which would
@@ -1726,13 +1746,12 @@ impl Wifid<'_> {
                 for card in std::mem::take(&mut air.gone) {
                     self.gone(&card);
                 }
-                // It starts again on no network, Joel's pick or another,
-                // and with every network on.
-                self.picked.borrow_mut().clear();
-                self.alone.borrow_mut().clear();
-                self.add_cards().await;
+                self.forget_all();
+                if started {
+                    self.add_cards().await;
+                }
             }
-            "org.freedesktop.network1" => {
+            "org.freedesktop.network1" if started => {
                 for card in networks.follow_all(all_links(self.bus).await) {
                     self.add_card_named(&card).await;
                 }
@@ -2287,13 +2306,15 @@ impl Wifid<'_> {
                 if from.is_none() {
                     println!("<4>{card} moves to {bssid} with no point known to go back to");
                 }
-                // A move asked while the card looks waits for the look.
-                let looking = interface.scanning().await.unwrap_or(false);
                 // With nowhere to go back to, a failed move is let join
                 // what it hears, so it keeps nothing off.
                 if from.is_some() {
                     self.keep_alone(&card, &interface, &network).await;
                 }
+                // A move asked while the card looks waits for the look,
+                // asked last, so one begun as its networks were turned off
+                // is seen.
+                let looking = interface.scanning().await.unwrap_or(false);
                 {
                     let mut arrivals = self.arrivals.borrow_mut();
                     arrivals.asked(&card, from.as_deref(), bssid, Instant::now());
@@ -2438,6 +2459,20 @@ impl Wifid<'_> {
         self.picked.borrow_mut().remove(card);
     }
 
+    /// Forgets every card's move, hold and pick as wpa_supplicant stops or
+    /// starts again, cards it never said a step for included: one that's
+    /// been on its network since wifid started has said none. The paths
+    /// they name were the old wpa_supplicant's, which a new one numbers
+    /// again from nought, and it starts on no network, with every network
+    /// on.
+    fn forget_all(&self) {
+        self.astray.borrow_mut().clear();
+        self.alone.borrow_mut().clear();
+        self.held.borrow_mut().clear();
+        self.picked.borrow_mut().clear();
+        self.arrivals.borrow_mut().clear();
+    }
+
     /// Takes in a card come off its network. One that falls off partway
     /// into a move goes back, held, before wpa_supplicant takes another
     /// network. Otherwise it's let go, and its networks turned on where
@@ -2484,14 +2519,49 @@ impl Wifid<'_> {
         let unreached = self.arrivals.borrow_mut().unreached(now);
         for late in unreached {
             let card = late.card.clone();
+            if self.arrived(&card, &late.to, free(&card)).await {
+                continue;
+            }
             if !self.go_back(late, free(&card)).await {
                 self.let_go(&card, false).await;
             }
         }
         let stranded = self.arrivals.borrow_mut().stranded(now);
         for (card, to, going) in stranded {
-            self.stranded(&card, &to, going, free(&card)).await;
+            if !self.arrived(&card, &to, free(&card)).await {
+                self.stranded(&card, &to, going, free(&card)).await;
+            }
         }
+    }
+
+    /// Whether a card whose move's time has run out is on the point it was
+    /// moving to after all, asked of wpa_supplicant: its reply comes after
+    /// every signal it sent before, so a join completed as the time ran
+    /// out, its signal not yet read, is seen. One that is ends its move as
+    /// any arrival does. Where wpa_supplicant can't say, it isn't.
+    async fn arrived(&self, card: &str, to: &str, free: bool) -> bool {
+        let there = async {
+            let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
+            if interface.state().await? != "completed" {
+                return zbus::Result::Ok(false);
+            }
+            let point = interface.current_access_point().await?;
+            let heard = AccessPoint::new(described(self.bus, &point).await?).heard();
+            Ok(heard.is_some_and(|heard| heard.bssid.eq_ignore_ascii_case(to)))
+        };
+        if !there.await.unwrap_or(false) {
+            return false;
+        }
+        let arrived = self
+            .arrivals
+            .borrow_mut()
+            .joined(card, Some(to), Instant::now());
+        match arrived {
+            Some(arrived) => println!("{}", arrived.said(card)),
+            None => println!("<6>{card} reached {to} as its time ran out"),
+        }
+        self.settled(card, free).await;
+        true
     }
 
     /// Lets a card that hasn't got back to the point it left within its
@@ -2777,6 +2847,47 @@ mod tests {
         assert!(
             !under("/fi/w1/wpa_supplicant1/Interfaces/10", &format!("{card}/")),
             "but not another card whose number starts the same"
+        );
+    }
+
+    #[test]
+    fn a_card_is_said_gone_only_by_the_wpa_supplicant_running_now() {
+        assert!(
+            said_by(Some(":1.7"), Some(":1.7")),
+            "wpa_supplicant's own removal is taken"
+        );
+        assert!(
+            !said_by(Some(":1.7"), Some(":1.9")),
+            "one from a wpa_supplicant since replaced, or forged, isn't"
+        );
+        assert!(
+            !said_by(Some(":1.7"), None),
+            "nor one with nobody holding the name, which its going forgets anyway"
+        );
+        assert!(!said_by(None, Some(":1.7")), "nor one naming no sender");
+    }
+
+    #[test]
+    fn a_join_is_credited_to_the_point_its_own_signal_names_before_the_last_said() {
+        let named = ObjectPath::try_from("/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/4")
+            .expect("the path is one");
+        let said = zvariant::Value::ObjectPath(named);
+        let last = "/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/2";
+
+        assert_eq!(
+            credited(Some(&said), Some(last)).as_deref(),
+            Some("/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/4"),
+            "a point named with the join is the one joined"
+        );
+        assert_eq!(
+            credited(None, Some(last)).as_deref(),
+            Some(last),
+            "a join naming none is credited to the last point said"
+        );
+        assert_eq!(
+            credited(Some(&zvariant::Value::U32(4)), None),
+            None,
+            "with none said either, wpa_supplicant is asked"
         );
     }
 
