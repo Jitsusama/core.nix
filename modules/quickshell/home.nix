@@ -1155,9 +1155,11 @@ in
       nothing past the app; a place's own answer as answer; a row of no
       kind as row; and no drawer's page. Its lines of words typed, a slow
       key's and an answer's, say how many letters, a slow step keeping its
-      arrow; and a daemon's refusal says how many letters its words held,
-      its codes whole. Lines naming what was asked from outside, by a
-      terminal or another program, aren't held to this.
+      arrow; and a refusal by a place's rows, Screens, Wi-Fi or the : line
+      after Joel typed on says how many letters the daemon's words held,
+      its codes whole. Not yet held to this: lines naming what was asked
+      from outside, by a terminal or another program, and Agents', the
+      power profile's and the to-do list's own refusal lines.
     '';
   };
 

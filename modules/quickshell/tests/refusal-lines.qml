@@ -18,7 +18,7 @@ import "Expect.js" as Expect
 ShellRoot {
     id: root
 
-    readonly property string key: "wifi:Harbour House"
+    readonly property string key: "row:wifi:network:Harbour House"
 
     // What the launcher is told of a refusal, to say as Joel next opens it.
     QtObject {
@@ -105,7 +105,7 @@ ShellRoot {
     // An act its place won't send as it's asked, withheld in the place's words, its key naming
     // the network as a calendar's act names its meeting, so its line must leave that out too.
     function withheld() {
-        wireless.served.whyWithheld = key => `${key.slice(5)} waits on your own key press`;
+        wireless.served.whyWithheld = key => `${key.split(":").pop()} waits on your own key press`;
         wireless.served.withheld(root.key, { key: "verb:wifi-join:Harbour House",
             ask: { ask: "act", act: "join", network: "Harbour House" } });
         Expect.same("a withheld act is told on screen in its place's words",
@@ -137,7 +137,8 @@ ShellRoot {
     // A search's answer naming a row the daemon doesn't serve yet, its key a daemon's.
     function foundUnserved() {
         Expect.same("a row not served yet isn't made",
-            wireless.served.foundRows({ keys: ["wifi:Harbour Annex"], rows: {} }), []);
+            wireless.served.foundRows({ keys: ["row:wifi:network:Harbour Annex"], rows: {} }),
+            []);
     }
 
     // An act of Wi-Fi's own holding no row, refused with a code but no reason of its own.

@@ -207,7 +207,10 @@ Provider {
     // drawn becoming: a refusal, in the daemon's words or the launcher's for
     // an answer that never came, goes to `later` as the : line's other
     // answers do (lineAsk), else to the journal, naming `what` was asked,
-    // the why by how many letters with reports off (Presented.typedShown).
+    // the why quoted with reports on, and with them off by how many letters
+    // beside the daemon's code, or that no answer came (Presented.codeShown),
+    // as ReadyRows' whySaid says an act's, so the line still tells a daemon
+    // refusing from one gone.
     function lineAsked(ask, later, what) {
         if (!ready.link)
             return;
@@ -219,6 +222,7 @@ Provider {
                 later(why, true);
             else if (why !== "")
                 console.info(`launcher: ${what} refused: `
+                    + (Options.reports ? "" : `${Presented.codeShown(answer)}, `)
                     + Presented.typedShown(why, Options.reports));
         });
     }

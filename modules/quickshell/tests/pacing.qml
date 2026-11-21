@@ -1091,6 +1091,12 @@ QtObject {
             Presented.keyShown("collection:emoji", false), "collection:emoji");
         check(failures, "but any other key only by its kind, as a network's name is",
             Presented.keyShown("wifi:Harbour House", false), "wifi");
+        check(failures, "and a daemon's record key by the kind after its row:",
+            Presented.keyShown("row:wifi:network:Harbour House", false), "wifi");
+        check(failures, "whole while they're on",
+            Presented.keyShown("row:wifi:network:Harbour", true), "row:wifi:network:Harbour");
+        check(failures, "a record's window by its app",
+            Presented.keyShown("row:window:kitty:~/src", false), "window:kitty");
         check(failures, "a row named but with no key is said only as an answer with reports off",
             Presented.rowShown({ name: "Re: my offer" }, false), "answer");
         check(failures, "and its name while they're on",
@@ -1118,12 +1124,17 @@ QtObject {
         check(failures, "a row's key is what's said of a row that has one",
             Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
             "window:kitty");
-        // An act's lines name it by its key, whose verb is its daemon's own
-        // word, but what follows may be an agent's id or a calendar's words.
+        // An act's lines name it by its key, whose verbs are its daemon's
+        // own words, as agents' close or a calendar's no, but a part not
+        // shaped as one may be a path or a name.
         check(failures, "an act's key keeps its verb with reports off",
             Presented.keyShown("verb:wifi-join", false), "verb:wifi-join");
-        check(failures, "but not what follows it",
-            Presented.keyShown("verb:agent:7f3a", false), "verb:agent");
+        check(failures, "and each part after it shaped as a kind's word",
+            Presented.keyShown("verb:agent:close", false), "verb:agent:close");
+        check(failures, "up to the first that isn't",
+            Presented.keyShown("verb:disk:nvme0:/home/joel", false), "verb:disk:nvme0");
+        check(failures, "nor anything after that",
+            Presented.keyShown("verb:agent:7f3a:close", false), "verb:agent");
         check(failures, "and a verb that isn't a kind's word is said as verb",
             Presented.keyShown("verb:Join Harbour House", false), "verb");
         // A slow key's line and a typed answer's say what was typed, which
@@ -1151,8 +1162,16 @@ QtObject {
         // An act's key is said bare while reports are on, as the desktop's
         // tests read it, but a calendar's words in it still can't end the line,
         // nor can a key the launcher says whole with them off.
-        check(failures, "an act's key is said by its verb with reports off",
-            Presented.actShown("verb:calendar:standup", false), "verb:calendar");
+        check(failures, "an act's key is said by its verbs with reports off",
+            Presented.actShown("verb:calendar:no", false), "verb:calendar:no");
+        check(failures, "but not a calendar's words",
+            Presented.actShown("verb:calendar:Standup with Dr Smith", false), "verb:calendar");
+        check(failures, "and an act of another kind by its daemon's own words",
+            Presented.actShown("displays:night-light", false), "displays:night-light");
+        check(failures, "but a window's by its app, as its row is",
+            Presented.actShown("window:Firefox:Inbox", false), "window:Firefox");
+        check(failures, "and the launcher's own whole",
+            Presented.actShown("place:Programs", false), "place:Programs");
         check(failures, "and bare while they're on",
             Presented.actShown("verb:wifi-join", true), "verb:wifi-join");
         check(failures, "its line breaks and quotes escaped",

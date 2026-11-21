@@ -269,33 +269,34 @@ const kindWord = /^[a-z][a-z0-9-]*$/;
 const appWord = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
 const appsUnnamed = ["null", "undefined"];
 
+// A key's parts up to the first that isn't a kind's word.
+function kindsLed(parts) {
+    const end = parts.findIndex(part => !kindWord.test(part));
+    return end < 0 ? parts : parts.slice(0, end);
+}
+
 // A row's key as a line in the journal may say it: whole where `whole`, as while reports are on;
-// otherwise only its kind, since most keys carry what someone else wrote, a network's name, a
-// program's or a window's title, which may be a mail's subject. The launcher's own ids are said
-// whole, and a window's app, `window:<app>:<title>` said as `window:<app>`, or as `window` where
-// its app isn't a program's id or nothing follows it. An act's verb is its daemon's own word, so
-// `verb:<name>:<more>` is said as `verb:<name>`, what follows it, as an agent's id, left out, and
-// as `verb` where its name isn't a kind's word. A new kind says nothing more until it's named
-// here, and a first part that isn't a kind's word, lower case, as a record's name with a colon in
-// it, says nothing at all. A daemon's key may come as a number, so it's read as text first.
+// otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
+// since most keys carry what someone else wrote, a network's name or a window's title. The
+// launcher's own ids are whole, `window:<app>:<title>` is `window:<app>`, or `window` where that
+// isn't a program's id or nothing follows it, and a `verb:` key, its daemon's own words, goes up to
+// its first part that isn't a kind's word: `verb:agent:close` whole, `verb:disk:nvme0:/home` as
+// `verb:disk:nvme0`. A new kind says nothing more until it's named here, and a first part that
+// isn't a kind's word, as a name with a colon in it, nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole || keysOwn.some(own => text.startsWith(own))) {
         return text;
     }
-    if (text.startsWith("window:")) {
-        const end = text.indexOf(":", "window:".length);
-        const app = end < 0 ? "" : text.slice("window:".length, end);
-        const named = appWord.test(app) && !appsUnnamed.includes(app);
-        return named ? `window:${app}` : "window";
+    const parts = (text.startsWith("row:") ? text.slice(4) : text).split(":");
+    if (parts[0] === "window") {
+        const app = parts.length > 2 ? parts[1] : "";
+        return appWord.test(app) && !appsUnnamed.includes(app) ? `window:${app}` : "window";
     }
-    if (text.startsWith("verb:")) {
-        const name = text.slice("verb:".length).split(":")[0];
-        return kindWord.test(name) ? `verb:${name}` : "verb";
+    if (parts[0] === "verb") {
+        return kindsLed(parts).join(":");
     }
-    const kind = text.indexOf(":");
-    const said = kind < 0 ? "" : text.slice(0, kind);
-    return kindWord.test(said) ? said : "";
+    return parts.length > 1 && kindWord.test(parts[0]) ? parts[0] : "";
 }
 
 // The row a drawer is for as the journal may say it: by its key, or by its name where it has none,
@@ -340,12 +341,13 @@ function typedInSaid(typed, within, whole) {
     return `${typedShown(typed, whole)} typed in ${quoted(rowShown({ key: within }, whole))}`;
 }
 
-// An act's key as its lines in the journal say it: by its kind alone unless `whole`, as rowShown
-// says a row's, and otherwise bare, since an act's key is its daemon's own and the desktop's tests
-// read it so, with what quoting would escape escaped either way, so a calendar's words in it, or a
-// line break in a kind, can't end the line early or forge another.
+// An act's key as its lines say it: as rowShown says a row's, or to its first part that isn't a
+// kind's word where that says more, as its daemon's own `displays:sleep`; bare, as the desktop's
+// tests read it, with what quoting escapes escaped, so a line break can't forge another line.
 function actShown(key, whole) {
-    return quoted(rowShown({ key }, whole)).slice(1, -1);
+    const said = rowShown({ key }, whole);
+    const kinds = kindsLed(String(key).split(":")).join(":");
+    return quoted(kinds.length > said.length ? kinds : said).slice(1, -1);
 }
 
 // A daemon's code for a refusal, as wifid's WrongPassword, said whole whatever the reports setting
