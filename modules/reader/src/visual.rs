@@ -297,6 +297,15 @@ impl App {
         ((top - self.cursor_pt()).abs() <= 0.5).then_some(character)
     }
 
+    /// The cursor's character's line, and its middle across the page,
+    /// while it stands, for gf and Ctrl+] to take what's under or after it.
+    pub(crate) fn character_on(&self) -> Option<(&crate::text::Line, f64)> {
+        let at = self.standing()?.cursor;
+        let line = self.layout.as_ref()?.lines.get(at.line)?;
+        let (from, to) = line.spans.get(at.ch)?;
+        Some((line, (from + to) / 2.0))
+    }
+
     /// Lets the character go once the cursor has left its line, so it
     /// never comes back when the cursor does.
     pub(crate) fn keep_character(&mut self) {

@@ -13,6 +13,9 @@ use crate::numbers::f32_of;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Link {
     pub left_pt: f64,
+    /// How far across its first piece runs, to its line's end when it
+    /// breaks.
+    pub width_pt: f64,
     pub top_pt: f64,
     pub height_pt: f64,
     /// Where its words stand, which its label's letters stand on too.
@@ -60,6 +63,7 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
             }
             FrameItem::Link(Destination::Url(url), size) => found.push(Link {
                 left_pt: here.x.to_pt(),
+                width_pt: size.x.to_pt(),
                 top_pt: here.y.to_pt(),
                 height_pt: size.y.to_pt(),
                 baseline_pt: baseline.unwrap_or((here.y + size.y).to_pt()),
@@ -68,6 +72,22 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
             _ => {}
         }
     }
+}
+
+/// Of what the page names, each with its baseline and where it starts and
+/// ends across, the one under a character `x_pt` across the line set on
+/// `baseline_pt`, or else the first after it there, as Vim's gf and Ctrl+]
+/// take the name under or after the cursor.
+pub fn under_or_after<T>(
+    named: impl IntoIterator<Item = (f64, f64, f64, T)>,
+    baseline_pt: f64,
+    x_pt: f64,
+) -> Option<T> {
+    named
+        .into_iter()
+        .filter(|(baseline, _, right, _)| (baseline - baseline_pt).abs() < 1.0 && *right > x_pt)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(.., item)| item)
 }
 
 /// Where a label is drawn, in whole device pixels down the view, so its
@@ -260,6 +280,34 @@ impl Labelling {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_name_under_the_character_or_the_next_after_it_on_its_line_is_taken() {
+        // Two links on the line set on 40 pt, one on the line under it.
+        let named = || {
+            [
+                (40.0, 10.0, 60.0, "first"),
+                (40.3, 100.0, 160.0, "second"),
+                (61.0, 0.0, 300.0, "under"),
+            ]
+        };
+        assert_eq!(under_or_after(named(), 40.0, 30.0), Some("first"), "on it");
+        assert_eq!(
+            under_or_after(named(), 40.0, 60.0),
+            Some("second"),
+            "at the first's very end, the next"
+        );
+        assert_eq!(
+            under_or_after(named(), 40.0, 5.0),
+            Some("first"),
+            "before them all, the first after"
+        );
+        assert_eq!(
+            under_or_after(named(), 40.0, 170.0),
+            None,
+            "past the line's last, none, though a line below has one"
+        );
+    }
 
     #[test]
     fn a_paths_escapes_are_read_back() {
