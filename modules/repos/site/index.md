@@ -7,9 +7,10 @@ over the sites' server, and redraws the moment git writes a branch, a tree
 is cut or a change's checks move. Nothing on it changes anything: what's
 done to a repository is done from its row in the launcher's Code, which
 its Open it in the launcher opens, the row selected. There it's pulled,
-its gone trees forgotten, keeping locked ones and every branch, and its
-store gathered when git would gather it, each act offered only where it
-has something to do.
+its gone trees forgotten, keeping locked ones and every branch, and
+none while a gone tree holds commits no branch has; and its store
+gathered when git would gather it, each act offered only where it has
+something to do.
 
 ## How to Read It
 
