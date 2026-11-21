@@ -485,6 +485,19 @@ QtObject {
         expect("nor one with a word more", Looks.settledAlike(shown, written({ ask: "Why?" })),
             false);
         expect("nor what can't be read", Looks.settledAlike(shown, "{"), false);
+        // A cell History lends a look naming none is never written, as the
+        // daemon writes none to its file, so the two stay alike.
+        const unnamed = Object.assign({}, read.waiting[1], { cell: undefined, address: "AAAAAA" });
+        const lentShown = Looks.rewritten(Looks.doneWith(unnamed), "cleared", "cleared", now);
+        expect("a cell lent to a look done with is not written as its own",
+            JSON.parse(lentShown).cell, undefined);
+        expect("nor is the lending", "cellLent" in JSON.parse(lentShown), false);
+        expect("so what the daemon writes of it, naming none, is alike",
+            Looks.settledAlike(lentShown, Looks.rewritten(unnamed, "cleared", "cleared", now)),
+            true);
+        expect("a cell the look names is written as its own",
+            JSON.parse(Looks.rewritten(Looks.doneWith(Object.assign({}, unnamed,
+                { cell: "BBBBBB" })), "cleared", "cleared", now)).cell, "BBBBBB");
         const offered = Looks.rewritten(choosing, "cleared", "cleared", now);
         const reordered = JSON.parse(offered);
         // Qt's engine has no Object.fromEntries, so each is turned by hand.

@@ -14,7 +14,7 @@ const STATES = ["waiting", "opened", "cleared", "resolved", "expired"];
 const VERSION = 1;
 // What's read from a look's file only for the shell's own use, never
 // written back.
-const OWN = ["since", "resolved", "file", "words", "offers"];
+const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
 // How many of a look's choices are offered, as the harness writes at most
 // four (85PKB2, 2026-11-12).
 const OFFERED = 4;
@@ -190,12 +190,13 @@ function cellFor(one, cells, running, parked) {
 // looks named their cell names it by its address, the session that left
 // it, so cellFor holds it to that cell, the daemon's answer for it and its
 // own quest, never the open search, which History, keeping every look done
-// with, would otherwise keep past Mon 23 Nov 2026. One gone quiet and opened
-// is written back naming that cell, as the harness names every look's now.
+// with, would otherwise keep past Mon 23 Nov 2026. The cell is only lent
+// (cellLent), so the look as the shell writes it when settled names none,
+// as its file still does once the daemon has settled it.
 function doneWith(one) {
     const named = typeof one.cell === "string" && one.cell !== "";
     return named || typeof one.address !== "string" || one.address === "" ? one
-        : Object.assign({}, one, { cell: one.address });
+        : Object.assign({}, one, { cell: one.address, cellLent: true });
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
@@ -283,7 +284,8 @@ function looks(files, kept, now) {
 // by Joel or cleared: everything it said, and how and when it ended.
 function rewritten(one, state, how, now) {
     const kept = {};
-    for (const key of Object.keys(one).filter(name => !OWN.includes(name))) {
+    for (const key of Object.keys(one).filter(name => !OWN.includes(name)
+        && !(name === "cell" && one.cellLent === true))) {
         kept[key] = one[key];
     }
     return JSON.stringify(Object.assign(kept, { state, how,
