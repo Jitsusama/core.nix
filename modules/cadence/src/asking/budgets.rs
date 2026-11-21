@@ -24,11 +24,14 @@ const UNWATCHED_FOR: i64 = 10 * 60;
 /// counted as watched time. A tick skipped or failed while awake slept
 /// none, so it never restarts the count, and slow ticks only delay a stop,
 /// however slow. A stretch awake that cadence didn't run, as logged out,
-/// counts too: spend-watch runs beside it, so nothing was watched.
+/// counts too: spend-watch runs beside it, so nothing was watched. The
+/// count is of waking time by the kernel's clock, so a wall clock set
+/// forward, as when time sync first answers after a boot, or a sleep
+/// falling inside a tick, adds nothing to it.
 const SLEPT: i64 = 60;
-/// Where the clocks can't be read, a gap between ticks past this starts the
-/// count again instead, so one tick missed is absorbed, and a nap under it
-/// is counted as watched time.
+/// Where the clocks can't be read, the count goes by the wall clock, and a
+/// gap between ticks past this starts it again instead, so one tick missed
+/// is absorbed, and a nap under it is counted as watched time.
 const MISSED: i64 = 15 * 60;
 
 /// Whether an alarm's key says a budget passed a share of an allowance,
@@ -60,26 +63,31 @@ pub(super) fn remember(state: &mut State, key: &str, now: i64) {
 /// for `UNWATCHED_FOR` of waking time, so a machine just woken isn't told
 /// of it.
 pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
-    let slept = match (&state.asleep, &s.asleep) {
-        (Some(before), Some(now)) => {
-            before.boot != now.boot || now.millis - before.millis > SLEPT * 1000
-        }
-        _ => state.ticked.is_some_and(|at| s.now - at > MISSED),
+    let since = s.now - state.ticked.unwrap_or(s.now);
+    let (slept, waking_ms) = match (&state.asleep, &s.asleep) {
+        (Some(before), Some(now)) => (
+            before.boot != now.boot || now.millis - before.millis > SLEPT * 1000,
+            now.awake - before.awake,
+        ),
+        _ => (since > MISSED, since * 1000),
     };
     state.ticked = Some(s.now);
     state.asleep.clone_from(&s.asleep);
-    let unwatched_for = if s.budgets_unwatched.is_some() {
-        if slept {
-            state.unwatched_since = None;
-        }
-        s.now - *state.unwatched_since.get_or_insert(s.now)
+    let unwatched_ms = if s.budgets_unwatched.is_some() {
+        let counted = match state.unwatched_ms {
+            Some(before) if !slept => before + waking_ms.max(0),
+            _ => 0,
+        };
+        *state.unwatched_ms.insert(counted)
     } else {
-        state.unwatched_since = None;
+        state.unwatched_ms = None;
         0
     };
     breaches(s)
         .into_iter()
-        .filter(|b| b.key != crate::watch::budgets::UNWATCHED || unwatched_for >= UNWATCHED_FOR)
+        .filter(|b| {
+            b.key != crate::watch::budgets::UNWATCHED || unwatched_ms >= UNWATCHED_FOR * 1000
+        })
         .collect()
 }
 
@@ -91,11 +99,29 @@ mod tests {
     use crate::watch::asleep::Asleep;
     use crate::watch::tests::calm;
 
-    /// The machine's sleep in `boot`, `seconds` of it.
-    fn slept(boot: &str, seconds: i64) -> Asleep {
+    /// The kernel's clocks just after `boot` began.
+    fn booted(boot: &str) -> Asleep {
         Asleep {
             boot: boot.into(),
-            millis: seconds * 1000,
+            millis: 0,
+            awake: 0,
+        }
+    }
+
+    /// Moves `s` on by `seconds` awake, the wall clock and the kernel's
+    /// together.
+    fn awake(s: &mut Snapshot, seconds: i64) {
+        s.now += seconds;
+        if let Some(clocks) = s.asleep.as_mut() {
+            clocks.awake += seconds * 1000;
+        }
+    }
+
+    /// Moves `s` on by `seconds` asleep.
+    fn asleep(s: &mut Snapshot, seconds: i64) {
+        s.now += seconds;
+        if let Some(clocks) = s.asleep.as_mut() {
+            clocks.millis += seconds * 1000;
         }
     }
 
@@ -222,35 +248,34 @@ mod tests {
     #[test]
     fn a_wake_too_brief_for_spend_watch_to_write_isnt_counted_into_the_next() {
         let mut s = calm(100_000);
-        s.asleep = Some(slept("one", 0));
+        s.asleep = Some(booted("one"));
         let mut state = State::default();
         assert!(tick(&s, &mut state).is_empty(), "nothing stands");
         // A dark wake three hours on reads the file from before the sleep,
         // and the machine sleeps again before spend-watch writes.
-        s.now += 3 * 3600;
-        s.asleep = Some(slept("one", 3 * 3600 - 300));
+        asleep(&mut s, 3 * 3600 - 300);
+        awake(&mut s, 300);
         s.budgets_unwatched = Some("was last written 180 min ago".into());
         assert!(
             tick(&s, &mut state).is_empty(),
             "a stale file on a brief wake was told at once"
         );
-        s.now += 8 * 3600;
-        s.asleep = Some(slept("one", 11 * 3600 - 300));
+        asleep(&mut s, 8 * 3600);
         s.budgets_unwatched = Some("was last written 660 min ago".into());
         assert!(
             tick(&s, &mut state).is_empty(),
             "the sleep after a brief wake was counted as unwatched time"
         );
         // A wake, a nap of nine minutes, and a wake again.
-        s.now += 10 * 60;
-        s.asleep = Some(slept("one", 11 * 3600 - 300 + 9 * 60));
+        awake(&mut s, 60);
+        asleep(&mut s, 9 * 60);
         assert!(
             tick(&s, &mut state).is_empty(),
             "a nap was counted as unwatched time"
         );
-        s.now += 5 * 60;
+        awake(&mut s, 5 * 60);
         assert!(tick(&s, &mut state).is_empty(), "five minutes awake");
-        s.now += 5 * 60;
+        awake(&mut s, 5 * 60);
         assert_eq!(
             told_whom(&tick(&s, &mut state)),
             [(To::Orchestrator, false)],
@@ -262,11 +287,11 @@ mod tests {
     fn ticks_skipped_while_awake_never_hide_a_stop() {
         // Ticks run late every other mark, awake throughout.
         let mut s = calm(100_000);
-        s.asleep = Some(slept("one", 0));
+        s.asleep = Some(booted("one"));
         s.budgets_unwatched = Some("is missing".into());
         let mut state = State::default();
         assert!(tick(&s, &mut state).is_empty(), "a stop told at once");
-        s.now += 10 * 60;
+        awake(&mut s, 10 * 60);
         assert_eq!(
             told_whom(&tick(&s, &mut state)),
             [(To::Orchestrator, false)],
@@ -274,22 +299,22 @@ mod tests {
         );
         // A boot starts the count again, though neither boot slept.
         s.budgets_unwatched = None;
-        s.now += 5 * 60;
+        awake(&mut s, 5 * 60);
         assert!(tick(&s, &mut state).is_empty(), "spend-watch writes");
         s.budgets_unwatched = Some("is missing".into());
-        s.now += 5 * 60;
+        awake(&mut s, 5 * 60);
         assert!(tick(&s, &mut state).is_empty(), "a stop told at once");
         s.now += 5 * 60;
-        s.asleep = Some(slept("two", 0));
+        s.asleep = Some(booted("two"));
         assert!(
             tick(&s, &mut state).is_empty(),
             "time before a boot was counted into a stop"
         );
         // Ticks slowed past two marks apiece while awake, as by a stalled
         // fetch, still tell it.
-        s.now += 5 * 60;
+        awake(&mut s, 5 * 60);
         assert!(tick(&s, &mut state).is_empty(), "five minutes awake");
-        s.now += 16 * 60;
+        awake(&mut s, 16 * 60);
         assert_eq!(
             told_whom(&tick(&s, &mut state)),
             [(To::Orchestrator, false)],
@@ -308,6 +333,39 @@ mod tests {
             told_whom(&tick(&s, &mut state)),
             [(To::Orchestrator, false)],
             "with no clocks, one tick missed restarted the stop's count"
+        );
+    }
+
+    #[test]
+    fn a_sleep_inside_a_tick_or_a_clock_set_forward_is_never_counted() {
+        let mut s = calm(100_000);
+        s.asleep = Some(booted("one"));
+        s.budgets_unwatched = Some("is missing".into());
+        let mut state = State::default();
+        // The machine sleeps eight hours after this tick reads the time and
+        // before it reads the clocks, so the sleep is in its reading.
+        if let Some(clocks) = s.asleep.as_mut() {
+            clocks.millis += 8 * 3600 * 1000;
+        }
+        assert!(tick(&s, &mut state).is_empty(), "a stop told at once");
+        s.now += 8 * 3600;
+        awake(&mut s, 5 * 60);
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a sleep inside a tick was counted into a stop"
+        );
+        // Time sync sets the wall clock three days forward.
+        s.now += 3 * 86_400;
+        awake(&mut s, 60);
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a clock set forward was counted into a stop"
+        );
+        awake(&mut s, 4 * 60);
+        assert_eq!(
+            told_whom(&tick(&s, &mut state)),
+            [(To::Orchestrator, false)],
+            "ten waking minutes of no budget watched went untold"
         );
     }
 

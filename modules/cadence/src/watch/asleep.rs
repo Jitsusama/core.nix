@@ -1,6 +1,8 @@
-//! How long the machine has slept in this boot, so a tick tells a sleep or
-//! a boot from a tick that was skipped or failed while awake: only the
-//! kernel knows which a gap between ticks was.
+//! How long the machine has slept and been awake in this boot, so a tick
+//! tells a sleep or a boot from a tick that was skipped or failed while
+//! awake, and counts waking time as the kernel does: only the kernel knows
+//! which a gap between ticks was, and its clocks don't move when the wall
+//! clock is set.
 
 use std::fs;
 
@@ -14,6 +16,8 @@ pub struct Asleep {
     pub boot: String,
     /// Milliseconds asleep in that boot.
     pub millis: i64,
+    /// Milliseconds awake in that boot, as CLOCK_MONOTONIC reads them.
+    pub awake: i64,
 }
 
 /// A clock's reading, as the kernel's `struct timespec` lays it out.
@@ -47,14 +51,17 @@ fn clock(id: i32) -> Option<i64> {
 }
 
 /// The machine's sleep now: boot time counts sleep and monotonic time
-/// doesn't, so the gap between them is the time spent asleep in this boot.
-/// None when the boot or either clock can't be read.
+/// doesn't, so the gap between them is the time spent asleep in this boot,
+/// and monotonic time is the time awake. None when the boot or either
+/// clock can't be read.
 pub fn now() -> Option<Asleep> {
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
-    let millis = clock(CLOCK_BOOTTIME)? - clock(CLOCK_MONOTONIC)?;
+    let awake = clock(CLOCK_MONOTONIC)?;
+    let millis = clock(CLOCK_BOOTTIME)? - awake;
     Some(Asleep {
         boot: boot.trim().to_owned(),
         millis: millis.max(0),
+        awake,
     })
 }
 
@@ -68,7 +75,9 @@ mod tests {
         assert!(!asleep.boot.is_empty(), "the boot read empty");
         let again = now().expect("the kernel's boot or clocks couldn't be read again");
         assert!(
-            again.boot == asleep.boot && (again.millis - asleep.millis).abs() < 1000,
+            again.boot == asleep.boot
+                && (again.millis - asleep.millis).abs() < 1000
+                && (0..1000).contains(&(again.awake - asleep.awake)),
             "two readings a moment apart differ: {asleep:?}, {again:?}"
         );
     }

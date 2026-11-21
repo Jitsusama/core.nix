@@ -53,10 +53,10 @@ pub struct State {
     /// When cadence last sent the orchestrator the card itself.
     #[serde(default)]
     pub carded: Option<i64>,
-    /// Since when no budget has been watched, as spend-watch's standing
-    /// couldn't be read.
+    /// For how many milliseconds of waking time no budget has been watched,
+    /// as spend-watch's standing couldn't be read.
     #[serde(default)]
-    pub unwatched_since: Option<i64>,
+    pub unwatched_ms: Option<i64>,
     /// When cadence last ticked, so where the clocks can't be read, a long
     /// gap between ticks is read as a sleep.
     #[serde(default)]
