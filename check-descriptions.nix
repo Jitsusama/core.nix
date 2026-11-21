@@ -1570,6 +1570,10 @@
     and pis are ended lowest tier first, every tier's work before any pi, and a pi Joel was at
     within half an hour or that orchestrates is spared as the account's
   '';
+  joels-apps-ask-short-slices = ''
+    the sorter has the threads of Joel's Chrome and Slack in his apps' slice, and only those, ask
+    for a short slice
+  '';
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
