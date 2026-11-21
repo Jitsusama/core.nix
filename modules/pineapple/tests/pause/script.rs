@@ -1,0 +1,348 @@
+//! The script another machine runs for a stop or its resume, against a
+//! fake mycelium on its path: what it writes there, which starts it
+//! refuses or lets go, and how it ends.
+
+use std::fs;
+use std::path::Path;
+
+use pineapple::pause;
+use serde_json::Value;
+
+use super::{FORKS, json, scratch};
+
+/// Runs the script a machine runs for `act` of `said`, with a fake
+/// mycelium on its path that writes down what it's asked and says starts
+/// are already refused when `refused` is set, and answers what it asked.
+fn script_run(home: &Path, said: &Value, act: &str, refused: bool) -> String {
+    let (asked, ended) = script_ends(home, said, act, refused, 0);
+    assert_eq!(ended, Some(0), "the script runs");
+    asked
+}
+
+/// As [`script_run`], with the fake mycelium's refusing or letting go of
+/// starts ending as `starts_end` says, answering what it asked and how
+/// the script ended.
+fn script_ends(
+    home: &Path,
+    said: &Value,
+    act: &str,
+    refused: bool,
+    starts_end: u8,
+) -> (String, Option<i32>) {
+    let ran = script_in(home, said, act, None, refused, starts_end);
+    (ran.asked, ran.ended)
+}
+
+/// What a run of the script asked of the fake mycelium, how it ended and
+/// what it said on its error output.
+struct Ran {
+    asked: String,
+    ended: Option<i32>,
+    said: String,
+}
+
+/// As [`script_ends`], for the stop's `realm`, answering what it said on
+/// its error output too.
+fn script_in(
+    home: &Path,
+    said: &Value,
+    act: &str,
+    realm: Option<&str>,
+    refused: bool,
+    starts_end: u8,
+) -> Ran {
+    let _held = FORKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let bin = home.join("bin");
+    fs::create_dir_all(&bin).expect("a bin folder");
+    let mycelium = bin.join("mycelium");
+    fs::write(
+        &mycelium,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> \"$HOME/asked\"\n\
+             [ \"$1 $2\" = 'starts list' ] &&\n\
+             echo '{{\"Ok\":{{\"Starts\":{{\"stopped\":{refused}}}}}}}' && exit 0\n\
+             exit {starts_end}\n"
+        ),
+    )
+    .expect("a fake mycelium");
+    std::process::Command::new("chmod")
+        .arg("+x")
+        .arg(&mycelium)
+        .status()
+        .expect("chmod runs");
+    let ran = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(pause::script(said, act, realm))
+        .env("HOME", home)
+        .env_remove("XDG_STATE_HOME")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                bin.to_string_lossy(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        )
+        .output()
+        .expect("sh runs");
+    let asked = fs::read_to_string(home.join("asked")).unwrap_or_default();
+    let _ = fs::remove_file(home.join("asked"));
+    Ran {
+        asked,
+        ended: ran.status.code(),
+        said: String::from_utf8_lossy(&ran.stderr).into_owned(),
+    }
+}
+
+/// Runs the script for `act` of `said` on a machine with no mycelium
+/// anywhere it looks: a path holding only the few programs it needs, and
+/// a login whose profile doesn't exist, so the real one is never found.
+fn script_bare(home: &Path, said: &Value, act: &str) -> Ran {
+    let _held = FORKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let bin = home.join("bare");
+    fs::create_dir_all(&bin).expect("a bare bin folder");
+    for program in ["sh", "mkdir", "mv", "grep"] {
+        let found = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|dir| dir.join(program))
+            .find(|path| path.exists())
+            .expect("the program on the path");
+        let _ = std::os::unix::fs::symlink(found, bin.join(program));
+    }
+    fs::write(bin.join("id"), "#!/bin/sh\necho nobody-here\n").expect("a fake id");
+    std::process::Command::new("chmod")
+        .arg("+x")
+        .arg(bin.join("id"))
+        .status()
+        .expect("chmod runs");
+    let ran = std::process::Command::new(bin.join("sh"))
+        .arg("-c")
+        .arg(pause::script(said, act, None))
+        .env("HOME", home)
+        .env_remove("XDG_STATE_HOME")
+        .env("PATH", &bin)
+        .output()
+        .expect("sh runs");
+    Ran {
+        asked: String::new(),
+        ended: ran.status.code(),
+        said: String::from_utf8_lossy(&ran.stderr).into_owned(),
+    }
+}
+
+#[test]
+fn a_stop_with_no_mycelium_there_leaves_its_resume_nothing_to_fail_on() {
+    let home = scratch("script-bare");
+    let said = pause::record("stop-all-1", "here", 1);
+    let stop = script_bare(&home, &said, "stop");
+    assert_eq!(
+        stop.ended,
+        Some(127),
+        "the stop can't refuse starts: {:?}",
+        stop.said
+    );
+    let resume = script_bare(&home, &said, "resume");
+    assert_eq!(
+        resume.ended,
+        Some(0),
+        "the stop refused nothing there, so its resume ends well: {:?}",
+        resume.said
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_stop_notes_its_realms_before_its_record_lands() {
+    let home = scratch("script-noted-first");
+    let said = pause::record("stop-all-1", "here", 1);
+    let stops = home.join(".local/state/pineapple/stops");
+    fs::create_dir_all(stops.join("stop-all-1.realms-noted")).expect("a folder in the way");
+    let ran = script_in(&home, &said, "stop", Some("work"), false, 0);
+    assert_ne!(
+        ran.ended,
+        Some(0),
+        "the stop can't note its realms: {:?}",
+        ran.said
+    );
+    assert!(
+        !stops.join("stop-all-1.json").exists(),
+        "so no record lands that a resume would read as an older stop's"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_says_it_began_before_anything_else() {
+    let home = scratch("script-begun");
+    let said = pause::record("stop-all-1", "here", 1);
+    let ran = script_in(&home, &said, "stop", None, false, 255);
+    assert_eq!(
+        ran.said.lines().next(),
+        Some("pineapple: begun there"),
+        "a link dropped after this word reads as a stop that may have run: {:?}",
+        ran.said
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_lets_go_only_the_starts_each_realm_refused() {
+    let home = scratch("script-realms");
+    let said = pause::record("stop-all-1", "here", 1);
+    let run = |act: &str, realm: &str| script_in(&home, &said, act, Some(realm), false, 0);
+    assert_eq!(
+        run("stop", "work").asked,
+        "starts list --realm work\nstarts stop --realm work\n",
+        "the stop refuses one realm's starts"
+    );
+    let personal = run("resume", "personal");
+    assert_eq!(
+        (personal.asked.as_str(), personal.ended),
+        ("", Some(0)),
+        "a realm the stop never refused keeps the starts Joel refused there himself"
+    );
+    assert_eq!(
+        run("resume", "work").asked,
+        "starts resume --realm work\n",
+        "while the realm it did refuse is let go"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_resumes_nothing_where_the_stop_never_landed() {
+    let home = scratch("script-unlanded");
+    let said = pause::record("stop-all-1", "here", 1);
+    assert_eq!(
+        script_run(&home, &said, "resume", false),
+        "",
+        "starts Joel refused there himself stay refused"
+    );
+    assert!(
+        !home
+            .join(".local/state/pineapple/stops/stop-all-1.json")
+            .exists(),
+        "and no stop is written there by its resume"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_never_ends_as_mycelium_does_a_command_it_never_ran() {
+    let said = pause::record("stop-all-1", "here", 1);
+    let stopping = scratch("script-ends-stop");
+    let (_, stop) = script_ends(&stopping, &said, "stop", false, 255);
+    let resuming = scratch("script-ends-resume");
+    script_run(&resuming, &said, "stop", false);
+    let (_, resume) = script_ends(&resuming, &said, "resume", false, 255);
+    assert_eq!(
+        (stop, resume),
+        (Some(70), Some(70)),
+        "a mycelium there failing to refuse or let go of starts ends the script with its own \
+         code, never mycelium's 255 for a command it never ran"
+    );
+    let _ = fs::remove_dir_all(&stopping);
+    let _ = fs::remove_dir_all(&resuming);
+}
+
+#[test]
+fn the_script_a_machine_runs_writes_the_stop_and_stops_its_starts() {
+    let home = scratch("script");
+    let said = pause::record("stop-all-1", "here", 1);
+    assert_eq!(
+        script_run(&home, &said, "stop", false),
+        "starts list\nstarts stop\n",
+        "it refuses its agents' starts"
+    );
+    let kept = json(&home.join(".local/state/pineapple/stops/stop-all-1.json"));
+    assert_eq!(kept, said, "the machine keeps the same stop, whole");
+    assert_eq!(
+        script_run(&home, &said, "resume", false),
+        "starts resume\n",
+        "and lets them go again on the resume"
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", true),
+        "",
+        "a resume tried again, its answer having come late, lets nothing go twice"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_realm_refused_before_the_stop_leaves_every_realm_it_never_refused() {
+    let home = scratch("script-realms-kept");
+    let said = pause::record("stop-all-1", "here", 1);
+    let work = script_in(&home, &said, "stop", Some("work"), true, 0);
+    assert_eq!(
+        work.asked, "starts list --realm work\n",
+        "a realm whose starts Joel already refused isn't refused again"
+    );
+    let personal = script_in(&home, &said, "resume", Some("personal"), false, 0);
+    assert_eq!(
+        personal.asked, "",
+        "nor is a realm the stop never refused let go, though the stop refused none"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_lets_go_whole_a_stop_made_before_stops_noted_their_realms() {
+    let home = scratch("script-realms-older");
+    let said = pause::record("stop-all-1", "here", 1);
+    script_in(&home, &said, "stop", Some("work"), false, 0);
+    let stops = home.join(".local/state/pineapple/stops");
+    for note in ["stop-all-1.realms-noted", "stop-all-1.stopped-work"] {
+        fs::remove_file(stops.join(note)).expect("the stop's note of its realms");
+    }
+    assert_eq!(
+        script_in(&home, &said, "resume", Some("personal"), false, 0).asked,
+        "starts resume --realm personal\n",
+        "an older stop says nothing of the realms it refused, so each is let go"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_stop_that_failed_refusing_starts_still_has_them_let_go() {
+    let home = scratch("script-stop-failed");
+    let said = pause::record("stop-all-1", "here", 1);
+    let stop = script_in(&home, &said, "stop", None, false, 1);
+    assert_eq!(
+        stop.ended,
+        Some(70),
+        "the stop ends failed: {:?}",
+        stop.said
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", false),
+        "starts resume\n",
+        "starts it may have refused before failing are let go on the resume"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_script_leaves_starts_refused_there_before_it_refused() {
+    let home = scratch("script-kept");
+    let said = pause::record("stop-all-1", "here", 1);
+    assert_eq!(
+        script_run(&home, &said, "stop", true),
+        "starts list\n",
+        "starts already refused aren't refused again"
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", true),
+        "",
+        "nor let go on the resume"
+    );
+    assert_eq!(
+        script_run(&home, &said, "resume", true),
+        "",
+        "nor on one tried again"
+    );
+    let _ = fs::remove_dir_all(&home);
+}

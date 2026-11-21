@@ -1,7 +1,12 @@
 //! Joel's stop on everything, as before a demo: what it pauses on this
 //! machine and asks of the others, and that a resume undoes exactly that.
 //! The machine is a fake one here, answering systemctl and mycelium as
-//! the real ones would, and writing down everything asked of it.
+//! the real ones would, and writing down everything asked of it. What it
+//! says of a machine that refuses it or is never reached is in reach.rs,
+//! and the script another machine runs for it in script.rs.
+
+mod reach;
+mod script;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,15 +25,31 @@ struct Unit {
 
 /// A machine whose agents' timers, work and sessions are as given, which
 /// writes down each program it's asked to run, stops, starts, freezes and
-/// thaws what it's asked to, and refuses whatever `refusing` names.
+/// thaws what it's asked to, refuses whatever `refusing` names, and
+/// answers as mycelium does a command it never ran for what `unreached`
+/// names, and one whose link dropped once it began for what `dropped`
+/// names. When `peek` names a file, what it holds as the Mac is asked is
+/// kept in `peeked`, and when `block` names one, a folder is made there as
+/// the Mac is asked, so no file can be written in its place.
 #[derive(Default)]
 struct Machine {
     asked: Vec<String>,
     timers: Vec<String>,
     units: Vec<Unit>,
     refusing: Option<&'static str>,
+    unreached: Option<&'static str>,
+    dropped: Option<&'static str>,
+    peek: Option<PathBuf>,
+    peeked: Option<String>,
+    block: Option<PathBuf>,
     starts_stopped: bool,
 }
+
+/// What a run says when mycelium couldn't run the command there at all.
+const NEVER_RAN: &str = "mycelium: mac's mycelium is too old to run commands (exit status: 255)";
+
+/// Why a run failed when the node hung up on it, once it began.
+const DROPPED: &str = "mycelium: the node hung up before the run ended (exit status: 255)";
 
 impl Machine {
     fn unit(&mut self, id: &str) -> Option<&mut Unit> {
@@ -62,8 +83,25 @@ impl Runs for Machine {
     fn run(&mut self, program: &Path, args: &[String]) -> Result<String, String> {
         let asked = format!("{} {}", program.to_string_lossy(), args.join(" "));
         self.asked.push(asked.clone());
+        if let Some(peek) = self.peek.as_ref().filter(|_| asked.contains("machine=mac")) {
+            self.peeked = fs::read_to_string(peek).ok();
+        }
+        if let Some(block) = self
+            .block
+            .as_ref()
+            .filter(|_| asked.contains("machine=mac"))
+        {
+            fs::create_dir_all(block).expect("a folder in the note's way");
+        }
         if self.refusing.is_some_and(|refused| asked.contains(refused)) {
             return Err("refused here".to_owned());
+        }
+        if self.unreached.is_some_and(|never| asked.contains(never)) {
+            return Err(NEVER_RAN.to_owned());
+        }
+        if self.dropped.is_some_and(|dropped| asked.contains(dropped)) {
+            // What the script says first, before mycelium's own word.
+            return Err(format!("pineapple: begun there\n{DROPPED}"));
         }
         let words: Vec<&str> = args.iter().map(String::as_str).collect();
         Ok(match words.as_slice() {
@@ -261,11 +299,15 @@ fn a_stop_says_everything_stops_and_pauses_only_agents_work() {
                 machine: "here".to_owned(),
                 failed: vec![],
                 recorded: true,
+                reached: true,
+                realm: None,
             },
             Took {
                 machine: "mac".to_owned(),
                 failed: vec![],
                 recorded: true,
+                reached: true,
+                realm: None,
             },
         ],
         "both machines took it"
@@ -577,6 +619,29 @@ fn a_stop_reaches_every_realm_this_machine_joins() {
 }
 
 #[test]
+fn a_machine_a_realm_never_reached_is_named_with_that_realm() {
+    let state = scratch("realm-unreached");
+    let mut here = Machine {
+        unreached: Some("run --realm personal --need machine=builder"),
+        ..machine()
+    };
+    let realms = Plan {
+        machines: vec![],
+        realms: vec!["work".to_owned(), "personal".to_owned()],
+        ..plan()
+    };
+    let took = pause::stop(&realms, &state, "stop-all-1", "here", 1, &mut here).expect("stops");
+    let line = pause::said("stopping", &took, None);
+    assert!(
+        line.contains(&format!(
+            "builder in personal couldn't stop there: {NEVER_RAN}, so its agents run on"
+        )),
+        "Joel is told which realm's link never reached the builder: {line}"
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
 fn a_realm_that_cannot_list_its_sessions_hides_only_its_own_machines() {
     let state = scratch("realm-down");
     let mut here = Machine {
@@ -633,24 +698,6 @@ fn only_agents_places_refuse_the_stop() {
 }
 
 #[test]
-fn a_machine_that_refuses_is_named_with_why() {
-    let state = scratch("refused");
-    let mut here = Machine {
-        refusing: Some("machine=mac"),
-        ..machine()
-    };
-    let took = pause::stop(&plan(), &state, "stop-all-1", "here", 1, &mut here).expect("stops");
-    let sessions = pause::sessions(&plan(), &pause::recorded(&took), &mut here);
-    assert_eq!(
-        pause::said("stopping", &took, sessions),
-        "stopping 2 sessions on here; mac couldn't stop there: refused here, \
-         so its agents may run on",
-        "Joel is told which machine refused and why, and only its sessions are left out"
-    );
-    let _ = fs::remove_dir_all(&state);
-}
-
-#[test]
 fn only_a_stop_whose_record_stands_is_standing() {
     let state = scratch("stray");
     let mut here = machine();
@@ -668,96 +715,4 @@ fn only_a_stop_whose_record_stands_is_standing() {
         "a stop resumed doesn't stand, though its pause isn't undone yet"
     );
     let _ = fs::remove_dir_all(&state);
-}
-
-/// Runs the script a machine runs for `act` of `said`, with a fake
-/// mycelium on its path that writes down what it's asked and says starts
-/// are already refused when `refused` is set, and answers what it asked.
-fn script_run(home: &Path, said: &Value, act: &str, refused: bool) -> String {
-    let _held = FORKS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let bin = home.join("bin");
-    fs::create_dir_all(&bin).expect("a bin folder");
-    let mycelium = bin.join("mycelium");
-    fs::write(
-        &mycelium,
-        format!(
-            "#!/bin/sh\necho \"$@\" >> \"$HOME/asked\"\n\
-             [ \"$1 $2\" = 'starts list' ] &&\n\
-             echo '{{\"Ok\":{{\"Starts\":{{\"stopped\":{refused}}}}}}}'\n\
-             exit 0\n"
-        ),
-    )
-    .expect("a fake mycelium");
-    std::process::Command::new("chmod")
-        .arg("+x")
-        .arg(&mycelium)
-        .status()
-        .expect("chmod runs");
-    let ran = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(pause::script(said, act, None))
-        .env("HOME", home)
-        .env_remove("XDG_STATE_HOME")
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                bin.to_string_lossy(),
-                std::env::var("PATH").unwrap_or_default()
-            ),
-        )
-        .output()
-        .expect("sh runs");
-    assert!(ran.status.success(), "the script runs: {ran:?}");
-    let asked = fs::read_to_string(home.join("asked")).unwrap_or_default();
-    let _ = fs::remove_file(home.join("asked"));
-    asked
-}
-
-#[test]
-fn the_script_a_machine_runs_writes_the_stop_and_stops_its_starts() {
-    let home = scratch("script");
-    let said = pause::record("stop-all-1", "here", 1);
-    assert_eq!(
-        script_run(&home, &said, "stop", false),
-        "starts list\nstarts stop\n",
-        "it refuses its agents' starts"
-    );
-    let kept = json(&home.join(".local/state/pineapple/stops/stop-all-1.json"));
-    assert_eq!(kept, said, "the machine keeps the same stop, whole");
-    assert_eq!(
-        script_run(&home, &said, "resume", false),
-        "starts resume\n",
-        "and lets them go again on the resume"
-    );
-    assert_eq!(
-        script_run(&home, &said, "resume", true),
-        "",
-        "a resume tried again, its answer having come late, lets nothing go twice"
-    );
-    let _ = fs::remove_dir_all(&home);
-}
-
-#[test]
-fn the_script_leaves_starts_refused_there_before_it_refused() {
-    let home = scratch("script-kept");
-    let said = pause::record("stop-all-1", "here", 1);
-    assert_eq!(
-        script_run(&home, &said, "stop", true),
-        "starts list\n",
-        "starts already refused aren't refused again"
-    );
-    assert_eq!(
-        script_run(&home, &said, "resume", true),
-        "",
-        "nor let go on the resume"
-    );
-    assert_eq!(
-        script_run(&home, &said, "resume", true),
-        "",
-        "nor on one tried again"
-    );
-    let _ = fs::remove_dir_all(&home);
 }
