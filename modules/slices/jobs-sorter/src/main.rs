@@ -2215,9 +2215,6 @@ struct Looking<'a> {
     weights: &'a quests::Weights,
 }
 
-/// Puts each pi and each piece of work where it goes for the kernel's
-/// OOM killer, by tier, keeping orchestrators' windows, and takes real
-/// time from work.
 /// Whether the kernel holds the slices asked, and whether a failure to
 /// ask was said, apart from the sorter's other failures so one can't hide
 /// another.
@@ -2253,6 +2250,9 @@ fn ask_quick(
     }
 }
 
+/// Puts each pi and each piece of work where it goes for the kernel's
+/// OOM killer, by tier, keeping orchestrators' windows, and takes real
+/// time from work.
 fn rank_for_memory(looking: &Looking, ranks: &mut Ranks, warned: &mut bool) {
     let settings = looking.settings;
     if let Some(dir) = &settings.orchestrators {
