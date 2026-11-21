@@ -292,6 +292,7 @@ let
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
     ++ lib.optionals isLinux builders
+    ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
@@ -304,8 +305,36 @@ let
   ];
   furtherNodes = lib.mapAttrs (
     realm: joined:
-    nodeIn realm joined.links joined.vias joined.providers (apartIn realm) ++ kitArgs realm joined.kit
+    nodeIn realm joined.links joined.vias joined.providers (apartIn realm)
+    ++ ownAgent joined.signsInWith
+    ++ kitArgs realm joined.kit
   ) cfg.alsoJoins;
+  # A Linux node's ssh asks the agent at SSH_AUTH_SOCK, its realm's key,
+  # rather than one the account's SSH config names for the machine: that
+  # config's IdentityAgent wins over SSH_AUTH_SOCK, so on 2026-11-20 the
+  # node asked Joel's own agent, whose gate refuses agents' work, and the
+  # work realm lost its Mac. IdentitiesOnly=no lets it offer what that
+  # agent holds rather than only the config's IdentityFile. ForwardAgent=no
+  # keeps that key, which asks nothing, from being lent to the machine it
+  # dials, whatever the config says for it, and AddKeysToAgent=no keeps a
+  # key file the config names from being added to the agent agents reach.
+  # A node with no key, and a Mac's, which is given its own options, is
+  # given none of them.
+  ownAgent =
+    key:
+    lib.optionals (isLinux && key != null) (
+      lib.concatMap
+        (option: [
+          "--ssh-option"
+          option
+        ])
+        [
+          "IdentityAgent=SSH_AUTH_SOCK"
+          "AddKeysToAgent=no"
+          "IdentitiesOnly=no"
+          "ForwardAgent=no"
+        ]
+    );
   linuxNode = description: words: key: realm: {
     Unit = {
       Description = description;

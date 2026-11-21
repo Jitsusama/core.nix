@@ -1984,7 +1984,8 @@
     a workstation in a realm runs mycelium's node there, dialling each machine it names, over SSH
     or through a provider's program, and asking each provider's program it names what it could
     make, as a user service on Linux signing in with the agents' key,
-    or the key its realm names, and an agent on a Mac whose sessions sign commits with that key,
+    or the key its realm names, through that key's agent rather than one the account's SSH config
+    names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the home realm's node writes how it
     would ease the machine, and a further realm's doesn't; one naming none runs it dialling
     nothing, and one in no realm has neither a realm nor a node
@@ -2002,7 +2003,8 @@
   mycelium-signs-a-macs-links-with-the-enclave = ''
     a Mac's node signs its links in with the agents' key from the Secure Enclave, through that
     key's own library and no agent, so the login session's agent never asks for an approval;
-    a Mac without that key's module and Linux's node are given no such options
+    a Mac without that key's module, and Linux's node even when its signer names such options,
+    are given none
   '';
   mycelium-keeps-each-realm-apart = ''
     a machine joining a further realm runs a node of its own for it, with its own state, mesh and
