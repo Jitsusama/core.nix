@@ -1058,14 +1058,18 @@ pub(super) mod tests {
                 .all(|key| measure(&judged, key).target == Some(0.0)),
             "an hour read with no host resuming wasn't judged"
         );
-        let mut unread = cells(&[], Some(&quests), HERE, &zone(), NOW, "F");
-        mid_resume(&mut unread, Some(&[NOW - 60]), NOW);
-        assert!(
-            unread
-                .iter()
-                .all(|m| !m.says.contains(COMING_BACK) && !m.says.contains(STARTS_OR_STOPS)),
-            "a measure already unread was given a second reason"
-        );
+        // Both reasons are offered: a host started a minute ago, and one
+        // starting or stopping now.
+        for started in [NOW - 60, NOW] {
+            let mut unread = cells(&[], Some(&quests), HERE, &zone(), NOW, "F");
+            mid_resume(&mut unread, Some(&[started]), NOW);
+            assert!(
+                unread
+                    .iter()
+                    .all(|m| !m.says.contains(COMING_BACK) && !m.says.contains(STARTS_OR_STOPS)),
+                "a measure already unread was given a second reason: {started}"
+            );
+        }
     }
 
     #[test]
