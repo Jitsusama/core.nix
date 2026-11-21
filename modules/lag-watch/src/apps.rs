@@ -17,10 +17,13 @@ use crate::kernel::{Thread, parent, started, tasks, text};
 /// processes are Chromium's, named alike.
 pub const APPS: [(&str, &str); 2] = [("chrome", "chrome-ui"), ("slack", "slack-ui")];
 
-/// What the hourly test call's units in Joel's app.slice are named from,
-/// `call-under-load.service` and any run of it by hand: its Chrome stands
-/// in for his, with a fake camera and microphone, so it's never his.
-const TEST_CALL: &str = "call-under-load";
+/// What units in Joel's app.slice that aren't his are named from: the
+/// hourly test call's, `call-under-load.service` and any run of it by
+/// hand, whose Chrome stands in for his with a fake camera and microphone,
+/// and the windows and sessions jobs-sorter finds agents in there, a
+/// terminal's (`kitty-*`), which a pi may run in, and mycelium's
+/// (`mycelium-pi-*`), beside its hosts' units (`pi-host-*`).
+const NOT_HIS: [&str; 4] = ["call-under-load", "kitty-", "mycelium-pi-", "pi-host-"];
 
 /// The threads of an app's process that Joel waits on, by the kind of
 /// process its threads' names say it is, as Chromium names them: the
@@ -280,15 +283,17 @@ impl Apps {
     /// when its process's parent is his: his user manager, his session, or
     /// any unit in his app.slice, where his own services (1Password's,
     /// Tuple's, the launcher's opener) open links too (5FWIUS 72d972c9),
-    /// but the hourly test call's, whose Chrome stands in for his. That's
-    /// judged once and kept while the watch runs, since a parent moved
-    /// later, as jobs-sorter moves a terminal's busy work, didn't change
-    /// who opened it; a restart judges again. A scope whose named process
-    /// is gone, a launcher's wrapper that ended, whose pid now names a
-    /// process elsewhere, or whose parent ended before its cgroup was
-    /// read, is left to its unit's name, as any app's, and judged again at
-    /// the next look. A Chrome that's a service's own process, or an
-    /// agent's whose launcher ended before the first look, is the user
+    /// but those `NOT_HIS` names. A Chrome he starts from his terminal is
+    /// left out with an agent's there, since nothing tells them apart. The
+    /// verdict is judged once and kept while the watch runs, since a parent
+    /// moved later, as jobs-sorter moves a terminal's busy work, didn't
+    /// change who opened it; a restart judges again. A scope whose named
+    /// process is gone, a launcher's wrapper that ended, or whose pid now
+    /// names a process elsewhere, is left to its unit's name, as any app's,
+    /// and judged again at the next look. So is one whose parent ended
+    /// before its cgroup was read, and by the next look the user manager
+    /// has taken it on. A Chrome that's a service's own process, or an
+    /// agent's whose launcher ended before it was judged, is the user
     /// manager's child, as his is, and reads as his: nothing about its
     /// parent tells them apart, and browser tools keep their launcher.
     fn opened_by_joel(&mut self, cgroup: &str, proc: &Path) -> bool {
@@ -319,7 +324,7 @@ impl Apps {
                 || rest.starts_with("/session.slice/")
                 || rest
                     .strip_prefix("/app.slice/")
-                    .is_some_and(|unit| !unit.starts_with(TEST_CALL))
+                    .is_some_and(|unit| !NOT_HIS.iter().any(|name| unit.starts_with(name)))
         });
         self.own_scopes.insert(scope.to_string(), his);
         his
@@ -425,7 +430,7 @@ mod tests {
         write(&proc.join("97/comm"), "chrome\n");
         write(
             &proc.join("97/cgroup"),
-            &format!("0::{ACCOUNT}/app.slice/apps-under-load.service\n"),
+            &format!("0::{ACCOUNT}/app.slice/call-under-load.service\n"),
         );
         write(&proc.join("98/comm"), "chrome\n");
         write(
@@ -498,15 +503,23 @@ mod tests {
                 "chrome\n",
             );
         };
-        // Joel's browsers: one his user manager started, one the portal
-        // opened for a link, one Slack opened, one his terminal started,
-        // and one 1Password's service opened.
         for (pid, parent, unit) in [
+            // Joel's browsers: one his user manager started, one the portal
+            // opened for a link, one Slack opened, and one 1Password's
+            // service opened.
             ("20", "2", "init.scope"),
             ("22", "4", "session.slice/xdg-desktop-portal.service"),
             ("24", "8", "app.slice/app-niri-slack-8.scope"),
-            ("26", "10", "app.slice/kitty-70-0.scope"),
             ("28", "12", "app.slice/onepassword.service"),
+            // Browsers the hourly test call and a run of it by hand started,
+            // a pi in a terminal or a session of mycelium's in his app.slice,
+            // an agent's shared run and a pi host, which nothing moves back.
+            ("50", "5", "app.slice/call-under-load.service"),
+            ("54", "13", "app.slice/call-under-load-5193fv.service"),
+            ("26", "10", "app.slice/kitty-70-0.scope"),
+            ("80", "9", "app.slice/mycelium-pi-a.scope"),
+            ("60", "6", "shared.slice/run-u1.scope"),
+            ("70", "7", "agents.slice/pi-host-work-attended.service"),
         ] {
             own(pid, pid, parent);
             write(&proc.join(pid).join("task/99/comm"), "Chrome_IOThread\n");
@@ -516,7 +529,8 @@ mod tests {
             );
         }
         // One whose parent ended before its cgroup was read, which is left
-        // to its unit's name until the next look.
+        // to its unit's name until the next look, when the user manager has
+        // taken it on.
         own("36", "36", "14");
         write(&proc.join("36/task/37/comm"), "Chrome_IOThread\n");
         // An agent's browser in the moment before jobs-sorter moves it back,
@@ -529,20 +543,6 @@ mod tests {
         );
         own("32", "30", "30");
         write(&proc.join("32/task/33/comm"), "Compositor\n");
-        // Browsers the hourly test call, an agent's shared run and a pi host
-        // started, which nothing moves back.
-        for (pid, parent, unit) in [
-            ("50", "5", "app.slice/call-under-load.service"),
-            ("60", "6", "shared.slice/run-u1.scope"),
-            ("70", "7", "agents.slice/pi-host-work-attended.service"),
-        ] {
-            own(pid, pid, parent);
-            write(&proc.join(pid).join("task/99/comm"), "Chrome_IOThread\n");
-            write(
-                &proc.join(parent).join("cgroup"),
-                &format!("0::{ACCOUNT}/{unit}\n"),
-            );
-        }
         // A scope whose named browser has ended, its pid now an agent's
         // elsewhere, is left to its unit's name.
         own("42", "40", "1");
@@ -557,34 +557,37 @@ mod tests {
             "40 (bash) S 3 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0 9\n",
         );
         let mut apps = Apps::of_account(ACCOUNT);
-        let his = ["20", "22", "24", "26", "28", "36", "42"]
+        let his = ["20", "22", "24", "28", "36", "42"]
             .map(|pid| format!("chrome-ui chrome {pid}/task/{pid}/schedstat"));
         assert_eq!(drawing_threads(&proc, &mut apps), his);
         let mut calls = |pid: &str| apps.may_call(&text(&proc.join(pid).join("cgroup")), &proc);
-        for pid in ["20", "22", "24", "26", "28"] {
+        for pid in ["20", "22", "24", "28"] {
             assert!(calls(pid), "Joel's browser {pid} carries his call");
         }
-        assert!(!calls("32"), "an agent's renderer carries no call of his");
-        assert!(
-            !calls("50"),
-            "the test call's browser carries no call of his"
-        );
-        assert!(!calls("70"), "a pi host's browser carries no call of his");
+        for pid in ["50", "54", "26", "80", "70", "32"] {
+            assert!(
+                !calls(pid),
+                "browser {pid}, not his, carries no call of his"
+            );
+        }
         // Who started it is judged once: a parent moved later, as
-        // jobs-sorter moves a terminal's busy work, changes nothing. One
-        // left to its unit's name for want of a parent is judged again.
+        // jobs-sorter moves a terminal's busy work, changes nothing. The
+        // one whose parent ended is now the user manager's, and reads as
+        // his, as an orphaned browser does.
         let jobs = format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n");
         write(&proc.join("2/cgroup"), &jobs);
-        write(&proc.join("14/cgroup"), &jobs);
-        let kept: Vec<_> = his
-            .iter()
-            .filter(|line| !line.contains(" 36/"))
-            .cloned()
-            .collect();
+        write(
+            &proc.join("16/cgroup"),
+            &format!("0::{ACCOUNT}/init.scope\n"),
+        );
+        write(
+            &proc.join("36/stat"),
+            "36 (chrome) S 16 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0 9\n",
+        );
         // Pass after pass, so a verdict kept only by the look just made
         // wouldn't do.
         for _ in 0..2 {
-            assert_eq!(drawing_threads(&proc, &mut apps), kept);
+            assert_eq!(drawing_threads(&proc, &mut apps), his);
         }
         // A scope that empties is forgotten: a browser started again in it
         // is judged by its own parent.
@@ -617,7 +620,7 @@ mod tests {
         let theirs = "/user.slice/user-1001.slice/user@1001.service/app.slice";
         for path in [
             // A test's Chrome, and a program's own service.
-            format!("{mine}/apps-under-load.service"),
+            format!("{mine}/call-under-load.service"),
             format!("{mine}/tuple.service"),
             // An agent's session, and an agent's Chrome in the work slices.
             format!("{mine}/mycelium-pi-a.scope"),
@@ -655,7 +658,7 @@ mod tests {
             // A cgroup a program made below a terminal's scope.
             format!("{mine}/kitty-70-0.scope/payload/app-a.scope"),
             // A test's Chrome, and another account's terminal.
-            format!("{mine}/apps-under-load.service"),
+            format!("{mine}/call-under-load.service"),
             "/user.slice/user-1001.slice/user@1001.service/app.slice/kitty-70-0.scope".into(),
         ] {
             assert!(!calls(&path), "{path} carries no call of Joel's");
