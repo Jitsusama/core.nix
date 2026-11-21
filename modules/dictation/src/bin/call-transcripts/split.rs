@@ -63,7 +63,13 @@ struct Whole {
 pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     let mut lines = Vec::with_capacity(heard.lines.len());
     let mut words = HashMap::new();
-    for whole in wholes(heard) {
+    let wholes = wholes(heard);
+    let taken: Vec<Line> = wholes.iter().map(|whole| whole.line.clone()).collect();
+    for whole in wholes {
+        // Joel's lines have no pieces, so leaving one out renumbers none.
+        if transcript::echoes(&whole.line, &taken) {
+            continue;
+        }
         if whole.pieces.is_empty() {
             if !whole.words.is_empty() {
                 words.insert(lines.len(), whole.words);
