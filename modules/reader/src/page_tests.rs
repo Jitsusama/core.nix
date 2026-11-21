@@ -1,6 +1,9 @@
 use super::{Setter, Width};
 use crate::numbers::i32_of;
 
+#[path = "page_code_tests.rs"]
+mod code;
+
 /// The measure and spread a window this many points wide sets.
 fn width(window_pt: f64) -> (f64, f64) {
     let Width {
@@ -15,7 +18,6 @@ fn a_window_too_narrow_for_the_whole_page_gives_way_measure_then_margin() {
     // The whole page: the measure, its outer column and xxl either side.
     let spread = super::spread_pt();
     let whole = 435.0 + 2.0 * (spread + 24.0);
-    assert_eq!(width(1080.0), (435.0, spread), "the whole page");
     assert_eq!(width(whole), (435.0, spread), "the whole page, just");
     assert_eq!(
         width(whole - 1.0),
@@ -43,6 +45,78 @@ fn a_window_too_narrow_for_the_whole_page_gives_way_measure_then_margin() {
         width(300.0),
         (264.0, 0.0),
         "under 45 characters, xl either side"
+    );
+}
+
+#[test]
+fn a_window_wider_than_the_whole_page_widens_the_measure_by_half_up_to_80_characters() {
+    let spread = super::spread_pt();
+    let whole = 435.0 + 2.0 * (spread + 24.0);
+    let character = 435.0 / 66.0;
+    let widest = 435.0 * 80.0 / 66.0;
+    let near = |window_pt: f64, measure_pt: f64| {
+        let (measure, spread_at) = width(window_pt);
+        (measure - measure_pt).abs() < 0.001 && (spread_at - spread).abs() < f64::EPSILON
+    };
+    assert!(
+        near(whole + 2.0 * 3.0 * character - 1.0, 435.0),
+        "under three characters' widening, none"
+    );
+    assert!(
+        near(
+            whole + 2.0 * 3.0 * character + 0.01,
+            435.0 + 3.0 * character
+        ),
+        "half of what it has past, three characters at a time"
+    );
+    assert!(
+        near(whole + 2.0 * 9.0 * character + 5.0, 435.0 + 9.0 * character),
+        "nine characters"
+    );
+    // 66 widens to 78 in four steps; the fifth would make 81.
+    assert_eq!(
+        width(whole + 2.0 * 15.0 * character + 1.0),
+        (widest, spread),
+        "80 characters at most"
+    );
+    assert_eq!(width(2560.0), (widest, spread), "however wide");
+    // A hyphen costs no less on a wider line than on the whole measure.
+    assert!(
+        (Width::for_window(2560.0).hyphen_cost() - 200.0).abs() < f64::EPSILON,
+        "a hyphen on a wide window's line costs the whole measure's 200"
+    );
+    assert!(
+        Width::for_window(360.0).hyphen_cost() > 200.0,
+        "a hyphen on a narrow window's line costs more than the whole measure's"
+    );
+}
+
+#[test]
+fn a_page_set_for_a_wide_window_is_its_widened_measure_wide() {
+    let dir = std::env::temp_dir().join(format!("reader-wide-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, format!("{OPENING}{OPENING}")).expect("the file");
+    let mut setter = Setter::new(file.to_str().expect("a path"));
+    let wide = Width::for_window(2560.0);
+    setter.fit(wide);
+    let (page, _) = setter.set().expect("set");
+    std::fs::remove_dir_all(&dir).expect("cleaned");
+    assert!(
+        (page.frame.size().x.to_pt() - wide.page_pt()).abs() < 0.01,
+        "the page is {} pt wide, not {} pt",
+        page.frame.size().x.to_pt(),
+        wide.page_pt()
+    );
+    // How far across the measure the words reach, from its left edge.
+    let widest_line = crate::text::lines(crate::text::runs(&page.frame))
+        .iter()
+        .filter_map(|line| line.spans.last().map(|span| span.1 - wide.spread_pt))
+        .fold(0.0, f64::max);
+    assert!(
+        widest_line > 440.0 && widest_line <= wide.measure_pt + 0.5,
+        "the widest line is {widest_line} pt on a {} pt measure",
+        wide.measure_pt
     );
 }
 
@@ -158,10 +232,9 @@ fn a_narrow_page_hyphenates_as_a_typesetter_would() {
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
-/// Every baseline from the first run holding `from` to the last holding
-/// `to`, top to bottom, and the page's pitch from its first paragraph,
-/// which is the page's line.
-/// The page a file holding `markdown` sets, as the window's is.
+/// The page a file holding `markdown` sets, as the window's is. Each
+/// test names its own, since tests set pages at once and each removes
+/// its folder when done.
 fn page_of(name: &str, markdown: &str) -> super::Page {
     let dir = std::env::temp_dir().join(format!("reader-pitch-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
@@ -174,6 +247,9 @@ fn page_of(name: &str, markdown: &str) -> super::Page {
     page
 }
 
+/// Every baseline from the first run holding `from` to the last holding
+/// `to`, top to bottom, and the page's pitch from its first paragraph,
+/// which is the page's line.
 fn baselines(name: &str, markdown: &str, from: &str, to: &str) -> (f64, Vec<f64>) {
     let page = page_of(name, markdown);
     let runs = crate::text::runs(&page.frame);
@@ -495,7 +571,11 @@ fn dropped(name: &str, markdown: &str) -> Option<String> {
 fn an_opening_drops_only_a_capital_and_a_letter_alone_reads_as_a_word() {
     // As long as the opening that drops its letter, so each would.
     let tail = "opening paragraph of this page runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, so that it opens on a letter dropped two lines down beside its first words, which then run on at the whole measure under it to the end, at Omega.\n";
-    for (name, start) in [("small", "the"), ("strong", "**The**"), ("code", "`The`")] {
+    for (name, start) in [
+        ("small", "the"),
+        ("strong", "**The**"),
+        ("code-start", "`The`"),
+    ] {
         assert_eq!(
             dropped(name, &format!("{start} {tail}")),
             None,

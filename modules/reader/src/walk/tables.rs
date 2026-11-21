@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use markup5ever_rcdom::{Handle, NodeData};
 
-use super::{BLOCKS, Walker, attr, tag, text_of, unit, written_on};
+use super::{BLOCKS, Walker, attr, literal, tag, text_of, unit, written_on};
 
 impl Walker<'_> {
     pub(super) fn list(&mut self, open: &str, node: &Handle) {
@@ -111,7 +111,7 @@ impl Walker<'_> {
         let mut filled = vec![false; columns];
         for (head, cells, _) in &rows {
             for (i, cell) in cells.iter().enumerate() {
-                cell_words(cell, false, &mut words[i]);
+                cell_words(cell, &mut words[i]);
                 let text = text_of(cell);
                 let text = text.trim();
                 if !head && !text.is_empty() {
@@ -137,12 +137,15 @@ impl Walker<'_> {
         for column in &mut words {
             column.sort_by_key(|(word, _)| std::cmp::Reverse(word.chars().count()));
             column.dedup();
-            column.truncate(6);
+            // The six longest words and the six longest spans of code, each
+            // apart, since a span's length says little of the least room
+            // it needs, and long ones would crowd out the word that does.
+            let plain = column.iter().filter(|(_, code)| !code).take(6);
+            let codes = column.iter().filter(|(_, code)| *code).take(6);
             self.out.push('(');
-            for (word, code) in column.iter() {
-                let quoted = format!("{word:?}");
-                let kind = if *code { "raw" } else { "text" };
-                let _ = write!(self.out, "{kind}({quoted}), ");
+            for (word, code) in plain.chain(codes) {
+                let kind = if *code { "least-code" } else { "text" };
+                let _ = write!(self.out, "{kind}({}), ", literal(word));
             }
             self.out.push_str("), ");
         }
@@ -182,19 +185,24 @@ impl Walker<'_> {
     }
 }
 
-/// A cell's words as they're set, each saying whether it's code.
-fn cell_words(node: &Handle, code: bool, out: &mut Vec<(String, bool)>) {
+/// A cell's words as they're set, each saying whether it's code. A span
+/// of code is one, since the page keeps its pieces whole as it chooses
+/// (page.rs's `code`), and the sheet measures them as it does.
+fn cell_words(node: &Handle, out: &mut Vec<(String, bool)>) {
+    if tag(node).as_deref() == Some("code") {
+        out.push((text_of(node), true));
+        return;
+    }
     if let NodeData::Text { contents } = &node.data {
         out.extend(
             contents
                 .borrow()
                 .split_whitespace()
-                .map(|word| (word.to_string(), code)),
+                .map(|word| (word.to_string(), false)),
         );
     }
-    let code = code || tag(node).as_deref() == Some("code");
     for child in node.children.borrow().iter() {
-        cell_words(child, code, out);
+        cell_words(child, out);
     }
 }
 
