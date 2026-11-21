@@ -9,6 +9,7 @@ import {
   allCells,
   type Builder,
   builderSays,
+  builderTone,
   builderWords,
   builds,
   type Cell,
@@ -312,6 +313,13 @@ it("a builder says whether it's lent, how it stands and how much it takes at onc
     [true, true, false, false, false],
     "only one reached or run by its lender takes builds",
   );
+  assert.deepEqual(
+    ["answering", "running", "not running", "unknown", "draining", "not answering"].map((state) =>
+      builderTone(builder("heron", { state })),
+    ),
+    [0, 0, 0, 1, 1, 2],
+    "a lent builder at rest asks nothing, one nobody heard some, one that didn't answer most",
+  );
 });
 
 it("a builder's drawer says how it stands, who said so and why", () => {
@@ -341,6 +349,11 @@ it("a builder's drawer says how it stands, who said so and why", () => {
     says({ state: "unknown", said: "it is reached through a jump host, which isn't dialled" }),
     "Nobody has heard how it stands: it is reached through a jump host, which isn't dialled.",
     "unheard, and why",
+  );
+  assert.equal(
+    says({ state: "draining", said: "its lender gives it back" }),
+    "The node says it is draining: its lender gives it back.",
+    "a state the map doesn't know, in the node's own word",
   );
 });
 

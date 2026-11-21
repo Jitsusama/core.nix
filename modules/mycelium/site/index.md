@@ -12,7 +12,7 @@ Nothing on it acts on the network.
   hairline box, its cords leaving the box's edge, with how busy it is
   under it; the box is dashed while the machine is off. A dashed link
   joins machines on the same network.
-- **The builders stand under the machines.** Each builder this machine
+- **The builders stand under the map.** Each builder this machine
   sends Nix builds to is its name in a box with rounded corners, with
   how it stands, whether it is lent and how many builds it takes at
   once under it; the box is dashed while it takes no builds. No cord

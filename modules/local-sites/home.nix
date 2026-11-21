@@ -410,7 +410,9 @@ in
       # passes whole, holding today only that word. Of each murmur the
       # murmurs page reads only what it draws, not the machine it was
       # said on. Of each builder the machine sends its builds to, the map
-      # reads how it stands and what it builds, never where it's reached.
+      # reads how it stands and what it builds, never its host: its `said`
+      # is the node's reason, which names the way it's reached (a jump
+      # host, a proxy) but never an address.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
