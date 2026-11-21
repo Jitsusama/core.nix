@@ -1,0 +1,14 @@
+# The flake inputs whose lock may move alone with no VM test run before the
+# merge: a flake.lock change that moves only these nodes is gated by
+# changed-checks, and the net runs its VM tests after, reverting a merge
+# that breaks one. Any other node moving, or a lock that doesn't read, keeps
+# must-run.txt's `flake.lock => vm-*`. An input belongs here only when no
+# unit before sign-in waits on what it builds, so a broken one can't leave
+# a machine unable to boot, unlock, sign in or build.
+#
+# mycelium: its nodes, one a realm, are the account's own user services,
+# wanted by the user manager's default.target; only its own balance reader
+# orders itself after one, and the builder lists a node shows are
+# nix-offload's, which it only reads (modules/mycelium/home.nix). On 21 November each of its bumps ran about 51 VM tests first, for
+# about 90 minutes, because every test machine carries the node.
+mycelium

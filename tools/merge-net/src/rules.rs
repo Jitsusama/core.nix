@@ -18,6 +18,57 @@ pub struct Area {
     pub there: bool,
 }
 
+/// The flake inputs whose lock may move alone with no VM test run first,
+/// as `lock-after.txt` names them, built in as the areas are.
+const LOCK_AFTER: &str = include_str!("../lock-after.txt");
+
+/// The lock file, whose area this list lets a change leave untouched.
+pub const LOCK: &str = "flake.lock";
+
+/// The inputs `lock-after.txt` names, one a line, skipping comments and
+/// blank lines.
+pub fn lock_after() -> Vec<String> {
+    LOCK_AFTER
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The nodes of a lock file that differ between `base` and `head`, those
+/// one holds and the other doesn't among them, read from each file's
+/// `nodes`, so a change of its layout alone moves none. `None` when either
+/// doesn't read as a lock.
+pub fn lock_moved(base: &str, head: &str) -> Option<Vec<String>> {
+    let nodes = |text: &str| {
+        serde_json::from_str::<serde_json::Value>(text)
+            .ok()?
+            .get("nodes")?
+            .as_object()
+            .cloned()
+    };
+    let (base, head) = (nodes(base)?, nodes(head)?);
+    let mut moved: Vec<String> = base
+        .keys()
+        .chain(head.keys())
+        .filter(|name| base.get(*name) != head.get(*name))
+        .cloned()
+        .collect();
+    moved.sort();
+    moved.dedup();
+    Some(moved)
+}
+
+/// Whether a lock moving from `base` to `head` moves only inputs `after`
+/// names, and at least one, so its VM tests may run after the merge. A
+/// lock that doesn't read, or moves any other node, the root's own list of
+/// inputs among them, runs them first.
+pub fn lock_runs_after(base: &str, head: &str, after: &[String]) -> bool {
+    lock_moved(base, head)
+        .is_some_and(|moved| !moved.is_empty() && moved.iter().all(|name| after.contains(name)))
+}
+
 /// The word among an area's tests that sets `there`.
 const THERE: &str = "there";
 
@@ -275,6 +326,80 @@ mod tests {
         assert!(matches("a*b*c", "a-b-c"));
         assert!(!matches("a*b*c", "a-c-b"));
         assert!(!matches("ab*ba", "aba"));
+    }
+
+    /// A lock holding a root and the nodes named, each at `rev` beside it.
+    fn lock(nodes: &[(&str, &str)]) -> String {
+        let mut all = serde_json::Map::new();
+        let inputs: serde_json::Map<String, serde_json::Value> = nodes
+            .iter()
+            .map(|(name, _)| ((*name).to_owned(), serde_json::json!(name)))
+            .collect();
+        all.insert("root".to_owned(), serde_json::json!({ "inputs": inputs }));
+        for (name, rev) in nodes {
+            all.insert(
+                (*name).to_owned(),
+                serde_json::json!({ "locked": { "rev": rev, "narHash": format!("sha256-{rev}") } }),
+            );
+        }
+        serde_json::json!({ "nodes": all, "root": "root", "version": 7 }).to_string()
+    }
+
+    #[test]
+    fn a_lock_moving_only_mycelium_runs_its_vm_tests_after() {
+        let after = words("mycelium");
+        let base = lock(&[("mycelium", "a"), ("nixpkgs", "n")]);
+        let head = lock(&[("mycelium", "b"), ("nixpkgs", "n")]);
+        assert_eq!(lock_moved(&base, &head), Some(words("mycelium")));
+        assert!(lock_runs_after(&base, &head, &after));
+    }
+
+    #[test]
+    fn a_lock_moving_mycelium_and_nixpkgs_runs_its_vm_tests_first() {
+        let after = words("mycelium");
+        let base = lock(&[("mycelium", "a"), ("nixpkgs", "n")]);
+        let head = lock(&[("mycelium", "b"), ("nixpkgs", "m")]);
+        assert_eq!(lock_moved(&base, &head), Some(words("mycelium nixpkgs")));
+        assert!(!lock_runs_after(&base, &head, &after));
+    }
+
+    #[test]
+    fn a_lock_gaining_an_input_runs_its_vm_tests_first() {
+        // The new node and the root's list of inputs both move, and
+        // neither is one that may move alone.
+        let after = words("mycelium");
+        let base = lock(&[("mycelium", "a")]);
+        let head = lock(&[("mycelium", "b"), ("extra", "e")]);
+        assert_eq!(lock_moved(&base, &head), Some(words("extra mycelium root")));
+        assert!(!lock_runs_after(&base, &head, &after));
+    }
+
+    #[test]
+    fn a_lock_that_does_not_read_runs_its_vm_tests_first() {
+        let after = words("mycelium");
+        let base = lock(&[("mycelium", "a")]);
+        assert_eq!(lock_moved(&base, "{ not a lock"), None);
+        assert!(!lock_runs_after(&base, "{ not a lock", &after));
+        assert!(!lock_runs_after(&base, "{\"version\": 7}", &after));
+    }
+
+    #[test]
+    fn a_lock_whose_nodes_stay_runs_its_vm_tests_first() {
+        // Only its layout moved, so nothing says the change is one of the
+        // inputs let through.
+        let after = words("mycelium");
+        let base = lock(&[("mycelium", "a")]);
+        let spaced = serde_json::to_string_pretty(
+            &serde_json::from_str::<serde_json::Value>(&base).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(lock_moved(&base, &spaced), Some(Vec::new()));
+        assert!(!lock_runs_after(&base, &spaced, &after));
+    }
+
+    #[test]
+    fn the_inputs_let_through_built_in_are_mycelium() {
+        assert_eq!(lock_after(), words("mycelium"));
     }
 
     #[test]

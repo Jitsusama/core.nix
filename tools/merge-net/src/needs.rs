@@ -43,6 +43,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     let areas = rules::areas();
     let known = known_vm_tests();
     let root = git(&["rev-parse", "--show-toplevel"])?;
+    let files = lock_left(files, &merge_base, &root);
     let owning = owning(&root, &files);
     let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
     let came_before = |commit: &str| {
@@ -136,6 +137,37 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `files` without the lock file where its change from `merge_base` to the
+/// working copy at `root` moves only inputs `lock-after.txt` names, saying
+/// so, since a broken one can't stop a machine booting and the net runs
+/// its VM tests after the merge. A lock either side doesn't hold, or
+/// that doesn't read, stays.
+fn lock_left(files: Vec<String>, merge_base: &str, root: &str) -> Vec<String> {
+    if !files.iter().any(|file| file == rules::LOCK) {
+        return files;
+    }
+    let base = git(&["show", &format!("{merge_base}:{}", rules::LOCK)]).ok();
+    let head = fs::read_to_string(Path::new(root).join(rules::LOCK)).ok();
+    let after = rules::lock_after();
+    let (Some(base), Some(head)) = (base, head) else {
+        return files;
+    };
+    if !rules::lock_runs_after(&base, &head, &after) {
+        return files;
+    }
+    let moved = rules::lock_moved(&base, &head).unwrap_or_default();
+    println!(
+        "({} moves only {}, which lock-after.txt lets move with its VM tests run after the \
+         merge)",
+        rules::LOCK,
+        moved.join(" ")
+    );
+    files
+        .into_iter()
+        .filter(|file| file != rules::LOCK)
+        .collect()
 }
 
 /// The VM tests that own one of `files` in the checkout at `root`, saying
