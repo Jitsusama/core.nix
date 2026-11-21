@@ -1,0 +1,10 @@
+{
+  "driver": "intel_idle",
+  "states": [
+    { "name": "POLL", "latency": 0 },
+    { "name": "C1", "latency": 1 },
+    { "name": "C1E", "latency": 10 },
+    { "name": "C6S", "latency": 300 },
+    { "name": "C10", "latency": 370 }
+  ]
+}
