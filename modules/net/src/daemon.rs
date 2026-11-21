@@ -31,6 +31,7 @@ use ureq::Agent;
 
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
+use crate::model::{self, Kept};
 use crate::room;
 use crate::serve as served;
 use crate::sources::{airplay, hp, modem, samsung, sony, switch};
@@ -93,6 +94,8 @@ pub fn run() -> Result<(), String> {
         .into();
     // Each TV's last answer, so a minute it's silent keeps its name.
     let mut tvs = samsung::Heard::new();
+    // Each source as the last minute that named it said it.
+    let mut kept = last_sources(&record);
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -138,6 +141,7 @@ pub fn run() -> Result<(), String> {
             televisions,
         };
         let mut network = collect::network(said, time::now());
+        model::carry_over(&mut network.sources, &mut kept, network.collected_at);
         let earlier = history::read(&day, network.collected_at);
         history::recall(&mut network, &earlier);
         room::work_out(&mut network);
@@ -152,6 +156,15 @@ pub fn run() -> Result<(), String> {
         held.network(&network);
         thread::sleep(EVERY);
     }
+}
+
+/// Each source as the record a daemon before this one wrote said it, so a
+/// restart doesn't make an outage begin again; `model::kept_from` says
+/// which records count.
+fn last_sources(record: &Path) -> Vec<Kept> {
+    fs::read_to_string(record)
+        .map(|text| model::kept_from(&text))
+        .unwrap_or_default()
 }
 
 fn read_eero(file: &Path) -> Result<Value, String> {
