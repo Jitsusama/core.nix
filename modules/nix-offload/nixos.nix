@@ -314,6 +314,14 @@ in
       in
       number: "d /run/nix-offload-vm-${toString number} 0755 ${account} - -"
     ) (lib.range 3 16)
+    # And of up to sixteen run lenders, as home.nix's runs lends them, which
+    # stay empty until one does.
+    ++ map (
+      let
+        account = config.jitsusama.nix-offload.account;
+      in
+      number: "d /run/nix-offload-run-${toString number} 0755 ${account} - -"
+    ) (lib.range 1 16)
     ++ [
       # And of a third, for what `there` sends while the first is full.
       "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"

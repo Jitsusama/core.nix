@@ -2,6 +2,9 @@
 # has builds one could take, and gives it back once idle or at a deadline each day,
 # so none is kept overnight (offload/src/main.rs says how). It decides when;
 # the machine's helper says how, so core names no place a builder lives.
+# Long because every lender is a unit of its own here, the first, the VM
+# ones and the run ones, each with its options, and they share one way of
+# being served and stopped that splitting would leave to be kept in step.
 {
   config,
   lib,
@@ -158,6 +161,37 @@ let
           ++ staying
         );
         Environment = vmEnvironment lender.environment;
+      }
+      // stopping;
+      Install.WantedBy = [ "default.target" ];
+    };
+  # How many run lenders there may be, one for each folder nixos.nix makes,
+  # /run/nix-offload-run-1 to -16, and `there` looks in: on 20 November
+  # sessions' runs waited on the two lent lines while their VM lines were
+  # borrowed for them.
+  runLenders = 16;
+  # The lender of the run builder numbered `number`, from 1, while runs has
+  # one for it.
+  runLine =
+    number:
+    let
+      lender = lib.elemAt cfg.runs (number - 1);
+      lends = lib.length cfg.runs >= number;
+    in
+    lib.mkIf (cfg.helper != null && lends) {
+      Unit = {
+        Description = "Lends another builder for runs sent there while those before it are full";
+      }
+      // reloaded;
+      Service = {
+        ExecStart = lib.concatStringsSep " " (
+          serving
+          ++ [
+            "--prefix ${lender.prefix}"
+            "--dir /run/nix-offload-run-${toString number} --only-there"
+          ]
+        );
+        Environment = zoned ++ lib.mapAttrsToList (name: value: "${name}=${value}") lender.environment;
       }
       // stopping;
       Install.WantedBy = [ "default.target" ];
@@ -418,6 +452,41 @@ in
         build goes to the one lent.
       '';
     };
+    runs = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            prefix = lib.mkOption {
+              type = lib.types.str;
+              description = ''
+                What every such builder's name starts with, apart from the
+                others', none of whose prefixes it may start with.
+              '';
+            };
+            environment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              example = {
+                OFFLOAD_SPOT = "1";
+              };
+              description = ''
+                What the helper is told for this builder, such as the port its
+                way to it takes, the host its ssh entry names, and whether it
+                may be taken back, so it holds one beside the others'.
+              '';
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        Builders past the two lent, at most ${toString runLenders}, the first
+        lent from /run/nix-offload-run-1, each only while a `nix-offload
+        there` run waits on one, and given back idle. A run waits on the one
+        its `NIX_OFFLOAD_DIR` names, such as /run/nix-offload-run-2, so one
+        session's suite needn't wait behind another's on the first.
+      '';
+    };
     standing = lib.mkOption {
       type = lib.types.listOf builder;
       default = [ ];
@@ -657,6 +726,13 @@ in
             ${toString extraVmLenders}, as many folders as nixos.nix makes for them.
           '';
         }
+        {
+          assertion = lib.length cfg.runs <= runLenders;
+          message = ''
+            jitsusama.nix-offload.runs holds at most ${toString runLenders}, as many
+            folders as nixos.nix makes for them.
+          '';
+        }
       ];
 
       xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
@@ -725,6 +801,23 @@ in
       systemd.user.services.nix-offload-vm-14 = extraVm 14;
       systemd.user.services.nix-offload-vm-15 = extraVm 15;
       systemd.user.services.nix-offload-vm-16 = extraVm 16;
+
+      systemd.user.services.nix-offload-run-1 = runLine 1;
+      systemd.user.services.nix-offload-run-2 = runLine 2;
+      systemd.user.services.nix-offload-run-3 = runLine 3;
+      systemd.user.services.nix-offload-run-4 = runLine 4;
+      systemd.user.services.nix-offload-run-5 = runLine 5;
+      systemd.user.services.nix-offload-run-6 = runLine 6;
+      systemd.user.services.nix-offload-run-7 = runLine 7;
+      systemd.user.services.nix-offload-run-8 = runLine 8;
+      systemd.user.services.nix-offload-run-9 = runLine 9;
+      systemd.user.services.nix-offload-run-10 = runLine 10;
+      systemd.user.services.nix-offload-run-11 = runLine 11;
+      systemd.user.services.nix-offload-run-12 = runLine 12;
+      systemd.user.services.nix-offload-run-13 = runLine 13;
+      systemd.user.services.nix-offload-run-14 = runLine 14;
+      systemd.user.services.nix-offload-run-15 = runLine 15;
+      systemd.user.services.nix-offload-run-16 = runLine 16;
 
       systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
         Unit = {

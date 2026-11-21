@@ -2497,8 +2497,10 @@
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender
-    that ends superseded is started again from the new unit; every VM lender, and no other,
-    warms each builder it stands, by default with a check core still has
+    that ends superseded is started again from the new unit; a VM lender runs for each of
+    vmTests.extra and a run lender for each of runs, from its own folder with its own
+    environment; every VM lender, and no other, warms each builder it stands, by default with
+    a check core still has
   '';
   nix-offload-lines-reach-root-alone = ''
     with nix-offload's lines set, root's Nix reads its builders only from the folder their own

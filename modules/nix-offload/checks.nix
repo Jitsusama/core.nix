@@ -229,8 +229,9 @@ onLinux {
   # it, and the lender's own end starts the new one, handing over through
   # helpers that outlast the unit; nix-offload-decides-when holds when and
   # how. A VM lender runs
-  # for each of vmTests.extra and no more. Every VM lender, and no other,
-  # warms each builder it stands, by default with a check core still has.
+  # for each of vmTests.extra and no more, and a run lender for each of
+  # runs, told its own environment. Every VM lender, and no other, warms
+  # each builder it stands, by default with a check core still has.
   nix-offload-lenders-outlive-a-switch =
     let
       home = account (bareNixos [
@@ -246,6 +247,12 @@ onLinux {
                 extra = [ { prefix = "a-vm3-"; } ];
               };
               more.prefix = "a-more-";
+              runs = [
+                {
+                  prefix = "a-run1-";
+                  environment.OFFLOAD_SPOT = "1";
+                }
+              ];
             };
           };
         }
@@ -255,8 +262,10 @@ onLinux {
         "nix-offload-vm"
         "nix-offload-vm-more"
         "nix-offload-vm-3"
+        "nix-offload-run-1"
         "nix-offload-more"
       ];
+      run = home.systemd.user.services.nix-offload-run-1;
       warm = home.jitsusama.nix-offload.vmTests.warm;
       started = unit: lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
       warms = unit: lib.hasInfix " --warm " (started unit);
@@ -280,17 +289,23 @@ onLinux {
         + "or a lender that ends superseded isn't started again, "
         + "or its helpers don't outlast it to hand its builder over, "
         + "or a VM lender runs past those vmTests.extra names, "
+        + "or a run lender past those runs names, or one isn't lent from its own folder "
+        + "with its own environment, "
         + "or a lender other than a VM one warms, or one doesn't, "
         + "or what warms a VM builder names a check core doesn't have."
       )
       (
         lib.all reloads lenders
         && !(home.systemd.user.services ? nix-offload-vm-4)
+        && !(home.systemd.user.services ? nix-offload-run-2)
+        && lib.hasInfix " --dir /run/nix-offload-run-1 --only-there" (started run)
+        && lib.elem "OFFLOAD_SPOT=1" run.Service.Environment
         && warm != [ ]
         && named
         && lib.all warms (lib.sublist 1 3 lenders)
         && !lib.any warms [
           (lib.head lenders)
+          run
           (lib.last lenders)
         ]
       );
