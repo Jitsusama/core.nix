@@ -92,14 +92,15 @@ load() {
 
 # The default source and the default sink's monitor, read once: a recording
 # keeps the sound it began with. pactl joins its words with spaces, so each
-# value is quoted for the module's own reading of them.
+# value is quoted for the module's own reading of them. The mix says it's a
+# recording's, so Sound lists it as no output (modules/sound's rows.rs).
 loop=("source_output_properties='application.process.binary=recording-sound'"
   "sink_input_properties='application.process.binary=recording-sound'"
   source_dont_move=true sink_dont_move=true latency_msec=30)
 # A server that doesn't answer the first question is asked nothing more.
 if microphone=$(ask get-default-source) && speakers=$(ask get-default-sink) && sweep &&
   load module-null-sink sink_name="$mix" \
-    "sink_properties='device.description=Recording priority.session=0'" &&
+    "sink_properties='device.description=Recording priority.session=0 recording-sound.mix=true'" &&
   load module-loopback "source='$microphone'" sink="$mix" "${loop[@]}" &&
   load module-loopback "source='$speakers.monitor'" sink="$mix" "${loop[@]}"; then
   export RECORDING_SOUND=$mix.monitor
