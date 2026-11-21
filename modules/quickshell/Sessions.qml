@@ -804,6 +804,7 @@ Singleton {
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
+            root.viewerCame(window);
             root.focusOpened(window);
             if (root.reopening && window.session === true)
                 root.reopenedWindow(window.id);
@@ -1969,15 +1970,19 @@ Singleton {
             reopenNext();
             return;
         }
-        const waiting = served || named === "" ? null : Viewers.waitingWords(next.one);
+        const words = named === "" ? null : Viewers.waitingWords(next.one);
+        const waiting = served ? null : words;
         const title = Viewers.viewerTitle("", next.one.title, next.one.cwd);
         const joelThere = Niri.workspaces[into.workspace]?.is_focused === true;
         if ((!served && waiting === null) || joelThere) {
-            // One with words to wait by keeps them, so viewKept opens it by
-            // them once Joel leaves, rather than once its host serves it.
+            // One kept for Joel to leave is marked asked, served or not, so
+            // viewKept opens it once he leaves, by its session's words or
+            // its own, rather than once he goes away, perhaps hours later;
+            // and there, so the time an ask lasts runs only once he has.
             const place = { workspace: into.workspace, column: into.column, at: Date.now() };
-            keepPlaces(Object.assign({}, keptPlaces, { [id]: waiting === null ? place
-                : Object.assign(place, { waiting, named, title }) }));
+            const marks = !joelThere ? {} : Object.assign({ asked: true, there: true },
+                words === null ? {} : { waiting: words, named, title });
+            keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign(place, marks) }));
             console.info(`sessions: ${id}'s viewer waits for `
                 + `${joelThere ? "Joel to leave" : "its host"}, kept at `
                 + `${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
@@ -2500,14 +2505,29 @@ Singleton {
     }
     // Opens a viewer, `named`, running `words` in a window titled `title`
     // from its first moment, `into` a place or where niri opens one; or
-    // nothing, said false, while one asked of it moments ago may still be
-    // opening.
+    // nothing, said false, while one asked of it is still opening: until
+    // niri lists its window (viewerCame), or for viewPatience, as long as
+    // the walk waits for a window, since the sessions' kitty may be
+    // starting again after a crash. Within attachPatience alone, a second
+    // would open beside a viewer slow to come.
+    readonly property int viewPatience: 30000
     function viewWith(words, named, into, title) {
-        if (Date.now() - (attaching[named] ?? 0) < attachPatience)
+        if (Date.now() - (attaching[named] ?? 0) < viewPatience)
             return false;
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
         root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
         return true;
+    }
+    // A viewer's window niri lists is no longer opening, so the next ask
+    // of it, once it has closed, opens one (viewWith); while it's open,
+    // openNamed finds it.
+    function viewerCame(window) {
+        const named = window?.opened ?? "";
+        if (!named.startsWith("pi-hosted.") || attaching[named] === undefined)
+            return;
+        const still = Object.assign({}, attaching);
+        delete still[named];
+        attaching = still;
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
@@ -2576,9 +2596,10 @@ Singleton {
     // away. Only places kept since this shell started open, and only while
     // he is away (Away.qml), so a shell restarted by a switch opens none;
     // but a sleeper's opens as it wakes, him there or not, since waking is
-    // what opens it, and one Reopen Them All kept with words to wait for
-    // its host by opens once he has left its workspace, within ASKED_FOR,
-    // since he asked for it, unless its viewer is open already. Asked as each
+    // what opens it, and one Reopen Them All kept for him to leave its
+    // workspace, or with words to wait for its host by, opens once he has
+    // left it, within ASKED_FOR of the ask or of his leaving, since he
+    // asked for it, unless its viewer is open already. Asked as each
     // session's record changes too, which is how a sleeper is seen to wake.
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
@@ -2605,6 +2626,13 @@ Singleton {
                 view(one.session, one.into);
             }
         }
+        // What's let go is said, so a viewer Joel asked for that never
+        // opens can be found in the journal.
+        const opened = due.open.map(one => one.id ?? one.session?.presence?.session);
+        for (const id of Object.keys(keptPlaces).filter(id => kept[id] === undefined
+            && !opened.includes(id)))
+            console.info(`sessions: ${id}'s kept place let go: its viewer is open, `
+                + "its session is back as a plain pi, or it lapsed");
         // A sleeper first seen asleep is marked so in its place, which is
         // kept as any other change is.
         if (JSON.stringify(kept) !== JSON.stringify(keptPlaces))
