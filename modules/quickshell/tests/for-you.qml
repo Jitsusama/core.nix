@@ -689,6 +689,85 @@ QtObject {
             Looks.cellOf({ session: "s-0", quest: "QEST-1-ABCDEF" }, [helper], [own]).address,
             "ABCDEF");
         expect("nothing held, none", Looks.cellOf(lookLeft, undefined, undefined), null);
+        // As the agents daemon names it (cells.rs): the cell a look names goes
+        // to the live session it is now, running or parked; ended with none
+        // to go to, or to one not listed yet, itself, else one on its quest
+        // only; not served yet, or the daemon away, the same; naming no cell,
+        // cellOf's search over every session.
+        const cells = {
+            "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
+            "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
+            "agent-cell:agents:GGGGGG": { cell: "GGGGGG", goes: null }
+        };
+        const naming = cell => Object.assign({}, lookLeft, { cell: cell });
+        expect("a cell goes where the daemon says, running",
+            Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir], []).address, "BBBBBB");
+        expect("the daemon's answer before another on its quest, running first",
+            Looks.cellFor(naming("AAAAAA"), { "agent-cell:agents:AAAAAA": { goes: "CCCCCC" } },
+                [heir], [resting]).address, "CCCCCC");
+        expect("a look on no quest said to go nowhere, never one listing its address",
+            Looks.cellFor({ cell: "GGGGGG", address: "GGGGGG" }, cells, [{ address: "LLLLLL",
+                presence: { quest: "Q-2", addresses: ["LLLLLL", "GGGGGG"] } }], []), null);
+        expect("a cell back again before an older answer",
+            Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir, leaver], []).address,
+            "AAAAAA");
+        expect("or parked",
+            Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
+        expect("ended with none to go to, none where the lists hold none",
+            Looks.cellFor(naming("GGGGGG"), cells, [stranger], []), null);
+        expect("said to go nowhere, one on its quest the lists hold, as the record may be stale",
+            Looks.cellFor(naming("GGGGGG"), cells, [stranger, heir], []).address, "BBBBBB");
+        expect("a name contested, the one on the look's quest",
+            Looks.cellFor(naming("OLDOLD"), { "agent-cell:agents:OLDOLD": { goes: null } },
+                [{ address: "TTTTTT", presence: { quest: "Q-2", addresses: ["AAAAAA"] } },
+                    heir], []).address, "BBBBBB");
+        const lister = { address: "TTTTTT",
+            presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "AAAAAA"] } };
+        expect("ended with none to go to, never one on another quest listing its address",
+            Looks.cellFor(naming("GGGGGG"), cells, [lister], []), null);
+        expect("ended with none to go to, itself where the lists hold it back",
+            Looks.cellFor(naming("GGGGGG"), cells, [lister],
+                [{ address: "GGGGGG", presence: { session: "s-10" } }]).address, "GGGGGG");
+        expect("the address a cell goes to, keyed", Looks.cellGoes(naming("AAAAAA"), cells),
+            "BBBBBB");
+        expect("null for one going nowhere", Looks.cellGoes(naming("GGGGGG"), cells), null);
+        expect("none for one not served", Looks.cellGoes(naming("HHHHHH"), cells), "");
+        expect("none for one naming no cell", Looks.cellGoes(naming(7), cells), "");
+        expect("going to a session not listed yet, the cell itself",
+            Looks.cellFor(naming("AAAAAA"), cells, [leaver], []).address, "AAAAAA");
+        expect("going to a session not listed yet, the quest's own before another on it",
+            Looks.cellFor({ cell: "OLDOLD", quest: "QEST-1-ABCDEF" },
+                { "agent-cell:agents:OLDOLD": { goes: "ZZZZZZ" } }, [helper], [own]).address,
+            "ABCDEF");
+        expect("said to go nowhere, one on its quest by the quest pi publishes",
+            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "QQQQQQ",
+                presence: { questInfo: { id: "Q-1" } } }], []).address, "QQQQQQ");
+        expect("its questInfo's quest before an older quest it names",
+            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "PPPPPP",
+                presence: { questInfo: { id: "Q-2" }, quest: "Q-1" } }], []), null);
+        expect("not served yet, a look on no quest, the session that left it by its id",
+            Looks.cellFor({ session: "s-4", cell: "HHHHHH" }, cells, [stranger], []).address,
+            "DDDDDD");
+        expect("going to a session not listed yet, the cell itself, on another quest too",
+            Looks.cellFor({ cell: "AAAAAA", quest: "Q-9" }, cells, [stranger, leaver], [])
+                .address, "AAAAAA");
+        const listing = { address: "TTTTTT",
+            presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "AAAAAA"] } };
+        expect("going to a session not listed yet, never one on another quest listing it",
+            Looks.cellFor(naming("AAAAAA"), cells, [listing], []), null);
+        expect("going to a session not listed yet, one on its quest",
+            Looks.cellFor(naming("AAAAAA"), cells, [listing], [resting]).address, "CCCCCC");
+        expect("not served yet, cellOf's search on its quest",
+            Looks.cellFor(naming("HHHHHH"), cells, [heir], [leaver]).address,
+            "AAAAAA");
+        expect("the daemon away, never one on another quest listing its address",
+            Looks.cellFor(naming("GGGGGG"), {}, [listing], []), null);
+        expect("naming no cell, cellOf's search over every quest",
+            Looks.cellFor(lookLeft, {}, [listing], []).address, "TTTTTT");
+        expect("naming no cell, cellOf's search",
+            Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
+        expect("nothing served, cellOf's search",
+            Looks.cellFor(naming("AAAAAA"), undefined, [heir], [leaver]).address, "AAAAAA");
 
         if (failures.length > 0) {
             for (const failure of failures)

@@ -1111,10 +1111,29 @@ Provider {
             settleLook(one, "opened", waitingSaid("openedHow", {}));
     }
 
-    // The cell a look leads to, running or parked, as Looks.js finds it:
-    // the session that left it, else its quest's own, else one on its quest.
+    // Which live session each cell is now, as the agents daemon serves it
+    // (modules/agents/src/cells.rs). A look's row is kept by the address
+    // its cell goes to (keptLook), so only a look whose cell moved is made
+    // again; Talk and Go To read the cell again as they're pressed.
+    Daemon {
+        id: cellsDaemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+        kind: "agent-cell"
+        watching: ({ place: "agents" })
+        answersWhole: true
+        // Where a cell goes is only true while the daemon answers, so its
+        // records go with it and cellFor's search on the look's quest decides.
+        keptThroughGap: false
+    }
+
+    // The cell a look leads to, running or parked, as the agents daemon
+    // names it (Looks.js's cellFor): the session that left it, else its
+    // quest's own, else one on its quest. It reads the daemon's revision,
+    // since `held` changes in place, so a binding over it hears a cell move.
     function lookCell(one) {
-        return Looks.cellOf(one, Sessions.running, Sessions.parked);
+        void cellsDaemon.revision;
+        return Looks.cellFor(one, cellsDaemon.held, Sessions.running, Sessions.parked);
     }
 
     // Goes to the window of the cell a look leads to, as it stands when
@@ -1384,7 +1403,12 @@ Provider {
             return lookRow(one, now);
         looksWeighed.times += 1;
         return keptAlike(looksKept, one.file,
-            [text, lookSide(one, now, forYouSaid(now)), lookAsker(one)], () => lookRow(one, now));
+            // Kept by the session it leads to too, the one Talk was made
+            // for, so Talk goes to the cell it is now rather than the one it
+            // was when the row was made, the lists a beat behind included.
+            [text, lookSide(one, now, forYouSaid(now)), lookAsker(one),
+                lookCell(one)?.address ?? ""],
+            () => lookRow(one, now));
     }
 
     // The to-dos Joel said were done, while their quest's file

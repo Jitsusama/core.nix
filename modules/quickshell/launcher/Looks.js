@@ -129,9 +129,61 @@ function cellOf(one, running, parked) {
         return left ?? null;
     }
     const own = quest.split("-").pop().toUpperCase();
-    const on = held.filter(session => session.presence?.quest === quest);
+    const on = held.filter(session => questOf(session) === quest);
     return on.find(session => String(session.address ?? "").toUpperCase() === own)
         ?? on[0] ?? null;
+}
+
+// The quest a session works on, as pi publishes it: its questInfo's, else
+// its `quest` (Holders.js and Sessions.qml read it so too).
+function questOf(session) {
+    return session.presence?.questInfo?.id ?? session.presence?.quest;
+}
+
+// The address the agents daemon says the cell a look names (`cell`) goes
+// to now, by its `agent-cell` records by key, `cells`
+// (modules/agents/src/cells.rs): null where the record says it goes
+// nowhere, and "" where it names no cell or the daemon holds no record.
+function cellGoes(one, cells) {
+    const cell = typeof one.cell === "string" ? one.cell : "";
+    const record = cell === "" ? undefined : cells?.[`agent-cell:agents:${cell}`];
+    if (record !== undefined && record !== null && record.goes === null) {
+        return null;
+    }
+    return typeof record?.goes === "string" ? record.goes : "";
+}
+
+// The cell a look leads to: the cell itself while the lists hold it, else
+// the live session the agents daemon names (cellGoes), found among
+// `running` and `parked` by the address it goes to. Where the daemon names
+// a session those lists don't hold, says the cell goes nowhere, or has not
+// answered (away, or not yet served), cellOf's search decides among the
+// sessions on the look's quest alone; a look on none, sharing no quest,
+// reaches only the session that left it, by that session's own id: the
+// daemon and the lists each read the node and either can be a beat
+// behind, so a cell back again wins over an older answer. A session that
+// merely lists the cell's address is never found by that search; the
+// daemon names one only where cells.rs finds it was the cell, its one
+// lister while no session goes by the name. A look naming no cell searches
+// every session until every look names its cell, by Mon 23 Nov 2026.
+function cellFor(one, cells, running, parked) {
+    if (typeof one.cell !== "string" || one.cell === "") {
+        return cellOf(one, running, parked);
+    }
+    const goes = cellGoes(one, cells);
+    const held = (Array.isArray(running) ? running : [])
+        .concat(Array.isArray(parked) ? parked : []);
+    const quest = typeof one.quest === "string" ? one.quest : "";
+    const named = held.find(session => session.address === one.cell)
+        ?? held.find(session => goes !== null && goes !== "" && session.address === goes);
+    if (named !== undefined) {
+        return named;
+    }
+    if (quest === "") {
+        return held.find(session => typeof one.session === "string" && one.session !== ""
+            && session.presence?.session === one.session) ?? null;
+    }
+    return cellOf(one, held.filter(session => questOf(session) === quest), []);
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
