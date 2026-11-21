@@ -185,6 +185,11 @@ pub type Kept = (u64, Source);
 /// the earlier minute said. Each source reads only this minute, so without
 /// this net would say every outage began just now.
 ///
+/// Only a source whose since is this minute takes the earlier one, since
+/// that's a source knowing only that it isn't answering now. One naming an
+/// earlier minute, as eero does from its own record, knows when its state
+/// began, even when it changed and came back between two of net's minutes.
+///
 /// A source is kept from the last minute that named it, so a minute eero
 /// doesn't answer, naming none of its devices, loses nothing. One kept
 /// longer than `LATELY`, as across a suspend, or dated ahead of the clock,
@@ -197,9 +202,10 @@ pub fn carry_over(sources: &mut [Source], kept: &mut Vec<Kept>, now: u64) {
         };
         if source.state != SourceState::Answering
             && source.state == before.state
+            && source.since.is_none_or(|since| since >= now)
             && let Some(then) = before.since
         {
-            source.since = Some(source.since.map_or(then, |now| now.min(then)));
+            source.since = Some(then);
         }
         if source.read_at.is_none() {
             source.read_at = before.read_at;
@@ -212,14 +218,21 @@ pub fn carry_over(sources: &mut [Source], kept: &mut Vec<Kept>, now: u64) {
 /// Each source the record `text` names, at the minute it was collected, so
 /// a daemon starting carries over what the one before it last said. A
 /// record of another schema, or no record, carries nothing; one too old is
-/// dropped by `carry_over`.
+/// dropped by `carry_over`. Only the sources are read, so a record whose
+/// devices a newer net reads differently still carries them.
 pub fn kept_from(text: &str) -> Vec<Kept> {
-    serde_json::from_str::<Network>(text)
+    #[derive(Deserialize)]
+    struct Sources {
+        schema: String,
+        collected_at: u64,
+        sources: Vec<Source>,
+    }
+    serde_json::from_str::<Sources>(text)
         .ok()
-        .filter(|network| network.schema == SCHEMA)
-        .map(|network| {
-            let at = network.collected_at;
-            network
+        .filter(|record| record.schema == SCHEMA)
+        .map(|record| {
+            let at = record.collected_at;
+            record
                 .sources
                 .into_iter()
                 .map(|source| (at, source))
@@ -587,6 +600,19 @@ mod tests {
     }
 
     #[test]
+    fn a_source_that_knows_when_its_state_began_keeps_it() {
+        let eero = |since| named("eero", source(SourceState::Unreachable, None, since));
+        let mut kept = vec![(160, eero(Some(120)))];
+        let mut now = [eero(Some(200))];
+        carry_over(&mut now, &mut kept, 220);
+        assert_eq!(
+            now[0].since,
+            Some(200),
+            "eero's own since, after it answered and failed again between minutes, was overruled"
+        );
+    }
+
+    #[test]
     fn a_new_state_starts_its_own_since_and_another_source_its_own_times() {
         let mut kept = vec![
             (
@@ -681,6 +707,18 @@ mod tests {
         assert!(
             kept_from(&other).is_empty() && kept_from("{").is_empty(),
             "a record of another schema, or no record, is carried"
+        );
+    }
+
+    #[test]
+    fn a_record_whose_devices_net_reads_differently_still_carries_its_sources() {
+        let mut record: Value = serde_json::from_str(RECORD).expect("the record reads");
+        record["devices"] = Value::String("a shape this net doesn't read".into());
+        let sources = record["sources"].as_array().map_or(0, Vec::len);
+        assert_eq!(
+            kept_from(&record.to_string()).len(),
+            sources,
+            "a change to the devices' shape lost every source on the restart that shipped it"
         );
     }
 
