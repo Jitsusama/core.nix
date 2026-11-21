@@ -373,8 +373,11 @@ function answersIn(own) {
 function past(events, key) {
     const own = key === "" ? [] : (events ?? []).filter(event => event.line === key);
     const last = own.length > 0 ? own[own.length - 1] : { event: "", who: "" };
-    return { answers: answersIn(own), last: last.event,
-        waiting: HOLDING.includes(last.event) ? midSentence(last.who) : "",
+    const answers = answersIn(own);
+    // A reply after its answers waits in its thread, never here: a thanks nobody answers
+    // would read as work left for good (Joel, 2026-11-13 23:39).
+    const waits = HOLDING.includes(last.event) && !(last.event === "replied" && answers.length > 0);
+    return { answers, last: last.event, waiting: waits ? midSentence(last.who) : "",
         lastWho: midSentence(last.who) };
 }
 

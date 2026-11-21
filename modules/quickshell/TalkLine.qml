@@ -614,9 +614,9 @@ Scope {
                         onAccepted: root.returned()
                         // - back to the list from a thread, its line still picked.
                         onBackward: {
-                            root.picked = Thread.comingBack(root.picked, root.talks,
-                                root.openedSince);
+                            const left = root.openedSince;
                             root.openedSince = 0;
+                            root.picked = Thread.comingBack(root.picked, root.talks, left);
                         }
                         // Typing lets a picked line go but in its thread (afterTyping).
                         onTextChanged: {

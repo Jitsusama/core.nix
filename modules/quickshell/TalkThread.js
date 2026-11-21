@@ -58,13 +58,15 @@ function stepOf(event, words) {
 
 // The replies to the thread `key` said here or kept by the void that it hasn't
 // written yet, as his own words, when he said them at their right; one said
-// here and kept too, or written already, shows once.
+// here and kept too, or written already, shows once. The void may write a reply with what
+// was attached under its words, so a written one counts by its first lines too.
 function pendingOf(key, replies, written) {
     const texts = written.map(event => String(event.text ?? "").trim());
+    const wrote = text => texts.some(one => one === text || one.startsWith(`${text}\n`));
     const shown = [];
     for (const reply of replies ?? []) {
         const text = replyWords(reply.line);
-        if (threadKeyOf(reply.sent) === key && !texts.includes(text)
+        if (threadKeyOf(reply.sent) === key && !wrote(text)
             && !shown.some(one => Said.same(one.reply, reply))) {
             shown.push({ reply, text });
         }
@@ -133,9 +135,10 @@ function afterTyping(picked, threadOpen) {
     return threadOpen ? picked : -1;
 }
 
-// The line picked on coming back from a thread: the one left, found again by its key, as
-// the list may have moved under it while it was open; none once it's left the list. With
-// no thread open, - leaves the pick as it is.
+// The line picked on coming back from a thread: the one left, found again by its key in
+// the list as it stands with the thread closed, as the list may have moved under it while
+// it was open; none once it's left the list, as one kept only for its open thread does.
+// With no thread open, - leaves the pick as it is.
 function comingBack(picked, talks, openedSince) {
     return openedSince === 0 ? picked : (talks ?? []).findIndex(one => one.since === openedSince);
 }

@@ -497,15 +497,24 @@ QtObject {
                     .map(step => [step.text, step.mine])[0]),
                 [["waiting on Delta", false], ["waiting on Delta", false],
                     ["waiting on Delta", false]]);
-            // The list says whom it waits on too, but his reply doesn't hold open a line
-            // whose answers he has seen, or a thanks nobody answers would wait at the top for
-            // good (Joel, 2026-11-13 23:39: "tons of things still waiting").
+            // In the list his reply neither holds open nor leaves waiting a line whose
+            // answers he has seen, or a thanks nobody answers would read as work left for
+            // good (Joel, 2026-11-13 23:39: "tons of things still waiting"); the thread
+            // says whom it waits on.
             const lineKey = Said.keyOf(threaded);
             const repliedTo = held.concat([replyWritten]);
             const seenAll = { [lineKey]: Said.past(repliedTo, lineKey).answers.length };
-            Expect.same("his reply leaves an answered line as it was, saying whom it waits on",
+            Expect.same("his reply leaves an answered line as it was, waiting on nobody",
                 [Said.open(threaded, held, seenAll), Said.open(threaded, repliedTo, seenAll),
-                    Said.past(repliedTo, lineKey).waiting], [false, false, "Delta"]);
+                    Said.past(repliedTo, lineKey).waiting], [false, false, ""]);
+            Expect.same("his reply to a line nobody has answered waits on whom it went to",
+                Said.past(routedFirst.concat([replyWritten]), replyKey).waiting, "Delta");
+            // The void may keep what was attached under his words (TalkLine.js's said).
+            const withAttached = Object.assign({}, replyWritten,
+                { text: Said.said("and now?", [{ kind: "clip", sent: "a note" }]) });
+            Expect.same("a reply written with what was attached still counts as written",
+                Thread.threadOf(threaded, threadEvents.concat([withAttached]), threadWords,
+                    { replies: [replyHere] }).steps.slice(-1)[0].text, "waiting on Delta");
             Expect.same("a holder's name goes in as written, $ and all",
                 Said.worded(threadWords, "waiting", "$& $'"), "waiting on $& $'");
             Expect.same("a reply written in a thread nobody has waits on the void",
