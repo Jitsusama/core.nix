@@ -8,7 +8,9 @@ behind.
 | File         | What it holds                                                |
 | ------------ | ------------------------------------------------------------ |
 | `site.ts`    | the page: its watches, its keys and what it says             |
+| `cursor.ts`  | the row the keys are on, kept across a redraw                |
 | `model.ts`   | the daemon's records read as the system's parts and machines |
+| `looks.ts`   | everything worth a look, across machines and parts, listed   |
 | `ties.ts`    | a machine's ties to the other parts, read from its record    |
 | `machine.ts` | the words each machine and its ties are said in              |
 | `bridge.ts`  | the machines drawn as the piers of a bridge                  |

@@ -1,8 +1,9 @@
 // Your machines, now: each machine Joel runs, and what it carries of the
 // mycelium, the network and the code, as the system daemon holds them. A
-// headline counts the machines and says how they stand, a lede names what
-// is worth a look, the bridge draws them, each a pier, and each machine
-// has a section of its own below, with the other three parts after them.
+// headline counts the machines and says how they stand, a list under it
+// names everything worth a look, the bridge draws them, each a pier, and
+// each machine has a section of its own below, with the other three parts
+// after them.
 // It watches the daemon's summary, parts and things over the sites'
 // server, so a machine redraws the moment its owner's answer moves, and
 // the line under the headline says whether what it shows is live and
@@ -16,8 +17,18 @@ import { clockTime, said } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { askedOf, landingOf, recordsOf, type Watch } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
-import { headlineOf, legend, MACHINES_DRAWN, machinesOf, partsOf, placesOf } from "./draw.ts";
-import { machineHeadline, machineLede, whenSaid } from "./machine.ts";
+import { cursorOver } from "./cursor.ts";
+import {
+  headlineOf,
+  legend,
+  looksDrawn,
+  MACHINES_DRAWN,
+  machinesOf,
+  partsOf,
+  placesOf,
+} from "./draw.ts";
+import { looksOf } from "./looks.ts";
+import { machineHeadline, whenSaid } from "./machine.ts";
 import { allTold, type System, systemOf } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
@@ -31,7 +42,8 @@ function element<T extends Element>(selector: string, kind: new () => T): T {
 
 const list = element("#parts", HTMLDivElement);
 const title = element("#headline", HTMLHeadingElement);
-const ledeLine = element("#lede", HTMLParagraphElement);
+const looking = element("#looking", HTMLElement);
+const looks = element("#looks", HTMLDivElement);
 const standingLine = element("#standing", HTMLParagraphElement);
 const standingWords = element("#standing-words", HTMLSpanElement);
 const bridge = element("#bridge", HTMLElement);
@@ -84,11 +96,12 @@ let landingNote = "";
 const heard = new Map<string, string>();
 
 let system: System | undefined;
-// The row the cursor was last on, by its key, kept across a redraw.
-let cursor: string | null = null;
+const cursor = cursorOver("#looks a[data-row], #parts a[data-row]", list);
+const { land, move, toSection } = cursor;
 // Each drawn region's markup as last drawn, since the browser's own
 // serialization of it never reads back the same.
 let drawnParts = "";
+let drawnLooks = "";
 let drawnBridge = "";
 let drawnPlaces = "";
 /** The machine the address asks for, until the cursor has landed for it. */
@@ -99,6 +112,9 @@ let askedSince = 0;
 
 /** A minute's milliseconds, how often the ties' times are said again. */
 const MINUTE = 60_000;
+
+/** A look's link to a machine drawn on this page, its section's id caught. */
+const MACHINE_HERE = /^#(machine-\d+)$/u;
 
 /** A time as the ties say it, from now. */
 function when(at: string): string {
@@ -139,43 +155,16 @@ function sayWhen(): void {
   }
 }
 
-/** Every row the keys step through, in reading order. */
-function rows(): HTMLAnchorElement[] {
-  return [...list.querySelectorAll<HTMLAnchorElement>("a[data-row]")];
-}
-
-/** Puts the cursor on `row`, which focus is. */
-function land(row: HTMLAnchorElement | undefined): void {
-  if (row === undefined) {
-    return;
-  }
-  cursor = row.dataset["row"] ?? null;
-  // Focus alone would centre a row out of sight; scrolled to its nearest edge
-  // instead, a step moves the page no further than it must.
-  row.focus({ preventScroll: true });
-  row.scrollIntoView({ block: "nearest" });
-}
-
-/**
- * Redraws the machines, only when they read differently, and keeps the
- * cursor on the row it was on, or the one now in its place, so a machine
- * moving never moves what Joel is reading.
- */
+/** Redraws the machines, only when they read differently, the cursor kept. */
 function drawParts(read: System): void {
   const drawn = partsOf(read, when);
   if (drawn === drawnParts) {
     return;
   }
   drawnParts = drawn;
-  const all = rows();
-  const focused = all.findIndex((row) => row === document.activeElement);
-  list.innerHTML = drawn;
-  if (focused < 0) {
-    return;
-  }
-  const now = rows();
-  const same = now.find((row) => row.dataset["row"] === cursor);
-  (same ?? now[Math.min(focused, now.length - 1)])?.focus({ preventScroll: true });
+  cursor.across(() => {
+    list.innerHTML = drawn;
+  });
 }
 
 /**
@@ -318,11 +307,9 @@ function draw(): void {
   }
   const heading = machineHeadline(system);
   title.innerHTML = headlineOf(heading);
-  const worst = machineLede(system);
-  // The lede keeps its lines while a part is still to come, since that
-  // part may be the one to name; only empty once every part has told.
-  ledeLine.hidden = worst === undefined && system.untold.length === 0;
-  ledeLine.textContent = worst ?? "";
+  drawnLooks = redraw(looks, looksDrawn(looksOf(system, MACHINES_DRAWN)), drawnLooks, "data-row");
+  // Empty only while a part is still to come, which may be the one to name.
+  looking.hidden = drawnLooks === "";
   document.title = `${heading.machines}, ${heading.stand}. Your machines, now`;
   drawnBridge = redraw(bridge, bridgeOf(machinesOf(system)), drawnBridge, "data-row");
   drawnPlaces = redraw(places, placesOf(system), drawnPlaces, "data-place");
@@ -359,26 +346,11 @@ for (const kind of KINDS) {
 // A draw changes only the regions whose markup moved.
 setInterval(draw, MINUTE);
 
-/** Moves the cursor `by` rows, to either end when `by` is infinite. */
-function move(by: number): void {
-  const all = rows();
-  if (all.length === 0) {
-    return;
+/** Puts the cursor on the next thing worth a look, or says there is none, as a on the map does. */
+function nextLook(): void {
+  if (!cursor.next(looks)) {
+    note.textContent = "Nothing is worth a look.";
   }
-  const at = all.findIndex((row) => row === document.activeElement);
-  if (by === Number.POSITIVE_INFINITY) {
-    land(all.at(-1));
-  } else if (by === Number.NEGATIVE_INFINITY || at < 0) {
-    land(all[0]);
-  } else {
-    land(all[Math.max(0, Math.min(all.length - 1, at + by))]);
-  }
-}
-
-/** Puts the cursor on the first row of the section `id` names. */
-function toSection(id: string): void {
-  const section = list.querySelector(`#${CSS.escape(id)}`);
-  land(section?.querySelector<HTMLAnchorElement>("a[data-row]") ?? undefined);
 }
 
 /** Copies `command`, and says whether it could. */
@@ -429,6 +401,7 @@ listen({
     G: () => move(Number.POSITIVE_INFINITY),
     End: () => move(Number.POSITIVE_INFINITY),
     y: copyHere,
+    a: nextLook,
     ...Object.fromEntries(machineJumps),
     "0": () => toSection("across"),
   },
@@ -479,11 +452,24 @@ for (const input of ["keydown", "pointerdown", "wheel", "touchstart"]) {
   document.addEventListener(input, joelMoved, { capture: true, passive: true });
 }
 
-list.addEventListener("focusin", (event) => {
-  if (event.target instanceof HTMLAnchorElement && event.target.dataset["row"] !== undefined) {
-    cursor = event.target.dataset["row"];
-  }
+/** Keeps the row focus lands on as the cursor, and marks its place. */
+function focusedRow(event: FocusEvent): void {
+  cursor.keep(event.target);
   markPlace();
+}
+looks.addEventListener("focusin", focusedRow);
+list.addEventListener("focusin", focusedRow);
+
+// A look at a machine drawn here goes to its section's first row, putting
+// the cursor there, rather than only scrolling the page to it.
+looks.addEventListener("click", (event) => {
+  const link = event.target instanceof Element ? event.target.closest("a[data-row]") : null;
+  const id = link?.getAttribute("href")?.match(MACHINE_HERE)?.[1];
+  if (id === undefined) {
+    return;
+  }
+  event.preventDefault();
+  toSection(id);
 });
 
 // A place goes to its section's first row, putting the cursor there.
