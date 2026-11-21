@@ -51,6 +51,25 @@ QtObject {
                 cast(5, "WlrScreencopy", 12, true)), 9), true);
         whyCases();
         shownCases();
+        madeCases();
+    }
+
+    // What a copy's row is made with beyond what it holds: made showing, it
+    // names the source that hides it, so no way back goes to a place holding
+    // it once a share starts (Steady.hiddenGone); made hidden, it names none
+    // and draws only that it's hidden.
+    function madeCases() {
+        const copies = { hiding: false };
+        const showing = Shared.made(false, copies, "Hidden text");
+        Expect.same("a row made showing names the source that hides it",
+            showing.shownBy, copies);
+        Expect.same("and changes nothing else it draws", Object.keys(showing), ["shownBy"]);
+        const hidden = Shared.made(true, copies, "Hidden text");
+        Expect.same("a row made hidden names no source, so a place holding it stays",
+            "shownBy" in hidden, false);
+        Expect.same("and draws only that it's hidden, nothing of the copy",
+            JSON.stringify(hidden),
+            JSON.stringify({ name: "Hidden text", note: "", reads: "", picture: "" }));
     }
 
     // Why they hide, as the journal says it, agreeing with hidden().
