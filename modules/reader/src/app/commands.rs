@@ -2,74 +2,57 @@
 //! runs and their history.
 
 use super::{Landing, desktop_open};
-use crate::{App, ex, keys_logged, links, moves, outline, search};
+use crate::{App, ex, keys_logged, links, outline, search};
 
 impl App {
-    /// gf: with the cursor on a character, opens the file named under it or
+    /// gf: with the cursor on a character, goes by the name under it or
     /// after it on its line, by a link or written, and none behind it, or
     /// says it can't find that one, as vi's gf does with the name under the
-    /// cursor; with the cursor on a whole line, the file the first link
-    /// from it down names, or the first path written from there that is a
-    /// file: markdown in this window, and anything else as the desktop
-    /// opens it.
+    /// cursor; with the cursor on a whole line, by the first link from it
+    /// down to another file, or the first path written from there that is
+    /// a file. A link goes on to the heading it names, here or in its file,
+    /// as Ctrl+] goes; a markdown file opens in this window, at its heading
+    /// or where it was left, and anything else as the desktop opens it.
     pub(crate) fn follow_file(&mut self) {
         if self.character_waits() {
             return self.say(super::STILL_READING);
         }
         let page = self.painter.page();
-        // The file a name stands for, when it's one on this machine.
-        let file_of =
-            |name: &links::Name| links::file_of(name, &self.file).filter(|file| file.is_file());
-        let found = if let Some((line, x_pt)) = self.character_on() {
+        let is_file = std::path::Path::is_file;
+        let going = if let Some((line, x_pt)) = self.character_on() {
             let pieces = links::pieces(&page.frame);
-            match links::file_here(&pieces, line, x_pt, &self.file, std::path::Path::is_file) {
-                // A link is followed as Ctrl+] follows it, on to the heading
-                // it names, here or in its file, rather than to where the
-                // file was left.
-                Ok((_, links::Name::Link(href))) => return self.follow(&href),
-                Ok((file, links::Name::Written(_))) => Some(file),
-                Err(None) => return self.say("E446: No file name under cursor"),
+            match links::file_here(&pieces, line, x_pt, &self.file, is_file) {
+                Ok(going) => Some(going),
+                Err(None) => None,
                 Err(Some(said)) => {
                     return self.say(&format!("E447: Can't find file \"{said}\" in path"));
                 }
             }
         } else {
+            let lines = self.words.as_deref().unwrap_or_default();
             let (from, (_, foot)) = (self.cursor_pt(), self.view_pt());
-            let mut named: Vec<(f64, f64, std::path::PathBuf)> = links::links(&page.frame)
-                .into_iter()
-                .filter(|link| link.baseline_pt > from && link.top_pt < foot)
-                .filter(|link| links::names_another_file(&link.href, &self.file))
-                .filter_map(|link| {
-                    let file = file_of(&links::Name::Link(link.href))?;
-                    Some((link.baseline_pt.round(), link.left_pt, file))
-                })
-                .collect();
-            // A path written on a line comes after the links on it.
-            for line in self.words.as_deref().unwrap_or_default() {
-                if line.baseline_pt <= from || moves::foot_of(line) > foot {
-                    continue;
+            links::going_down(
+                links::links(&page.frame),
+                lines,
+                (from, foot),
+                &self.file,
+                is_file,
+            )
+        };
+        match going {
+            None => self.say("E446: No file name under cursor"),
+            Some(links::Going::Heading(anchor)) => self.follow(&format!("#{anchor}")),
+            Some(links::Going::File(file, heading)) => {
+                if keys_logged() {
+                    eprintln!("file: {}", file.display());
                 }
-                for (path, ..) in moves::written_paths(line) {
-                    if let Some(file) = file_of(&links::Name::Written(path)) {
-                        named.push((line.baseline_pt.round(), f64::INFINITY, file));
-                    }
+                if links::markdown(&file) {
+                    self.remember(self.heading() / self.px_per_pt());
+                    self.open(file, heading.map_or(Landing::Kept, Landing::Heading));
+                } else {
+                    desktop_open(&file.to_string_lossy());
                 }
             }
-            named.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
-            named.into_iter().next().map(|(.., file)| file)
-        };
-        let Some(file) = found else {
-            self.say("E446: No file name under cursor");
-            return;
-        };
-        if keys_logged() {
-            eprintln!("file: {}", file.display());
-        }
-        if links::markdown(&file) {
-            self.remember(self.heading() / self.px_per_pt());
-            self.open(file, Landing::Kept);
-        } else {
-            desktop_open(&file.to_string_lossy());
         }
     }
 

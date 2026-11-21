@@ -7,6 +7,7 @@ use typst::layout::{Frame, FrameItem, Point};
 use typst::model::Destination;
 
 use crate::numbers::f32_of;
+use crate::text::Line;
 
 /// A link's first piece on the page, or any one piece of it, in points from
 /// the page's top left, and what it points at as written.
@@ -126,26 +127,81 @@ pub fn name_here(
     under_or_after(linked.chain(written), line, x_pt)
 }
 
-/// What gf opens with a character `x_pt` across `line` on the page `page`:
-/// the file the name under or after it stands for, when `is_file` finds
-/// it, with the name, since a link goes on to the heading it names. The
-/// name is settled first and only then asked of the disk, so one naming
-/// no file here is said, as Vim's E447, rather than passed for the next;
-/// none at all is `Err(None)`, as Vim's E446.
+/// Where gf goes for the name it took: a heading on the page shown, which
+/// the page's own words say is there or not, or a file `is_file` found, at
+/// the heading its link names, if any, as Ctrl+] goes.
+#[derive(Debug, PartialEq)]
+pub enum Going {
+    Heading(String),
+    File(PathBuf, Option<String>),
+}
+
+/// Where gf goes for `name` from `page`, when it names a heading here or
+/// a file on this machine that `is_file` finds.
+pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Option<Going> {
+    if let Name::Link(href) = name {
+        match target(href, page) {
+            Target::Here(anchor) => return Some(Going::Heading(anchor)),
+            Target::Page(file, heading) => {
+                return is_file(&file).then_some(Going::File(file, heading));
+            }
+            Target::Elsewhere(_) => {}
+        }
+    }
+    let file = file_of(name, page).filter(|file| is_file(file))?;
+    Some(Going::File(file, None))
+}
+
+/// Where gf goes with a character `x_pt` across `line` on the page `page`:
+/// for the name under or after it, when it names a heading here or a file
+/// `is_file` finds. The name is settled first and only then asked of the
+/// disk, so one naming no file here is said, as Vim's E447, rather than
+/// passed for the next; none at all is `Err(None)`, as Vim's E446.
 pub fn file_here(
     pieces: &[Link],
     line: &crate::text::Line,
     x_pt: f64,
     page: &Path,
     is_file: impl Fn(&Path) -> bool,
-) -> Result<(PathBuf, Name), Option<String>> {
+) -> Result<Going, Option<String>> {
     let there =
         |path: &str| file_of(&Name::Written(path.into()), page).is_some_and(|f| is_file(&f));
     let name = name_here(pieces, line, x_pt, there).ok_or(None)?;
-    match file_of(&name, page).filter(|file| is_file(file)) {
-        Some(file) => Ok((file, name)),
-        None => Err(Some(name.said().to_string())),
+    going(&name, page, &is_file).ok_or_else(|| Some(name.said().to_string()))
+}
+
+/// Where gf goes from a whole line, `from_pt` down the page, in a view
+/// ending at `foot_pt`: by the first of `linked` from there that names
+/// another file `is_file` finds, or the first path written on `lines`
+/// from there that is one, a line's links before its paths.
+pub fn going_down(
+    linked: Vec<Link>,
+    lines: &[Line],
+    (from_pt, foot_pt): (f64, f64),
+    page: &Path,
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<Going> {
+    let mut named: Vec<(f64, f64, Going)> = linked
+        .into_iter()
+        .filter(|link| link.baseline_pt > from_pt && link.top_pt < foot_pt)
+        .filter(|link| names_another_file(&link.href, page))
+        .filter_map(|link| {
+            let going = going(&Name::Link(link.href), page, &is_file)?;
+            Some((link.baseline_pt.round(), link.left_pt, going))
+        })
+        .collect();
+    for line in lines {
+        if line.baseline_pt <= from_pt || crate::moves::foot_of(line) > foot_pt {
+            continue;
+        }
+        for (path, ..) in crate::moves::written_paths(line) {
+            if let Some(going) = going(&Name::Written(path), page, &is_file) {
+                named.push((line.baseline_pt.round(), f64::INFINITY, going));
+            }
+        }
     }
+    named.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    named.into_iter().next().map(|(.., going)| going)
 }
 
 /// Whether gf from a whole line takes the link to `href`: one to a heading
@@ -155,7 +211,8 @@ pub fn names_another_file(href: &str, page: &Path) -> bool {
 }
 
 /// The file a name stands for, from the page `page` in its folder, when it
-/// names one on this machine at all: a site's address names none, and a
+/// names one on this machine at all: an address, a site's or a mail's,
+/// names none, and a
 /// heading on the page names the page. A written path from ~/ is from the
 /// home folder, as a shell reads it. Whether the file is there is for the
 /// disk to say.
@@ -164,7 +221,7 @@ pub fn file_of(name: &Name, page: &Path) -> Option<PathBuf> {
         Name::Link(href) => match target(href, page) {
             Target::Here(_) => Some(page.to_path_buf()),
             Target::Page(file, _) => Some(file),
-            Target::Elsewhere(to) if !to.contains("://") => Some(to.into()),
+            Target::Elsewhere(to) if !address(&to) => Some(to.into()),
             Target::Elsewhere(_) => None,
         },
         Name::Written(path) => match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
@@ -263,7 +320,7 @@ pub fn target(href: &str, page: &Path) -> Target {
     if let Some(fragment) = href.strip_prefix('#') {
         return Target::Here(fragment.to_string());
     }
-    if href.contains("://") || href.starts_with("mailto:") {
+    if address(href) {
         return Target::Elsewhere(href.to_string());
     }
     let (path, fragment) = href.split_once('#').unwrap_or((href, ""));
@@ -283,6 +340,11 @@ pub fn target(href: &str, page: &Path) -> Target {
         return Target::Page(file, heading);
     }
     Target::Elsewhere(file.to_string_lossy().into_owned())
+}
+
+/// Whether `href` is an address, a site's or a mail's, rather than a path.
+fn address(href: &str) -> bool {
+    href.contains("://") || href.starts_with("mailto:")
 }
 
 /// A path as its link wrote it, its percent escapes read back, as the

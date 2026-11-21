@@ -45,6 +45,16 @@ fn the_name_under_the_character_or_the_next_after_it_on_its_line_is_taken() {
 /// A page set from `markdown`, its lines as the keys read them and the
 /// pieces of its links.
 fn set(name: &str, markdown: &str) -> (Vec<crate::text::Line>, Vec<Link>) {
+    set_reading(name, markdown, pieces)
+}
+
+/// A page set from `markdown`, its lines as the keys read them and its
+/// links as `read` reads them from its frame.
+fn set_reading(
+    name: &str,
+    markdown: &str,
+    read: impl Fn(&Frame) -> Vec<Link>,
+) -> (Vec<crate::text::Line>, Vec<Link>) {
     let dir = std::env::temp_dir().join(format!("reader-links-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
     let file = dir.join("page.md");
@@ -54,7 +64,7 @@ fn set(name: &str, markdown: &str) -> (Vec<crate::text::Line>, Vec<Link>) {
         .expect("set");
     std::fs::remove_dir_all(&dir).expect("cleaned");
     let layout = crate::select::Layout::read(&page.frame, markdown.to_string(), 0);
-    (layout.lines, pieces(&page.frame))
+    (layout.lines, read(&page.frame))
 }
 
 /// The line that has `words`, and the middle of the character `at`
@@ -87,10 +97,25 @@ fn taken(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize) -
     )
 }
 
-/// What gf opens, or says, with the character `at` characters into
-/// `words` on a page in /notes, whose folder holds only `there`: a file
-/// a link names is followed to it, as Ctrl+] follows it, and one a path
-/// writes is opened.
+/// Whether a file is one of `there`, in /notes, as a stand-in disk.
+fn in_notes<'a>(there: &'a [&str]) -> impl Fn(&Path) -> bool + 'a {
+    |file: &Path| {
+        file.strip_prefix("/notes")
+            .is_ok_and(|name| there.iter().any(|one| name == Path::new(one)))
+    }
+}
+
+/// Where gf goes, as it reads: a heading here, or a file, at a heading.
+fn read(going: &Going) -> String {
+    match going {
+        Going::Heading(anchor) => format!("#{anchor} here"),
+        Going::File(file, None) => file.display().to_string(),
+        Going::File(file, Some(heading)) => format!("{} at {heading}", file.display()),
+    }
+}
+
+/// Where gf goes, or what it says, with the character `at` characters
+/// into `words` on a page in /notes, whose folder holds only `there`.
 fn opened(
     lines: &[crate::text::Line],
     pieces: &[Link],
@@ -99,13 +124,8 @@ fn opened(
 ) -> String {
     let (line, x_pt) = character(lines, words, at);
     let page = Path::new("/notes/page.md");
-    let is_file = |file: &Path| {
-        file.strip_prefix("/notes")
-            .is_ok_and(|name| there.iter().any(|one| name == Path::new(one)))
-    };
-    match file_here(pieces, line, x_pt, page, is_file) {
-        Ok((file, Name::Link(href))) => format!("{} by {href}", file.display()),
-        Ok((file, Name::Written(_))) => file.display().to_string(),
+    match file_here(pieces, line, x_pt, page, in_notes(there)) {
+        Ok(going) => read(&going),
         Err(Some(said)) => format!("E447 {said}"),
         Err(None) => "E446".to_string(),
     }
@@ -209,6 +229,7 @@ fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
         opened(&lines, &pieces, ("the site", 4), &there),
         "E447 https://example.com"
     );
+
     assert_eq!(opened(&lines, &pieces, ("old", 0), &there), "E447 gone.md");
     assert_eq!(
         opened(&lines, &pieces, ("or notes", 0), &there),
@@ -224,6 +245,11 @@ fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
         file_of(&Name::Link("https://example.com".into()), page),
         None,
         "a site's address names no file"
+    );
+    assert_eq!(
+        file_of(&Name::Link("mailto:notes.md".into()), page),
+        None,
+        "nor does a mail's, though a file may have its name"
     );
     assert_eq!(
         file_of(&Name::Link("gone.md".into()), page),
@@ -246,12 +272,12 @@ fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
     let there = ["page.md", "other.md"];
     assert_eq!(
         opened(&lines, &pieces, ("the keys", 0), &there),
-        "/notes/page.md by #the-keys",
-        "this page, followed to the heading"
+        "#the-keys here",
+        "this page's heading, which needs no disk"
     );
     assert_eq!(
         opened(&lines, &pieces, ("its part", 0), &there),
-        "/notes/other.md by other.md#part",
+        "/notes/other.md at part",
         "another page, followed to its heading rather than where it was left"
     );
     let page = Path::new("/notes/page.md");
@@ -272,6 +298,38 @@ fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
 }
 
 #[test]
+fn gf_from_a_whole_line_takes_the_first_other_file_down_at_its_heading() {
+    let (lines, linked) = set_reading(
+        "whole-line",
+        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md.\n",
+        links,
+    );
+    let page = Path::new("/notes/page.md");
+    let down = |there: &[&str]| {
+        going_down(
+            linked.clone(),
+            &lines,
+            (0.0, f64::INFINITY),
+            page,
+            in_notes(there),
+        )
+        .as_ref()
+        .map_or_else(|| "nothing".to_string(), read)
+    };
+    assert_eq!(
+        down(&["page.md", "other.md", "notes.md"]),
+        "/notes/other.md at part",
+        "past a heading here, which is Ctrl+]'s, to another file at its heading"
+    );
+    assert_eq!(
+        down(&["page.md", "notes.md"]),
+        "/notes/notes.md",
+        "past a link to no file, to a path written below"
+    );
+    assert_eq!(down(&["page.md"]), "nothing");
+}
+
+#[test]
 fn a_word_read_as_a_path_after_the_character_stops_gf_only_when_its_a_file() {
     let (lines, pieces) = set(
         "dotted",
@@ -279,7 +337,7 @@ fn a_word_read_as_a_path_after_the_character_stops_gf_only_when_its_a_file() {
     );
     assert_eq!(
         opened(&lines, &pieces, ("Read", 0), &["guide.md"]),
-        "/notes/guide.md by guide.md",
+        "/notes/guide.md",
         "past words that aren't files, to the link"
     );
     assert_eq!(

@@ -213,18 +213,21 @@ impl App {
                     .words
                     .as_ref()
                     .and_then(|lines| links::heading_at(lines, &anchor));
+                // A miss is said where the keys' other misses are, as
+                // Vim's E426 says a tag isn't there.
                 match heading {
                     Some(pt) => {
                         self.remember(self.heading() / self.px_per_pt());
                         self.land(pt.max(0.0));
                     }
-                    None => eprintln!("reader: no heading here is #{anchor}"),
+                    None if self.words.is_none() => self.say(super::STILL_READING),
+                    None => self.say(&format!("E426: Tag not found: #{anchor}")),
                 }
             }
             links::Target::Page(file, heading) => {
                 if !file.is_file() {
-                    eprintln!("reader: there's no {}", file.display());
-                    return;
+                    let said = file.display().to_string();
+                    return self.say(&format!("E447: Can't find file \"{said}\" in path"));
                 }
                 self.remember(self.heading() / self.px_per_pt());
                 self.open(file, heading.map_or(Landing::Kept, Landing::Heading));

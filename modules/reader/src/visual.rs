@@ -60,12 +60,17 @@ impl App {
         let version = self.painter.version;
         let file = self.file.clone();
         let to = self.layout_to.clone();
-        let _ = std::thread::Builder::new()
+        // Without its lines a standing character's keys say they're still
+        // reading, so a thread that can't start says why.
+        let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
                 let source = std::fs::read_to_string(&file).unwrap_or_default();
                 let _ = to.send((version, select::Layout::read(&page.frame, source, version)));
             });
+        if let Err(error) = started {
+            eprintln!("reader: can't read the page's lines: {error}");
+        }
     }
 
     /// The page's words for selecting have been read. A selection holds
