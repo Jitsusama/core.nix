@@ -16,6 +16,12 @@ in
     Unit = {
       Description = "Samples what a key typed into pi waits on";
       After = [ "graphical-session.target" ];
+      # A sample runs as a oneshot for up to seventy minutes, and a
+      # switch that restarted one would wait on its start until
+      # home-manager gave up and the whole switch went back, as one did
+      # at 19:00 on 20 November. The sample running finishes on the old
+      # program, and the timer's next starts the new.
+      X-SwitchMethod = "keep-old";
     };
     Service = {
       Type = "oneshot";
