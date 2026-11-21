@@ -30,7 +30,10 @@ TV are net's alone, and `eero` keeps only what's eero's.
 - `collected_at`, and each source's `read_at` and `since`: seconds since
   the epoch, so a reading's age is one subtraction.
 - `sources`: each source, whether it's answering, unreachable or signed
-  out, and why.
+  out, and why. A source reads only the minute it's in, so the daemon
+  carries each over from the record before, the one an earlier daemon
+  wrote included: one still not answering in the same way keeps when
+  that began, and one that didn't answer keeps when it last did.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
   what it's doing, a printer's ink and what it's doing, a television's
@@ -168,7 +171,7 @@ what net says of the day.
   daemon runs: a minute it's silent, or answers as something else, keeps
   its name, role and model and says it isn't answering as a TV. A TV
   asleep stays on eero's list but goes silent, so silence leaves the
-  source answering, with no reading time; only an answer that isn't a
+  source answering, with the time it last answered; only an answer that isn't a
   TV's (another page, an error status, a redirect or a page past 64 KB),
   while no TV answers as one, makes it unreachable. A TV switched off leaves eero's list, so
   it isn't asked, and is forgotten. The answer stays as

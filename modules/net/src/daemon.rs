@@ -31,6 +31,7 @@ use ureq::Agent;
 
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
+use crate::model::{self, Network};
 use crate::room;
 use crate::serve as served;
 use crate::sources::{airplay, hp, modem, samsung, sony, switch};
@@ -93,6 +94,14 @@ pub fn run() -> Result<(), String> {
         .into();
     // Each TV's last answer, so a minute it's silent keeps its name.
     let mut tvs = samsung::Heard::new();
+    // Each source as the last record said it, starting from the record a
+    // daemon before this one wrote, so a restart doesn't make an outage
+    // begin again.
+    let mut before = fs::read_to_string(&record)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Network>(&text).ok())
+        .map(|network| network.sources)
+        .unwrap_or_default();
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -138,6 +147,8 @@ pub fn run() -> Result<(), String> {
             televisions,
         };
         let mut network = collect::network(said, time::now());
+        model::carry_over(&mut network.sources, &before);
+        before.clone_from(&network.sources);
         let earlier = history::read(&day, network.collected_at);
         history::recall(&mut network, &earlier);
         room::work_out(&mut network);
