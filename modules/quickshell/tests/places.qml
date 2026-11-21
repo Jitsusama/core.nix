@@ -472,12 +472,13 @@ QtObject {
         // back on workspace 3 by its number, its name gone to an empty
         // fifth: named workspaces come back from a boot in another order.
         expect("kept on a named workspace, it goes back to the one named so now",
-            Reopening.namedBack({ workspace: 3, named: "KELP" }, spaces), { join: 5 });
+            Reopening.namedBack({ workspace: 3, workspaceName: "KELP" }, spaces), { join: 5 });
         expect("none named so now, the workspace it lands on takes the name",
-            Reopening.namedBack({ workspace: 3, named: "REEF" }, spaces), { name: "REEF" });
+            Reopening.namedBack({ workspace: 3, workspaceName: "REEF" }, spaces),
+            { name: "REEF" });
         expect("kept on one named nothing, it goes by its number",
             [Reopening.namedBack({ workspace: 3 }, spaces),
-                Reopening.namedBack({ workspace: 3, named: "" }, spaces),
+                Reopening.namedBack({ workspace: 3, workspaceName: "" }, spaces),
                 Reopening.namedBack(null, spaces)], [null, null, null]);
         // One handed over while Reopen Them All already holds it, or has
         // begun it, joins nothing, or two pis would write one log.
@@ -504,6 +505,11 @@ QtObject {
             Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
         expect("kept nowhere, it comes back held without a window",
             Reopening.broughtBack(true, null, true, true), { window: false, home: true });
+        // A window the agents daemon saw but couldn't place, one floating
+        // or one its kitty drew beside another, is kept as unplaced.
+        expect("kept with a window it couldn't place, it comes back in one, going home",
+            Reopening.broughtBack(true, { unplaced: true }, true, true),
+            { window: true, home: true });
         expect("with no places known, none is taken for windowless",
             Reopening.broughtBack(true, null, false, true), { window: true, home: true });
         expect("carried or given back, never kept here, it opens as it did",

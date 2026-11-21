@@ -638,7 +638,7 @@ ShellRoot {
             return;
         stage = "named";
         Sessions.reopenAll([{ id: "s-kelp", cwd: "/tmp", hosted: true }], root.never,
-            kept({ "s-kelp": Object.assign(keptOn(3), { named: "KELP" }) }), "");
+            kept({ "s-kelp": Object.assign(keptOn(3), { workspaceName: "KELP" }) }), "");
     }
     function named() {
         const opens = opensOn("s-kelp");
@@ -656,7 +656,7 @@ ShellRoot {
         stage = "renamed";
         Niri.windowOpenedOrChanged(window);
         Sessions.reopenAll([{ id: "s-reef", cwd: "/tmp", hosted: true }], root.never,
-            kept({ "s-reef": Object.assign(keptOn(4), { named: "REEF" }) }), "");
+            kept({ "s-reef": Object.assign(keptOn(4), { workspaceName: "REEF" }) }), "");
     }
 
     // One whose name no workspace has now opens on the screen's empty

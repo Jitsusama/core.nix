@@ -23,6 +23,10 @@ use crate::session::{Lives, Session};
 /// The kind each record is served as.
 pub const KIND: &str = "agent-window";
 
+/// The key a record says it couldn't tell its window from another's by,
+/// which arrangement.rs reads, so neither side spells it alone.
+pub const UNTOLD: &str = "untold";
+
 /// The kitty pane a session runs in, `(socket, id)`: as the node says a
 /// held one's window is, else as its record's terminal says.
 fn kitty(one: Session) -> Option<(String, String)> {
@@ -190,7 +194,7 @@ pub fn records<S: BuildHasher>(
             // One of several it couldn't tell apart says so, so its window
             // isn't taken as closed (arrangement.rs's unwindowed).
             if window.is_none() && !among.is_empty() {
-                record["untold"] = json!(true);
+                record[UNTOLD] = json!(true);
             }
             Some(record)
         })
@@ -312,7 +316,7 @@ mod tests {
             "a kitty drawing two windows says neither; a hosted one is its viewer"
         );
         assert_eq!(
-            (made[0].get("untold"), made[1].get("untold")),
+            (made[0].get(UNTOLD), made[1].get(UNTOLD)),
             (Some(&json!(true)), None),
             "and says it couldn't tell, so its window isn't taken as closed (arrangement.rs)"
         );
