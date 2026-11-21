@@ -88,13 +88,15 @@ fn help() -> Help {
 }
 
 /// What was asked for: niri's id for the window, the video's size in pixels
-/// and where it goes.
+/// and where it goes, and the sound server's source its sound comes from,
+/// where it has one.
 #[derive(Debug, PartialEq, Eq)]
 struct Asked {
     window: u64,
     width: u32,
     height: u32,
     file: PathBuf,
+    sound: Option<String>,
 }
 
 impl Asked {
@@ -121,6 +123,7 @@ impl Asked {
             width: even(number("width", width)?),
             height: even(number("height", height)?),
             file: PathBuf::from(file),
+            sound: None,
         })
     }
 }
@@ -165,7 +168,10 @@ impl Encoder {
 /// only when the window changes, each timed as it comes, and the last is
 /// sent again at the end, so a window left still at the end doesn't cut the
 /// video short. Each word is an argument of its own, which gst-launch
-/// escapes, so the file's name may hold spaces.
+/// escapes, so the file's name may hold spaces. The sound, where there is
+/// some, is read from its source as it comes and encoded as Opus, which
+/// GStreamer's base plugins hold, each stream queued into the file so
+/// neither waits on the other.
 fn pipeline(node: u32, asked: &Asked, encoder: Encoder) -> Vec<String> {
     let size = format!(
         "width={},height={},pixel-aspect-ratio=1/1",
@@ -181,14 +187,28 @@ fn pipeline(node: u32, asked: &Asked, encoder: Encoder) -> Vec<String> {
              ! video/x-raw,format=I420,{size} ! x264enc speed-preset=veryfast"
         ),
     };
+    let queued = if asked.sound.is_some() {
+        "! queue "
+    } else {
+        ""
+    };
     let mut words: Vec<String> = format!(
         "-e pipewiresrc path={node} do-timestamp=true resend-last=true ! {fitted} ! h264parse \
-         ! mp4mux fragment-duration=1000 ! filesink"
+         {queued}! mp4mux name=file fragment-duration=1000 ! filesink"
     )
     .split_whitespace()
     .map(String::from)
     .collect();
     words.push(format!("location={}", asked.file.display()));
+    if let Some(sound) = &asked.sound {
+        words.push("pulsesrc".to_owned());
+        words.push(format!("device={sound}"));
+        words.extend(
+            "do-timestamp=true ! audioconvert ! audioresample ! opusenc ! queue ! file."
+                .split_whitespace()
+                .map(String::from),
+        );
+    }
     words
 }
 
@@ -260,6 +280,13 @@ async fn told_to_stop(interrupt: &mut Signal, terminate: &mut Signal) {
         _ = interrupt.recv() => {}
         _ = terminate.recv() => {}
     }
+}
+
+/// Tells gst-launch to finish its file, and gives it until FINISHING from
+/// the first time it was told.
+fn finish_by(pid: Option<u32>, due: &mut Option<Instant>) {
+    finish(pid);
+    due.get_or_insert_with(|| Instant::now() + FINISHING);
 }
 
 /// Tells gst-launch to finish its file, which its `-e` makes it do on
@@ -355,11 +382,13 @@ async fn record(asked: &Asked) -> Result<Ended, String> {
     let status = loop {
         tokio::select! {
             status = encoding.wait() => break status.map_err(|error| error.to_string())?,
-            _ = closed.next(), if !cast_ended => cast_ended = true,
-            () = told_to_stop(&mut interrupt, &mut terminate) => {
-                finish(pid);
-                due.get_or_insert_with(|| Instant::now() + FINISHING);
+            // The window gone ends its video, but a recording's sound keeps
+            // coming, so the file is finished here rather than waited on.
+            _ = closed.next(), if !cast_ended => {
+                cast_ended = true;
+                finish_by(pid, &mut due);
             }
+            () = told_to_stop(&mut interrupt, &mut terminate) => finish_by(pid, &mut due),
             () = sleep_until(due.unwrap_or_else(Instant::now)), if due.is_some() => {
                 let _ = encoding.start_kill();
                 killed = true;
@@ -386,7 +415,11 @@ async fn record(asked: &Asked) -> Result<Ended, String> {
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let asked = Asked::parse(&context.args)?;
+        let mut asked = Asked::parse(&context.args)?;
+        // The mix recording-sound makes for it, named as it runs it.
+        asked.sound = env::var("RECORDING_SOUND")
+            .ok()
+            .filter(|sound| !sound.is_empty());
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -415,6 +448,7 @@ mod tests {
             width: 1400,
             height: 1748,
             file: PathBuf::from(file),
+            sound: None,
         }
     }
 
@@ -490,7 +524,8 @@ mod tests {
         let mut expected = words(
             "-e pipewiresrc path=58 do-timestamp=true resend-last=true ! vapostproc add-borders=true \
              ! video/x-raw(memory:VAMemory),format=NV12,width=1400,height=1748,pixel-aspect-ratio=1/1 \
-             ! vah264enc ! h264parse ! mp4mux fragment-duration=1000 ! filesink",
+             ! vah264enc ! h264parse \
+             ! mp4mux name=file fragment-duration=1000 ! filesink",
         );
         expected.push("location=/r/2026-10-17 18-50-00.mp4".to_owned());
         assert_eq!(
@@ -506,13 +541,40 @@ mod tests {
              ! gldownload \
              ! videoconvert ! videoscale add-borders=true \
              ! video/x-raw,format=I420,width=1400,height=1748,pixel-aspect-ratio=1/1 \
-             ! x264enc speed-preset=veryfast ! h264parse ! mp4mux fragment-duration=1000 \
+             ! x264enc speed-preset=veryfast ! h264parse \
+             ! mp4mux name=file fragment-duration=1000 \
              ! filesink",
         );
         expected.push("location=/r/a.mp4".to_owned());
         assert_eq!(
             pipeline(58, &asked("/r/a.mp4"), Encoder::Processor),
             expected
+        );
+    }
+
+    #[test]
+    fn carries_the_sound_it_is_given_beside_the_video() {
+        let asked = Asked {
+            sound: Some("recording-41.monitor".to_owned()),
+            ..asked("/r/a.mp4")
+        };
+        let mut expected = words(
+            "-e pipewiresrc path=58 do-timestamp=true resend-last=true ! glupload ! glcolorconvert \
+             ! gldownload \
+             ! videoconvert ! videoscale add-borders=true \
+             ! video/x-raw,format=I420,width=1400,height=1748,pixel-aspect-ratio=1/1 \
+             ! x264enc speed-preset=veryfast ! h264parse ! queue \
+             ! mp4mux name=file fragment-duration=1000 ! filesink",
+        );
+        expected.push("location=/r/a.mp4".to_owned());
+        expected.extend(words(
+            "pulsesrc device=recording-41.monitor do-timestamp=true ! audioconvert \
+             ! audioresample ! opusenc ! queue ! file.",
+        ));
+        assert_eq!(
+            pipeline(58, &asked, Encoder::Processor),
+            expected,
+            "a window's recording carries no sound"
         );
     }
 

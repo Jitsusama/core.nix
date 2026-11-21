@@ -1,0 +1,111 @@
+# shellcheck shell=bash
+# Runs a recording (Recorder.qml) with the sound it carries: Joel's
+# microphone and what the desktop plays, mixed into a source of the
+# recording's own, which it names to the recording in RECORDING_SOUND.
+# No recording carried sound before (Joel, 2026-11-20: "why does a screen
+# recording not record audio?").
+#
+# The mix is a sink no program plays to, with the default source and the
+# default sink's monitor looped into it, so nothing is heard twice and no
+# feedback reaches the speakers. PipeWire shares a capture with every
+# program that asks, so a call in Meet or Tuple keeps the microphone while
+# a recording reads it too, and the loops name themselves recording-sound,
+# a program a-call-is-on knows is no call. The mix ranks below every sink,
+# so it's never a default and the desktop's sound and a call's never land
+# in it, and it goes once the recording ends, however it ends but killed
+# outright. Where there's no sound server, as on a
+# machine without one, the recording runs without sound rather than not at
+# all. Its help takes the shape every command of ours does
+# (docs/commands.md), by hand.
+
+help() {
+  cat << 'EOF'
+recording-sound  run a recording with your sound
+
+  Mixes the default microphone and what the default
+  speakers play into a source of the recording's own,
+  names it in RECORDING_SOUND, and runs the command
+  given. The mix goes once the command ends. Without a
+  sound server, RECORDING_SOUND is left unset.
+
+EXAMPLES
+  recording-sound record-window 4 800 600 a.mp4
+
+EXIT
+  the command's own, 64 when none was given, or 130
+  when stopped
+EOF
+}
+
+case "${1:-}" in
+-h | --help)
+  help
+  exit 0
+  ;;
+"")
+  help >&2
+  exit 64
+  ;;
+*) ;;
+esac
+
+mix=recording-$$
+loaded=()
+
+# Asks the sound server, never waiting on it past two seconds, since a
+# recording waits on each answer and the shell takes a press five seconds
+# on as a second recording.
+ask() {
+  timeout 2 pactl "$@" 2> /dev/null
+}
+
+# Lets go of a mix whose recording was killed outright, which no trap
+# saw: each names the recording-sound that made it, by its process.
+sweep() {
+  local module rest
+  while read -r module _ rest; do
+    [[ $rest =~ recording-([0-9]+) ]] || continue
+    kill -0 "${BASH_REMATCH[1]}" 2> /dev/null || ask unload-module "$module" || true
+  done < <(ask list short modules || true)
+}
+
+# Unloads what was loaded, the loops before the sink they feed.
+let_go() {
+  local index
+  for ((index = ${#loaded[@]} - 1; index >= 0; index--)); do
+    ask unload-module "${loaded[index]}" || true
+  done
+  loaded=()
+}
+trap let_go EXIT
+# Stopped itself, it lets the recording finish its file first, since bash
+# runs a trap only once the command it waits on is done, and says it was
+# interrupted, as the convention's one code for that.
+trap 'exit 130' TERM HUP
+
+# Loads one module, keeping its number so it's let go of.
+load() {
+  local module
+  module=$(ask load-module "$@") || return
+  loaded+=("$module")
+}
+
+# The default source and the default sink's monitor, read once: a recording
+# keeps the sound it began with. pactl joins its words with spaces, so each
+# value is quoted for the module's own reading of them.
+loop=("source_output_properties='application.process.binary=recording-sound'"
+  "sink_input_properties='application.process.binary=recording-sound'"
+  source_dont_move=true sink_dont_move=true latency_msec=30)
+# A server that doesn't answer the first question is asked nothing more.
+if microphone=$(ask get-default-source) && speakers=$(ask get-default-sink) && sweep &&
+  load module-null-sink sink_name="$mix" \
+    "sink_properties='device.description=Recording priority.session=0'" &&
+  load module-loopback "source='$microphone'" sink="$mix" "${loop[@]}" &&
+  load module-loopback "source='$speakers.monitor'" sink="$mix" "${loop[@]}"; then
+  export RECORDING_SOUND=$mix.monitor
+else
+  let_go
+  unset RECORDING_SOUND
+fi
+
+"$@"

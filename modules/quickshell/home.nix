@@ -821,6 +821,17 @@ let
     text = builtins.readFile ./askpass.sh;
   };
 
+  # Runs a recording with the microphone and the desktop's sound mixed for
+  # it (./recording-sound.sh).
+  recordingSound = pkgs.writeShellApplication {
+    name = "recording-sound";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.pulseaudio
+    ];
+    text = builtins.readFile ./recording-sound.sh;
+  };
+
   # Locks the screen as the lid shuts while Keep Awake holds it, away from a
   # desk (./lid-held.sh).
   lidHeld = pkgs.writeShellApplication {
@@ -1871,8 +1882,8 @@ in
     };
 
     # The recorder's tools (Recorder.qml): wf-recorder records the screen
-    # and record-window a window, grim takes a region's picture and wl-copy
-    # copies it, and notify-send says where the file went. A terminal
+    # and record-window a window, with the sound recording-sound mixes,
+    # grim takes a region's picture and wl-copy copies it, and notify-send says where the file went. A terminal
     # shows a run's answer through jq (launcher/Runs.qml). A paste with no
     # clipboard history kept presses its window's paste keys through wtype
     # (Pasting.qml).
@@ -1893,6 +1904,7 @@ in
         # it says what the shell weighs now, part by part.
         shellWeighs
         pkgs.wf-recorder
+        recordingSound
         (pkgs.callPackage ./record-window/package.nix { })
         pkgs.jq
         pkgs.grim
