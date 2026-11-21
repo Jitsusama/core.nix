@@ -183,13 +183,36 @@ fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
         None => format!("{said} was stopped"),
     };
     let complaint = String::from_utf8_lossy(complaint);
-    let line = complaint.lines().map(plain).find(|line| !line.is_empty());
+    let line = complaint
+        .lines()
+        .map(|line| plain(&reason(line)))
+        .find(|line| !line.is_empty());
     match line {
         Some(line) => {
             let line: String = line.chars().take(SAID_OF_ITS_COMPLAINT).collect();
             format!("{ended}: {line}")
         }
         None => ended,
+    }
+}
+
+/// The reason a complaint's `line` gives: a kit command asked for JSON
+/// complains in an `error/1` document, which is said as its own words are,
+/// what failed and why; any other line is its own reason.
+fn reason(line: &str) -> String {
+    let Ok(Value::Object(error)) = serde_json::from_str::<Value>(line) else {
+        return line.to_owned();
+    };
+    if error.get("schema").and_then(Value::as_str) != Some("error/1") {
+        return line.to_owned();
+    }
+    let what = error
+        .get("what")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match error.get("why").and_then(Value::as_str) {
+        Some(why) => format!("{what}: {why}"),
+        None => what.to_owned(),
     }
 }
 
@@ -203,7 +226,9 @@ fn plain(line: &str) -> String {
     while let Some(each) = chars.next() {
         match each {
             '\u{1b}' => escape(&mut chars),
-            // The one-character forms of a control sequence and a string.
+            // The one-character forms of a control sequence and a string,
+            // as characters; written as raw bytes, they were never UTF-8
+            // and reach here as a replacement character, which is harmless.
             '\u{9b}' => control_sequence(&mut chars),
             '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => string(&mut chars),
             each if hides(each) || each.is_control() => {}
@@ -437,6 +462,29 @@ mod tests {
             ),
             "net --json ended with 1: said",
             "a title set, tags and separators go"
+        );
+        assert_eq!(
+            failed(
+                "net --json",
+                Some(1),
+                "\u{9b}31mred\u{9d}0;title\u{9c}".as_bytes()
+            ),
+            "net --json ended with 1: red",
+            "a control sequence and a string in their one-character forms go"
+        );
+        let error = concat!(
+            r#"{"exit":69,"kind":"unavailable","schema":"error/1","try":null,"#,
+            r#""what":"the checkouts couldn't be read","why":"no such folder"}"#
+        );
+        assert_eq!(
+            failed("repos --json", Some(69), error.as_bytes()),
+            "repos --json ended with 69: the checkouts couldn't be read: no such folder",
+            "a kit command's JSON complaint is said as its words"
+        );
+        assert_eq!(
+            failed("repos --json", Some(1), br#"{"why": "not a kit error"}"#),
+            r#"repos --json ended with 1: {"why": "not a kit error"}"#,
+            "other JSON is said as written"
         );
     }
 
