@@ -147,3 +147,43 @@ function viewerPlace(place, workspaces) {
     return own && !own.is_focused ? { workspace: own.id, column: place.column } : null;
 }
 
+// The title a viewer's window opens with: the one pi's host gives it once
+// its conversation shows, as the session's record says it (`said`), else
+// "π - ", its quest's name and " - " its folder, or its folder alone
+// where its name is its folder, as the harness names one with no quest
+// (windowTitle in its presence.ts). kitty names a window for the command
+// it runs until that names it, and a viewer waiting for its host read
+// "mycelium" for over an hour on 20 November, a window Joel couldn't
+// tell for a session.
+function viewerTitle(said, title, cwd) {
+    if (typeof said === "string" && said.startsWith("\u03c0 - ")) {
+        return said;
+    }
+    const trimmed = typeof cwd === "string" ? cwd.replace(/\/+$/, "") : "";
+    const folder = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+    const name = typeof title === "string" && title !== folder ? title : "";
+    return ["\u03c0", name, folder].filter(part => part !== "").join(" - ");
+}
+
+// `words`, run once the window is titled `title`. It's set within what
+// the realm's holder runs, which keeps the title its program set last, so
+// a window that joins later is titled too, and it stands until the viewer
+// titles the window itself. Control characters become spaces, so the
+// title can't end the sequence early and say anything else to the
+// terminal.
+function titled(title, words) {
+    const clean = String(title).replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+    return ["sh", "-c", 'printf "\\033]2;%s\\007" "$0"; exec "$@"', clean].concat(words);
+}
+
+// The words a hosted session's viewer runs while its host isn't serving
+// it yet, as the harness's restore entry says them (`view`): its join,
+// which finds the host the roster names and waits for it, saying so in
+// the window. None where the entry says none whole, as one an older
+// harness wrote doesn't.
+function waitingWords(one) {
+    const words = one?.view;
+    return Array.isArray(words) && words.length > 0
+        && words.every(word => typeof word === "string") ? words.slice() : null;
+}
+

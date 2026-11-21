@@ -1916,7 +1916,12 @@ Singleton {
     // goes in the one walk, waited for and placed as theirs are, so the
     // columns after it land beside it (Y2YBTS and KP0L6A, [342c50d4]). One
     // whose viewer is open, or that the boot kept no place of, opens none.
-    // One whose host isn't serving it yet, or one bound for the workspace
+    // One whose host isn't serving it yet, as after a crash, while the host
+    // comes back, opens there all the same by the words its restore entry
+    // says (Viewers.waitingWords), and waits in the window for its host:
+    // kept for later instead, it opened by itself nearly two hours after
+    // the walk on 20 November, where Joel had moved on. One whose entry
+    // says no words, as an older harness's, or one bound for the workspace
     // Joel is on, where a window would catch his eye, has its place kept
     // for viewKept, which opens it there once the host serves it and Joel
     // is away, and the walk goes on. The walk itself opens with Joel there,
@@ -1938,26 +1943,32 @@ Singleton {
             reopenNext();
             return;
         }
-        const named = viewerOf(session?.presence);
         const served = session !== null && Array.isArray(session.attach)
-            && session.attach.length > 0 && named !== "";
-        if (!served || Niri.workspaces[into.workspace]?.is_focused) {
+            && session.attach.length > 0 && viewerOf(session.presence) !== "";
+        const named = served ? viewerOf(session.presence) : viewerNamed(id);
+        const waiting = served || named === "" ? null : Viewers.waitingWords(next.one);
+        const joelThere = Niri.workspaces[into.workspace]?.is_focused === true;
+        if ((!served && waiting === null) || joelThere) {
             keepPlaces(Object.assign({}, keptPlaces, { [id]: { workspace: into.workspace,
                 column: into.column, at: Date.now() } }));
             console.info(`sessions: ${id}'s viewer waits for `
-                + `${!served ? "its host" : "Joel to leave"}, kept at `
+                + `${joelThere ? "Joel to leave" : "its host"}, kept at `
                 + `${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
             reopenNext();
             return;
         }
         reopening.begun.push(id);
-        console.info(`sessions: reopening ${id}'s viewer, kept at ${root.keptSaid(at)}, `
+        console.info(`sessions: reopening ${id}'s viewer${served ? "" : " to wait for its host"}, `
+            + `kept at ${root.keptSaid(at)}, `
             + `asked on ${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`);
         reopening.waiting = { classed: named, at, opened: null, said: false,
             away: next.at?.away ?? null, kept: next.kept ?? null, quiet: true,
             quest: next.one.quest ?? "", from: next.one.from ?? "", id,
             orchestratedBy: next.one.orchestratedBy ?? "" };
-        view(session, into);
+        if (served)
+            view(session, into);
+        else
+            viewWith(waiting, named, into, Viewers.viewerTitle("", next.one.title, next.one.cwd));
         paceFromNow(id);
         reopenPatience.restart();
     }
@@ -2444,11 +2455,21 @@ Singleton {
             unhosted(session);
             return;
         }
+        const title = Viewers.viewerTitle(session.presence?.title, session.title,
+            session.presence?.cwd);
+        if (viewWith(words.map(String), named, into, title))
+            Report.say(`viewing hosted session ${session.address}`);
+    }
+    // Opens a viewer, `named`, running `words` in a window titled `title`
+    // from its first moment, `into` a place or where niri opens one; or
+    // nothing, said false, while one asked of it moments ago may still be
+    // opening.
+    function viewWith(words, named, into, title) {
         if (Date.now() - (attaching[named] ?? 0) < attachPatience)
-            return;
+            return false;
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
-        root.inSessions("pi-hosted", viewing(words.map(String)), into ?? null, named);
-        Report.say(`viewing hosted session ${session.address}`);
+        root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
+        return true;
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
@@ -2539,7 +2560,11 @@ Singleton {
     // The app id a hosted session's viewer opens with, by pi's session id,
     // which stays the same as its host restarts, or "" for one not hosted.
     function viewerOf(presence) {
-        const id = presence?.hosted ? String(presence.session ?? "") : "";
+        return viewerNamed(presence?.hosted ? String(presence.session ?? "") : "");
+    }
+    // The app id of the viewer of session `id`, or "" for an id no app id
+    // could carry.
+    function viewerNamed(id) {
         return /^[A-Za-z0-9-]+$/.test(id) ? `pi-hosted.${id}` : "";
     }
 
