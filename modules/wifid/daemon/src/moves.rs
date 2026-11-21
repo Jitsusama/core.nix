@@ -363,10 +363,10 @@ fn went_back(
                 "at this hour"
             };
             // A failing link leaves for the point tried once a whole span
-            // on the point gone back to says so (choose.rs).
+            // on whatever point the card is on says so (choose.rs).
             let after = if kept {
                 format!(
-                    "{spurned} unless the card's link on {to} fails a whole span, having gone \
+                    "{spurned} unless the card's link fails a whole span, having gone \
                      back from it once already"
                 )
             } else {
@@ -951,8 +951,8 @@ mod tests {
         );
         assert!(
             usually_again.ends_with(&format!(
-                "{}{kept} unless the card's link on {DESK} fails a whole span, having gone back \
-                 from it once already",
+                "{}{kept} unless the card's link fails a whole span, having gone back from it \
+                 once already",
                 usual_line("at this hour")
             )),
             "a second back on the usual says it keeps off the point: {usually_again}"
@@ -981,6 +981,64 @@ mod tests {
             "a second back on the usual says so, and keeps the hall it tried off: {line}"
         );
         assert!(chooser.went_back().is_none(), "why is said once");
+    }
+
+    #[test]
+    fn a_failing_link_held_after_a_back_and_a_keep_off_giving_way_are_each_said_once() {
+        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(Instant::now());
+        chooser.went_back();
+        let failing = Measured {
+            lost: 15.0,
+            ..idle(400)
+        };
+        let around = [
+            Other {
+                frequency: 5260,
+                ..other(DESK, None)
+            },
+            Other {
+                frequency: 5260,
+                ..other(HALL, None)
+            },
+        ];
+        let on = joined(DESK);
+        let at = (DESK, &failing, -50, 5260);
+
+        let held = chooser.choose(again + Duration::from_secs(60), at, &around, false);
+        let held_said = asides(&mut chooser, &on, &failing, -50);
+        let held_again = asides(&mut chooser, &on, &failing, -50);
+        let yielded = chooser.choose(again + measure::SPAN, at, &around, false);
+        let yielded_said = asides(&mut chooser, &on, &failing, -50);
+        let yielded_again = asides(&mut chooser, &on, &failing, -50);
+
+        assert_eq!(
+            held,
+            Choice::Stay,
+            "a desk failing just after the back holds"
+        );
+        assert_eq!(
+            held_said,
+            [format!(
+                "wlan2 stays on {DESK} though it loses 15.0%, as it was sent back there under \
+                 120 s ago and echoes lost on the way may be among them"
+            )],
+            "and says only why"
+        );
+        assert_eq!(held_again, Vec::<String>::new(), "once");
+        assert_eq!(
+            yielded,
+            Choice::Try(HALL.into()),
+            "a whole span on, it tries the hall"
+        );
+        assert_eq!(
+            yielded_said,
+            [format!(
+                "wlan2 may try {HALL} though it kept it off, as its link on {DESK} has failed \
+                 a whole span"
+            )],
+            "and says only that the keep-off gave way"
+        );
+        assert_eq!(yielded_again, Vec::<String>::new(), "once");
     }
 
     #[test]

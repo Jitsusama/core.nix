@@ -491,8 +491,10 @@ impl Chooser {
     /// failing, as echoes lost on the way back may fall in the first, and
     /// the point it left was just judged no better. Only that span is: a
     /// card come back to the point later, as by a roam, is judged as any.
-    /// The span is counted from the back, as `young` is then, so the hold
-    /// ends as a keep-off that yields gives way.
+    /// The span is counted from the back, as `young` is where the card is
+    /// back on the point by the next choice, so the hold then ends as a
+    /// keep-off that yields gives way. A roam back landing later starts
+    /// `young` on landing, so the keep-off holds up to that much longer.
     fn holds_still(&self, now: Instant, point: &str, failing: bool) -> bool {
         let settled = self
             .moved
@@ -720,12 +722,14 @@ impl Chooser {
         // wrong, one usually quick says nothing of it now, a move off a
         // quick minute, to a quieter channel or at rest, was never made for
         // the point's slowness, and a minute with no echo couldn't reach
-        // its gateway at all. The usual was asked for as loaded as the card
+        // its gateway at all, and one echoing less than `ECHOED` gives a
+        // tail from too few to weigh. The usual was asked for as loaded as the card
         // was at the move, which a learned figure doesn't say itself: under
         // load what the point carried loaded, and nothing where that isn't
         // learned. Its loss stays the minute's, as the quicker rule's does.
         let like = loaded(&trial.before) == loaded(measured)
             && trial.before.p95.is_some()
+            && trial.before.echoes >= ECHOED
             && slowness(&trial.before) > SLOW
             && trial.before.lost <= LOSSY;
         let against = weighed_by(&trial.before, trial.usual.as_ref(), like);
@@ -759,7 +763,9 @@ impl Chooser {
                     && measured.lost <= LOSSY
                     && !worse(measured, &usual)
             });
-            let earned_here = |kept: &Kept| kept.from.as_deref() == Some(trial.from.as_str());
+            // One run out is no longer kept, so isn't said freed.
+            let earned_here =
+                |kept: &Kept| kept.from.as_deref() == Some(trial.from.as_str()) && now < kept.until;
             if as_usual {
                 self.usually.remove(&moved);
                 if self.spurned.get(point).is_some_and(earned_here) {
@@ -2600,7 +2606,9 @@ pub(crate) mod tests {
             &mut early,
             again + SPAN.saturating_sub(Duration::from_secs(1)),
         );
+        let yielded_young = early.yielded();
         let whole = desk(&mut early, again + SPAN);
+        let yielded_whole = early.yielded();
 
         let (mut stood, again) = hall_kept_off_on_the_usual(start);
         let settled = again + SETTLE;
@@ -2634,11 +2642,17 @@ pub(crate) mod tests {
             Choice::Stay,
             "a desk failing to the last second of the span after the back keeps off the hall"
         );
+        assert_eq!(yielded_young, None, "saying no keep-off gave way");
         assert_eq!(
             whole,
             Choice::Try(HALL.into()),
             "a desk failing a whole span since the back leaves for the hall, which carried \
              better than it"
+        );
+        assert_eq!(
+            yielded_whole,
+            Some(HALL.into()),
+            "saying the keep-off gave way"
         );
         assert_eq!(judged, Choice::Stay, "the hall at 20 ms stands");
         assert!(
@@ -2694,12 +2708,15 @@ pub(crate) mod tests {
         let (mut lossy, again) = hall_kept_off_on_the_usual(start);
         let settled = again + SETTLE;
         let tried_lossy = lossy.choose(settled, (DESK, &failing, -50, CH52), &around, false);
+        // Losing past `LOSSY` but short of `FAILING`, so only the freeing
+        // rule's own bar keeps it.
         let losing = Measured {
             moving: None,
-            ..carried(20, 12.0)
+            ..carried(20, 5.0)
         };
         lossy.choose(settled + TRIAL, (HALL, &losing, -45, CH52), &around, false);
         let kept_lossy = lossy.keeps_off(HALL, settled + TRIAL);
+        let freed_lossy = lossy.freed();
 
         // Under load, the hall carries as the desk usually does idle, but
         // that says nothing of the usual under load.
@@ -2734,6 +2751,7 @@ pub(crate) mod tests {
         echoed.choose(settled + TRIAL, (HALL, &enough, -45, CH52), &around, false);
         let freed = !echoed.keeps_off(HALL, settled + TRIAL);
         let said_freed = echoed.freed();
+        let said_again = echoed.freed();
 
         assert_eq!(
             unlearned_stands,
@@ -2746,8 +2764,9 @@ pub(crate) mod tests {
         );
         assert!(
             kept_lossy,
-            "a hall quick but losing 12% didn't carry as the desk usually does"
+            "a hall quick but losing 5% didn't carry as the desk usually does"
         );
+        assert_eq!(freed_lossy, None, "so says nothing freed");
         assert!(
             kept_loaded,
             "nor did one quick under load, the usual learned idle"
@@ -2755,6 +2774,7 @@ pub(crate) mod tests {
         assert!(kept_unechoed, "nor one echoing too little to say");
         assert!(freed, "one echoing just enough frees the hall");
         assert_eq!(said_freed, Some((HALL.into(), DESK.into())), "and says so");
+        assert_eq!(said_again, None, "once");
         let tries = [
             tried_unlearned,
             tried_lossy,
@@ -2795,6 +2815,7 @@ pub(crate) mod tests {
         let tried = chooser.choose(roamed + SPAN, (DESK, &failing, -50, CH52), &around, false);
         let stands = chooser.choose(judged, (HALL, &quick, -45, CH52), &around, false);
         let kept = chooser.keeps_off(HALL, judged);
+        let said_freed = chooser.freed();
 
         assert_eq!(
             tried,
@@ -2809,6 +2830,81 @@ pub(crate) mod tests {
         assert!(
             kept,
             "but the keep-off the stairs' usual earned holds, as the desk's says nothing of it"
+        );
+        assert_eq!(said_freed, None, "and nothing is said freed");
+    }
+
+    #[test]
+    fn a_trial_standing_once_its_keep_off_ran_out_says_nothing_freed() {
+        let start = Instant::now();
+        let (mut chooser, again) = hall_kept_off_on_the_usual(start);
+        let failing = Measured {
+            moving: None,
+            ..carried(400, 15.0)
+        };
+        let quick = Measured {
+            moving: None,
+            ..carried(20, 0.0)
+        };
+        let around = around_the_desk();
+        let late = again + SPURNED.saturating_sub(Duration::from_secs(60));
+        let tried = chooser.choose(late, (DESK, &failing, -50, CH52), &around, false);
+        let stands = chooser.choose(late + TRIAL, (HALL, &quick, -45, CH52), &around, false);
+
+        assert_eq!(
+            tried,
+            Choice::Try(HALL.into()),
+            "a desk failing in the keep-off's last minute tries the hall through it"
+        );
+        assert_eq!(
+            stands,
+            Choice::Stay,
+            "the hall, as quick as the desk usually is, stands"
+        );
+        assert_eq!(
+            chooser.freed(),
+            None,
+            "but its keep-off had run out, so nothing is said freed"
+        );
+    }
+
+    #[test]
+    fn a_failing_link_new_on_a_point_waits_a_whole_span_for_a_keep_off_to_give_way() {
+        let start = Instant::now();
+        let (mut chooser, again) = hall_kept_off_on_the_usual(start);
+        let failing = Measured {
+            moving: None,
+            ..carried(400, 15.0)
+        };
+        let stairs = Other {
+            point: STAIRS.into(),
+            ..desk_at(-50, None)
+        };
+        let around = [stairs, hall(-45, Some(20), None)];
+        // wpa_supplicant roams the card to the stairs, so no hold after a
+        // back keeps it, only its span there being young.
+        let roamed = again + SETTLE;
+        let on = (STAIRS, &failing, -50, CH52);
+        chooser.choose(roamed, on, &around, false);
+        let young = chooser.choose(
+            roamed + SPAN.saturating_sub(Duration::from_secs(1)),
+            on,
+            &around,
+            false,
+        );
+        let held = chooser.held();
+        let whole = chooser.choose(roamed + SPAN, on, &around, false);
+
+        assert_ne!(
+            young,
+            Choice::Try(HALL.into()),
+            "the stairs failing less than a whole span keep off the hall"
+        );
+        assert_eq!(held, None, "held by no back");
+        assert_eq!(
+            whole,
+            Choice::Try(HALL.into()),
+            "failing a whole span, they leave for it"
         );
     }
 
@@ -2838,10 +2934,17 @@ pub(crate) mod tests {
         let mut desk = back();
         let young = desk.choose(minute, (DESK, &failing, -50, CH52), &around, false);
         let said = desk.held();
+        let said_again = desk.held();
         let whole = desk.choose(now + SPAN, (DESK, &failing, -50, CH52), &around, false);
+        let said_whole = desk.held();
         // The roam back refused, so the card is still on the hall.
         let mut stuck = back();
         let still = stuck.choose(minute, (HALL, &failing, -45, CH52), &around, false);
+        // Moved on to the desk since, within the span after the back, it's
+        // judged as any card there, no longer held.
+        let landed_at = minute + Duration::from_secs(30);
+        let landed = stuck.choose(landed_at, (DESK, &failing, -50, CH52), &around, false);
+        let landed_held = stuck.held();
 
         assert_eq!(
             young,
@@ -2849,6 +2952,8 @@ pub(crate) mod tests {
             "a desk failing in the span after the back waits"
         );
         assert_eq!(said, Some(DESK.into()), "and says it's held");
+        assert_eq!(said_again, None, "once");
+        assert_eq!(said_whole, None, "and not once it leaves");
         assert_eq!(
             whole,
             Choice::Try(elsewhere().point),
@@ -2859,6 +2964,12 @@ pub(crate) mod tests {
             Choice::Try(DESK.into()),
             "a card not back on the desk isn't held on the hall, and tries the loudest it hears"
         );
+        assert_eq!(
+            landed,
+            Choice::Try(elsewhere().point),
+            "a card moved on since the back isn't held where it went back to"
+        );
+        assert_eq!(landed_held, None, "nor said held");
     }
 
     #[test]
