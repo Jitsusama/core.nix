@@ -42,5 +42,18 @@
       "test_finds_the_connection"
     ],
     "test": "vm-the-connection-stays-quick"
+  },
+  {
+    "at": 1795244109,
+    "commit": "b18b11bc945b6bb13b41ae946fa3b170454acbee",
+    "due": "2026-11-23",
+    "owner_pr": 5953,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at b18b11bc945b",
+    "subtests": [
+      "test_climbs_back",
+      "test_second_link"
+    ],
+    "test": "vm-the-connection-stays-quick"
   }
 ]
