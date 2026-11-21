@@ -271,3 +271,58 @@ fn a_sweep_keeps_an_enrolment_a_killed_run_left() {
     assert!(off.is_some(), "a killed run's enrolment wasn't kept");
     assert!(!left, "the killed run's folder was left to be found again");
 }
+
+#[test]
+fn a_sweep_looks_in_both_of_a_killed_run_s_profiles_in_the_cache() {
+    for prefix in ["profile-", "far-"] {
+        let folder = std::env::temp_dir().join(format!("cul-cache-{prefix}{}", std::process::id()));
+        let gone = folder.join(format!("{prefix}4294967294"));
+        let state = folder.join("state");
+        fs::create_dir_all(gone.join("Policy/Enrollment")).unwrap();
+        fs::write(gone.join("Policy/Enrollment/token"), "t").unwrap();
+        let swept = swept(&folder.join("runtime"), &folder, &state);
+        let off = managed::stays_off(&state);
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(
+            swept.is_err_and(|why| why.contains("enrolled")),
+            "a killed run's {prefix} profile was swept unread"
+        );
+        assert!(
+            off.is_some(),
+            "a killed run's {prefix} enrolment wasn't kept"
+        );
+    }
+}
+
+#[test]
+fn an_enrolment_that_can_t_be_kept_stays_where_it_is() {
+    let folder = std::env::temp_dir().join(format!("cul-unkept-{}", std::process::id()));
+    let profile = folder.join("profile-4294967294");
+    // A file where the state folder should be, so nothing can be kept.
+    let state = folder.join("state");
+    fs::create_dir_all(profile.join("Policy/Enrollment")).unwrap();
+    fs::write(profile.join("Policy/Enrollment/token"), "t").unwrap();
+    fs::write(&state, "not a folder").unwrap();
+    drop(Started {
+        folders: vec![profile.clone()],
+        children: Vec::new(),
+        profiles: vec![profile.clone()],
+        state: state.clone(),
+    });
+    let ended_left = profile.exists();
+    let swept = sweep(&folder, "profile-", &state);
+    let sweep_left = profile.exists();
+    fs::remove_dir_all(&folder).unwrap();
+    assert!(
+        ended_left,
+        "an enrolment that couldn't be kept went with the call"
+    );
+    assert!(
+        swept.is_err(),
+        "the sweep let a run start past an unkept enrolment"
+    );
+    assert!(
+        sweep_left,
+        "the sweep removed an enrolment it couldn't keep"
+    );
+}

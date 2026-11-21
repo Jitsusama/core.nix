@@ -89,7 +89,12 @@ impl Drop for Started {
             let _ = child.wait();
         }
         let profiles: Vec<&Path> = self.profiles.iter().map(PathBuf::as_path).collect();
-        let _ = unenrolled(&profiles, &self.state);
+        if unenrolled(&profiles, &self.state).is_err() && managed::stays_off(&self.state).is_none()
+        {
+            // An enrolment that couldn't be kept stays where it is, for
+            // the next run's sweep to find, rather than going unread.
+            return;
+        }
         for folder in &self.folders {
             let _ = fs::remove_dir_all(folder);
         }
@@ -206,7 +211,7 @@ fn sends() -> Value {
 }
 
 /// Runs a call of `seconds` with `chrome`, on the page at `page`; `runtime`
-/// is Joel's runtime folder, `cache` the folder the profile goes in and
+/// is Joel's runtime folder, `cache` the folder both profiles go in and
 /// `state` where an enrolment is kept.
 pub fn run(
     chrome: &Path,
@@ -217,8 +222,6 @@ pub fn run(
     state: &Path,
 ) -> Result<Ended, String> {
     let watch = Watch::start();
-    sweep(runtime, "call-under-load-", state)?;
-    sweep(cache, "profile-", state)?;
     let folders = Folders {
         runtime,
         cache,
@@ -276,6 +279,15 @@ impl From<Ended> for Step {
     }
 }
 
+/// Removes what earlier runs ended without their cleanup left in
+/// `runtime` and `cache`, looking in each profile first (`sweep`). It's
+/// run before the hour's gates, so a skipped hour still looks.
+pub fn swept(runtime: &Path, cache: &Path, state: &Path) -> Result<(), String> {
+    sweep(runtime, "call-under-load-", state)?;
+    sweep(cache, "profile-", state)?;
+    sweep(cache, "far-", state)
+}
+
 /// Removes what an earlier run ended without its cleanup left in
 /// `folder`: each `<prefix><pid>` whose process is gone. A run killed by
 /// a signal never looked in its profiles, so each is looked in here, and
@@ -291,14 +303,19 @@ fn sweep(folder: &Path, prefix: &str, state: &Path) -> Result<(), String> {
         };
         if pid.parse::<u32>().is_ok() && !Path::new("/proc").join(pid).exists() {
             let left = entry.path();
-            // The far end's profile is made inside the runtime folder.
+            // A run before the far end's profile moved to the cache made
+            // it inside the runtime folder.
             let far = left.join("far");
-            // What it was given is copied into `state` before the folder goes.
+            // What it was given is copied into `state` before the folder
+            // goes, and a folder whose enrolment couldn't be kept stays.
             let looked = unenrolled(&[left.as_path(), far.as_path()], state);
-            let _ = fs::remove_dir_all(&left);
             if let Err(Step::Refused(why)) = looked {
+                if managed::stays_off(state).is_some() {
+                    let _ = fs::remove_dir_all(&left);
+                }
                 return Err(why);
             }
+            let _ = fs::remove_dir_all(&left);
         }
     }
     Ok(())
@@ -316,9 +333,11 @@ fn steps(
     // A Wayland socket's path must fit in 108 bytes, so it's kept short.
     let memory = folders.runtime.join(format!("call-under-load-{id}"));
     let profile = folders.cache.join(format!("profile-{id}"));
-    let far_profile = memory.join("far");
+    // Both profiles are in the cache, not the runtime folder, which a
+    // logout or a reboot empties before a sweep could look in it.
+    let far_profile = folders.cache.join(format!("far-{id}"));
     let mut started = Started {
-        folders: vec![memory.clone(), profile.clone()],
+        folders: vec![memory.clone(), profile.clone(), far_profile.clone()],
         children: Vec::new(),
         profiles: vec![profile.clone(), far_profile.clone()],
         state: folders.state.to_path_buf(),

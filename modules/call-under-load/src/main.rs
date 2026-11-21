@@ -200,9 +200,30 @@ fn unmanaged() -> Result<(), Failure> {
     Ok(())
 }
 
+/// An enrolment this run found: refused, as the next hour would be
+/// (`unmanaged`), naming what was kept where it was, or saying where the
+/// profile was left when it couldn't be.
+fn enrolled(why: String) -> Failure {
+    unmanaged().err().unwrap_or_else(|| {
+        Failure::new(Exit::Refused, "a test browser enrolled")
+            .because(why)
+            .try_this(format!(
+                "ls -R {}",
+                env_dir("XDG_CACHE_HOME", ".cache")
+                    .join("call-under-load")
+                    .display()
+            ))
+    })
+}
+
 /// The hour's test call, and the figures written for cadence.
 fn run(context: &Context) -> Result<(), Failure> {
     unmanaged()?;
+    let runtime = env_dir("XDG_RUNTIME_DIR", ".cache");
+    let cache = env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load");
+    // What a killed run left is looked in before the gates, so an hour
+    // skipped for a meeting still finds an enrolment it holds.
+    call::swept(&runtime, &cache, &state()).map_err(enrolled)?;
     let skip = |why: String| {
         context
             .say(&format!("no test call this hour: {why}\n"))
@@ -219,7 +240,6 @@ fn run(context: &Context) -> Result<(), Failure> {
             );
         }
     }
-    let runtime = env_dir("XDG_RUNTIME_DIR", ".cache");
     let socket = runtime.join("daemons/google.sock");
     let calendar = gate::ask(&socket).and_then(|answer| gate::calendar(&answer));
     let calendar = calendar.map_err(|why| {
@@ -247,8 +267,10 @@ fn run(context: &Context) -> Result<(), Failure> {
                 .because("share/call-under-load/page.html isn't beside the program")
                 .try_this("nix build .#call-under-load")
         })?;
-    let cache = env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load");
     let ended = call::run(&chrome, &page, SECONDS, &runtime, &cache, &state()).map_err(|why| {
+        if managed::stays_off(&state()).is_some() {
+            return enrolled(why);
+        }
         Failure::new(Exit::Failed, "the test call couldn't be made")
             .because(why)
             .try_this("journalctl --user -u call-under-load")
