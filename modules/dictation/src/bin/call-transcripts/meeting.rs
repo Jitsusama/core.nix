@@ -1,7 +1,8 @@
 //! What a call is, from what this machine already knows, with no network:
 //! a Tuple call from tuple-call, the daemon following Tuple's, asked on
 //! its socket who it's with; or a meeting from the google program's
-//! daemon, asked on its socket for the meetings it holds, the one on now.
+//! daemon, asked on its socket for the meetings it holds, the one on now,
+//! with who's in its Meet where the daemon follows that (meet.rs).
 //! Each call's folder is named by when it started and what it was, so the
 //! file picker and search find it by its title.
 
@@ -38,12 +39,13 @@ pub struct Meeting {
     pub known: Option<Known>,
 }
 
-/// How the others on a call are known: from the Tuple call itself, so
-/// they're on it, or from the meeting's invitation, so they were asked,
-/// which is less.
+/// How the others on a call are known: from the Tuple call or the Meet
+/// itself, so they're on it, or from the meeting's invitation, so they
+/// were asked, which is less.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Known {
     Tuple,
+    Meet,
     Invitation,
 }
 
@@ -52,6 +54,7 @@ impl Known {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Tuple => "tuple",
+            Self::Meet => "meet",
             Self::Invitation => "invitation",
         }
     }
@@ -61,6 +64,7 @@ impl Known {
     pub fn read(said: &str) -> Option<Self> {
         match said {
             "tuple" => Some(Self::Tuple),
+            "meet" => Some(Self::Meet),
             "invitation" => Some(Self::Invitation),
             _ => None,
         }
@@ -68,21 +72,33 @@ impl Known {
 }
 
 /// The call on at `now`, from what's in `runtime`; a Tuple call first,
-/// since it has people only while one is on, and a meeting otherwise.
-pub fn on(runtime: &Path, now: u64) -> Meeting {
+/// since it has people only while one is on, and a meeting otherwise,
+/// its people those in its Meet where that says, Joel, `me`, left out,
+/// and its invitation's where it doesn't.
+pub fn on(runtime: &Path, now: u64, me: &str) -> Meeting {
     if let Some(call) = on_tuple(runtime) {
         return call;
     }
     let before = signed_in(runtime);
+    let answered = before.is_some();
     let listed = meetings(&runtime.join("daemons/google.sock"));
-    // Asked again only when it can matter, so a daemon that doesn't answer
-    // holds a call's start for two asks rather than three.
-    meeting(&listed, now)
+    // Asked again only when it can matter, and its Meet only when it
+    // answered at all, so a daemon that doesn't answer holds a call's
+    // start for two asks rather than four.
+    let mut on = meeting(&listed, now)
         .map(|on| Meeting {
             account: before.filter(|before| signed_in(runtime).as_ref() == Some(before)),
             ..on
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let met = answered
+        .then(|| crate::meet::on_meet_of(runtime, &listed, on.event.as_deref(), me))
+        .flatten();
+    if let Some(people) = met {
+        on.people = people;
+        on.known = Some(Known::Meet);
+    }
+    on
 }
 
 /// The Tuple call on, from tuple-call in `runtime`, or none.
@@ -117,7 +133,7 @@ fn tuple_call(socket: &Path) -> Option<Value> {
 
 /// The meetings the google program's daemon holds; or none when it isn't
 /// there or doesn't answer in time.
-fn meetings(socket: &Path) -> Vec<Value> {
+pub fn meetings(socket: &Path) -> Vec<Value> {
     let Some(said) = asked(socket, &json!({"id": 1, "ask": "list", "kind": "meeting"})) else {
         return Vec::new();
     };
@@ -131,7 +147,7 @@ fn meetings(socket: &Path) -> Vec<Value> {
 
 /// A daemon's answer to one ask, by the daemons' interface: one line out
 /// and one back; or none when it isn't there or doesn't answer in time.
-fn asked(socket: &Path, ask: &Value) -> Option<Value> {
+pub fn asked(socket: &Path, ask: &Value) -> Option<Value> {
     let stream = UnixStream::connect(socket).ok()?;
     stream.set_read_timeout(Some(ANSWERS_WITHIN)).ok()?;
     stream.set_write_timeout(Some(ANSWERS_WITHIN)).ok()?;
@@ -250,6 +266,23 @@ pub fn joined(mut kept: Vec<String>, now: &[String]) -> Vec<String> {
         }
     }
     kept
+}
+
+/// Who's been on a call and how that's known, once what was `kept` hears
+/// what's said `now`: being on it beats being asked, so the people a Tuple
+/// call or a Meet says replace those its invitation asked; the same source
+/// again adds whoever joined (`joined`); and nothing said, or only an
+/// invitation after being on it, keeps what was. A Tuple call and a Meet
+/// are different calls, so neither replaces the other.
+pub fn came(
+    kept: (Vec<String>, Option<Known>),
+    now: (Vec<String>, Option<Known>),
+) -> (Vec<String>, Option<Known>) {
+    match (kept.1, now.1) {
+        (Some(was), Some(is)) if was == is => (joined(kept.0, &now.0), Some(was)),
+        (None | Some(Known::Invitation), Some(_)) => now,
+        _ => kept,
+    }
 }
 
 /// Someone's `field`, as a name a transcript can write a speaker under:
@@ -544,7 +577,7 @@ mod tests {
     #[test]
     fn a_meeting_is_kept_as_its_account_s_only_when_it_was_said_before_and_after_its_list() {
         let none = json!({"state": "none", "since": null, "people": []});
-        let on_it = on(&runtime("same", &none), NOW);
+        let on_it = on(&runtime("same", &none), NOW, "Joel");
         assert_eq!(
             (on_it.title.as_str(), on_it.account.as_deref()),
             ("Planning", Some(ACCOUNT)),
@@ -555,7 +588,7 @@ mod tests {
             ("unheard-before", Value::Null, json!(ACCOUNT)),
             ("unheard-after", json!(ACCOUNT), Value::Null),
         ] {
-            let on_it = on(&on_accounts(name, &none, &before, &after), NOW);
+            let on_it = on(&on_accounts(name, &none, &before, &after), NOW, "Joel");
             assert_eq!(
                 on_it.title, "Planning",
                 "{name}: the meeting is still the call"
@@ -567,7 +600,7 @@ mod tests {
         }
         let call = json!({"state": "connected", "people": [{"name": "Ada", "email": "a@x"}]});
         assert_eq!(
-            on(&runtime("tuple-account", &call), NOW).account,
+            on(&runtime("tuple-account", &call), NOW, "Joel").account,
             None,
             "a Tuple call is no Google account's"
         );
@@ -576,7 +609,7 @@ mod tests {
     #[test]
     fn tuple_call_is_asked_and_a_tuple_call_comes_before_a_meeting() {
         let call = json!({"state": "connected", "people": [{"name": "Ada", "email": "a@x"}]});
-        let on = on(&runtime("tuple", &call), NOW);
+        let on = on(&runtime("tuple", &call), NOW, "Joel");
         assert_eq!(on.title, "Ada");
         assert_eq!(on.event, None);
     }
@@ -584,10 +617,56 @@ mod tests {
     #[test]
     fn with_no_tuple_call_on_the_meeting_is_the_call() {
         let none = json!({"state": "none", "since": null, "people": []});
-        assert_eq!(on(&runtime("none", &none), NOW).title, "Planning");
+        assert_eq!(on(&runtime("none", &none), NOW, "Joel").title, "Planning");
         let gone = runtime("gone", &none);
         std::fs::remove_file(gone.join("daemons/tuple-call.sock")).unwrap();
-        assert_eq!(on(&gone, NOW).title, "Planning");
+        assert_eq!(on(&gone, NOW, "Joel").title, "Planning");
+    }
+
+    #[test]
+    fn a_followed_meet_says_who_s_on_the_meeting_in_place_of_its_invitation() {
+        let runtime = std::env::temp_dir().join(format!("meeting-meet-{}", std::process::id()));
+        std::fs::create_dir_all(runtime.join("daemons")).unwrap();
+        let _ = std::fs::remove_file(runtime.join("daemons/tuple-call.sock"));
+        let planning = json!({"id": "e1", "title": "Planning",
+            "start": NOW - MINUTE, "end": NOW + MINUTE,
+            "link": "https://meet.google.com/abc-defg-hij",
+            "guests": [{"name": "Ada", "email": "ada@example.com", "answer": "yes"},
+                       {"name": "Bo", "email": "bo@example.com", "answer": "yes"}]});
+        let meetings = json!({"records": [{"key": "meeting:e1", "kind": "meeting",
+            "meeting": planning}]});
+        // Another followed call comes first, so only the event's link
+        // finds the one it is.
+        let call = |code: &str, other: &str| {
+            json!({"key": format!("call:{code}"), "kind": "call",
+                "call": {"code": code, "granted": true, "known": true,
+                         "started": NOW - MINUTE,
+                         "people": [{"name": "Joel Gerber", "joined": NOW - MINUTE},
+                                    {"name": other, "joined": NOW - MINUTE}]}})
+        };
+        let calls = json!({"records": [call("kkk-llll-mmm", "Grace Hopper"),
+            call("abc-defg-hij", "Ada Lovelace")]});
+        let whose = json!(["account:google"]);
+        serving(
+            &runtime.join("daemons/google.sock"),
+            vec![
+                ("get", "keys", whose.clone(), account(&json!(ACCOUNT))),
+                ("list", "kind", json!("meeting"), meetings),
+                ("get", "keys", whose, account(&json!(ACCOUNT))),
+                ("list", "kind", json!("call"), calls),
+            ],
+        );
+        let on_it = on(&runtime, NOW, "Joel Gerber");
+        assert_eq!(
+            (on_it.people, on_it.known),
+            (vec!["Ada Lovelace".to_owned()], Some(Known::Meet)),
+            "the linked Meet's one other person didn't stand for the two invited"
+        );
+        assert_eq!(
+            on_it.event.as_deref(),
+            Some("e1"),
+            "the meeting is still the call"
+        );
     }
 
     #[test]
@@ -596,7 +675,7 @@ mod tests {
         let bare = runtime("bare", &none);
         std::fs::remove_file(bare.join("daemons/tuple-call.sock")).unwrap();
         std::fs::remove_file(bare.join("daemons/google.sock")).unwrap();
-        assert_eq!(on(&bare, NOW), Meeting::default());
+        assert_eq!(on(&bare, NOW, "Joel"), Meeting::default());
     }
 
     #[test]
@@ -643,5 +722,47 @@ mod tests {
         assert_eq!(name.len(), "2027-01-15 03.20 Q4 planning".len(), "{name}");
         assert!(!folder(NOW, "..").contains(".."));
         assert_eq!(folder(NOW, "").len(), "2027-01-15 03.20".len());
+    }
+
+    #[test]
+    fn being_on_a_call_beats_being_asked_to_it() {
+        let names = |names: &[&str]| {
+            names
+                .iter()
+                .map(|&name| name.to_owned())
+                .collect::<Vec<_>>()
+        };
+        let invited = (names(&["Ada", "Bo"]), Some(Known::Invitation));
+        assert_eq!(
+            came(invited.clone(), (names(&["Ada"]), Some(Known::Meet))),
+            (names(&["Ada"]), Some(Known::Meet)),
+            "the Meet's people didn't replace the invitation's"
+        );
+        let in_meet = (names(&["Ada"]), Some(Known::Meet));
+        assert_eq!(
+            came(in_meet.clone(), (names(&["Bo"]), Some(Known::Meet))),
+            (names(&["Ada", "Bo"]), Some(Known::Meet)),
+            "someone who left the Meet was forgotten, or a late joiner missed"
+        );
+        assert_eq!(
+            came(in_meet.clone(), invited.clone()),
+            in_meet,
+            "a rejoin's invitation undid who was in the Meet"
+        );
+        assert_eq!(
+            came(in_meet.clone(), (names(&["Grace"]), Some(Known::Tuple))),
+            in_meet,
+            "a Tuple call was taken for the Meet's"
+        );
+        assert_eq!(
+            came(in_meet.clone(), (Vec::new(), None)),
+            in_meet,
+            "nothing said"
+        );
+        assert_eq!(
+            came((Vec::new(), None), (names(&["Ada"]), Some(Known::Meet))),
+            (names(&["Ada"]), Some(Known::Meet)),
+            "a call nothing named didn't take the Meet's people"
+        );
     }
 }

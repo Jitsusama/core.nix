@@ -146,7 +146,23 @@ fn the_one_other_person_names_their_side_and_the_note_says_how_they_re_known() {
         tuple.note("Joel").as_deref(),
         Some("Their side is Ada Lovelace, the one other person on the Tuple call.")
     );
+    let meet = Record {
+        known: Some(Known::Meet),
+        ..invited.clone()
+    };
+    assert_eq!(
+        meet.note("Joel").as_deref(),
+        Some("Their side is Ada Lovelace, the one other person in the Meet."),
+        "a Meet's one other person wasn't said to be from the Meet"
+    );
     let mut book = Book::default();
+    book.put(meet.clone());
+    let back = Book::read(folder.path());
+    assert_eq!(
+        back.record("call:e1").and_then(|back| back.known),
+        Some(Known::Meet),
+        "a Meet's people weren't read back as the Meet's"
+    );
     book.put(invited.clone());
     let back = Book::read(folder.path());
     let back = back.record("call:e1").unwrap();
@@ -173,6 +189,15 @@ fn several_others_name_no_side_and_the_note_lists_them() {
     assert_eq!(
         many.note("Joel").as_deref(),
         Some("On the Tuple call: P1, P2, P3, P4, P5, P6, P7, P8 and 3 more.")
+    );
+    let meet = Record {
+        known: Some(Known::Meet),
+        ..two.clone()
+    };
+    assert_eq!(
+        meet.note("Joel").as_deref(),
+        Some("In the Meet: Ada and Bo."),
+        "a Meet's people weren't listed as in it"
     );
     let namesake = Record {
         people: vec!["Joel".to_owned()],
