@@ -829,8 +829,8 @@ async fn answers_in_small_frames_pass_whole_while_pi_reads_late() {
     }
     // Pis too busy to read, so what the origin sends waits in the relay's
     // windows; h2 charges each small frame waiting there against what it
-    // allows the whole connection. Pi reads nothing until the origin can
-    // send no more.
+    // allows the whole connection. Pi reads nothing until the origin has
+    // sent every answer's window and then nothing more for a second.
     let sent = settled(&origin.sent).await;
     let began: Vec<StatusCode> = stalled.iter().map(Response::status).collect();
     let mut reading = tokio::task::JoinSet::new();
