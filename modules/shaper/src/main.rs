@@ -2330,7 +2330,7 @@ mod tests {
             "a device that isn't there"
         );
         assert_eq!(
-            seen_queues(Err("tc -j qdisc show dev CloudflareWARP: ".to_string())),
+            seen_queues(Err("tc -j qdisc show dev wg0: ".to_string())),
             None,
             "a tc killed partway"
         );
