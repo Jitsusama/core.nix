@@ -200,7 +200,10 @@ span.mark {
    then whose it is, then what. Where the rows can share one grid, the
    names stand in a column and the words start together. ---- */
 
+/* A row's height held before the first draw, so the list arriving moves
+   what is under it by its other rows only. */
 .looking {
+  min-block-size: 1lh;
   max-inline-size: var(--measure);
   margin: 0 0 var(--items);
   color: var(--text);

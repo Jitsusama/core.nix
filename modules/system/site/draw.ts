@@ -301,7 +301,9 @@ function looksDrawn(list: Looks): string {
   const more =
     list.more === 0
       ? ""
-      : `<p class="more">${escaped(`And ${list.more.toLocaleString("en-CA")} more below.`)}</p>`;
+      : // Said without a place, since the rest may be machines past those drawn,
+        // or a part's looks its own site holds.
+        `<p class="more">${escaped(`And ${list.more.toLocaleString("en-CA")} more.`)}</p>`;
   // A list role said outright, since Safari drops an unbulleted list's,
   // and with it the count a screen reader says first.
   const rows = `<ul class="looks" role="list">${list.looks.map(lookRow).join("")}</ul>`;

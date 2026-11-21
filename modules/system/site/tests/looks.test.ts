@@ -107,10 +107,11 @@ it("lists eight at most, however many there are, and counts the rest", () => {
   const many = Array.from({ length: 1000 }, (_, at) =>
     machine(`m${at}`, "watch", ["code wants a look"]),
   );
-  const listed = looksOf(system(many), 8);
+  const listed = looksOf(system(many, [part("network", "bad", ["the modem is down"])]), 8);
   assert.equal(listed.looks.length, LOOKS_LISTED, "the list stays a glance");
-  assert.equal(listed.more, 1000 - LOOKS_LISTED, "the rest are counted");
-  assert.equal(listed.looks[0]?.whose, "m0", "in the daemon's order");
+  assert.equal(listed.more, 1001 - LOOKS_LISTED, "the rest are counted");
+  assert.equal(listed.looks[0]?.words, "The modem is down", "ranked before it is cut");
+  assert.equal(listed.looks[1]?.whose, "m0", "in the daemon's order");
 });
 
 it("says nothing is worth a look only once every part has told", () => {
@@ -119,9 +120,15 @@ it("says nothing is worth a look only once every part has told", () => {
   assert.ok(looksDrawn(looksOf(quiet, 8)).includes("Nothing is worth a look."), "said so");
   const waiting = system([machine("kestrel", "good")], [], ["network"]);
   assert.equal(looksDrawn(looksOf(waiting, 8)), "", "a part still to come may hold a look");
+  const coming = system([machine("kestrel", "good")]);
+  const named: System = {
+    ...coming,
+    parts: coming.parts.map((each) => ({ ...each, untold: 1 })),
+  };
+  assert.equal(looksOf(named, 8).settled, false, "a machine still to come may hold a look");
 });
 
-it("names a part of any name in its own words, whatever the name", () => {
+it("names a part called like an Object key as itself", () => {
   const odd = system(
     [],
     [part("constructor", "watch", ["one look"]), part("toString", "unread", [])],
@@ -141,7 +148,14 @@ it("draws each look as a row of its own, every word escaped", () => {
   holds('<span class="words">&quot;out&quot; of reach</span>', "the words escaped");
   holds('<span class="sr"> (bad)</span>', "its health said to a reader");
   assert.ok(!drawn.includes("<b>"), "no record's markup reaches the page");
+  const odd = part('<i>net</i>" x="', "watch", ["one look"]);
+  const partDrawn = looksDrawn(looksOf(system([], [odd]), 8));
+  const partHolds = (words: string, why: string): void => assert.ok(partDrawn.includes(words), why);
+  partHolds('href="../&lt;i&gt;net&lt;/i&gt;&quot; x=&quot;/"', "a part's address escaped");
+  partHolds('<span class="whose">&lt;i&gt;net', "a part's name escaped");
+  assert.ok(!partDrawn.includes("<i>"), "no part's markup reaches the page");
   const many = Array.from({ length: 10 }, (_, at) => machine(`m${at}`, "watch", ["a look"]));
   const more = looksDrawn(looksOf(system(many), 8));
-  assert.ok(more.includes("And 2 more below."), "the rest counted");
+  // The rest may be machines the page doesn't draw, so they aren't said to be below.
+  assert.ok(more.includes("And 2 more.</p>"), "the rest counted, and no place claimed");
 });
