@@ -13,9 +13,11 @@
 //! The export reads 15 s at a time. Call-transcripts' takes are cut to fit
 //! one (takes.rs), since a word at a window's edge can be lost; a longer
 //! sound is still heard, as windows of 15 s, the decoder's state carried
-//! from one to the next so a window's first word follows the last one's. Decoding is greedy, as TDT's is:
-//! at each frame the joint names a token and how many frames to move on,
-//! a blank writes nothing, and a frame writes at most `MOST_PER_FRAME`.
+//! from one to the next so a window's first word follows the last one's.
+//! Decoding is greedy, as TDT's is: at each frame the joint names a token
+//! and how many frames to move on, a blank writes nothing, and a frame
+//! writes at most `MOST_PER_FRAME`. Each token's frame says when its word
+//! was said, so a take can be split where its voice changes.
 //!
 //! The model knows 25 languages, and now and then heard English as
 //! another ("Look at all this stuff man" once came out as "Legal, ne?"),
@@ -47,6 +49,17 @@ const DURATIONS: [usize; 5] = [0, 1, 2, 3, 4];
 const MOST_PER_FRAME: usize = 10;
 /// The piece that starts a word.
 const SPACE: char = '\u{2581}';
+/// The samples an encoder frame stands for, 80 ms: the spectrogram's
+/// 10 ms hop, eight of which the encoder makes one.
+const FRAME: usize = 8 * RATE / 100;
+
+/// A word heard, and the sample of the sound it starts at, by the frame
+/// its first piece was written on.
+#[derive(Debug, PartialEq)]
+pub struct Word {
+    pub text: String,
+    pub at: usize,
+}
 
 /// Parakeet, loaded and compiled.
 pub struct Parakeet {
@@ -181,6 +194,26 @@ impl Parakeet {
     ///
     /// When a run of any of the models fails.
     pub fn transcribe(&mut self, audio: &[f32]) -> Result<(String, Timings)> {
+        let (tokens, timings) = self.decode(audio)?;
+        let tokens: Vec<usize> = tokens.iter().map(|&(token, _)| token).collect();
+        Ok((self.vocab.text(&tokens), timings))
+    }
+
+    /// The words said in 16 kHz audio of any length, each with where it
+    /// starts, so a take can be split where its voice changes; they spell
+    /// what `transcribe` hears, a space between each.
+    ///
+    /// # Errors
+    ///
+    /// When a run of any of the models fails.
+    pub fn transcribe_words(&mut self, audio: &[f32]) -> Result<(Vec<Word>, Timings)> {
+        let (tokens, timings) = self.decode(audio)?;
+        Ok((self.vocab.words(&tokens), timings))
+    }
+
+    /// The tokens written over `audio`, each with the sample it was
+    /// written at, and how long it took.
+    fn decode(&mut self, audio: &[f32]) -> Result<(Vec<(usize, usize)>, Timings)> {
         let mut timings = Timings {
             mel: Duration::ZERO,
             encoder: Duration::ZERO,
@@ -199,7 +232,7 @@ impl Parakeet {
             },
         )?;
         timings.decoder += started.elapsed();
-        for window in audio.chunks(WINDOW) {
+        for (number, window) in audio.chunks(WINDOW).enumerate() {
             let started = Instant::now();
             let (mel, mel_frames) = self.spectrogram(window)?;
             let after_mel = Instant::now();
@@ -210,14 +243,19 @@ impl Parakeet {
                 frames: &frames,
                 predicted,
             };
-            tokens.extend(greedy(frames.len(), &mut steps)?);
+            let start = number * WINDOW;
+            tokens.extend(
+                greedy(frames.len(), &mut steps)?
+                    .into_iter()
+                    .map(|(token, frame)| (token, start + frame * FRAME)),
+            );
             predicted = steps.predicted;
             timings.mel += after_mel - started;
             timings.encoder += after_encoder - after_mel;
             timings.decoder += after_encoder.elapsed();
         }
         timings.tokens = tokens.len();
-        Ok((self.vocab.text(&tokens), timings))
+        Ok((tokens, timings))
     }
 
     /// A window's spectrogram, its frames that hold sound counted.
@@ -331,11 +369,12 @@ impl Model for Steps<'_> {
     }
 }
 
-/// The tokens written over `frames` frames, greedily: at each frame the
-/// likeliest token allowed, or blank, and the likeliest move on. A token
-/// that names no move stays on the frame for another, up to
-/// `MOST_PER_FRAME`; a blank that names none moves on one.
-fn greedy(frames: usize, model: &mut impl Model) -> Result<Vec<usize>> {
+/// The tokens written over `frames` frames, greedily, each with the frame
+/// it was written on: at each frame the likeliest token allowed, or
+/// blank, and the likeliest move on. A token that names no move stays on
+/// the frame for another, up to `MOST_PER_FRAME`; a blank that names none
+/// moves on one.
+fn greedy(frames: usize, model: &mut impl Model) -> Result<Vec<(usize, usize)>> {
     let blank = model.blank();
     let mut tokens = Vec::new();
     let (mut t, mut written) = (0, 0);
@@ -347,7 +386,7 @@ fn greedy(frames: usize, model: &mut impl Model) -> Result<Vec<usize>> {
         let token = likeliest(&scores[..=blank], |id| id == blank || model.allowed(id));
         let mut step = DURATIONS[likeliest(&scores[blank + 1..], |_| true)];
         if token != blank {
-            tokens.push(token);
+            tokens.push((token, t));
             model.predict(token)?;
             written += 1;
         }
@@ -420,6 +459,29 @@ impl Vocab {
             .map(String::as_str)
             .collect();
         joined.replace(SPACE, " ").trim().to_owned()
+    }
+
+    /// The words `tokens` spell, each at the sample its first piece was
+    /// written at; a piece that starts a word starts the next.
+    fn words(&self, tokens: &[(usize, usize)]) -> Vec<Word> {
+        let mut words: Vec<Word> = Vec::new();
+        for &(token, at) in tokens {
+            let Some(piece) = self.pieces.get(token) else {
+                continue;
+            };
+            let text = piece.trim_start_matches(SPACE);
+            match words.last_mut() {
+                Some(word) if text.len() == piece.len() || word.text.is_empty() => {
+                    word.text.push_str(text);
+                }
+                _ => words.push(Word {
+                    text: text.to_owned(),
+                    at,
+                }),
+            }
+        }
+        words.retain(|word| !word.text.is_empty());
+        words
     }
 }
 
@@ -592,14 +654,60 @@ mod tests {
         // and stays; then "ld" and moves on one, to the last frame's blank.
         let mut model = Scripted::new(&[(0, 2, 2), (2, 3, 0), (2, 4, 1), (3, 8, 1)]);
         let tokens = greedy(4, &mut model).unwrap();
-        assert_eq!(tokens, [2, 3, 4]);
+        assert_eq!(
+            tokens,
+            [(2, 0), (3, 2), (4, 2)],
+            "the tokens, or the frames they were written on, were wrong"
+        );
         assert_eq!(model.predicted, [2, 3, 4]);
+    }
+
+    #[test]
+    fn words_start_where_their_first_piece_was_written_and_spell_the_text() {
+        let vocab = vocab();
+        let tokens = [(2, 0), (3, 2 * FRAME), (4, 3 * FRAME)];
+        let words = vocab.words(&tokens);
+        assert_eq!(
+            words,
+            [
+                Word {
+                    text: "hello".to_owned(),
+                    at: 0
+                },
+                Word {
+                    text: "world".to_owned(),
+                    at: 2 * FRAME
+                }
+            ],
+            "a word didn't start at its first piece"
+        );
+        let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+        assert_eq!(
+            spelled.join(" "),
+            vocab.text(&[2, 3, 4]),
+            "the words spell other than the text"
+        );
+    }
+
+    #[test]
+    fn a_piece_that_doesnt_start_a_word_opens_one_when_nothing_came_before() {
+        let words = vocab().words(&[(4, FRAME), (7, 2 * FRAME)]);
+        let spelled: Vec<(&str, usize)> = words.iter().map(|w| (w.text.as_str(), w.at)).collect();
+        assert_eq!(
+            spelled,
+            [("ld", FRAME), ("ne", 2 * FRAME)],
+            "a take opening mid-word lost its first piece"
+        );
     }
 
     #[test]
     fn a_blank_naming_no_move_moves_on_one() {
         let mut model = Scripted::new(&[(0, 8, 0), (1, 8, 0), (2, 8, 0)]);
-        assert_eq!(greedy(3, &mut model).unwrap(), [] as [usize; 0]);
+        assert_eq!(
+            greedy(3, &mut model).unwrap(),
+            [] as [(usize, usize); 0],
+            "a blank wrote a token"
+        );
         assert_eq!(model.predicted, [] as [usize; 0]);
     }
 
@@ -608,14 +716,22 @@ mod tests {
         let mut script = vec![(0, 2, 0); MOST_PER_FRAME];
         script.push((1, 8, 1));
         let mut model = Scripted::new(&script);
-        assert_eq!(greedy(2, &mut model).unwrap(), [2; MOST_PER_FRAME]);
+        assert_eq!(
+            greedy(2, &mut model).unwrap(),
+            [(2, 0); MOST_PER_FRAME],
+            "a frame wrote more than its share, or on another frame"
+        );
     }
 
     #[test]
     fn a_token_outside_english_gives_way_to_the_next() {
         // "é" and "<|nospeech|>" score highest, so the runner up is written.
         let mut model = Scripted::new(&[(0, 5, 1), (1, 1, 1)]);
-        assert_eq!(greedy(2, &mut model).unwrap(), [3, 3]);
+        assert_eq!(
+            greedy(2, &mut model).unwrap(),
+            [(3, 0), (3, 1)],
+            "a token outside English was written, or not on its frame"
+        );
     }
 
     #[test]
