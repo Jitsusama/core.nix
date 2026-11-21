@@ -90,16 +90,24 @@ const SIZED: &[u8] = b"whole";
 /// and in all more than the sockets and buffers between the relay and pi
 /// hold, so a pi not reading leaves the relay unable to read the rest.
 const SMALL_FRAME: &[u8] = &[b'x'; 64];
-const SMALL_FRAMES: usize = 32 * 1024;
+const SMALL_FRAMES: usize = 16 * 1024;
 /// How many `/small-frames` answers pi leaves unread at once on the
-/// relay's one connection: about as many as each of its default four
-/// carries for sixty sessions, all stalled together on a machine under
-/// load.
-const STALLED_ANSWERS: usize = 16;
-/// How long pi reads nothing of the `/small-frames` answers, as one too
-/// busy to read on a machine under load: long enough for the origin to
-/// fill every window the relay holds open, which the test checks it did.
-const READS_NOTHING_FOR: Duration = Duration::from_secs(2);
+/// relay's one connection, as a machine under load leaves them: enough
+/// that a stream window four times the relay's spends h2's allowance (48
+/// MiB of a 32 MiB allowance at 256 KiB), while at the relay's own they
+/// cost 12 MiB of it.
+const STALLED_ANSWERS: usize = 64;
+/// The relay's stream window in `/small-frames` pieces: the least the
+/// origin sends of each answer before pi reads any, once the windows fill.
+const WINDOW_PIECES: usize = 64 * 1024 / SMALL_FRAME.len();
+/// How long the origin sends nothing more before the relay's windows count
+/// as full.
+const SETTLES_FOR: Duration = Duration::from_secs(1);
+/// How often the test reads how much the origin has sent.
+const SENT_READ_EVERY: Duration = Duration::from_millis(100);
+/// The longest the test waits for the windows to fill, which a connection
+/// ended early never lets them do.
+const FILLS_WITHIN: Duration = Duration::from_secs(30);
 // The relay's four 421 sentences, each pinned whole here. pi's client
 // goes direct on these exact words alone, with their one line break or
 // none, and on any other 421 takes it as the origin's answer. So one
@@ -820,9 +828,10 @@ async fn answers_in_small_frames_pass_whole_while_pi_reads_late() {
     }
     // Pis too busy to read, so what the origin sends waits in the relay's
     // windows; h2 charges each small frame waiting there against what it
-    // allows the whole connection.
-    tokio::time::sleep(READS_NOTHING_FOR).await;
-    let sent = origin.sent.load(Ordering::SeqCst);
+    // allows the whole connection. Pi reads nothing until the origin can
+    // send no more.
+    let sent = settled(&origin.sent).await;
+    let began: Vec<StatusCode> = stalled.iter().map(Response::status).collect();
     let mut reading = tokio::task::JoinSet::new();
     for answer in stalled {
         reading.spawn(async move {
@@ -840,17 +849,26 @@ async fn answers_in_small_frames_pass_whole_while_pi_reads_late() {
 
     let said = relay.said();
     assert!(
-        sent < STALLED_ANSWERS * SMALL_FRAMES,
-        "the origin sent every piece while pi read none, so nothing waited in the relay"
-    );
-    assert!(
         !said.contains("too_many_data_frames"),
         "h2 ended the connection over the frames pi hadn't read: {said}"
+    );
+    assert!(
+        began.iter().all(|&status| status == StatusCode::OK),
+        "an answer didn't begin, beginning as {began:?}; the relay said: {said}"
     );
     assert!(
         read.iter()
             .all(|&(length, same)| length == SMALL_FRAMES * SMALL_FRAME.len() && same),
         "an answer was cut short or changed, read as {read:?}; the relay said: {said}"
+    );
+    assert!(
+        sent >= STALLED_ANSWERS * WINDOW_PIECES,
+        "the origin sent {sent} pieces before pi read any, short of every answer's window, \
+         so the relay's windows never filled"
+    );
+    assert!(
+        sent < STALLED_ANSWERS * SMALL_FRAMES,
+        "the origin sent every piece while pi read none, so nothing waited in the relay"
     );
     assert_eq!(
         after.headers["x-origin-connection"], "0",
@@ -858,8 +876,32 @@ async fn answers_in_small_frames_pass_whole_while_pi_reads_late() {
     );
 }
 
+/// What `sent` counts once it has risen past every stalled answer's window
+/// and then held still for `SETTLES_FOR`, or at `FILLS_WITHIN`, which a
+/// connection ended early reaches.
+async fn settled(sent: &AtomicUsize) -> usize {
+    let filled = STALLED_ANSWERS * WINDOW_PIECES;
+    let gives_up_at = tokio::time::Instant::now() + FILLS_WITHIN;
+    let mut last = sent.load(Ordering::SeqCst);
+    let mut still_since = tokio::time::Instant::now();
+    loop {
+        // Read at intervals, since nothing says when the origin's sends end.
+        tokio::time::sleep(SENT_READ_EVERY).await;
+        let now = sent.load(Ordering::SeqCst);
+        let at = tokio::time::Instant::now();
+        if now != last {
+            last = now;
+            still_since = at;
+        }
+        if (now >= filled && at - still_since >= SETTLES_FOR) || at >= gives_up_at {
+            return now;
+        }
+    }
+}
+
 /// The answer to `request`, asked of the relay at `socket` on a connection
-/// of its own and begun, its body left for the caller to read.
+/// of its own and begun, its status left for the caller to judge and its
+/// body for it to read.
 async fn begun<B>(socket: &Path, request: Request<B>) -> Response<Incoming>
 where
     B: hyper::body::Body + Send + 'static,
@@ -873,9 +915,7 @@ where
         .await
         .expect("an HTTP/1.1 connection");
     tokio::spawn(connection);
-    let answer = sender.send_request(request).await.expect("an answer");
-    assert_eq!(answer.status(), StatusCode::OK, "the answer didn't begin");
-    answer
+    sender.send_request(request).await.expect("an answer")
 }
 
 #[tokio::test(flavor = "current_thread")]

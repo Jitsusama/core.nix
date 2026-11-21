@@ -192,18 +192,25 @@ const HELD_AHEAD_AT_MOST: usize = 16 * 1024;
 /// connection with every request on it (`too_many_data_frames`, which 40
 /// connections were retired on from 19 to 21 November). A streamed answer
 /// is mostly such frames, and a pi too busy to read leaves them unread, so
-/// one answer costs at most this window in its smallest frames: 192 KiB in
-/// 64-byte ones. It still carries about two and a half megabits a stream
-/// over a 200 ms round trip, far past a model's streamed answer.
+/// this window bounds what one stalled answer costs: 192 KiB in 64-byte
+/// frames. Shorter frames cost more, up to 255 bytes for each byte of
+/// window, so an answer in frames of a few bytes could spend 16 MiB alone;
+/// most of a model's streamed events are longer than 64 bytes. Empty frames
+/// take no window and fall under h2's other limit, 100 over a connection's
+/// life, which no setting reaches. The window still carries about two and
+/// a half megabits a stream over a 200 ms round trip, far past a model's
+/// streamed answer.
 const STREAM_WINDOW: u32 = 64 * 1024;
 /// How much of every answer on a connection the origin may send ahead of
-/// the relay reading it. Its half, h2's allowance, holds about forty
-/// stalled answers in 64-byte frames, past the fifteen or so a connection
-/// carries with sixty sessions over the default four connections, all
-/// stalled at once on a machine under load. hyper's adaptive window started
-/// it at 64 KiB, an allowance of 32 KiB, which about 300 unread frames of
-/// 150 bytes spent.
-const CONNECTION_WINDOW: u32 = 16 * 1024 * 1024;
+/// the relay reading it. Past the stream windows of the answers it carries
+/// it buffers nothing more, so what it sets is h2's allowance, its half:
+/// 32 MiB, about 170 stalled answers in 64-byte frames. That is past the
+/// ninety or so requests sixty sessions hold, even when retired connections
+/// leave them all on one, all stalled at once on a machine under load.
+/// Unread memory stays at most 64 KiB an answer, about 6 MiB for ninety.
+/// hyper's adaptive window started it at 64 KiB, an allowance of 32 KiB,
+/// which about 300 unread frames of 150 bytes spent.
+const CONNECTION_WINDOW: u32 = 64 * 1024 * 1024;
 /// The most of an error's account the journal keeps for one line, since
 /// the origin's goodbye carries debug data of its choosing.
 const SAID_AT_MOST: usize = 300;
