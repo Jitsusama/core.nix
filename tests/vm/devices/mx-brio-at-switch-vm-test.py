@@ -30,10 +30,10 @@ STARTING = timedelta(seconds=60)
 
 def the_stand_in(machine: BaseMachine, card: str) -> str:
     """Give the stand-in Brio's node, once udev is done with it."""
-    node = machine.succeed(
-        f"for n in /sys/class/video4linux/*; do grep -qx '{card}' $n/name && basename $n; done"
-    ).strip()
-    assert node, f"no loopback is named {card}"
+    # grep says which name files hold the card's name, and fails only when none does.
+    status, names = machine.execute(f"grep -lx '{card}' /sys/class/video4linux/*/name")
+    assert status == 0, f"no loopback is named {card}"
+    node = names.split()[0].split("/")[-2]
     machine.succeed(f"udevadm wait --timeout {SETTLING.seconds} /dev/{node}")
     return f"/dev/{node}"
 
