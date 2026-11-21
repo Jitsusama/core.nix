@@ -495,7 +495,7 @@ pub mod tests {
         write(&proc.join("50/comm"), "chrome\n");
         write(
             &proc.join("50/cgroup"),
-            &format!("0::{ACCOUNT}/app.slice/apps-under-load.service\n"),
+            &format!("0::{ACCOUNT}/app.slice/call-under-load.service\n"),
         );
         write(&proc.join("50/task/51/comm"), "AudioInputDevic\n");
         assert_eq!(chrome(&proc), []);
