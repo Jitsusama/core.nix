@@ -87,7 +87,11 @@ fn one(words: &[String], clock: Duration) -> Answer {
         return Err(failed(&said, status.code(), &complaint.unwrap_or_default()));
     }
     let bytes = taken(&reading, deadline)
-        .ok_or_else(late)?
+        .ok_or_else(|| {
+            // It ended well, but something it left holds its answer open,
+            // so what it wrote may not be the whole of it.
+            format!("{said} left its answer open past {} s", clock.as_secs())
+        })?
         .map_err(|error| error.to_string())?;
     first(&said, &bytes)
 }
@@ -129,29 +133,48 @@ fn taken<T>(receive: &Receiver<T>, deadline: Instant) -> Option<T> {
 
 /// Why an owner that ended badly gave no answer: how it ended, and the
 /// first line of its complaint, when it made one, which is where an owner
-/// says what it needed. Control characters go, as the line is shown on
-/// rows and carried to the realm's other machines.
+/// says what it needed. It's said plain, as the line is shown on rows and
+/// carried to the realm's other machines.
 fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
     let ended = match code {
         Some(code) => format!("{said} ended with {code}"),
         None => format!("{said} was stopped"),
     };
     let complaint = String::from_utf8_lossy(complaint);
-    let line = complaint
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty());
+    let line = complaint.lines().map(plain).find(|line| !line.is_empty());
     match line {
         Some(line) => {
-            let line: String = line
-                .chars()
-                .filter(|each| !each.is_control())
-                .take(SAID_OF_ITS_COMPLAINT)
-                .collect();
+            let line: String = line.chars().take(SAID_OF_ITS_COMPLAINT).collect();
             format!("{ended}: {line}")
         }
         None => ended,
     }
+}
+
+/// `line` as plain words: a terminal's escape sequences gone whole, as a
+/// coloured complaint writes them, and with them every control character
+/// and every one that turns or hides text, so a row reads as it's written.
+fn plain(line: &str) -> String {
+    let mut kept = String::new();
+    let mut chars = line.chars();
+    while let Some(each) = chars.next() {
+        match each {
+            // A control sequence runs to its final character, '@' to '~';
+            // any other escape takes the one character after it.
+            '\u{1b}' => {
+                if chars.next() == Some('[') {
+                    chars.by_ref().find(|end| ('@'..='~').contains(end));
+                }
+            }
+            '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2069}'
+            | '\u{feff}' => {}
+            each if each.is_control() => {}
+            each => kept.push(each),
+        }
+    }
+    kept.trim().to_owned()
 }
 
 /// The document an owner's answer opens with. An owner may say more on
@@ -167,7 +190,7 @@ fn first(said: &str, bytes: &[u8]) -> Answer {
 
 #[cfg(test)]
 mod tests {
-    use super::{failed, first, one};
+    use super::{COMPLAINT_KEPT, failed, first, one, reader};
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -206,9 +229,19 @@ mod tests {
 
     #[test]
     fn a_helper_left_holding_a_stream_never_holds_the_ask() {
-        for script in [
-            "sleep 30 >/dev/null & echo 'gone' >&2; exit 1",
-            "sleep 30 2>/dev/null & echo '{}'",
+        let held_complaint = "sleep 30 >/dev/null & exit 1";
+        let held_answer = "sleep 30 2>/dev/null & echo '{}'";
+        let slow = "exec sleep 30";
+        for (script, why) in [
+            (
+                held_complaint,
+                format!("sh -c {held_complaint} ended with 1"),
+            ),
+            (
+                held_answer,
+                format!("sh -c {held_answer} left its answer open past 3 s"),
+            ),
+            (slow, format!("sh -c {slow} gave no answer in 3 s")),
         ] {
             let started = Instant::now();
             let said = one(&shell(script), SHORT);
@@ -217,11 +250,19 @@ mod tests {
                 "{script} held the ask {:?}, past its clock",
                 started.elapsed()
             );
-            assert!(
-                said.is_err(),
-                "{script} was answered from a stream not yet closed"
-            );
+            assert_eq!(said, Err(why), "{script} is said for what held it");
         }
+    }
+
+    #[test]
+    fn a_complaint_is_kept_to_its_room() {
+        let long = vec![b'x'; 10_000];
+        let kept = reader(std::io::Cursor::new(long), COMPLAINT_KEPT).recv();
+        assert_eq!(
+            kept.ok().and_then(Result::ok).map(|bytes| bytes.len()),
+            Some(4096),
+            "a long complaint costs no more than its room"
+        );
     }
 
     #[test]
@@ -250,9 +291,22 @@ mod tests {
             "a long complaint is cut to a row's room, by characters"
         );
         assert_eq!(
-            failed("net --json", Some(1), b"no \x1b[31mroute\x07"),
-            "net --json ended with 1: no [31mroute",
-            "control characters in a complaint go"
+            failed(
+                "net --json",
+                Some(1),
+                b"\x1b[1m\x1b[31merror:\x1b[0m no route\x07"
+            ),
+            "net --json ended with 1: error: no route",
+            "a coloured complaint is said plain"
+        );
+        assert_eq!(
+            failed(
+                "net --json",
+                Some(1),
+                "\x07\n\u{202e}gone\u{200b}".as_bytes()
+            ),
+            "net --json ended with 1: gone",
+            "a line of only control characters is passed over, and text that turns or hides goes"
         );
     }
 
