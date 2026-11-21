@@ -7,12 +7,17 @@
 
 use std::fs;
 use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::SystemTime;
 
 /// The most a slot file holds; anything larger isn't one the host wrote,
 /// so it isn't read.
 const SLOT_MOST: u64 = 64 << 10;
+
+/// Linux's flag to open without waiting, 0o4000 on `x86_64` and `aarch64`
+/// alike, where this runs; the crate takes no libc for one constant.
+const O_NONBLOCK: i32 = 0o4000;
 
 /// The host unit a viewer's words join, `<prefix><key>.service`, when
 /// they are mycelium's `attach --host <key>`.
@@ -106,18 +111,24 @@ fn flag(rest: &[String], name: &str) -> Option<String> {
     })
 }
 
-/// Whether the slot file at `path` holds `session`. Only a file of a slot's
-/// size is read, never a link, a pipe or a folder, so nothing put beside
-/// the slots can stall or mislead the loop that reads them. The path is
-/// checked before it's opened, as opening a pipe would wait, and what was
-/// opened is checked again, and read no further than a slot's size, in
-/// case it changed between.
+/// Whether the slot file at `path` holds `session`. Only a regular file of
+/// a slot's size is read, never a pipe or a folder, so nothing put beside
+/// the slots can stall or mislead the loop that reads them. A link is
+/// passed over before opening; it's opened without waiting, so a pipe
+/// swapped in meanwhile can't hold the loop, and what was opened is
+/// checked again and read no further than a slot's size.
 fn holds(path: &Path, session: &str) -> bool {
     let is_slot = |meta: &fs::Metadata| meta.file_type().is_file() && meta.len() <= SLOT_MOST;
     fs::symlink_metadata(path)
         .ok()
         .filter(is_slot)
-        .and_then(|_| fs::File::open(path).ok())
+        .and_then(|_| {
+            fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(O_NONBLOCK)
+                .open(path)
+                .ok()
+        })
         .filter(|file| file.metadata().is_ok_and(|meta| is_slot(&meta)))
         .and_then(|file| {
             let mut text = String::new();

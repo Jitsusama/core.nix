@@ -1350,19 +1350,21 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         }
         seen.push(unit.to_owned());
         let own = own_of(unit, pid, now, total, ranks);
+        let (orchestrators, marked) = hosts::counted(&roots, &ranks.orchestrating, |root| {
+            windows.dir.join(root.to_string()).exists()
+        });
         let signs = hosts::Signs {
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
             shown: shown.iter().filter(|viewed| *viewed == unit).count(),
-            orchestrators: roots
-                .iter()
-                .filter_map(|root| ranks.orchestrating.get(root))
-                .sum(),
-            marked: roots
-                .iter()
-                .any(|root| windows.dir.join(root.to_string()).exists()),
+            orchestrators,
+            marked,
             current: fs::read_to_string(path.join("memory.current"))
                 .ok()
                 .and_then(|text| text.trim().parse().ok()),
+            // Busy commands are moved out of hosts' units alone (`looked_at`).
+            keeps_its_work: windows
+                .conversations
+                .is_some_and(|(conversations, _)| unit.starts_with(conversations)),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
         if !ranks.hosts.changed(unit, &rank) {

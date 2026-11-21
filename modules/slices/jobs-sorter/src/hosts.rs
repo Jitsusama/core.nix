@@ -31,7 +31,8 @@
 //! named by a file in `--slots` that holds the session (`src/joins.rs`
 //! finds which unit a viewer joins). Each such unit is
 //! ranked the same way, by the windows showing its one conversation and
-//! whether that orchestrates, and a window showing it gives the host
+//! whether that orchestrates, save that oomd isn't told to end it last,
+//! as its busy commands stay in it; and a window showing it gives the host
 //! nothing: on 21 November 75 conversations ran in units of their own and
 //! the two hosts' units held 21 and 34 MB, so every floor given a host
 //! kept only that, and the windows Joel was at kept none of theirs.
@@ -82,6 +83,9 @@ pub struct Signs {
     /// The memory its unit holds now, as its memory.current says; none
     /// when that can't be read.
     pub current: Option<u64>,
+    /// Whether its unit keeps the busy commands its conversations start,
+    /// as a conversation's own unit does: only a host's are moved to jobs.
+    pub keeps_its_work: bool,
 }
 
 /// The rank a host wants from its unit's `own` settings and its `signs`,
@@ -101,7 +105,10 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     } else {
         floor
     };
-    let preference = if kept && own.preference != "omit" {
+    // oomd passes over a held unit only when its busy commands are moved to jobs: one keeping
+    // them, as a conversation's own unit does, may hold a build's gigabytes, and passing over
+    // such units on 15 November ended 38 small ones beside them, freeing nothing.
+    let preference = if kept && !signs.keeps_its_work && own.preference != "omit" {
         "avoid".to_owned()
     } else {
         own.preference.clone()
@@ -124,6 +131,22 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
         writeback: own.writeback && (signs.viewed == 0 || !fits),
         preference,
     }
+}
+
+/// The orchestrators a unit's `roots` run, as `orchestrating` counts them
+/// by pid, and whether `marked` says the harness marks any of them. Every
+/// root counts, since a command a conversation left behind is a root
+/// beside the conversation's own process.
+pub fn counted(
+    roots: &[u32],
+    orchestrating: &HashMap<u32, usize>,
+    marked: impl Fn(u32) -> bool,
+) -> (usize, bool) {
+    let orchestrators = roots
+        .iter()
+        .filter_map(|root| orchestrating.get(root))
+        .sum();
+    (orchestrators, roots.iter().any(|root| marked(*root)))
 }
 
 /// The host units under `slice` whose names start with `prefix`.
@@ -242,8 +265,8 @@ pub struct Hosts {
     set: HashMap<String, Rank>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
-    /// The units said to hold no one host, ranked by their windows alone,
-    /// so each is said once.
+    /// The units said to hold no one host, ranked by all their roots, so
+    /// each is said once.
     pub unclear: HashSet<String>,
 }
 
@@ -478,6 +501,38 @@ mod tests {
             keep::FLOOR,
             "so does an orchestrator's"
         );
+        let keeping = Signs {
+            keeps_its_work: true,
+            ..held
+        };
+        assert_eq!(
+            (
+                wanted(&Own::default(), keeping, 10).floor,
+                wanted(&Own::default(), keeping, 10).preference.as_str()
+            ),
+            (focus::FLOOR, "none"),
+            "a unit keeping its conversation's builds keeps its floor, but oomd may still end it"
+        );
+    }
+
+    #[test]
+    fn every_root_counts_its_orchestrators_and_marks() {
+        let orchestrating = HashMap::from([(20, 1), (30, 2)]);
+        assert_eq!(
+            counted(&[10, 20], &orchestrating, |pid| pid == 10),
+            (1, true),
+            "a conversation's orchestrator counts beside a command it left, and so does a mark"
+        );
+        assert_eq!(
+            counted(&[10, 30], &orchestrating, |_| false),
+            (2, false),
+            "each root's orchestrators add up"
+        );
+        assert_eq!(
+            counted(&[10], &orchestrating, |_| false),
+            (0, false),
+            "a root running none, unmarked, adds nothing"
+        );
     }
 
     #[test]
@@ -568,7 +623,14 @@ mod tests {
             attended(),
             "a template's settings stay while an instance of it runs"
         );
-        assert!(hosts.own.contains_key("c@.service") && !hosts.own.contains_key("u"));
+        assert!(
+            hosts.own.contains_key("c@.service") && !hosts.own.contains_key("u"),
+            "the template stays and the gone host's settings go"
+        );
+        assert!(
+            hosts.unclear.contains("c@1.service"),
+            "a running unit's doubt stays said, so it isn't said again"
+        );
         hosts.keep_only(&[]);
         assert!(
             hosts.own.is_empty() && hosts.unclear.is_empty(),
