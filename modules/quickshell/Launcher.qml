@@ -11943,8 +11943,7 @@ Scope {
             return category ? { stands: category.stands ?? null, holds: holdings(category) }
                 : null;
         };
-        return Wanted.wakingOrder(Words.home, place, named, sources)
-            .filter(one => Wanted.wakesInTurn(one));
+        return Wanted.wakingOrder(Words.home, place, named, sources);
     }
 
     // Wakes the next of a filling opening's sources, as many as fit in the

@@ -73,7 +73,8 @@ Scope {
     // Applications, Capture, Displays, Networks, Now (its whole opening,
     // its writes included), Orchestrators, Quests and Traffic come
     // through here; Agents feels its wraps a frame on, through felt,
-    // below.
+    // below. Asleep in a kept opening, Now's comes in its wake's slice,
+    // or in the turn a notice is told before then, not the open's.
     function feltOpening(work) {
         return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
     }

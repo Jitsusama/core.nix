@@ -459,16 +459,20 @@ QtObject {
         const on = { name: "on" };
         const people = { name: "people" };
         const quests = { name: "quests" };
-        const sources = { power, disk, on, people, quests };
+        const clock = { name: "clock", saysAtHome: true };
+        const agents = { name: "agents", saysAtHome: true, readsHome: true };
+        const sources = { power, disk, on, people, quests, clock, agents };
         const places = {
             machine: { stands: "power", holds: ["disk", "battery"] },
             battery: { stands: "power", holds: [] }
         };
-        const order = Wanted.wakingOrder(["on", "machine", "people", "gone"],
+        const order = Wanted.wakingOrder(["on", "clock", "agents", "machine", "people", "gone"],
             id => places[id] ?? null, id => sources[id] ?? null,
-            [quests, people, on, power, disk]);
+            [quests, people, on, power, disk, clock, agents]);
         check(failures, "home's own come first, each once, then the rest",
-            order.map(one => one.name).join(" "), "on power disk people quests");
+            order.map(one => one.name).join(" "), "on agents power disk people quests");
+        check(failures, "one saying what it holds waits its turn only reading home's rows",
+            order.includes(clock) || !order.includes(agents), false);
 
         // Home found again after the fill is a slice of its own, so its
         // time is a slice's, never the sources' first wait.
