@@ -157,7 +157,13 @@ fn a_reading_keeps_the_group_and_its_answers_and_opens_only_what_is_new() {
     std::fs::create_dir_all(&cadence).expect("cadence's folder");
     let kept = cadence.join("symbiosis.json");
     assert_eq!(
-        read(root.path(), NOW, &kept),
+        read(root.path(), NOW, &kept, false),
+        std::slice::from_ref(&first),
+        "the group's message wasn't read, or another, or one past a week, was"
+    );
+    assert!(!kept.exists(), "a look by hand kept its reading");
+    assert_eq!(
+        read(root.path(), NOW, &kept, true),
         std::slice::from_ref(&first),
         "the group's message wasn't kept, or another, or one past a week, was"
     );
@@ -167,7 +173,7 @@ fn a_reading_keeps_the_group_and_its_answers_and_opens_only_what_is_new() {
     let landed = answer(60, "A2VLJN", "@WCJQSG", "landed", &first);
     write(&landed);
     assert_eq!(
-        read(root.path(), NOW, &kept),
+        read(root.path(), NOW, &kept, true),
         [first, landed],
         "the next reading opened files from before the last, or lost what it kept"
     );

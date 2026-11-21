@@ -93,7 +93,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         now,
         checkouts,
         &mut kept.fetched,
-        to.unwrap_or_default(),
+        to,
     )?;
     for m in measures
         .iter_mut()
@@ -215,7 +215,7 @@ fn gather(
     now: i64,
     checkouts: &[String],
     fetched: &mut Vec<i64>,
-    orchestrator: &str,
+    orchestrator: Option<&str>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");

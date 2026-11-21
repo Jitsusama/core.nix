@@ -77,7 +77,7 @@ struct Finding {
 /// in seconds, read under the mesh's `root` and kept in `folder`, their
 /// fixes judged as the misses' checks are, from `checkouts` and
 /// `switches`. A finding naming no owner counts against `orchestrator`,
-/// which assigns it.
+/// which assigns it; a look by hand names none, and keeps nothing.
 #[must_use]
 pub fn symbiosis(
     root: &Path,
@@ -85,9 +85,11 @@ pub fn symbiosis(
     checkouts: &[String],
     switches: &str,
     now: i64,
-    orchestrator: &str,
+    orchestrator: Option<&str>,
 ) -> Measure {
-    let posted = read(root, now, &folder.join("symbiosis.json"));
+    let keeps = orchestrator.is_some();
+    let orchestrator = orchestrator.unwrap_or_default();
+    let posted = read(root, now, &folder.join("symbiosis.json"), keeps);
     let findings = open_findings(&posted, orchestrator);
     let text = as_misses(&findings);
     super::judged(&text, folder, checkouts, switches, |text, repos, judged| {
@@ -109,8 +111,9 @@ pub fn symbiosis(
 
 /// The messages of the last `WITHIN` before `now` that went to the group
 /// or answer or withdraw one that did, oldest first, opening only the
-/// files written since the reading kept at `kept`.
-fn read(root: &Path, now: i64, kept_at: &Path) -> Vec<Posted> {
+/// files written since the reading kept at `kept_at`, which it `keeps` for
+/// the next.
+fn read(root: &Path, now: i64, kept_at: &Path, keeps: bool) -> Vec<Posted> {
     let kept: Kept = std::fs::read(kept_at)
         .ok()
         .and_then(|json| serde_json::from_slice(&json).ok())
@@ -132,6 +135,9 @@ fn read(root: &Path, now: i64, kept_at: &Path) -> Vec<Posted> {
     });
     let through_ms = names.last().map_or(kept.through_ms, |(ms, _)| *ms);
     let posted = kept_beside(kept.posted, opened, since_ms);
+    if !keeps {
+        return posted;
+    }
     let json = serde_json::to_string(&Kept {
         through_ms,
         posted: posted.clone(),
