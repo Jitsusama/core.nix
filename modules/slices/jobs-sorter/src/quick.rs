@@ -438,7 +438,11 @@ mod tests {
     #[test]
     fn a_program_started_by_his_manager_or_session_is_his() {
         let own = "/app.slice/app-com.google.Chrome-20682.scope";
-        for starter in ["/init.scope", "/session.slice/niri.service"] {
+        for starter in [
+            "/init.scope",
+            "/session.slice",
+            "/session.slice/niri.service",
+        ] {
             assert!(his(own, starter, &windows()), "from {starter}");
         }
     }
@@ -455,6 +459,7 @@ mod tests {
             // The walk goes on through his programs, so one it ends in is
             // never taken as his on its own say.
             "/app.slice/app-launcher.scope",
+            "/session.slice/kitty-3-0.scope",
         ] {
             assert!(!his(own, starter, &windows()), "from {starter}");
         }
@@ -578,6 +583,11 @@ mod tests {
         let asked = ordinary(3, SLICE_NS);
         assert_eq!(heard(&asked, &asked), Asked::Yes, "held");
         assert_eq!(heard(&asked, &ordinary(3, 0)), Asked::Unheard, "none held");
+        assert_eq!(
+            heard(&asked, &ordinary(3, 2_000_000)),
+            Asked::Yes,
+            "another slice held"
+        );
         let moved = Attr {
             policy: SCHED_BATCH,
             ..ordinary(3, 0)
