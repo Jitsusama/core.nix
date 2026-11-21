@@ -183,6 +183,8 @@ def call(joel: Joel) -> dict[str, Any]:
         )
         joel.wait_for(f"{joel.listing()} | grep -qF '\"transcribing\":true'", ANSWERS_WITHIN)
         joel.wait_for("pw-link -l | grep -qF call-transcripts-mine", ANSWERS_WITHIN)
+        # Served as recorded while it is, so the shell keeps its Meet followed.
+        joel.wait_for(f"{joel.listing()} | grep -qF '\"recording\":true'", ANSWERS_WITHIN)
         # Both sides from the call's time 0, and another program on the speakers meanwhile,
         # as a notice or music would be; each player ends at its clip's end.
         joel.run(
@@ -288,6 +290,11 @@ def test_a_call_is_kept_under_its_meeting(call: dict[str, Any]) -> None:
     assert call["title"] == MEETING
     assert call["ended"] is not None
     assert MEETING in call["folder"]
+
+
+def test_a_call_ended_is_no_longer_served_as_recorded(call: dict[str, Any]) -> None:
+    """Served as recorded while it went on, the call no longer is once it ended."""
+    assert call["recording"] is False, f"an ended call is still recorded: {call}"
 
 
 def test_both_sides_are_written_in_the_order_they_spoke(joel: Joel, call: dict[str, Any]) -> None:

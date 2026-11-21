@@ -71,7 +71,8 @@ pub struct Watch {
 }
 
 /// How long a follow lasts unless the shell says it again: a little over
-/// the minute it says it in while the launcher is open, so a shell that
+/// the minute it says it in while it follows any (Following.js, whose
+/// LASTS the-desktop-tells-the-next-meeting holds to this), so a shell that
 /// went away, or restarted, leaves no call asked about all call long.
 const FOLLOW_LASTS: i64 = 90_000;
 

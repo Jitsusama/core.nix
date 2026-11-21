@@ -140,8 +140,8 @@ Provider {
     onThingsChanged: changedTo(things)
 
     // While the launcher is open, who's in each Meet call is asked of Meet,
-    // so Now's call says it (Calendar.qml's watchingCalls); never while
-    // it's closed.
+    // so Now's call says it (Calendar.qml's watchingCalls); while it's
+    // closed, only as long as a call is recorded (Following.js).
     readonly property bool callsWatched: launcher !== null && launcher.open === true
     onCallsWatchedChanged: Calendar.watchingCalls += callsWatched ? 1 : -1
 
