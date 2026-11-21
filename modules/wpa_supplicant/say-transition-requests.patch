@@ -13,9 +13,11 @@ rejects any request whose candidates it didn't hear in its last scan,
 and the access point drops the station when the timer runs out.
 
 This adds a signal on the Interface, BSSTransitionRequested, sent as
-each request is parsed and before it's answered: whether it warns of a
-disassociation from the BSS or the whole ESS, in how many ms, how long
-its candidate list holds in ms, and each candidate as its BSSID and its
+each request is parsed and before it's answered, with one dictionary,
+since a signal's table holds three arguments at most: Disassociating
+(b), whether it warns of a disassociation from the BSS or the whole
+ESS; DisassociationMs (u), in how long; ValidMs (u), how long its
+candidate list holds; and Candidates (a(ayn)), each as its BSSID and its
 preference, or -1 where the access point gave none, in the order given.
 How upstream answers the request is left as it was.
 diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
@@ -29,7 +31,7 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
  #include "dbus_new_helpers.h"
  #include "dbus_dict_helpers.h"
  #include "dbus_new.h"
-@@ -1159,6 +1160,86 @@
+@@ -1159,6 +1160,89 @@
  }
  
  
@@ -44,8 +46,9 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 + * @candidates: The candidates, in the order the access point gave them
 + * @num_candidates: How many there are
 + *
-+ * Each candidate is its BSSID and its preference, or -1 where the access
-+ * point gave none.
++ * Said as one dictionary: Disassociating (b), DisassociationMs (u),
++ * ValidMs (u) and Candidates (a(ayn)), each candidate its BSSID and its
++ * preference, or -1 where the access point gave none.
 + */
 +void wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
 +				     bool disassociating,
@@ -56,9 +59,7 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 +{
 +	struct wpas_dbus_priv *iface;
 +	DBusMessage *msg;
-+	DBusMessageIter iter, array, entry, bssid;
-+	dbus_bool_t warns = disassociating;
-+	dbus_uint32_t in_ms = disassociation_ms, for_ms = valid_ms;
++	DBusMessageIter iter, dict, entry, value, array, candidate, bssid;
 +	unsigned int i;
 +
 +	iface = wpa_s->global->dbus;
@@ -74,33 +75,37 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 +		return;
 +
 +	dbus_message_iter_init_append(msg, &iter);
-+	if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_BOOLEAN, &warns) ||
-+	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &in_ms) ||
-+	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &for_ms) ||
-+	    !dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "(ayn)",
-+					      &array))
++	if (!wpa_dbus_dict_open_write(&iter, &dict) ||
++	    !wpa_dbus_dict_append_bool(&dict, "Disassociating",
++				       disassociating) ||
++	    !wpa_dbus_dict_append_uint32(&dict, "DisassociationMs",
++					 disassociation_ms) ||
++	    !wpa_dbus_dict_append_uint32(&dict, "ValidMs", valid_ms) ||
++	    !wpa_dbus_dict_begin_array(&dict, "Candidates", "(ayn)",
++				       &entry, &value, &array))
 +		goto fail;
 +	for (i = 0; i < num_candidates; i++) {
-+		const struct neighbor_report *candidate = &candidates[i];
-+		const u8 *address = candidate->bssid;
-+		dbus_int16_t preference = candidate->preference_present ?
-+			candidate->preference : -1;
++		const u8 *address = candidates[i].bssid;
++		dbus_int16_t preference = candidates[i].preference_present ?
++			candidates[i].preference : -1;
 +
 +		if (!dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT,
-+						      NULL, &entry) ||
-+		    !dbus_message_iter_open_container(&entry, DBUS_TYPE_ARRAY,
++						      NULL, &candidate) ||
++		    !dbus_message_iter_open_container(&candidate,
++						      DBUS_TYPE_ARRAY,
 +						      DBUS_TYPE_BYTE_AS_STRING,
 +						      &bssid) ||
 +		    !dbus_message_iter_append_fixed_array(&bssid, DBUS_TYPE_BYTE,
 +							  &address,
 +							  ETH_ALEN) ||
-+		    !dbus_message_iter_close_container(&entry, &bssid) ||
-+		    !dbus_message_iter_append_basic(&entry, DBUS_TYPE_INT16,
++		    !dbus_message_iter_close_container(&candidate, &bssid) ||
++		    !dbus_message_iter_append_basic(&candidate, DBUS_TYPE_INT16,
 +						    &preference) ||
-+		    !dbus_message_iter_close_container(&array, &entry))
++		    !dbus_message_iter_close_container(&array, &candidate))
 +			goto fail;
 +	}
-+	if (!dbus_message_iter_close_container(&iter, &array))
++	if (!wpa_dbus_dict_end_array(&dict, &entry, &value, &array) ||
++	    !wpa_dbus_dict_close_write(&iter, &dict))
 +		goto fail;
 +
 +	dbus_connection_send(iface->con, msg, NULL);
@@ -116,16 +121,13 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
  void wpas_dbus_signal_sae_password_mismatch(struct wpa_supplicant *wpa_s)
  {
  	struct wpas_dbus_priv *iface;
-@@ -4472,6 +4553,15 @@
+@@ -4472,6 +4556,12 @@
  		  END_ARGS
  	  }
  	},
 +	{ "BSSTransitionRequested", WPAS_DBUS_NEW_IFACE_INTERFACE,
 +	  {
-+		  { "disassociating", "b", ARG_OUT },
-+		  { "disassociation_ms", "u", ARG_OUT },
-+		  { "valid_ms", "u", ARG_OUT },
-+		  { "candidates", "a(ayn)", ARG_OUT },
++		  { "args", "a{sv}", ARG_OUT },
 +		  END_ARGS
 +	  }
 +	},
