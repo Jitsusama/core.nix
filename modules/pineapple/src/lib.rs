@@ -19,7 +19,7 @@
 //!   [`reply`] says what one that goes says, from Joel's own account,
 //!   only in the thread that asked, in words he said yes to.
 //! - [`slack`] and [`github`] turn each platform's answers into sayings
-//!   to judge, and [`record`] writes down what was decided, a stop's
+//!   to judge, [`gateway`] reads Slack's as a tool gateway words them, and [`record`] writes down what was decided, a stop's
 //!   record included.
 //! - [`resume`] lists the stops standing and marks those Joel resumes,
 //!   for his own command (src/bin/pineapple.rs), which refuses under pi.
@@ -51,6 +51,7 @@ pub mod acts;
 pub mod deaf;
 mod decide;
 pub mod gate;
+pub mod gateway;
 pub mod github;
 mod judge;
 pub mod judged;
