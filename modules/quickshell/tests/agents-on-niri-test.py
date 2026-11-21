@@ -4227,6 +4227,66 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         left_the_node("s-parked")
 
 
+def test_a_wake_left_asleep_for_its_fence_is_taken_back_at_once_by_its_name(
+    shell: Shell,
+) -> None:
+    """A Wake the shell won't do, since the session names no fence, is taken back at once.
+
+    Its record names no fence it could come back under, so reopening it might bring it back
+    looser than it ran, and the shell leaves it asleep (Sessions' reopensUnwoken). The row
+    drawn as woken from Joel's Return is taken back as a refused Wake's is, rather than
+    reading listening for the half minute a wake is waited for, and the foot says why by the
+    session's name, never its address.
+    """
+    PARKS.mkdir(parents=True, exist_ok=True)
+    (PARKS / "s-unsaid.json").write_text("{}")
+    lay("UNSAID", "Unsaid Quest", {"state": "parked"}, closed=True)
+    try:
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Unsaid Quest" in shown["rows"])
+        shell.type_in("unsaid quest", selecting="Unsaid Quest")
+        row = cast("Json", shell.showing()["selected"])
+        assert row["verb"] == "wake", row
+        asleep = row["side"]
+        shell.launcher_until(rested_on("Unsaid Quest"))
+        first = shell.mark()
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: (
+                shown["mode"] == "normal"
+                and (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 wake"]
+                and not shown["landedFresh"]
+            )
+        )
+        shell.send_key("ret")
+        shell.reported(
+            "left UNSAID asleep, ",
+            lambda why: why == "whose record names no fence it can come back under",
+            first,
+        )
+        sandbox = "it might come back outside its sandbox"
+        shell.reported(
+            "not become agent:UNSAID: ",
+            lambda why: why == sandbox,
+            first,
+            timeout=timedelta(seconds=5),
+        )
+        shell.launcher_until(
+            lambda shown: (
+                any("Unsaid Quest" in said.replace("\u00a0", " ") for said in shown["saying"])
+                and any(sandbox in said.replace("\u00a0", " ") for said in shown["saying"])
+                and not any("UNSAID" in said for said in shown["saying"])
+                and (shown["selected"] or {}).get("side") == asleep
+            )
+        )
+    finally:
+        (PRESENCE / "unsaid.json").unlink(missing_ok=True)
+        (PARKS / "s-unsaid.json").unlink(missing_ok=True)
+        shell.close_launcher()
+        left_the_node("s-unsaid")
+
+
 def left_the_node(session: str) -> None:
     """Wait until the node no longer holds a session laid for one case, as the next begins."""
     deadline = time.monotonic() + 10
