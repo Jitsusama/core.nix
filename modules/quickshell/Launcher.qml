@@ -11580,7 +11580,8 @@ Scope {
     // leads deeper as it opens (`leading`), so what it opens into is known
     // before it's asked: a chord's place is kept, and listed now, by it.
     function plainPlace(source, name) {
-        return !!source && typeof source.leading !== "function" && leadingTo(name) === null;
+        return !!source && typeof source.leading !== "function"
+            && !sources.some(one => one.leadsInto?.includes(name));
     }
 
     // The places a source leads to that Super+N opens (Notifications.qml's
@@ -11936,8 +11937,9 @@ Scope {
     }
 
     // Those home's rows read, in home's order, so the rows shown fill
-    // first, then the rest; none that says what it holds itself, whose rows
-    // home never wants.
+    // first, then the rest, each that waits its turn (Wanted.js's
+    // wakesInTurn): Agents, reading Sessions to Reopen and Budgets, made
+    // them in the turn the launcher opened in while it was never asleep.
     function wakingOrder() {
         const named = Wanted.sourceNamed(sources, one => one.settings.name,
             id => Words.of(id).provider ?? id);
@@ -11946,8 +11948,7 @@ Scope {
             return category ? { stands: category.stands ?? null, holds: holdings(category) }
                 : null;
         };
-        return Wanted.wakingOrder(Words.home, place, named, sources)
-            .filter(one => !one.saysAtHome);
+        return Wanted.wakingOrder(Words.home, place, named, sources);
     }
 
     // Wakes the next of a filling opening's sources, as many as fit in the

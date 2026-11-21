@@ -62,6 +62,11 @@ function wanted(stands, source) {
 // Opened by a chord straight into another place, as Super+V opens Copies,
 // they aren't, where Agents made its own rows (Sessions to Reopen, Landed,
 // Recent, Start and Budgets) as any opening began (H6EDLC, 2026-11-11).
+// At home, the first reader, whose rows they are, reads them only once it
+// wakes in its turn, or something's typed. Read as the launcher opened,
+// Agents' made about 6 of its 100 ms over twelve of the keys lab's
+// openings (its profile, 2026-11-20), and read as Now woke, they made
+// Now's turn the longest.
 function readAt(stands, readers) {
     if (stands.cataloguing) {
         return true;
@@ -70,8 +75,19 @@ function readAt(stands, readers) {
         return false;
     }
     // Opening into a place, nothing is held yet but home isn't shown either.
-    return (stands.held.length === 0 && !stands.entering)
-        || readers.some(one => one !== null && wanted(stands, one));
+    const home = stands.held.length === 0 && !stands.entering;
+    if (home && !stands.typing && readers[0]?.asleep === true) {
+        return false;
+    }
+    return home || readers.some(one => one !== null && wanted(stands, one));
+}
+
+// Whether a source waits its turn to wake as a kept opening fills in: any
+// home's rows read but one that says what it holds itself, whose rows home
+// never wants, unless it reads rows home shows of its own as it wakes
+// (`readsHome`), as Agents' Sessions to Reopen and Budgets are.
+function wakesInTurn(source) {
+    return !source.saysAtHome || source.readsHome === true;
 }
 
 // The source a step into `from` holds anew, read just before the step is
@@ -104,7 +120,8 @@ function readByStep(source, newlyHeld, launchers) {
 // all at once as it opened, which held Joel's shell 195 to 220 ms past
 // its first frame (2026-11-10 20:39): those home's rows read, in home's
 // order, a place's own and then those it holds, so the rows shown fill
-// first, then every other in `all`'s order. `place(id)` is the place an
+// first, then every other in `all`'s order, each that waits its turn
+// (wakesInTurn). `place(id)` is the place an
 // id names, as `{ stands, holds }`, or null, and `source(id)` the source
 // an id or a place's `stands` reads, or null.
 function wakingOrder(home, place, source, all) {
@@ -133,7 +150,7 @@ function wakingOrder(home, place, source, all) {
     for (const one of all) {
         add(one);
     }
-    return order;
+    return order.filter(one => wakesInTurn(one));
 }
 
 // The source an id names, by the name `provider(id)` gives it, the first in

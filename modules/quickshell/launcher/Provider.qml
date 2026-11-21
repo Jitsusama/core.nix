@@ -73,7 +73,8 @@ Scope {
     // Applications, Capture, Displays, Networks, Now (its whole opening,
     // its writes included), Orchestrators, Quests and Traffic come
     // through here; Agents feels its wraps a frame on, through felt,
-    // below.
+    // below. Asleep in a kept opening, Now's comes in its wake's slice,
+    // or in the turn a notice is told before then, not the open's.
     function feltOpening(work) {
         return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
     }
@@ -357,6 +358,17 @@ Scope {
     // of everything it holds. Such a source names what it holds without
     // making its rows, by a memberNames of its own given nothing.
     property bool saysAtHome: false
+    // The names it leads deeper into, by rows it walks through from home
+    // (Launcher.qml's leadingTo, a function `leadsTo(name)` of its own),
+    // said once, so asking whether it leads to a name reads none of its
+    // rows: asked through leadsTo, the chords' places read Now's notices
+    // whole each time they changed as the launcher opened, about 10 of its
+    // 100 ms over twelve of the keys lab's openings (2026-11-20).
+    property var leadsInto: []
+    // Whether, saying what it holds at home, it still reads rows home shows
+    // of its own, and so waits its turn to wake as a kept opening fills in
+    // (Wanted.js's wakesInTurn).
+    property bool readsHome: false
 
     // Whether it waits its turn to wake as a kept opening fills in, a few
     // sources a frame (Launcher.qml's wakeNext). Its own, so waking it

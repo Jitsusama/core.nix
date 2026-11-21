@@ -180,17 +180,62 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open)
-                provider.feltOpening(() => provider.opens());
-            else
+            if (!provider.launcher.open) {
+                // Shut before Now woke, when it opened never left infinity,
+                // so nothing else puts Desktop back where a shut launcher
+                // keeps it (replaceLately), and the next opening would
+                // start from where this one left it.
+                const neverOpened = provider.openedAt === Number.POSITIVE_INFINITY;
+                provider.openingAt = -1;
                 provider.openedAt = Number.POSITIVE_INFINITY;
+                if (neverOpened)
+                    provider.replaceLately();
+                return;
+            }
+            provider.openingAt = Date.now();
+            if (!provider.asleep)
+                provider.feltOpening(() => provider.opens());
+        }
+    }
+
+    // When the launcher opened while Now slept, kept till Now wakes in its
+    // turn (Launcher.qml's wakeNext), so its opening work runs in its own
+    // slice, not in the turn the launcher opened in: the bindings on when
+    // it opened, the notices over every one held, ran there inside the
+    // launcher's unnamed "opening", about 12 of its 100 ms over twelve of
+    // the keys lab's openings (its profile, 2026-11-20). -1 when shut, or
+    // once its opening work has run.
+    property real openingAt: -1
+    onAsleepChanged: {
+        if (!asleep)
+            opensIfWaiting();
+    }
+    // Its opening work run now, while it waits for Now to wake in an open
+    // launcher, as the notices' history is given again, which every change
+    // the daemon sends does. A notice come or read before then would be
+    // held still from no opening (latelyNotices), so a row read under the
+    // cursor would drop and come back as Now woke.
+    function opensIfWaiting() {
+        if (openingAt >= 0 && provider.launcher?.open)
+            provider.feltOpening(() => provider.opens());
+    }
+    Connections {
+        target: Notices
+
+        function onHistoryChanged() {
+            provider.opensIfWaiting();
         }
     }
 
     // Its work as the launcher opens, felt whole: the bindings on when it
-    // opened and the hour its looks are split by run as they're set.
+    // opened and the hour its looks are split by run as they're set. When
+    // it opened is when the launcher did, however late Now woke, so a
+    // notice read since still holds still.
     function opens() {
-        provider.openedAt = Date.now();
+        // Taken before it's set, so what setting it runs finds none waiting.
+        const kept = provider.openingAt;
+        provider.openingAt = -1;
+        provider.openedAt = kept >= 0 ? kept : Date.now();
         provider.looksHour = Math.floor(Date.now() / 3600000);
         provider.reweather();
         // Placing the time and the date makes Time's and Today's rows, so
@@ -1655,11 +1700,14 @@ Provider {
     // Super+N with notices on screen, is those notices alone (onScreenRow),
     // passing through where Desktop stands, so - climbs to the notices'
     // own place rather than a For You that may hold nothing of them.
+    leadsInto: ["forYou", "notices", "onScreen"]
     function leadsTo(name) {
+        // Only those it says, so the chords' places, which read the list
+        // alone, never disagree with where it leads.
+        if (!leadsInto.includes(name))
+            return null;
         if (name === "forYou")
             return [waiting];
-        if (name !== "notices" && name !== "onScreen")
-            return null;
         const { holding } = latelyBands(Date.now());
         const desktop = keptNoticesRow("desktop", Lately.members(holding.desktop, one => one.who),
             { kind: "notice", source: "desktop" });
@@ -2348,7 +2396,9 @@ Provider {
         const critical = latelyCritical;
         if (critical === undefined)
             return;
-        const shut = openedAt === Number.POSITIVE_INFINITY;
+        // Open once the launcher is, though Now's opening work waits for it
+        // to wake (openingAt), so Desktop keeps its place as it would.
+        const shut = openedAt === Number.POSITIVE_INFINITY && openingAt < 0;
         const { inside, underNow } = latelySteps();
         const placed = {};
         for (const source of Lately.SOURCES)
