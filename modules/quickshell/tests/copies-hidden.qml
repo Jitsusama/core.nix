@@ -1,10 +1,11 @@
 // When Copies hides what each copy holds, run in Qt's own JavaScript
 // engine, the one the shell runs it in. The
-// `copies-hide-while-the-screen-is-shared` check copies launcher/Shared.js
-// and tests/lib/Expect.js beside this file and runs it over casts made up
-// here, as niri says them.
+// `copies-hide-while-the-screen-is-shared` check copies launcher/Shared.js,
+// launcher/Steady.js and tests/lib/Expect.js beside this file and runs it
+// over casts made up here, as niri says them.
 import QtQuick
 import "Shared.js" as Shared
+import "Steady.js" as Steady
 import "Expect.js" as Expect
 
 QtObject {
@@ -56,20 +57,35 @@ QtObject {
 
     // What a copy's row is made with beyond what it holds: made showing, it
     // names the source that hides it, so no way back goes to a place holding
-    // it once a share starts (Steady.hiddenGone); made hidden, it names none
-    // and draws only that it's hidden.
+    // it once a share starts (Steady.hiddenGone, run here on it); made
+    // hidden, it names none and blanks what its row would draw of the copy.
     function madeCases() {
         const copies = { hiding: false };
-        const showing = Shared.made(false, copies, "Hidden text");
-        Expect.same("a row made showing names the source that hides it",
-            showing.shownBy, copies);
+        const asked = [];
+        const name = () => {
+            asked.push("name");
+            return "Hidden text";
+        };
+        const showing = Shared.made(false, copies, name);
+        Expect.same("a row made showing names the very source that hides it",
+            showing.shownBy === copies, true);
         Expect.same("and changes nothing else it draws", Object.keys(showing), ["shownBy"]);
-        const hidden = Shared.made(true, copies, "Hidden text");
+        Expect.same("nor looks up the hidden row's name", asked, []);
+        // A place holding a row made showing, as the launcher keeps one.
+        const place = row => ({ held: [{ row: Object.assign({ key: "copy" }, row) }] });
+        const ways = row => ({ back: [place(row)], ahead: [], tags: [], last: null });
+        const kept = row => Steady.hiddenGone(ways(row)).back.length;
+        const before = ways(showing);
+        Expect.same("before a share, a way back still goes to it",
+            Steady.hiddenGone(before).back.length, 1);
+        copies.hiding = true;
+        Expect.same("once a share starts, that same row lets its way back go",
+            Steady.hiddenGone(before).back.length, 0);
+        const hidden = Shared.made(true, copies, name);
         Expect.same("a row made hidden names no source, so a place holding it stays",
-            "shownBy" in hidden, false);
-        Expect.same("and draws only that it's hidden, nothing of the copy",
-            JSON.stringify(hidden),
-            JSON.stringify({ name: "Hidden text", note: "", reads: "", picture: "" }));
+            ["shownBy" in hidden, kept(hidden)], [false, 1]);
+        Expect.same("and blanks what its row would draw of the copy", hidden,
+            { name: "Hidden text", note: "", reads: "", picture: "" });
     }
 
     // Why they hide, as the journal says it, agreeing with hidden().

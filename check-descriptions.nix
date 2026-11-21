@@ -806,8 +806,9 @@
     recorder's screencopy, and until niri has said its casts, but not for the shell's own
     recording of one window; what a hidden copy's row is made of (Shared.shown) keeps only its
     kind and when it came, never a glyph or side read off what was copied; and a row made
-    showing names the source that hides it (Shared.made), so no way back goes to it once a share
-    starts, while one made hidden names none and draws only that it's hidden
+    showing names the very source that hides it (Shared.made), so Steady.hiddenGone lets a way
+    back to it go once that source hides, while one made hidden names none and blanks what its
+    row would draw of the copy
   '';
   crate-reach-finds-what-reads-what = ''
     what main moved in a crate a change's crate reads, or one reading it, however far, is
