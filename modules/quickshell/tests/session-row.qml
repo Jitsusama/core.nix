@@ -417,9 +417,10 @@ QtObject {
 
         // What the foot says of an act refused: the session by its name, never
         // its address while a name is known, and the node's reason without
-        // the address it opens with.
+        // the address it opens with, nor anywhere else, where its name stands.
         const machineSaid = { untold: "not told, {why}", refused: "{act} refused, {why}",
-            unanswered: "the node didn't answer" };
+            unanswered: "the node didn't answer, so it may not have been told",
+            unansweredTo: "{act} had no answer from the node, so it may not be done" };
         const unheld = "isn't parked with a holder to wake it this boot";
         const refusals = [
             ["a Wake refused, by its row's name, the address left out", "Wake",
@@ -428,16 +429,28 @@ QtObject {
             ["the address left out whatever case the node wrote it in", "Pause",
                 "parked is out of reach", "PARKED", "Parked Quest",
                 ["Parked Quest", "Pause refused, is out of reach"]],
-            ["a reason not opening with its address is said whole", "Wake",
+            ["its address within a reason said by its name", "Wake",
                 "lighthouse is out of reach, so PARKED can't be told now", "PARKED", "Parked Quest",
-                ["Parked Quest", "Wake refused, lighthouse is out of reach, so PARKED can't be "
-                    + "told now"]],
+                ["Parked Quest", "Wake refused, lighthouse is out of reach, so Parked Quest "
+                    + "can't be told now"]],
+            ["and as it's owned, past its own colon", "Wake", "PARKED: PARKED's holder left",
+                "PARKED", "Parked Quest",
+                ["Parked Quest", "Wake refused, Parked Quest: Parked Quest's holder left"]],
             ["nor one only opening with its address's letters", "Wake", "PARKEDS went away",
                 "PARKED", "Parked Quest", ["Parked Quest", "Wake refused, PARKEDS went away"]],
-            ["no answer is said as the node's silence", "Wake", "", "PARKED", "Parked Quest",
-                ["Parked Quest", "Wake refused, the node didn't answer"]],
+            ["a reason's dollar signs said as they are", "Wake", "PARKED lost $& and $1",
+                "PARKED", "Parked Quest", ["Parked Quest", "Wake refused, lost $& and $1"]],
+            ["a name's dollar signs said as they are", "Wake", "so PARKED went", "PARKED",
+                "Cost $& Quest", ["Cost $& Quest", "Wake refused, so Cost $& Quest went"]],
+            ["no answer is the node's silence, never a refusal", "Wake", "", "PARKED",
+                "Parked Quest",
+                ["Parked Quest", "Wake had no answer from the node, so it may not be done"]],
+            ["nor for words talked to it", "", "", "PARKED", "Parked Quest",
+                ["Parked Quest", "the node didn't answer, so it may not have been told"]],
             ["words talked to it name no act", "", "PARKED is busy", "PARKED", "Parked Quest",
                 ["Parked Quest", "not told, is busy"]],
+            ["Talk is named as its act", "Talk", "PARKED is busy", "PARKED", "Parked Quest",
+                ["Parked Quest", "Talk refused, is busy"]],
             ["its address only with no name known", "Wake", `PARKED ${unheld}`, "parked", "",
                 ["PARKED", `Wake refused, ${unheld}`]]
         ];
@@ -446,6 +459,28 @@ QtObject {
             if (JSON.stringify(said) !== JSON.stringify(want))
                 failures.push(`refusal, ${what}: ${JSON.stringify(said)}`);
         }
+        // An act's name comes from the vocabulary, and one it doesn't name, as
+        // For You's fill or a look's answer, is said as none, never its id.
+        const vocabulary = { "verb:agent:wake": "Wake", "verb:agent:talk": "Talk" };
+        const nameOf = id => vocabulary[id] ?? id;
+        const acts = [
+            ["a known act by its name", "wake", "Wake"],
+            ["Talk by its name", "talk", "Talk"],
+            ["an act the vocabulary doesn't name is none", "fill", ""],
+            ["nor a look's answer", "answer", ""],
+            ["no act is none", "", ""],
+            ["nor a missing one", undefined, ""]
+        ];
+        for (const [what, act, want] of acts) {
+            const said = SessionRow.actName(act, nameOf);
+            if (said !== want)
+                failures.push(`actName, ${what}: "${said}", not "${want}"`);
+        }
+        const unnamed = SessionRow.refusal(machineSaid, { act: SessionRow.actName("fill", nameOf),
+            why: "PARKED is busy", address: "PARKED", name: "Parked Quest" });
+        if (JSON.stringify(unnamed) !== JSON.stringify(["Parked Quest", "not told, is busy"]))
+            failures.push(`refusal, an unnamed act said act-less: ${JSON.stringify(unnamed)}`);
+
         const names = [
             ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
             ["its quest's title with no row served", undefined, "Its Quest", "PARKED", "Its Quest"],
