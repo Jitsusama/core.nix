@@ -2934,6 +2934,17 @@
     quits, builds nothing an extension asks of it once stopped and tells every screen of a
     theme change, while ordinary pi keeps its process exits
   '';
+  pi-conversations-run-apart = ''
+    each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
+    own processes start from, run by the host's program with --child for the host's key, its
+    socket in the slot systemd names under the host's runtime folder, with the host's
+    environment, proof, node, frame flag and SSH agent but a plain pi's pools, its realm's
+    conversation heap, its inspector shut and the variables that load code cleared, in
+    agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
+    program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
+    and told so, left running through a switch, its host's restart and the kernel killing one
+    of its commands for memory, and a Mac gets none
+  '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, its
