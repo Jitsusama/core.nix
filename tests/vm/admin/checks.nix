@@ -70,6 +70,9 @@ onLinux {
   # Whether a pi host's unit restarts a wedged host, and leaves one that
   # keeps crashing down, shows only with the account's own systemd running it.
   vm-a-wedged-pi-starts-again = import ./pi-hosts-recover.nix { inherit self pkgs; };
+  # Whether one mesh reader started by its socket reads each change once
+  # for seventy clients shows only with the account's own systemd and inotify.
+  vm-mesh-reader-serves-seventy = import ./mesh-reader-seventy.nix { inherit self pkgs; };
   # Whether a crash's core stays from its owner, and a node's goes six hours
   # on, shows only with systemd-coredump, the journal and tmpfiles there.
   vm-cores-kept-from-their-owner = import ./cores-kept-from-their-owner.nix {

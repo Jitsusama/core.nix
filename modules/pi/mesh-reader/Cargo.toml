@@ -1,0 +1,21 @@
+# pi-mesh-reader: reads a folder of the mesh's once for every pi process
+# that asks, and streams what it holds and each change over a socket
+# (src/lib.rs says why).
+[package]
+name = "pi-mesh-reader"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "pi-mesh-reader"
+path = "src/main.rs"
+
+[dependencies]
+# Its help and refusals, as every command here says them.
+terminal-kit = { path = "../../terminal-kit" }
+# inotify and poll, which std doesn't reach (src/watch.rs).
+libc = "0.2"
+# The lines it reads and writes (src/wire.rs).
+serde_json = "1"
