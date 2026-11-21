@@ -22,6 +22,7 @@ use crate::answered::{self, Answer, Waiting};
 use crate::arrangement::{self, Arrangement, Desk};
 use crate::carried::Carried;
 use crate::carries;
+use crate::cells;
 use crate::clock;
 use crate::closed;
 use crate::drawer;
@@ -627,6 +628,7 @@ impl Inputs {
         .with_landed(self.landed().0)
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
+        .with_cells(cells::records(&sessions))
         .with_wants(wants::records(
             &sessions,
             &joel_can,

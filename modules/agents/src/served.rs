@@ -94,6 +94,8 @@ pub struct Made {
     closed: Vec<Value>,
     /// Which window each session here is in, a whole record (windows.rs).
     windows: Vec<Value>,
+    /// Which live session each cell is now, a whole record (cells.rs).
+    cells: Vec<Value>,
     /// What each session asks Joel, a whole record (wants.rs).
     wants: Vec<Value>,
     /// Each session's talks as the launcher shows them, a whole record
@@ -138,6 +140,12 @@ impl Made {
     #[must_use]
     pub fn with_windows(self, windows: Vec<Value>) -> Self {
         Self { windows, ..self }
+    }
+
+    /// The same, with which live session each cell is now.
+    #[must_use]
+    pub fn with_cells(self, cells: Vec<Value>) -> Self {
+        Self { cells, ..self }
     }
 
     /// The same, with what each session asks Joel.
@@ -251,6 +259,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         landed: Rc::default(),
         closed: Vec::new(),
         windows: Vec::new(),
+        cells: Vec::new(),
         wants: Vec::new(),
         talks: Vec::new(),
         starts: Vec::new(),
@@ -319,6 +328,7 @@ impl Served {
             .chain(made.recent)
             .chain(made.closed)
             .chain(made.windows)
+            .chain(made.cells)
             .chain(made.wants)
             .chain(made.talks)
             .chain(made.starts);
