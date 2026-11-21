@@ -299,6 +299,20 @@ let
     };
   };
   systemFloor = lib.foldl' (sum: floor: sum + floor.mib) 0 (lib.attrValues systemFloors);
+
+  # A service Joel's own traffic passes through never swaps and keeps a hard
+  # floor, and comes first for the disk. From 13 to 21 November WARP's
+  # daemon stalled its main loop 343 times, and more often the more memory
+  # stalled: 0.75 times an hour under half a percent, 3.0 over ten. Five of
+  # its 13 lost tunnels came within a minute of the journal flushing under
+  # memory pressure, against 4% of moments at random, while the tunnel's
+  # own loss told nothing. On 21 November it held 122 of its 156 MB in
+  # swap, and in four hours had read 24,551 pages back from the disk and
+  # stalled 15.5 s on it. CPU didn't follow the stalls, so it keeps its
+  # weight. The floor covers its working set, about 180 MB, file pages too,
+  # which swap alone wouldn't keep: about one fault in eight was a file's.
+  inherit (config.jitsusama.slices) carriers;
+  carrierFloor = 256;
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -337,6 +351,22 @@ in
         ]
       )
     );
+  };
+
+  options.jitsusama.slices.carriers = lib.mkOption {
+    description = ''
+      The system services Joel's own traffic passes through, such as a
+      tunnel's daemon, by their names without .service. Each never swaps,
+      keeps a hard memory floor of ${toString carrierFloor} MiB, and comes
+      first for the disk, so agents' load can't leave it waiting on its own
+      pages. WARP's daemon is one wherever it runs.
+    '';
+    default = lib.optional config.services.cloudflare-warp.enable "cloudflare-warp";
+    defaultText = lib.literalExpression ''
+      lib.optional config.services.cloudflare-warp.enable "cloudflare-warp"
+    '';
+    example = [ "tailscaled" ];
+    type = lib.types.listOf lib.types.str;
   };
 
   options.jitsusama.slices.disks = lib.mkOption {
@@ -389,14 +419,25 @@ in
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.
-    assertions = lib.mapAttrsToList (unit: _: {
-      assertion =
-        builtins.match "[A-Za-z0-9:_.@\\-]+\\.(service|socket|timer|path|mount|target)" unit != null
-        && builtins.match "run-.*" unit == null;
-      message =
-        "jitsusama.slices.agentsMayRepeat names ${unit}, "
-        + "which isn't one system unit's whole name, or is one run0 makes.";
-    }) config.jitsusama.slices.agentsMayRepeat;
+    assertions =
+      lib.mapAttrsToList (unit: _: {
+        assertion =
+          builtins.match "[A-Za-z0-9:_.@\\-]+\\.(service|socket|timer|path|mount|target)" unit != null
+          && builtins.match "run-.*" unit == null;
+        message =
+          "jitsusama.slices.agentsMayRepeat names ${unit}, "
+          + "which isn't one system unit's whole name, or is one run0 makes.";
+      }) config.jitsusama.slices.agentsMayRepeat
+      # The floor below makes the service whatever it's named, so a name no
+      # service runs would make an empty unit and protect nothing.
+      ++ map (name: {
+        assertion =
+          let
+            service = config.systemd.services.${name};
+          in
+          service.serviceConfig ? ExecStart || service.script != "";
+        message = "jitsusama.slices.carriers names ${name}, which no system service runs.";
+      }) carriers;
 
     # A unit an agent starts with systemd-run stays in the agent's slice,
     # rather than landing among Joel's apps, as systemd-run.sh says.
@@ -507,7 +548,12 @@ in
     # it the unit is skipped, and a disk that comes later wants it itself.
     # Its stop reaches the unit without the unit requiring it, since a
     # requirement would have boot wait out the device's timeout.
-    systemd.slices.system.sliceConfig.MemoryLow = "${toString systemFloor}M";
+    systemd.slices.system.sliceConfig = {
+      MemoryLow = "${toString systemFloor}M";
+    }
+    // lib.optionalAttrs (carriers != [ ]) {
+      MemoryMin = "${toString (carrierFloor * lib.length carriers)}M";
+    };
 
     # Every move of a process between cgroups, which the sorter makes for
     # each piece of work, takes the hierarchy's write lock, and without
@@ -681,7 +727,16 @@ in
           ];
         };
       }
-    ) disks;
+    ) disks
+    # Last, so a carrier's hard floor stands where a system floor's soft one
+    # would; the carrier's floor is the larger.
+    // lib.genAttrs carriers (_: {
+      serviceConfig = {
+        MemorySwapMax = 0;
+        MemoryMin = "${toString carrierFloor}M";
+        IOWeight = 1000;
+      };
+    });
 
     # The cgroup work is moved into. A cgroup holds only while something is
     # in it, so this one holds a process of its own, and its delegation says

@@ -435,6 +435,46 @@
         && (daemon.Slice or "") == "machine.slice"
       );
 
+  # A service Joel's own traffic passes through, as a tunnel's daemon does,
+  # keeps its memory out of swap and under a hard floor, and comes first for
+  # the disk, so agents' load can't leave it waiting on its own pages. The
+  # kernel keeps a floor only as far as every slice above claims one, so
+  # system.slice claims the carriers' floors too. A name no service has is
+  # refused, since it would make an empty unit rather than protect one.
+  a-carrier-keeps-its-memory =
+    let
+      machine =
+        carriers: extra:
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          { jitsusama.slices.carriers = carriers; }
+          extra
+        ]).config;
+      inherit (machine [ "tunnel" ] { systemd.services.tunnel.serviceConfig.ExecStart = "/bin/true"; })
+        systemd
+        ;
+      tunnel = systemd.services.tunnel.serviceConfig;
+      refused = lib.any (claim: !claim.assertion) (machine [ "none-such" ] { }).assertions;
+      # WARP's daemon is one wherever it runs, unless the machine says otherwise.
+      warp =
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          { services.cloudflare-warp.enable = true; }
+        ]).config.jitsusama.slices.carriers;
+    in
+    holds "a-carrier-keeps-its-memory"
+      "A carrier of Joel's traffic can swap, has no hard floor or one system.slice doesn't claim, isn't first for the disk, or a name no service has was taken."
+      (
+        (tunnel.MemorySwapMax or null) == 0
+        && (tunnel.MemoryMin or null) == "256M"
+        && (tunnel.IOWeight or null) == 1000
+        && (systemd.slices.system.sliceConfig.MemoryMin or null) == "256M"
+        && refused
+        && warp == [ "cloudflare-warp" ]
+      );
+
   # systemd-run, in front of a stand-in that says what it was given, adds
   # --slice-inherit for an agent's --user call alone: not Joel's terminal
   # or launcher, nor a call naming a slice, nor one to the system manager.
