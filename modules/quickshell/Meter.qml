@@ -53,7 +53,7 @@ PanelWindow {
     // Its moment begins as niri says it showed a frame of it, asked again
     // for one drawn while it couldn't be shown; where the compositor never
     // tells, at the frame Qt hands it.
-    FramePresentation.onPresented: moment.shown()
+    FramePresentation.onPresented: meter.shownBy("presented")
     FramePresentation.onDiscarded: {
         if (meter.visible && !moment.seen)
             meter.FramePresentation.ask();
@@ -63,19 +63,30 @@ PanelWindow {
         target: meter.FramePresentation.available ? null : card.Window.window
 
         function onFrameSwapped() {
-            moment.shown();
+            meter.shownBy("swapped");
         }
+    }
+
+    // Which frame began its moment, niri's presented or Qt's swapped, said
+    // with it so the desktop test knows the moment began at niri's.
+    property string seenBy: ""
+
+    function shownBy(frame) {
+        if (!moment.seen)
+            seenBy = frame;
+        moment.shown();
     }
 
     Moment {
         id: moment
         showing: meter.visible
-        // Said to the desktop test as its moment begins, at niri's frame,
-        // which can come a second or more after the frame Qt hands it
-        // ("drawn") on a screen slow to draw.
+        // Said to the desktop test as its moment first begins, at niri's
+        // frame, which can come a second or more after the frame Qt hands
+        // it ("drawn") on a screen slow to draw, with which frame it was. A
+        // change once seen begins it again (again()), unsaid.
         onSeenChanged: {
             if (seen)
-                Report.say(`seen ${meter.name}`);
+                Report.say(`seen ${meter.name} ${meter.seenBy}`);
         }
         onSpent: wasSeen => {
             if (!wasSeen)
