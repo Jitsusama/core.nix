@@ -282,6 +282,21 @@ it("itself says its disk, then its processor, memory, power and update", () => {
       aside: "Fully charged and plugged in. Unchanged at its update at 02:38.",
     },
   );
+  const refused = tiesOf({
+    figures: {
+      updated_at: "2026-11-18T02:40:03Z",
+      update_step: "refused",
+      update_why: "the Mac is over its room",
+    },
+  });
+  assert.deepEqual(
+    itselfSaid(refused, (at) => `at ${at.slice(11, 16)}`),
+    {
+      said: "Its disk not said",
+      aside: "Its update at 02:40 says refused: the Mac is over its room.",
+    },
+    "an update put off says why",
+  );
   const away = tiesOf({ figures: { charge: 12, on_battery: true } });
   assert.deepEqual(
     itselfSaid(away, (at) => at),

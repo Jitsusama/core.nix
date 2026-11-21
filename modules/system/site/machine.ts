@@ -333,7 +333,10 @@ function power(charge: number, onBattery: boolean | undefined): string {
   return onBattery === false ? `${charged} and plugged in` : charged;
 }
 
-/** A machine's last update, as a sentence, when its node says one. */
+/**
+ * A machine's last update, as a sentence, when its node says one, with why
+ * when it didn't go ahead and its node says why.
+ */
 function updated(figures: Figures, when: (at: string) => string): string | undefined {
   if (figures.updatedAt === undefined) {
     return undefined;
@@ -347,7 +350,9 @@ function updated(figures: Figures, when: (at: string) => string): string | undef
     case undefined:
       return `Last updated ${at}.`;
     default:
-      return `Its update ${at} says ${figures.updateStep}.`;
+      return figures.updateWhy === undefined
+        ? `Its update ${at} says ${figures.updateStep}.`
+        : `Its update ${at} says ${figures.updateStep}: ${figures.updateWhy}.`;
   }
 }
 

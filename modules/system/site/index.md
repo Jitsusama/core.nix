@@ -50,7 +50,7 @@ Every health is good, watch, bad or not read, each with its own mark.
   - Code: what it holds, counted, linked to the code's page; said not
     read for a machine other than this one.
   - Itself: its disk, then its processor, memory, power and last
-    update.
+    update, with why when it didn't go ahead and its node says why.
 
   Then what can be done with it: Open in the Launcher, which opens the
   launcher's Machines at that machine, and its commands, each with a
