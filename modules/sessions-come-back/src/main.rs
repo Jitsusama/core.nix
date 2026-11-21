@@ -47,9 +47,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 mod machine;
-use machine::{Unheard, era, runs, within};
 #[cfg(test)]
-use machine::{console_login, era_of};
+use machine::{READ_AFTER_END, SLOW_READ, console_login, era_of, late, mac_era, read_by};
+use machine::{Unheard, era, runs, within};
 
 /// How many runs a session waits to be started again before it's left:
 /// past that, the node isn't coming, or the folder isn't. At one a minute
@@ -620,6 +620,25 @@ fn say(realm: &str, line: &str) {
     eprintln!("{} {}: {}", stamp(now()), one_line(realm), one_line(line));
 }
 
+/// What a line about the whole machine is named by, in place of a realm.
+const EVERY_REALM: &str = "every realm";
+
+/// The machine's boot and login, or its failure said stamped, as each
+/// realm's is, since what the run ends with is written without a time. A
+/// boot that can't be read is told apart from the Mac's busy minutes only
+/// by when, and a read gives up as much as a minute after it began, so it
+/// says when the run began as well, read by `now` before the boot is. It's
+/// said once, by `say`, since the boot is the machine's, not any one
+/// realm's.
+fn boot_told(
+    era: impl FnOnce() -> Result<String, Failure>,
+    now: &dyn Fn() -> u64,
+    say: &dyn Fn(&str),
+) -> Result<String, Failure> {
+    let began = now();
+    era().inspect_err(|failure| say(&format!("{failure} (the run began at {})", stamp(began))))
+}
+
 /// Writes a realm's record whole, or not at all, and on the disk before
 /// it takes the old one's place, since the restarts it's for include
 /// those with no clean shutdown. One unchanged since this run kept it, as
@@ -766,9 +785,11 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
 /// Every realm's run, each on its own, so one realm's node being away
 /// keeps none of the others' sessions from coming back. Each failure is
 /// said, stamped and named by its realm; the first is what the run ends
-/// with.
+/// with. A boot that can't be read is said once, for every realm, before
+/// any of them runs (`boot_told`), as is a boot read slow to answer.
 fn run(mycelium: &str, realms: &[String]) -> Result<(), Failure> {
-    let era = era()?;
+    let told = |line: &str| say(EVERY_REALM, line);
+    let era = boot_told(|| era(&told), &now, &told)?;
     let folder = state()?;
     let mut failed = None;
     for realm in realms {
