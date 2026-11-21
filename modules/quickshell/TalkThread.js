@@ -73,10 +73,11 @@ function pendingOf(key, replies, written) {
         side: Said.clockOf(one.reply.since), nerd: "", pending: true }));
 }
 
-// Who has a line now among its events in the order written, its last routing's or taking
-// up's, mid-sentence; "" where none has, or it was let go or taken back since, as the list
+// Who has a line now among its events in the order written, its last routing's, taking
+// up's or reply's, whose `who` is whoever the void sent it on to (8GYNJ6 [0543317b]),
+// mid-sentence; "" where none has, or it was let go or taken back since, as the list
 // waits on a line only while its last event holds it (TalkLine.js's past).
-const HOLDING = ["routed", "taken"];
+const HOLDING = ["routed", "taken", "replied"];
 const LETTING = ["let-go", "undone"];
 function heldBy(own) {
     let who = "";
@@ -139,6 +140,13 @@ function opening(picked, talks, opened) {
 // but kept in an open thread, where typing is its reply, so - comes back to it picked.
 function afterTyping(picked, threadOpen) {
     return threadOpen ? picked : -1;
+}
+
+// The line picked on coming back from a thread: the one left, found again by its key, as
+// the list may have moved under it while it was open; none once it's left the list. With
+// no thread open, - leaves the pick as it is.
+function comingBack(picked, talks, openedSince) {
+    return openedSince === 0 ? picked : (talks ?? []).findIndex(one => one.since === openedSince);
 }
 
 // The keys the foot offers, each a key and what it does as KeyHints takes them: in an open

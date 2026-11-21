@@ -480,23 +480,38 @@ QtObject {
             Expect.same("a reply not yet written stands as sent, in the voice, under it",
                 pending.slice(2).map(step => [step.text, step.mine, step.answer, step.side]),
                 [["sent", false, false, ""]]);
+            // The void writes his reply under whom it sent it on to, the line's owner, or its
+            // own route where nobody has answered, let go or not (8GYNJ6 [0543317b]), so that
+            // name is whom it waits on, over whoever held the line before.
             const held = threadEvents.filter(event => event.event !== "let-go");
-            Expect.same("a reply written waits on whoever has the thread, by name, not address",
-                Thread.threadOf(threaded, held.concat([replyWritten]), threadWords)
-                    .steps.slice(-1).map(step => [step.text, step.mine]),
-                [["waiting on your orchestrator", false]]);
-            // Let go or taken back, nobody has it, as the list says of a line, so it's the
-            // void's again.
+            const routedFirst = [{ line: replyKey, msg: "m1", owner: "WCJQSG",
+                who: "Your orchestrator", event: "routed" }];
+            Expect.same("a reply written waits on whom the void sent it to, by name, not address",
+                [held, threadEvents, routedFirst].map(events => Thread.threadOf(threaded,
+                    events.concat([replyWritten]), threadWords).steps.slice(-1)
+                    .map(step => [step.text, step.mine])[0]),
+                [["waiting on Delta", false], ["waiting on Delta", false],
+                    ["waiting on Delta", false]]);
+            // Taken back, nobody has it, as the list says of a line, so it's the void's again.
             const takenBack = { line: replyKey, msg: "m6", who: "Delta", event: "undone" };
-            Expect.same("a reply after the thread was let go or taken back waits on the void",
-                [threadEvents, held.concat([takenBack])].map(events => Thread.threadOf(threaded,
-                    events.concat([replyWritten]), threadWords).steps.slice(-1)[0].text),
-                ["waiting on the void", "waiting on the void"]);
+            Expect.same("a holder taken back since, and no name on the reply, waits on the void",
+                Thread.threadOf(threaded, held.concat([takenBack, Object.assign({},
+                    replyWritten, { who: "" })]), threadWords).steps.slice(-1)[0].text,
+                "waiting on the void");
+            // The list says the same: his reply keeps a line open, even one whose answers he
+            // has all seen, waiting on whom it went to, so it stays in the list under him.
+            const lineKey = Said.keyOf(threaded);
+            const repliedTo = held.concat([replyWritten]);
+            const seenAll = { [lineKey]: Said.past(repliedTo, lineKey).answers.length };
+            Expect.same("his reply keeps an answered line open, waiting on whom it went to",
+                [Said.open(threaded, held, seenAll), Said.open(threaded, repliedTo, seenAll),
+                    Said.past(repliedTo, lineKey).waiting], [false, true, "Delta"]);
             Expect.same("a holder's name goes in as written, $ and all",
                 Said.worded(threadWords, "waiting", "$& $'"), "waiting on $& $'");
             Expect.same("a reply written in a thread nobody has waits on the void",
-                Thread.threadOf(threaded, [replyWritten], threadWords).steps
-                    .map(step => step.text), ["and now?", "waiting on the void"]);
+                Thread.threadOf(threaded, [Object.assign({}, replyWritten, { who: "" })],
+                    threadWords).steps.map(step => step.text),
+                ["and now?", "waiting on the void"]);
             Expect.same("anything after his reply ends its standing",
                 Thread.threadOf(threaded, threadEvents.concat([replyWritten, { line: replyKey,
                     msg: "r2", who: "Delta", event: "answered", at: "21:02",
@@ -524,6 +539,11 @@ QtObject {
                 [Thread.opening(1, listed, null), Thread.opening(-1, listed, null),
                     Thread.opening(0, listed, listed[2]), Thread.opening(5, listed, null)],
                 [20, 0, 0, 0]);
+            // Back from a thread, the line left is picked again by its key, wherever the list
+            // moved it while it was open (our council, 2026-11-21, round 2).
+            Expect.same("- comes back to the line left, by its key, and leaves a pick alone",
+                [Thread.comingBack(1, listed, 10), Thread.comingBack(1, listed, 0),
+                    Thread.comingBack(1, listed, 99)], [2, 1, -1]);
             // The foot says how to pick a line, that Return opens it, and how to come back,
             // by the keys of the mode he's in (Joel, 2026-11-21 10:23: "I have no clue how to
             // step into a thread").

@@ -3745,7 +3745,7 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     assert sent["text"] == f"reply {key}\n{words}", sent
     # Said now, so the void reads it into the run under way rather than after it.
     assert sent.get("now") is True, sent
-    comes_back_picked(shell, at_line)
+    comes_back_picked(shell, asked)
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
@@ -3777,15 +3777,24 @@ def typing_lets_the_pick_go(shell: Shell, at_line: int) -> None:
     pick_by_tab(shell, at_line)
 
 
-def comes_back_picked(shell: Shell, at_line: int) -> None:
-    """Come back from a thread by Esc -, its line still picked, a reply's clearing aside."""
+def comes_back_picked(shell: Shell, asked: str) -> None:
+    """Come back from a thread by Esc -, its line still picked, a reply's clearing aside.
+
+    The line is told by its words, not where it stood, since the list may move it while its
+    thread is open.
+    """
+
+    def picked(shown: dict[str, Any]) -> str:
+        at, talks = shown["line"]["picked"], shown["line"]["talks"]
+        return talks[at]["line"] if 0 <= at < len(talks) else ""
+
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_chars("-")
     shell.launcher_until(
         lambda shown: (
             shown["line"]["thread"] is None
-            and shown["line"]["picked"] == at_line
+            and picked(shown) == asked
             and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
         )
     )

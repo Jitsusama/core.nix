@@ -228,8 +228,9 @@ const TAKING = ["taking", "taken", "told"];
 // The events that carry an answer's words: answered, landed once it's done, and taken where
 // whoever took it up said something (QCXZEB [203d9e2c]); one with no words is dropped.
 const ANSWERING = ["answered", "landed", "taken"];
-// The events after which someone has the line and it waits on them.
-const HOLDING = ["routed", "taken"];
+// The events after which someone has the line and it waits on them; his reply, which the
+// void sends on to whoever has it and writes under their name (8GYNJ6 [0543317b]), too.
+const HOLDING = ["routed", "taken", "replied"];
 
 // Whether a line is still open: it has an answer he hasn't seen, nobody has answered it yet,
 // or he's taking it back and the void hasn't said; `seen` holds how many of each line's
@@ -244,8 +245,8 @@ function open(talk, events, seen) {
     if (heard.last === "") {
         return talk.said === "sent";
     }
-    return heard.answers.length > (seen?.[key] ?? 0)
-        || (heard.answers.length === 0 && HOLDING.includes(heard.last));
+    const awaited = heard.answers.length === 0 || heard.last === "replied";
+    return heard.answers.length > (seen?.[key] ?? 0) || (awaited && HOLDING.includes(heard.last));
 }
 
 // The lines a talk line shows, each once: those the void keeps, and those said in this

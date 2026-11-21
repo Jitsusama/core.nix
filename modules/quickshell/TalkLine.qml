@@ -612,7 +612,11 @@ Scope {
                         onRegistered: name => root.attach(name)
                         onAccepted: root.returned()
                         // - back to the list from a thread, its line still picked.
-                        onBackward: root.openedSince = 0
+                        onBackward: {
+                            root.picked = Thread.comingBack(root.picked, root.talks,
+                                root.openedSince);
+                            root.openedSince = 0;
+                        }
                         // Typing lets a picked line go but in its thread (afterTyping).
                         onTextChanged: {
                             root.picked = Thread.afterTyping(root.picked, root.opened !== null);
