@@ -59,7 +59,8 @@ if ! grep -q 'threaded render loop' "$said"; then
   exit 1
 fi
 # Prints the starts the case logged, the starts it counted, those with
-# Qt's line, and the numbers of those without it.
+# Qt's line, and those without it, each with the windows Qt found shown
+# as it started its timer there, or "none" where it didn't start it.
 counts=$(awk '
   /The case starts its squares moving, start / { inside = 1; starts++; next }
   /Over [0-9]+ starts the still window drew/ {
@@ -68,8 +69,14 @@ counts=$(awk '
     sub(/.*Over /, "", counted)
     sub(/ .*/, "", counted)
   }
-  inside && /Starting system \(not vsync-based\) animation timer \(exposedWindows=3 / {
-    timed[starts] = 1
+  inside && /Starting system \(not vsync-based\) animation timer \(exposedWindows=/ {
+    shown = $0
+    sub(/.*exposedWindows=/, "", shown)
+    sub(/ .*/, "", shown)
+    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown
+    if (shown == 3) {
+      timed[starts] = 1
+    }
   }
   END {
     n = 0
@@ -78,13 +85,17 @@ counts=$(awk '
       if (s in timed) {
         n++
       } else {
-        missing = missing " " s
+        missing = missing " " s "(" (s in seen ? seen[s] : "none") ")"
       }
     }
     print starts + 0, counted + 0, n, missing
   }' "$said")
 read -r starts counted timed missing <<< "$counts"
-if [ "$counted" -eq 0 ] || [ "$starts" -ne "$counted" ]; then
+if [ "$counted" -eq 0 ]; then
+  echo "The log holds no 'Over N starts the still window drew' line the script can read." >&2
+  exit 1
+fi
+if [ "$starts" -ne "$counted" ]; then
   echo "The case counted $counted starts but logged 'The case starts its squares moving'" \
     "for $starts, so the log can't say which of Qt's lines came in which start." >&2
   exit 1
@@ -92,6 +103,7 @@ fi
 echo "Qt started its animation timer with all three windows shown in $timed of $starts starts."
 if [ $((timed * 2)) -lt "$starts" ]; then
   echo "That's fewer than half: 'Starting system (not vsync-based) animation timer" \
-    "(exposedWindows=3 ...)' never came in starts $missing." >&2
+    "(exposedWindows=3 ...)' never came in starts $missing, the windows Qt found" \
+    "shown there in brackets." >&2
   exit 1
 fi
