@@ -11,7 +11,8 @@ udevadm trigger --action=add --settle --subsystem-match=video4linux \
   --property-match=ID_MODEL_ID=091d
 for node in /dev/video*; do
   [ -c "$node" ] || continue
-  if [ "$(udevadm info --query=property --property=CAMERA_RELAYED --value "$node")" = 1 ]; then
+  relayed=$(udevadm info --query=property --property=CAMERA_RELAYED --value "$node")
+  if [ "$relayed" = 1 ]; then
     setfacl --remove-all "$node"
   fi
 done

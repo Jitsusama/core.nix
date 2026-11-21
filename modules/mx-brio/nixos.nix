@@ -75,15 +75,6 @@ let
     SUBSYSTEM=="video4linux", ENV{ID_USB_DRIVER}=="uvcvideo", ENV{ID_VENDOR_ID}=="046d", ENV{ID_MODEL_ID}=="091d", TAG-="uaccess", ENV{CAMERA_RELAYED}="1"
     SUBSYSTEM=="video4linux", ENV{CAMERA_RELAYED}=="1", ATTR{index}=="0", SYMLINK+="mx-brio", TAG+="systemd", ENV{SYSTEMD_WANTS}+="mx-brio.service"
   '';
-
-  takeHold = pkgs.writeShellApplication {
-    name = "mx-brio-take-hold";
-    runtimeInputs = [
-      pkgs.acl
-      pkgs.systemd
-    ];
-    text = builtins.readFile ./take-hold.sh;
-  };
 in
 {
   imports = [
@@ -132,10 +123,14 @@ in
         "systemd-udev-trigger.service"
       ];
       restartTriggers = [ rules ];
+      path = [
+        pkgs.acl
+        pkgs.systemd
+      ];
+      script = builtins.readFile ./take-hold.sh;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = lib.getExe takeHold;
       };
     };
 
