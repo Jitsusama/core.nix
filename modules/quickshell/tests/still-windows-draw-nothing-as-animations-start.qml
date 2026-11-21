@@ -27,12 +27,17 @@ ShellRoot {
     property int movingBefore: 0
     property int slidingBefore: 0
     property int starts: 0
-    // The starts a moving window drew too few frames for, as "3 (moving 1)".
+    // The starts a moving window drew no frame for, as "3 (moving 0)".
     property var shortStarts: []
     readonly property int startsAsked: 10
-    // A start's first frame, and at least one of its ticks drawn: a 250 ms
-    // animation draws about fifteen at 60 Hz, so a loaded builder has room.
-    readonly property int fewestEachStart: 2
+    // Each start's first frame drawn, and over the starts at least one of
+    // each start's ticks too: a 250 ms animation draws about fifteen at
+    // 60 Hz, but a loaded builder once drew one in a start (21 November),
+    // so the ticks are counted over all the starts, not in each.
+    readonly property int fewestOverall: 2
+    // The frames each moving window drew over the starts ended so far.
+    property int movedOverall: 0
+    property int slidOverall: 0
 
     function fail(why: string): void {
         console.error(why);
@@ -47,7 +52,9 @@ ShellRoot {
     function startEnded(): void {
         const movedFrames = root.movingDrawn - root.movingBefore;
         const slidFrames = root.slidingDrawn - root.slidingBefore;
-        if (movedFrames < root.fewestEachStart || slidFrames < root.fewestEachStart)
+        root.movedOverall += movedFrames;
+        root.slidOverall += slidFrames;
+        if (movedFrames < 1 || slidFrames < 1)
             root.shortStarts.push(
                 `${root.starts} (moving ${movedFrames}, sliding ${slidFrames})`);
     }
@@ -211,8 +218,13 @@ ShellRoot {
             + `since the shell started, the moving one drew ${root.movingDrawn} `
             + `and the sliding one ${root.slidingDrawn}.`);
         if (root.shortStarts.length > 0) {
-            root.fail(`A moving window drew fewer than ${root.fewestEachStart} frames `
-                + `for starts ${root.shortStarts.join(", ")}.`);
+            root.fail(`A moving window drew no frame for starts ${root.shortStarts.join(", ")}.`);
+            return;
+        }
+        const fewest = root.fewestOverall * root.starts;
+        if (root.movedOverall < fewest || root.slidOverall < fewest) {
+            root.fail(`Over ${root.starts} starts the moving windows drew ${root.movedOverall} `
+                + `and ${root.slidOverall} frames, fewer than ${fewest}.`);
             return;
         }
         if (still > 0) {
