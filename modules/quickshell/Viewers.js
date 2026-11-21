@@ -39,7 +39,12 @@ const ASKED_FOR = 15 * 60 * 1000;
 // a move that has ended, and a shell restarted by a switch opened two
 // such viewers on a new workspace while Joel was there (OSPHT4
 // [0762284c], 13:41:38 on 11 November). One parked waits too, since
-// viewing it is what wakes it, which woke a parked QCXZEB then.
+// viewing it is what wakes it, which woke a parked QCXZEB then. One
+// Reopen Them All kept while Joel was on its workspace, with the words
+// its viewer waits for its host by (`waiting`), opens by them, without
+// its session, once he isn't there, him away or not, since he asked for
+// it: kept for its host alone, it opened by itself nearly two hours
+// later on 20 November.
 function viewersDue(kept, sessions, now, screen) {
     const { workspaces, since, away } = screen ?? {};
     const open = [];
@@ -74,6 +79,14 @@ function viewersDue(kept, sessions, now, screen) {
             // Lapsed, its session most likely never moved.
         } else if (session?.window) {
             // Its viewer is open, so its place is done with.
+        } else if (!viewable && waitingWords({ view: place.waiting }) !== null
+            && place.at >= since) {
+            const into = viewerPlace(place, workspaces ?? {});
+            if (into === null) {
+                still[id] = place;
+            } else {
+                open.push({ id, place, into });
+            }
         } else if (!viewable || away !== true || !(place.at >= since) || parkedHere(session)) {
             still[id] = place;
         } else {
