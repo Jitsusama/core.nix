@@ -50,6 +50,7 @@ use terminal_kit::{Exit, Failure, Help};
 use agents::acts;
 use agents::arrangement::{Arrangement, Still};
 use agents::asker;
+use agents::cells;
 use agents::clock;
 use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
@@ -95,6 +96,7 @@ const DOMAIN: Domain = Domain {
         "kept-places",
         "want",
         "talks",
+        cells::KIND,
         starts::KIND,
     ],
     sole: &[],

@@ -22,6 +22,7 @@ use crate::answered::{self, Answer, Waiting};
 use crate::arrangement::{self, Arrangement, Desk};
 use crate::carried::Carried;
 use crate::carries;
+use crate::cells;
 use crate::clock;
 use crate::closed;
 use crate::drawer;
@@ -627,6 +628,15 @@ impl Inputs {
         .with_landed(self.landed().0)
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
+        // Every session, ended ones too, since a look's cell has most
+        // often ended; in_order keeps only those running or parked.
+        .with_cells(cells::records(
+            &self
+                .sessions
+                .records()
+                .map(|(_, one)| Session(one))
+                .collect::<Vec<_>>(),
+        ))
         .with_wants(wants::records(
             &sessions,
             &joel_can,
@@ -950,6 +960,20 @@ mod tests {
             used.get("Q"),
             None,
             "one opened without an app id isn't said"
+        );
+    }
+
+    #[test]
+    fn every_session_ended_ones_too_is_served_as_a_cell() {
+        let served = served(&inputs());
+        assert_eq!(
+            served.get("agent-cell:agents:X").map(|one| &one["goes"]),
+            Some(&json!(null)),
+            "the closed X, which in_order leaves out, is a cell going nowhere"
+        );
+        assert_eq!(
+            served.get("agent-cell:agents:P").map(|one| &one["goes"]),
+            Some(&json!("P"))
         );
     }
 
