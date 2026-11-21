@@ -416,12 +416,12 @@ fn serve_notices(args: &Args) -> Result<(), Failure> {
         held.unserved(served.unserved());
         told
     };
-    // The first records, the history kept, are made before anything can ask:
-    // a watch answered on the socket, or a notice sent once the bus name is
-    // taken, between listening and this making was answered with no records
-    // at all, the history as if it were empty (bus.rs's
+    // The first records, the history kept, are made before the socket is
+    // listened on: a watch answered between listening and this making was
+    // told no records at all, the history as if it were empty (bus.rs's
     // one_done_with_a_day_ago_is_historys_row_but_no_record_the_shell_watches,
-    // failing on a builder, 2026-11-21).
+    // failing on a builder, 2026-11-21). A notice sent on the bus is kept
+    // in `state` and told by the loop below, whenever it comes.
     let first = records(&mut state.lock().unwrap_or_else(PoisonError::into_inner));
     shared.change(first, json!({}));
     let listener = serve::listen(&args.socket).map_err(|why| {
