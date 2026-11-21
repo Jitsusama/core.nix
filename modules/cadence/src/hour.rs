@@ -7,7 +7,8 @@
 //! its owner in the loop's ledger, due a day on; says the next hour
 //! whether it moved; and sends the card to the orchestrator. A miss Joel
 //! found himself outranks every figure, and stays open until a check
-//! that would have caught it merges.
+//! that would have caught it merges. The queues the work waits in show
+//! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, and `owing` files its drag with each owner.
@@ -20,7 +21,7 @@ mod owing;
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -298,7 +299,40 @@ fn gather(
     let keeper = measures::keeper(routes.as_deref());
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
+    all.extend(measures::queues::queues(
+        &text(&state_home.join("pi/agentic-harness.pi/priority-workflow/outcomes.jsonl")),
+        &tail(&state_home.join("nix-offload/there.jsonl"), SENDS_READ),
+        &text(&state_home.join("net/train/landed.jsonl")),
+        now,
+    ));
     Ok(all)
+}
+
+/// How much of nix-offload's record of sends the hour reads: it keeps every
+/// send it ever made (38 MB on 21 November), about 2.6 MB a day, so the end
+/// holds days of them.
+const SENDS_READ: u64 = 16 << 20;
+
+/// The last `bytes` of the file at `path`, from its first whole line, or
+/// nothing when it can't be read.
+fn tail(path: &Path, bytes: u64) -> String {
+    let read = || -> io::Result<String> {
+        let mut file = fs::File::open(path)?;
+        let from = file.metadata()?.len().saturating_sub(bytes);
+        file.seek(SeekFrom::Start(from))?;
+        let mut raw = Vec::new();
+        file.read_to_end(&mut raw)?;
+        let text = String::from_utf8_lossy(&raw);
+        // A cut line isn't one, so it starts after the first break.
+        Ok(if from == 0 {
+            text.into_owned()
+        } else {
+            text.split_once('\n')
+                .map(|(_, rest)| rest.to_owned())
+                .unwrap_or_default()
+        })
+    };
+    read().unwrap_or_default()
 }
 
 /// The council rounds each change merged to core's and the harness's
@@ -584,6 +618,24 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_records_tail_starts_at_its_first_whole_line() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let path = root.path().join("there.jsonl");
+        fs::write(&path, "{\"at\":1}\n{\"at\":2}\n{\"at\":3}\n").expect("written");
+        assert_eq!(tail(&path, 12), "{\"at\":3}\n", "the cut line is left out");
+        assert_eq!(
+            tail(&path, 1 << 20),
+            fs::read_to_string(&path).expect("read"),
+            "all of a short one"
+        );
+        assert_eq!(
+            tail(&root.path().join("none"), 12),
+            "",
+            "none read is nothing"
+        );
+    }
 
     #[test]
     fn the_card_asks_the_wish_lists_keeper_besides_telling_the_orchestrator() {

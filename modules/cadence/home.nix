@@ -67,7 +67,11 @@
 # Each hour at ten past, `cadence hour` measures what shipped, what broke,
 # what slipped and how clean the code is against their targets, names the
 # one biggest drag and files it with its owner in findings.jsonl, says
-# whether last hour's moved, and sends the card to the orchestrator.
+# whether last hour's moved, and sends the card to the orchestrator. Its
+# Queues section reads each queue's wait over the day from the queue's own
+# record (the priority workflow's outcomes, nix-offload's sends, the merge
+# train's landings) against a target for its p90, with its flow beside it,
+# and asks the owner of the worst one for its next change once a day.
 #
 # cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,

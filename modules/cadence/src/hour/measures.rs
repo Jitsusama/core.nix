@@ -22,6 +22,7 @@ mod misses;
 mod owner;
 mod pains;
 mod promised;
+pub mod queues;
 mod reports;
 pub mod rounds;
 pub mod spent;
@@ -58,6 +59,9 @@ pub enum Class {
     Ship,
     Cells,
     Clean,
+    /// The queues the work waits in, which never lead the drag: the worst
+    /// is asked apart, once a day (owing.rs).
+    Queues,
     /// Joel's pains, last: the hearer routes each to its owner itself.
     Pains,
 }
@@ -74,6 +78,7 @@ impl Class {
             Self::Ship => "ship",
             Self::Cells => "cell health",
             Self::Clean => "clean zones",
+            Self::Queues => "queues",
             Self::Pains => "his pains",
         }
     }
@@ -109,12 +114,13 @@ impl Measure {
 
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
-/// can't move, so they are filed to its owner apart and never lead.
+/// can't move, so they are filed to its owner apart and never lead; nor do
+/// the queues, whose worst is asked apart once a day.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
-        .filter(|m| !m.key.starts_with(rounds::FRUITLESS))
+        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)

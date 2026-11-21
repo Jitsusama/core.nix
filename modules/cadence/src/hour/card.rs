@@ -62,6 +62,7 @@ pub fn compose(
     for class in [
         Class::Apps,
         Class::Ship,
+        Class::Queues,
         Class::Miss,
         Class::Slip,
         Class::Functional,

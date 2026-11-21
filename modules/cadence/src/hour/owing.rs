@@ -13,6 +13,7 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
+use super::measures::queues::{self, QUEUE};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_for_good, held_unseen, rounds,
 };
@@ -171,6 +172,22 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key == FINDINGS {
         return findings_filed(m);
     }
+    // Joel's terms for a queue (20 November): what it protects, whether the
+    // work could go without it, and a change weighed against others.
+    if m.key.starts_with(QUEUE) {
+        return vec![Filed {
+            key: format!("hour:{}", m.key),
+            owner: m.owner.clone(),
+            text: format!(
+                "cadence hour: the worst queue today is yours, {says}. Please reply within a \
+                 day with what it protects, whether the work could go without it, and the \
+                 change that keeps the protection without the wait, weighed against at least \
+                 two designs beside the obvious one, with its date. It closes by itself once \
+                 its p90 is back in."
+            ),
+            says,
+        }];
+    }
     let owners = by_owner(m);
     if !owners.is_empty() {
         return owners
@@ -312,9 +329,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// miss does, and the drag the rest of the hour would have is filed too:
 /// his misses still reach their owners whatever his apps read. So does a
 /// merge whose rounds past five caught nothing, which WCJQSG asked be filed
-/// to whoever landed it, whatever else leads, and each owner's findings in
+/// to whoever landed it, whatever else leads, each owner's findings in
 /// the work system's group open past a day, which WCJQSG ruled count
-/// against them as Joel's misses do.
+/// against them as Joel's misses do, and the worst queue, once a day.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -348,6 +365,12 @@ pub fn file(
     dragging.extend(measures.iter().filter(|m| {
         (m.key.starts_with(rounds::FRUITLESS) || m.key == FINDINGS) && m.past().is_some()
     }));
+    // Nor do the queues; the worst is asked for its next change once a
+    // day, as Joel asked of them, whatever else leads.
+    let asked_today = ledger
+        .iter()
+        .any(|e| e.key.starts_with(&format!("hour:{QUEUE}")) && e.first == date);
+    dragging.extend(queues::worst(measures).filter(|_| !asked_today));
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -410,6 +433,58 @@ mod tests {
             "its owner was asked for a check again, or not when it will run: {}",
             filed[0].text
         );
+    }
+
+    #[test]
+    fn the_worst_queue_is_asked_once_a_day_beside_the_drag() {
+        let queue = |key: &str, now: f64, owner: &str| {
+            let mut m = measure(&format!("{QUEUE}{key}"), Class::Queues, now, Some(60.0));
+            m.owner = owner.to_owned();
+            m
+        };
+        let slips = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let hour = [
+            slips.clone(),
+            queue("world-walks", 180.0, "WALKS"),
+            queue("sends", 90.0, "SENDS"),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &hour, "2026-11-21", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["OWNER", "WALKS"],
+            "the drag still leads, and the worst queue is asked"
+        );
+        assert!(
+            told[1]
+                .1
+                .contains("what it protects, whether the work could go without it")
+                && told[1]
+                    .1
+                    .contains("two designs beside the obvious one, with its date"),
+            "asked in Joel's terms: {}",
+            told[1].1
+        );
+        // Later that day another queue is the worst; one ask a day is all.
+        let later = [
+            slips,
+            queue("world-walks", 30.0, "WALKS"),
+            queue("sends", 90.0, "SENDS"),
+        ];
+        assert!(
+            file(&mut ledger, &later, "2026-11-21", 4600).is_empty(),
+            "a second queue asked the same day"
+        );
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.key == format!("hour:{QUEUE}world-walks") && e.open),
+            "a queue back in closes its ask"
+        );
+        let told = file(&mut ledger, &later, "2026-11-22", 90_000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(owners, ["SENDS"], "the next day's worst is asked");
     }
 
     #[test]
