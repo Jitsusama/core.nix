@@ -835,7 +835,7 @@ Provider {
 
     // A session elsewhere that couldn't be joined, a hosted one with no
     // window to go to, or any the node couldn't tell, is said in the foot,
-    // by its address in the alert colour, where the act was pressed: at
+    // by its name (footName) in the alert colour, where the act was pressed: at
     // once while the launcher's open, or else once it opens next, never as
     // a notice (VKCF3Z, 2026-11-07 [4a00987e]).
     Connections {
@@ -869,13 +869,15 @@ Provider {
         // itself and leaves the Wake's row be.
         function onUnsteered(session, why, act) {
             const key = `agent:${session.address}`;
+            const called = provider.footName(session);
             if (act === "wake" && why !== "" && provider.launcher?.becoming?.[key]) {
-                provider.refused(key, SessionRow.reasonOf(why, session.address));
+                provider.refused(key, SessionRow.reasonOf(why, session.address,
+                    called === session.address ? "" : called));
                 return;
             }
-            const named = act !== "" ? Words.name(`verb:agent:${act}`) : "";
             const [name, said] = SessionRow.refusal(Words.of("agents:machine").said ?? {}, {
-                act: named, why, address: session.address, name: provider.footName(session)
+                act: SessionRow.actName(act, Words.name), why, address: session.address,
+                name: called
             });
             provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
         }
@@ -883,8 +885,15 @@ Provider {
         // A parked session Wake would reopen with no fence it can say,
         // which might bring it back looser than it ran, is left asleep and
         // said so, rather than as the node's refusal, which blames its
-        // missing holder (#5901's F16).
+        // missing holder (#5901's F16). A Wake pressed here, whose row was
+        // becoming woken, is taken back at once, as a refused Wake is, so
+        // the row doesn't read listening until Becoming gives up on it.
         function onUnfenced(session) {
+            const key = `agent:${session.address}`;
+            if (provider.launcher?.becoming?.[key]) {
+                provider.refused(key, provider.elsewhere("unfencedWhy", session));
+                return;
+            }
             provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unfenced", session), Theme.alert]]);
         }
@@ -1382,7 +1391,7 @@ Provider {
             // Woken, one waiting on Joel still waits on him, so his mark
             // keeps the alert's hue rather than a program's.
             hue: SessionRow.hue(now?.waitsOnJoel ? "needs" : "listening", full !== "")
-        }, session.title, "wake", {
+        }, provider.footName(session), "wake", {
             done: () => !Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
             within: Sessions.startsWithin
         });

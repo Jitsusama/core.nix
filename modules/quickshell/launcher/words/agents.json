@@ -316,8 +316,10 @@
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
         "refused": "{act} refused, {why}",
-        "unanswered": "the node didn't answer",
-        "unfenced": "not woken, it might come back outside its sandbox"
+        "unanswered": "the node didn't answer, so it may not have been told",
+        "unansweredTo": "{act} had no answer from the node, so it may not be done",
+        "unfenced": "not woken, it might come back outside its sandbox",
+        "unfencedWhy": "it might come back outside its sandbox"
       }
     },
     {

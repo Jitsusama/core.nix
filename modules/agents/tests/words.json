@@ -71,7 +71,7 @@
         "unreached": "not joined \u00b7 {machine} is out of reach",
         "hosted": "not opened \u00b7 its host gave no way to view it",
         "untold": "not told, {why}",
-        "unanswered": "the node didn't answer"
+        "unanswered": "the node didn't answer, so it may not have been told"
       }
     },
     {
