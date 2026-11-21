@@ -224,6 +224,32 @@ it("puts a change's title, address and failed checks in the drawer as words", ()
   assert.ok(asWords(markup), `the drawer put a change in as markup: ${markup}`);
 });
 
+/** The hostile records with their repository keyed `key` instead. */
+function keyedAs(key: string): Parameters<typeof told>[0] {
+  return records.map((each) => {
+    const entries = Object.entries(each).map(([name, value]) => [
+      name,
+      typeof value === "string" ? value.replace(repository, key) : value,
+    ]);
+    return Object.fromEntries(entries) as (typeof records)[number];
+  });
+}
+
+it("leads to the launcher by a key mycelium-link takes whole, and by no other", () => {
+  const link = (key: string): string =>
+    `<a href="mycelium:repository/${key}" data-key="launcher:${key}">Open it in the launcher</a>`;
+  for (const key of ["github:owl/notes", "local:~/src/notes", "gitlab:group/sub/notes"]) {
+    const markup = openDrawer(keyedAs(key));
+    assert.ok(markup.includes(link(key)), `${key} led nowhere: ${markup}`);
+  }
+  // The hostile key, one with a space, and one past 200 letters lead nowhere rather than
+  // to a link the launcher would refuse.
+  for (const key of [repository, "local:~/src/my notes", `github:owl/${"n".repeat(190)}`]) {
+    const markup = openDrawer(keyedAs(key));
+    assert.ok(!markup.includes("mycelium:repository/"), `${key} led on: ${markup}`);
+  }
+});
+
 // What works in the hostile repository: two processes in its checkout, one in its tree.
 const using = {
   key: `using:${repository}`,

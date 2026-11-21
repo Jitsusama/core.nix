@@ -4,7 +4,12 @@ Every repository on the machine as a grove: which of its trees are being
 written, which of its changes wait and on what, the cells at work in each,
 and what's worth a look. The page watches the repos daemon's records live
 over the sites' server, and redraws the moment git writes a branch, a tree
-is cut or a change's checks move. Nothing on it changes anything.
+is cut or a change's checks move. Nothing on it changes anything: what's
+done to a repository is done from its row in the launcher's Code, which
+its Open it in the launcher opens, the row selected. There it's pulled,
+its gone trees forgotten, keeping locked ones and every branch, and its
+store gathered when git would gather it, each act offered only where it
+has something to do.
 
 ## How to Read It
 
@@ -27,8 +32,9 @@ is cut or a change's checks move. Nothing on it changes anything.
   written, what its git stores weigh, with "upkeep due" when git would
   gather one now, and what works in it: its share of a core over the last
   minute and the memory its processes hold.
-- **Beside the list, the repository the cursor is on:** its trunk, its
-  checkouts with what each store is made of and what works in each, its
+- **Beside the list, the repository the cursor is on:** its trunk, the
+  way to it in the launcher, its checkouts with what each store is made
+  of and what works in each, its
   changes with how their
   checks and reviews stand, and its trees by season: Written Today, This
   Week, Resting and Gone, the last two folded until asked for. Within a
