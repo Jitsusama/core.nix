@@ -354,6 +354,47 @@ fn one_done_with_a_day_ago_is_historys_row_but_no_record_the_shell_watches() {
     assert!(!history.is_null(), "the read one is still History's");
 }
 
+/// A watch asked the moment the socket comes, as the shell's is when the
+/// daemon starts again under it, is told the history kept, never none.
+/// The socket is looked for each millisecond, not every 20 as
+/// `Daemon::start` does, since the daemon once answered on it before
+/// making its first records, and that gap lasted only as long as taking
+/// the bus name.
+#[test]
+fn a_watch_asked_as_the_socket_comes_is_told_the_kept_history() {
+    let folder = folder("first");
+    let bus = Bus::start(&folder);
+    let kept = json!({"next": 2, "notices": [
+        {"id": 1, "at": notices::bus::now_ms(), "app": "mail", "summary": "Waiting"},
+    ]});
+    std::fs::create_dir_all(folder.join("state")).expect("the state folder is made");
+    std::fs::write(folder.join("state/notices.json"), kept.to_string())
+        .expect("the history is written");
+    let socket = folder.join("notices.sock");
+    let mut daemon = notices(&folder, &bus).spawn().expect("the daemon starts");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !socket.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the socket never came"
+        );
+        // Each millisecond, so the socket is asked of as soon as it comes.
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    let mut client = Client::connect(&socket);
+    client.ask(&json!({"id": 1, "ask": "hello"}));
+    let watched = client.ask(&json!({"id": 2, "ask": "watch", "kind": "notice"}));
+    let _ = daemon.kill();
+    let _ = daemon.wait();
+    let keys: Vec<&Value> = watched["records"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|record| &record["key"])
+        .collect();
+    assert_eq!(keys, ["notice:1"], "the kept one, at once: {watched}");
+}
+
 #[test]
 fn the_front_is_served_as_one_comes_and_leaves_once_its_read() {
     let folder = folder("front");
