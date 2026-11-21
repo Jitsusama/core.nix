@@ -22,6 +22,8 @@
 pub mod record;
 pub mod ring;
 pub mod sample;
+/// The tests' folders, the crate's and the recorder's run whole alike.
+pub mod scratch;
 
 /// Where the rings are kept, one folder a boot.
 pub const STATE: &str = "/var/lib/last-seconds";
