@@ -25,10 +25,11 @@
 # rows socket it can move the card to another access point of its network,
 # and the card still knows its neighbours there, forgetting them only on a
 # network of another name; a move to one gone takes it back to the one it
-# left within a second past any wait that one bids. The tests are in
-# wifi/, an area to a file, each run in order through pytest on a machine
-# of its own, so the areas run side by side; wifid as they reach it is
-# wifi/wifi_session.py.
+# left within wifid's 2 s for a way back, past any wait that one bids, or
+# leaves it free to join any network when it can't get back either. The
+# tests are in wifi/, an area to a file, each run in order through pytest
+# on a machine of its own, so the areas run side by side; wifid as they
+# reach it is wifi/wifi_session.py.
 {
   self,
   pkgs,

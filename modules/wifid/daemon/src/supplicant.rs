@@ -343,6 +343,10 @@ pub trait Interface {
     #[zbus(property)]
     fn state(&self) -> zbus::Result<String>;
 
+    /// Whether the card is looking for networks now.
+    #[zbus(property)]
+    fn scanning(&self) -> zbus::Result<bool>;
+
     /// Has the card look for networks from an address made up for each
     /// look, keeping only the bits of its own each mask has.
     #[zbus(property, name = "MACAddressRandomizationMask")]

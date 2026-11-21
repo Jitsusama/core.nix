@@ -248,7 +248,11 @@ async fn serve(
     // meanwhile is missed. Any program on the bus may send a signal under
     // wpa_supplicant's path, and they're taken all the same rather than
     // only from its name, since the VM test says a card is scanning so,
-    // no radio there ever hanging a look (2026-11-20).
+    // no radio there ever hanging a look (2026-11-20). A program forging
+    // them could say a move reached its point, turning the card's other
+    // networks on as it moves, or that one fell off, sending it back; it
+    // would already be running on the laptop, and moves no further than
+    // the card's own networks.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -263,6 +267,7 @@ async fn serve(
         stalls: Stalls::default(),
         left: Vec::new(),
         settled: Vec::new(),
+        gone: Vec::new(),
         at: HashMap::new(),
     };
     air.hear_all(&bus, &supplicant).await;
@@ -383,6 +388,9 @@ async fn follow(
                 for card in std::mem::take(&mut air.settled) {
                     let free = joining.as_ref().is_none_or(|joining| joining.card != card);
                     wifid.settled(&card, free).await;
+                }
+                for card in std::mem::take(&mut air.gone) {
+                    wifid.gone(&card);
                 }
             }
             Some(event) = switched.recv() => {
@@ -685,6 +693,9 @@ struct Air<'a> {
     /// The cards that have just joined a network, by name, for one that
     /// went astray as it was let go to look again.
     settled: Vec<String>,
+    /// The cards wpa_supplicant has just let go of, by name, for what a
+    /// move kept of them to be forgotten.
+    gone: Vec<String>,
     /// The access point each card was last said to be at, by the card's
     /// path and the point's, as wpa_supplicant said them in turn. A join
     /// is credited to the point it was said at, since by the time wifid
@@ -759,6 +770,7 @@ impl Air<'_> {
                 let Some(card) = self.named(bus, path).await else {
                     return;
                 };
+                self.arrivals.borrow_mut().looked(&card, Instant::now());
                 if body.deserialize::<bool>().unwrap_or(false) {
                     println!("<7>{card} is done looking");
                     change(&self.state, |state| state.looked(&card));
@@ -1005,6 +1017,7 @@ impl Air<'_> {
             if under(card) {
                 self.stalls.gone(name);
                 self.arrivals.borrow_mut().forget(name);
+                self.gone.push(name.clone());
             }
         }
         self.cards.retain(|card, _| !under(card));
@@ -2122,6 +2135,8 @@ impl Wifid<'_> {
             return Err(Refused::NotJoined);
         }
         for card in cards {
+            // Left mid-move, a card isn't sent back to the network it left.
+            self.arrivals.borrow_mut().forget(&card);
             let left = match self.supplicant.get_interface(&card).await {
                 Ok(at) => match interface(self.bus, at).await {
                     Ok(interface) => interface.disconnect().await,
@@ -2169,17 +2184,21 @@ impl Wifid<'_> {
                 }
                 Ok(())
             } else {
-                let from = self
-                    .state
-                    .borrow()
-                    .joined()
-                    .into_iter()
-                    .find(|joined| joined.card == card)
-                    .map(|joined| joined.point);
+                // A card with no gateway yet is still on its point.
+                let from = self.state.borrow().point_of(&card);
+                if from.is_none() {
+                    println!("<4>{card} moves to {bssid} with no point known to go back to");
+                }
+                // A move asked while the card looks waits for the look.
+                let looking = interface.scanning().await.unwrap_or(false);
                 self.keep_alone(&card, &interface, &network).await;
-                self.arrivals
-                    .borrow_mut()
-                    .asked(&card, from.as_deref(), bssid, Instant::now());
+                {
+                    let mut arrivals = self.arrivals.borrow_mut();
+                    arrivals.asked(&card, from.as_deref(), bssid, Instant::now());
+                    if looking {
+                        arrivals.looking(&card);
+                    }
+                }
                 let roamed = interface.roam(bssid).await;
                 // Forgotten only here, since a failure before the ask is
                 // none of a move already on its way.
@@ -2305,6 +2324,15 @@ impl Wifid<'_> {
             println!("<4>{card} couldn't be kept to {from}: {error}");
         }
         kept.is_ok()
+    }
+
+    /// Forgets what a move kept of a card wpa_supplicant has let go of: a
+    /// card handed over again holds new networks, which a move it no
+    /// longer makes would keep off.
+    fn gone(&self, card: &str) {
+        self.alone.borrow_mut().remove(card);
+        self.held.borrow_mut().remove(card);
+        self.picked.borrow_mut().remove(card);
     }
 
     /// Takes in a card come off its network. One that falls off partway
