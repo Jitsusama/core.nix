@@ -22,10 +22,11 @@ function placeOf(window, at) {
 // deadline or refusing it (2QZBX9, [906a6c10]).
 const KEPT_FOR = 24 * 60 * 60 * 1000;
 
-// How long after Joel asks Reopen Them All a sleeper it wakes still opens
-// its window: long enough for the wakes it paces out to land, so an ask
-// never opens a window hours later, when something else wakes it (four
-// restarted at 19:48 on 16 November opened windows kept from earlier).
+// How long after Joel asks Reopen Them All a sleeper it wakes, or a viewer
+// it kept for him to leave its workspace, still opens its window: long
+// enough for the wakes it paces out to land, so an ask never opens a
+// window hours later, when something else wakes it (four restarted at
+// 19:48 on 16 November opened windows kept from earlier).
 const ASKED_FOR = 15 * 60 * 1000;
 
 // Of the places `kept`, by pi's session id, the viewers to open `now`
@@ -41,10 +42,12 @@ const ASKED_FOR = 15 * 60 * 1000;
 // [0762284c], 13:41:38 on 11 November). One parked waits too, since
 // viewing it is what wakes it, which woke a parked QCXZEB then. One
 // Reopen Them All kept while Joel was on its workspace, with the words
-// its viewer waits for its host by (`waiting`), opens by them, without
-// its session, once he isn't there, him away or not, since he asked for
-// it: kept for its host alone, it opened by itself nearly two hours
-// later on 20 November.
+// its viewer waits for its host by (`waiting`), opens once he isn't
+// there, him away or not, since he asked for it: by its session's words
+// once its host serves it, else by its own, without its session. Kept
+// for its host alone, it opened by itself nearly two hours later on 20
+// November, so it's let go ASKED_FOR after the ask, or once its session
+// is back as a plain pi, whose window it would never be.
 function viewersDue(kept, sessions, now, screen) {
     const { workspaces, since, away } = screen ?? {};
     const open = [];
@@ -79,11 +82,16 @@ function viewersDue(kept, sessions, now, screen) {
             // Lapsed, its session most likely never moved.
         } else if (session?.window) {
             // Its viewer is open, so its place is done with.
-        } else if (!viewable && waitingWords({ view: place.waiting }) !== null
-            && place.at >= since) {
-            const into = viewerPlace(place, workspaces ?? {});
-            if (into === null) {
+        } else if (waitingWords({ view: place.waiting }) !== null) {
+            const done = !(now - place.at <= ASKED_FOR) || sessions.some(one =>
+                one.presence?.session === id && !one.presence?.hosted);
+            const into = done ? null : viewerPlace(place, workspaces ?? {});
+            if (done) {
+                // Asked too long ago, or back as a plain pi: let go.
+            } else if (!(place.at >= since) || parkedHere(session) || into === null) {
                 still[id] = place;
+            } else if (viewable) {
+                open.push({ session, into });
             } else {
                 open.push({ id, place, into });
             }

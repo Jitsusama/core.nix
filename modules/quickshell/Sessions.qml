@@ -1936,9 +1936,9 @@ Singleton {
     // the walk on 20 November, where Joel had moved on. One whose entry
     // says no words, as an older harness's, or one bound for the workspace
     // Joel is on, where a window would catch his eye, has its place kept
-    // for viewKept, and the walk goes on: one with words opens by them once
-    // Joel leaves that workspace, one without once the host serves it and
-    // Joel is away. The walk itself opens with Joel there,
+    // for viewKept, and the walk goes on: one with words opens once Joel
+    // leaves that workspace, within ASKED_FOR, one without once the host
+    // serves it and Joel is away. The walk itself opens with Joel there,
     // and wakes one parked in its host, since it runs only when asked: his
     // Reopen Them All, or `sessions reopen`, and reopening a session
     // carries it on. Kept back, a parked one would stay offered, and each
@@ -1964,7 +1964,7 @@ Singleton {
         // its app id alone, since no record runs for it yet, and the row
         // stays offered until the host serves it: asked again, the walk
         // would open a second one beside it.
-        if (!served && named !== "" && (niriWindows.opened[named] ?? []).length > 0) {
+        if (!served && root.openNamed(named)) {
             console.info(`sessions: ${id}'s viewer not opened, since it is open, waiting`);
             reopenNext();
             return;
@@ -2577,8 +2577,8 @@ Singleton {
     // he is away (Away.qml), so a shell restarted by a switch opens none;
     // but a sleeper's opens as it wakes, him there or not, since waking is
     // what opens it, and one Reopen Them All kept with words to wait for
-    // its host by opens by them once he has left its workspace, since he
-    // asked for it, unless its viewer is open already. Asked as each
+    // its host by opens once he has left its workspace, within ASKED_FOR,
+    // since he asked for it, unless its viewer is open already. Asked as each
     // session's record changes too, which is how a sleeper is seen to wake.
     function viewKept() {
         if (Object.keys(keptPlaces).length === 0)
@@ -2588,11 +2588,17 @@ Singleton {
         // One waiting for its host, asked of moments ago, stays kept.
         const kept = due.kept;
         for (const one of due.open) {
-            if (one.session === undefined) {
-                if ((niriWindows.opened[one.place.named] ?? []).length > 0)
-                    continue;
-                if (!viewWith(one.place.waiting, one.place.named, one.into, one.place.title))
+            if (one.session === undefined && root.openNamed(one.place.named)) {
+                console.info(`sessions: ${one.id}'s kept viewer not opened, since it is open`);
+            } else if (one.session === undefined) {
+                const asked = viewWith(one.place.waiting, one.place.named, one.into,
+                    one.place.title);
+                if (!asked)
                     kept[one.id] = one.place;
+                const on = root.spaceSaid(one.into.workspace);
+                console.info(`sessions: ${one.id}'s kept viewer `
+                    + (asked ? `opened to wait for its host, on ${on}`
+                        : "kept, since one asked for is opening"));
             } else if (one.session.held && !one.session.presence?.hosted) {
                 attach(one.session.held, one.into);
             } else {
@@ -2605,6 +2611,13 @@ Singleton {
             keepPlaces(kept);
     }
 
+    // Whether a window opened with app id `named` is open: niri's own list
+    // says so first, since the windows daemon's index of it lags niri, and
+    // may be empty, just after the crash a waiting viewer opens for.
+    function openNamed(named) {
+        return named !== "" && ((niriWindows.opened[named] ?? []).length > 0
+            || Object.values(Niri.windows).some(window => window.opened === named));
+    }
     // The app id a hosted session's viewer opens with, by pi's session id,
     // which stays the same as its host restarts, or "" for one not hosted.
     function viewerOf(presence) {
