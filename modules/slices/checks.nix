@@ -467,9 +467,13 @@
             claim: !claim.assertion && lib.hasInfix "vpnServices" claim.message
           ) (machine vpnServices extra).assertions
         );
-      # Its command in its package's unit, as nixpkgs' tailscaled has it.
+      # Its command in its package's unit, as nixpkgs' tailscaled has it,
+      # started by a target that wants it or one that requires it; and one
+      # whose command is a script.
       packaged = {
         systemd.services.packaged.wantedBy = [ "multi-user.target" ];
+        systemd.services.required.requiredBy = [ "multi-user.target" ];
+        systemd.services.scripted.script = "true";
       };
       both = {
         imports = [
@@ -489,7 +493,23 @@
         "system.slice doesn't claim each of two" =
           (two.systemd.slices.system.sliceConfig.MemoryMin or null) == "512M";
         "system.slice claims a floor with no VPN named" = !(none ? MemoryMin);
-        "a running or packaged service was refused" = refusals [ "vpn" "packaged" ] both == [ ];
+        "a running or packaged service was refused" =
+          refusals [ "vpn" "packaged" "required" "scripted" ] both == [ ];
+        "one named twice is claimed twice" =
+          ((machine [ "vpn" "vpn" ] both).systemd.slices.system.sliceConfig.MemoryMin or null) == "256M";
+        "a unit the module defines in its own folder was taken" =
+          lib.all
+            (
+              unit:
+              lib.elem "jitsusama.slices.vpnServices names ${unit}, which the slices module sets itself." (
+                refusals [ unit ] { }
+              )
+            )
+            [
+              "user@"
+              "memory-swap-in@"
+              "efficient-cores-held@"
+            ];
         "a name no service has was taken" =
           refusals [ "none-such" ] { } == [
             "jitsusama.slices.vpnServices names none-such, which no system service runs."

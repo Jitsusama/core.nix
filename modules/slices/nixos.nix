@@ -311,12 +311,16 @@ let
   # stalled 15.5 s on it. CPU didn't follow the stalls, so it keeps its
   # weight. The floor covers its working set, about 180 MB, file pages too,
   # which swap alone wouldn't keep: about one fault in eight was a file's.
-  inherit (config.jitsusama.slices) vpnServices;
+  # Each once, so one named twice isn't claimed twice in system.slice.
+  vpnServices = lib.unique config.jitsusama.slices.vpnServices;
   vpnFloor = 256;
-  # The services this module defines itself. A VPN's settings would replace
-  # theirs rather than join them, so none may be named a VPN.
+  # The services this module's folder defines itself. A VPN's settings would
+  # replace theirs rather than join them, so none may be named a VPN.
   ownServices = [
     "cgroups-favor-moves"
+    "efficient-cores-held@"
+    "memory-swap-in@"
+    "user@"
   ]
   ++ lib.attrNames systemFloors
   ++ map (disk: "disk-order-${disk}") (lib.attrNames disks);
@@ -741,8 +745,8 @@ in
         };
       }
     ) disks
-    # Last, so a VPN's hard floor stands where a system floor's soft one
-    # would; the VPN's floor is the larger.
+    # A VPN is never one of the services above, which the assertions refuse,
+    # since its settings would replace theirs here rather than join them.
     // lib.genAttrs vpnServices (_: {
       serviceConfig = {
         MemorySwapMax = 0;
