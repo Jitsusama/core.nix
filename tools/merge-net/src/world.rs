@@ -84,7 +84,8 @@ const LINE_READ: usize = 512;
 /// The longest a run a builder took may wait there for a turn before it's
 /// stopped. nix-offload waits for as long as a turn's holder lives, and
 /// the Mac takes one comparison at a time, so a holder that never ends
-/// would otherwise hold every later one. One stopped while it waits
+/// would otherwise hold every later one. The same holds for a naming's
+/// silent wait here for a turn to send it. One stopped while it waits
 /// compared nothing (`mac_ending`), so it rests and is tried again.
 const WAITS_AT_MOST: Duration = Duration::from_hours(3);
 
@@ -118,9 +119,10 @@ struct Clock {
     /// builder that names a Mac's changed checks: only then can a Mac's
     /// comparison have stalled there.
     nearby: bool,
-    /// Whether a lent builder began naming a Mac's changed checks, so
-    /// that time before a Mac took them went to the naming.
-    naming: bool,
+    /// When nix-offload said a lent builder would name a Mac's changed
+    /// checks, so that time before a Mac took them went to the naming,
+    /// and a naming that never begins waits at most `WAITS_AT_MOST`.
+    named: Option<Instant>,
 }
 
 impl Clock {
@@ -138,7 +140,7 @@ impl Clock {
             heard: now,
             stopped: None,
             nearby: false,
-            naming: false,
+            named: None,
         }
     }
 
@@ -177,7 +179,7 @@ impl Clock {
     fn heard_line(&mut self, line: &str, now: Instant) {
         let line = line.trim();
         if line.starts_with(NAMES) {
-            self.naming = true;
+            self.named.get_or_insert(now);
         } else if says_a_mac_took(line) && !self.nearby {
             // A Mac's turn and its two hours begin at its own take, not
             // at the naming before it, which took up to 20 minutes.
@@ -192,7 +194,7 @@ impl Clock {
         } else if says_waits(line) {
             self.waits = Some(now);
             self.building = None;
-        } else if (self.taken.is_some() || self.naming)
+        } else if (self.taken.is_some() || self.named.is_some())
             && !line.is_empty()
             && !line.starts_with(OWN)
         {
@@ -225,7 +227,8 @@ impl Clock {
 
     /// Whether the run whose log is `log` should be stopped at `now`: one
     /// a builder took that went silent, that built past the longest, or
-    /// that waited there for a turn past the most it may. A wait for a
+    /// that waited there, or here to send a naming, for a turn past the
+    /// most it may. A wait for a
     /// turn says so every five minutes, so it's never silent, and the
     /// longest counts only once the wait is over: from what it built
     /// first, or from when it stopped saying it waits, `TURN_QUIET` on.
@@ -249,7 +252,7 @@ impl Clock {
             }
             match self.building {
                 Some(building) if now.duration_since(building) <= LONGEST => None,
-                Some(_) if self.naming && !self.nearby => {
+                Some(_) if self.named.is_some() && !self.nearby => {
                     Some("a lent builder named it past two hours")
                 }
                 Some(_) => Some("it built past two hours"),
@@ -257,6 +260,13 @@ impl Clock {
                     .then_some("it waited for a turn past three hours"),
             }
         });
+        if self.taken.is_none()
+            && self
+                .named
+                .is_some_and(|named| now.duration_since(named) > WAITS_AT_MOST)
+        {
+            self.stopped = Some("it waited here past three hours for a turn to send it");
+        }
         self.stopped.is_some()
     }
 }
@@ -2603,7 +2613,7 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
     }
 
     #[test]
-    fn a_naming_waiting_here_for_a_turn_to_send_it_is_never_overdue() {
+    fn a_naming_waiting_here_for_a_turn_to_send_it_is_overdue_only_past_three_hours() {
         let log =
             std::env::temp_dir().join(format!("merge-net-sending-{}.log", std::process::id()));
         let _ = fs::remove_file(&log);
@@ -2622,8 +2632,17 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
             "a naming just begun is overdue"
         );
         assert!(
-            !clock.overdue(&log, start + WAITS_AT_MOST + Duration::from_secs(1)),
+            !clock.overdue(&log, start + WAITS_AT_MOST),
             "a naming waiting silently here for a turn to send it was stopped"
+        );
+        assert!(
+            clock.overdue(&log, start + WAITS_AT_MOST + Duration::from_secs(1)),
+            "a naming waiting here past three hours for a turn went on"
+        );
+        assert_eq!(
+            clock.stopped,
+            Some("it waited here past three hours for a turn to send it"),
+            "a naming stopped waiting here for a turn was told as something else"
         );
         let _ = fs::remove_file(&log);
     }
