@@ -329,12 +329,13 @@ def test_the_readers_time_running_out_fails_as_never_hearing(tmp_path: Path) -> 
     # would stop retrying a wait that only ran out, and it comes only once it has read again.
     # Three seconds, since bash counts its seconds whole by the clock, which leaves two whole
     # seconds for a second read on a busy builder, and it ends near its time, not long after.
-    seconds, longest = 3, 10
+    # Bash's whole seconds can end it up to one early, and a paced builder can hold it late.
+    seconds, longest = 3, 15
     began = time.monotonic()
     read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds)
     took = time.monotonic() - began
     assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
-    assert took < longest, f"the reader given {seconds} s took {took:.1f} s"
+    assert seconds - 1 <= took < longest, f"the reader given {seconds} s took {took:.1f} s"
     with pytest.raises(AssertionError):
         ended(read.returncode, never)
     reads = len(asked(tmp_path))

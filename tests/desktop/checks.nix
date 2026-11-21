@@ -19,7 +19,10 @@ in
           -p no:cacheprovider --import-mode=importlib --quiet keeps-pace-test.py
         touch $out
       '';
-
+}
+# The reader only ever runs on the Linux VM, in its UTF-8 locale, which a Mac
+# may not have, so its check is built only where the VM is.
+// pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   # How an area's wait on what the launcher reports ends, and what one that
   # never passes says, apart from any VM, with the reader it waits through
   # run against a stand-in journal on the shell and tools the VM gives it.
