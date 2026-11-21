@@ -300,15 +300,17 @@
   # came. Of the speech given a name, at least `right` is that person's,
   # and at least `named` of the speech is given one. A change that names
   # better raises the floors to what it reaches; each sits half a point
-  # under what the last measurement on 2026-11-21 gave, 93.4% and 23.9%.
+  # under what the last measurement on 2026-11-21 gave, 83.5% and 27.9%.
+  # Waiting a second before cutting a take lowered `right` from 93.4%:
+  # a take that runs through a short pause holds more of a second voice.
   # TS3003a names none, since one talker holds nearly all of its far end.
   call-transcripts-names-voices-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "92.9";
-      named = "23.4";
+      right = "83.0";
+      named = "27.4";
     in
     pkgs.runCommand "call-transcripts-names-voices-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts names ${voices} ${meetings} \
