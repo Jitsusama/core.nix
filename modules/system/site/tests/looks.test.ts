@@ -82,14 +82,14 @@ it("keys each row by whose it is and its place there, apart from any other", () 
   assert.deepEqual(rows, ["look:machine:kestrel:0", "look:machine:kestrel:1", "look:part:code:0"]);
 });
 
-it("says a part that wasn't read as a look of its own, after what wants one", () => {
+it("says a part that wasn't read as a look of its own, first, as the daemon ranks it", () => {
   const unread = part("code", "unread", [], "repos timed out.");
   const read = system([], [unread, part("network", "watch", ["the attic's radio is busy"])]);
   assert.deepEqual(
     looksOf(read, 8).looks.map((look) => [look.health, look.whose, look.words]),
     [
-      ["watch", "Network", "The attic's radio is busy"],
       ["unread", "Code", "Couldn't be read: repos timed out."],
+      ["watch", "Network", "The attic's radio is busy"],
     ],
   );
   const machines: System = {
@@ -119,7 +119,10 @@ it("says nothing is worth a look only once every part has told", () => {
   assert.deepEqual(looksOf(quiet, 8), { looks: [], more: 0, settled: true });
   assert.ok(looksDrawn(looksOf(quiet, 8)).includes("Nothing is worth a look."), "said so");
   const waiting = system([machine("kestrel", "good")], [], ["network"]);
-  assert.equal(looksDrawn(looksOf(waiting, 8)), "", "a part still to come may hold a look");
+  assert.ok(
+    looksDrawn(looksOf(waiting, 8)).includes("Still reading what is worth a look."),
+    "a part still to come may hold a look",
+  );
   const coming = system([machine("kestrel", "good")]);
   const named: System = {
     ...coming,
@@ -135,7 +138,7 @@ it("names a part called like an Object key as itself", () => {
   );
   assert.deepEqual(
     looksOf(odd, 8).looks.map((look) => look.whose),
-    ["constructor", "toString"],
+    ["toString", "constructor"],
   );
 });
 

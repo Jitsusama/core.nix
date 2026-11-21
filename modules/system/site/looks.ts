@@ -11,7 +11,9 @@ import { capital, type Health, named, type Part, type System } from "./model.ts"
 const LOOKS_LISTED = 8;
 
 /** How each health ranks in the list, the worst first. */
-const RANK: { readonly [health in Health]: number } = { bad: 0, watch: 1, unread: 2, good: 3 };
+// Worst first as the daemon ranks them: a part not read at all before a
+// look, since nothing it holds can be told.
+const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch: 2, good: 3 };
 
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {

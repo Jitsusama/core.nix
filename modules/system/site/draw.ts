@@ -299,9 +299,10 @@ function lookRow(look: Look): string {
  */
 function looksDrawn(list: Looks): string {
   if (list.looks.length === 0) {
+    // Until every part and machine has told, one of them may hold the look.
     return list.settled
       ? `<p class="clear health good">${mark("good")}Nothing is worth a look.</p>`
-      : "";
+      : '<p class="more">Still reading what is worth a look.</p>';
   }
   const more =
     list.more === 0
