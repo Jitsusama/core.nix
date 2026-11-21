@@ -552,6 +552,9 @@ pub fn run(
     signatures: Signatures,
 ) -> Ran {
     let mut outage: Option<std::time::Instant> = None;
+    // Whether the last builder tried refused the host key its line pins,
+    // so a run that ends unsent says that rather than that ssh found none.
+    let mut refused_last = false;
     let lent = store.and_then(|store| builder(store.lines().next()?.trim()));
     let Some(mut lent) = lent else {
         return unsent(asked, nix, "no builder is lent");
@@ -587,6 +590,7 @@ pub fn run(
             };
             let building = copied.is_ok();
             let refused = matches!(&copied, Err(uncopied) if uncopied.refused);
+            refused_last = refused;
             let ran = match copied {
                 Ok(()) => {
                     let bring = Bring::asked(asked, nix, signatures);
@@ -618,15 +622,14 @@ pub fn run(
                 waiting,
                 since == lost,
                 building.then(|| asked.alone.lasts()),
+                refused,
             );
+            // A refused key goes to whatever the line names next, the same
+            // key included, until the outage's `longest`: each try pins
+            // only the line's key, so strict checking stands, and the old
+            // builder may still answer for a moment after the line names
+            // its successor.
             match again(since).and_then(|store| builder(store.lines().next()?.trim())) {
-                Some(stood) if !sent_again_to(&stood, &lent, refused) => {
-                    eprintln!(
-                        "nix-offload: {} still pins the key it refused, so this isn't sent again",
-                        lent.host
-                    );
-                    break ran.map_err(Untaken::Waits);
-                }
                 Some(stood) => lent = stood,
                 None => break ran.map_err(Untaken::Waits),
             }
@@ -648,27 +651,45 @@ pub fn run(
             ),
         ),
         Ok(ran) if ran.status != UNREACHED => ran,
+        Ok(_) if refused_last => unsent(
+            asked,
+            nix,
+            &format!(
+                "ssh refused the host key {} showed, against the one its lender's line pins",
+                lent.host
+            ),
+        ),
         Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
         Err(Untaken::Waits(why)) => unsent(asked, nix, &why),
         Err(Untaken::Stays(why)) => stays(asked, nix, &why),
     }
 }
 
-/// Says `lent` was lost and how long this waits for a builder, from now
-/// when `fresh` or from the last loss. A builder that stayed up goes on
+/// Says `lent` was lost, or `refused` the host key its line pins, and how
+/// long this waits for a builder, from now when `fresh` or from the last
+/// loss. A builder that stayed up goes on
 /// with what it was building for `far`'s grace period, `building` seconds,
 /// and the build sent again waits on that, so it says how it ends but shows
 /// none of its log: a VM test cut off mid-test on 2 November passed there,
 /// and only its exit said so. One lost while copying up had nothing
 /// building.
-fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u32>) {
-    eprintln!(
-        "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
-         to {} minutes from {}",
-        lent.host,
-        waiting.longest.as_secs().div_ceil(60),
-        if fresh { "now" } else { "its last loss" }
-    );
+fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u32>, refused: bool) {
+    let minutes = waiting.longest.as_secs().div_ceil(60);
+    let from = if fresh { "now" } else { "its last loss" };
+    if refused {
+        eprintln!(
+            "nix-offload: ssh refused the host key {} showed, as when its lender hands its \
+             name to another builder, so this reads the lender's line again and sends it \
+             to the builder that line pins, for up to {minutes} minutes from {from}",
+            lent.host
+        );
+    } else {
+        eprintln!(
+            "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
+             to {minutes} minutes from {from}",
+            lent.host
+        );
+    }
     if let Some(lasts) = building {
         eprintln!(
             "nix-offload: if it stands again within {} minutes, what it was building \
@@ -677,15 +698,6 @@ fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u32>
             lasts / 60
         );
     }
-}
-
-/// Whether a run lost from `lent` goes again to `stood`, the builder its
-/// line names now: always, unless `lent` refused the key pinned for it and
-/// `stood` pins that same key, which it would refuse again. A key that
-/// isn't the builder's is never taken; a lender handing its name over pins
-/// the new one.
-fn sent_again_to(stood: &Builder, lent: &Builder, refused: bool) -> bool {
-    !(refused && stood.host_key == lent.host_key)
 }
 
 /// Copies up to `lent` what `asked` builds from: its derivations, when it
@@ -927,12 +939,14 @@ const LOST_SAID: [&str; 5] = [
     "Connection reset",
 ];
 
-/// What ssh says when the builder shows a host key other than the one
-/// pinned. A lender hands its name over to a new builder with a key of its
-/// own: at 09:08:59 on 21 November vm-3's did, and a run that read the old
-/// line at 09:08:31 waited its turn to send, reached the new builder at
-/// 09:12 and was refused, building nothing. It's sent again only to a line
-/// that pins another key, so strict checking stands.
+/// What ssh says when it refuses the host key a builder shows, most often
+/// one other than the key pinned. A lender hands its name over to a new
+/// builder with a key of its own: at 09:08:59 on 21 November vm-3's did,
+/// and a run that read the old line at 09:08:31 waited its turn to send,
+/// reached the new builder at 09:12 and was refused, building nothing,
+/// since Nix then says only that it couldn't start ssh, which `LOST_SAID`
+/// doesn't hold. Each try pins only its line's key, so strict checking
+/// stands however often it's sent again.
 const REFUSED_SAID: &str = "Host key verification failed";
 
 /// Why a copy up failed, whether ssh lost the builder under it, which a
@@ -963,7 +977,7 @@ impl Uncopied {
         let Heard { lost, cut, refused } = copying.heard();
         if refused {
             Self {
-                why: format!("{why}, since it showed a host key other than the one pinned"),
+                why: format!("{why}, since ssh refused the host key it showed"),
                 lost: true,
                 cut,
                 refused,
@@ -5230,12 +5244,14 @@ mod tests {
 
     #[test]
     fn a_copy_refused_the_pinned_key_lost_the_builder() {
-        // As `nix copy` said it at 09:12 on 21 November, once vm-3's lender
-        // had handed its name to a builder with another key.
+        // As `nix copy` says it once a lender has handed its name to a
+        // builder with another key: nothing `LOST_SAID` holds, so only the
+        // refusal makes the builder lost.
         let mut copying = Copying::start(Command::new("sh").args([
             "-c",
             "echo 'Host key verification failed.' >&2; \
-             echo 'error: cannot open connection to remote store' >&2; exit 1",
+             echo \"error: failed to start SSH master connection to 'nix-offload'\" >&2; \
+             exit 1",
         ]))
         .unwrap();
         copying.child.wait().unwrap();
@@ -5245,7 +5261,7 @@ mod tests {
         assert!(
             uncopied
                 .why
-                .ends_with("showed a host key other than the one pinned"),
+                .ends_with("since ssh refused the host key it showed"),
             "it doesn't say why: {}",
             uncopied.why
         );
@@ -5256,29 +5272,6 @@ mod tests {
         assert!(
             !uncopied.refused && !uncopied.lost,
             "a copy's own failure read as ssh's"
-        );
-    }
-
-    #[test]
-    fn a_refused_run_goes_again_only_to_a_builder_pinning_another_key() {
-        let pinning = |key: &str| Builder {
-            host: "nix-offload-vm-3".to_owned(),
-            key: None,
-            host_key: Some(key.to_owned()),
-            store: "ssh-ng://nix-offload-vm-3".to_owned(),
-        };
-        let (old, new) = (pinning("ssh-ed25519 OLD"), pinning("ssh-ed25519 NEW"));
-        assert!(
-            sent_again_to(&new, &old, true),
-            "a handover's new key wasn't tried"
-        );
-        assert!(
-            !sent_again_to(&old, &old, true),
-            "the key refused was tried again"
-        );
-        assert!(
-            sent_again_to(&old, &old, false),
-            "a builder lost the usual way wasn't waited for"
         );
     }
 
