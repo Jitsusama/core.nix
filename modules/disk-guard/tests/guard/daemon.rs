@@ -1305,6 +1305,41 @@ fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
     );
 }
 
+/// A status counts to Nix's floor while it has a time to reach it, in
+/// its own sentence and the machine's, and otherwise to full.
+#[test]
+fn a_status_tells_the_time_to_nixs_floor_and_otherwise_to_full() {
+    use disk_guard::daemon::FilesystemStatus;
+    use disk_guard::words::{filesystem, machine};
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast: None,
+        fill_per_hour: Some(36_000.0),
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    let floor = "it reaches the 100 B Nix keeps free in 1 m";
+    let said = filesystem(&status.told(1900.0), None);
+    assert!(said.contains(floor), "its own sentence: {said}");
+    let said = machine(&[status.told(1900.0)], None);
+    assert!(said.contains(floor), "the machine's sentence: {said}");
+    status.floor_at = None;
+    status.full_at = Some(1960.0);
+    let said = filesystem(&status.told(1900.0), None);
+    assert!(
+        said.contains("At this rate it fills in 1 m."),
+        "with no time to the floor, when it fills: {said}"
+    );
+}
+
 #[test]
 fn a_filesystem_is_named_by_where_it_is_mounted() {
     use disk_guard::pool::pool;
