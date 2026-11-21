@@ -1539,7 +1539,10 @@ works the same way everywhere.
   (Joel, 2026-11-20: "no clue how to see from that view that a thing is
   waiting"). An orchestration's row wears it while any session in it
   waits, and so does a session a step in while any under it waits, so
-  the map's shape gives way only then. For You keeps each session's own
+  the map's shape gives way only then. A want Joel put off keeps the
+  person with a clock on its own row, but in the session's own hue, and
+  lights nothing above it until its hour is up, since he chose to leave
+  it for now. For You keeps each session's own
   mark and hue, the warning's as its limit nears, since every row there
   waits and the person with a clock is a to-do's. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
