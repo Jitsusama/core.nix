@@ -9,7 +9,12 @@
 //! crashed them. pi never installs or changes a package named by a local
 //! path, so pi is given each package as a link instead:
 //!
-//!   <root>/<host>/<path>/current -> versions/<commit>
+//!   <root>/<host>/<path>/current -> versions/<commit>[+<seconds>]
+//!
+//! A version is named for its commit, and a rebuild of the same commit,
+//! made when a version's links lead outside the root (version.rs), adds
+//! the seconds it was made at, so every reader of the name takes the
+//! commit from before any `+`.
 //!
 //! An update fetches the package's mirror (`mirror.git`), and when its
 //! branch has moved, builds the new commit into a hidden folder beside

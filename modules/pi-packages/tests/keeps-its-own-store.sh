@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Proves pi-packages installs into the folder the agent fence holds
 # read-only, and that pnpm, given the environment a build is given, keeps
-# its store and its metadata cache inside it, and node-gyp its headers,
-# never in the account's store or ~/.cache, which fenced commands write.
+# its store and its metadata cache inside it, node-gyp its headers and
+# npm its cache, where prebuild-install keeps native bindings, never in
+# the account's store, ~/.cache or ~/.npm, which fenced commands write.
 # pi loads every dependency from that store, so one a fenced command could
 # rewrite would run outside the fence. pnpm itself is asked where its
 # store and cache lie, so a name pnpm no longer reads fails here rather
-# than passing; node-gyp's headers folder is checked by the value given.
+# than passing; node-gyp's headers folder and npm's cache are checked by
+# the value given.
 #
 # Usage: keeps-its-own-store.sh ROOT HELD EXECSTART
 #   ROOT       the root pi-packages is configured with
@@ -45,7 +47,7 @@ inside() {
 }
 
 for name in npm_config_store_dir pnpm_config_store_dir npm_config_cache_dir \
-  pnpm_config_cache_dir npm_config_devdir; do
+  pnpm_config_cache_dir npm_config_devdir npm_config_cache; do
   value=$(jq -r --arg name "$name" '.env[$name] // ""' "$config")
   inside "$name" "$value"
 done

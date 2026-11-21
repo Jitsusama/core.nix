@@ -53,10 +53,13 @@ let
   # Where each package's pis say what they loaded (src/loaded.rs).
   loadedDirs = map (source: "${cfg.root}/${lib.removePrefix "git:" source}/loaded") gitPackages;
   # Where pnpm keeps what the versions install, what it read of the
-  # registry, and where node-gyp keeps node's headers (see env below).
+  # registry, where node-gyp keeps node's headers, and npm's own cache,
+  # where prebuild-install keeps the native bindings it fetched (see env
+  # below).
   store = "${cfg.root}/.pnpm-store";
   cache = "${cfg.root}/.pnpm-cache";
   headers = "${cfg.root}/.node-gyp";
+  npmCache = "${cfg.root}/.npm-cache";
   configFile = pkgs.writeText "pi-packages.json" (
     builtins.toJSON {
       inherit (cfg) root;
@@ -73,14 +76,17 @@ let
       # read-only, so the store lies under it. pnpm's metadata cache and
       # node-gyp's headers go there too, out of ~/.cache, which fenced
       # commands write: a rewritten package document or header would be
-      # built into what pi runs. XDG_CACHE_HOME stays, since warming runs
-      # pis with this environment.
+      # built into what pi runs. npm's cache moves too: a dependency's
+      # install script, such as sqlite3's prebuild-install, takes a native
+      # binding from its _prebuilds unchecked, and it lay in ~/.npm.
+      # XDG_CACHE_HOME stays, since warming runs pis with this environment.
       env = {
         npm_config_store_dir = store;
         pnpm_config_store_dir = store;
         npm_config_cache_dir = cache;
         pnpm_config_cache_dir = cache;
         npm_config_devdir = headers;
+        npm_config_cache = npmCache;
       };
     }
   );
