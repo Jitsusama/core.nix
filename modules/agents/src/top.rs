@@ -100,13 +100,8 @@ fn orchestrations(shown: &[Shown]) -> Vec<&[Shown]> {
 /// Each part is left out where it would say none.
 fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
     let count = |state: &str| all.iter().filter(|row| row.state == state).count();
-    let needing = all.iter().filter(|row| row.waits_on_joel).count();
+    let needs = needing(all.iter().filter(|row| row.waits_on_joel).count(), said);
     let working = count("working");
-    let needs = match needing {
-        0 => String::new(),
-        1 => said.fill("needsCount", &[("count", "1")]),
-        _ => said.fill("needCount", &[("count", &needing.to_string())]),
-    };
     let works = if working > 0 {
         said.fill(
             "workingOf",
@@ -124,6 +119,15 @@ fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
         .filter(|(said, _)| !said.is_empty())
         .map(|(said, keep)| Item { said, keep })
         .collect()
+}
+
+/// How many need Joel, "1 needs you" or "3 need you", or nothing for none.
+fn needing(count: usize, said: &Said) -> String {
+    match count {
+        0 => String::new(),
+        1 => said.fill("needsCount", &[("count", "1")]),
+        _ => said.fill("needCount", &[("count", &count.to_string())]),
+    }
 }
 
 fn peek() -> Value {
@@ -294,10 +298,20 @@ fn talks_inside(head: &Row, members: &[&Row], known: &Known, words: &Words, rows
 /// or talked to only where it needs Joel (VKCF3Z: he acts at a leaf only
 /// where it needs his own hands there), then what pauses, wakes or ends
 /// it. One with sessions under it wears Joel's mark while any of them
-/// waits (`worn`), as the orchestration's row does.
-fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
+/// waits (`worn`), as the orchestration's row does, and says how many
+/// first where it doesn't wait itself, so the mark says why.
+fn member(row: &Row, parent: &str, depth: usize, under: usize, said: &Said) -> Value {
     let address = address(row);
+    let under_waits = under > 0;
     let (glyph, hue) = worn(row, under_waits);
+    let mut side = Vec::new();
+    if under_waits && !row.waits_on_joel {
+        side.push(Item {
+            said: needing(under, said),
+            keep: 5,
+        });
+    }
+    side.extend(row.side_items.iter().cloned());
     let mut acts = vec![peek()];
     acts.extend(member_acts(row).map(|id| row.act(id)));
     talking(
@@ -305,7 +319,7 @@ fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
         json!({
             "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
             "kind": "session", "name": row.name, "glyph": glyph, "hue": hue,
-            "depth": depth, "side": items(&row.side_items), "note": row.note,
+            "depth": depth, "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
                 "waitsOnJoel": row.waits_on_joel,
@@ -318,7 +332,7 @@ fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
 /// above it less deep, a fold's members under the fold, at one step in
 /// for each row above. Those `above` are never left, so a fold's members,
 /// laid from depth 0 again (tree.rs), stay under the fold.
-fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
+fn members(shown: &[Shown], above: &[(usize, String)], said: &Said, rows: &mut Vec<Value>) {
     let mut stack = above.to_vec();
     for (at, one) in shown.iter().enumerate() {
         let (depth, key) = match one {
@@ -334,11 +348,12 @@ fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
         let steps = stack.len();
         match one {
             Shown::Session(row) => {
-                let under_waits = shown[at + 1..]
+                let under = shown[at + 1..]
                     .iter()
                     .take_while(|below| depth_of(below) > row.depth)
-                    .any(waits);
-                rows.push(member(row, &parent, steps, under_waits));
+                    .filter(|below| waits(below))
+                    .count();
+                rows.push(member(row, &parent, steps, under, said));
             }
             Shown::Fold(fold) => {
                 rows.push(json!({
@@ -348,7 +363,7 @@ fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
                 }));
                 let mut within = stack.clone();
                 within.push((depth, key.clone()));
-                members(&fold.held, &within, rows);
+                members(&fold.held, &within, said, rows);
             }
         }
         stack.push((depth, key));
@@ -376,7 +391,12 @@ pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
             if !all.is_empty() {
                 rows.extend(acts_inside(head, words));
             }
-            members(&entries[1..], &[(0, key_of(address(head)))], &mut rows);
+            members(
+                &entries[1..],
+                &[(0, key_of(address(head)))],
+                said,
+                &mut rows,
+            );
             talks_inside(head, &all, known, words, &mut rows);
             (needs, rows)
         })
@@ -823,6 +843,44 @@ mod tests {
                 "\"waitsOnJoel\":\"alert\"",
             ],
             "V waiting marks U, which it sits under, and the orchestration, but not S beside U"
+        );
+    }
+
+    #[test]
+    fn a_session_wearing_joels_mark_for_those_under_it_says_how_many_need_him() {
+        let said = |shown: &[Shown]| {
+            let rows = top(shown);
+            let side = &found(&rows, "row:agents-top:S")["side"];
+            side.as_array()
+                .into_iter()
+                .flatten()
+                .map(|item| item["said"].as_str().unwrap_or_default().to_owned())
+                .collect::<Vec<_>>()
+                .join(" \u{b7} ")
+        };
+        let team = |s: &'static str, under: [&'static str; 2]| {
+            [
+                row("O", "listening", 0, LIVE),
+                row("S", s, 1, LIVE),
+                row("T", under[0], 2, LIVE),
+                row("U", under[1], 2, LIVE),
+            ]
+        };
+        assert_eq!(
+            [
+                said(&team("working", ["needs", "needs"])),
+                said(&team("working", ["needs", "working"])),
+                said(&team("working", ["working", "working"])),
+                said(&team("needs", ["needs", "working"])),
+            ],
+            [
+                "2 need you \u{b7} working",
+                "1 needs you \u{b7} working",
+                "working",
+                "needs",
+            ],
+            "its mark says Joel is wanted, so its words say by how many under it, first; one \
+             waiting itself says its own want"
         );
     }
 
