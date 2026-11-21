@@ -137,6 +137,22 @@ let
   # store as the declaration is: the node refuses one any other account
   # could write, and a table naming nothing is no table, so every source is
   # silent.
+  # What the home realm's node lends the worker machines it made, from the
+  # store as the declaration is: anything running as the account, every
+  # agent included, could rewrite a file in its config folder, and so raise
+  # a machine's cap or send its requests elsewhere. A key left out is left
+  # out of the file, as mycelium reads a budget whose upstream adds its own.
+  lendArgs = lib.optionals (cfg.lend != null) [
+    "--lend"
+    "${pkgs.writeText "mycelium-lend.json" (
+      builtins.toJSON {
+        inherit (cfg.lend) vms;
+        budgets = lib.mapAttrs (
+          _: budget: lib.filterAttrs (_: value: value != null) budget
+        ) cfg.lend.budgets;
+      }
+    )}"
+  ];
   stimuliArgs = lib.optionals (cfg.stimuli != [ ]) [
     "--stimuli"
     "${pkgs.writeText "mycelium-stimuli.json" (builtins.toJSON { say = cfg.stimuli; })}"
@@ -168,6 +184,79 @@ let
     mycelium's PROTOCOL.md says what the program is asked.
   '';
   providersExample = lib.literalExpression ''[ "''${cistern-cell}/bin/cistern-cell" ]'';
+  # A lend, in the names of the file mycelium reads.
+  lend = lib.types.submodule {
+    options = {
+      vms = lib.mkOption {
+        type = lib.types.nonEmptyListOf (
+          lib.types.submodule {
+            options = {
+              prefix = lib.mkOption {
+                type = lib.types.strMatching "[a-z0-9-]+";
+                description = ''
+                  The start of the names of the machines this lend is for. A
+                  machine whose name starts as none does, or as two, is
+                  refused.
+                '';
+              };
+              budget = lib.mkOption {
+                type = lib.types.str;
+                description = "The budget, in `budgets`, their requests are carried through.";
+              };
+              requests_a_day = lib.mkOption {
+                type = lib.types.ints.positive;
+                description = "How many requests each machine may make a day, past which each is refused.";
+              };
+            };
+          }
+        );
+        description = "The machines lent to, each by the start of its name.";
+      };
+      budgets = lib.mkOption {
+        type = lib.types.attrsOf (
+          lib.types.submodule {
+            options = {
+              upstream = lib.mkOption {
+                # A path relative to the node's runtime folder, since a
+                # module doesn't know the account's uid, or a whole one.
+                type = lib.types.strMatching "[^%$[:space:]]+";
+                example = "model-relay/agents.sock";
+                description = ''
+                  The socket each request goes on to, whole or relative to the
+                  node's runtime folder, and nowhere else.
+                '';
+              };
+              host = lib.mkOption {
+                type = lib.types.strMatching "[A-Za-z0-9.-]+(:[0-9]{1,5})?";
+                description = "The host the requests are for, with no scheme.";
+              };
+              paths = lib.mkOption {
+                type = lib.types.nonEmptyListOf (lib.types.strMatching "/[^[:space:]]*");
+                description = "The paths a request may ask for; any other is refused.";
+              };
+              auth_header = lib.mkOption {
+                type = lib.types.strMatching "[A-Za-z0-9-]+";
+                description = ''
+                  The header the key goes in. The machine's own of that name
+                  is dropped.
+                '';
+              };
+              key = lib.mkOption {
+                type = lib.types.nullOr (lib.types.nonEmptyListOf lib.types.str);
+                default = null;
+                description = ''
+                  The command, its program by its absolute path, that prints
+                  the header's whole value on one line, which the node never
+                  logs; or null where the upstream adds its own.
+                '';
+              };
+            };
+          }
+        );
+        description = "The budgets a machine may be lent through, by name.";
+      };
+    };
+  };
   further = lib.types.submodule (
     { name, ... }:
     {
@@ -287,10 +376,12 @@ let
   builders = import ./builders.nix;
   # The home realm's node writes, as it judges the machine, the carry it
   # would make to ease it, and makes none, so a day of those lines can be read
-  # before it may act; a further realm's sessions aren't its to move.
+  # before it may act; a further realm's sessions aren't its to move. It
+  # alone lends, since the machines it lends to are the ones it made.
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
+    ++ lendArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
@@ -513,6 +604,30 @@ in
       type = lib.types.listOf lib.types.package;
       description = kitDescription;
     };
+    lend = lib.mkOption {
+      type = lib.types.nullOr lend;
+      default = null;
+      example = lib.literalExpression ''
+        {
+          vms = [ { prefix = "agents-"; budget = "models"; requests_a_day = 500; } ];
+          budgets.models = {
+            upstream = "model-relay/agents.sock";
+            host = "models.example";
+            paths = [ "/v1/messages" ];
+            auth_header = "authorization";
+            key = [ "''${models-key}/bin/models-key" ];
+          };
+        }
+      '';
+      description = ''
+        What the home realm's node lends the worker machines it made, or
+        null to lend nothing, so each one's lend is refused. Its names are
+        those of the file mycelium reads, which it reads again at every
+        request; mycelium's PROTOCOL.md says what each means. Lending a
+        machine model calls through a budget hands it no key: the node adds
+        the key to each request it carries upstream.
+      '';
+    };
     healthSocket = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default =
@@ -599,6 +714,17 @@ in
           # strict run sent to a Mac would land on the weaker fence.
           assertion = isDarwin -> cfg.declares == null || cfg.declares.fence.strict == null;
           message = "jitsusama.mycelium.declares.fence.strict is set on a Mac, whose fence reads the home folder but what it hides, so it isn't strict: declare fence instead.";
+        }
+        {
+          assertion =
+            cfg.lend == null
+            ||
+              cfg.realm != null
+              && lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms
+              && lib.all (budget: budget.key == null || lib.hasPrefix "/" (lib.head budget.key)) (
+                lib.attrValues cfg.lend.budgets
+              );
+          message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, a budget for each machine it names, and each key's program by its absolute path.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

@@ -55,6 +55,35 @@ let
   stimulatingNode =
     toString
       (linux (links // { stimuli = [ "github" ]; })).systemd.user.services.mycelium.Service.ExecStart;
+  # What a machine lends, in the names of the file mycelium reads.
+  lending = {
+    vms = [
+      {
+        prefix = "agents-";
+        budget = "models";
+        requests_a_day = 500;
+      }
+    ];
+    budgets = {
+      models = {
+        upstream = "model-relay/agents.sock";
+        host = "models.example";
+        paths = [ "/v1/messages" ];
+        auth_header = "authorization";
+        key = [ "/run/current-system/sw/bin/models-key" ];
+      };
+      keyless = {
+        upstream = "/run/relay/agents.sock";
+        host = "other.example";
+        paths = [ "/v1/messages" ];
+        auth_header = "authorization";
+      };
+    };
+  };
+  # The home realm's node of a machine that lends.
+  lendingNode =
+    toString
+      (linux (both // { lend = lending; })).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -519,7 +548,9 @@ in
   # into a Mac's check.
   mycelium-node-takes-its-flags =
     let
-      words = lib.splitString " " (builtins.unsafeDiscardStringContext "${linuxNode} ${stimulatingNode}");
+      words = lib.splitString " " (
+        builtins.unsafeDiscardStringContext "${linuxNode} ${stimulatingNode} ${lendingNode}"
+      );
       flags = lib.unique (lib.filter (lib.hasPrefix "--") words);
       locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
       untested = locked.overrideAttrs { doCheck = false; };
@@ -1014,6 +1045,53 @@ in
         && given macNode == null
         && given (mac both).launchd.agents.mycelium-other.config.ProgramArguments == null
         && !unknown.success
+      );
+
+  # What a machine lends reaches its home realm's node from the store, as the
+  # declaration does: an agent runs as the account, so a file in its config
+  # folder could raise a machine's cap or send its requests elsewhere. A
+  # budget with no key says none, a further realm's node lends nothing, and
+  # a machine naming a budget the lend lacks is refused.
+  mycelium-lends-from-the-store =
+    holds "mycelium-lends-from-the-store"
+      "A lending machine's home realm node isn't given its lend as a store file holding it in mycelium's names, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, or a lend naming a budget it lacks, or a key by a relative path, is taken."
+      (
+        let
+          machine = bareNixos [
+            self.nixosModules.workstation
+            {
+              home-manager.users.someone.jitsusama.mycelium = both // {
+                lend = lending;
+              };
+            }
+          ];
+          home = account machine;
+          given =
+            node:
+            let
+              words = lib.splitString " " (toString node.Service.ExecStart);
+              at = lib.lists.findFirstIndex (word: word == "--lend") null words;
+            in
+            if at == null then null else builtins.elemAt words (at + 1);
+          # The store file, built as the machine's own, in mycelium's names:
+          # the budget with no key is written with none.
+          holding = "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
+          refuses = lend: !(evaluates (linux (both // { inherit lend; })));
+        in
+        given home.systemd.user.services.mycelium == holding
+        && given home.systemd.user.services.mycelium-other == null
+        && given bothLinux.mycelium == null
+        && refuses (lending // { vms = [ ((lib.head lending.vms) // { budget = "none"; }) ]; })
+        && refuses (
+          lending
+          // {
+            budgets = lending.budgets // {
+              models = lending.budgets.models // {
+                key = [ "models-key" ];
+              };
+            };
+          }
+        )
       );
 
   # The sources a table may name are the locked mycelium's own, read from its

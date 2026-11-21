@@ -2259,6 +2259,13 @@
     one declaring a strict fence is refused, one declaring nothing has no file, and agents in a
     realm it doesn't join are refused
   '';
+  mycelium-lends-from-the-store = ''
+    a machine's home realm mycelium node is given what it lends the worker machines it made as a
+    file in the Nix store, in the names mycelium reads, since an agent running as the account could
+    rewrite one in its config folder to raise a machine's cap or send its requests elsewhere; a
+    budget with no key is written with none, a further realm's node and a machine lending nothing
+    are given no lend, and a lend naming a budget it lacks, or a key by a relative path, is refused
+  '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
     file in the Nix store, which only root writes, holding the same words as the account's config
