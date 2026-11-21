@@ -7,6 +7,10 @@
 //! folder: otherwise a change to any module would name every desktop test.
 //! On 10 November #2883 changed the slices module's disk targets, nothing
 //! named the slices VM test, and it failed on main only.
+//!
+//! Long because it is one reader of Nix's text: its paths, lets, calls and
+//! brackets share one scanning, and its cases already live apart, in
+//! `owners/shapes.rs`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -45,7 +49,8 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
         .flat_map(|(text, _)| importing(text))
         .collect();
     // The `checks.nix` that calls a test owns it too, since the values its
-    // call gives, an area or a screen, are part of what the test is.
+    // call gives, an area or a screen, are part of what the test is. So
+    // does the root's, which gives every test its host (`vmHostPkgs`).
     let called_from = |name: &str| {
         sources
             .iter()
@@ -59,6 +64,7 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
             let text = fs::read_to_string(root.join(&test.file)).unwrap_or_default();
             let mut paths = owned(&test.file, &text, &test.given, &folders, read);
             paths.extend(called_from(&test.name));
+            paths.push("checks.nix".to_owned());
             (test.name, paths)
         })
         .collect();
@@ -351,7 +357,10 @@ fn beside(text: &str, given: &BTreeMap<String, String>) -> Vec<String> {
     let mut found = Vec::new();
     let mut rest = text;
     while let Some(at) = rest.find("./") {
-        let start = rest[..at].rfind(|c: char| !is_path(c)).map_or(0, |i| i + 1);
+        let start = rest[..at]
+            .char_indices()
+            .rfind(|&(_, c)| !is_path(c))
+            .map_or(0, |(i, c)| i + c.len_utf8());
         let (tail, length, within) = path_at(&rest[at..], given);
         let path = format!("{}{tail}", &rest[start..at]);
         if path.starts_with("./") || path.starts_with("../") {
@@ -364,6 +373,9 @@ fn beside(text: &str, given: &BTreeMap<String, String>) -> Vec<String> {
                 found.push(format!("{path}/*"));
             }
             found.push(path.to_owned());
+            if let Some(name) = joined_on(&rest[at + length..], given) {
+                found.push(format!("{path}{name}"));
+            }
             if bare && called {
                 found.push(format!("{path}/default.nix"));
             }
@@ -372,6 +384,39 @@ fn beside(text: &str, given: &BTreeMap<String, String>) -> Vec<String> {
         rest = &rest[(at + length).max(at + 2)..];
     }
     found
+}
+
+/// The string a path just read is joined to, as `./desktop + "/x.py"`,
+/// or as the choice it ends, `(if a then ./b else ./c) + "/x.py"`, with
+/// its values read as `path_at` reads them, or nothing when `after` joins
+/// no plain string on. The choice ends at the first `)` it doesn't open,
+/// and no further than its binding's `;`: until 20 November #5927's
+/// folders, chosen by the area's name, owned only themselves, and no
+/// area's own cases named its VM test.
+fn joined_on(after: &str, given: &BTreeMap<String, String>) -> Option<String> {
+    let mut depth = 0_usize;
+    let mut end = None;
+    for (at, c) in after.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth == 0 => {
+                end = Some(at + 1);
+                break;
+            }
+            ')' => depth -= 1,
+            ';' => break,
+            _ => {}
+        }
+    }
+    let string = plus(after).or_else(|| end.and_then(|end| plus(&after[end..])))?;
+    let string = string.strip_prefix('"')?;
+    let (name, length, _) = path_at(string, given);
+    (string[length..].starts_with('"') && !name.is_empty()).then_some(name)
+}
+
+/// What follows a `+` that `text` opens with, its spaces aside.
+fn plus(text: &str) -> Option<&str> {
+    text.trim_start().strip_prefix('+').map(str::trim_start)
 }
 
 /// The paths `text` names from the flake's root, `"${self}/x"`, by their
