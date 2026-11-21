@@ -23,7 +23,7 @@
 //! the account's units restarting in a loop, failed, or a daemon whose
 //! socket reads signed out or doesn't answer, once for each spell
 //! (units.rs), and Joel too, by a notice, of another machine gone down
-//! (down.rs). `cadence units [--at SECONDS]` says what that watch reads
+//! while it holds work (down.rs). `cadence units [--at SECONDS]` says what that watch reads
 //! and would tell, sending nothing; at a moment past, from the journal.
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day

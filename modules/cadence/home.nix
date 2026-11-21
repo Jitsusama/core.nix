@@ -31,9 +31,11 @@
 # default description, "[systemd-run] <command>", unless someone holds it
 # by an owner line or its name; a run given --description is told.
 # It tells the same way of each realm's other machine its node read ready
-# within the hour before and has read unreachable or refused for ten
-# minutes since, with a desktop notice to Joel, once, and again once it's
-# back: its owner is the one `owners` names for `down:<machine>`.
+# within the hour before with a session on it busy, and has read
+# unreachable or turned away for ten minutes since, with a desktop notice
+# to Joel, once, and again once it's back: its owner is the one `owners`
+# names for `down:<machine>`. A machine with no work sleeps unsaid, and
+# every other machine dropping at once is read as this one cut off.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches, each

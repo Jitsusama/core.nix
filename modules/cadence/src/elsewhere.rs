@@ -119,7 +119,7 @@ pub fn crowded(answer: &str) -> Option<Vec<Crowded>> {
 /// in it does. The answer is a document a line, the builders' following the
 /// machines' once a machine names builders (16 November), so each document
 /// is read until one holds the machines.
-fn machines(answer: &str) -> Option<Vec<serde_json::Value>> {
+pub(crate) fn machines(answer: &str) -> Option<Vec<serde_json::Value>> {
     serde_json::Deserializer::from_str(answer)
         .into_iter::<serde_json::Value>()
         .map_while(Result::ok)
