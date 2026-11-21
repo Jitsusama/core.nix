@@ -1092,7 +1092,7 @@
     reads and what it carried since startup; Ethernet with no card holds its place, not plugged
     in; Wi-Fi's own row leads with the network joined, its signal and how long; and a
     connection's drawer shows whole or not at all, its facts made unasked and made again in
-    place as it changes
+    place as it changes, that making felt as "networks glancing" so an opening's stall names it
   '';
   address-waits-on-no-route-file = ''
     Address answers from the routing tables as last loaded, reading no file as it answers, even
