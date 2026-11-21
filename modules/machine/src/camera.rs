@@ -3,9 +3,9 @@
 //! the programs reading it one to a line and empty when nobody does
 //! (modules/v4l2loopback's holders for each loopback camera, and
 //! modules/usb-camera-holders' for each USB camera while it's plugged
-//! in). Each file is written beside it, under its name and the writer's
-//! pid, and renamed over it, so a name ending in a dot and a number is a
-//! file being written, no camera of its own. Read here, each camera is a
+//! in). Each file is written beside it, under a dotted name with the
+//! writer's pid, and renamed over it, so a dotted name is a file being
+//! written or hidden, no camera of its own. Read here, each camera is a
 //! record told only when its programs change (`camera:<name>`), so the
 //! shell runs nothing and reads no file to say who's on camera.
 //!

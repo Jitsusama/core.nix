@@ -214,8 +214,9 @@ fn say_device(output: &Path, node: Option<&Path>) {
 
 /// Removes each file in the folder but this run's own that says this node,
 /// and the holders file beside the folder that it's named for, as that
-/// camera is gone; one being written, under a dotted name, is left to its
-/// writer.
+/// camera is gone, saying so in the log. One being written, under a dotted
+/// name, is left to its writer, or for a killed writer's, to its camera's
+/// next run to tidy: no reader takes it for a camera, so it says nothing.
 fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
@@ -237,6 +238,11 @@ fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
         // camera whose own run rewrites them between, as two cameras
         // swapping nodes as a hub comes back might, reads unplugged until
         // it streams: a run killed and a swap at once, which is accepted.
+        say(&format!(
+            "forgot {}, said at {}, which a killed run left",
+            entry.file_name().to_string_lossy(),
+            said.trim_end()
+        ));
         let holders = folder.parent().map(|above| above.join(entry.file_name()));
         for gone in holders.iter().chain([&path]) {
             if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
@@ -435,15 +441,18 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     if let Some(line) = record.ended(then(&ended, node.exists())) {
         say(&line);
     }
-    say_device(&output, None);
-    match fs::remove_file(&output) {
+    // Its holders file first, as forget_node removes them, so a run killed
+    // between the two leaves the node file that finds the holders file.
+    let removed = match fs::remove_file(&output) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
             Exit::Failed,
             "loopback-holders can't remove the camera's file",
         )
         .because(format!("{}: {error}", output.display()))),
         _ => Ok(()),
-    }
+    };
+    say_device(&output, None);
+    removed
 }
 
 /// How a node file says its node.
@@ -452,11 +461,22 @@ fn said_as(node: &Path) -> String {
 }
 
 /// Removes what says a USB camera's node, as its unit stops: its own run
-/// removes its files as it ends, so any left were a killed run's. The node
-/// may be gone by then, so it's taken as given where it can't be followed.
+/// removes its files as it ends, so any left were a killed run's. A node
+/// that's there again is left alone, since its number may already be
+/// another camera's, as a loopback added as a hub comes back takes the
+/// lowest free, whose files say it rightly; this camera's next run there
+/// then forgets the rest as it starts. A pre-dotted file of the old
+/// `<name>.<pid>` shape isn't sought: a run's stop is read from a signalfd
+/// between writes, so only a run killed mid-write left one.
 fn forget(options: &Options) {
-    let node = fs::canonicalize(&options.source).unwrap_or_else(|_| options.source.clone());
-    forget_node(&options.output.join(".devices"), None, &said_as(&node));
+    if options.source.exists() {
+        return;
+    }
+    forget_node(
+        &options.output.join(".devices"),
+        None,
+        &said_as(&options.source),
+    );
 }
 
 /// Says who holds a loopback, following the source to each node it names.
@@ -504,14 +524,17 @@ fn loopback(events: &mut Events, options: &Options) {
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         let options = options(context.args.iter().cloned())?;
+        // Forgetting watches nothing, so a watch it can't have mustn't
+        // leave what it's there to remove.
+        if options.forget {
+            forget(&options);
+            return Ok(());
+        }
         let mut events = Events::new().map_err(|error| {
             Failure::new(Exit::Failed, "loopback-holders can't watch for its camera")
                 .because(format!("inotify: {error}"))
         })?;
-        if options.forget {
-            forget(&options);
-            Ok(())
-        } else if options.usb {
+        if options.usb {
             usb(&mut events, &options)
         } else {
             loopback(&mut events, &options);
