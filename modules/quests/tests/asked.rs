@@ -88,6 +88,31 @@ fn a_run_short_of_what_it_needs_is_refused_as_asked_wrongly() {
 }
 
 #[test]
+fn asks_with_nowhere_to_keep_when_he_looked_are_refused_as_asked_wrongly() {
+    let output = ran(&[
+        "--vocabulary",
+        "w",
+        "--node",
+        "n",
+        "--socket",
+        "s",
+        "--asks",
+        "a",
+    ]);
+    let why = said(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(64),
+        "asks alone ended {:?}",
+        output.status
+    );
+    assert!(
+        why.contains("--looked"),
+        "the refusal never named what goes with --asks: {why}"
+    );
+}
+
+#[test]
 fn a_flag_with_no_value_is_refused_as_asked_wrongly() {
     let output = ran(&["--node", "n", "--socket", "s", "--vocabulary"]);
     let why = said(&output.stderr);

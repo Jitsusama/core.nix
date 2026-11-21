@@ -4,11 +4,13 @@
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
+use std::time::Duration;
 
 use daemon_client::Daemon;
 use serde_json::{Value, json};
@@ -198,4 +200,208 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
         !held.contains_key("row:quests:QEST-E"),
         "the ended quest served: {held:?}"
     );
+}
+
+/// What's told on the watch until `until` holds of everything held.
+fn heard_until(
+    client: &mut daemon_client::Client,
+    held: &mut BTreeMap<String, Value>,
+    until: impl Fn(&BTreeMap<String, Value>) -> bool,
+) {
+    while !until(held) {
+        let said = client.heard();
+        for record in said["records"].as_array().into_iter().flatten() {
+            held.insert(
+                record["key"].as_str().unwrap_or("").to_owned(),
+                record.clone(),
+            );
+        }
+        for record in said["changed"].as_array().into_iter().flatten() {
+            held.insert(
+                record["key"].as_str().unwrap_or("").to_owned(),
+                record.clone(),
+            );
+        }
+        for key in said["gone"].as_array().into_iter().flatten() {
+            held.remove(key.as_str().unwrap_or(""));
+        }
+    }
+}
+
+/// The quests daemon over the stand-in node, reading `asks` and keeping
+/// what he looked at in `looked`; its socket in `run`, which goes with it.
+fn moved_daemon(node: &Path, asks: &Path, looked: &Path, run: &Path) -> Daemon {
+    let socket = run.join("quests.sock");
+    std::fs::create_dir_all(run).expect("its folder");
+    Daemon::start(
+        Command::new(env!("CARGO_BIN_EXE_quests"))
+            .arg("--vocabulary")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../quickshell/launcher/words.json"
+            ))
+            .args(["--node".as_ref(), node.as_os_str()])
+            .args(["--socket".as_ref(), socket.as_os_str()])
+            .args(["--asks".as_ref(), asks.as_os_str()])
+            .args(["--looked".as_ref(), looked.as_os_str()])
+            .env("HOME", "/home/joel"),
+        socket,
+        run.to_owned(),
+    )
+}
+
+/// A watch of what moved, held as it's told.
+fn moved_watch(daemon: &Daemon) -> (daemon_client::Client, BTreeMap<String, Value>) {
+    let mut client = daemon.client();
+    client.ask(&json!({"id": 1, "ask": "hello"}));
+    client.send(&json!({"id": 2, "ask": "watch", "kind": ["moved"], "place": "quests"}));
+    let mut held = BTreeMap::new();
+    heard_until(&mut client, &mut held, |held| {
+        held.contains_key("moved:quests")
+    });
+    (client, held)
+}
+
+fn entries(held: &BTreeMap<String, Value>) -> Option<usize> {
+    held.get("moved:quests")
+        .and_then(|record| record["moved"].as_array())
+        .map(Vec::len)
+}
+
+fn write_asks(asks: &Path, lines: &[Value]) {
+    let lines: Vec<String> = lines.iter().map(Value::to_string).collect();
+    std::fs::write(asks, lines.join("\n") + "\n").expect("the asks");
+}
+
+/// Gives `looked` what was seen, as the launcher does once he's looked.
+fn give_looked(daemon: &Daemon, seen: &Value) -> Value {
+    let mut asker = daemon.client();
+    asker.ask(&json!({"id": 1, "ask": "hello"}));
+    asker.ask(&json!({"id": 2, "ask": "looked", "seen": seen}))
+}
+
+/// Waits for what moved to name something, then gives its record.
+fn moved_named(client: &mut daemon_client::Client, held: &mut BTreeMap<String, Value>) -> Value {
+    heard_until(client, held, |held| entries(held).is_some_and(|n| n > 0));
+    held["moved:quests"].clone()
+}
+
+/// A first start says nothing of the asks already there. An ask he was
+/// shown landing, written while the daemon runs, is served as what moved
+/// for its quest in the launcher's words; given back as looked at it goes,
+/// and what he looked at is kept, so a restart says only what moved while
+/// it was down. A file it can't read keeps the asks told last, and a look
+/// it can't keep is refused.
+#[test]
+fn what_moved_since_he_looked_is_served_until_he_looks() {
+    let folder = std::env::temp_dir().join(format!("quests-moved-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("a folder");
+    let node_socket = folder.join("node.sock");
+    let (_tell, later) = mpsc::channel();
+    node(&node_socket, later);
+    let asks = folder.join("asks.jsonl");
+    let looked = folder.join("state/looked");
+    let at = "2026-11-20T10:00:00-05:00";
+    // Both there before the first start, so said only were nothing taken
+    // as shown: one landed, one still owed.
+    let fix = json!({"at": at, "owner": "A (B)", "words": "the fix",
+        "landed": "2026-11-20T11:00:00-05:00"});
+    let next = json!({"at": at, "owner": "QEST-A", "words": "the next",
+        "expected": "2099-01-01T00:00:00-05:00"});
+    write_asks(&asks, &[fix.clone(), next.clone()]);
+    let daemon = moved_daemon(&node_socket, &asks, &looked, &folder.join("run"));
+    let (mut client, mut held) = moved_watch(&daemon);
+    // The first asks taken as shown are kept, so they've been read.
+    while !looked.exists() {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // The one he was shown owed lands, stamped before he could have looked.
+    let mut landed = next;
+    landed["landed"] = json!("2026-11-20T09:00:00-05:00");
+    write_asks(&asks, &[fix.clone(), landed.clone()]);
+    let record = moved_named(&mut client, &mut held);
+    let moved = &record["moved"][0];
+    assert_eq!(
+        (entries(&held), &moved["note"]),
+        (Some(1), &json!("landed: the next")),
+        "a first start took what was there as shown, and only the landing moved: {record}"
+    );
+    assert_eq!(moved["key"], "moved:quests:QEST-A", "{moved}");
+    assert_eq!(moved["name"], "Bootstrap the laptop", "{moved}");
+    assert_eq!(
+        moved["side"],
+        json!([]),
+        "a landed ask owes no date: {moved}"
+    );
+
+    let refused = give_looked(&daemon, &Value::Null);
+    assert_eq!(
+        refused["error"]["code"], "bad-input",
+        "looked names what was seen: {refused}"
+    );
+    let folder_of = looked.parent().expect("its folder").to_owned();
+    std::fs::set_permissions(&folder_of, std::fs::Permissions::from_mode(0o500))
+        .expect("its folder shut");
+    let unkept = give_looked(&daemon, &record["seen"]);
+    std::fs::set_permissions(&folder_of, std::fs::Permissions::from_mode(0o700))
+        .expect("its folder open");
+    assert_eq!(
+        unkept["error"]["code"], "failed",
+        "a look it couldn't keep is refused: {unkept}"
+    );
+    let answer = give_looked(&daemon, &record["seen"]);
+    assert_eq!(answer["done"], true, "{answer}");
+    heard_until(&mut client, &mut held, |held| entries(held) == Some(0));
+
+    // A file it can't read keeps the asks told last.
+    let third = json!({"at": at, "owner": "QEST-A", "words": "the third",
+        "landed": "2026-11-20T12:00:00-05:00"});
+    write_asks(&asks, &[fix, landed.clone(), third.clone()]);
+    let record = moved_named(&mut client, &mut held);
+    std::fs::remove_file(&asks).expect("the asks gone");
+    std::fs::create_dir(&asks).expect("a folder in its place");
+    // Three looks at it unread, the most it waits before saying so.
+    std::thread::sleep(Duration::from_secs(7));
+    let (_, now) = moved_watch(&daemon);
+    assert_eq!(
+        now["moved:quests"], record,
+        "what it read last still stands: {now:?}"
+    );
+    std::fs::remove_dir(&asks).expect("the folder gone");
+
+    // Put down by its keeper, the fix is let go of what's kept once he
+    // looks; a fifth taken on says the file was read again.
+    let fifth = json!({"at": at, "owner": "QEST-A", "words": "the fifth"});
+    write_asks(&asks, &[landed.clone(), third.clone(), fifth.clone()]);
+    heard_until(&mut client, &mut held, |held| {
+        held["moved:quests"]["seen"]
+            .as_array()
+            .is_some_and(|seen| seen.len() == 2)
+    });
+    let answer = give_looked(&daemon, &held["moved:quests"]["seen"]);
+    assert_eq!(answer["done"], true, "{answer}");
+    heard_until(&mut client, &mut held, |held| entries(held) == Some(0));
+    drop((client, daemon));
+    let kept = std::fs::read_to_string(&looked).expect("what was looked at");
+    assert!(
+        !kept.contains("the fix") && kept.contains("the third"),
+        "only what can still move is kept: {kept}"
+    );
+
+    // Moved while nothing ran: only that is said, as what he looked at
+    // was kept.
+    let fourth = json!({"at": at, "owner": "QEST-A", "words": "the fourth",
+        "landed": "2026-11-21T02:00:00-05:00"});
+    write_asks(&asks, &[landed, third, fifth, fourth]);
+    let daemon = moved_daemon(&node_socket, &asks, &looked, &folder.join("run"));
+    let (mut client, mut held) = moved_watch(&daemon);
+    let record = moved_named(&mut client, &mut held);
+    assert_eq!(
+        (entries(&held), &record["moved"][0]["note"]),
+        (Some(1), &json!("landed: the fourth")),
+        "only what moved while down: {record}"
+    );
+    drop((client, daemon));
+    let _ = std::fs::remove_dir_all(&folder);
 }

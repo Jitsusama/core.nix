@@ -109,6 +109,35 @@ ShellRoot {
         }]
     }
 
+    // Quests, as Now's What Moved reads it: each workstream that moved, as
+    // its rows, what showing them shows, and what each ask to count them
+    // looked at gave back.
+    QtObject {
+        id: quests
+
+        readonly property var settings: ({ name: "quests" })
+        property int movedRevision: 0
+        property var movedRows: []
+        property var shown: []
+        property var lookedAsked: []
+
+        function moved() {
+            return movedRows;
+        }
+        function movedSeen() {
+            return shown;
+        }
+        function looked(seen) {
+            lookedAsked = lookedAsked.concat([seen]);
+        }
+        function everything() {
+            return [];
+        }
+        function folders() {
+            return [];
+        }
+    }
+
     // Agents, as For You reads it: each session wanting Joel as Agents'
     // row for it, kept as Agents keeps its own, so a session's row For
     // You makes is made again only when For You's own making is; what each
@@ -197,7 +226,7 @@ ShellRoot {
             said = keys;
         }
         // Set without one only by a case that asks what's left without it.
-        property var sources: [weather, calendar, cameras, power, pastNotices, agents]
+        property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
         property int placed: 0
 
         function resolved(id) {
@@ -840,8 +869,68 @@ ShellRoot {
                 : Object.assign({}, one, { read: false, readAt: null, left: undefined,
                     leftAt: undefined, withdrawn: undefined }));
             expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
-        }))
+        }) && tried(root.movedCases))
             Qt.exit(0);
+    }
+
+    // What Moved: no row while nothing moved; a workstream that moved is
+    // one row after the moment's, never in For You, stepping into its
+    // quest's row; stepped into, it stays while the launcher's open, and
+    // shut, what it showed as he stepped in is looked at, once, and it
+    // goes once nothing's moved since.
+    function movedCases() {
+        const keys = () => now.everything().map(row => row.key);
+        const moved = () => now.everything().find(row => row.key === "on:moved") ?? null;
+        theLauncher.open = true;
+        expect("nothing moved is no row", moved() === null, JSON.stringify(keys()));
+        const quest = { key: "moved:quests:QEST-A", name: "Bootstrap the laptop",
+            note: "landed: the fix" };
+        const fix = { key: "at\tthe fix", landed: 1, expected: null };
+        quests.movedRows = [quest];
+        quests.shown = [fix];
+        quests.movedRevision += 1;
+        // The moment's answers share the key "", so they're told by name.
+        const all = now.everything();
+        const at = all.findIndex(row => row.key === "on:moved");
+        const ofMoment = row => row !== undefined && names().includes(row.name);
+        expect("a workstream moved is one row, after the moment's",
+            at > 0 && ofMoment(all[at - 1]) && !ofMoment(all[at + 1]),
+            JSON.stringify(all.map(row => row.name)));
+        const row = moved();
+        expect("it says how many moved and names each",
+            row.name === "What Moved" && row.side === "1 moved"
+                && row.note === "Bootstrap the laptop",
+            JSON.stringify([row.name, row.side, row.note]));
+        expect("it steps into each quest's row", row.verbs()[0] === quest,
+            JSON.stringify(row.verbs()));
+        expect("it asks nothing, so it's not in For You",
+            !now.waitingRows().some(one => one.key === "on:moved"),
+            JSON.stringify(now.waitingRows().map(one => one.key)));
+        const asked = () => JSON.stringify(quests.lookedAsked);
+        row.stepped();
+        expect("stepping in looks at nothing yet", quests.lookedAsked.length === 0, asked());
+        // Moved again while he's in: the daemon says it, and goes on
+        // saying it after, since he stepped in before it, as the daemon
+        // would with only the fix given back.
+        quests.shown = [fix, { key: "at\tthe next", landed: 2, expected: null }];
+        quests.movedRows = [Object.assign({}, quest, { note: "landed: the next" })];
+        quests.movedRevision += 1;
+        expect("stepped into, it stays while the launcher's open", moved() !== null,
+            JSON.stringify(keys()));
+        theLauncher.open = false;
+        expect("shut, what it showed as he stepped in is looked at, once",
+            asked() === JSON.stringify([[fix]]), asked());
+        theLauncher.open = true;
+        expect("what moved after he stepped in is still said", moved() !== null,
+            JSON.stringify(keys()));
+        theLauncher.open = false;
+        expect("shut again unstepped, nothing more is looked at",
+            quests.lookedAsked.length === 1, asked());
+        quests.movedRows = [];
+        quests.movedRevision += 1;
+        theLauncher.open = true;
+        expect("with nothing moved, it's gone", moved() === null, JSON.stringify(keys()));
+        theLauncher.open = false;
     }
     Timer {
         running: root.waiting === "cell notice served"
