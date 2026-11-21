@@ -347,12 +347,15 @@ const JOURNAL: [(&str, layout::Align); 7] = [
 
 /// Which of the journal's columns give way in a narrow terminal, least
 /// useful first: the band is said again in status, the kind is in the
-/// path, and whose guard is in the path too, as a home or not.
+/// path, and whose guard is in the path too, as a home or not. A pass's
+/// kind, what set it going, is said nowhere else on its row, so a narrow
+/// terminal loses it, and `--json` still gives it.
 const JOURNAL_GIVES_WAY: [usize; 4] = [2, 4, 1, 5];
 
 /// What a journal line says after when, whose and in what band: what
-/// was done, to what kind, how big, and what. A pass says how big as
-/// what it freed, and what as how it ended and how long it took.
+/// was done, to what kind, how big, and what. A pass says its kind as
+/// what set it going, how big as what it freed, and what as how it ended
+/// and how long it took.
 fn said(entry: &Value) -> [String; 4] {
     match entry["event"].as_str() {
         Some("action") => {
@@ -370,7 +373,9 @@ fn said(entry: &Value) -> [String; 4] {
         }
         Some("pass") => [
             "pass".to_owned(),
-            String::new(),
+            // What set it going; a journal from before passes said so
+            // leaves it empty.
+            entry["why"].as_str().unwrap_or_default().to_owned(),
             size(entry["freed"].as_u64().unwrap_or(0)),
             format!(
                 "{}{}",

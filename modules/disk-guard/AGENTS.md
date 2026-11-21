@@ -221,9 +221,20 @@ or launchd, and [`home.nix`][2] the account's.
   journal` shows the account's guard and the machine's together, by time,
   each line saying whose: the machine's guard owns the store and what lies
   outside every home, so the account's alone never said where most of a
-  disk's room went. Any account may pass through the machine's state
-  folder to its journal but not list it, and every other file there is
-  saved as root's alone.
+  disk's room went. A pass's line says what set it going (`reach`,
+  `upkeep`, `garbage`, `producers`, `clear` or `collect`), how many things
+  it was offered, and how long the survey that offered them took, which
+  its own seconds leave out, or null when none did. Each pass a survey
+  served carries its seconds, so passes at one time and the same seconds
+  shared one walk. A pass that freed nothing can so be told from one with
+  nothing to take: in the day to 03:00 on 21 November, half of them freed
+  nothing, and their lines couldn't say which. The table shows what set
+  a pass going; `--json` gives what it was offered and its survey's
+  seconds. `upkeep` covers every trigger of the routine, and a
+  producers' or clear's survey that offers nothing makes no pass, so its
+  walk leaves no seconds. Any account may pass
+  through the machine's state folder to its journal but not list it, and
+  every other file there is saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
   under noatime nothing on disk says. A replaced build is an older build

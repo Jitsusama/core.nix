@@ -61,6 +61,9 @@ fn each_line_is_one_json_record() {
             end: "reached".to_owned(),
             freed: 1 << 30,
             seconds: 42.5,
+            why: "reach",
+            offered: 3,
+            surveyed: Some(7.25),
         })
         .unwrap();
     let read = lines(&path);
@@ -74,6 +77,9 @@ fn each_line_is_one_json_record() {
     assert_eq!(read[1]["reason"], "cargo holds it");
     assert_eq!(read[2]["event"], "pass");
     assert_eq!(read[2]["freed"], 1u64 << 30);
+    assert_eq!(read[2]["why"], "reach");
+    assert_eq!(read[2]["offered"], 3);
+    assert_eq!(read[2]["surveyed"], 7.25);
 }
 
 #[test]
