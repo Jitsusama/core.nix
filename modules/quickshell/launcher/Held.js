@@ -190,7 +190,7 @@ function pending(guess, keys) {
 // The guess that stands while a leave runs, at the field's key `keys`,
 // in a launcher `open` or not: broken until the leave says where it
 // landed, so one that throws partway holds the next Return too.
-function leaving(keys, open) {
+function whileLeaving(keys, open) {
     return open ? { keys, at: 0, depth: -1, broken: true } : unguessed();
 }
 

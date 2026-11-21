@@ -6454,9 +6454,9 @@ Scope {
         const before = steps.length;
         // Guessed until the landing is known to be on its row, so a leave
         // that throws partway, its rows unsearched and the selection where
-        // it stood, holds Return until another key (Held.leaving).
+        // it stood, holds Return until another key (Held.whileLeaving).
         const pending = guessed;
-        guessed = Held.leaving(prompt.keysTaken, open);
+        guessed = Held.whileLeaving(prompt.keysTaken, open);
         try {
             held = steps;
             back(false, held.length - leaving.keep);

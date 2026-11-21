@@ -323,7 +323,7 @@ QtObject {
             "-1@0 d-1");
         check("a leave that left nothing keeps it too", after(left, null), "5@0 d2");
         check("a leave runs broken, so a throw partway holds",
-            [shown(Held.leaving(5, true)), shown(Held.leaving(5, false))].join(", "),
+            [shown(Held.whileLeaving(5, true)), shown(Held.whileLeaving(5, false))].join(", "),
             "5@0 d-1 broken, -1@0 d-1");
 
         // Held.returnUnder, as the field's Return asks it: 2 deep, no words
@@ -355,7 +355,7 @@ QtObject {
             "false -1@0");
         // After a throw, the selection is half made, so every Return holds,
         // at any depth and past the wait, until another key.
-        const broken = press(Held.leaving(5, true), 6, 1000, { depth: 0 });
+        const broken = press(Held.whileLeaving(5, true), 6, 1000, { depth: 0 });
         const again = press(broken.next, 7, 9000, { depth: 0 });
         check("after a leave that threw, Return holds until another key",
             [said(broken), said(again), said(press(again.next, 9, 9100))].join(", "),
