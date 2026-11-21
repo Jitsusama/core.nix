@@ -6,6 +6,7 @@ use crate::net::{Round, lag};
 use crate::records::{Follower, Look, Merge, NetHold, Run};
 use crate::stats::spread;
 
+pub mod asleep;
 pub mod budgets;
 pub mod held;
 
@@ -70,6 +71,9 @@ pub struct Snapshot {
     /// Why spend-watch's standing couldn't be read, or wasn't fresh, so no
     /// budget is watched.
     pub budgets_unwatched: Option<String>,
+    /// Seconds the machine has slept since it booted, or None where the
+    /// kernel's clocks can't be read.
+    pub asleep: Option<i64>,
     pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,

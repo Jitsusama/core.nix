@@ -612,6 +612,7 @@ fn gather(
         net_held: records::net_held(&held),
         net_held_since: watch::held::read(&held),
         budgets_unwatched: budgets.as_ref().err().cloned(),
+        asleep: watch::asleep::since_boot(),
         budgets: budgets.unwrap_or_default(),
         net_hung: crate::net::hung(&net.join("findings"), now - 3600),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {

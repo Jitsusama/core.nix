@@ -57,9 +57,14 @@ pub struct State {
     /// couldn't be read.
     #[serde(default)]
     pub unwatched_since: Option<i64>,
-    /// When cadence last ticked, so a gap past a tick's is read as a sleep.
+    /// When cadence last ticked, so a gap past a tick's is read as a sleep
+    /// where the machine's sleep can't be read.
     #[serde(default)]
     pub ticked: Option<i64>,
+    /// How long the machine had slept since boot at the last tick, so a
+    /// sleep between ticks is told from a tick skipped while awake.
+    #[serde(default)]
+    pub asleep: Option<i64>,
 }
 
 /// Who a question goes to.
