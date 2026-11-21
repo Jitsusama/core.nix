@@ -1,8 +1,24 @@
+use super::hosts::{host_unit, listed_host, runtime, shown_host, unit_runtime};
 use super::*;
+
+mod harness;
 
 const OLD: &str = "xi5w06adwa04v6ifnajk1l37fp9hn79c";
 
 const CODE: &str = "modules/cadence/src/main.rs";
+
+/// `judge` for a change whose case never reads the harness's program.
+fn judge(
+    repo: &str,
+    rev: Option<&str>,
+    merge: Option<&str>,
+    carries: impl Fn(&str, &str) -> Option<bool>,
+    changed: impl Fn(&str) -> Option<String>,
+    hosts: impl FnOnce(&str, Reaches) -> Option<&'static str>,
+) -> Option<&'static str> {
+    let program = |_: &str| -> Option<BTreeSet<String>> { panic!("the program was read") };
+    super::judge(repo, rev, merge, carries, changed, program, hosts)
+}
 
 #[test]
 fn a_switch_names_what_runs_while_its_system_still_does() {
@@ -244,6 +260,7 @@ fn a_host_is_read_by_its_units_main_process() {
         "pi-host-gone-attended.service not-found inactive dead pi",
         "pi-host-down@x.service loaded inactive dead down",
         "pi-host-work-failing.service loaded failed failed pi",
+        "pi-host-gone-failing.service not-found failed failed pi",
     ];
     assert_eq!(
         listed
@@ -251,13 +268,14 @@ fn a_host_is_read_by_its_units_main_process() {
             .filter_map(|line| listed_host(line))
             .collect::<Vec<_>>(),
         [
-            ("pi-host-work-attended.service", false),
-            ("pi-host-work-background.service", true),
-            ("pi-host-home-attended.service", false),
-            ("pi-host-work-failing.service", false),
+            ("pi-host-work-attended.service", Standing::Running),
+            ("pi-host-work-background.service", Standing::Stopped),
+            ("pi-host-home-attended.service", Standing::Running),
+            ("pi-host-work-failing.service", Standing::Failed),
         ],
         "a stopped host, a failed one or one still running after its unit's file went was \
-         left out, or a failed one was read as stopped, by the runtime it can't start on"
+         left out, a failed one was read as stopped or running, or one gone and failed, \
+         which never runs again, was kept"
     );
     assert!(
         !host_unit("pi-host-down@pi-host-work-attended.service"),
@@ -267,6 +285,25 @@ fn a_host_is_read_by_its_units_main_process() {
     assert_eq!(
         shown_host("MainPID=3342173\nActiveEnterTimestamp=@1795138373\n"),
         (Some(3_342_173), Some(1_795_138_373))
+    );
+    assert_eq!(
+        shown_host(
+            "MainPID=7\nExecMainStartTimestamp=@1795138300\nActiveEnterTimestamp=@1795138373\n"
+        ),
+        (Some(7), Some(1_795_138_300)),
+        "a ready process's start wasn't read as when it began"
+    );
+    assert_eq!(
+        shown_host(
+            "MainPID=8\nExecMainStartTimestamp=@1795139000\nActiveEnterTimestamp=@1795138373\n"
+        ),
+        (Some(8), None),
+        "a host restarting in place, not ready since its process began, read as started"
+    );
+    assert_eq!(
+        shown_host("MainPID=9\nExecMainStartTimestamp=@1795139000\nActiveEnterTimestamp=\n"),
+        (Some(9), None),
+        "a host never yet ready read as started"
     );
     assert_eq!(
         shown_host("MainPID=0\nActiveEnterTimestamp=\n"),
@@ -298,7 +335,7 @@ fn host(kept: Option<&str>, started: Option<i64>) -> Host {
     Host {
         applied: kept.map(|kept| Applied::from([("x.patch".to_owned(), kept.to_owned())])),
         started,
-        stopped: false,
+        standing: Standing::Running,
     }
 }
 
@@ -307,7 +344,7 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
     let merged = Wanted::from([("x.patch".to_owned(), vec![Some("new".to_owned())])]);
     let runtime = Reaches {
         patches: vec!["modules/pi/host-patches/x.patch".to_owned()],
-        unit: false,
+        ..Reaches::default()
     };
     let lack = |hosts: Option<&[Host]>| {
         hosts_lack(hosts, &runtime, None, |applied| {
@@ -547,24 +584,24 @@ fn a_runtime_is_read_by_the_copies_it_keeps() {
 #[test]
 fn every_host_must_have_started_since_its_unit_switched_in() {
     let unit = Reaches {
-        patches: Vec::new(),
         unit: true,
+        ..Reaches::default()
     };
     let lack = |hosts: &[Host], at| hosts_lack(Some(hosts), &unit, at, |_| Some(true));
     assert_eq!(lack(&[host(None, Some(200))], Some(100)), None);
     assert_eq!(
         lack(&[host(None, Some(200)), host(None, Some(50))], Some(100)),
-        Some("a pi host keeps its unit from before it"),
+        Some("a pi host or conversation keeps its unit from before it"),
         "a host started before the switch counted as running its new unit"
     );
     assert_eq!(
         lack(&[host(None, None)], Some(100)),
-        Some("cadence can't tell when a pi host started")
+        Some("cadence can't tell when a pi host or conversation started")
     );
     // A host stopped since it last started keeps no unit, and starts on the
     // one switched in.
     let stopped = |started| Host {
-        stopped: true,
+        standing: Standing::Stopped,
         ..host(None, started)
     };
     assert_eq!(
@@ -577,8 +614,17 @@ fn every_host_must_have_started_since_its_unit_switched_in() {
     );
     assert_eq!(
         lack(&[host(None, Some(200))], None),
-        Some("cadence can't tell when a pi host started"),
+        Some("cadence can't tell when a pi host or conversation started"),
         "no switch found carrying it, yet the hosts counted as started since"
+    );
+    let failed = Host {
+        standing: Standing::Failed,
+        ..host(None, None)
+    };
+    assert_eq!(
+        lack(&[host(None, Some(200)), failed], Some(100)),
+        Some("a pi host failed and waits on a reset"),
+        "a failed host, which runs nothing until it's reset, counted as stopped or unread"
     );
 }
 

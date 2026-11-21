@@ -5,7 +5,13 @@
 //! older runtime's pi. Whatever cadence can't read counts as not running,
 //! so a blind hour never tells him fixed.
 
+mod conversations;
+mod hosts;
+mod program;
 mod resumed;
+
+use conversations::conversations;
+use hosts::hosts;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -57,31 +63,47 @@ const HOSTED_PI: &str = "modules/pi/hosted-pi.nix";
 type Applied = BTreeMap<String, String>;
 
 /// A pi host as listed, before its copies are read: the runtime it loads,
-/// when it started, and whether it was stopped.
-type Listed = (Option<std::path::PathBuf>, Option<i64>, bool);
+/// when it started, and how it stands.
+type Listed = (Option<std::path::PathBuf>, Option<i64>, Standing);
+
+/// How a pi host stands: running, stopped, or failed, which systemd leaves
+/// it at once it restarts past its limit, until someone resets it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Standing {
+    #[default]
+    Running,
+    Stopped,
+    Failed,
+}
 
 /// The states of each patch of a change, by name, that carry it: its
 /// text, or `None` for one the change removed.
 type Wanted = BTreeMap<String, Vec<Option<String>>>;
 
 /// A pi host as cadence reads it: the patches its runtime applied, and
-/// when it started, each `None` where that couldn't be read, and whether
-/// it was stopped, with no process to keep an older unit.
+/// when it started, each `None` where that couldn't be read, and how it
+/// stands: a stopped one has no process to keep an older unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Host {
     applied: Option<Applied>,
     started: Option<i64>,
-    stopped: bool,
+    standing: Standing,
 }
 
 /// Which of `merged` don't run here yet, each with why. A change runs once
 /// its repository's running revision carries its merge, a core change to
-/// the hosts' patches once every running host also loads a runtime that
-/// applied each as merged or since, and one to the hosts' unit once
-/// every host started after the switch that carried it. A change seen
+/// the hosts' patches once every running host and conversation also
+/// loads a runtime that applied each as merged or since, one to the hosts'
+/// unit once every host and conversation started after the switch that
+/// carried it, and a harness change to the hosts' program once every host
+/// and conversation started after it was installed. A change seen
 /// running is kept in `folder`'s `ran.json` and never read again, so a
-/// closed miss isn't reopened, and told fixed twice, by an hour that can't
-/// see for a moment: a host restarting at :10, or a switch from a branch.
+/// closed miss isn't reopened, and told fixed twice, by an hour that
+/// can't see for a moment: a host restarting at :10, or a switch from a
+/// branch. When the harness installed first carried a program change is
+/// kept in its `installed.json` until an hour sees it not carried, or
+/// pi-packages marks a version lacking it left since, so a later install
+/// doesn't hold it open again.
 #[must_use]
 pub fn unrun(
     merged: &BTreeSet<Named>,
@@ -94,29 +116,60 @@ pub fn unrun(
         .ok()
         .and_then(|kept| serde_json::from_str(&kept).ok())
         .unwrap_or_default();
+    let firsts_at = folder.join("installed.json");
+    let firsts: BTreeMap<String, i64> = std::fs::read_to_string(&firsts_at)
+        .ok()
+        .and_then(|kept| serde_json::from_str(&kept).ok())
+        .unwrap_or_default();
+    let mut now_firsts = BTreeMap::new();
     let revs = running(switches, repos);
     let mut hosts: Option<Option<Vec<Host>>> = None;
+    let mut talks: Option<Option<Vec<Host>>> = None;
     let mut unrun = BTreeMap::new();
     for change in merged.iter().filter(|change| !ran.contains(*change)) {
         let Some(path) = repos.get(&change.repo) else {
             continue;
         };
         let path = path.to_string_lossy();
+        let key = format!("{} #{}", change.repo, change.number);
         let why = judge(
             &change.repo,
             revs.get(&change.repo).map(String::as_str),
             merge_of(&path, change.number).as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
+            |sha| {
+                let files = program::files(&path, sha);
+                if files.is_none() {
+                    eprintln!(
+                        "cadence: can't follow the pi host's program at {sha}, so each harness \
+                         change waits on every pi host and conversation"
+                    );
+                }
+                files
+            },
             |sha, reaches| {
-                let read = hosts.get_or_insert_with(read_hosts);
-                let switched_at = reaches
-                    .unit
-                    .then(|| first_switched(switches, |rev| carries(&path, sha, rev) == Some(true)))
-                    .flatten();
+                let read = hosts.get_or_insert_with(read_hosts).as_deref();
+                let talks = talks.get_or_insert_with(read_talks).as_deref();
+                let carried = |rev: &str| carries(&path, sha, rev) == Some(true);
+                let since = if reaches.program {
+                    let mirror = crate::axes::landings::harness_mirror();
+                    let named = revs.get(&change.repo).map(String::as_str);
+                    first_installed(
+                        &firsts,
+                        &mut now_firsts,
+                        &key,
+                        |at| stepped_back(program::left_since(&mirror, at), carried),
+                        || program::swapped(&mirror, named),
+                    )
+                } else if reaches.unit {
+                    first_switched(switches, carried)
+                } else {
+                    None
+                };
                 // Walked only once a host keeps copies to compare with it.
                 let merged = std::cell::OnceCell::new();
-                hosts_lack(read.as_deref(), &reaches, switched_at, |applied| {
+                lacking(read, talks, &reaches, since, |applied| {
                     merged
                         .get_or_init(|| versions(&path, sha, &reaches.patches))
                         .as_ref()
@@ -124,6 +177,7 @@ pub fn unrun(
                 })
             },
         );
+        keep_unseen(&firsts, &mut now_firsts, &key, why);
         if let Some(why) = why {
             unrun.insert(change.clone(), why);
         }
@@ -144,29 +198,118 @@ pub fn unrun(
             ran_at.display()
         );
     }
+    if now_firsts != firsts
+        && let Err(error) = serde_json::to_string(&now_firsts)
+            .map_err(std::io::Error::from)
+            .and_then(|kept| write_whole(&firsts_at, &kept))
+    {
+        eprintln!(
+            "cadence: keeping when changes were installed in {}: {error}",
+            firsts_at.display()
+        );
+    }
     unrun
 }
 
-/// What a core change reaches that only a host's restart brings in: the
-/// patches the hosts' runtime applies, by path, or their unit.
+/// Why the harness installed doesn't hold a change, which ends the time
+/// kept for its first install.
+const NOT_CARRIED: &str = "the harness installed doesn't carry it";
+
+/// When the harness installed first carried the change kept as `key`: as
+/// `firsts`, last hour's, kept it, else as `swapped` reads `current` now,
+/// kept in `now_firsts` for the next hour. An hour that doesn't see it
+/// carried keeps nothing, so a step back counts from the step forward; a
+/// step back and forward between two hours does too, once `stepped_back`
+/// says `current` named a version lacking it since the time kept.
+fn first_installed(
+    firsts: &BTreeMap<String, i64>,
+    now_firsts: &mut BTreeMap<String, i64>,
+    key: &str,
+    stepped_back: impl FnOnce(i64) -> bool,
+    swapped: impl FnOnce() -> Option<i64>,
+) -> Option<i64> {
+    let since = firsts
+        .get(key)
+        .copied()
+        .filter(|&at| !stepped_back(at))
+        .or_else(swapped);
+    if let Some(at) = since {
+        now_firsts.insert(key.to_owned(), at);
+    }
+    since
+}
+
+/// Keeps the first install `firsts` holds for `key` through an hour that
+/// didn't reach it, as one that couldn't read git, so a later install
+/// doesn't hold a conversation started on the first; but not once the
+/// change ran, judged `why` as `None`, or the hour saw it not carried.
+fn keep_unseen(
+    firsts: &BTreeMap<String, i64>,
+    now_firsts: &mut BTreeMap<String, i64>,
+    key: &str,
+    why: Option<&str>,
+) {
+    if why.is_some_and(|why| why != NOT_CARRIED)
+        && !now_firsts.contains_key(key)
+        && let Some(&at) = firsts.get(key)
+    {
+        now_firsts.insert(key.to_owned(), at);
+    }
+}
+
+/// Whether `current` named a version lacking the change since the time
+/// kept, from the versions pi-packages marks it `left` since: one that
+/// isn't `carried`, or whose name isn't a commit's, so nothing but a
+/// commit reaches git; or marks that couldn't be read.
+fn stepped_back(left: Option<Vec<String>>, carried: impl Fn(&str) -> bool) -> bool {
+    left.is_none_or(|left| left.iter().any(|rev| !is_rev(rev) || !carried(rev)))
+}
+
+/// Why the pi hosts lack a change that `reaches` them, as `hosts_lack`
+/// says, with each conversation's process, `talks`, read beside the
+/// `hosts`, since each runs their program, unit and runtime too, and
+/// `None` when they couldn't be listed. A host lacking it outranks the
+/// conversations unread, so its owner is asked.
+fn lacking(
+    hosts: Option<&[Host]>,
+    talks: Option<&[Host]>,
+    reaches: &Reaches,
+    since: Option<i64>,
+    loads: impl Fn(&Applied) -> Option<bool>,
+) -> Option<&'static str> {
+    let Some(talks) = talks else {
+        return hosts_lack(hosts, reaches, since, loads)
+            .or(Some("cadence can't list the pi conversations"));
+    };
+    let all: Option<Vec<Host>> = hosts.map(|hosts| hosts.iter().chain(talks).cloned().collect());
+    hosts_lack(all.as_deref(), reaches, since, loads)
+}
+
+/// What a change reaches that only a host's restart brings in: the
+/// patches the hosts' runtime applies, by path, or their unit, of core's,
+/// or their program, of the harness's.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Reaches {
     patches: Vec<String>,
     unit: bool,
+    program: bool,
 }
 
 /// Why a change of `repo` merged as `merge` doesn't run here yet, if it
 /// doesn't: `rev` is its repository's running revision, `carries` says
 /// whether a revision holds a commit (`None` for a revision cadence doesn't
-/// have), `changed` the files a merge changed, and `hosts` why the pi hosts
-/// lack a change that reaches them. What cadence couldn't read counts as
-/// not running.
+/// have), `changed` the files a merge changed, `program` the harness's
+/// files the hosts' program loads at a commit, any change reaching it
+/// when cadence can't follow it, and `hosts` why the pi
+/// hosts lack a change that reaches them. What cadence couldn't read counts
+/// as not running.
 fn judge(
     repo: &str,
     rev: Option<&str>,
     merge: Option<&str>,
     carries: impl Fn(&str, &str) -> Option<bool>,
     changed: impl Fn(&str) -> Option<String>,
+    program: impl FnOnce(&str) -> Option<BTreeSet<String>>,
     hosts: impl FnOnce(&str, Reaches) -> Option<&'static str>,
 ) -> Option<&'static str> {
     if !RUN_HERE.contains(&repo) {
@@ -180,16 +323,26 @@ fn judge(
     };
     match carries(sha, rev) {
         None => return Some("cadence can't find the revision running here"),
-        Some(false) if repo == "harness" => return Some("the harness installed doesn't carry it"),
+        Some(false) if repo == "harness" => return Some(NOT_CARRIED),
         Some(false) => return Some("the last switch doesn't carry it"),
         Some(true) => {}
     }
-    if repo != "core" {
+    if repo != "core" && repo != "harness" {
         return None;
     }
     let Some(files) = changed(sha) else {
         return Some("cadence can't read what it changed");
     };
+    if repo == "harness" {
+        // A program cadence can't follow may load anything, so every change
+        // waits on the hosts, rather than none closing until it's followed.
+        let reaches = Reaches {
+            program: program(sha)
+                .is_none_or(|loaded| files.lines().any(|file| loaded.contains(file))),
+            ..Reaches::default()
+        };
+        return reaches.program.then(|| hosts(sha, reaches)).flatten();
+    }
     let reaches = Reaches {
         patches: files
             .lines()
@@ -202,6 +355,7 @@ fn judge(
             .map(str::to_owned)
             .collect(),
         unit: files.lines().any(|file| file == HOST_UNIT),
+        program: false,
     };
     // A fix to how core builds its runtime can't be seen in a runtime built
     // elsewhere, which copies only its patches, so it isn't told fixed;
@@ -217,22 +371,26 @@ fn judge(
 /// Why the pi hosts lack a change that `reaches` them, if they do: each
 /// host's runtime must have applied its patches, as `loads` says of what a
 /// runtime applied (`None` when it can't tell), and each must have started
-/// after `switched_at`, when a switch first carried a change to their
-/// unit, `None` when no switch read did. `hosts` is `None` when they
-/// couldn't be listed.
-/// Something lacking outranks what can't be read, so the owner is asked.
+/// after `since`: when a switch first carried a change to their unit, or
+/// `current` last moved to the version carrying one to their program,
+/// `None` when cadence found neither. `hosts` holds each conversation's
+/// process too, as `lacking` gives them, and with none running a program
+/// change lacks nothing. A host failed and left so lacks anything
+/// reaching the hosts until it's reset. Something lacking outranks what
+/// can't be read, so the owner is asked.
 fn hosts_lack(
     hosts: Option<&[Host]>,
     reaches: &Reaches,
-    switched_at: Option<i64>,
+    since: Option<i64>,
     loads: impl Fn(&Applied) -> Option<bool>,
 ) -> Option<&'static str> {
     let runtime = !reaches.patches.is_empty();
     let Some(hosts) = hosts else {
         return Some("cadence can't list the pi hosts");
     };
+    // With nothing running, the next to start loads the harness installed.
     if hosts.is_empty() {
-        return Some("no pi host runs to load it");
+        return (runtime || reaches.unit).then_some("no pi host runs to load it");
     }
     let loaded: Vec<Option<bool>> = hosts
         .iter()
@@ -241,19 +399,36 @@ fn hosts_lack(
     if runtime && loaded.contains(&Some(false)) {
         return Some("the pi hosts don't load it yet");
     }
+    // A failed host runs nothing, and judging it as stopped would close a
+    // fix whose own fault failed it, so its owner is asked.
+    if hosts.iter().any(|host| host.standing == Standing::Failed) {
+        return Some("a pi host failed and waits on a reset");
+    }
     // A stopped host keeps no unit: it starts on the one switched in.
-    let running = || hosts.iter().filter(|host| !host.stopped);
-    if reaches.unit
-        && let Some(at) = switched_at
+    let running = || {
+        hosts
+            .iter()
+            .filter(|host| host.standing == Standing::Running)
+    };
+    let restarts = reaches.unit || reaches.program;
+    if restarts
+        && let Some(at) = since
         && running().any(|host| host.started.is_some_and(|started| started < at))
     {
-        return Some("a pi host keeps its unit from before it");
+        return Some(if reaches.program {
+            "a pi host or conversation runs the harness from before it"
+        } else {
+            "a pi host or conversation keeps its unit from before it"
+        });
     }
     if runtime && loaded.contains(&None) {
         return Some("cadence can't tell what a pi host loads");
     }
-    if reaches.unit && (switched_at.is_none() || running().any(|host| host.started.is_none())) {
-        return Some("cadence can't tell when a pi host started");
+    if reaches.program && since.is_none() {
+        return Some("cadence can't tell when the harness carrying it was installed");
+    }
+    if restarts && (since.is_none() || running().any(|host| host.started.is_none())) {
+        return Some("cadence can't tell when a pi host or conversation started");
     }
     None
 }
@@ -464,16 +639,24 @@ fn only_lists(diff: &str, files: &[&str]) -> bool {
 /// Each pi host, with the patches its runtime applied where it keeps them,
 /// or `None` when the hosts couldn't be listed.
 fn read_hosts() -> Option<Vec<Host>> {
-    Some(
-        hosts()?
-            .into_iter()
-            .map(|(runtime, started, stopped)| Host {
-                applied: runtime.and_then(|runtime| applied(&runtime)),
-                started,
-                stopped,
-            })
-            .collect(),
-    )
+    hosts().map(as_hosts)
+}
+
+/// Each running conversation, read as `read_hosts` reads a host.
+fn read_talks() -> Option<Vec<Host>> {
+    conversations().map(as_hosts)
+}
+
+/// Each of `listed` with the patches its runtime applied.
+fn as_hosts(listed: Vec<Listed>) -> Vec<Host> {
+    listed
+        .into_iter()
+        .map(|(runtime, started, standing)| Host {
+            applied: runtime.and_then(|runtime| applied(&runtime)),
+            started,
+            standing,
+        })
+        .collect()
 }
 
 /// The patches the runtime at `root` applied, from the copies it keeps;
@@ -609,146 +792,6 @@ fn input_pin(lock: &str, input: &str) -> Option<String> {
         .as_str()
         .filter(|rev| is_rev(rev))
         .map(str::to_owned)
-}
-
-/// The runtime each pi host loads its pi from and when it started, each
-/// `None` where it couldn't be read, and whether it was stopped. A host is
-/// the main process of a unit core's host module names
-/// `pi-host-REALM-KIND`, so what it starts, which keeps its environment
-/// after the host moves on, isn't read. A host stopped comes back on the
-/// runtime its unit names, so it's judged by that rather than left out.
-/// One failed or restarting may never load that runtime, as when it
-/// can't start on it, so what it loads can't be told.
-fn hosts() -> Option<Vec<Listed>> {
-    let units = command(
-        "systemctl",
-        &[
-            "--user",
-            "list-units",
-            "--type=service",
-            "--all",
-            "--no-legend",
-            "--plain",
-            "pi-host-*",
-        ],
-    )
-    .ok()?;
-    Some(
-        units
-            .lines()
-            .filter_map(listed_host)
-            .map(|(unit, stopped)| {
-                let shown = command(
-                    "systemctl",
-                    &[
-                        "--user",
-                        "show",
-                        "--timestamp=unix",
-                        "-p",
-                        "MainPID",
-                        "-p",
-                        "ActiveEnterTimestamp",
-                        "-p",
-                        "Environment",
-                        unit,
-                    ],
-                )
-                .unwrap_or_default();
-                let (pid, started) = shown_host(&shown);
-                match pid {
-                    Some(pid) => {
-                        let runtime = std::fs::read(format!("/proc/{pid}/environ"))
-                            .ok()
-                            .and_then(|environ| runtime(&environ));
-                        (runtime, started, false)
-                    }
-                    None if stopped => (unit_runtime(&shown), None, true),
-                    None => (None, None, false),
-                }
-            })
-            .collect(),
-    )
-}
-
-/// The host unit a line of `systemctl list-units --all` names, and whether
-/// it was stopped, unless it's one gone from the config and stopped: a host
-/// still running after its unit's file went still loads its runtime, so
-/// it's read.
-fn listed_host(line: &str) -> Option<(&str, bool)> {
-    let mut fields = line.split_whitespace();
-    let unit = fields.next().filter(|unit| host_unit(unit))?;
-    let (load, active) = (fields.next(), fields.next());
-    let stopped = active == Some("inactive");
-    (load == Some("loaded") || !stopped).then_some((unit, stopped))
-}
-
-/// A host unit's main process and when it started, from `systemctl show`.
-fn shown_host(shown: &str) -> (Option<u32>, Option<i64>) {
-    let field = |name: &str| {
-        shown
-            .lines()
-            .find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
-    };
-    let pid = field("MainPID")
-        .and_then(|pid| pid.trim().parse().ok())
-        .filter(|&pid| pid != 0);
-    let started = field("ActiveEnterTimestamp")
-        .and_then(|at| at.trim().strip_prefix('@')?.parse().ok())
-        .filter(|&at| at > 0);
-    (pid, started)
-}
-
-/// Whether `unit` is a pi host's, `pi-host-REALM-KIND.service`, and not one
-/// of the units beside them, such as `pi-host-down@`.
-fn host_unit(unit: &str) -> bool {
-    unit.strip_prefix("pi-host-")
-        .and_then(|rest| rest.strip_suffix(".service"))
-        .is_some_and(|named| !named.contains('@') && named.contains('-'))
-}
-
-/// The runtime a pi host loads its pi from, as the store path its
-/// `PI_PACKAGE_DIR` lies in: a host's node may come from a newer runtime
-/// while it still loads the older one's pi, as the background host did from
-/// 20:24 on 19 November.
-fn runtime(environ: &[u8]) -> Option<std::path::PathBuf> {
-    let dir = environ
-        .split(|&b| b == 0)
-        .find_map(|var| var.strip_prefix(b"PI_PACKAGE_DIR="))?;
-    store_root(std::str::from_utf8(dir).ok()?)
-}
-
-/// The runtime a host's unit starts it on, from its `Environment` as
-/// `systemctl show` gives it, for a host with no process to read.
-fn unit_runtime(shown: &str) -> Option<std::path::PathBuf> {
-    let environment = shown
-        .lines()
-        .find_map(|line| line.strip_prefix("Environment="))?;
-    let dir = environment
-        .split_whitespace()
-        .find_map(|var| var.trim_matches('"').strip_prefix("PI_PACKAGE_DIR="))?;
-    store_root(dir)
-}
-
-/// The store path `dir` lies in, whatever it's named: what makes it a host's
-/// runtime is the copies of its patches it keeps, which `applied` reads.
-fn store_root(dir: &str) -> Option<std::path::PathBuf> {
-    let dir = Path::new(dir);
-    // `..` would name one store path while pi loads from another.
-    if dir
-        .components()
-        .any(|part| part == std::path::Component::ParentDir)
-    {
-        return None;
-    }
-    let name = dir
-        .strip_prefix("/nix/store")
-        .ok()?
-        .components()
-        .next()?
-        .as_os_str()
-        .to_str()?;
-    let (hash, _) = name.split_once('-')?;
-    (hash.len() == 32).then(|| Path::new("/nix/store").join(name))
 }
 
 #[cfg(test)]
