@@ -43,5 +43,6 @@ pub mod read;
 pub mod receptor;
 mod reftable;
 pub mod upstreams;
+pub mod using;
 pub mod weight;
 pub mod when;

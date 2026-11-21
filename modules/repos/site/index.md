@@ -24,10 +24,12 @@ is cut or a change's checks move. Nothing on it changes anything.
 - **The list:** each repository as a row, its marks in a gutter (its
   season and its worst change, ringed while it waits on a review), then
   its name, its size in trees, the cells at work, when it was last
-  written, and what its git stores weigh, with "upkeep due" when git would
-  gather one now.
+  written, what its git stores weigh, with "upkeep due" when git would
+  gather one now, and what works in it: its share of a core over the last
+  minute and the memory its processes hold.
 - **Beside the list, the repository the cursor is on:** its trunk, its
-  checkouts with what each store is made of, its changes with how their
+  checkouts with what each store is made of and what works in each, its
+  changes with how their
   checks and reviews stand, and its trees by season: Written Today, This
   Week, Resting and Gone, the last two folded until asked for. Within a
   season they go by branch, so a tree keeps its place while it's written
@@ -44,6 +46,25 @@ is cut or a change's checks move. Nothing on it changes anything.
   the first and last; Return opens the one the keys rest on. Shown only
   while some cell's work spans two repositories.
 - **Under it all,** whether what it shows is live, and since when it isn't.
+
+What works in a repository is read once a minute from Linux's `/proc`:
+each of Joel's processes whose working folder lies in a checkout or tree
+counts for the deepest one holding it, its memory its proportional share,
+so libraries several share count once between them, and its processor
+time with its children's once it has waited on them, so a build's
+compilers count in the cargo that ran them, and a child already counted
+isn't counted again. Time counts only through a process working in a
+folder at both readings: one working out of every tree, or under `sudo`,
+counts for none of that time, and one waited on by a process outside
+every folder, as the user's service manager, loses its last minute. The
+share is of the waking time between readings,
+so a suspend leaves it as it was. A build the Nix daemon runs
+for one works as its own user in its own folder, so it's counted
+nowhere, and a Mac says none of it. Where the daemon can't say, the page
+says nothing of it, and the rest of the page stands as it was; until its
+reading of `/proc` first answers, and once it misses three paces in a
+row, each repository says its processes are unread rather than that
+nothing works in it.
 
 ## Keys
 
@@ -63,7 +84,7 @@ is cut or a change's checks move. Nothing on it changes anything.
 
 ## What the Data Holds
 
-The repos daemon (`repos serve`) holds five kinds of record. The sole
+The repos daemon (`repos serve`) holds six kinds of record. The sole
 `reading` has `machine`, `roots` and `sources`, each source with its
 `name`, `what` and `unread` list. Each `repository:<key>` has `name`,
 `owner`, `remotes`, `trunk`, `written_at` and `read_through`. Each
@@ -73,7 +94,13 @@ local branch count and its config's bytes, null where they couldn't be
 read. Each `tree:<path>` has `repository`, `checkout`, `path`,
 `snapshot`, `present`, `head`, `written_at` and `change`. Each
 `change:<key>#<number>`, or `@<branch>` before GitHub numbers it, has its
-`title`, `branch`, `checks` and `review`. Times are RFC 3339, UTC.
+`title`, `branch`, `checks` and `review`. Each `using:<key>` has its
+`repository`, its `processes`, `memory` in bytes and `cpu` as a share of
+one core, null until two readings are a minute apart and after a reading
+held up, all three null while the reading has stopped answering, and
+`folders`, each checkout or tree anything works in with its `path` and
+the same three.
+Times are RFC 3339, UTC.
 
 `repos --json` says the same as one record, and `repos <name>` one
 repository.
