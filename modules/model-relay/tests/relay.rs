@@ -1772,12 +1772,12 @@ fn counts_trials_apart(said: &str) {
     );
 }
 
-/// Failing again soon after it took requests again, a relay trying its
-/// path each second stands down doubled, for twenty minutes, and waits
-/// twice as long for its first trial: four periods, so none by three
-/// seconds in, and one by seven. The requests it answered since it mended
-/// count toward its share, so it's reset until it says it stands down,
-/// rather than a set number of times.
+/// A relay whose stand-down ends on its timer while its trial loop waits
+/// on a trial, and which stands down again then, is told of the new one:
+/// its loop waits that stand-down's own first trial from when it began,
+/// rather than sleeping out the old wait first. The requests it answered
+/// since count toward its share, so it's reset until it says it stands
+/// down, rather than a set number of times.
 #[tokio::test(flavor = "current_thread")]
 async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_from_then() {
     let origin = origin().await;
@@ -1801,8 +1801,9 @@ async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_
         "its first trial didn't come before its stand-down ended"
     );
 
-    // Failing again at once, it stands down doubled, 30 s, while the trial
-    // loop still waits on the last stand-down's next trial.
+    // Failing again as soon as it takes requests, it stands down doubled,
+    // 30 s, while the trial loop still waits on the last stand-down's next
+    // trial.
     let mut resets = 0;
     loop {
         let got = ask(&relay.socket, request(&host, "/reset", b"")).await;
@@ -1817,10 +1818,16 @@ async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_
     }
     let again = Instant::now();
     let before = trials();
+    assert!(
+        again <= stood_down + Duration::from_millis(17_500),
+        "the resets took too long to tell a woken loop from one left asleep"
+    );
 
     // Its own first trial is due 28 s from then, two periods doubled. Told
-    // of it, the loop waits from then; left asleep, it would wait from when
-    // its last wait ended, about 21 s in, so 5 s later.
+    // of it, the loop waits from then. Left asleep until its last wait
+    // ended, about 21 s in, it would wait its first trial from then, 49 s
+    // in: past 31 s from a stand-down begun by 17.5 s in, and past the
+    // stand-down's own end, so it wouldn't try in it at all.
     tokio::time::sleep_until((again + Duration::from_secs(25)).into()).await;
     assert_eq!(
         trials(),
@@ -1839,6 +1846,13 @@ async fn a_stand_down_begun_while_it_waits_on_a_trial_waits_its_own_first_trial_
     );
 }
 
+/// Failing again soon after it took requests again, a relay trying its
+/// path each second stands down doubled, for twenty minutes, and waits
+/// twice as long for its first trial: four periods, so none by two and a
+/// half seconds in, where an undoubled one's at two would be seen, and one
+/// by seven. The requests it answered since it mended count toward its
+/// share, so it's reset until it says it stands down, rather than a set
+/// number of times.
 async fn stands_down_doubled_and_waits_twice_as_long(relay: &Relay, origin: &Origin, host: &str) {
     let trials = || trials_of(origin);
     let mut resets = 0;
@@ -1861,7 +1875,7 @@ async fn stands_down_doubled_and_waits_twice_as_long(relay: &Relay, origin: &Ori
     origin.failing.store(RESETS, Ordering::SeqCst);
     let doubled = Instant::now();
     let before = trials();
-    tokio::time::sleep_until((doubled + Duration::from_secs(3)).into()).await;
+    tokio::time::sleep_until((doubled + Duration::from_millis(2_500)).into()).await;
     assert_eq!(
         trials(),
         before,

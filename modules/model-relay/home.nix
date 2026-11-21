@@ -21,12 +21,13 @@
 # answered as a 421, which sends pi direct, and the journal says why. A
 # request the origin resets before its answer begins, saying its stream was
 # refused or a protocol error, goes once more, on another connection, and
-# the one that reset it takes no more. Reset again the same way, lost on its
-# path when sent again, or with no other connection to go on, it's the
-# relay's own 421, so pi sends it direct at once; so is a request left out
-# of a goodbye saying nothing was wrong, as a drain before a deploy is,
-# first try or again. Reset or said goodbye to saying anything else, first
-# or again, it's a 502, for pi's own retry. Past 15 in 100 failed of what it
+# the one that reset it takes no more; so does one left out of a goodbye
+# saying nothing was wrong, as a drain before a deploy or a connection's
+# rotation is, as that promises the origin did nothing with it. Reset or
+# left out again the same way, lost on its path when sent again, or with no
+# other connection to go on, it's the relay's own 421, so pi sends it direct
+# at once. Reset or said goodbye to saying anything else, first or again,
+# it's a 502, for pi's own retry. Past 15 in 100 failed of what it
 # finished in ten minutes, 20 at least, it stands down, sending each request
 # direct with its 421. After a minute, longer as stand-downs double, and
 # every half minute after, it tries its path on a connection of its own, and
