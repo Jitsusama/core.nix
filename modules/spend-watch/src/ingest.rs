@@ -441,7 +441,7 @@ mod tests {
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 1);
-        writeln!(file, "{TURN}").unwrap();
+        writeln!(file, "{}", turn_at(2)).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 2);
     }
@@ -451,7 +451,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("project")).unwrap();
         let path = dir.path().join("project/2026_s1.jsonl");
-        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{TURN}\n")).unwrap();
+        let later = turn_at(2);
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{later}\n")).unwrap();
         let history = History::memory();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 2);
@@ -617,7 +618,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("2026_s1.jsonl");
         let long = format!(r#"{{"type":"custom","data":"{}"}}"#, "x".repeat(2000));
-        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{long}\n{TURN}\n{long}")).unwrap();
+        let later = turn_at(2);
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{long}\n{later}\n{long}")).unwrap();
         let history = History::memory();
         let slice = 512;
         let found = Found {
