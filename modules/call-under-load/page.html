@@ -71,11 +71,13 @@ function rate(id, bytes, ts) {
 }
 
 async function sample() {
-  // Timed as it's asked for, since a loaded machine can take a while to gather the stats.
-  const t = Date.now();
+  const asked = Date.now();
   const stats = await pc.getStats();
-  const s = { t, state: pc.connectionState };
   const video = [...stats.values()].filter((r) => !r.kind || r.kind === 'video');
+  // Timed by when the stats were gathered, which their counts are as of; a loaded machine
+  // can take a while between the ask and the gathering.
+  const gathered = video.find((r) => r.type === 'media-source' || r.type === 'outbound-rtp');
+  const s = { t: Math.round(gathered?.timestamp ?? asked), state: pc.connectionState };
   for (const r of video) {
     if (r.type === 'outbound-rtp') {
       s.out = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'qualityLimitationReason',
