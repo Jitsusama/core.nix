@@ -6,6 +6,10 @@
 //! half-written last line after a crash costs one minute, not the day.
 //! What the day says is filled in beside the record here (`recall`); the
 //! concerns that say it are worked out after, in src/room.rs.
+//!
+//! Long because the modem's page misreads counts and uptimes now and
+//! then, and each way it does has a case below proving the walk back
+//! through the day isn't fooled by it.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -223,24 +227,30 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 /// it, so the walk passes it by.
 fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
     let mut later: Vec<Lost> = Moment::lost_of(modem);
-    let mut later_started = started;
+    let mut later_timed = started.is_some();
+    let started = started.or_else(|| day.iter().rev().find_map(|moment| moment.modem_started));
     let mut since: Vec<&Moment> = Vec::new();
     for moment in day.iter().rev().filter(|moment| moment.at < now) {
         if moment.lost.is_empty() {
             continue;
         }
-        // Only later counts: a start time that moves back is a misread
-        // uptime or net's own clock stepping, never the modem starting.
-        let started_later = moment
+        // Each line is measured against the start the modem gives now,
+        // never the line after it, so one misread uptime moves only its
+        // own line, and a start reading later than now's is passed by.
+        let started_before = moment
             .modem_started
-            .zip(later_started)
-            .is_some_and(|(then, after)| after > then + ONE_START);
-        if started_later || all_fell(&moment.lost, &later) {
+            .zip(started)
+            .is_some_and(|(then, latest)| latest > then + ONE_START);
+        // Where both lines say when the modem started, counts falling
+        // are a start only on two channels at once, so one misread on
+        // the only channel that has counted is not.
+        let timed = moment.modem_started.is_some() && later_timed;
+        if started_before || all_fell(&moment.lost, &later, if timed { 2 } else { 1 }) {
             break;
         }
         since.push(moment);
         later.clone_from(&moment.lost);
-        later_started = moment.modem_started;
+        later_timed = moment.modem_started.is_some();
     }
     let base = since.last().filter(|base| now - base.at >= LATELY);
     modem.lately_s = base.map(|base| now - base.at);
@@ -252,17 +262,19 @@ fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
     }
 }
 
-/// What a channel had lost when the walk's earliest readings were taken:
-/// the middle of its first three, so one misread among them, often a
+/// What a channel had lost when the walk's earliest three lines were
+/// kept: the middle of its readings in them, so one misread, often a
 /// zero, is outvoted; with fewer, the first. The day keeps a line a
-/// minute, so the middle one misses at most two minutes' losses.
+/// minute, so the middle one misses at most two minutes' losses. A
+/// channel none of them names has no count lately, since one taken from
+/// a later line would cover less than the stretch a warning names.
 fn first_count(since: &[&Moment], channel: &Channel) -> Option<u64> {
     let mut firsts: Vec<u64> = since
         .iter()
         .rev()
+        .take(3)
         .filter_map(|moment| moment.lost.iter().find(|each| each.of(channel)))
         .map(|each| each.uncorrectable)
-        .take(3)
         .collect();
     if firsts.len() == 3 {
         firsts.sort_unstable();
@@ -272,19 +284,20 @@ fn first_count(since: &[&Moment], channel: &Channel) -> Option<u64> {
 }
 
 /// Whether every channel that had counted any reads lower in the later
-/// reading, as after a start, which sets every count back to zero. One
-/// channel reading lower alone is the page misreading it, which it does
-/// now and then, often as a zero.
-fn all_fell(earlier: &[Lost], later: &[Lost]) -> bool {
-    let mut counted = earlier
+/// reading, as after a start, which sets every count back to zero, with
+/// at least `channels` of them. One channel reading lower among others
+/// is the page misreading it, which it does now and then, often as a
+/// zero.
+fn all_fell(earlier: &[Lost], later: &[Lost], channels: usize) -> bool {
+    let counted: Vec<bool> = earlier
         .iter()
         .filter(|earlier| earlier.uncorrectable > 0)
         .filter_map(|earlier| {
             let each = later.iter().find(|each| each.same(earlier))?;
             Some(earlier.uncorrectable > each.uncorrectable)
         })
-        .peekable();
-    counted.peek().is_some() && counted.all(|fell| fell)
+        .collect();
+    counted.len() >= channels && counted.iter().all(|fell| *fell)
 }
 
 #[cfg(test)]
@@ -536,7 +549,7 @@ mod tests {
             Moment::of(&now).modem_started,
             "a start is a reading's time less the modem's uptime"
         );
-        for (drift, lately_s) in [(90, Some(5 * HOUR)), (10 * 60, None)] {
+        for (drift, lately_s) in [(ONE_START, Some(5 * HOUR)), (ONE_START + 1, None)] {
             let day = [Moment::of(&read_earlier(&now, 5 * HOUR, drift))];
             let network = recalled(now.clone(), &day);
             assert_eq!(
@@ -545,6 +558,86 @@ mod tests {
                 "a start {drift} seconds later was judged wrongly"
             );
         }
+    }
+
+    #[test]
+    fn a_misread_uptime_is_passed_by() {
+        // One line's uptime read ten minutes short, so it says the modem
+        // started ten minutes after it did; that is no start.
+        let now = network();
+        let mut misread = earlier(&now, 3 * HOUR, 840, 41);
+        misread.modem_started = misread.modem_started.map(|started| started + 10 * 60);
+        let day = [earlier(&now, 5 * HOUR, 800, 41), misread];
+        let network = recalled(now, &day);
+        assert_eq!(
+            modem(&network).lately_s,
+            Some(5 * HOUR),
+            "a misread uptime was taken as the modem starting"
+        );
+    }
+
+    #[test]
+    fn the_only_channel_counting_reading_low_is_no_start() {
+        // Soon after a start only 455.6 MHz has counted any. The page
+        // misreading its 18 as 0 is no start, since the modem still says
+        // it started when it did.
+        let mut now = network();
+        let channels = now
+            .devices
+            .iter_mut()
+            .find(|device| device.id == "modem")
+            .and_then(|device| device.modem.as_mut())
+            .expect("the record has the modem's channels");
+        for channel in &mut channels.downstream {
+            if channel.frequency_hz != Some(455_600_000) {
+                channel.uncorrectable = Some(0);
+            }
+        }
+        let mut misread = earlier(&now, 3 * HOUR, 0, 41);
+        ofdm(&mut misread, 455_600_000, 0);
+        let day = [earlier(&now, 5 * HOUR, 0, 41), misread];
+        let network = recalled(now, &day);
+        assert_eq!(
+            modem(&network).lately_s,
+            Some(5 * HOUR),
+            "one misread on the only counting channel was taken as a start"
+        );
+    }
+
+    #[test]
+    fn a_channel_the_first_lines_lack_has_no_count_lately() {
+        // The first three lines were kept before net kept frequencies, so
+        // they can't name either OFDM channel: counting one from a later
+        // line would cover less than the five hours a warning would name.
+        let now = network();
+        let mut day: Vec<Moment> = (0..3)
+            .map(|minute| {
+                let mut old = earlier(&now, 5 * HOUR - minute * 60, 800, 41);
+                old.modem_started = None;
+                for lost in &mut old.lost {
+                    lost.frequency_hz = None;
+                }
+                old
+            })
+            .collect();
+        day.push(earlier(&now, 2 * HOUR, 850, 41));
+        let network = recalled(now, &day);
+        let ofdm_lately: Vec<Option<u64>> = modem(&network)
+            .downstream
+            .iter()
+            .filter(|channel| channel.channel.is_none())
+            .map(|channel| channel.lost_lately)
+            .collect();
+        assert_eq!(
+            ofdm_lately,
+            [None, None],
+            "an OFDM channel was counted over less than the stretch named"
+        );
+        assert_eq!(
+            sixteen(&network).lost_lately,
+            Some(78),
+            "channel 16 lost its count"
+        );
     }
 
     #[test]
