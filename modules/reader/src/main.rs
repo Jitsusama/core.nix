@@ -507,7 +507,7 @@ fn show(
     let conn = Connection::connect_to_env()?;
     // SAFETY: the connection, and so its display, outlives the join below.
     let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
-    let first = page::set_first(file, opens_at.map(|(block, _, _)| block), width);
+    let first = page::set_first(file, opens_at.map(|(block, ..)| block), width);
     if let Some(warming) = warming {
         let _ = warming.join();
     }
