@@ -81,6 +81,9 @@ pub enum Refused {
     /// What git's records of its gone trees hold couldn't all be read, as
     /// a reftable keeps them where no file says, so none is taken on trust.
     Records,
+    /// No gone tree's record could be set aside or deleted, as one only
+    /// root may move can't be, where git never ran to fail.
+    Unmoved,
 }
 
 impl Refused {
@@ -94,6 +97,7 @@ impl Refused {
             Refused::Left => "left",
             Refused::Hooked => "hooked",
             Refused::Records => "records",
+            Refused::Unmoved => "unmoved",
         }
     }
 }
@@ -438,7 +442,7 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
         }
     }
     if refused && forgot == 0 {
-        return Err(Refused::Failed);
+        return Err(Refused::Unmoved);
     }
     Ok(Tended::Forgot {
         forgot,

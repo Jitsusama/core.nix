@@ -455,6 +455,31 @@ fn expiring(name: &str, key: &str) {
 }
 
 #[test]
+fn forget_gone_trees_says_a_record_it_couldnt_move_as_its_own() {
+    let running = Running::new("code-forget-unmoved");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    let resting = real(&running.path("")).join("resting");
+    let path = resting.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
+    std::fs::remove_dir_all(&resting).unwrap();
+    // What a forget cut short left aside, where this record would go.
+    let aside = here.join(".git/forgetting/resting");
+    std::fs::create_dir_all(&aside).unwrap();
+    std::fs::write(aside.join("HEAD"), "left\n").unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not forgotten: no gone tree's record could be moved or deleted",
+        "Forget Gone Trees blamed git for a record it couldn't move itself: {said}"
+    );
+    assert!(
+        here.join(".git/worktrees/resting/gitdir").exists(),
+        "a record Forget couldn't move went anyway"
+    );
+}
+
+#[test]
 fn a_reftable_checkouts_gone_trees_are_refused_unread() {
     let running = Running::new("code-reftable");
     let behind = Behind::new(&running);
