@@ -193,7 +193,9 @@ fn a_copier_that_never_takes_the_copy_is_refused_in_its_time() {
             .is_some_and(|said| said.contains("never took the whole copy")),
         "a copy the copier never took didn't say why it was refused: {refused}"
     );
-    until("the deaf copier is ended", || !copier_runs(&running.copied()));
+    until("the deaf copier is ended", || {
+        !copier_runs(&running.copied())
+    });
 }
 
 #[test]
