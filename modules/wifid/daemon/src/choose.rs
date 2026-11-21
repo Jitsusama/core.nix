@@ -198,7 +198,8 @@ pub enum Choice {
     Stay,
     /// Move to this access point, on trial.
     Try(String),
-    /// Go back to the access point the trial left, which carried better.
+    /// Go back to the access point the trial left, as the trial carried
+    /// worse than it did, or than it usually does.
     Back(String),
     /// Look for another access point of the network, none being heard.
     Look,
@@ -480,7 +481,7 @@ impl Chooser {
             from: point.to_owned(),
             to: chosen.point.clone(),
             before: measured.clone(),
-            usual: usual.cloned(),
+            usual: trial_bar(usual, measured),
             banded: banded.is_some() && used(measured),
             widened: !wide(frequency) && wide(chosen.frequency),
         });
@@ -730,7 +731,6 @@ impl Chooser {
         // load what the point carried loaded, and nothing where that isn't
         // learned. Its loss stays the minute's, as the quicker rule's does.
         let like = loaded(&trial.before) == loaded(measured)
-            && trial.before.p95.is_some()
             && trial.before.echoes >= ECHOED
             && slowness(&trial.before) > SLOW
             && trial.before.lost <= LOSSY;
@@ -783,8 +783,9 @@ impl Chooser {
         // would hold the card off its way out should the point gone back to
         // fail. A second of the same move within `SPURNED` is: learning
         // doesn't end the repeats, since a usual is blended over neighbouring
-        // steps, and under load over every hour, so ten slow minutes barely
-        // move it. Another point's usual is another bar, so counts apart.
+        // steps, and under load over every hour, so the slow minutes behind
+        // a back move it only in part. Another point's usual is another
+        // bar, so counts apart.
         // That keep-off yields to a failing link, as the point tried carried
         // no worse than the one left, so the card isn't held on a point
         // gone bad.
@@ -948,6 +949,18 @@ fn wide(frequency: u32) -> bool {
 /// known.
 pub fn wider(to: u32, from: u32) -> bool {
     from != 0 && wide(to) && !wide(from)
+}
+
+/// What the card's own point usually carries, as the bar a trial off this
+/// minute must beat. Under load, the point carrying badly is known by an
+/// idle floor where it never learned more, which weighs the move but is no
+/// bar for a loaded trial to beat: carrying worse than no download could
+/// would send it back. One learned badly under load is a bar seldom
+/// failed, so little is lost leaving it out too.
+fn trial_bar(usual: Option<&Measured>, measured: &Measured) -> Option<Measured> {
+    usual
+        .filter(|usual| !loaded(measured) || !badly(usual))
+        .cloned()
 }
 
 /// Whether an access point carries badly enough to try another.
@@ -1837,11 +1850,28 @@ pub(crate) mod tests {
             &[usual, hall_learned.clone()],
             false,
         );
-        let unweighed = after_a_bad_minute(DESK).choose(Instant::now(), on, &[hall_learned], false);
+        let unweighed = after_a_bad_minute(DESK).choose(
+            Instant::now(),
+            on,
+            std::slice::from_ref(&hall_learned),
+            false,
+        );
         let quicker_still = hall(-43, None, Some(carried(9, 0.0)));
         let beaten = desk_at(-41, Some(carried(21, 0.0)));
         let bettered =
             after_a_bad_minute(DESK).choose(Instant::now(), on, &[beaten, quicker_still], false);
+        // The desk known under load only by its idle 60 ms, a floor.
+        let floor = || desk_at(-41, Some(carried(60, 0.0)));
+        let floored = after_a_bad_minute(DESK).choose(
+            Instant::now(),
+            on,
+            &[floor(), hall_learned.clone()],
+            false,
+        );
+        let mut tried = after_a_bad_minute(DESK);
+        let far_quicker = hall(-43, None, Some(carried(9, 0.0)));
+        let off_a_floor = tried.choose(Instant::now(), on, &[floor(), far_quicker], false);
+        let bar = tried.trial.as_ref().and_then(|trial| trial.usual.clone());
 
         assert_eq!(
             weighed,
@@ -1857,6 +1887,20 @@ pub(crate) mod tests {
             bettered,
             Choice::Try(HALL.into()),
             "9 ms is far quicker than the 21 ch52 usually carries downloads at"
+        );
+        assert_eq!(
+            floored,
+            Choice::Stay,
+            "the hall's idle 49 ms isn't quicker than the desk's own idle floor of 60"
+        );
+        assert_eq!(
+            off_a_floor,
+            Choice::Try(HALL.into()),
+            "9 ms is quicker than it"
+        );
+        assert_eq!(
+            bar, None,
+            "but a floor is no bar for a loaded trial to beat"
         );
     }
 
@@ -2549,6 +2593,32 @@ pub(crate) mod tests {
         back_twice_from(start, DESK)
     }
 
+    /// A chooser whose card, on a desk failing past the hall's keep-off,
+    /// tried the hall, which stood carrying as the desk usually does, so
+    /// freed it, that not yet said.
+    pub(crate) fn hall_freed(start: Instant) -> Chooser {
+        let failing = Measured {
+            moving: None,
+            ..carried(400, 15.0)
+        };
+        let quick = Measured {
+            moving: None,
+            ..carried(20, 0.0)
+        };
+        let around = around_the_desk();
+        let (mut chooser, again) = hall_kept_off_on_the_usual(start);
+        let settled = again + SETTLE;
+        let tried = chooser.choose(settled, (DESK, &failing, -50, CH52), &around, false);
+        assert_eq!(
+            tried,
+            Choice::Try(HALL.into()),
+            "the desk failing tries the hall"
+        );
+        chooser.yielded();
+        chooser.choose(settled + TRIAL, (HALL, &quick, -45, CH52), &around, false);
+        chooser
+    }
+
     /// The same, from this access point rather than the desk.
     fn back_twice_from(start: Instant, from: &str) -> (Chooser, Instant) {
         let unloaded = |p95| Measured {
@@ -2624,8 +2694,6 @@ pub(crate) mod tests {
         desk(&mut less_bad, settled);
         let less = hall(&mut less_bad, settled + TRIAL, &unloaded(50));
         let kept_still = less_bad.keeps_off(HALL, settled + TRIAL);
-        let moved = (DESK.to_owned(), HALL.to_owned());
-        let counted_still = less_bad.usually.contains_key(&moved);
 
         let (mut worse, again) = hall_kept_off_on_the_usual(start);
         let settled = again + SETTLE;
@@ -2667,10 +2735,6 @@ pub(crate) mod tests {
             kept_still,
             "but, carrying only better than a failing desk, stays kept off"
         );
-        assert!(
-            counted_still,
-            "and its back on the usual still counts, so a third is a second"
-        );
         assert_eq!(
             back,
             Choice::Back(DESK.into()),
@@ -2690,7 +2754,6 @@ pub(crate) mod tests {
             moving: None,
             ..carried(400, 15.0)
         };
-        let moved = (DESK.to_owned(), HALL.to_owned());
 
         let (mut unlearned, again) = hall_kept_off_on_the_usual(start);
         let settled = again + SETTLE;
@@ -2705,7 +2768,6 @@ pub(crate) mod tests {
         let there = (HALL, &quick, -45, CH52);
         let unlearned_stands = unlearned.choose(settled + TRIAL, there, &unknown, false);
         let kept_unlearned = unlearned.keeps_off(HALL, settled + TRIAL);
-        let counted_unlearned = unlearned.usually.contains_key(&moved);
 
         let around = around_the_desk();
         let (mut lossy, again) = hall_kept_off_on_the_usual(start);
@@ -2762,8 +2824,8 @@ pub(crate) mod tests {
             "the hall stands with no usual"
         );
         assert!(
-            kept_unlearned && counted_unlearned,
-            "but with no usual to weigh, says nothing of it, so both hold"
+            kept_unlearned,
+            "but with no usual to weigh, says nothing of it, so the keep-off holds"
         );
         assert!(
             kept_lossy,
@@ -2889,16 +2951,20 @@ pub(crate) mod tests {
         // held, and only the stairs' span there being young keeps it.
         let roamed = again + Duration::from_secs(61);
         let on = (STAIRS, &failing, -50, CH52);
-        chooser.choose(roamed, on, &around, false);
+        let landed = chooser.choose(roamed, on, &around, false);
+        let held = chooser.held();
         let young = chooser.choose(
             roamed + SPAN.saturating_sub(Duration::from_secs(1)),
             on,
             &around,
             false,
         );
-        let held = chooser.held();
         let whole = chooser.choose(roamed + SPAN, on, &around, false);
 
+        assert!(
+            !matches!(landed, Choice::Try(_)),
+            "the stairs failing as they're landed on keep off the hall: {landed:?}"
+        );
         assert!(
             !matches!(young, Choice::Try(_)),
             "the stairs failing less than a whole span keep off the hall: {young:?}"
@@ -3154,25 +3220,8 @@ pub(crate) mod tests {
             moving: Some(moving),
             ..carried(p95, 0.0)
         };
-        // A trial off the desk to the hall judged a trial past its start:
-        // why it went back, and how long the hall is kept off.
-        let judged = |before: Measured, usual: Option<Measured>, there: &Measured| {
-            let mut chooser = after_a_bad_minute(DESK);
-            let (from, to) = (DESK.into(), HALL.into());
-            let (banded, widened) = (false, false);
-            chooser.trial = Some(Trial {
-                from,
-                to,
-                before,
-                usual,
-                banded,
-                widened,
-            });
-            chooser.moved = Some(start);
-            let now = start + TRIAL;
-            chooser.judge(now, (HALL, there), (false, false, false));
-            let kept = chooser.keeps_off(HALL, now + HOUR_LESS_A_SECOND);
-            (chooser.went_back(), kept)
+        let judged = |before, usual, there: &Measured| {
+            judged_off_the_desk(start, (before, usual), there, false)
         };
 
         let quick = judged(unloaded(30), Some(unloaded(14)), &unloaded(25));
@@ -3187,21 +3236,6 @@ pub(crate) mod tests {
         assert!(
             matches!(past_slow.0, Some(Against::Usually(_))),
             "a minute past SLOW is judged by its usual: {past_slow:?}"
-        );
-        let sparse = |echoes| Measured {
-            echoes,
-            ..unloaded(41)
-        };
-        let few = judged(sparse(ECHOED - 1), Some(unloaded(14)), &unloaded(30));
-        assert_eq!(
-            few,
-            (None, false),
-            "a minute echoing short of ECHOED gives too few to weigh"
-        );
-        let enough = judged(sparse(ECHOED), Some(unloaded(14)), &unloaded(30));
-        assert!(
-            matches!(enough.0, Some(Against::Usually(_))),
-            "one echoing ECHOED is judged by its usual: {enough:?}"
         );
         let unlike = judged(moving(76, 40), Some(unloaded(14)), &unloaded(30));
         assert_eq!(
@@ -3244,6 +3278,68 @@ pub(crate) mod tests {
         assert_eq!(
             cut, slowed,
             "a download cut is kept off an hour, quick usual or not"
+        );
+    }
+
+    /// A trial off the desk to the hall, made off this minute with this
+    /// usual, judged a trial past its start on what the hall carried: why
+    /// it went back, and whether the hall is kept off near the hour's end.
+    fn judged_off_the_desk(
+        start: Instant,
+        (before, usual): (Measured, Option<Measured>),
+        there: &Measured,
+        banded: bool,
+    ) -> (Option<Against>, bool) {
+        let mut chooser = after_a_bad_minute(DESK);
+        chooser.trial = Some(Trial {
+            from: DESK.into(),
+            to: HALL.into(),
+            before,
+            usual,
+            banded,
+            widened: false,
+        });
+        chooser.moved = Some(start);
+        let now = start + TRIAL;
+        chooser.judge(now, (HALL, there), (false, false, false));
+        let kept = chooser.keeps_off(HALL, now + HOUR_LESS_A_SECOND);
+        (chooser.went_back(), kept)
+    }
+
+    #[test]
+    fn a_usual_judges_only_a_minute_echoing_enough_and_never_a_banded_trial() {
+        let start = Instant::now();
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let sparse = |echoes| Measured {
+            echoes,
+            ..unloaded(41)
+        };
+        let usual = || Some(unloaded(14));
+        let judged =
+            |before, banded| judged_off_the_desk(start, (before, usual()), &unloaded(30), banded);
+
+        let few = judged(sparse(ECHOED - 1), false);
+        let enough = judged(sparse(ECHOED), false);
+        // A trial made for a wider band's room goes back only carrying
+        // badly, never for what the narrower one left usually carries.
+        let banded = judged(unloaded(76), true);
+
+        assert_eq!(
+            few,
+            (None, false),
+            "a minute echoing short of ECHOED gives too few to weigh"
+        );
+        assert!(
+            matches!(enough.0, Some(Against::Usually(_))),
+            "one echoing ECHOED is judged by its usual: {enough:?}"
+        );
+        assert_eq!(
+            banded,
+            (None, false),
+            "a banded trial isn't judged by the usual"
         );
     }
 

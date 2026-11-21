@@ -45,15 +45,14 @@ struct Asked {
 /// the card is now, so the chooser weighs like with like: what it carried
 /// in the span, else what it's learned to carry under load, loaded, or at
 /// this hour, not. For the card's own point, what's learned alone, as
-/// what it usually carries. Under load, another learned to carry badly
-/// idle and never learned under load is known by that, since a radio slow
+/// what it usually carries. Under load, one learned to carry badly idle
+/// and never learned under load is known by that, since a radio slow
 /// idle is no quicker bringing a download down, and isn't tried blind.
-/// The card's own isn't: its minute is known, and an idle figure is a
-/// floor on a loaded one, which as the bar a trial off it must beat would
-/// send a download back for carrying worse than no download could. The
-/// card slowed by its own download is weighed by it too, so it isn't held
-/// by an idle figure against another point's loaded one: it goes by its
-/// minute, and the trial judges the move like with like.
+/// The card's own is too, so a download queued on it weighs another
+/// known by its idle floor against its own floor rather than its minute,
+/// lest it leave as at 04:48 on 19 Nov 2026. The chooser leaves such a
+/// figure out of a trial's bar, where it would send a download back for
+/// carrying worse than no download could.
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
@@ -74,7 +73,7 @@ fn known<'a>(
                 learned
                     .loaded(point, signal)
                     .map(|measured| (measured, Whence::Loaded))
-                    .or_else(|| idle().filter(|(measured, _)| !own && choose::badly(measured)))
+                    .or_else(|| idle().filter(|(measured, _)| choose::badly(measured)))
             } else {
                 idle()
             }
@@ -653,10 +652,11 @@ mod tests {
             own: true,
             ..LOADED
         };
+        let (own, _) = known(HALL, -50, own).expect("the card's own is known by it too");
         assert_eq!(
-            known(HALL, -50, own),
-            None,
-            "the card's own isn't usually known under load by what it carried idle"
+            own.p95,
+            Some(ms(119)),
+            "so a download queued on it weighs another by its floor, not the minute"
         );
     }
 
@@ -1039,6 +1039,25 @@ mod tests {
             "and says only that the keep-off gave way"
         );
         assert_eq!(yielded_again, Vec::<String>::new(), "once");
+    }
+
+    #[test]
+    fn a_keep_off_a_trial_ends_is_said_once_naming_the_point_freed_and_the_one_left() {
+        let mut chooser = choose::tests::hall_freed(Instant::now());
+        let quick = idle(20);
+        let on = joined(HALL);
+
+        let said = asides(&mut chooser, &on, &quick, -45);
+        let again = asides(&mut chooser, &on, &quick, -45);
+
+        assert_eq!(
+            said,
+            [format!(
+                "wlan2 no longer keeps off {HALL}, as it carried as {DESK} usually does"
+            )],
+            "a trial standing as the desk usually carries frees the hall, and says only that"
+        );
+        assert_eq!(again, Vec::<String>::new(), "once");
     }
 
     #[test]
