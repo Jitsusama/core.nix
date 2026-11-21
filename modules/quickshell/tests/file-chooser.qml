@@ -214,7 +214,7 @@ ShellRoot {
 
     // A socket of open-with's, by its number: each answer it's given.
     Variants {
-        model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
         SocketServer {
             id: socket
@@ -301,6 +301,9 @@ ShellRoot {
         target: theChooser
 
         function onChanged() {
+            if (root.stage === 28)
+                root.countsLeft = root.countsLeft.concat([
+                    `${theChooser.toCount.length}${theChooser.holdingCounts ? " held" : ""}`]);
             Qt.callLater(root.step);
         }
 
@@ -311,12 +314,22 @@ ShellRoot {
         function onKindsChanged() {
             Qt.callLater(root.step);
         }
+
+        // Each answer heard, so a batch whose last answer says nothing fails
+        // by its name rather than waiting out the case.
+        function onOutstandingChanged() {
+            if (root.stage === 28)
+                Qt.callLater(root.step);
+        }
     }
 
     // The file Return picks once the files selected have been previewed,
     // and the one whose preview is waited on.
     property var picking: null
     property string previewing: ""
+    // The folders still to count as each change was said, and whether
+    // counts were still held, while a batch of counts is asked.
+    property var countsLeft: []
 
     // Each case, once what it waits on is there.
     function step() {
@@ -483,12 +496,41 @@ ShellRoot {
             } else if (stage === 26 && restarted?.savedLastIn() === notes
                 && restarted.order === "changed" && restarted.reversed) {
                 stage = 27;
+                ask(11, { mode: "open", title: "Open", folder: home });
+            } else if (stage === 27 && theChooser.asking?.reply.endsWith("/11.sock")
+                && ready(theChooser.reading) && theChooser.toCount.length === 0
+                && theChooser.outstanding === null) {
+                // Every folder it reads is in first, so none read late says a
+                // change of its own among the counts.
+                stage = 28;
+                countingOnce();
+            } else if (stage === 28 && theChooser.toCount.length === 0
+                && theChooser.outstanding === null) {
+                stage = 29;
+                expect("a batch of counts is said once, as the last is heard, not as each comes",
+                    countsLeft.length === 1 && countsLeft[0] === "0", countsLeft.join(", "));
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
         } catch (error) {
             fail(error.message);
         }
+    }
+
+    // Four folders asked to be counted at once, held long enough that only
+    // the last count heard says them. The last is a path with a line end,
+    // which the chooser answers itself with nothing (FileChooser.qml's
+    // put), so what the three before it said is shown by a silent answer.
+    function countingOnce() {
+        theChooser.countsHeldFor = 60000;
+        const deep = `${home}/elsewhere/deep`;
+        [`${home}/elsewhere`, deep, `${deep}/one`, `${deep}/two\nlines`]
+            .forEach(path => theChooser.count(path));
+        expect("the four wait to be counted, the first asked",
+            theChooser.outstanding?.path === `${home}/elsewhere`
+                && theChooser.toCount.length === 3,
+            `${theChooser.outstanding?.path ?? "none"} asked, `
+                + `${theChooser.toCount.length} waiting`);
     }
 
     function opening() {
