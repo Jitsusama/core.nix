@@ -268,6 +268,9 @@ impl App {
             return true;
         };
         layout.moved(&mut character, motion, times);
+        // The character is one place, not a stretch, so its anchor goes
+        // where its cursor went, and v from it selects that character alone.
+        character.anchor = character.cursor;
         let (top, foot) = layout.line_extent(character.cursor.line);
         self.aim = Some(top);
         let toward = match motion {
