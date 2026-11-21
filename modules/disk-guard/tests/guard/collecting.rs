@@ -1689,6 +1689,38 @@ fn a_store_nix_never_collects_by_itself_collects_hourly_once_nearly_full() {
     );
 }
 
+/// The store's filesystem takes the floor Nix says it keeps, from
+/// `nix config show min-free`, which its forecast counts to while above
+/// it; and a min-free of nothing is no floor.
+#[test]
+fn the_stores_filesystem_counts_to_the_floor_nix_says_it_keeps() {
+    let told = |min_free: &str| {
+        let store = Store::new();
+        fs::write(store.root.join("min-free"), min_free).unwrap();
+        let mut config = user_config(&store, "0%");
+        config.status_file = true;
+        let mut guard = store.guard(config);
+        guard.step(&tick(), &CALM).unwrap();
+        let status = fs::read_to_string(store.root.join("status.json")).unwrap();
+        let status = serde_json::from_str::<serde_json::Value>(&status).unwrap();
+        status["filesystems"].as_array().unwrap().clone()
+    };
+    let floored = told("1\n");
+    assert!(
+        floored
+            .iter()
+            .any(|filesystem| filesystem["nix_floor"] == serde_json::json!(1)),
+        "the store's filesystem has no floor: {floored:?}"
+    );
+    let unfloored = told("0\n");
+    assert!(
+        unfloored
+            .iter()
+            .all(|filesystem| filesystem["nix_floor"].is_null()),
+        "a min-free of nothing is a floor: {unfloored:?}"
+    );
+}
+
 #[test]
 fn nearly_full_without_a_listing_collects_by_nix_store_gc_at_once() {
     let store = Store::new();
