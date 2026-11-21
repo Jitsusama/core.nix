@@ -56,9 +56,10 @@
   {
     "at": 1795244109,
     "commit": "b18b11bc945b6bb13b41ae946fa3b170454acbee",
-    "due": "2026-11-23",
+    "due": "2026-11-25",
+    "due_why": "Its owner, the shaper's, by 2026-11-25 23:59 UTC, moved from 2026-11-23 and given to it by the orchestrator, finds why these two failed at b18b11bc945b in the same run in which test_finds_the_connection held a median of 5016 under its 6000 floor, whether that failure took the fixture they share, and fixes it with test_finds_the_connection's entry",
     "owner_pr": 5953,
-    "owner_session": "orchestrator",
+    "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at b18b11bc945b",
     "subtests": [
       "test_climbs_back",
