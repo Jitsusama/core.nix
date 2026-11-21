@@ -498,20 +498,20 @@ impl Walker<'_> {
     /// opening the page, under the eyebrow; the title's lede, the paragraph
     /// right after it; or the page's first paragraph of words, which opens
     /// on a drop cap when it's long enough for one, with nothing before it
-    /// but headings.
+    /// but headings and pictures, as a chapter opens under its plate.
     fn headed(&mut self, node: &Handle, name: &str, top: bool) -> (bool, bool, bool) {
         let lede = top && self.head == Head::Titled && name == "p";
         let opening = top && self.blocks == 1 && name == "h1";
         if opening {
             self.titled = true;
         }
-        let first_words =
-            top && name == "p" && !lede && self.head != Head::Begun && !lone_picture(node);
+        let picture = name == "p" && lone_picture(node);
+        let first_words = top && name == "p" && !lede && self.head != Head::Begun && !picture;
         if top && BLOCKS.contains(&name) {
             let heading = matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
             self.head = if opening {
                 Head::Titled
-            } else if (lede || heading) && self.head != Head::Begun {
+            } else if (lede || heading || picture) && self.head != Head::Begun {
                 Head::Headings
             } else {
                 Head::Begun

@@ -167,6 +167,7 @@ mod tests {
             cap_pt: 7.0,
             text: "Words".into(),
             spans: vec![(0.0, 1.0); 5],
+            goes_on_x_pt: None,
         }
     }
 

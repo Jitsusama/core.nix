@@ -14,6 +14,7 @@ fn line(baseline: f64, text: &str) -> Line {
         cap_pt: 9.1,
         text: text.to_string(),
         spans,
+        goes_on_x_pt: None,
     }
 }
 

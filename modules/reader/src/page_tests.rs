@@ -246,7 +246,7 @@ fn the_words_land_on_the_pitch_a_paragraph_one_and_a_half() {
 }
 
 #[test]
-fn a_page_ends_a_line_under_its_mark() {
+fn a_page_ends_three_lines_under_its_last_words() {
     let page = page_of("foot", &format!("{OPENING}Omega.\n"));
     let last = crate::text::runs(&page.frame)
         .iter()
@@ -325,6 +325,13 @@ fn a_line_all_of_code_steps_one_line_as_any_other() {
     // The opening's two lines or more, and three for the code, of which
     // its three commands fill one whole.
     assert!(steps.len() >= 4, "too few lines: {steps:?}");
+    let set = crate::text::lines(crate::text::runs(&page_of("code-lines", &markdown).frame));
+    assert!(
+        set.iter()
+            .any(|line| !line.text.trim().is_empty() && command.contains(line.text.trim())),
+        "no line was all code: {:?}",
+        set.iter().map(|line| &line.text).collect::<Vec<_>>()
+    );
     assert!(
         steps.iter().all(|s| *s == 100 || *s == 150),
         "a line of code stepped its own distance: {steps:?}"
@@ -348,7 +355,7 @@ fn faces_of(frame: &typst::layout::Frame, out: &mut Vec<(String, String)>) {
 #[test]
 fn an_emoji_is_drawn_in_the_colour_face_and_keeps_its_line() {
     let markdown = format!(
-        "{OPENING}A party 🎉, a thumb 👍🏽, a flag 🇨🇦, a coder 👩\u{200d}💻 and a warning ⚠\u{fe0f} sit in a line, an arrow → and a mark ™ stay words, in a paragraph long enough to wrap, before it ends at Omega.\n"
+        "{OPENING}A party 🎉, a thumb 👍🏽, a flag 🇨🇦, a coder 👩\u{200d}💻 and a warning ⚠\u{fe0f} sit in a line, an arrow ↔ and a mark ™ stay words, in a paragraph long enough to wrap, before it ends at Omega.\n"
     );
     let (pitch, lines) = baselines("emoji", &markdown, "opening", "Omega");
     let steps = steps(pitch, &lines);
@@ -369,10 +376,13 @@ fn an_emoji_is_drawn_in_the_colour_face_and_keeps_its_line() {
         assert_eq!(
             face(emoji).as_deref(),
             Some("Noto Color Emoji"),
-            "{emoji} is drawn in another face: {faces:?}"
+            "{emoji} is drawn in another face, or the tests have no colour face: they \
+             read it from READER_FONTS, as package.nix's preCheck sets it: {faces:?}"
         );
     }
-    for words in ["→", "™"] {
+    // The colour face draws both as pictures too, so neither would stay a
+    // word were the emoji's rule to take them.
+    for words in ["↔", "™"] {
         assert_ne!(
             face(words).as_deref(),
             Some("Noto Color Emoji"),
@@ -413,6 +423,23 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
         "the first line reads {:?}",
         lines[0].text
     );
+    // Every word once, in its place, across the cut between the lines
+    // beside the letter and the rest.
+    let read = lines
+        .iter()
+        .map(|line| line.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("\u{ad} ", "");
+    assert_eq!(read, long.trim_end(), "the opening reads otherwise");
+    // Two lines stand beside the letter, and the third is back at its
+    // edge, under it.
+    let edge = lines[0].x_pt;
+    assert!(
+        lines[1].x_pt > edge + 10.0 && (lines[2].x_pt - edge).abs() < 0.01,
+        "the lines start at {:?}",
+        lines.iter().map(|line| line.x_pt).collect::<Vec<_>>()
+    );
     // The letter's capitals stand from the first line's to the second's
     // baseline, on which it sits.
     let pitch = super::pitch_pt();
@@ -447,6 +474,47 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
     assert!(
         sizes.iter().all(|size| *size < 1.5 * words),
         "a short opening dropped a letter: {sizes:?}"
+    );
+}
+
+/// The largest run the page sets past its eyebrow and its words, with
+/// what it spells: a dropped letter, when there is one.
+fn dropped(name: &str, markdown: &str) -> Option<String> {
+    let runs = crate::text::runs(&page_of(name, markdown).frame);
+    let words = runs
+        .iter()
+        .filter(|run| run.chars.len() > 2)
+        .map(|run| run.size_pt)
+        .fold(0.0, f64::max);
+    runs.iter()
+        .find(|run| run.size_pt > 2.0 * words)
+        .map(|run| run.chars.iter().map(|c| c.0).collect())
+}
+
+#[test]
+fn an_opening_drops_only_a_capital_and_a_letter_alone_reads_as_a_word() {
+    let tail = "runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, before it ends at Omega.\n";
+    for (name, start) in [
+        ("small", "the opening"),
+        ("strong", "**The** opening"),
+        ("code", "`The` opening"),
+    ] {
+        assert_eq!(
+            dropped(name, &format!("{start} {tail}")),
+            None,
+            "an opening on {start:?} dropped a letter"
+        );
+    }
+    let alone = format!("A long opening {tail}");
+    assert_eq!(dropped("alone", &alone).as_deref(), Some("A"));
+    let lines: Vec<_> = crate::text::lines(crate::text::runs(&page_of("alone", &alone).frame))
+        .into_iter()
+        .skip_while(|line| !line.text.contains("long opening"))
+        .collect();
+    assert!(
+        lines[0].text.starts_with("A long opening"),
+        "the first line reads {:?}",
+        lines[0].text
     );
 }
 

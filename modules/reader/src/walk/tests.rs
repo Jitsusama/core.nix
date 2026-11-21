@@ -183,6 +183,15 @@ fn the_pages_first_paragraph_of_words_opens_it() {
     // A quote's words are the quote's.
     let quoted = walk("> Quoted words.\n\nWords after.\n");
     assert!(!quoted.contains("#opening["), "{quoted}");
+    // A picture before them is the page's plate, titled or not, and the
+    // words under it open the page.
+    for pictured in [
+        "![A plate](plate.png)\n\nWords after.\n",
+        "# Title\n\n![A plate](plate.png)\n\nWords after.\n",
+    ] {
+        let pictured = walk(pictured);
+        assert_eq!(pictured.matches("#opening[").count(), 1, "{pictured}");
+    }
 }
 
 #[test]
