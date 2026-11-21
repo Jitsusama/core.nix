@@ -358,14 +358,14 @@ fn scan_slice(
         let brought = found.brought.as_deref();
         if header
             .as_ref()
-            .is_some_and(|header| crate::copies::carried(header, brought))
+            .is_some_and(|header| crate::logs::copies::carried(header, brought))
         {
             history.forget_file(&name)?;
             offset = 0;
             carry = Carry::default();
         } else if !header
             .as_ref()
-            .is_some_and(|header| crate::copies::awaits_parent(header, brought))
+            .is_some_and(|header| crate::logs::copies::awaits_parent(header, brought))
         {
             carry.copies_known = true;
             let carried = serde_json::to_string(&carry).map_err(|error| error.to_string())?;

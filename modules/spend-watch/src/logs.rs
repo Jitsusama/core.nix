@@ -544,8 +544,8 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
     carry.session = Some(id.clone());
     carry.cwd = Some(cwd.clone());
     let brought = carry.brought.as_deref().map(std::path::Path::new);
-    carry.copies_known = !crate::copies::awaits_parent(entry, brought);
-    if crate::copies::carried(entry, brought) {
+    carry.copies_known = !copies::awaits_parent(entry, brought);
+    if copies::carried(entry, brought) {
         carry.copied_until = at;
     }
     if carry.quest.is_none() {
@@ -769,6 +769,7 @@ pub fn repo_of(cwd: &str) -> String {
         .to_owned()
 }
 
+pub mod copies;
+
 #[cfg(test)]
-#[path = "logs_tests.rs"]
 mod tests;
