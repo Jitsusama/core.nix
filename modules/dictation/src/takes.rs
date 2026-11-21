@@ -139,8 +139,8 @@ pub struct Cutter {
     partial: Vec<f32>,
     /// Frames fed so far.
     frames: usize,
-    /// The last frames' loudness, for the floor, each with whether it
-    /// ends a run of the line's own sound.
+    /// The last frames' loudness, for the floor, each with whether the
+    /// line had, by then, sent half a second of its own sound in a row.
     recent: VecDeque<(f32, bool)>,
     /// The frames just before a take, so its start can be kept.
     before: VecDeque<Vec<f32>>,
