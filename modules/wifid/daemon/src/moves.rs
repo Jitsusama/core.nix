@@ -172,9 +172,7 @@ fn chosen(
             Some(Next::Move(to))
         }
         Choice::Back(to) => {
-            let why = chooser.went_back();
-            let kept = chooser.keeps_off(&on.point, now);
-            println!("<6>{}", went_back(on, measured, &to, (why.as_ref(), kept)));
+            println!("<6>{}", said_back(chooser, now, (on, measured), &to));
             Some(Next::Move(to))
         }
         Choice::Look => {
@@ -281,6 +279,19 @@ fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> S
     )
 }
 
+/// What the journal says of a card the chooser has just sent back from the
+/// point it tried: why, and whether it now keeps that point off.
+fn said_back(
+    chooser: &mut Chooser,
+    now: Instant,
+    (on, measured): (&Joined, &Measured),
+    to: &str,
+) -> String {
+    let why = chooser.went_back();
+    let kept = chooser.keeps_off(&on.point, now);
+    went_back(on, measured, to, (why.as_ref(), kept))
+}
+
 /// Why a card goes back from a trial: what the point tried carried, and
 /// what it was judged against, so a trial judged on what the point left
 /// usually carries can be read from the journal, and whether the card
@@ -316,10 +327,18 @@ fn went_back(
             } else {
                 "at this hour"
             };
+            // A failing link leaves for the point tried once a whole span
+            // on the point gone back to says so (choose.rs).
             let after = if kept {
-                format!("{spurned} unless its link fails, having gone back from it once already")
+                format!(
+                    "{spurned} unless the card's link on {to} fails a whole span, having gone \
+                     back from it once already"
+                )
             } else {
-                format!("; it may try {} again once settled", on.point)
+                format!(
+                    "; it may try {} again once settled, or sooner should {to} fail a whole span",
+                    on.point
+                )
             };
             format!(
                 "{carried}, worse than the {} {to} usually carries {when} at p95, with the \
@@ -885,7 +904,8 @@ mod tests {
         };
         assert!(
             usually.ends_with(&format!(
-                "{}; it may try {HALL} again once settled",
+                "{}; it may try {HALL} again once settled, or sooner should {DESK} fail a whole \
+                 span",
                 usual_line("at this hour")
             )),
             "a trial judged on the usual says so, and that it isn't kept off: {usually}"
@@ -896,7 +916,8 @@ mod tests {
         );
         assert!(
             usually_again.ends_with(&format!(
-                "{}{kept} unless its link fails, having gone back from it once already",
+                "{}{kept} unless the card's link on {DESK} fails a whole span, having gone back \
+                 from it once already",
                 usual_line("at this hour")
             )),
             "a second back on the usual says it keeps off the point: {usually_again}"
@@ -912,6 +933,19 @@ mod tests {
             badly.ends_with(&format!("{carried}, badly for a wider band's room{kept}")),
             "a trial for a wider band's room says it carried badly there: {badly}"
         );
+    }
+
+    #[test]
+    fn a_card_sent_back_says_why_and_keeps_off_the_point_it_tried() {
+        let (mut chooser, again) = choose::tests::back_twice_on_the_usual(Instant::now());
+        let line = said_back(&mut chooser, again, (&joined(HALL), &idle(50)), DESK);
+
+        assert!(
+            line.contains("usually carries at this hour")
+                && line.contains(&format!("; it keeps off {HALL} for 60 minutes unless")),
+            "a second back on the usual says so, and keeps the hall it tried off: {line}"
+        );
+        assert!(chooser.went_back().is_none(), "why is said once");
     }
 
     #[test]

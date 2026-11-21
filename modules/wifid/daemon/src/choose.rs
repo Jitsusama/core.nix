@@ -236,6 +236,9 @@ pub struct Chooser {
     usually: HashMap<(String, String), Instant>,
     /// Why the last choice sent the card back, for the journal to say once.
     went_back: Option<Against>,
+    /// The access point the card was last sent back to, until it's next
+    /// moved, so a failing link there waits out its first span.
+    back_to: Option<String>,
     /// The access point a move on trial never reached, kept off from the
     /// last choice, for the journal to say so.
     unreached: Option<String>,
@@ -373,10 +376,7 @@ impl Chooser {
         if let Some(judged) = self.judge(now, (point, measured), judging) {
             return judged;
         }
-        let settled = self
-            .moved
-            .is_none_or(|moved| now.duration_since(moved) >= SETTLE);
-        if !settled && !failing {
+        if self.holds_still(now, point, failing, young) {
             return Choice::Stay;
         }
         self.forget_kept_off(now);
@@ -397,8 +397,8 @@ impl Chooser {
         // None of that leaves a wider band holding well (`holds_wide`).
         // A point kept off only for carrying worse than the usual twice
         // carried better than the point left did, so a failing link may
-        // still leave for it, once a whole span says it's failing: echoes
-        // lost on the way back may fall in the first.
+        // still leave for it, once a whole span says it's failing, as after
+        // a back: one may come from a join or a resume as well.
         let resting = resting(measured);
         let may_narrow = queued && !used(measured);
         let untried = others.iter().filter(|other| {
@@ -456,6 +456,7 @@ impl Chooser {
             return self.unchosen(now, on, others, (bad, holds_wide && !queued), crowded);
         };
         self.moved = Some(now);
+        self.back_to = None;
         self.trial = Some(Trial {
             from: point.to_owned(),
             to: chosen.point.clone(),
@@ -465,6 +466,22 @@ impl Chooser {
             widened: !wide(frequency) && wide(chosen.frequency),
         });
         Choice::Try(chosen.point.clone())
+    }
+
+    /// Whether the card stays where it is whatever else it hears: a link
+    /// not failing holds until the last move settles, and a card just sent
+    /// back leaves a failing link only once a whole span there says it's
+    /// failing, as echoes lost on the way back may fall in the first, and
+    /// the point it left was just judged no better.
+    fn holds_still(&self, now: Instant, point: &str, failing: bool, young: bool) -> bool {
+        let settled = self
+            .moved
+            .is_none_or(|moved| now.duration_since(moved) >= SETTLE);
+        if failing {
+            young && self.back_to.as_deref() == Some(point)
+        } else {
+            !settled
+        }
     }
 
     /// Whether the card's span on its access point is younger than `SPAN`,
@@ -686,13 +703,20 @@ impl Chooser {
         };
         let moved = (trial.from.clone(), point.to_owned());
         // A trial that stands carrying as well as the point left usually
-        // does carried well, so a back on the usual before it is no longer
-        // the first of a repeat, and any keep-off a failing link took it
-        // through ends. One that stands only for carrying better than a
-        // failing link says nothing of the usual, so both hold.
+        // does, as loaded as that was learned and losing no more than
+        // `LOSSY`, carried well, so a back on the usual before it is no
+        // longer the first of a repeat, and any keep-off a failing link
+        // took it through ends. One that stands only for carrying better
+        // than a failing link, or with no usual to weigh, says nothing of
+        // the usual, so both hold.
         let Some(why) = why else {
-            let usual = weighed_by(&trial.before, trial.usual.as_ref(), true);
-            if !worse(measured, &usual) {
+            let as_usual = trial.usual.as_ref().is_some_and(|usual| {
+                let usual = weighed_by(&trial.before, Some(usual), true);
+                loaded(&trial.before) == loaded(measured)
+                    && measured.lost <= LOSSY
+                    && !worse(measured, &usual)
+            });
+            if as_usual {
                 self.usually.remove(&moved);
                 self.spurned.remove(point);
             }
@@ -721,6 +745,7 @@ impl Chooser {
         }
         self.moved = Some(now);
         self.went_back = Some(why);
+        self.back_to = Some(trial.from.clone());
         Some(Choice::Back(trial.from))
     }
 
@@ -2334,11 +2359,16 @@ pub(crate) mod tests {
         let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near[..1], false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
 
+        // A whole span on the desk, so a keep-off that yielded would let
+        // the hall be tried.
         let failing = carried(400, 15.0);
-        let minute = start + Duration::from_secs(60);
-        let next = chooser.choose(minute, (DESK, &failing, -50, CH52), &near, false);
+        let next = chooser.choose(start + SPAN, (DESK, &failing, -50, CH52), &near, false);
 
-        assert_eq!(next, Choice::Try(elsewhere().point), "the hall's kept off");
+        assert_eq!(
+            next,
+            Choice::Try(elsewhere().point),
+            "the hall's kept off, even from a failing link"
+        );
     }
 
     #[test]
@@ -2417,6 +2447,22 @@ pub(crate) mod tests {
     /// hall off, and when the second back was. The desk's span has grown a
     /// minute since, as a choice every minute grows it.
     fn hall_kept_off_on_the_usual(start: Instant) -> (Chooser, Instant) {
+        let (mut chooser, again) = back_twice_on_the_usual(start);
+        let slow = Measured {
+            moving: None,
+            ..carried(76, 0.0)
+        };
+        let minute = Duration::from_secs(60);
+        let on = (DESK, &slow, -50, CH52);
+        chooser.choose(again + minute, on, &around_the_desk(), false);
+        assert!(chooser.keeps_off(HALL, again), "the hall is kept off");
+        (chooser, again)
+    }
+
+    /// A chooser that has just sent the card back from the hall to the
+    /// desk a second time within the hour for carrying worse only than the
+    /// desk usually does, why not yet said, and when.
+    pub(crate) fn back_twice_on_the_usual(start: Instant) -> (Chooser, Instant) {
         let unloaded = |p95| Measured {
             moving: None,
             ..carried(p95, 0.0)
@@ -2438,7 +2484,6 @@ pub(crate) mod tests {
         on(back + primed, DESK, &slow);
         let retried = on(back + SETTLE, DESK, &slow);
         let second = on(again, HALL, &there);
-        on(again + minute, DESK, &slow);
         assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
         assert_eq!(first, Choice::Back(DESK.into()), "and gone back from");
         assert_eq!(retried, Choice::Try(HALL.into()), "tried again, settled");
@@ -2447,7 +2492,6 @@ pub(crate) mod tests {
             Choice::Back(DESK.into()),
             "and gone back from again"
         );
-        assert!(chooser.keeps_off(HALL, again), "the hall is kept off");
         (chooser, again)
     }
 
@@ -2487,6 +2531,8 @@ pub(crate) mod tests {
         desk(&mut less_bad, settled);
         let less = hall(&mut less_bad, settled + TRIAL, &unloaded(50));
         let kept_still = less_bad.keeps_off(HALL, settled + TRIAL);
+        let moved = (DESK.to_owned(), HALL.to_owned());
+        let counted_still = less_bad.usually.contains_key(&moved);
 
         let (mut worse, again) = hall_kept_off_on_the_usual(start);
         let settled = again + SETTLE;
@@ -2521,6 +2567,10 @@ pub(crate) mod tests {
             kept_still,
             "but, carrying only better than a failing desk, stays kept off"
         );
+        assert!(
+            counted_still,
+            "and its back on the usual still counts, so a third is a second"
+        );
         assert_eq!(
             back,
             Choice::Back(DESK.into()),
@@ -2530,6 +2580,54 @@ pub(crate) mod tests {
             retried,
             Choice::Stay,
             "kept off now for carrying worse than the failing desk, the hall isn't tried again"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_frees_its_point_only_carrying_as_a_learned_usual() {
+        let start = Instant::now();
+        let failing = Measured {
+            moving: None,
+            ..carried(400, 15.0)
+        };
+        let moved = (DESK.to_owned(), HALL.to_owned());
+
+        let (mut unlearned, again) = hall_kept_off_on_the_usual(start);
+        let settled = again + SETTLE;
+        let unknown = [desk_at(-50, None), hall(-45, Some(20), None)];
+        unlearned.choose(settled, (DESK, &failing, -50, CH52), &unknown, false);
+        let quick = Measured {
+            moving: None,
+            ..carried(20, 0.0)
+        };
+        let there = (HALL, &quick, -45, CH52);
+        let unlearned_stands = unlearned.choose(settled + TRIAL, there, &unknown, false);
+        let kept_unlearned = unlearned.keeps_off(HALL, settled + TRIAL);
+        let counted_unlearned = unlearned.usually.contains_key(&moved);
+
+        let around = around_the_desk();
+        let (mut lossy, again) = hall_kept_off_on_the_usual(start);
+        let settled = again + SETTLE;
+        lossy.choose(settled, (DESK, &failing, -50, CH52), &around, false);
+        let losing = Measured {
+            moving: None,
+            ..carried(20, 12.0)
+        };
+        lossy.choose(settled + TRIAL, (HALL, &losing, -45, CH52), &around, false);
+        let kept_lossy = lossy.keeps_off(HALL, settled + TRIAL);
+
+        assert_eq!(
+            unlearned_stands,
+            Choice::Stay,
+            "the hall stands with no usual"
+        );
+        assert!(
+            kept_unlearned && counted_unlearned,
+            "but with no usual to weigh, says nothing of it, so both hold"
+        );
+        assert!(
+            kept_lossy,
+            "a hall quick but losing 12% didn't carry as the desk usually does"
         );
     }
 
@@ -2620,8 +2718,13 @@ pub(crate) mod tests {
         let minute = now + Duration::from_secs(60);
         assert_eq!(
             chooser.choose(minute, (DESK, &failing, -50, CH52), &around, false),
+            Choice::Stay,
+            "a desk failing in its first span after the back waits it out"
+        );
+        assert_eq!(
+            chooser.choose(minute + SPAN, (DESK, &failing, -50, CH52), &around, false),
             Choice::Try(HALL.into()),
-            "a desk failing within the settle is left for the hall"
+            "a desk failing a whole span within the settle is left for the hall"
         );
 
         // Gone back on the usual alone, the settle from the back holds the
