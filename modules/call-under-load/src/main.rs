@@ -253,10 +253,13 @@ fn on_path(name: &str) -> Option<PathBuf> {
 }
 
 /// How long the launcher took to open over the last hour, in ms, each
-/// from the line it writes to the journal as it's on screen.
+/// from the line it writes to the shell's journal as it's on screen; read
+/// from the shell's unit alone, as cadence reads it, so no other program's
+/// line passes for one.
 fn launcher_opens() -> Vec<f64> {
     Command::new("journalctl")
-        .args(["--user", "--since", "-1h", "--no-pager", "-o", "cat"])
+        .args(["--user", "-u", "quickshell", "--since", "-1h"])
+        .args(["--no-pager", "-o", "cat"])
         .args(["--grep", "launcher: opening presented"])
         .output()
         .map(|out| opens(&String::from_utf8_lossy(&out.stdout)))
@@ -295,7 +298,7 @@ mod tests {
 
     #[test]
     fn the_launcher_s_openings_are_read_from_its_journal_lines() {
-        let lines = "launcher: opening presented 41 ms after the chord\n\
+        let lines = "  INFO qml: launcher: opening presented 41 ms after the chord\n\
                      something else\n\
                      launcher: opening presented 7 ms\n";
         assert_eq!(opens(lines), [41.0, 7.0]);

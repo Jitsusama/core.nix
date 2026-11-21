@@ -73,8 +73,8 @@
   home-manager.sharedModules = [
     homeModules.agents
     homeModules.backlight
-    homeModules.call-under-load
     homeModules.call-transcripts
+    homeModules.call-under-load
     homeModules.camera
     homeModules.dictation
     homeModules.firmware-notice

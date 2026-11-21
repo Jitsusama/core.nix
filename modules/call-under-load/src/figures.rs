@@ -22,7 +22,8 @@ pub fn percentile(values: &[f64], p: usize) -> Option<f64> {
 }
 
 /// Frames a second over each five seconds of samples, from a running
-/// count: `per` divides out the layers an encoded frame is counted in.
+/// count: `per` gives, from a window's last sample, the layers an encoded
+/// frame is counted in there.
 ///
 /// Chrome's own `framesPerSecond` counts whole frames in the last second,
 /// so a steady 30 reads 29 in about half the seconds; a count over five
@@ -33,12 +34,12 @@ pub fn percentile(values: &[f64], p: usize) -> Option<f64> {
 /// window is timed in whole frame slots and forgiven the one frame its
 /// edges can cost, up to the rate itself: a dip of two frames or more, a
 /// 67 ms stall, still shows.
-pub fn rates(rows: &[Value], side: &str, key: &str, per: f64) -> Vec<f64> {
+pub fn rates(rows: &[Value], side: &str, key: &str, per: fn(&Value) -> f64) -> Vec<f64> {
     rows.iter()
         .zip(rows.iter().skip(SPAN))
         .filter_map(|(a, b)| {
             let (from, to) = (a["t"].as_f64()?, b["t"].as_f64()?);
-            let frames = (b[side][key].as_f64()? - a[side][key].as_f64()?) / per;
+            let frames = (b[side][key].as_f64()? - a[side][key].as_f64()?) / per(b);
             if to <= from {
                 return None;
             }
@@ -48,12 +49,19 @@ pub fn rates(rows: &[Value], side: &str, key: &str, per: f64) -> Vec<f64> {
         .collect()
 }
 
-/// How many spatial layers each encoded frame is counted in, from the
-/// first scalability mode given (`L3T3_KEY` is three).
-pub fn layers(rows: &[Value]) -> f64 {
-    rows.iter()
-        .filter_map(|row| row["out"]["scalabilityMode"].as_str())
-        .find_map(|mode| mode.strip_prefix('L')?.chars().next()?.to_digit(10))
+/// A frame counted once, as a camera's and a decoder's are.
+pub fn whole(_: &Value) -> f64 {
+    1.0
+}
+
+/// How many spatial layers each encoded frame is counted in as of a
+/// sample, from its scalability mode (`L3T3_KEY` is three). It's read for
+/// each window, since Chrome sheds layers when the CPU can't keep up, and
+/// a frame sent in fewer is still a frame sent.
+pub fn layers(row: &Value) -> f64 {
+    row["out"]["scalabilityMode"]
+        .as_str()
+        .and_then(|mode| mode.strip_prefix('L')?.chars().next()?.to_digit(10))
         .map_or(1.0, f64::from)
 }
 
@@ -82,7 +90,7 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
     let far = far.get(SKIP..).unwrap_or_default();
     // The source's running frame count where Chrome gives one, and its
     // whole-second figure where it doesn't.
-    let mut camera = rates(mine, "src", "frames", 1.0);
+    let mut camera = rates(mine, "src", "frames", whole);
     if camera.is_empty() {
         camera = mine
             .iter()
@@ -90,8 +98,8 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
             .filter(|fps| *fps > 0.0)
             .collect();
     }
-    let sent = rates(mine, "out", "framesEncoded", layers(mine));
-    let got = rates(far, "in", "framesDecoded", 1.0);
+    let sent = rates(mine, "out", "framesEncoded", layers);
+    let got = rates(far, "in", "framesDecoded", whole);
     let frozen: Vec<&Value> = far
         .iter()
         .filter(|row| row["in"]["freezeCount"].is_number())
@@ -100,7 +108,14 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
     if let (Some(first), Some(last)) = (frozen.first(), frozen.last())
         && frozen.len() > 1
     {
-        let tenths = count(frozen.len() - 1) / 600.0;
+        // Timed by the samples' own clock, since a loaded machine's
+        // one-second timer runs late, and counting samples would read the
+        // call as shorter than it was.
+        let span_ms = last["t"]
+            .as_f64()
+            .zip(first["t"].as_f64())
+            .map(|(b, a)| b - a);
+        let tenths = span_ms.filter(|ms| *ms > 0.0).unwrap_or(f64::NAN) / 600_000.0;
         let change = |key: &str| last["in"][key].as_f64().zip(first["in"][key].as_f64());
         freezes = change("freezeCount").map(|(b, a)| ((b - a) / tenths * 10.0).round() / 10.0);
         frozen_s = change("totalFreezesDuration").map(|(b, a)| ((b - a) * 100.0).round() / 100.0);
@@ -117,15 +132,15 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
     }
 }
 
-/// A count as a float, for a rate: samples number in the hundreds.
-pub fn count(n: usize) -> f64 {
-    f64::from(u32::try_from(n).unwrap_or(u32::MAX))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// A count as a float: samples number in the hundreds.
+    fn count(n: usize) -> f64 {
+        f64::from(u32::try_from(n).unwrap_or(u32::MAX))
+    }
 
     /// A sample at `t` s with `frames` counted so far, at each stage.
     fn at(t: u64, frames: f64) -> Value {
@@ -154,7 +169,7 @@ mod tests {
             at(4, 120.0),
             at(5, 149.0),
         ];
-        assert_eq!(rates(&rows, "src", "frames", 1.0), vec![30.0]);
+        assert_eq!(rates(&rows, "src", "frames", whole), vec![30.0]);
         // Read just after it: 151, held to the slots there were.
         let rows = [
             at(0, 0.0),
@@ -164,7 +179,7 @@ mod tests {
             at(4, 0.0),
             at(5, 151.0),
         ];
-        assert_eq!(rates(&rows, "src", "frames", 1.0), vec![30.0]);
+        assert_eq!(rates(&rows, "src", "frames", whole), vec![30.0]);
     }
 
     #[test]
@@ -177,7 +192,7 @@ mod tests {
             at(4, 0.0),
             at(5, 148.0),
         ];
-        assert_eq!(rates(&rows, "src", "frames", 1.0), vec![29.8]);
+        assert_eq!(rates(&rows, "src", "frames", whole), vec![29.8]);
     }
 
     #[test]
@@ -185,16 +200,14 @@ mod tests {
         let rows: Vec<Value> = (0..6)
             .map(|t| at(t, 30.0 * count(usize::try_from(t).unwrap())))
             .collect();
-        assert!(
-            (layers(&rows) - 3.0).abs() < f64::EPSILON,
-            "three layers sent, read as {}",
-            layers(&rows)
-        );
-        assert_eq!(
-            rates(&rows, "out", "framesEncoded", layers(&rows)),
-            vec![30.0]
-        );
-        let one = layers(&[json!({"out": {}})]);
+        assert_eq!(rates(&rows, "out", "framesEncoded", layers), vec![30.0]);
+        // Shedding a layer under load still sends every frame.
+        let mut shed = rows.clone();
+        shed[5]["out"]["framesEncoded"] =
+            json!(rows[0]["out"]["framesEncoded"].as_f64().unwrap() + 300.0);
+        shed[5]["out"]["scalabilityMode"] = json!("L2T3_KEY");
+        assert_eq!(rates(&shed, "out", "framesEncoded", layers), vec![30.0]);
+        let one = layers(&json!({"out": {}}));
         assert!(
             (one - 1.0).abs() < f64::EPSILON,
             "a call with no layers named counts as one, read as {one}"
@@ -225,6 +238,12 @@ mod tests {
         assert_eq!(figures.freezes, Some(10.2));
         assert_eq!(figures.frozen_s, Some(0.4));
         assert_eq!(figures.clicks_p99, Some(9.0));
+        // Sampled late, every 1.2 s as a loaded timer runs, the same freeze
+        // over the same 70.8 s reads by the clock, not the sample count.
+        for (t, row) in far.iter_mut().enumerate() {
+            row["t"] = json!(t * 1200);
+        }
+        assert_eq!(call(&mine, &far, &[]).freezes, Some(8.5));
     }
 
     #[test]

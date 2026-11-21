@@ -79,7 +79,13 @@ pub fn calendar(answer: &Value) -> Result<Calendar, String> {
             let end = meeting["end"].as_u64()?;
             let done = meeting["done"]["at"].as_u64().unwrap_or(end);
             Some(Meeting {
-                title: meeting["title"].as_str().unwrap_or("a meeting").to_string(),
+                // A title is anyone's text, and it's printed to a terminal.
+                title: meeting["title"]
+                    .as_str()
+                    .unwrap_or("a meeting")
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .collect(),
                 start,
                 end: end.min(done),
             })

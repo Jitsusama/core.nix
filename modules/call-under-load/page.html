@@ -71,8 +71,10 @@ function rate(id, bytes, ts) {
 }
 
 async function sample() {
+  // Timed as it's asked for, since a loaded machine can take a while to gather the stats.
+  const t = Date.now();
   const stats = await pc.getStats();
-  const s = { t: Date.now(), state: pc.connectionState };
+  const s = { t, state: pc.connectionState };
   const video = [...stats.values()].filter((r) => !r.kind || r.kind === 'video');
   for (const r of video) {
     if (r.type === 'outbound-rtp') {
@@ -143,7 +145,7 @@ globalThis.answer = async (offer, maxBitrate) => {
   await t.sender.setParameters(p).catch(() => null);
   await gathered();
   setInterval(sample, SAMPLE_MS);
-  return b64(pc.localDescription);
+  return { answer: b64(pc.localDescription), label: track.label };
 };
 
 // A stand-in for how quickly Chrome answers Joel's input while a call runs: the near end is

@@ -183,11 +183,11 @@
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
         cadence = moduleFrom ./modules/cadence/home.nix { inherit (self.homeModules) quickshell; };
-        call-under-load = ./modules/call-under-load/home.nix;
         call-transcripts = moduleFrom ./modules/call-transcripts/home.nix {
           inherit mycelium;
           inherit (self.homeModules) people quickshell;
         };
+        call-under-load = ./modules/call-under-load/home.nix;
         camera = ./modules/camera/home.nix;
         cargo = ./modules/cargo/home.nix;
         chrome = ./modules/chrome/home.nix;

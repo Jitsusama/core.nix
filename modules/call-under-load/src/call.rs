@@ -3,14 +3,17 @@
 //! with a profile like Joel's, drawing on a headless Weston, never his
 //! screen, and the far end a headless Chrome. Both use Chrome's fake
 //! camera; no real one is ever opened. A call of Joel's stops it within
-//! five seconds.
+//! ten seconds, from its first step to its last.
 
-use crate::cdp::Browser;
+use crate::cdp::{self, Browser};
 use crate::gate::{self, Call};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,6 +36,11 @@ const TICK: Duration = Duration::from_secs(5);
 /// How long Chrome is given to answer on its pipe: a loaded machine has
 /// taken 20 s to start one.
 const WAIT: Duration = Duration::from_secs(60);
+
+/// How long a step that can't be broken off, such as a Chrome slow to
+/// answer, is given to end once Joel's call began, before the program
+/// ends and takes the call with it.
+const GRACE: Duration = Duration::from_secs(5);
 
 /// The folders Chrome maps writable and keeps writing, kept in memory and
 /// linked from the profile on disk, as Joel's own Chrome has them.
@@ -77,6 +85,68 @@ impl Drop for Started {
     }
 }
 
+/// Joel's calls, watched for from the test call's first step, since
+/// starting Weston and two Chromes under load can take minutes: a thread
+/// of its own asks `a-call-is-on` every five seconds, and the call takes
+/// what it says between its steps and on its beat. If the call is still
+/// in a step `GRACE` after a call of Joel's began, the program ends there;
+/// its children end with it, and the next run sweeps its folders.
+struct Watch {
+    said: Receiver<String>,
+    over: Arc<AtomicBool>,
+}
+
+impl Watch {
+    fn start() -> Self {
+        let (tell, said) = mpsc::channel();
+        let over = Arc::new(AtomicBool::new(false));
+        let done = Arc::clone(&over);
+        thread::spawn(move || {
+            let why = loop {
+                match gate::a_call() {
+                    Call::Off => {}
+                    Call::On => break "Joel's call began".to_string(),
+                    Call::Unknown(why) => break why,
+                }
+                // Asked on the call's own five-second beat.
+                thread::sleep(TICK);
+                if done.load(Ordering::SeqCst) {
+                    return;
+                }
+            };
+            let _ = tell.send(why.clone());
+            // The call is given a moment to stop by itself and clean up.
+            thread::sleep(GRACE);
+            if !done.load(Ordering::SeqCst) {
+                println!("no test call this hour: {why}");
+                std::process::exit(0);
+            }
+        });
+        Watch { said, over }
+    }
+
+    /// Why the call must stop, if it must.
+    fn stop(&self) -> Result<(), Ended> {
+        self.said
+            .try_recv()
+            .map_or(Ok(()), |why| Err(Ended::Stopped(why)))
+    }
+
+    /// Waits until `then`, unless the call must stop first.
+    fn wait_until(&self, then: Instant) -> Result<(), Ended> {
+        let wait = then.saturating_duration_since(Instant::now());
+        self.said
+            .recv_timeout(wait)
+            .map_or(Ok(()), |why| Err(Ended::Stopped(why)))
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        self.over.store(true, Ordering::SeqCst);
+    }
+}
+
 /// What the near end sends, as `page.html`'s offer takes it.
 fn sends() -> Value {
     json!({
@@ -97,6 +167,59 @@ pub fn run(
     runtime: &Path,
     cache: &Path,
 ) -> Result<Ended, String> {
+    let watch = Watch::start();
+    sweep(runtime, "call-under-load-");
+    sweep(cache, "profile-");
+    steps(chrome, page, seconds, runtime, cache, &watch).or_else(|step| match step {
+        Step::Stopped(ended) => Ok(ended),
+        Step::Failed(why) => Err(why),
+    })
+}
+
+/// Why a call's steps ended early: Joel's call, or a failure.
+enum Step {
+    Stopped(Ended),
+    Failed(String),
+}
+
+impl From<String> for Step {
+    fn from(why: String) -> Self {
+        Step::Failed(why)
+    }
+}
+
+impl From<Ended> for Step {
+    fn from(ended: Ended) -> Self {
+        Step::Stopped(ended)
+    }
+}
+
+/// Removes what an earlier run ended without its cleanup left in
+/// `folder`: each `<prefix><pid>` whose process is gone.
+fn sweep(folder: &Path, prefix: &str) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix(prefix)) else {
+            continue;
+        };
+        if pid.parse::<u32>().is_ok() && !Path::new("/proc").join(pid).exists() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// The call's steps in their order, each followed by its check for Joel's call.
+fn steps(
+    chrome: &Path,
+    page: &Path,
+    seconds: u64,
+    runtime: &Path,
+    cache: &Path,
+    watch: &Watch,
+) -> Result<Ended, Step> {
     let id = std::process::id();
     // A Wayland socket's path must fit in 108 bytes, so it's kept short.
     let memory = runtime.join(format!("call-under-load-{id}"));
@@ -108,6 +231,7 @@ pub fn run(
     let config = memory.join("config");
     let far_profile = memory.join("far");
     fs::create_dir_all(config.join("pkcs11/modules")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(memory.join("home")).map_err(|e| e.to_string())?;
     fs::write(
         config.join("pkcs11/modules/tpm2_pkcs11.module"),
         "enable-in: none-of-these\n",
@@ -120,27 +244,34 @@ pub fn run(
         std::os::unix::fs::symlink(&kept, &linked).map_err(|e| e.to_string())?;
     }
 
+    let mut weston = Command::new("weston");
+    weston
+        .args([
+            "--backend=headless",
+            "--renderer=gl",
+            "--socket=wl",
+            "--no-config",
+        ])
+        .args([format!("--width={WIDTH}"), format!("--height={HEIGHT}")])
+        .env("XDG_RUNTIME_DIR", &memory)
+        .stdout(Stdio::null());
+    // Its complaints go to the unit's journal, where a failed hour is read.
+    cdp::ends_with_us(&mut weston);
     started.children.push(
-        Command::new("weston")
-            .args([
-                "--backend=headless",
-                "--renderer=gl",
-                "--socket=wl",
-                "--no-config",
-            ])
-            .args([format!("--width={WIDTH}"), format!("--height={HEIGHT}")])
-            .env("XDG_RUNTIME_DIR", &memory)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+        weston
             .spawn()
             .map_err(|e| format!("weston couldn't start: {e}"))?,
     );
     let socket = memory.join("wl");
     let until = Instant::now() + WAIT;
     while !socket.exists() {
-        if Instant::now() > until {
-            return Err("weston opened no display".into());
+        if let Some(Ok(Some(status))) = started.children.last_mut().map(Child::try_wait) {
+            return Err(format!("weston ended before opening a display: {status}").into());
         }
+        if Instant::now() > until {
+            return Err("weston opened no display".to_string().into());
+        }
+        watch.stop()?;
         // Weston makes its socket a moment after it starts; nothing says when.
         thread::sleep(Duration::from_millis(100));
     }
@@ -149,44 +280,45 @@ pub fn run(
     near.arg("--ozone-platform=wayland")
         .env("WAYLAND_DISPLAY", "wl");
     let mut near = Browser::start(near).map_err(|e| format!("Chrome couldn't start: {e}"))?;
+    watch.stop()?;
     let mut far = chrome_command(chrome, &far_profile, &memory, &config);
     far.arg("--headless=new");
     let mut far = Browser::start(far).map_err(|e| format!("the far end's Chrome: {e}"))?;
+    watch.stop()?;
 
     let url = format!("file://{}", page.display());
     for browser in [&mut near, &mut far] {
         browser.attach(WAIT)?;
+        watch.stop()?;
         browser.call("Page.navigate", json!({"url": url}), WAIT)?;
-        loaded(browser)?;
+        loaded(browser, watch)?;
     }
     let offered = near.eval(&format!("offer({})", sends()), WAIT)?;
-    let label = offered["label"].as_str().unwrap_or("");
-    // Never a real camera: one whose label isn't Chrome's fake stops it here.
-    if !label.contains("fake") {
-        return Err(format!(
-            "the camera opened was {label:?}, not Chrome's fake one"
-        ));
-    }
-    let answer = far.eval(
+    fake(&offered, "near")?;
+    watch.stop()?;
+    let answered = far.eval(
         &format!("answer({}, {MAX_BITRATE})", json!(offered["offer"])),
         WAIT,
     )?;
-    near.eval(&format!("accept({})", json!(answer)), WAIT)?;
+    fake(&answered, "far")?;
+    watch.stop()?;
+    near.eval(&format!("accept({})", json!(answered["answer"])), WAIT)?;
 
     let ends = Instant::now() + Duration::from_secs(seconds);
     let mut next = Instant::now();
     while Instant::now() < ends {
-        match gate::a_call() {
-            Call::Off => {}
-            Call::On => return Ok(Ended::Stopped("Joel's call began".into())),
-            Call::Unknown(why) => return Ok(Ended::Stopped(why)),
-        }
         near.click(40.0, 40.0, WAIT)?;
         next += TICK;
-        // Each check and click comes on the call's own 5 s beat.
-        thread::sleep(next.saturating_duration_since(Instant::now()));
+        // Each click comes on the call's own 5 s beat, and Joel's call
+        // stops it the moment the watch hears of one.
+        watch.wait_until(next)?;
     }
     let mine = list(near.eval("window.samples", WAIT)?);
+    // A call that never connected measured nothing, and says so as a
+    // failure rather than as an hour of empty figures.
+    if !mine.iter().any(|sample| sample["state"] == "connected") {
+        return Err("the call never connected".to_string().into());
+    }
     let far_samples = list(far.eval("window.samples", WAIT)?);
     let clicks = list(near.eval("window.taps.map((t) => t.frame)", WAIT)?)
         .iter()
@@ -199,11 +331,23 @@ pub fn run(
     })
 }
 
+/// Refuses a camera that isn't Chrome's fake one, as `end`'s page named it:
+/// never a real camera, at either end.
+fn fake(said: &Value, end: &str) -> Result<(), Step> {
+    let label = said["label"].as_str().unwrap_or("");
+    if label.contains("fake") {
+        return Ok(());
+    }
+    Err(format!("the {end} end's camera was {label:?}, not Chrome's fake one").into())
+}
+
 /// A Chrome with `profile`, Chrome's fake camera, and the TPM kept out of
 /// reach: agents never touch it, and Chrome's NSS loads every PKCS#11
 /// module p11-kit knows, the TPM's among them. A user config turning it
 /// off isn't honoured on its own, so FAPI is given no config and the
 /// module's TPM link a closed local port, and neither opens the device.
+/// It's kept off Joel's keyring and his NSS database too, with a home of
+/// its own in the call's folder, and fetches nothing in the background.
 fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -> Command {
     let mut command = Command::new(chrome);
     command
@@ -214,7 +358,11 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
             "--use-fake-device-for-media-stream=fps=30",
             "--use-fake-ui-for-media-stream",
             "--autoplay-policy=no-user-gesture-required",
+            "--password-store=basic",
+            "--disable-background-networking",
+            "--disable-component-update",
         ])
+        .env("HOME", memory.join("home"))
         .env("XDG_RUNTIME_DIR", memory)
         .env("XDG_CONFIG_HOME", config)
         .env("TSS2_FAPICONF", "/nonexistent/fapi-config.json")
@@ -225,15 +373,16 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
 }
 
 /// Waits for the page's script to have run.
-fn loaded(browser: &mut Browser) -> Result<(), String> {
+fn loaded(browser: &mut Browser, watch: &Watch) -> Result<(), Step> {
     let until = Instant::now() + WAIT;
     loop {
         if browser.eval("typeof window.offer", WAIT)? == "function" {
             return Ok(());
         }
         if Instant::now() > until {
-            return Err("the call's page never loaded".into());
+            return Err("the call's page never loaded".to_string().into());
         }
+        watch.stop()?;
         // A navigation says nothing when its page's script has run.
         thread::sleep(Duration::from_millis(200));
     }
@@ -243,5 +392,69 @@ fn list(value: Value) -> Vec<Value> {
     match value {
         Value::Array(items) => items,
         _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_test_chrome_takes_the_fake_camera_and_keeps_off_joel_s_secrets() {
+        let memory = Path::new("/run/x/call-under-load-1");
+        let command = chrome_command(
+            Path::new("chrome"),
+            Path::new("/p"),
+            memory,
+            &memory.join("config"),
+        );
+        let args: Vec<_> = command.get_args().filter_map(|a| a.to_str()).collect();
+        for flag in [
+            "--use-fake-device-for-media-stream=fps=30",
+            "--use-fake-ui-for-media-stream",
+            "--password-store=basic",
+            "--disable-background-networking",
+        ] {
+            assert!(args.contains(&flag), "{flag} is missing from {args:?}");
+        }
+        let env: Vec<_> = command
+            .get_envs()
+            .filter_map(|(k, v)| Some((k.to_str()?, v?.to_str()?)))
+            .collect();
+        for (key, value) in [
+            ("HOME", "/run/x/call-under-load-1/home"),
+            ("XDG_CONFIG_HOME", "/run/x/call-under-load-1/config"),
+            ("TSS2_FAPICONF", "/nonexistent/fapi-config.json"),
+            ("TPM2_PKCS11_TCTI", "mssim:host=127.0.0.1,port=9"),
+        ] {
+            assert!(
+                env.contains(&(key, value)),
+                "{key}={value} is missing from {env:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_chrome_s_fake_camera_is_taken_at_either_end() {
+        assert!(fake(&json!({"label": "fake_device_0"}), "near").is_ok());
+        let refused = |said: Value| matches!(fake(&said, "far"), Err(Step::Failed(_)));
+        assert!(refused(json!({"label": "MX Brio 705 for Business"})));
+        assert!(refused(json!({})), "a camera with no name is refused");
+    }
+
+    #[test]
+    fn a_sweep_takes_only_what_a_gone_run_left() {
+        let folder = std::env::temp_dir().join(format!("cul-sweep-{}", std::process::id()));
+        let mine = folder.join(format!("profile-{}", std::process::id()));
+        let gone = folder.join("profile-4294967294");
+        let other = folder.join("profile-notes");
+        for path in [&mine, &gone, &other] {
+            fs::create_dir_all(path).unwrap();
+        }
+        sweep(&folder, "profile-");
+        assert!(mine.exists(), "a running call's folder stays");
+        assert!(!gone.exists(), "a gone run's folder goes");
+        assert!(other.exists(), "a folder not named for a run stays");
+        fs::remove_dir_all(&folder).unwrap();
     }
 }

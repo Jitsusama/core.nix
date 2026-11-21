@@ -537,14 +537,6 @@
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
-  call-under-load-passes-clippy = ''
-    clippy finds nothing in call-under-load or its tests
-  '';
-  call-under-load-tells-the-hour = ''
-    call-under-load counts a call's frame rates by frame slots and its freezes per ten minutes,
-    keeps a run ten minutes from any meeting and refuses a stale calendar, takes Chrome's and
-    Slack's waits from lag-watch's last hour, and writes the hour in the shape cadence reads
-  '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
     down with no more of their words wrong than the ceiling the last measurement set
@@ -562,6 +554,14 @@
   call-transcripts-writes-only-what-was-said = ''
     a call writes down only what was said: a loud noise with no speech in it and a silent far end
     give no turn and no bracketed sound
+  '';
+  call-under-load-passes-clippy = ''
+    clippy finds nothing in call-under-load or its tests
+  '';
+  call-under-load-tells-the-hour = ''
+    call-under-load counts a call's frame rates by frame slots and its freezes per ten minutes,
+    keeps a run ten minutes from any meeting and refuses a stale calendar, takes Chrome's and
+    Slack's waits from lag-watch's last hour, and writes the hour in the shape cadence reads
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine

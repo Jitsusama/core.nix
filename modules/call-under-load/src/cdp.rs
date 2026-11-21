@@ -18,6 +18,28 @@ unsafe extern "C" {
     fn pipe2(fds: *mut RawFd, flags: i32) -> i32;
     fn dup2(old: RawFd, new: RawFd) -> i32;
     fn fcntl(fd: RawFd, command: i32, argument: i32) -> i32;
+    fn prctl(option: i32, ...) -> i32;
+}
+
+/// `PR_SET_PDEATHSIG` and `SIGKILL`: a child killed as its parent ends.
+const DEATH_SIGNAL: i32 = 1;
+const KILL: u64 = 9;
+
+/// Makes what `command` starts end with this program, however it ends: a
+/// call stopped for Joel's while a step can't be broken off ends the
+/// program, and must take Weston and each Chrome with it. The signal comes
+/// as the thread that started the child ends, which is the call's own.
+pub fn ends_with_us(command: &mut Command) {
+    // SAFETY: prctl is a system call, async-signal-safe, and the closure
+    // allocates nothing.
+    unsafe {
+        command.pre_exec(|| {
+            if prctl(DEATH_SIGNAL, KILL) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
 }
 
 /// `O_CLOEXEC`, so a pipe's ends reach only the Chrome they're meant for.
@@ -82,6 +104,7 @@ impl Browser {
                 Ok(())
             });
         }
+        ends_with_us(&mut command);
         let child = command.spawn()?;
         drop((theirs_in, theirs_out));
         let (send, answers) = mpsc::channel();

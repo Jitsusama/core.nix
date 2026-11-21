@@ -12,23 +12,24 @@ in
   home.packages = [ package ];
 
   systemd.user.services.call-under-load = {
-    Unit = {
-      Description = "Measures Joel's calls and apps under load";
-      # It reads the meetings from the google daemon, so with no daemon (an
-      # account signed out of Google, a VM test) it waits rather than failing;
-      # cadence still says when the hour's figure goes stale.
-      ConditionPathExists = "%t/daemons/google.sock";
-    };
+    Unit.Description = "Measures Joel's calls and apps under load";
     Service = {
       Type = "oneshot";
       ExecStart = "${lib.getExe package} run";
+      # It exits 69 when what it needs isn't there: the calendar unread (an
+      # account signed out of Google, a VM test), Chrome missing, or no word
+      # on whether Joel is in a call. That hour is skipped, not failed, and
+      # cadence still says when the figure goes stale. The socket always
+      # exists, since it's socket-activated, so it can't gate the unit.
+      SuccessExitStatus = [ 69 ];
       # In the apps' slice, as Joel's own calls are, so the shaper classes
       # its traffic as a call's and the apps' share of the CPU is what it
       # gets: the figures are what a call of his would see.
       Slice = "app.slice";
       # A call runs 150 s and Chrome takes up to a minute to start under
-      # load; one stuck past this is ended, its Chromes with it.
-      RuntimeMaxSec = "10min";
+      # load; one stuck past this is ended, its Chromes with it. A oneshot's
+      # run is its start, so the start's timeout bounds it.
+      TimeoutStartSec = "10min";
     };
   };
 
