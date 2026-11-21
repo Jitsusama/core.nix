@@ -2,16 +2,17 @@
 //! the Meet as each spoke (presence.rs), measured on the set score.rs
 //! hears. Its meetings were held in one room, so nobody joined them: here
 //! the far end's speakers join one at a time, in the order they first
-//! spoke, the first at the start and each next a like share of the meeting
-//! later, and a take where anyone not yet joined holds `LEAST_SHARE` or
-//! more of the speech is left out, as no call would hold it. A take where
-//! they only murmur under another, as one does through most of a meeting
-//! held in a room, is kept, since the meetings' sound can't be pulled
-//! apart by speaker, and leaving out every such take leaves out nearly
-//! all; it makes the voices harder to tell apart, never easier. The takes
-//! left are grouped as hear.rs
-//! groups a call's whose Meet says how many were on it, and each voice is
-//! named as presence.rs names it.
+//! spoke, the first at the start and each next once a like share of the
+//! far end's speech has been said, since a meeting's far end may say
+//! nothing for minutes. A take where anyone not yet joined holds
+//! `LEAST_SHARE` or more of the speech is left out, as no call would hold
+//! it. A take where they only murmur under another, as one does through
+//! most of a meeting held in a room, is kept, since the meetings' sound
+//! can't be pulled apart by speaker, and leaving out every such take
+//! leaves out nearly all; it makes the voices harder to tell apart, never
+//! easier. The takes left are grouped as hear.rs groups a call's whose
+//! Meet says how many were on it, and each voice is named as presence.rs
+//! names it.
 //!
 //! Two numbers are kept: of the far end's speech in takes given a name,
 //! how much is that person's, so a wrong name loses; and of all the far
@@ -20,12 +21,11 @@
 
 use std::collections::HashMap;
 
-use dictation::transcript::Side;
 use dictation::voices::{self, Heard, LEAST_SHARE, Voices};
 
 use crate::apart::{self, Cut};
 use crate::presence::{self, Present, Spoke, Who};
-use crate::score::{self, index, meetings, percent};
+use crate::score::{self, meetings, percent};
 
 /// A meeting's names, or a set's, held to its reference, in samples of
 /// speech.
@@ -76,8 +76,7 @@ pub fn names(
     let mut all = Names::default();
     for meeting in &meetings {
         let (heard, cuts) = apart::cut(meeting, &mut speaker)?;
-        let length = meeting.sounds[index(Side::Theirs)].len();
-        let (named, voices) = name(&heard, &cuts, length);
+        let (named, voices) = name(&heard, &cuts);
         println!("{}: {voices}", meeting.name);
         println!("{}", report(meeting.name, &named));
         all.add(named);
@@ -111,12 +110,12 @@ pub fn names(
     }
 }
 
-/// A meeting's far end, `heard` and cut into `cuts` over `length` samples,
+/// A meeting's far end, `heard` and cut into `cuts`,
 /// joined one speaker at a time, its voices named and held to the
 /// reference; and who each voice was taken to be beside whose speech it
 /// holds, so a meeting naming little can be seen to.
-fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> (Names, String) {
-    let joins = joins(cuts, length);
+fn name(heard: &[Heard], cuts: &[Cut]) -> (Names, String) {
+    let joins = joins(cuts);
     let kept: Vec<&Cut> = cuts.iter().filter(|cut| !before(cut, &joins)).collect();
     // The takes kept, as hear.rs has a call's, and which of them each is.
     let mut grouped_heard = Vec::new();
@@ -246,9 +245,10 @@ fn described(who: &[Who], held: &[HashMap<&str, usize>], first: &[Option<usize>]
 }
 
 /// When each far-end speaker joins, in samples: in the order they first
-/// spoke, the first at the start and each next `length` over their count
-/// later.
-fn joins(cuts: &[Cut], length: usize) -> HashMap<String, usize> {
+/// spoke, the first at the start and each next at the first take once
+/// as much more of the far end's speech has been said before it as their
+/// count shares it out.
+fn joins(cuts: &[Cut]) -> HashMap<String, usize> {
     let mut order: Vec<&str> = Vec::new();
     for cut in cuts {
         let mut speakers: Vec<&str> = cut.speakers.keys().map(String::as_str).collect();
@@ -261,11 +261,23 @@ fn joins(cuts: &[Cut], length: usize) -> HashMap<String, usize> {
             }
         }
     }
-    let each = length.checked_div(order.len()).unwrap_or(0);
+    let speech: usize = cuts.iter().flat_map(|cut| cut.speakers.values()).sum();
+    let mut said = 0;
+    let mut starts = Vec::new();
+    for cut in cuts {
+        while starts.len() < order.len() && said * order.len() >= starts.len() * speech {
+            starts.push(cut.start);
+        }
+        said += cut.speakers.values().sum::<usize>();
+    }
+    // Any not reached join with the last take's start, as the last one may
+    // when nothing is said once its share begins.
+    let last = cuts.last().map_or(0, |cut| cut.start);
+    starts.resize(order.len(), last);
     order
         .into_iter()
-        .enumerate()
-        .map(|(at, speaker)| (speaker.to_owned(), at * each))
+        .zip(starts)
+        .map(|(speaker, start)| (speaker.to_owned(), start))
         .collect()
 }
 
@@ -324,11 +336,11 @@ mod tests {
     #[test]
     fn speakers_join_in_the_order_they_first_spoke_a_like_share_apart() {
         let (_, cuts) = meeting(&[("B", 0), ("A", 6), ("B", 12), ("C", 20)]);
-        let joins = joins(&cuts, 30 * MINUTE);
+        let joins = joins(&cuts);
         assert_eq!(
             (joins["B"], joins["A"], joins["C"]),
-            (0, 10 * MINUTE, 20 * MINUTE),
-            "the speakers didn't join in the order they first spoke, a third apart"
+            (0, 12 * MINUTE, 20 * MINUTE),
+            "the speakers didn't join in the order they first spoke, a third of the speech apart"
         );
     }
 
@@ -344,10 +356,10 @@ mod tests {
             ("A", 25),
             ("C", 27),
         ]);
-        let (named, _) = name(&heard, &cuts, 30 * MINUTE);
+        let (named, _) = name(&heard, &cuts);
         assert_eq!(
             (named.right, named.named, named.speech),
-            (35 * SECOND, 35 * SECOND, 35 * SECOND),
+            (30 * SECOND, 30 * SECOND, 30 * SECOND),
             "what B said before joining wasn't left out, or a voice went unnamed or misnamed"
         );
     }
@@ -370,12 +382,12 @@ mod tests {
 
     #[test]
     fn a_voice_mixing_two_speakers_is_right_only_for_its_name() {
-        let (heard, mut cuts) = meeting(&[("A", 0), ("B", 12), ("A", 14)]);
-        cuts[2].speakers.insert("B".to_owned(), SECOND);
-        let (named, _) = name(&heard, &cuts, 20 * MINUTE);
+        let (heard, mut cuts) = meeting(&[("A", 0), ("A", 2), ("B", 12), ("A", 14), ("B", 16)]);
+        cuts[3].speakers.insert("B".to_owned(), SECOND);
+        let (named, _) = name(&heard, &cuts);
         assert_eq!(
             (named.right, named.named),
-            (15 * SECOND, 16 * SECOND),
+            (20 * SECOND, 21 * SECOND),
             "B's second in a take of A's voice was counted as named right"
         );
     }
