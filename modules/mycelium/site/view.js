@@ -1335,7 +1335,12 @@ import {
   // words. A new shape, layout or fold draws the whole map.
   let drawnFor = null;
   // The shape of the reading last placed, which the trees are kept for.
+  // It keeps one string while the shape holds, so the trees' cache, asked
+  // once per tree, compares one reference rather than every cell's line.
   let shapeNow = "";
+  // The shape of one reading and layout, kept so a choice or a fold, which
+  // draws the same reading again, never builds it twice.
+  let shapeFor = null;
   // What every shape and mark of the map is built from, as one string:
   // each network's place in the tree, cells, liveness, feeds and waits
   // ring, and each cell's home, network, extra networks and place. It is
@@ -1343,25 +1348,34 @@ import {
   // afresh, so two readings with one shape draw the same map.
   const SWELL_STEP = 0.5; // how far a waits ring grows, in map units, before the map is drawn again
   const shapeOf = (m) => {
+    const kept = shapeFor?.m === m && shapeFor.L === L && shapeFor.machines === machinesShown;
+    if (kept) return shapeFor.shape;
+    // Each record is a JSON list, so a name holding a separator can't make
+    // two shapes read as one.
     const parts = [];
     for (const h of m.hubs.values()) {
       const flags = `${h.edge ? 1 : 0}${h.alone ? 1 : 0}${isLive(h) ? 1 : 0}`;
-      const fed = [...(h.feeds || [])].join(";");
       const grown = Math.round(swell(h.owes) / SWELL_STEP);
-      const sown = (seeds.get(h.key) || []).join(",");
-      const tree = `${h.within || ""} ${h.machine || ""}`;
-      parts.push(`h ${h.key} ${tree} ${h.cells.length} ${flags} ${h.shape} ${fed} ${grown} ${sown}`);
+      const tree = [h.within || "", h.machine || ""];
+      const fed = [...(h.feeds || [])];
+      const sown = seeds.get(h.key) || [];
+      parts.push(JSON.stringify(["h", h.key, ...tree, h.cells.length, flags, h.shape, fed, grown, sown]));
     }
     for (const s of m.cells) {
       const at = pos.get(s.id);
       const where = at ? `${at[0].toFixed(1)},${at[1].toFixed(1)}` : "-";
-      const also = (s.also || []).map((h) => h.key).join(",");
+      const also = (s.also || []).map((h) => h.key);
       const asks = s.standing === "asks" ? 1 : 0;
-      parts.push(`c ${s.id} ${s.address} ${homeOf(s)} ${netOf(s)?.key || ""} ${asks} ${also} ${where}`);
+      const net = netOf(s)?.key || "";
+      parts.push(JSON.stringify(["c", s.id, s.address, homeOf(s), net, asks, also, where]));
     }
-    for (const n of m.shared) parts.push(`n ${n.key} ${n.shape} ${n.cells.map((s) => s.id).join(",")}`);
-    parts.push(`m ${shownMachines().map((x) => x.name).join(",")}`);
-    return parts.join("\n");
+    for (const n of m.shared) {
+      parts.push(JSON.stringify(["n", n.key, n.shape, n.cells.map((s) => s.id)]));
+    }
+    parts.push(JSON.stringify(["m", shownMachines().map((x) => x.name)]));
+    const shape = parts.join("\n");
+    shapeFor = { m, L, machines: machinesShown, shape };
+    return shape;
   };
   const restyleMarks = () => {
     const setClass = (el, cls) => {
@@ -1407,8 +1421,9 @@ import {
     const m = current;
     L = lay(m);
     pos = placed(m, L);
-    const shape = shapeOf(m);
-    shapeNow = shape;
+    const read = shapeOf(m);
+    if (read !== shapeNow) shapeNow = read;
+    const shape = shapeNow;
     near = chosen ? nearOf(chosen) : null;
     const folds = foldsNow();
     const same = drawnFor?.shape === shape && drawnFor.L === L && drawnFor.machines === machinesShown;
@@ -3850,6 +3865,8 @@ import {
     // markup alone too, with his place, focus and open folds in it, rather
     // than parsing the same panel again every two seconds.
     const unchanged = same && html === shownHtml;
+    // An unchanged panel takes the place the column last scrolled to, at
+    // most a frame old, since reading it here lays the page out again.
     const scroll = same && !unchanged ? column.scrollTop : columnTop;
     const hadFocus = panelBody.contains(document.activeElement);
     if (!unchanged) {
@@ -4544,7 +4561,9 @@ import {
       // A reading that fails to draw says why in the console, so a page
       // stuck at "reading" can be told from a node that isn't answering.
       console.error("mycelium: a reading failed to draw", err?.stack || err);
-      // The next change brings the next reading, which is drawn whole.
+      // The next change brings the next reading, which is drawn whole: a
+      // draw cut short leaves no shape behind for that reading to match.
+      drawnFor = null;
       asof.textContent = `The map couldn't draw: ${err?.message || err}. It tries again with the next change.`;
     }
   };
