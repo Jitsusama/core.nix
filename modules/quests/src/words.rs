@@ -46,19 +46,47 @@ impl Words {
     }
 
     /// The words a key says with each `{part}` filled, or none for a key
-    /// it lacks, as the launcher says nothing for a word it lacks.
+    /// it lacks, as the launcher says nothing for a word it lacks. The
+    /// words are read once, left to right, so a value holding a part's
+    /// name, as an ask's own words may, is said as it is and never filled.
     #[must_use]
     pub fn fill(&self, key: &str, parts: &[(&str, &str)]) -> String {
-        let words = self.0.get(key).map_or("", String::as_str);
-        parts.iter().fold(words.to_owned(), |text, (part, value)| {
-            text.replacen(&format!("{{{part}}}"), value, 1)
-        })
+        let mut rest = self.0.get(key).map_or("", String::as_str);
+        let mut said = String::with_capacity(rest.len());
+        while let Some(open) = rest.find('{') {
+            said.push_str(&rest[..open]);
+            let after = &rest[open + 1..];
+            let value = after.find('}').and_then(|close| {
+                let name = &after[..close];
+                let (_, value) = parts.iter().find(|(part, _)| *part == name)?;
+                Some((*value, close))
+            });
+            if let Some((value, close)) = value {
+                said.push_str(value);
+                rest = &after[close + 1..];
+            } else {
+                said.push('{');
+                rest = after;
+            }
+        }
+        said.push_str(rest);
+        said
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_value_naming_a_part_is_said_as_it_is() {
+        let words = Words::of(&[("more", "landed: {words}, and {more} more")]);
+        assert_eq!(
+            words.fill("more", &[("words", "fix {more}"), ("more", "2")]),
+            "landed: fix {more}, and 2 more",
+            "an ask's words are never filled"
+        );
+    }
 
     #[test]
     fn quests_words_come_from_the_vocabulary() {
@@ -68,6 +96,11 @@ mod tests {
         )
         .expect("the vocabulary reads");
         assert_eq!(words.fill("open", &[("open", "3")]), "3 open");
+        assert_eq!(
+            words.fill("open", &[]),
+            "{open} open",
+            "a part not given stays"
+        );
         assert_eq!(words.fill("nested", &[]), "", "only words are words");
         assert_eq!(
             words.fill("absent", &[]),
@@ -80,7 +113,14 @@ mod tests {
     fn the_core_vocabulary_names_every_word_the_summary_says() {
         let words = Words::from_vocabulary(include_str!("../../quickshell/launcher/words.json"))
             .expect("core's vocabulary reads");
-        for key in ["empty", "open", "driving"] {
+        let moved = [
+            "moved-landed",
+            "moved-landed-more",
+            "moved-dated",
+            "moved-taken",
+            "moved-next",
+        ];
+        for key in ["empty", "open", "driving"].into_iter().chain(moved) {
             assert_ne!(
                 words.fill(key, &[]),
                 "",

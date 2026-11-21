@@ -61,7 +61,7 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/quests.sock`
         place: "quests"
-        beside: ["summary", "folders"]
+        beside: ["summary", "folders", "moved"]
         make: (row, key) => provider.made(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -71,7 +71,17 @@ Provider {
             if (words === provider.searchedLast)
                 provider.foundMore(false);
         }
+        // What moved, told to Now's What Moved as it changes, and as a
+        // quest's own row does, which each of its rows is made from.
+        onHeard: (changed, gone) => {
+            if (Array.from(changed).concat(Array.from(gone)).some(key => key === "moved:quests"
+                || key.startsWith("row:quests:")))
+                provider.movedRevision += 1;
+        }
     }
+    // Moves each time the daemon says what moved again, or a quest's row,
+    // so a binding reading moved() is told.
+    property int movedRevision: 0
     // The words searched last, the only ones an answer is worth searching
     // again for.
     property string searchedLast: ""
@@ -195,6 +205,33 @@ Provider {
     // (modules/quests/src/folders.rs).
     function folders() {
         return ready.held["folders:quests"]?.folders ?? [];
+    }
+
+    // Each workstream that moved since Joel last looked, for Now's What
+    // Moved, as the daemon serves them (modules/quests/src/moved.rs): its
+    // quest's own row, its acts and drawer, saying what landed or that a
+    // date moved where its note was, and the next date it owes at its
+    // side. One whose quest isn't served is left out, as nothing could go
+    // to it.
+    function moved() {
+        return (ready.held["moved:quests"]?.moved ?? []).map(one => {
+            const served = ready.served(`row:quests:${one.held?.id}`);
+            return !served ? null : provider.made(Object.assign({}, served,
+                { key: one.key, note: one.note, side: one.side }), one.key);
+        }).filter(row => row !== null);
+    }
+
+    // What showing what moved shows of each ask, as the daemon serves it,
+    // for looked() to give back once Joel has seen it.
+    function movedSeen() {
+        return ready.held["moved:quests"]?.seen ?? [];
+    }
+
+    // Counts what he was shown, `seen` as movedSeen() gave it, as looked
+    // at, so each workstream's row goes until it moves again; nothing
+    // where the daemon doesn't answer.
+    function looked(seen) {
+        ready.link?.ask({ ask: "looked", seen: seen }, () => {});
     }
 
     // What a row's acts need of its quest, from what the daemon holds

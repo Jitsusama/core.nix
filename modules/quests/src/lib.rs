@@ -13,10 +13,13 @@
 //! - [`search`]: what's typed found among every quest, open and ended.
 //! - [`folders`]: the repositories the open quests work in, where Start
 //!   New Work's words can be said.
+//! - [`moved`]: what moved for each open quest since Joel last looked,
+//!   from the asks file, for Now's What Moved to say.
 //! - [`words`]: Quests' words, as the launcher's vocabulary says them.
 
 pub mod folders;
 pub mod holder;
+pub mod moved;
 pub mod order;
 pub mod quest;
 pub mod search;
