@@ -64,12 +64,13 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 27 files since the balance, who started each cell, the tree beside the map,
+# 28 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent, what waits, how wide each line is drawn and
-# how a cell is named were read in modules of their own; about 746 KB since
-# the builders and the legend's moving samples, with a little room above.
-BUDGET = Budget(files=27, kilobytes=750, elements=590)
+# each is doing, what each spent, what waits, how wide each line is drawn, how
+# a cell is named and how the map's motion is timed were read in modules of
+# their own; about 746 KB since the builders and the legend's moving samples,
+# with a little room above.
+BUDGET = Budget(files=28, kilobytes=750, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1249,12 +1250,40 @@ SAMPLES = {"flight", "birth", "ended"}
 TWO_FRAMES = """() => new Promise((done) =>
   requestAnimationFrame(() => requestAnimationFrame(done)))"""
 SAMPLES_STILL = f"Object.values(({SAMPLES_PLAYING})()).every((n) => n === 0)"
-# What a redraw keeping the legend open does to it: sets it open, with no click.
+# A toggle with no click, as code opening the legend makes, never his hand.
 REOPENED = """() => {
   const legend = document.querySelector('#panel-body details[data-keep="legend"]');
   legend.open = false;
   legend.open = true;
 }"""
+# Marks the legend drawn now, and notes TERN03 in each reading drawn after.
+LEGEND_MARKED = """() => {
+  document.querySelector('#panel-body details.legend').dataset.kept = 'yes';
+  document.addEventListener('mycelium:modelled', (e) => {
+    window.tern = e.detail.model.cells.find((s) => s.address === 'TERN03') || null;
+  });
+}"""
+# Whether the legend marked by LEGEND_MARKED is the one drawn, and open.
+LEGEND_KEPT = """() => {
+  const legend = document.querySelector('#panel-body details.legend');
+  return [legend?.dataset.kept === 'yes', !!legend?.open];
+}"""
+# Scrolls the drawer so the row of `kind` stands at its top, and says where
+# its words are: the point a resting pointer sits under once the drawer has
+# scrolled back by SCROLLED_PX.
+ROW_AT_TOP = """(kind) => {
+  const words = document.querySelector(`#panel-body [data-moves="${kind}"] dd`);
+  words.scrollIntoView({ block: 'start' });
+  const box = words.getBoundingClientRect();
+  return [box.x + box.width / 2, box.y + box.height / 2];
+}"""
+SCROLLED_PX = 120
+# When the ended sample's run began, so a run started over on top shows.
+ENDED_BEGAN = """() => document.querySelector('#panel-body [data-moves="ended"] svg')
+  .getAnimations({ subtree: true }).map((run) => run.startTime)"""
+# Which sample's row is under the point given, or null.
+ROW_UNDER = """([x, y]) =>
+  document.elementFromPoint(x, y)?.closest('[data-moves]')?.dataset.moves ?? null"""
 
 
 def playing_after_two_frames(page: Page) -> dict[str, int]:
@@ -1264,7 +1293,24 @@ def playing_after_two_frames(page: Page) -> dict[str, int]:
     return playing
 
 
-def test_the_legend_shows_what_moves_moving_only_at_his_word(mycelium_opened: Opened) -> None:
+def point_at(page: Page, kind: str) -> dict[str, int]:
+    """Point at the words of the sample `kind`, and say what plays two frames on."""
+    page.locator(f'#panel-body .moves [data-moves="{kind}"] dd').hover()
+    return playing_after_two_frames(page)
+
+
+def scrolled_under(page: Page, kind: str) -> dict[str, int]:
+    """Scroll the row of `kind` under a resting pointer, and say what plays two frames on."""
+    x, y = page.evaluate(ROW_AT_TOP, kind)
+    page.mouse.move(x, y + SCROLLED_PX)
+    page.mouse.wheel(0, -SCROLLED_PX)
+    page.wait_for_function(f"({ROW_UNDER})([{x}, {y + SCROLLED_PX}]) === '{kind}'", timeout=PACE_MS)
+    return playing_after_two_frames(page)
+
+
+def test_the_legend_shows_what_moves_moving_only_at_his_word(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
     page.locator("#map-view").focus()
@@ -1278,20 +1324,39 @@ def test_the_legend_shows_what_moves_moving_only_at_his_word(mycelium_opened: Op
     idle = sorted(sample for sample, n in playing.items() if not n)
     assert not idle, f"opening the legend left samples still: {idle}"
     page.wait_for_function(SAMPLES_STILL, timeout=PACE_MS)
-    # Pointed at, a row plays its own sample and no other.
-    page.locator('#panel-body .moves [data-moves="ended"] dd').hover()
-    playing = playing_after_two_frames(page)
+    # Pointed at, a row plays its own sample and no other; pointed at again
+    # while it plays, it carries on rather than starting over on top.
+    playing = point_at(page, "ended")
     moving = sorted(sample for sample, n in playing.items() if n)
     assert moving == ["ended"], f"pointing at Ended played {moving}"
+    began = page.evaluate(ENDED_BEGAN)
+    point_at(page, "birth")
+    point_at(page, "ended")
+    again = page.evaluate(ENDED_BEGAN)
+    assert again == began, f"Ended started over on top of itself: {began} then {again}"
     page.wait_for_function(SAMPLES_STILL, timeout=PACE_MS)
-    # Opened again by a redraw, as a reading does, it plays nothing.
+    # A row scrolled under a resting pointer isn't pointed at: Ended, the
+    # last, with the marks' rows under it to rest on first.
+    playing = scrolled_under(page, "ended")
+    assert not any(playing.values()), f"a row scrolled under a resting pointer played {playing}"
+    # A toggle with no click plays nothing.
     page.evaluate(REOPENED)
     playing = playing_after_two_frames(page)
-    assert not any(playing.values()), f"a redraw reopening the legend played {playing}"
-    # Asked for less motion, pointing plays nothing either.
+    assert not any(playing.values()), f"opening the legend with no click played {playing}"
+    # A reading that changes the drawer's words leaves the legend drawn.
+    page.evaluate(LEGEND_MARKED)
+    mycelium_node.tell("cell", gone=["cell:TERN03"])
+    page.wait_for_function(TERN_GONE, timeout=PACE_MS)
+    kept, still_open = page.evaluate(LEGEND_KEPT)
+    assert kept, "a reading that left the legend's words drew the legend again"
+    assert still_open, "a reading shut the legend left open"
+    # Asked for less motion, what plays stops, and pointing plays nothing.
+    summary.click()
+    summary.click()
     page.emulate_media(reduced_motion="reduce")
-    page.locator('#panel-body .moves [data-moves="flight"] dd').hover()
     playing = playing_after_two_frames(page)
+    assert not any(playing.values()), f"less motion asked for left samples moving: {playing}"
+    playing = point_at(page, "flight")
     assert not any(playing.values()), f"a sample moved with less motion asked for: {playing}"
 
 

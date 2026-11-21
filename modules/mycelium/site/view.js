@@ -44,6 +44,7 @@ import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, parts
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
+import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -3383,8 +3384,10 @@ import {
         ["network", hubSpendRows([...m.hubs.values()].filter((h) => !h.within))],
       ]) +
       `<p class="hint">Walk the map with the arrow keys, or the network below as a tree; Return opens what you reach here.</p>` +
+      // What moves leads, so the samples it plays as it opens are in view.
       `<details class="fold legend" data-keep="legend"><summary>${TURN}How to Read the Map</summary>` +
-      `<dl>` +
+      movesLegend() +
+      `<h3>What Each Mark Says</h3><dl>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>A cell moving: in a turn now</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>Quiet: waiting for its next word</dd></div>` +
       `<div><dt>${RECEPTOR_GLYPH(true)}</dt><dd>A receptor: a dish at the network's edge where mail, calls or the calendar come in, its dot in the dish's own ink, never a session's, and filled while it is reading</dd></div>` +
@@ -3407,9 +3410,7 @@ import {
       (WARMS ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-talk warm3" d="M-12,6Q0,-12 12,6"/></svg></dt><dd>${current?.ties ? "Talk: an arc between two cells that messaged each other today, thicker the more they said lately, and thinner the longer they have been quiet; talk between two networks is one arc between their hubs until you open it or one of its cells" : "Talk: an arc between two that messaged in the last ten minutes, thicker the more they said; talk between two networks is one arc between their hubs until you open it or one of its cells"}</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cross m-repository" d="M-13,4Q0,-8 13,4"/></svg></dt><dd>Dotted cross-hyphae: cells sharing a repository, group or quest</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-changed" r="13"/><circle class="m-membrane" r="11"/><circle class="m-quiet" r="5.5"/></svg></dt><dd>A faint outer ring: changed since you last looked</dd></div>` +
-      `</dl>` +
-      movesLegend() +
-      `</details>`
+      `</dl></details>`
     );
   };
 
@@ -4488,7 +4489,7 @@ import {
         continue;
       }
       // Eased in and out over the whole way, so it leaves and arrives.
-      const e = t >= 1 ? 1 : t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+      const e = t >= 1 ? 1 : easedInOut(t);
       const { p, c } = f.arc;
       const [x, y] = along(f.arc, e);
       // The way it has come draws itself behind it, so who spoke to whom
@@ -4658,6 +4659,7 @@ import {
   const SAMPLE_STAGGER_MS = 300; // between the samples the legend plays as it opens
   const SAMPLE_HOLD_MS = 400; // gone, before the sample comes back to rest
   const SAMPLE_STEPS = 24; // keyframes along a curve, too many to see the corners
+  const SAMPLE_TRAIL_PX = 3; // a trail's width in a sample, half the map's at its own size
   const SAMPLE_ARC = { p: [-12, 6], c: [0, -12], q: [12, 6] };
   const SAMPLE_DOT = along(SAMPLE_ARC, 0.5);
   // Drawn at the legend's other marks' scale, so a sample is no smaller.
@@ -4675,6 +4677,7 @@ import {
     const { p, c, q } = SAMPLE_ARC;
     const flight =
       `<div data-moves="flight"><dt><svg ${SAMPLE_BOX}><path class="m-talk warm1" d="M${p}Q${c} ${q}"/>` +
+      `<path class="trail" d="M${p}Q${c} ${q}" pathLength="1" opacity="0" style="stroke-width:${SAMPLE_TRAIL_PX}px"/>` +
       `${ripple(...p, 2)}${ripple(...q, 2)}<circle class="pulse" cx="${dx}" cy="${dy}" r="4.5"/></svg></dt>` +
       `<dd>A message: one dot flying straight from the cell that sent it to the one it was for, a ring opening round the sender as it leaves and round the receiver as it lands. A cell it passes over took no part</dd></div>`;
     const hub = `<circle class="m-hub" cx="${hx}" cy="${hy}" r="${SAMPLE_HUB_R}"/>`;
@@ -4696,42 +4699,39 @@ import {
       : "Each moves here as on the map when you point at it; Now lists births and endings for ten minutes.";
     return `<h3>What Moves</h3><p class="hint">${esc(hint)}</p><dl class="moves">${PULSES ? flight : ""}${birth}${ended}</dl>`;
   };
-  // The theme's arriving motion, which a sample comes back to rest with;
-  // its duration as the theme says it, in seconds or milliseconds.
-  const ARRIVE_DEFAULT_MS = 150; // design.md's, should the stylesheet say none
-  const arriving = () => {
+  // How long a sample moves, rests gone and comes back to rest, on the
+  // theme's arriving motion as the stylesheet says it.
+  const timingOf = (ms) => {
     const style = getComputedStyle(document.documentElement);
-    const said = style.getPropertyValue("--arrive").trim();
-    const ms = said.endsWith("ms") ? Number.parseFloat(said) : Number.parseFloat(said) * 1000;
-    return { ms: Number.isFinite(ms) ? ms : ARRIVE_DEFAULT_MS, ease: style.getPropertyValue("--ease").trim() || "ease-out" };
+    const ease = style.getPropertyValue("--ease").trim() || "ease-out";
+    return { ms, holdMs: SAMPLE_HOLD_MS, arriveMs: durationOf(style.getPropertyValue("--arrive")), steps: SAMPLE_STEPS, ease };
   };
-  // The keyframes of a mark taking `ms` to move, as `step` says for each
-  // time from 0 to 1, then gone a moment, then back where the legend draws
-  // it at `rest`: a sample ends at rest rather than jumping back to it.
-  const goneAndBack = (ms, step, rest) => {
-    const arrive = arriving();
-    const total = ms + SAMPLE_HOLD_MS + arrive.ms;
-    const frames = [];
-    for (let i = 0; i <= SAMPLE_STEPS; i++) frames.push({ offset: ((i / SAMPLE_STEPS) * ms) / total, ...step(i / SAMPLE_STEPS) });
-    frames.push({ offset: (ms + SAMPLE_HOLD_MS) / total, ...rest, opacity: 0, easing: arrive.ease });
-    frames.push({ offset: 1, ...rest, opacity: 1 });
-    return [frames, total];
-  };
+  // Every animation running in a sample, its marks' included.
+  const playingIn = (row) => row.querySelector("svg")?.getAnimations({ subtree: true }) ?? [];
   // A ring opening from radius `r` outward, as ring() opens one on the map.
   const opening = (el, r, delay) =>
     el?.animate([{ r: `${r}px`, opacity: 1 }, { r: `${r + SAMPLE_REACH}px`, opacity: 0 }], { duration: LANDING_MS, delay, easing: "linear" });
   const playMoves = (row, delay = 0) => {
-    if (still.matches || row.querySelector("svg *")?.getAnimations().length) return;
+    if (still.matches || playingIn(row).length) return;
     const kind = row.dataset.moves;
     const [first, second] = row.querySelectorAll(".ripple");
     if (kind === "flight") {
       // Eased in and out over the whole way, as fly() eases a flight.
-      const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
-      const [frames, total] = goneAndBack(SAMPLE_FLIGHT_MS, (t) => {
-        const [x, y] = along(SAMPLE_ARC, ease(t));
+      const { frames, total } = goneAndBack(timingOf(SAMPLE_FLIGHT_MS), (t) => {
+        const [x, y] = along(SAMPLE_ARC, easedInOut(t));
         return { translate: `${x - SAMPLE_DOT[0]}px ${y - SAMPLE_DOT[1]}px`, opacity: t < 1 ? 1 : 0 };
       }, { translate: "0px 0px" });
       row.querySelector(".pulse")?.animate(frames, { duration: total, delay, easing: "linear" });
+      // The way it has come draws itself behind it, then fades as it
+      // lands, as fly() draws a flight's trail.
+      const trail = [];
+      for (let i = 0; i <= SAMPLE_STEPS; i++) {
+        const t = i / SAMPLE_STEPS;
+        trail.push({ offset: (t * SAMPLE_FLIGHT_MS) / total, strokeDashoffset: 1 - easedInOut(t), opacity: 1 });
+      }
+      trail.push({ offset: (SAMPLE_FLIGHT_MS + LANDING_MS) / total, strokeDashoffset: 0, opacity: 0 });
+      trail.push({ offset: 1, strokeDashoffset: 0, opacity: 0 });
+      row.querySelector(".trail")?.animate(trail, { duration: total, delay, easing: "linear" });
       opening(first, 2, delay);
       opening(second, 2, delay + SAMPLE_FLIGHT_MS);
     } else if (kind === "birth") {
@@ -4741,7 +4741,7 @@ import {
     } else if (kind === "ended") {
       // Slow to leave and quicker as it goes, drifting toward its hub.
       const home = [(SAMPLE_HUB[0] - SAMPLE_CELL[0]) * GHOST_DRIFT, (SAMPLE_HUB[1] - SAMPLE_CELL[1]) * GHOST_DRIFT];
-      const [frames, total] = goneAndBack(DEATH_MS, (t) => ({
+      const { frames, total } = goneAndBack(timingOf(DEATH_MS), (t) => ({
         translate: `${home[0] * t * t}px ${home[1] * t * t}px`,
         r: `${Math.max(0.5, SAMPLE_R * (1 - t * t))}px`,
         opacity: 1 - t,
@@ -4750,29 +4750,41 @@ import {
     }
   };
   // Pointed at, a row plays its sample; moving within the row plays nothing
-  // more, so a hand resting on it isn't a loop. Only the pointer moving
-  // points: rows the drawer scrolls under a resting pointer play nothing,
-  // so scrolling down the legend doesn't set each row off as it passes.
-  let pointedRow = null;
+  // more, so a hand resting on it isn't a loop. The row is known by its
+  // kind, so a legend drawn again under a resting hand is the same row,
+  // and the gaps between a row's mark and its words, which belong to no
+  // row, leave it pointed at. Only the pointer moving points: rows the
+  // drawer scrolls under a resting pointer play nothing, so scrolling the
+  // legend doesn't set each row off as it passes.
+  let samplePointed = null;
   panelBody.addEventListener("pointermove", (e) => {
-    const row = e.target.closest?.("[data-moves]") || null;
-    if (row === pointedRow) return;
-    pointedRow = row;
+    const row = e.target.closest?.("[data-moves]");
+    if (!row && e.target.closest?.("dl.moves")) return;
+    const kind = row?.dataset.moves ?? null;
+    if (kind === samplePointed) return;
+    samplePointed = kind;
     if (row) playMoves(row);
   });
   panelBody.addEventListener("pointerleave", () => {
-    pointedRow = null;
+    samplePointed = null;
   });
-  // Opened by him, the legend plays each sample once in turn. Opened again
-  // by a redraw keeping it open, it plays nothing: the drawer sets `open`
-  // itself then, with no click.
+  // Opened by him, the legend plays each sample once in turn: the legend
+  // standing in the drawer a frame on, should a reading have drawn it
+  // again meanwhile. Opened again by a redraw keeping it open, it plays
+  // nothing: the drawer sets `open` itself then, with no click.
   panelBody.addEventListener("click", (e) => {
     const fold = e.target.closest?.("details.legend > summary")?.parentElement;
     if (!fold || fold.open) return;
     requestAnimationFrame(() => {
-      if (fold.open) fold.querySelectorAll("[data-moves]").forEach((row, i) => playMoves(row, i * SAMPLE_STAGGER_MS));
+      const legend = panelBody.querySelector("details.legend[open]");
+      legend?.querySelectorAll("[data-moves]").forEach((row, i) => playMoves(row, i * SAMPLE_STAGGER_MS));
     });
   });
+  // Asked for less motion, a sample already playing stops where it is
+  // drawn at rest, as the map's flights stop.
+  const stillLegend = () => {
+    for (const row of panelBody.querySelectorAll("[data-moves]")) for (const run of playingIn(row)) run.cancel();
+  };
   // Hidden, or asked to keep still: nothing waits to fly and nothing flies.
   const ground = () => {
     for (const t of waiting) clearTimeout(t);
@@ -4783,7 +4795,11 @@ import {
     flying = 0;
     clearAir();
   };
-  still.addEventListener("change", () => still.matches && ground());
+  still.addEventListener("change", () => {
+    if (!still.matches) return;
+    ground();
+    stillLegend();
+  });
 
   // ---- Reading. ----
 
