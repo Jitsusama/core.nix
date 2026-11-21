@@ -306,7 +306,8 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         }
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
-             lacks main's newest rules for which VM tests run (must-run.txt), so what \
+             lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt), \
+             so what \
              needs said of it can't speak for them; rebase onto origin/main, push, and \
              merge again",
             short(&commit),
@@ -365,7 +366,8 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
     }
     eprintln!(
         "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
-         change on a base holding main's rules for it (must-run.txt), so no one has heard \
+         change on a base holding main's rules for it (must-run.txt, lock-after.txt), so no \
+         one has heard \
          which VM tests run before it merges; run merge-net needs there, run what it names, \
          and merge again",
         short(commit)
@@ -440,7 +442,8 @@ fn run_again(commit: &str) -> String {
 }
 
 /// The newest commit on `main` to change the rules for which VM tests run
-/// before a merge, or nothing when git can't say.
+/// before a merge, the inputs a lock may move alone among them, or nothing
+/// when git can't say.
 fn newest_rules(main: &str) -> String {
     git(&[
         "log",
@@ -449,6 +452,7 @@ fn newest_rules(main: &str) -> String {
         main,
         "--",
         "tools/merge-net/must-run.txt",
+        rules::LOCK_AFTER,
     ])
     .unwrap_or_default()
 }

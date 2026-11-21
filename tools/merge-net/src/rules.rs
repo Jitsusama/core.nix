@@ -18,18 +18,19 @@ pub struct Area {
     pub there: bool,
 }
 
-/// The flake inputs whose lock may move alone with no VM test run first,
-/// as `lock-after.txt` names them, built in as the areas are.
-const LOCK_AFTER: &str = include_str!("../lock-after.txt");
+/// The list of flake inputs whose lock may move alone with no VM test run
+/// first. It is read from a change's merge base, never built in as the
+/// areas are, so a change editing it beside the lock can't let itself
+/// through.
+pub const LOCK_AFTER: &str = "tools/merge-net/lock-after.txt";
 
 /// The lock file, whose area this list lets a change leave untouched.
 pub const LOCK: &str = "flake.lock";
 
-/// The inputs `lock-after.txt` names, one a line, skipping comments and
-/// blank lines.
-pub fn lock_after() -> Vec<String> {
-    LOCK_AFTER
-        .lines()
+/// The inputs a `lock-after.txt` of `text` names, one a line, skipping
+/// comments and blank lines.
+pub fn lock_after(text: &str) -> Vec<String> {
+    text.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(str::to_owned)
@@ -41,13 +42,6 @@ pub fn lock_after() -> Vec<String> {
 /// `nodes`, so a change of its layout alone moves none. `None` when either
 /// doesn't read as a lock.
 pub fn lock_moved(base: &str, head: &str) -> Option<Vec<String>> {
-    let nodes = |text: &str| {
-        serde_json::from_str::<serde_json::Value>(text)
-            .ok()?
-            .get("nodes")?
-            .as_object()
-            .cloned()
-    };
     let (base, head) = (nodes(base)?, nodes(head)?);
     let mut moved: Vec<String> = base
         .keys()
@@ -60,13 +54,61 @@ pub fn lock_moved(base: &str, head: &str) -> Option<Vec<String>> {
     Some(moved)
 }
 
-/// Whether a lock moving from `base` to `head` moves only inputs `after`
-/// names, and at least one, so its VM tests may run after the merge. A
-/// lock that doesn't read, or moves any other node, the root's own list of
-/// inputs among them, runs them first.
+/// A lock's `nodes`, or `None` when it doesn't read as one.
+fn nodes(text: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()?
+        .get("nodes")?
+        .as_object()
+        .cloned()
+}
+
+/// The nodes of the lock of `text` that the root's inputs `after` name, as
+/// the root's own `inputs` resolves each, so a node keyed apart from its
+/// input's name is still found, and an input that follows another names
+/// none. `None` when it doesn't read, or when any node other than the root
+/// and those reads one of them, by its key or by a follow through its
+/// input, since moving it would move what that node builds.
+fn let_through(text: &str, after: &[String]) -> Option<Vec<String>> {
+    let nodes = nodes(text)?;
+    let lock: serde_json::Value = serde_json::from_str(text).ok()?;
+    let root = lock.get("root")?.as_str()?;
+    let inputs = nodes.get(root)?.get("inputs")?.as_object()?;
+    let keys: Vec<String> = after
+        .iter()
+        .filter_map(|name| inputs.get(name)?.as_str().map(str::to_owned))
+        .collect();
+    let reads_one = |input: &serde_json::Value| match input {
+        serde_json::Value::String(key) => keys.contains(key),
+        serde_json::Value::Array(path) => path
+            .first()
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|first| after.iter().any(|name| name == first)),
+        _ => true,
+    };
+    let read = nodes
+        .iter()
+        .filter(|(key, _)| *key != root && !keys.contains(key))
+        .filter_map(|(_, node)| node.get("inputs")?.as_object())
+        .any(|inputs| inputs.values().any(reads_one));
+    (!read).then_some(keys)
+}
+
+/// Whether a lock moving from `base` to `head` moves only the nodes of
+/// inputs `after` names, and at least one, so its VM tests may run after
+/// the merge. A lock that doesn't read, moves any other node, the root's
+/// own list of inputs among them, or has another node reading one of
+/// those, on either side, runs them first.
 pub fn lock_runs_after(base: &str, head: &str, after: &[String]) -> bool {
-    lock_moved(base, head)
-        .is_some_and(|moved| !moved.is_empty() && moved.iter().all(|name| after.contains(name)))
+    let (Some(before), Some(now)) = (let_through(base, after), let_through(head, after)) else {
+        return false;
+    };
+    lock_moved(base, head).is_some_and(|moved| {
+        !moved.is_empty()
+            && moved
+                .iter()
+                .all(|name| before.contains(name) && now.contains(name))
+    })
 }
 
 /// The word among an area's tests that sets `there`.
@@ -416,8 +458,91 @@ mod tests {
     }
 
     #[test]
-    fn the_inputs_let_through_built_in_are_mycelium() {
-        assert_eq!(lock_after(), words("mycelium"));
+    fn the_inputs_let_through_are_mycelium() {
+        assert_eq!(
+            lock_after(include_str!("../lock-after.txt")),
+            words("mycelium")
+        );
+    }
+
+    /// A lock whose root names `inputs`, holding `nodes` as given.
+    fn shaped(inputs: serde_json::Value, nodes: &[(&str, serde_json::Value)]) -> String {
+        let mut all = serde_json::Map::new();
+        all.insert("root".to_owned(), serde_json::json!({ "inputs": inputs }));
+        for (key, node) in nodes {
+            all.insert((*key).to_owned(), node.clone());
+        }
+        serde_json::json!({ "nodes": all, "root": "root", "version": 7 }).to_string()
+    }
+
+    fn at(rev: &str) -> serde_json::Value {
+        serde_json::json!({ "locked": { "rev": rev } })
+    }
+
+    #[test]
+    fn an_input_is_found_by_the_node_its_root_names() {
+        let after = words("mycelium");
+        let inputs = serde_json::json!({ "mycelium": "mycelium_2", "nixpkgs": "nixpkgs" });
+        let base = shaped(
+            inputs.clone(),
+            &[("mycelium_2", at("a")), ("nixpkgs", at("n"))],
+        );
+        let head = shaped(inputs, &[("mycelium_2", at("b")), ("nixpkgs", at("n"))]);
+        assert!(
+            lock_runs_after(&base, &head, &after),
+            "a node keyed apart from its input's name should still be let through"
+        );
+        let keyed = serde_json::json!({ "mycelium": "nixpkgs", "nixpkgs": "mycelium" });
+        let base = shaped(
+            keyed.clone(),
+            &[("mycelium", at("a")), ("nixpkgs", at("n"))],
+        );
+        let head = shaped(keyed, &[("mycelium", at("b")), ("nixpkgs", at("n"))]);
+        assert!(
+            !lock_runs_after(&base, &head, &after),
+            "a node keyed mycelium that the root reads as another input should run first"
+        );
+    }
+
+    #[test]
+    fn a_node_reading_a_let_through_input_runs_its_vm_tests_first() {
+        let after = words("mycelium");
+        let inputs = serde_json::json!({ "mycelium": "mycelium", "tool": "tool" });
+        let tool = |reads: serde_json::Value| serde_json::json!({ "locked": { "rev": "t" }, "inputs": { "m": reads } });
+        for (reads, how) in [
+            (serde_json::json!("mycelium"), "by its key"),
+            (serde_json::json!(["mycelium", "nixpkgs"]), "by a follow"),
+        ] {
+            let base = shaped(
+                inputs.clone(),
+                &[("mycelium", at("a")), ("tool", tool(reads.clone()))],
+            );
+            let head = shaped(
+                inputs.clone(),
+                &[("mycelium", at("b")), ("tool", tool(reads))],
+            );
+            assert!(
+                !lock_runs_after(&base, &head, &after),
+                "another node reading mycelium {how} should run its VM tests first"
+            );
+        }
+    }
+
+    #[test]
+    fn a_let_through_node_following_another_input_is_let_through() {
+        // mycelium's own nixpkgs follows the root's, as core's lock has it.
+        let after = words("mycelium");
+        let inputs = serde_json::json!({ "mycelium": "mycelium", "nixpkgs": "nixpkgs" });
+        let mycelium = |rev: &str| serde_json::json!({ "locked": { "rev": rev }, "inputs": { "nixpkgs": ["nixpkgs"] } });
+        let base = shaped(
+            inputs.clone(),
+            &[("mycelium", mycelium("a")), ("nixpkgs", at("n"))],
+        );
+        let head = shaped(inputs, &[("mycelium", mycelium("b")), ("nixpkgs", at("n"))]);
+        assert!(
+            lock_runs_after(&base, &head, &after),
+            "mycelium following the root's nixpkgs should still be let through"
+        );
     }
 
     #[test]

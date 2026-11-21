@@ -193,7 +193,9 @@ its guide, the greeter or lock, `flake.lock` or nix-offload
 derivation moved from main, since the rest would give main's result. A
 `flake.lock` change that moves only inputs `tools/merge-net/lock-after.txt`
 names, mycelium alone today, leaves the lock's area untouched, since no
-unit before sign-in waits on them; its VM tests run after on the net. A
+unit before sign-in waits on them; its VM tests run after on the net. The
+list is read from the change's merge base, so a change can't widen it for
+itself. A
 change to nix-offload, which moves none, sends one VM test's subtests
 through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main

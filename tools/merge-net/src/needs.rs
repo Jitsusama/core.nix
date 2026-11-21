@@ -150,7 +150,11 @@ fn lock_left(files: Vec<String>, merge_base: &str, root: &str) -> Vec<String> {
     }
     let base = git(&["show", &format!("{merge_base}:{}", rules::LOCK)]).ok();
     let head = fs::read_to_string(Path::new(root).join(rules::LOCK)).ok();
-    let after = rules::lock_after();
+    // From the merge base, so the change can't widen the list it is
+    // judged by; a base without the list lets nothing through.
+    let after = git(&["show", &format!("{merge_base}:{}", rules::LOCK_AFTER)])
+        .map(|text| rules::lock_after(&text))
+        .unwrap_or_default();
     let (Some(base), Some(head)) = (base, head) else {
         return files;
     };
