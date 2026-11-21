@@ -20,12 +20,17 @@ the cat then running the real one so a copier that leans on it still holds its c
 7. A standard input past the copier's cap is refused for being past it, rather than held in
    part, so a refusal for any other reason, such as memory it couldn't lock, fails here.
 8. A secret long enough to outgrow the copier's first page pastes whole, making nothing under
-   TMPDIR, running nothing and staying locked in memory once grown.
+   TMPDIR, running nothing and staying locked in memory once grown. It's copied with no type
+   given, where stock wl-copy asks xdg-mime for one, so case 3's xdg-mime has a copy to run on.
 9. It says it's ready before it's given the secret, and by then can't be read through /proc.
 10. It says it holds the copy once it's given it.
 11. A copy it refuses is never said to be held.
+12. The copy is offered marked secret, as x-kde-passwordManagerHint, the mark niri, the
+    clipboard door and the clipboard's history each keep it from others by.
 
-Every case is checked and reported before it fails.
+Every case is checked and reported before it fails. Cases 7 and 8 lock past a MiB at once, as
+the copier grows its buffer, so the limit on locked memory is raised to its hard limit first,
+and one too low for them fails naming it rather than as a refusal or a paste that never came.
 
 usage: copier-keeps-a-secret-in-memory.py <copier> <shell for the stand-ins>
 """
@@ -34,6 +39,7 @@ import contextlib
 import ctypes
 import errno
 import os
+import resource
 import secrets
 import select
 import shutil
@@ -60,12 +66,16 @@ LONG = 64 * 1024
 REFUSED = "wl-copy: refused a sensitive copy: "
 UNREADABLE = REFUSED + os.strerror(errno.EISDIR)
 PAST_THE_CAP = REFUSED + "it is past 1 MiB"
+# The mark of a secret copy, which every wall keeping one from others looks for.
+HINT = "x-kde-passwordManagerHint"
+# The locked memory cases 7 and 8 need, in bytes: a MiB and its page, and the half before it.
+LOCKS = 2 * 1024 * 1024
 
 LIBC = ctypes.CDLL(None, use_errno=True)
 
 
 class Cases:
-    """The eleven cases, run against one copier, with how each came out."""
+    """The twelve cases, run against one copier, with how each came out."""
 
     def __init__(self, copier: str, shell: str, folder: Path) -> None:
         """Run them against `copier`, its stand-ins run by `shell` and its TMPDIR in `folder`."""
@@ -98,10 +108,14 @@ class Cases:
         """Note how a case came out, its failure or None, to be told once every case has run."""
         self.outcomes.append((case, failed))
 
-    def copier_started(self, stdin: int) -> subprocess.Popen[bytes]:
-        """Start the copier as the daemon does, reading from `stdin`, keeping what it says."""
+    def copier_started(self, stdin: int, *, typed: bool = True) -> subprocess.Popen[bytes]:
+        """Start the copier as the daemon does, reading from `stdin`, keeping what it says.
+
+        Untyped, it's given no type, which the daemon always gives.
+        """
+        typing = ["--type", TEXT] if typed else []
         return subprocess.Popen(
-            [self.copier, "--sensitive", "--say-held", "--foreground", "--type", TEXT],
+            [self.copier, "--sensitive", "--say-held", "--foreground", *typing],
             stdin=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -131,7 +145,7 @@ class Cases:
         return f"ran {ran} from PATH" if ran else None
 
     def copied(self) -> None:
-        """Run cases 1 to 5, 9 and 10: a secret copied and pasted, and the copier holding it."""
+        """Run cases 1 to 5, 9, 10 and 12: a secret copied and pasted, and the copier holding it."""
         held = f"secret-{secrets.token_hex(8)}"
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
@@ -143,6 +157,7 @@ class Cases:
         try:
             pasted = pasted_once_held(held)
             self.check("the secret pastes whole", None if pasted else "it never pasted")
+            self.check("it's offered marked secret", ended(copier) or unmarked())
             said = said_next(copier)
             unheld = None if said == "held" else f"it said {said!r} rather than held"
             self.check("it says it holds the copy", unheld)
@@ -158,7 +173,7 @@ class Cases:
         """Run case 8: a secret past the copier's first page, pasted whole and held as short."""
         held = secrets.token_hex(LONG // 2)
         reading, writing = os.pipe()
-        copier = self.copier_started(reading)
+        copier = self.copier_started(reading, typed=False)
         os.close(reading)
         given(writing, held)
         try:
@@ -207,6 +222,22 @@ def pasted_once_held(held: str) -> bool:
             return True
         time.sleep(0.2)
     return False
+
+
+def unmarked() -> str | None:
+    """Say what Joel's display is offered in place of a copy marked secret, if it isn't marked."""
+    listed = subprocess.run(["wl-paste", "--list-types"], capture_output=True, check=False)
+    offered = listed.stdout.decode(errors="replace").split()
+    return None if HINT in offered else f"it's offered as {offered}, not marked {HINT}"
+
+
+def locks_enough() -> str | None:
+    """Raise the limit on locked memory to its hard limit, saying so if that's too low."""
+    _, hard = resource.getrlimit(resource.RLIMIT_MEMLOCK)
+    resource.setrlimit(resource.RLIMIT_MEMLOCK, (hard, hard))
+    if hard != resource.RLIM_INFINITY and hard < LOCKS:
+        return f"only {hard} bytes may be locked, under the {LOCKS} cases 7 and 8 need"
+    return None
 
 
 def given(writing: int, held: str) -> None:
@@ -280,6 +311,7 @@ def main() -> None:
     """Run every case, and fail naming each that didn't hold."""
     with tempfile.TemporaryDirectory() as folder:
         cases = Cases(sys.argv[1], sys.argv[2], Path(folder))
+        cases.check("enough memory may be locked", locks_enough())
         cases.copied()
         cases.copied_long()
         cases.refused()

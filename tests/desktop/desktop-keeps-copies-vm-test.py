@@ -579,22 +579,24 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
         desktop.in_session("niri msg windows | grep -q pasted:"), timeout=timedelta(seconds=30)
     )
 
-    # Never kept: Super+V leads with the copy before it and lists no row of it, which is where
-    # a kept text copy would show, since the history keeps text in memory alone; and no
-    # picture it writes to its folder holds it either.
-    with desktop.told("heard copy before the password"):
-        desktop.as_account("echo -n 'before the password' | wl-copy > /dev/null 2>&1")
-    copied = copy_a_password(desktop)
+    # Never kept: Super+V lists no row of it, which is where a kept text copy would show, since
+    # the history keeps text in memory alone; and no picture it writes to its folder holds it
+    # either. A secret's copy says nothing as it's heard, so a copy after it is waited on: the
+    # history hears copies in turn, so by then it has heard the password's too.
+    copy_a_password(desktop)
+    with desktop.told("heard copy after the password"):
+        desktop.as_account("echo -n 'after the password' | wl-copy > /dev/null 2>&1")
     machine.send_key("meta_l-v")
     desktop.launcher_ready()
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("reads") == "before the password"
+        lambda shown: (shown["selected"] or {}).get("reads") == "after the password"
     )
     assert STAND_IN not in json.dumps(desktop.showing()), desktop.showing()["rows"]
     desktop.close_launcher()
     machine.fail(desktop.in_session(f"grep -rqF {STAND_IN} $XDG_RUNTIME_DIR/clipboard-history"))
 
     # Gone once its time is up, and held till then.
+    copied = copy_a_password(desktop)
     def cleared(_: bool) -> bool:
         """Say whether the clipboard no longer holds the password."""
         return desktop.as_account("wl-paste --no-newline 2>/dev/null || true") != STAND_IN
