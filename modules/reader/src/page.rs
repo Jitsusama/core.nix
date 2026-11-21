@@ -3,6 +3,10 @@
 //! spread into, on one pitch and one type scale. The window draws it
 //! centred, so its margins are what the window leaves, and a window too
 //! narrow for that has the page set again to fit it.
+//!
+//! Long because the Typst template the page is set by is held here whole,
+//! half the file, as one program whose parts lean on each other's
+//! measures, and the type check (`type-is-set-by-level`) reads it here.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -144,9 +148,30 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // gives no strong weight keep Typst's.
 #set strong(delta: level.words.strong - level.words.text.weight) if level.words.strong != none
 #show strong: set text(fill: ink.strong)
+// Where the capitals of the words around stand: a line's top edge, which
+// every run on it keeps, so a line steps one pitch whatever face its runs
+// are in. Read in a context outside what it's for, since inside a show
+// rule on raw the face is raw's own.
+#let line-top() = measure([H]).height
 // Code at its level, in the colour of what's around it and with no box.
 // Typst's raw takes 0.8 em of its own, so the size is said whole.
 #show raw: it => context text(..level.code.text, fill: text.fill, it)
+// Code in a line stands at the line's top edge rather than the mono's
+// lower capitals, so a line that is all code steps as far as one of
+// words.
+#let code(s) = context text(top-edge: line-top(), raw(s))
+// An emoji in the colour face, whichever face the words around it are
+// set in, as the desktop draws them: a pictograph drawn as one, with
+// its skin tone, its joined people and its keycap, or a flag's pair of
+// letters. A pictograph that reads as text unless asked, an arrow or a
+// trademark, stays in the words' face. Its top edge is the line's, so
+// its taller box never pushes its line down.
+#let emoji-face = "Noto Color Emoji"
+#let dressed = "\\p{Emoji_Modifier}?\\x{FE0F}?[\\x{E0020}-\\x{E007F}]*"
+#let pictograph = "(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic}\\x{FE0F})" + dressed
+#let joined = "(?:\\x{200D}\\p{Extended_Pictographic}\\x{FE0F}?" + dressed + ")*"
+#let emoji = regex("\\p{Regional_Indicator}{2}|[#*0-9]\\x{FE0F}?\\x{20E3}|" + pictograph + joined)
+#show emoji: it => context text(font: emoji-face, top-edge: line-top(), bottom-edge: "baseline", it)
 // Headings, set by lines: more room above a heading than below it, so it
 // belongs to what follows. A section sits a line over its first block, as
 // a group's heading sits a pitch above its first thing, nearer it than one
@@ -205,6 +230,66 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // words, and the last is wider than one paragraph is from the next, so
 // the head reads as a group of its own.
 #let lede(body) = block(above: 0pt, below: 2 * pitch - cap, par(text(..level.voice.text, top-edge: cap, body)))
+// The page's first paragraph of words opens on a drop cap, two lines
+// tall, when it sets three lines or more at the measure, as a chapter
+// opens; a shorter one, or one opening on anything but a capital, stands
+// as any paragraph. The letter is the title's cut in the title's ink, its
+// capitals reaching from the first line's to the second's baseline, with
+// the first two lines beside it. Typst flows no words round a shape, so
+// the paragraph is set in two: as many of its words as fill two lines
+// beside the letter, then the rest at the whole measure, a line under.
+// Its size is read from the title's own capitals, which an optical size
+// or another face sets apart from the words'.
+#let drop-size() = (pitch + cap) / (measure(text(..level.title.text, top-edge: "cap-height", bottom-edge: "baseline", "H")).height / title-size)
+// A paragraph's pieces: each word and each space of its words alone, and
+// whatever else it holds whole, so it can be cut between two words.
+#let pieces-of(it) = if it.func() == [].func() {
+  it.children.map(pieces-of).flatten()
+} else if it.func() == text and it.fields().keys() == ("text",) {
+  it.text.split(" ").map(word => (text(word),)).intersperse(([ ],)).flatten().filter(piece => piece != text(""))
+} else { (it,) }
+#let opening(body) = layout(size => {
+  let plain = par(body)
+  if measure(block(width: size.width, plain)).height < 2 * pitch + cap - 0.01pt { return plain }
+  let pieces = pieces-of(body)
+  let first = pieces.position(piece => piece.func() != metadata)
+  let word = if first == none { none } else { pieces.at(first) }
+  if word == none or word.func() != text or word.text.match(regex("^\\p{Lu}")) == none { return plain }
+  let letter = word.text.clusters().first()
+  let after = word.text.slice(letter.len())
+  let size-of = drop-size()
+  let big = text(..level.title.text, size: size-of, top-edge: "cap-height", bottom-edge: "baseline", letter)
+  // A letter that is a word of its own stands a space from the next. The
+  // letter's air is known to the reader's lines too (text.rs), which read
+  // a word of one letter apart from the next by it.
+  let alone = after == ""
+  let indent = measure(big).width + 0.08 * size-of + if alone { 0.25em } else { 0pt }
+  let pieces = pieces.slice(0, first) + if alone { () } else { (text(after),) } + pieces.slice(first + 1)
+  let pieces = if alone and pieces.at(first, default: none) == [ ] { pieces.slice(0, first) + pieces.slice(first + 1) } else { pieces }
+  let beside(k) = measure(block(width: size.width - indent, par(pieces.slice(0, k).join()))).height
+  let fits(k) = beside(k) < pitch + cap + 0.01pt
+  // Two lines hold far fewer pieces than this, so a long opening is
+  // searched over its start alone, not laid out whole at every step.
+  let (low, high) = (first, calc.min(pieces.len(), first + 400))
+  while low < high {
+    let middle = calc.ceil((low + high) / 2)
+    if fits(middle) { low = middle } else { high = middle - 1 }
+  }
+  // Cut at a space between two words, never inside a run of strong or
+  // code; past the last word, nothing is left for the whole measure.
+  let cut = low
+  while cut > first and pieces.at(cut, default: [ ]) != [ ] { cut -= 1 }
+  // Beside the letter stand two lines, or the rest would run into it: a
+  // word too long to share the second line leaves the letter alone.
+  if cut <= first or beside(cut) < pitch { return plain }
+  let rest = pieces.slice(calc.min(cut + 1, pieces.len())).join()
+  block({
+    set par(spacing: pitch - cap)
+    place(top + left, big)
+    pad(left: indent, par(pieces.slice(0, cut).join()))
+    if rest != none { par(rest) }
+  })
+})
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
@@ -233,8 +318,19 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   })
 }
 #let rule() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, fleuron))
-// The page ends with a small accent lozenge after its last word.
-#let the-end = box(polygon(fill: ink.accent, (0pt, 0.21em), (0.15em, 0pt), (0.3em, 0.21em), (0.15em, 0.42em)))
+// The page ends with its mark, centred under its last block as a break
+// stands between two: the accent lozenge, as tall as the capitals, between
+// two hairlines in the rule's ink that thin away from it. It reads as the
+// end at a glance and never as a break, which is stars.
+#let the-end() = block(above: 2 * pitch - cap, below: 2 * pitch - cap, width: 100%, align(center, {
+  let (diamond, hair, air, thick) = (0.72 * cap, 2.5em, 0.5em, 0.9pt)
+  let wide = 2 * (hair + air) + diamond
+  box(width: wide, height: cap, {
+    place(left + horizon, polygon(fill: ink.rule, (0pt, 0pt), (hair, -thick / 2), (hair, thick / 2)))
+    place(center + horizon, polygon(fill: ink.accent, (0pt, cap / 2), (diamond / 2, 0pt), (diamond, cap / 2), (diamond / 2, cap)))
+    place(right + horizon, polygon(fill: ink.rule, (0pt, -thick / 2), (hair, 0pt), (0pt, thick / 2)))
+  })
+}))
 // A key, as code is set, framed: the frame stands outside the line's room,
 // over the capitals and under the descenders, so a line with one still
 // steps one line.
@@ -316,11 +412,13 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 #let details(body) = block(body)
 #let rule-ink = ink.rule
 #let sheet-gap = 18pt
-// A table's first baseline stands two lines under the one before it and
-// the next two lines under its last, past each row's half-line inset, so
-// the page's grid runs through it.
+// A table's first baseline stands two lines under the one before it,
+// past its first row's half-line inset, so the page's grid runs through
+// it. It ends on its last baseline, as a paragraph does, the last row's
+// inset taken back, so what follows it, a heading as much as words,
+// stands where its own room puts it from a baseline.
 #let sheet-air = 2 * pitch - (1.5 * pitch + cap) / 2
-#let sheet(numeric: (), words: (), head: none, rows: ()) = block(above: sheet-air, below: sheet-air, layout(size => {
+#let sheet(numeric: (), words: (), head: none, rows: ()) = block(above: sheet-air, below: 2 * pitch - cap, layout(size => {
   let n = words.len()
   let all = if head == none { rows } else { (head,) + rows }
   let cell(row, i) = row.at(i, default: [])
@@ -400,6 +498,7 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
     let spread-out = fit(size.width + 2 * spread)
     if spread-out != none { pad(left: -spread, right: -spread, grid-of(spread-out)) } else { records }
   }
+  v(-half)
 }))
 // A code block: the listing's mono on a 15 pt line, its words on the
 // column the paragraphs start at, as a quote's are. Its sunken ground

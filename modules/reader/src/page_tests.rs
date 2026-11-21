@@ -246,16 +246,18 @@ fn the_words_land_on_the_pitch_a_paragraph_one_and_a_half() {
 }
 
 #[test]
-fn a_page_ends_a_line_under_its_last_baseline() {
+fn a_page_ends_three_lines_under_its_last_words() {
     let page = page_of("foot", &format!("{OPENING}Omega.\n"));
     let last = crate::text::runs(&page.frame)
         .iter()
         .map(|run| run.baseline_pt)
         .fold(f64::NEG_INFINITY, f64::max);
+    // The end's mark stands two lines under the last words, as a break
+    // does, and the page ends a line under it.
     let foot = page.frame.height().to_pt() - last;
     assert!(
-        (foot - super::pitch_pt()).abs() < 0.01,
-        "the page ends {foot} pt under its last baseline, not a line of {} pt",
+        (foot - 3.0 * super::pitch_pt()).abs() < 0.01,
+        "the page ends {foot} pt under its last words, not three lines of {} pt",
         super::pitch_pt()
     );
 }
@@ -306,6 +308,210 @@ fn a_line_holding_a_key_steps_one_line_as_any_other() {
     assert!(
         steps.iter().all(|s| *s == 100 || *s == 150),
         "a key's frame grew its line: {steps:?}"
+    );
+}
+
+#[test]
+fn a_line_all_of_code_steps_one_line_as_any_other() {
+    // The mono's capitals stand at their own height, not the words', so a
+    // line wrapped inside a long piece of code, with no words on it, once
+    // stepped its own distance and put every line after it off the grid.
+    let command = "nix-offload there --here-when-idle . checks.x86_64-linux.reader-sets-its-pages";
+    let markdown = format!(
+        "{OPENING}Run `{command} {command} {command}` to check it, in a paragraph that ends at Omega.\n"
+    );
+    let (pitch, lines) = baselines("code-lines", &markdown, "opening", "Omega");
+    let steps = steps(pitch, &lines);
+    // The opening's two lines or more, and three for the code, of which
+    // its three commands fill one whole.
+    assert!(steps.len() >= 4, "too few lines: {steps:?}");
+    let set = crate::text::lines(crate::text::runs(&page_of("code-lines", &markdown).frame));
+    assert!(
+        set.iter().any(|line| !line.text.trim().is_empty()
+            && format!("{command} {command} {command}").contains(line.text.trim())),
+        "no line was all code: {:?}",
+        set.iter().map(|line| &line.text).collect::<Vec<_>>()
+    );
+    assert!(
+        steps.iter().all(|s| *s == 100 || *s == 150),
+        "a line of code stepped its own distance: {steps:?}"
+    );
+}
+
+/// Each piece of text the page draws, with the family of the face it's
+/// drawn in, stepping into every group it's set in.
+fn faces_of(frame: &typst::layout::Frame, out: &mut Vec<(String, String)>) {
+    for (_, item) in frame.items() {
+        match item {
+            typst::layout::FrameItem::Group(group) => faces_of(&group.frame, out),
+            typst::layout::FrameItem::Text(text) => {
+                out.push((text.text.to_string(), text.font.info().family.clone()));
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn an_emoji_is_drawn_in_the_colour_face_and_keeps_its_line() {
+    let markdown = format!(
+        "{OPENING}A party 🎉, a thumb 👍🏽, a flag 🇨🇦, a coder 👩\u{200d}💻 and a warning ⚠\u{fe0f} sit in a line, an arrow ↔ and a mark ™ stay words, in a paragraph long enough to wrap, before it ends at Omega.\n"
+    );
+    let (pitch, lines) = baselines("emoji", &markdown, "opening", "Omega");
+    let steps = steps(pitch, &lines);
+    assert!(steps.len() >= 3, "too few lines: {steps:?}");
+    assert!(
+        steps.iter().all(|s| *s == 100 || *s == 150),
+        "an emoji's taller face grew its line: {steps:?}"
+    );
+    let mut faces = Vec::new();
+    faces_of(&page_of("emoji-faces", &markdown).frame, &mut faces);
+    let face = |wanted: &str| {
+        faces
+            .iter()
+            .find(|(text, _)| text.contains(wanted))
+            .map(|(_, family)| family.clone())
+    };
+    for emoji in ["🎉", "👍🏽", "🇨🇦", "👩\u{200d}💻", "⚠\u{fe0f}"] {
+        assert_eq!(
+            face(emoji).as_deref(),
+            Some("Noto Color Emoji"),
+            "{emoji} is drawn in another face, or the tests have no colour face: they \
+             read it from READER_FONTS, as package.nix's preCheck sets it: {faces:?}"
+        );
+    }
+    // The colour face draws both as pictures too, so neither would stay a
+    // word were the emoji's rule to take them.
+    for words in ["↔", "™"] {
+        assert_ne!(
+            face(words).as_deref(),
+            Some("Noto Color Emoji"),
+            "{words} is drawn as a picture: {faces:?}"
+        );
+    }
+}
+
+#[test]
+fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
+    let long = "The opening paragraph of this page runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, so that it opens on a letter dropped two lines down beside its first words, which then run on at the whole measure under it to the end, at Omega.\n";
+    let page = page_of("drop", long);
+    let runs = crate::text::runs(&page.frame);
+    let words = runs
+        .iter()
+        .filter(|run| run.chars.len() > 2)
+        .map(|run| run.size_pt)
+        .fold(0.0, f64::max);
+    let (letter, letter_baseline, letter_cap) = runs
+        .iter()
+        .find(|run| run.size_pt > 2.0 * words)
+        .map(|run| {
+            (
+                run.chars.iter().map(|c| c.0).collect::<String>(),
+                run.baseline_pt,
+                run.cap_pt,
+            )
+        })
+        .expect("no letter was dropped");
+    assert_eq!(letter, "T");
+    // Past the eyebrow, the opening's lines, read as they were written.
+    let lines: Vec<_> = crate::text::lines(runs)
+        .into_iter()
+        .skip_while(|line| !line.text.contains("opening"))
+        .collect();
+    assert!(
+        lines[0].text.starts_with("The opening paragraph"),
+        "the first line reads {:?}",
+        lines[0].text
+    );
+    // Every word once, in its place, across the cut between the lines
+    // beside the letter and the rest.
+    let read = lines
+        .iter()
+        .map(|line| line.text.trim_end())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("\u{ad} ", "");
+    assert_eq!(read, long.trim_end(), "the opening reads otherwise");
+    // Two lines stand beside the letter, and the third is back at its
+    // edge, under it.
+    let edge = lines[0].x_pt;
+    assert!(
+        lines[1].x_pt > edge + 10.0 && (lines[2].x_pt - edge).abs() < 0.01,
+        "the lines start at {:?}",
+        lines.iter().map(|line| line.x_pt).collect::<Vec<_>>()
+    );
+    // The letter's capitals stand from the first line's to the second's
+    // baseline, on which it sits.
+    let pitch = super::pitch_pt();
+    assert!(
+        (letter_baseline - lines[1].baseline_pt).abs() < 0.01,
+        "the letter sits on {letter_baseline} pt, not the second line's {} pt",
+        lines[1].baseline_pt
+    );
+    assert!(
+        (letter_cap - (pitch + lines[0].cap_pt)).abs() < 1.0,
+        "its capitals stand {letter_cap} pt, not two lines' {} pt",
+        pitch + lines[0].cap_pt
+    );
+    let steps = steps(
+        pitch,
+        &lines
+            .iter()
+            .map(|line| line.baseline_pt)
+            .collect::<Vec<_>>(),
+    );
+    assert!(steps.len() >= 3, "too few lines: {steps:?}");
+    assert!(
+        steps.iter().all(|s| *s == 100),
+        "the opening's lines step one apart: {steps:?}"
+    );
+    // One of two lines keeps its own small letter.
+    let short = page_of("no-drop", "The opening is short.\n");
+    let sizes: Vec<f64> = crate::text::runs(&short.frame)
+        .iter()
+        .map(|run| run.size_pt)
+        .collect();
+    assert!(
+        sizes.iter().all(|size| *size < 1.5 * words),
+        "a short opening dropped a letter: {sizes:?}"
+    );
+}
+
+/// The largest run the page sets past its eyebrow and its words, with
+/// what it spells: a dropped letter, when there is one.
+fn dropped(name: &str, markdown: &str) -> Option<String> {
+    let runs = crate::text::runs(&page_of(name, markdown).frame);
+    let words = runs
+        .iter()
+        .filter(|run| run.chars.len() > 2)
+        .map(|run| run.size_pt)
+        .fold(0.0, f64::max);
+    runs.iter()
+        .find(|run| run.size_pt > 2.0 * words)
+        .map(|run| run.chars.iter().map(|c| c.0).collect())
+}
+
+#[test]
+fn an_opening_drops_only_a_capital_and_a_letter_alone_reads_as_a_word() {
+    // As long as the opening that drops its letter, so each would.
+    let tail = "opening paragraph of this page runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, so that it opens on a letter dropped two lines down beside its first words, which then run on at the whole measure under it to the end, at Omega.\n";
+    for (name, start) in [("small", "the"), ("strong", "**The**"), ("code", "`The`")] {
+        assert_eq!(
+            dropped(name, &format!("{start} {tail}")),
+            None,
+            "an opening on {start:?} dropped a letter"
+        );
+    }
+    let alone = format!("A long {tail}");
+    assert_eq!(dropped("alone", &alone).as_deref(), Some("A"));
+    let lines: Vec<_> = crate::text::lines(crate::text::runs(&page_of("alone", &alone).frame))
+        .into_iter()
+        .skip_while(|line| !line.text.contains("long opening"))
+        .collect();
+    assert!(
+        lines[0].text.starts_with("A long opening"),
+        "the first line reads {:?}",
+        lines[0].text
     );
 }
 
@@ -407,6 +613,23 @@ fn a_tables_lines_land_on_the_pitch() {
     assert!(
         steps.iter().all(|s| *s == 100 || *s == 150),
         "a line in a table steps one pitch or, past a hairline, one and a half: {steps:?}"
+    );
+}
+
+#[test]
+fn what_follows_a_table_stands_where_it_would_after_words() {
+    let markdown = format!(
+        "{OPENING}| Alpha | Beta |\n|---|---|\n| one | two |\n\n## Section\n\nWords.\n\n| Gamma | Delta |\n|---|---|\n| three | four |\n\nOmega.\n"
+    );
+    let (pitch, lines) = baselines("after-table", &markdown, "opening", "Omega");
+    let steps = steps(pitch, &lines);
+    // A table two lines from the words either side, its rows one and a
+    // half apart past their hairline, and a section three lines under it
+    // as under words.
+    assert_eq!(
+        steps[steps.len() - 7..],
+        [200, 150, 300, 100, 200, 150, 200],
+        "a table two lines off, a section three under it: {steps:?}"
     );
 }
 

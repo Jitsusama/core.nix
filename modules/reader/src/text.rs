@@ -32,6 +32,11 @@ pub struct Line {
     /// For each character of `text`, by its place among them, where it
     /// starts and ends across the page.
     pub spans: Vec<(f64, f64)>,
+    /// Where else the line after it may start and still be its
+    /// paragraph's: beside a drop cap, the words' edge for the line the
+    /// letter is read on, and the paragraph's for the line under it, which
+    /// the letter stands down to.
+    pub goes_on_x_pt: Option<f64>,
 }
 
 /// A line for a test that reads only its words and its baseline: at the
@@ -46,7 +51,21 @@ pub fn test_line(baseline_pt: f64, text: &str) -> Line {
         cap_pt: 7.0,
         text: text.into(),
         spans: text.chars().map(|_| (0.0, 1.0)).collect(),
+        goes_on_x_pt: None,
     }
+}
+
+/// A drop cap read on its word's first line: its size, where it stands
+/// across the page, and the baseline it sits on, the line under.
+#[derive(Clone, Copy)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "each is in points, as everything on the page is"
+)]
+struct Dropped {
+    size_pt: f64,
+    x_pt: f64,
+    sat_pt: f64,
 }
 
 /// A match's part on one line.
@@ -87,6 +106,15 @@ const SAME_EDGE_PT: f64 = 1.0;
 
 /// The soft hyphen Typst sets at a break hyphenation made.
 const BREAK: char = '\u{ad}';
+
+/// A letter this many times the size of the words on its baseline is a
+/// drop cap, dropped across the lines beside it.
+const DROPPED: f64 = 2.0;
+
+/// The air the page sets after a drop cap, in ems of its size, as
+/// page.rs's opening sets it; a word after it a space further on starts a
+/// word of its own.
+const DROP_AIR_EM: f64 = 0.08;
 
 /// Takes every run of text out of a page's frame, with where it sits.
 pub fn runs(frame: &Frame) -> Vec<Run> {
@@ -138,15 +166,20 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Run>) {
 /// between two runs a gap apart that neither one spells.
 pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
     runs.retain(|run| !run.chars.is_empty());
-    runs.sort_by(|a, b| {
-        a.baseline_pt
-            .total_cmp(&b.baseline_pt)
-            .then(a.x_pt.total_cmp(&b.x_pt))
-    });
-    let mut rows: Vec<Vec<Run>> = Vec::new();
+    let by_place = |a: &(Run, Option<Dropped>), b: &(Run, Option<Dropped>)| {
+        a.0.baseline_pt
+            .total_cmp(&b.0.baseline_pt)
+            .then(a.0.x_pt.total_cmp(&b.0.x_pt))
+    };
+    let mut runs: Vec<(Run, Option<Dropped>)> = runs.into_iter().map(|run| (run, None)).collect();
+    runs.sort_by(by_place);
+    read_drops_first(&mut runs);
+    runs.sort_by(by_place);
+    let drops: Vec<Dropped> = runs.iter().filter_map(|(_, dropped)| *dropped).collect();
+    let mut rows: Vec<Vec<(Run, Option<Dropped>)>> = Vec::new();
     for run in runs {
         match rows.last_mut() {
-            Some(row) if (run.baseline_pt - row[0].baseline_pt).abs() < SAME_LINE_PT => {
+            Some(row) if (run.0.baseline_pt - row[0].0.baseline_pt).abs() < SAME_LINE_PT => {
                 row.push(run);
             }
             _ => rows.push(vec![run]),
@@ -154,13 +187,15 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
     }
     let mut lines = Vec::new();
     for mut row in rows {
-        row.sort_by(|a, b| a.x_pt.total_cmp(&b.x_pt));
+        row.sort_by(|a, b| a.0.x_pt.total_cmp(&b.0.x_pt));
         let mut line: Option<Line> = None;
-        for run in row {
+        // The air a drop cap just joined stands off its line's words.
+        let mut air_pt = 0.0;
+        for (run, dropped) in row {
             let starts_at = run.chars[0].1;
             if let Some(open) = line.as_mut() {
                 let end = open.spans.last().map_or(open.x_pt, |span| span.1);
-                let gap = starts_at - end;
+                let gap = starts_at - end - air_pt;
                 if gap > run.size_pt * APART_EM {
                     lines.extend(line.take());
                 } else if gap > run.size_pt * SPACED_EM
@@ -171,6 +206,8 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
                     open.spans.push((end, starts_at));
                 }
             }
+            let after_drop = air_pt > 0.0;
+            air_pt = dropped.map_or(0.0, |drop| drop.size_pt * DROP_AIR_EM);
             let open = line.get_or_insert_with(|| Line {
                 x_pt: starts_at,
                 tail_x_pt: starts_at,
@@ -179,9 +216,17 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
                 cap_pt: 0.0,
                 text: String::new(),
                 spans: Vec::new(),
+                goes_on_x_pt: None,
             });
-            open.size_pt = open.size_pt.max(run.size_pt);
-            open.cap_pt = open.cap_pt.max(run.cap_pt);
+            if after_drop {
+                open.goes_on_x_pt = Some(starts_at);
+            }
+            // A drop cap stands down the lines beside it, so the line it's
+            // read on keeps its words' height.
+            if dropped.is_none() {
+                open.size_pt = open.size_pt.max(run.size_pt);
+                open.cap_pt = open.cap_pt.max(run.cap_pt);
+            }
             open.tail_x_pt = starts_at;
             for (c, from, to) in run.chars {
                 open.text.push(c);
@@ -189,6 +234,17 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
             }
         }
         lines.extend(line);
+    }
+    // The line a drop cap sits on, under its word's first, goes on to the
+    // paragraph's edge, the letter's, past which the letter stands.
+    for drop in drops {
+        for line in &mut lines {
+            if (line.baseline_pt - drop.sat_pt).abs() < SAME_LINE_PT
+                && line.x_pt > drop.x_pt + SAME_EDGE_PT
+            {
+                line.goes_on_x_pt = Some(drop.x_pt);
+            }
+        }
     }
     lines.sort_by(|a, b| {
         a.baseline_pt
@@ -198,8 +254,63 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
     lines
 }
 
+/// Reads each drop cap where its word starts: a letter standing on a
+/// line's baseline beside words far smaller, its capitals' top the top
+/// of the first line's above, is moved to that line, ahead of its words,
+/// and marked with its size. Runs come sorted by where they sit.
+fn read_drops_first(runs: &mut [(Run, Option<Dropped>)]) {
+    // Only a run twice the page's smallest could be one, which leaves
+    // most pages with none to look beside.
+    let smallest = runs
+        .iter()
+        .map(|(run, _)| run.size_pt)
+        .fold(f64::INFINITY, f64::min);
+    for i in 0..runs.len() {
+        let drop = &runs[i].0;
+        if drop.chars.len() > 2 || drop.size_pt < smallest * DROPPED {
+            continue;
+        }
+        let beside = |other: &Run| {
+            (other.baseline_pt - drop.baseline_pt).abs() < SAME_LINE_PT
+                && other.x_pt > drop.x_pt
+                && other.size_pt * DROPPED <= drop.size_pt
+        };
+        if !runs.iter().any(|(other, _)| beside(other)) {
+            continue;
+        }
+        let top = drop.baseline_pt - drop.cap_pt - SAME_LINE_PT;
+        let first = runs
+            .iter()
+            .map(|(other, _)| other)
+            .filter(|other| {
+                other.x_pt > drop.x_pt
+                    && other.baseline_pt >= top
+                    && other.baseline_pt < drop.baseline_pt - SAME_LINE_PT
+            })
+            .min_by(|a, b| a.baseline_pt.total_cmp(&b.baseline_pt));
+        // The page sets its letter's capitals from the first line's top to
+        // the second's baseline; a large letter that isn't, such as one in
+        // a sum or a figure's label, stays where it stands.
+        let Some(first) = first.filter(|first| {
+            ((first.baseline_pt - first.cap_pt) - (drop.baseline_pt - drop.cap_pt)).abs()
+                < SAME_LINE_PT
+        }) else {
+            continue;
+        };
+        let read = first.baseline_pt;
+        let dropped = Dropped {
+            size_pt: drop.size_pt,
+            x_pt: drop.x_pt,
+            sat_pt: drop.baseline_pt,
+        };
+        runs[i].0.baseline_pt = read;
+        runs[i].1 = Some(dropped);
+    }
+}
+
 /// The line a line ending in a break goes on to: the next one down
-/// starting at its edge, or its last run's, within two of its lines.
+/// starting at its edge, its last run's, or beside a drop cap the edge
+/// its paragraph goes on at, within two of its lines.
 fn goes_on(lines: &[Line], from: usize) -> Option<usize> {
     let line = &lines[from];
     if !line.text.ends_with(BREAK) {
@@ -214,7 +325,7 @@ fn goes_on(lines: &[Line], from: usize) -> Option<usize> {
             let edge = |x: f64| (next.x_pt - x).abs() <= SAME_EDGE_PT;
             (below > SAME_LINE_PT
                 && below <= line.size_pt * 3.0
-                && (edge(line.x_pt) || edge(line.tail_x_pt)))
+                && (edge(line.x_pt) || edge(line.tail_x_pt) || line.goes_on_x_pt.is_some_and(edge)))
             .then_some(i)
         })
 }
@@ -350,6 +461,82 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].text, "hello world");
         assert_eq!(lines[1].text, "next");
+    }
+
+    /// A drop cap two lines tall, its baseline the second line's at 121,
+    /// its capitals reaching the first's at 100, the page's air after it.
+    fn drop(letter: char) -> Run {
+        Run {
+            x_pt: 0.0,
+            baseline_pt: 121.0,
+            size_pt: 43.7,
+            cap_pt: 30.6,
+            chars: vec![(letter, 0.0, 24.0)],
+        }
+    }
+
+    #[test]
+    fn a_drop_cap_is_read_at_the_start_of_its_word() {
+        let lines = lines(vec![
+            drop('T'),
+            run(27.5, 100.0, "he first line"),
+            run(27.5, 121.0, "the second"),
+            run(0.0, 142.0, "and the third"),
+        ]);
+        let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(texts, ["The first line", "the second", "and the third"]);
+        let near = |a: f64, b: f64| (a - b).abs() < 0.01;
+        assert!(near(lines[0].x_pt, 0.0), "its line starts at the letter");
+        assert!(
+            near(lines[0].size_pt, 13.1) && near(lines[0].cap_pt, 9.2),
+            "its line keeps its words' height"
+        );
+        assert!(
+            near(lines[1].x_pt, 27.5),
+            "the second line starts at its words"
+        );
+    }
+
+    #[test]
+    fn a_word_broken_beside_a_drop_cap_is_found_whole() {
+        // Its first line holds two runs, so the last starts past the
+        // words' edge, and the third line is back at the paragraph's.
+        let lines = lines(vec![
+            drop('T'),
+            run(27.5, 100.0, "he "),
+            run(45.5, 100.0, "first exam\u{ad}"),
+            run(27.5, 121.0, "ple and a long\u{ad}"),
+            run(0.0, 142.0, "er one"),
+        ]);
+        assert_eq!(find(&lines, "example").len(), 1);
+        assert_eq!(find(&lines, "longer").len(), 1);
+    }
+
+    #[test]
+    fn a_large_letter_whose_capitals_stand_off_the_line_above_stays_put() {
+        // A sum's sign, say, twice the words' size and on their baseline,
+        // but reaching no line's top.
+        let sign = Run {
+            cap_pt: 20.0,
+            ..drop('S')
+        };
+        let lines = lines(vec![
+            sign,
+            run(27.5, 100.0, "above"),
+            run(27.5, 121.0, "beside"),
+        ]);
+        let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(texts, ["above", "S beside"]);
+    }
+
+    #[test]
+    fn a_drop_cap_that_is_a_word_alone_is_read_a_space_from_the_next() {
+        let lines = lines(vec![
+            drop('A'),
+            run(30.9, 100.0, "word alone"),
+            run(30.9, 121.0, "opens it"),
+        ]);
+        assert_eq!(lines[0].text, "A word alone");
     }
 
     #[test]

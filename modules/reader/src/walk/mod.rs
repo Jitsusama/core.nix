@@ -160,7 +160,7 @@ pub fn program(
         base,
         pictures: 0,
         blocks: 0,
-        after_title: false,
+        head: Head::Headings,
         titled: false,
         after_box: false,
         caption: None,
@@ -231,6 +231,19 @@ fn collapse(text: &str) -> String {
     s
 }
 
+/// How far into its head the page has been walked: what the next
+/// paragraph is.
+#[derive(Clone, Copy, PartialEq)]
+enum Head {
+    /// Only headings so far, if anything: the next paragraph opens it.
+    Headings,
+    /// The title was the block just walked: the next paragraph is its
+    /// lede.
+    Titled,
+    /// The words have begun: the next paragraph is any other.
+    Begun,
+}
+
 struct Walker<'a> {
     pieces: &'a Pieces,
     world: &'a PageWorld,
@@ -242,9 +255,9 @@ struct Walker<'a> {
     pictures: usize,
     /// How many blocks the page has, to number the next.
     blocks: usize,
-    /// Whether the block just walked was the title, so the next paragraph
-    /// is its lede.
-    after_title: bool,
+    /// How far into its head the page is, so the next paragraph is its
+    /// lede, its opening or any other.
+    head: Head,
     /// Whether the page opens with its title.
     titled: bool,
     /// Whether a task's box was just passed over, so the space after it
@@ -364,23 +377,10 @@ pub fn picture_kind(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Ends the page with its mark: after the last word when the last block is
-/// a paragraph, else on a line of its own.
+/// Ends the page with its mark, centred on a line of its own under the
+/// last block whatever that block is, as a break stands between two.
 fn end_with_its_mark(out: &mut String) {
-    let last = out.rfind("\n// block\n").unwrap_or(0);
-    let body = out[last..]
-        .split_once(")\n")
-        .map_or("", |(_, body)| body)
-        .trim_end();
-    let words = body.starts_with("#par[") || body.starts_with("#lede[");
-    if words
-        && body.ends_with(']')
-        && let Some(close) = out.rfind(']')
-    {
-        out.insert_str(close, "#h(0.3em)#the-end");
-    } else {
-        out.push_str("\n#par[#the-end]\n");
-    }
+    out.push_str("\n#the-end()\n");
 }
 
 /// A figure's caption as Typst content: empty when there are no words.
@@ -494,6 +494,32 @@ impl Walker<'_> {
         }
     }
 
+    /// Where a block stands in the page's head: whether it's the title
+    /// opening the page, under the eyebrow; the title's lede, the paragraph
+    /// right after it; or the page's first paragraph of words, which opens
+    /// on a drop cap when it's long enough for one, with nothing before it
+    /// but headings and pictures, as a chapter opens under its plate.
+    fn headed(&mut self, node: &Handle, name: &str, top: bool) -> (bool, bool, bool) {
+        let lede = top && self.head == Head::Titled && name == "p";
+        let opening = top && self.blocks == 1 && name == "h1";
+        if opening {
+            self.titled = true;
+        }
+        let picture = name == "p" && lone_picture(node);
+        let first_words = top && name == "p" && !lede && self.head != Head::Begun && !picture;
+        if top && BLOCKS.contains(&name) {
+            let heading = matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
+            self.head = if opening {
+                Head::Titled
+            } else if (lede || heading || picture) && self.head != Head::Begun {
+                Head::Headings
+            } else {
+                Head::Begun
+            };
+        }
+        (opening, lede, first_words)
+    }
+
     fn element(&mut self, node: &Handle) {
         let name = tag(node).unwrap_or_default();
         let top = parent_tag(node).as_deref() == Some("body");
@@ -510,16 +536,7 @@ impl Walker<'_> {
             );
             self.blocks += 1;
         }
-        // The paragraph right after the title is its lede, and a title
-        // opening the page sits under the eyebrow.
-        let lede = top && self.after_title && name == "p";
-        let opening = top && self.blocks == 1 && name == "h1";
-        if opening {
-            self.titled = true;
-        }
-        if top && BLOCKS.contains(&name.as_str()) {
-            self.after_title = opening;
-        }
+        let (opening, lede, first_words) = self.headed(node, &name, top);
         match name.as_str() {
             "html" | "body" | "span" | "section" | "picture" | "thead" | "tbody" => {
                 if let Some(style) = attr(node, "data-math-style") {
@@ -535,6 +552,7 @@ impl Walker<'_> {
                 .is_some_and(|class| class.starts_with("markdown-alert-title")) => {}
             "p" if lone_picture(node) => self.alone(node),
             "p" if lede => self.wrap_unit("#lede[", node, "]\n"),
+            "p" if first_words => self.wrap_unit("#opening[", node, "]\n"),
             "p" => self.wrap_unit("#par[", node, "]\n"),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = &name[1..];
@@ -562,7 +580,7 @@ impl Walker<'_> {
                     self.equation(&text_of(node), style == "display");
                 } else {
                     let t = text_of(node);
-                    let _ = write!(self.out, "#raw({})", literal(&t));
+                    let _ = write!(self.out, "#code({})", literal(&t));
                 }
             }
             "pre" => self.pre(node),
