@@ -100,7 +100,7 @@ fn orchestrations(shown: &[Shown]) -> Vec<&[Shown]> {
 /// Each part is left out where it would say none.
 fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
     let count = |state: &str| all.iter().filter(|row| row.state == state).count();
-    let needing = count("needs");
+    let needing = all.iter().filter(|row| row.waits_on_joel).count();
     let working = count("working");
     let needs = match needing {
         0 => String::new(),
@@ -150,7 +150,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     if !members.is_empty() {
         acts.push(more());
     }
-    let (glyph, hue) = worn(row, members.iter().any(|one| one.state == "needs"));
+    let (glyph, hue) = worn(row, members.iter().any(|one| one.waits_on_joel));
     acts.extend(
         row.acts
             .iter()
@@ -185,12 +185,15 @@ fn worn(row: &Row, under_waits: bool) -> (&'static str, &'static str) {
     }
 }
 
-/// Whether a row laid in `shown` waits on Joel: a session that needs him,
-/// or a fold any of whose sessions does.
+/// Whether a row laid in `shown` waits on Joel: a session that does
+/// (row.rs `waits_on_joel`). A fold never holds one, since tree.rs folds
+/// only those standing as listening or quieter, and one waiting on Joel
+/// stands there as needing him (row.rs `for_joel`), so its row keeps its
+/// own mark.
 fn waits(one: &Shown) -> bool {
     match one {
-        Shown::Session(row) => row.state == "needs",
-        Shown::Fold(fold) => fold.held.iter().any(waits),
+        Shown::Session(row) => row.waits_on_joel,
+        Shown::Fold(_) => false,
     }
 }
 
@@ -247,9 +250,9 @@ fn act_rows<'a>(
 }
 
 /// The acts a session inside an orchestration offers: Talk and Go To only
-/// where it needs Joel.
+/// where it waits on Joel.
 fn member_acts(row: &Row) -> impl Iterator<Item = &str> {
-    let needs = row.state == "needs";
+    let needs = row.waits_on_joel;
     row.acts
         .iter()
         .copied()
@@ -363,7 +366,7 @@ pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
             };
             let mut all = Vec::new();
             gathered(&entries[1..], &mut all);
-            let needs = head.state == "needs" || all.iter().any(|row| row.state == "needs");
+            let needs = head.waits_on_joel || all.iter().any(|row| row.waits_on_joel);
             let mut rows = vec![orchestration(head, &all, known, said)];
             if !all.is_empty() {
                 rows.extend(acts_inside(head, words));
@@ -469,6 +472,7 @@ mod tests {
             depth,
             orchestrates: false,
             gone: false,
+            waits_on_joel: state == "needs",
             state,
             doing: state.to_owned(),
             returns: "switch",
@@ -756,20 +760,28 @@ mod tests {
         let lead = || wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning");
         let asking =
             |at: &str, depth| wearing(row(at, "needs", depth, LIVE), "waitsOnJoel", "alert");
+        // Parked with his want still open, as For You lists it waiting (row.rs for_joel).
+        let parked_asking = |at: &str| {
+            let mut shown = row(at, "parked", 1, &["wake", "talk"]);
+            if let Shown::Session(row) = &mut shown {
+                row.waits_on_joel = true;
+            }
+            shown
+        };
         let head = "row:agents-top:O";
         assert_eq!(
             [
                 mark(&[lead(), asking("A", 1)], head),
+                mark(&[lead(), parked_asking("A")], head),
                 mark(&[lead(), row("A", "working", 1, LIVE)], head),
-                mark(&[asking("O", 0), row("A", "working", 1, LIVE)], head),
             ],
             [
                 "\"waitsOnJoel\":\"alert\"",
-                "\"shapeSquare\":\"warning\"",
                 "\"waitsOnJoel\":\"alert\"",
+                "\"shapeSquare\":\"warning\"",
             ],
-            "a session inside waiting marks the folded row; none waiting leaves its own shape and \
-             hue; a lead waiting keeps its own mark"
+            "a session inside waiting, at work or parked, marks the folded row; none waiting \
+             leaves its own shape and hue"
         );
         let team = |deepest: Shown| {
             [
@@ -785,6 +797,27 @@ mod tests {
             ],
             ["\"waitsOnJoel\":\"alert\"", "\"shapeCircle\":\"program\""],
             "a session two steps in waiting marks the one it sits under, a step in, too"
+        );
+        // Only what's under a session marks it, never what's under the sibling after it.
+        let siblings = [
+            row("O", "listening", 0, LIVE),
+            wearing(row("S", "working", 1, LIVE), "shapeCircle", "program"),
+            row("T", "working", 2, LIVE),
+            wearing(row("U", "working", 1, LIVE), "shapeCircle", "program"),
+            asking("V", 2),
+        ];
+        assert_eq!(
+            [
+                mark(&siblings, "row:agents-top:S"),
+                mark(&siblings, "row:agents-top:U"),
+                mark(&siblings, head),
+            ],
+            [
+                "\"shapeCircle\":\"program\"",
+                "\"waitsOnJoel\":\"alert\"",
+                "\"waitsOnJoel\":\"alert\"",
+            ],
+            "V waiting marks U, which it sits under, and the orchestration, but not S beside U"
         );
     }
 

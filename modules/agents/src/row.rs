@@ -131,6 +131,10 @@ pub struct Row {
     pub orchestrates: bool,
     /// Out of reach, so it does nothing.
     pub gone: bool,
+    /// Whether it waits on Joel: it needs him, or it parked with its want
+    /// his still open, which For You lists as waiting too, so its row and
+    /// those over it wear his mark either way.
+    pub waits_on_joel: bool,
     pub state: &'static str,
     /// How it stands in words, among its side's items too: For You's
     /// heading over the cell says it alone, without its figures.
@@ -339,7 +343,9 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         .orchestrates
         .then(|| (known.shape)(session.id()))
         .flatten();
-    let glyph = standing::glyph(stands, shape);
+    let wears = for_joel(stands, asks);
+    let waits_on_joel = wears == Stands::Needs;
+    let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
         keep: 1,
@@ -354,13 +360,14 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         glyph,
         mark: shape.unwrap_or("agent"),
         mark_hue: standing::unwaited_hue(stands, !full.is_empty()),
-        hue: standing::hue(stands, !full.is_empty()),
+        hue: standing::hue(wears, !full.is_empty()),
         side: said_of(&items),
         side_items: items,
         note: noted.clone(),
         depth: place.depth,
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
+        waits_on_joel,
         state: stands.id(),
         doing: doing_said,
         // One standing at the top is gone to to be told something, the
@@ -460,6 +467,18 @@ pub fn fold_name(counts: &[(Stands, usize)], words: &Words) -> String {
         .join(", ")
 }
 
+/// How a session stands as Joel looks for what waits on him: one parked
+/// with its want his still open needs him, as For You lists it (wants.rs),
+/// so it wears his mark, sorts first and is never folded away, though its
+/// acts stay a parked one's (`standing::acts`).
+fn for_joel(stands: Stands, asks: bool) -> Stands {
+    if asks && stands == Stands::Parked {
+        Stands::Needs
+    } else {
+        stands
+    }
+}
+
 /// Every session's row, in Sessions' order (`session::in_order`), laid
 /// under their orchestrators with the waiting folded (tree.rs). One the
 /// harness lists as an orchestrator orchestrates, though none of its
@@ -470,7 +489,10 @@ pub fn rows(sessions: &[Session], known: &Known, words: &Words) -> Vec<Shown> {
         .map(|session| Member {
             address: session.address(),
             under: session.under(),
-            stands: session.stands(known.joel_can, known.jobs),
+            stands: for_joel(
+                session.stands(known.joel_can, known.jobs),
+                session::asks_joel(session.presence(), known.joel_can),
+            ),
             at_top: session.at_top().is_some(),
         })
         .collect();
@@ -655,7 +677,7 @@ mod tests {
             made(&asking, Place::default(), &given())
                 .side
                 .contains("90% full"),
-            "its limit nears, so alert is shown over the warning's hue"
+            "its limit nears, so the warning's hue would apply"
         );
         let marks = |record: &Value, place: Place| {
             let row = made(record, place, &given());
@@ -690,6 +712,32 @@ mod tests {
             ],
             ["warning", "program"],
             "and the hue, so For You's rows aren't all alert, its nearing limit still warned"
+        );
+    }
+
+    #[test]
+    fn one_parked_with_its_want_joels_still_wears_his_mark() {
+        let parked = |wants: Value| {
+            json!({"presence": {"addresses": ["P"], "session": "s-1", "state": "parked",
+                "wants": wants}})
+        };
+        let asking = parked(json!({"kind": "approval", "said": "May I push?"}));
+        let marks = |record: &Value| {
+            let row = made(record, Place::default(), &given());
+            let acts = row.acts.join(",");
+            format!(
+                "{}:{}:{}:{}:{}:{acts}",
+                row.state, row.glyph, row.hue, row.mark_hue, row.waits_on_joel
+            )
+        };
+        assert_eq!(
+            [marks(&asking), marks(&parked(Value::Null))],
+            [
+                "parked:waitsOnJoel:alert:muted:true:wake,talk",
+                "parked:agent:muted:muted:false:wake,talk",
+            ],
+            "For You lists one parked with his want open as waiting, so Agents marks it too, its \
+             acts still a parked one's; one parked wanting nothing stays muted"
         );
     }
 

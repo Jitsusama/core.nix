@@ -1532,7 +1532,8 @@ works the same way everywhere.
   ("84% full · working · $4.20"), its mark in the warning's hue, the
   figure kept longest while room runs short and the money giving way
   before how it stands, since its drawer says the spend. One waiting on
-  Joel wears the waiting mark, the person with a clock in the alert's
+  Joel, parked with his want still open as much as at work, since For
+  You lists both, wears the waiting mark, the person with a clock in the alert's
   hue, in place of the agent's mark or its network's shape and ahead of
   the warning's, since the word saying so is the first a narrow row cuts
   (Joel, 2026-11-20: "no clue how to see from that view that a thing is

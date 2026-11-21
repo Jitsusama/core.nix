@@ -410,6 +410,27 @@ mod tests {
     }
 
     #[test]
+    fn the_hue_kept_for_for_you_is_the_one_it_would_wear_unwaited() {
+        let kept: Vec<_> = [
+            (Stands::Needs, false),
+            (Stands::Needs, true),
+            (Stands::Working, false),
+            (Stands::Working, true),
+            (Stands::Paused, true),
+            (Stands::Parked, false),
+        ]
+        .iter()
+        .map(|(stands, warns)| format!("{}:{warns}:{}", stands.id(), unwaited_hue(*stands, *warns)))
+        .collect();
+        assert_eq!(
+            kept.join(" "),
+            "needs:false:program needs:true:warning working:false:program \
+             working:true:warning paused:true:muted parked:false:muted",
+            "one waiting keeps a live one's hue, warned as its limit nears; one not live stays muted"
+        );
+    }
+
+    #[test]
     fn close_says_what_stays() {
         let said =
             Said::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read");
