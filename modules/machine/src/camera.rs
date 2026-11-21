@@ -276,6 +276,16 @@ mod tests {
         );
     }
 
+    /// As if each camera missed was first missed by the last listing,
+    /// however long a starved builder took to give it.
+    fn missed_at_the_last_listing(pipewire: &PipeWire) {
+        let mut state = pipewire.state();
+        let at = state.listed_at.expect("it was listed");
+        for first in state.missed.values_mut() {
+            *first = at;
+        }
+    }
+
     /// As if each camera missed was first missed a read apart ago.
     fn missed_long_ago(pipewire: &PipeWire) {
         let then = Instant::now()
@@ -311,6 +321,7 @@ mod tests {
             "not said from the first listing to miss it"
         );
         listed_whole(&pipewire);
+        missed_at_the_last_listing(&pipewire);
         assert_eq!(programs(), json!(["pipewire"]));
         assert!(
             pipewire.state().unfound.is_empty(),

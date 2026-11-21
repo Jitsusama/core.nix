@@ -246,7 +246,10 @@ impl PipeWire {
             }
             Err(why) => {
                 let forced = why == WRITTEN_INTO || why.starts_with(TOO_LONG);
-                let kept = !forced && state.listed_at.is_some_and(|at| at.elapsed() < KEPT_FOR);
+                // One dropped already, by a refused listing, stays dropped.
+                let kept = !forced
+                    && state.graph.is_some()
+                    && state.listed_at.is_some_and(|at| at.elapsed() < KEPT_FOR);
                 if state.failing.as_deref() != Some(why.as_str()) {
                     let when = if kept {
                         format!("once the last listing is {KEPT_FOR:?} old")
