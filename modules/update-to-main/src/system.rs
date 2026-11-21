@@ -1321,7 +1321,9 @@ pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
 
 /// Whether switching from `old` to `new` restarts an account's unit:
 /// home-manager restarts one whose file or drop-ins changed, or that only
-/// one system has, unless the new file says `X-RestartIfChanged=false`.
+/// one system has, unless the new file says `X-RestartIfChanged=false`, or
+/// `X-SwitchMethod=keep-old`, which sd-switch keeps running as it was, as
+/// the sessions' kitty holding every session's window is (2026-11-21).
 /// Each system's `home-manager-<account>.service` names the generation
 /// whose home holds the unit's file.
 pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) -> bool {
@@ -1336,10 +1338,14 @@ pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) 
         )
     };
     let (before, after) = (unit(old), unit(new));
-    let kept = after
-        .0
-        .as_deref()
-        .is_some_and(|file| file.lines().any(|l| l.trim() == "X-RestartIfChanged=false"));
+    let kept = after.0.as_deref().is_some_and(|file| {
+        file.lines().any(|l| {
+            matches!(
+                l.trim(),
+                "X-RestartIfChanged=false" | "X-SwitchMethod=keep-old"
+            )
+        })
+    });
     before != after && !kept
 }
 
