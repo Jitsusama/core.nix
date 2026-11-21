@@ -2333,6 +2333,15 @@ def test_a_links_new_work_says_whom_it_names_while_joel_checks_its_words(shell: 
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["asking"] and told(shown))
     assert shell.showing()["typed"] == "x" + offered, shell.showing()
+    # Back and forward again, the line comes back with none of the page's words, since
+    # neither its foot nor Return's wait comes back with it (council F68).
+    shell.send_key("ctrl-o")
+    shell.launcher_until(lambda shown: shown["open"] and not shown["asking"])
+    shell.send_key("ctrl-i")
+    shell.launcher_until(lambda shown: shown["asking"])
+    back = shell.showing()
+    assert back["typed"] == "", back
+    assert not told(back), back
     shell.close_launcher()
     # A line reached later at the same depth is no page's, so its foot says nothing of one
     # (council F37).

@@ -1173,7 +1173,7 @@ Scope {
     // when - climbs back onto it. Listing Landed's 2,600 landings on the
     // way to one took about 40 of To Try's 84 ms Return (2026-11-14).
     function walkTo(spot) {
-        const came = here();
+        const came = placeLeft();
         const begun = stepBegun();
         held = [];
         const last = spot.trail.length - 1;
@@ -4248,7 +4248,8 @@ Scope {
                 flashing = {};
             }
             // The line a page offered keeps none of its words on the way back, so Ctrl+O and
-            // Ctrl+I never bring them back without their foot or Return's wait (council F60).
+            // Ctrl+I never bring them back without their foot or Return's wait (council F60);
+            // jump and oneJump, which keep the place before held moves, ask placeLeft.
             const kept = here();
             if (leftOffer)
                 kept.typed = "";
@@ -4341,7 +4342,7 @@ Scope {
             return;
         }
         const to = from[from.length - 1];
-        const left = { held: held, here: here() };
+        const left = { held: held, here: placeLeft() };
         if (by < 0) {
             jumpsBack = jumpsBack.slice(0, -1);
             jumpsAhead = jumpsAhead.concat([left]);
@@ -4363,7 +4364,7 @@ Scope {
     // does, is no jump at all. A walk that opens a collection afresh
     // (into) lets go what was on the way back, which is kept here.
     function oneJump(walk) {
-        const left = { held: held, here: here() };
+        const left = { held: held, here: placeLeft() };
         const was = { back: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last: lastPlace };
         jumping = true;
         try {
@@ -4540,7 +4541,7 @@ Scope {
     // a step (oneJump). A row with none says so.
     function follow(row) {
         const live = row && !row.gone ? row : null;
-        const came = { held: held, here: here() };
+        const came = { held: held, here: placeLeft() };
         if (live && followed(live)) {
             traces.began("follow", { from: came.held.length, into: true });
             tagsBack = tagsBack.concat([came]);
@@ -5218,6 +5219,15 @@ Scope {
             commandWords), thing }))
             .filter(one => one.act !== undefined);
         commandAsked(entry, found, things.length, read.bang);
+    }
+
+    // Where the launcher is now, kept on a way back: the line a page offered keeps none of its
+    // words, so no way back brings them back without their foot or Return's wait (F68).
+    function placeLeft() {
+        const kept = here();
+        if (offerHeld !== null && held.length === offerHeld.depth)
+            kept.typed = "";
+        return kept;
     }
 
     // Where the launcher is now, for a step into something to keep.
