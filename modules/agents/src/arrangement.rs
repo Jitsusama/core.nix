@@ -42,10 +42,12 @@ pub const STILL: Duration = Duration::from_secs(2);
 
 /// How long a session runs on here with no window before its place is let
 /// go, so Reopen Them All brings it back with none, as it had. A boot's end
-/// closes each window before its session ends, a stop taking up to its
-/// 90 s timeout, so a window gone for longer was closed while the boot ran
-/// on: after the 10:05 restart on 2026-11-21, five sessions whose windows
-/// had been closed hours before came back in windows.
+/// closes each window before its session ends, user@ given 5 s to stop
+/// (modules/systemd/nixos.nix), and a hosted session's viewer stays open
+/// through its host's stop of up to 150 s (modules/pi/host.nix), so a
+/// window gone for longer was closed while the boot ran on: after the
+/// 10:05 restart on 2026-11-21, five sessions whose windows had been
+/// closed hours before came back in windows.
 pub const CLOSED_FOR: Duration = Duration::from_secs(180);
 
 /// Each lit screen's connector and what the screen is, from the windows
@@ -175,7 +177,10 @@ pub fn now<'a>(
 }
 
 /// The sessions running here now with no window, by pi's id: none paired
-/// with it, or one niri no longer lists.
+/// with it, or one niri no longer lists. One whose window windows.rs
+/// couldn't tell from another's isn't among them, and none is while no
+/// session here has a window: every one gone at once is the sessions'
+/// kitty or niri gone, as a crash takes them, not windows closed by hand.
 pub fn unwindowed<'a>(
     sessions: impl Iterator<Item = Session<'a>>,
     paired: &[Value],
@@ -185,13 +190,25 @@ pub fn unwindowed<'a>(
         .iter()
         .filter_map(|one| Some((one["address"].as_str()?, one["window"].as_str()?)))
         .collect();
-    sessions
+    let untold: HashSet<&str> = paired
+        .iter()
+        .filter(|one| one["untold"] == true)
+        .filter_map(|one| one["address"].as_str())
+        .collect();
+    let running: Vec<Session> = sessions
         .filter(|one| one.here() && one.lives() == Lives::Running)
-        .filter(|one| {
-            windows
-                .get(one.address())
-                .is_none_or(|window| desk.windows.get(window).is_none())
-        })
+        .collect();
+    let shown = |one: &Session| {
+        windows
+            .get(one.address())
+            .is_some_and(|window| desk.windows.get(window).is_some())
+    };
+    if !running.iter().any(shown) {
+        return HashSet::new();
+    }
+    running
+        .iter()
+        .filter(|one| !shown(one) && !untold.contains(one.address()))
         .filter_map(|one| Some(one.presence()?.get("session")?.as_str()?.to_owned()))
         .collect()
 }
@@ -299,12 +316,19 @@ impl Arrangement {
             .cloned()
             .unwrap_or_default();
         this.retain(|id, place| {
-            if now.contains_key(id) || !unwindowed.contains(id) {
+            if now.contains_key(id) {
                 return true;
             }
             let Some(place) = place.as_object_mut() else {
-                return false;
+                return !unwindowed.contains(id);
             };
+            // One no longer windowless here, parked, ended or gone, keeps
+            // its place as it was kept, unmarked, so no mark outlives what
+            // set it and comes due at once, again and again.
+            if !unwindowed.contains(id) {
+                place.remove("closed");
+                return true;
+            }
             let closed = place
                 .entry("closed")
                 .or_insert_with(|| json!(at))
@@ -372,10 +396,12 @@ fn closed_for() -> u64 {
 }
 
 /// How long from `now` until the places are kept again for the first
-/// closed to be let go at `let_go`, both in ms since the epoch.
+/// closed to be let go at `let_go`, both in ms since the epoch: never
+/// sooner than [`STILL`], so one already past can't wake the daemon at
+/// once over and over.
 #[must_use]
 pub fn again_in(let_go: u64, now: u64) -> Duration {
-    Duration::from_millis(let_go.saturating_sub(now))
+    Duration::from_millis(let_go.saturating_sub(now)).max(STILL)
 }
 
 /// When the windows were last seen to move, so their places are kept only

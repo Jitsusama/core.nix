@@ -6,8 +6,9 @@
 //! daemon's key, found as Sessions.qml finds it: the window opened with
 //! the session's app id, or of several, the one its own kitty draws; and
 //! for a window opened without one, the one window its kitty draws. One
-//! that can't be told apart says no window rather than the wrong one;
-//! only Sessions.qml asks kitty which of several a session is in.
+//! that can't be told apart says no window rather than the wrong one, and
+//! that it couldn't tell; only Sessions.qml asks kitty which of several a
+//! session is in.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
@@ -177,7 +178,7 @@ pub fn records<S: BuildHasher>(
                 Value::Null,
                 |(address, title)| json!({"address": address, "title": title}),
             );
-            Some(json!({
+            let mut record = json!({
                 "key": format!("{KIND}:{PLACE}:{address}"), "kind": KIND,
                 "address": address,
                 "kitty": kitty.map_or(Value::Null, |(within, id)| {
@@ -185,7 +186,13 @@ pub fn records<S: BuildHasher>(
                 }),
                 "app_id": opened, "window": window, "title": titles[address],
                 "orchestration": orchestration,
-            }))
+            });
+            // One of several it couldn't tell apart says so, so its window
+            // isn't taken as closed (arrangement.rs's unwindowed).
+            if window.is_none() && !among.is_empty() {
+                record["untold"] = json!(true);
+            }
+            Some(record)
         })
         .collect()
 }
