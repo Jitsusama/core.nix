@@ -122,6 +122,36 @@ fn a_steady_fill_trends_as_its_rate() {
     );
 }
 
+/// A Mac's guard said its disk filled in 22 h, a straight line to empty,
+/// while Nix collected its own garbage at 50 GiB (2026-11-20).
+#[test]
+fn a_disk_above_nixs_floor_counts_to_the_floor_not_to_full() {
+    let (fill, free) = filling(500 * GIB, 10e6, 1800);
+    let ahead = fill.ahead(free, Some(50 * GIB));
+    assert_eq!(
+        ahead.full_in, None,
+        "above the floor it isn't told it fills"
+    );
+    let expected = float(free - 50 * GIB) / 10e6;
+    let until = ahead.floor_in.expect("above the floor, when it reaches it");
+    assert!(
+        (until - expected).abs() < expected * 0.05,
+        "{until} against {expected}"
+    );
+    let under = fill.ahead(free, Some(free + GIB));
+    assert_eq!(under.floor_in, None, "under the floor, it's reached");
+    assert_eq!(
+        under.full_in,
+        fill.steady_until(free, 0),
+        "under the floor, when it fills"
+    );
+    assert_eq!(
+        fill.ahead(free, None).full_in,
+        fill.steady_until(free, 0),
+        "with no floor, when it fills"
+    );
+}
+
 #[test]
 fn a_trend_waits_for_ten_minutes_of_watching() {
     let (fill, free) = filling(500 * GIB, 10e6, 540);

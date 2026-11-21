@@ -13,6 +13,14 @@ use crate::units::float;
 /// trend a person is told, since a disk whose builds write and free
 /// gigabytes every few minutes swings by tens of gigabytes an hour over
 /// two.
+/// What a filesystem's trend says comes next, in seconds: it's full, or it
+/// reaches the floor Nix keeps, never both.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Ahead {
+    pub full_in: Option<f64>,
+    pub floor_in: Option<f64>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Fill {
     rate: Option<f64>,
@@ -98,6 +106,24 @@ impl Fill {
         match self.trend() {
             Some(trend) if trend > 0.0 => Some(float(free - below) / trend),
             _ => None,
+        }
+    }
+
+    /// When the disk is full, or when it reaches `floor`, the free space
+    /// Nix keeps by collecting its own garbage, at the trend. Above the
+    /// floor only when it reaches it is told, since Nix collects there
+    /// before the disk fills; at or under it Nix's collections haven't kept
+    /// up, so when it's full is told.
+    pub fn ahead(&self, free: u64, floor: Option<u64>) -> Ahead {
+        match floor.filter(|&floor| free > floor) {
+            Some(floor) => Ahead {
+                full_in: None,
+                floor_in: self.steady_until(free, floor),
+            },
+            None => Ahead {
+                full_in: self.steady_until(free, 0),
+                floor_in: None,
+            },
         }
     }
 

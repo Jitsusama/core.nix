@@ -19,8 +19,12 @@ pub struct Room<'a> {
     pub band: Band,
     pub free: u64,
     pub size: u64,
-    /// Seconds until it's full at the present fill, if it's filling.
+    /// Seconds until it's full at the present fill, if it's filling, or
+    /// until it reaches `nix_floor` when that's given.
     pub full_in: Option<f64>,
+    /// The free space Nix keeps here by collecting its own garbage, when
+    /// `full_in` counts to it.
+    pub nix_floor: Option<u64>,
     /// Whether the last pass in this band or a worse one found nothing
     /// more it may clear, so saying it's clearing would be untrue.
     pub cleared_all: bool,
@@ -59,7 +63,16 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     };
     if let Some(full_in) = room.full_in.filter(|full_in| *full_in < TELL_WITHIN) {
         // Writing to a String can't fail.
-        _ = write!(said, " At this rate it fills in {}.", span(full_in));
+        _ = match room.nix_floor {
+            Some(floor) => write!(
+                said,
+                " At this rate it reaches the {} Nix keeps free in {}, \
+                 when Nix starts collecting its own garbage.",
+                shown(floor),
+                span(full_in)
+            ),
+            None => write!(said, " At this rate it fills in {}.", span(full_in)),
+        };
     }
     said
 }
