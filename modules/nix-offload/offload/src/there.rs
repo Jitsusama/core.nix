@@ -1035,11 +1035,29 @@ pub fn paths_up(
     nix: &str,
     within: std::time::Duration,
     cuts: &Cuts,
-) -> Result<(), String> {
+) -> Result<(), Unsent> {
     sent_up(sent, lent, nix, within, &cuts.alive()).map_err(|uncopied| {
         cuts.heard(&uncopied);
-        uncopied.why
+        Unsent {
+            lost: uncopied.lost || uncopied.cut,
+            why: uncopied.why,
+        }
     })
+}
+
+/// Why paths didn't go to a builder, and whether ssh lost it or its
+/// keepalive went unanswered on the way, which a try once it stands again
+/// may get past. A copy that ran out of time with the builder answering
+/// would only run out again.
+pub struct Unsent {
+    pub why: String,
+    pub lost: bool,
+}
+
+impl std::fmt::Display for Unsent {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.why)
+    }
 }
 
 /// [`paths_up`], its ssh given the keepalive `alive`, saying whether ssh

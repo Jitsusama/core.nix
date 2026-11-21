@@ -5984,6 +5984,62 @@ fn a_commands_paths_sent_again_after_their_keepalive_went_unanswered_wait_a_minu
     );
 }
 
+// On 20 November a run whose 844 MiB copy ran out of time waited for the
+// builder that had answered it to stand again, and sent it again, for
+// as long as it was let wait.
+#[test]
+fn a_commands_paths_that_cant_go_to_a_builder_that_answered_end_it_at_once() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    stand_ins(&bin, 0);
+    let config = folder.path().join("gitconfig");
+    fs::write(
+        &config,
+        "[user]\nname = Tester\nemail = tester@example.com\n",
+    )
+    .unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir(&tree).unwrap();
+    let git = |arguments: &[&str]| git(&tree, &config, arguments);
+    git(&["init", "-q", "-b", "main"]);
+    git(&["remote", "add", "origin", "https://github.com/o/r.git"]);
+    fs::write(tree.join("package.json"), "{ }").unwrap();
+    git(&["add", "package.json"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    let head = git(&["rev-parse", "HEAD"]);
+    git(&["update-ref", "refs/remotes/origin/main", &head]);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
+    fs::write(bin.join("nix-status"), "1").unwrap();
+    let began = std::time::Instant::now();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["--never-ask", "--run", "--copy", "/nix/store/a-runtime"])
+        .args(["--longest", "60", "--", "pnpm", "test"])
+        .current_dir(&tree)
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        !said.contains("waits for one to stand") && began.elapsed().as_secs() < 30,
+        "it waited to send again: {said}"
+    );
+    assert!(
+        said.contains("/nix/store/a-runtime couldn't be sent to the builder")
+            && said.contains("send its derivations"),
+        "it didn't say why, or what to do instead: {said}"
+    );
+    assert!(
+        !bin.join("ssh-was-given").exists(),
+        "it ran without its paths"
+    );
+}
+
 #[test]
 fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
     let folder = tempfile::tempdir().unwrap();

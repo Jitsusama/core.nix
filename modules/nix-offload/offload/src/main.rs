@@ -1524,7 +1524,7 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
             ["ssh", "nix"],
             &cuts,
         );
-        if status.is_some() {
+        if let Some(Ok(_)) = status {
             took = store
                 .lines()
                 .next()
@@ -1556,6 +1556,15 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
     if let Some(bundle) = &sending.bundle {
         archived::gone(bundle);
     }
+    // Paths that couldn't go to a builder that answered end the run, since
+    // sending them again, there or to another over the same uplink, would
+    // only run out of time again: on 20 November runs sending a tool's
+    // 844 MiB closure did so for as long as they were let wait.
+    let (status, unsent) = match status {
+        Some(Ok(status)) => (Some(status), None),
+        Some(Err(why)) => (None, Some(why)),
+        None => (None, None),
+    };
     command::note(
         &state().join("nix-offload/runs.jsonl"),
         &command::Noted {
@@ -1574,11 +1583,15 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         say_a_warm_pass_isnt_kept(status, &asked.words);
         passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
-    match status {
-        Some(status) => ended::status(status, || {
+    match (status, unsent) {
+        (Some(status), _) => ended::status(status, || {
             format!("{} failed on a lent builder", asked.words.join(" "))
         }),
-        None => Err(not_run("no lent builder took it")),
+        (None, Some(why)) => Err(not_run(&format!(
+            "{why}, and sending it again would go no faster; to build on a builder rather than \
+             send what's built, send its derivations, as `nix-offload there -L <drv>^*`"
+        ))),
+        (None, None) => Err(not_run("no lent builder took it")),
     }
 }
 

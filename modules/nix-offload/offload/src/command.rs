@@ -237,9 +237,12 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
 }
 
 /// Runs `sending` for `asked` on the lent builder `store` names, as the run
-/// `run`, its paths sent first, and gives its status, or none when ssh
-/// couldn't reach it or its paths couldn't go. `[ssh, nix]` are the
-/// programs run, and `cuts` the run's copies up its keepalive cut.
+/// `run`, its paths sent first, and gives its status; none when ssh
+/// couldn't reach it or lost it sending its paths, which another builder,
+/// or this one standing again, may take; or why its paths couldn't go to
+/// a builder that answered, which sending again would only repeat.
+/// `[ssh, nix]` are the programs run, and `cuts` the run's copies up its
+/// keepalive cut.
 pub fn on(
     store: &str,
     sending: &Sending,
@@ -248,7 +251,7 @@ pub fn on(
     scratch: &Path,
     [ssh, nix]: [&str; 2],
     cuts: &there::Cuts,
-) -> Option<i32> {
+) -> Option<Result<i32, String>> {
     let lent = there::builder(store.lines().next()?.trim())?;
     if !asked.copies.is_empty() {
         eprintln!(
@@ -260,7 +263,7 @@ pub fn on(
         if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
         {
             eprintln!("nix-offload: {why}");
-            return None;
+            return (!why.lost).then_some(Err(why.why));
         }
     }
     eprintln!("nix-offload: building on the lent builder {}", lent.host);
@@ -272,7 +275,7 @@ pub fn on(
     };
     let out = || Box::new(std::io::stdout()) as Box<dyn Write + Send>;
     match link.followed(sending, run, &out, &mut std::io::stderr()) {
-        Ok(status) if status != there::UNREACHED => Some(status),
+        Ok(status) if status != there::UNREACHED => Some(Ok(status)),
         Ok(_) => {
             eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
             None
