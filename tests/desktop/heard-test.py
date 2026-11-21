@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from heard import until_heard
+from heard import CUT_SHORT, TIMED_OUT, diagnosed, ended, until_heard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -162,6 +162,57 @@ def test_a_line_that_isnt_json_is_said_as_it_came() -> None:
     notes = getattr(broke.value, "__notes__", [])
     wanted = ['it said, last heard, not as JSON: \'{"rows": ["Inst\'']
     assert notes == wanted, f"the split line noted: {notes}"
+
+
+def never() -> str:
+    return "never reported showing"
+
+
+def test_a_read_that_stopped_with_nothing_wrong_ends_nothing() -> None:
+    # Never isn't asked, since its read of the journal costs a paced read on the VM.
+    def asked() -> str:
+        message = "asked why though the read ended well"
+        raise AssertionError(message)
+
+    ended(0, asked)
+
+
+@pytest.mark.parametrize("status", [TIMED_OUT, CUT_SHORT])
+def test_a_read_whose_time_ran_out_fails_as_never_hearing(status: int) -> None:
+    # Retry loops press again on an AssertionError, and until_heard rewrites it as the wait's.
+    with pytest.raises(AssertionError) as never_heard:
+        ended(status, never)
+    assert str(never_heard.value) == never(), f"{status} ended as: {never_heard.value}"
+
+
+def test_a_reader_that_stopped_otherwise_fails_as_no_waits_end() -> None:
+    # A journal read failing gives 1, which isn't time running out, so no retry takes it.
+    with pytest.raises(RuntimeError) as stopped:
+        ended(1, never)
+    wanted = "never reported showing, since reports stopped with 1"
+    assert str(stopped.value) == wanted, f"a stopped reader ended as: {stopped.value}"
+
+
+def test_a_diagnosis_read_says_what_it_read() -> None:
+    said = diagnosed(lambda: (0, "report[showing {}]\n"))
+    assert said == "report[showing {}]\n", f"a read that worked told: {said!r}"
+
+
+def test_a_diagnosis_read_that_stops_says_so_after_what_it_read() -> None:
+    said = diagnosed(lambda: (CUT_SHORT, "first line\n"))
+    wanted = "first line\n(unread past here, stopping with 124)"
+    assert said == wanted, f"a read cut short told: {said!r}"
+
+
+def test_a_diagnosis_read_that_raises_says_what_it_raised_rather_than_raising() -> None:
+    # The driver raising, when the guest's shell has gone, is when a diagnosis is read.
+    def execute() -> tuple[int, str]:
+        message = "the guest's shell went"
+        raise ConnectionError(message)
+
+    said = diagnosed(execute)
+    wanted = '(unread, since it raised ConnectionError("the guest\'s shell went"))'
+    assert said == wanted, f"a read that raised told: {said!r}"
 
 
 def test_a_state_passing_at_first_read_hears_nothing() -> None:

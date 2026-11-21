@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import until_heard
+from heard import diagnosed, ended, until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -111,12 +111,6 @@ STARTING = timedelta(seconds=120)
 # this never answers. On 14 November a launcher toggle that never answered
 # held a run of vm-desktop-launcher-finds-sessions for an hour.
 ANSWERING = timedelta(seconds=120)
-# What reports (tests/desktop.nix) ends with when its time runs out, kept apart from the 1
-# a failed read gives.
-TIMED_OUT = 3
-# What the driver's own limit on a command ends it with (desktop-starts-clean pins it). One
-# past reports' own end is the wait running out on a starved guest, not a reader stopping.
-CUT_SHORT = 124
 # How far apart typed keys go. QEMU's virtio keyboard holds about 64 events, four a key,
 # and drops what comes while it's full; at the driver's 10 ms a key, a guest starved
 # for 180 ms on a loaded builder lost the middle of "quarterly numbers", leaving "qs",
@@ -442,6 +436,16 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         allowed = timeout * vm_helpers.pace(vm_helpers.busyness())
         return self.machine.succeed(self.in_session(command), timeout=allowed)
 
+    def diagnosis(self, command: str) -> str:
+        """Run a command as the account, as as_account does, to say why a failure happened.
+
+        It never raises, since a session gone bad is when its reads fail too, and their error
+        would stand in for the failure they're read to explain; one that stops or raises says
+        so after what it printed (heard.diagnosed).
+        """
+        allowed = ANSWERING * vm_helpers.pace(vm_helpers.busyness())
+        return diagnosed(lambda: self.machine.execute(self.in_session(command), timeout=allowed))
+
     # What whereabouts keeps of where the laptop is, read back as it starts.
     KEPT_HERE = "$XDG_RUNTIME_DIR/whereabouts/here.json"
 
@@ -522,23 +526,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         The point is one mark gave, or "" for the boot. What the shell did say is printed when
         it never says what's wanted. It fails by AssertionError when its time runs out, which a
         wait on what's heard (heard.py) reads as never hearing it, and by RuntimeError when the
-        reader stops otherwise, which that wait only notes, since what it last heard then is no
-        sign of where the shell settled. The driver's cut-off counts as time running out
-        whatever made the run overrun, a reader blocked past it too, since the guest's status
-        can't tell them apart.
+        reader stops otherwise, which that wait only notes (heard.ended).
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         deadline = time.monotonic() + timeout.total_seconds() * pace
         start = since
 
-        # The journal is printed as well as it can be, since a session gone bad, when the reader
-        # stopped, is when reading it fails too, and that error would stand in for the wait's;
-        # a read that fails says its status, so it isn't taken for a shell that said nothing.
+        # The journal is printed as well as it can be, never raising, so the wait's own error
+        # is always the one made (diagnosis).
         def never() -> str:
             point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
             read = f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
-            status, journal = self.machine.execute(self.in_session(read), timeout=ANSWERING * pace)
-            print(journal if status == 0 else f"{journal}\n(the journal's read stopped: {status})")
+            print(self.diagnosis(read))
             return f"the shell never reported {prefix!r} as wanted"
 
         while True:
@@ -548,13 +547,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
                 timeout=timedelta(seconds=left + 30),
             )
-            # reports stops with 3 once its time runs out, the wait's own end, and the driver
-            # with 124 when its limit past that runs out first; any other status means a reader
-            # stopped, so it's raised as no wait's failure.
-            assert status not in {TIMED_OUT, CUT_SHORT}, never()
-            if status != 0:
-                stopped = f"{never()}, since reports stopped with {status}"
-                raise RuntimeError(stopped)
+            ended(status, never)
             for line in said.splitlines():
                 kind, what = line.split("\t", 1)
                 if kind == "cursor":

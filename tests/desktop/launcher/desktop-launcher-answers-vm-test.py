@@ -1472,16 +1472,10 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         except Exception as unheard:
             # The driver's wait says only that it ran out, so this says what the launcher shows
             # and what the stand-in ran, telling a lost key from a second install. Each is read
-            # without raising, since a shell that hung on the Return fails its read too, and
-            # that error would stand in for this one; a read that fails says its status.
-            def read(command: str) -> str:
-                status, out = machine.execute(
-                    desktop.in_session(command), timeout=dt.timedelta(seconds=30)
-                )
-                return out.strip() if status == 0 else f"unread, stopping with {status}"
-
-            showing = read("qs ipc call launcher showing")
-            installed = read(f"cat {said}/installed")
+            # without raising and paced to the builder, since a shell that hung on the Return
+            # fails its read too, and that error would stand in for this one (desktop.diagnosis).
+            showing = desktop.diagnosis("qs ipc call launcher showing").strip()
+            installed = desktop.diagnosis(f"cat {said}/installed").strip()
             failed = (
                 "the journal never said the gone row's Return was taken,"
                 f" the launcher showing {showing} and the stand-in run as {installed}"

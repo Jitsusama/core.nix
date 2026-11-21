@@ -14,6 +14,46 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+# What reports (tests/desktop.nix) ends with when its time runs out, kept apart from the 1
+# a failed read gives.
+TIMED_OUT = 3
+# What the driver's own limit on a command ends it with (desktop-starts-clean pins it). One
+# past reports' own end is the wait running out on a starved guest, not a reader stopping.
+CUT_SHORT = 124
+
+
+def ended(status: int, never: Callable[[], str]) -> None:
+    """Say how a read of what's reported ended, by the status it stopped with.
+
+    It says nothing where the read did, so the wait goes on with what it said. Its time running
+    out, by reports' 3 or the driver's cut-off, fails by AssertionError, which until_heard
+    reads as never hearing what's wanted. The driver's cut-off counts whatever made the run
+    overrun, a reader blocked past it too, since the guest's status can't tell them apart. Any
+    other status means a reader stopped, so it fails by RuntimeError, which until_heard only
+    notes, since what it last heard then is no sign of where the program settled. Never says
+    why, and is asked only when the read failed.
+    """
+    if status in {TIMED_OUT, CUT_SHORT}:
+        raise AssertionError(never())
+    if status != 0:
+        message = f"{never()}, since reports stopped with {status}"
+        raise RuntimeError(message)
+
+
+def diagnosed(execute: Callable[[], tuple[int, str]]) -> str:
+    """Give what a read for a failure's diagnosis said, never raising.
+
+    A session gone bad is when its read fails too, and that error would stand in for the
+    failure it's read to explain. So a read that stops says its status after what it said,
+    and one that raises says what it raised, rather than being taken for a program that said
+    nothing.
+    """
+    try:
+        status, said = execute()
+    except Exception as broke:  # noqa: BLE001 # What it raised is the diagnosis.
+        return f"(unread, since it raised {broke!r})"
+    return said if status == 0 else f"{said}(unread past here, stopping with {status})"
+
 
 def until_heard(
     first: Any,  # noqa: ANN401 # Whatever JSON the state is, as it was said.

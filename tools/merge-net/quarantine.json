@@ -3,13 +3,25 @@
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "due": "2026-11-21",
-    "due_why": "The time here failed 2 of the 25 net runs to 20 Nov, racing the rows of Now as it steps in, so a rerun alone wouldn't take it off. Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00, moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. Firmware failed because the test stepped out past where the launcher had already stepped back by itself; the test now waits for that step back, then asserts that a Return on the gone row writes no line, as the launcher has done since its fix, ruled 20 Nov and merged 21 Nov UTC. Firmware comes off once five net runs after that change exit 0, counted by exit code, since a failure only here is recorded as passed; until then the time here's fix takes off only its own line. The other two once listed, which with these failed 9 of 40 net runs from 15 Nov to 18 Nov 05:30 UTC, failed in none of the 25 and are excused no longer",
+    "due_why": "The time here failed 2 of the 25 net runs to 20 Nov, racing the rows of Now as it steps in, so a rerun alone wouldn't take it off. Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00, moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. Firmware, listed here once too, has its own entry with its own date. The other two once listed, which with these failed 9 of 40 net runs from 15 Nov to 18 Nov 05:30 UTC, failed in none of the 25 and are excused no longer",
     "owner_pr": 3304,
     "owner_session": "Y2YBTS",
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
-      "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
       "test_the_time_here_says_how_the_clock_is_kept"
+    ],
+    "test": "vm-desktop-launcher-answers"
+  },
+  {
+    "at": 1794421209,
+    "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
+    "due": "2026-11-23",
+    "due_why": "Firmware failed because the test stepped out past where the launcher had already stepped back by itself; the test now waits for that step back, then asserts that a Return on the gone row writes no line, as the launcher has done since its fix, ruled 20 Nov and merged 21 Nov UTC. It comes off once five net runs after that change exit 0, counted by exit code, since a failure only here is recorded as passed. Its own entry, apart from the time here's, so those five runs, about a day at the net's pace from a merge on 21 Nov, count against a date that holds them and leave the time here's date its own",
+    "owner_pr": 5869,
+    "owner_session": "Y2YBTS",
+    "reason": "failed, then passed, at 042387bc604a",
+    "subtests": [
+      "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart"
     ],
     "test": "vm-desktop-launcher-answers"
   },
