@@ -22,8 +22,10 @@
 # relay starts. Once replayed, each node is read again, and a warning says
 # why if one isn't held or the seat can still open it. The run doesn't fail
 # for it: a machine that updates itself goes back a generation when a unit
-# fails, undoing every other change, and the one before reads the same rules,
-# so going back would leave the Brio as it is.
+# fails, undoing every other change, and going back can't give the Brio
+# back. Nothing here is undone by a switch to a generation without the
+# sharing: udev keeps the record these rules gave the Brio, so it stays
+# closed to the seat, with no relay, until it's replugged.
 
 # Whether the facts udev gives a node say the seat may be handed it.
 the_seats() {
@@ -127,11 +129,18 @@ else
   echo "The MX Brio was already held; its rules were read again."
 fi
 
-for node in "${nodes[@]}"; do
+for i in "${!nodes[@]}"; do
+  node=${nodes[i]}
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
+  path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
   # Replugged mid-run, the name can now be another camera's, which stays
-  # the seat's.
-  the_brio "$facts" || continue
+  # the seat's: one elsewhere on the bus, or one with ids of its own. A
+  # node with no ids at all is still the Brio, one udev kept no record
+  # of, and is warned of below.
+  [ "/sys$path" = "${paths[i]}" ] || continue
+  if grep -q '^ID_VENDOR_ID=' <<<"$facts" && ! the_brio "$facts"; then
+    continue
+  fi
   if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || the_seats "$facts"; then
     # <4> has the journal keep it as a warning.
     echo "<4>The MX Brio at $node isn't held:" \
