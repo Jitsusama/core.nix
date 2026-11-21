@@ -499,10 +499,19 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
     );
 }
 
-/// A page's lines from the first holding `from` on, each without the
-/// spaces it ends on, and their baselines.
-fn lines_from(name: &str, markdown: &str, from: &str) -> Vec<(String, f64)> {
-    crate::text::lines(crate::text::runs(&page_of(name, markdown).frame))
+/// A page's lines, set for a window `window_pt` wide, from the first
+/// holding `from` on, each without the spaces it ends on, and their
+/// baselines.
+fn lines_from(name: &str, markdown: &str, from: &str, window_pt: f64) -> Vec<(String, f64)> {
+    let dir = std::env::temp_dir().join(format!("reader-lines-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, markdown).expect("the file");
+    let mut setter = Setter::new(file.to_str().expect("a path"));
+    setter.fit(Width::for_window(window_pt));
+    let (page, _) = setter.set().expect("set");
+    std::fs::remove_dir_all(&dir).expect("cleaned");
+    crate::text::lines(crate::text::runs(&page.frame))
         .into_iter()
         .skip_while(|line| !line.text.contains(from))
         .map(|line| (line.text.trim_end().to_owned(), line.baseline_pt))
@@ -512,8 +521,14 @@ fn lines_from(name: &str, markdown: &str, from: &str) -> Vec<(String, f64)> {
 #[test]
 fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap() {
     let code = "nix-offload there --here-when-idle . checks.x86_64-linux.reader-sets-its-pages -L --keep-going ~/.cache/pi/agentic-harness.pi/work/trees/a-tree-with-a-long-name/tmp/runs/reader-sets-its-pages.log";
-    let lines = lines_from("wraps", &format!("Run this:\n\n`{code}`\n"), "nix-offload");
+    // A third of the panel, so the code takes lines enough to break
+    // after a slash as well as at a space.
+    let lines = lines_from("wraps", &format!("Run this:\n\n`{code}`\n"), "nix-offload", 360.0);
     assert!(lines.len() >= 3, "the code took {lines:?}");
+    assert!(
+        lines.iter().any(|(text, _)| text.ends_with('/')),
+        "no line broke after a slash: {lines:?}"
+    );
     let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
     // Every break is at a space the code has, or just after a slash.
     let read = texts.join("\n").replace("/\n", "/").replace('\n', " ");
@@ -542,7 +557,7 @@ fn short_code_is_kept_whole_on_one_line() {
     let markdown = "Short.\n\nKeep it short. ".to_owned()
         + &"Never run `nix build` here, where it evaluates beside the work. ".repeat(12)
         + "\n";
-    let lines = lines_from("whole", &markdown, "Keep it");
+    let lines = lines_from("whole", &markdown, "Keep it", 360.0);
     assert!(lines.len() >= 6, "too few lines to show it: {lines:?}");
     let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
     assert!(
