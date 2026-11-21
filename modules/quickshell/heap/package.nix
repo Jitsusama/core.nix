@@ -36,6 +36,10 @@ stdenv.mkDerivation {
   dontWrapQtApps = true;
   # Its test keeps and lets go of objects in a JavaScript engine.
   doCheck = true;
+  # And makes a QML object, whose QtQml import the sandbox finds only here.
+  preCheck = ''
+    export QML_IMPORT_PATH=${qt6.qtdeclarative}/${qt6.qtbase.qtQmlPrefix}
+  '';
   cmakeFlags = [
     (lib.cmakeFeature "QML_INSTALL_DIR" qt6.qtbase.qtQmlPrefix)
     # Qt warns that private headers tie a module to the Qt it was built

@@ -84,6 +84,19 @@
 // made almost none, and a class or a shape can't say which code made them.
 // It names only the largest places, from the shell's own code.
 //
+// What's live is counted by the QML property holding it too, because no
+// change to Qt's collector cut what the heap holds: in the heap's lab, five
+// left it at 192 to 208 MB for 66 live, against 207, while keeping heard
+// lines as text rather than parsed cut it to 181 and live to 51
+// (2026-11-21). So what to cut is what the shell keeps, and Joel's shell
+// keeps 17 MB of strings and 9 MB of shapes whose class, shape and place
+// can't say who holds them. It marks from each property with the
+// collector's marks, reads what each added, and clears them.
+//
+// Long because each count reads the one engine's chunks through the same
+// walks and private headers, in the one module built against the shell's
+// own Qt: split, each part would repeat those walks and that build.
+//
 // heap_test.cpp holds it to what it says.
 
 #include "heap.h"
@@ -91,19 +104,30 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QJSEngine>
+#include <QMetaProperty>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <dlfcn.h>
+#include <utility>
+#include <private/qqmlvmemetaobject_p.h>
 #include <private/qv4context_p.h>
 #include <private/qv4engine_p.h>
+#include <private/qv4executablecompilationunit_p.h>
 #include <private/qv4function_p.h>
 #include <private/qv4functionobject_p.h>
 #include <private/qv4internalclass_p.h>
+#include <private/qv4memberdata_p.h>
 #include <private/qv4mm_p.h>
+#include <private/qv4qmlcontext_p.h>
+#include <private/qv4qobjectwrapper_p.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <vector>
@@ -324,13 +348,16 @@ constexpr qsizetype NAME_LENGTH = 32;
 // anything else, a key taken from data, a symbol or a long name, as `~`, so
 // no clipboard text, title or path reaches the line, nor breaks its shape
 // for what reads it.
+QString saidName(const QString &text) {
+    static const QRegularExpression plain(QStringLiteral("^[A-Za-z_$][A-Za-z0-9_$]*$"));
+    return text.size() <= NAME_LENGTH && plain.match(text).hasMatch() ? text
+                                                                       : QStringLiteral("~");
+}
+
 QString said(const QV4::Value &name) {
     if (name.isUndefined())
         return QStringLiteral("-");
-    static const QRegularExpression plain(QStringLiteral("^[A-Za-z_$][A-Za-z0-9_$]*$"));
-    const QString text = name.isString() ? name.toQStringNoThrow() : QString();
-    return text.size() <= NAME_LENGTH && plain.match(text).hasMatch() ? text
-                                                                       : QStringLiteral("~");
+    return saidName(name.isString() ? name.toQStringNoThrow() : QString());
 }
 
 // The code a function was written in, as `Launcher.qml:943 spotsFrom`: its
@@ -491,6 +518,326 @@ QVariantMap Heap::census(int top) const {
                                          .arg(classesSaid.join(QStringLiteral(", ")),
                                               shapesSaid.join(QStringLiteral(", ")),
                                               placesSaid.join(QStringLiteral(", ")))}};
+}
+
+namespace {
+
+// Whether a class is, or is made from, another, as QObjectWrapper's kinds are.
+bool isA(const QV4::VTable *vtable, const QV4::VTable *kind) {
+    for (const QV4::VTable *each = vtable; each != nullptr; each = each->parent) {
+        if (each == kind)
+            return true;
+    }
+    return false;
+}
+
+// A chunk whose marks are read, and for a large item's own chunk, its bytes,
+// since its slots run past what the chunk's bitmaps say.
+struct Marked {
+    QV4::Chunk *chunk;
+    std::size_t largeBytes;
+};
+
+// The chunks of every allocator, so what marking sets can be read and
+// cleared: items, shapes and large items.
+std::vector<Marked> markedChunks(const QV4::MemoryManager *manager) {
+    std::vector<Marked> chunks;
+    for (QV4::Chunk *chunk : manager->blockAllocator.chunks)
+        chunks.push_back({chunk, 0});
+    for (QV4::Chunk *chunk : manager->icAllocator.chunks)
+        chunks.push_back({chunk, 0});
+    for (const auto &huge : manager->hugeItemAllocator.chunks)
+        chunks.push_back({huge.chunk, huge.size});
+    return chunks;
+}
+
+// What's newly marked since it last looked, so each holder's share is what
+// marking from it alone added: it keeps a copy of every chunk's marks, and
+// tallies each item whose mark wasn't in it.
+class NewlyMarked {
+public:
+    explicit NewlyMarked(std::vector<Marked> chunks)
+        : chunks(std::move(chunks)), seen(this->chunks.size() * QV4::Chunk::EntriesInBitmap) {}
+
+    bool anyMarked() const {
+        for (const Marked &each : chunks) {
+            for (const quintptr word : each.chunk->blackBitmap) {
+                if (word != 0)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    void take(Tally &into) {
+        using QV4::Chunk;
+        for (std::size_t at = 0; at < chunks.size(); ++at) {
+            const Marked &each = chunks[at];
+            quintptr *was = &seen[at * Chunk::EntriesInBitmap];
+            // Most chunks gain no mark from one holder, so each is compared
+            // whole first: it's read once per name in the shell's files.
+            if (std::memcmp(was, each.chunk->blackBitmap, sizeof(each.chunk->blackBitmap)) == 0)
+                continue;
+            for (std::size_t word = 0; word < Chunk::EntriesInBitmap; ++word) {
+                const quintptr now = each.chunk->blackBitmap[word];
+                quintptr fresh = now & ~was[word];
+                was[word] = now;
+                while (fresh != 0) {
+                    const auto bit = static_cast<std::size_t>(std::countr_zero(fresh));
+                    fresh &= fresh - 1;
+                    into.bytes += static_cast<double>(
+                        each.largeBytes != 0 ? each.largeBytes
+                                             : span(each.chunk, word * Chunk::Bits + bit) *
+                                                   Chunk::SlotSize);
+                    into.count += 1;
+                }
+            }
+        }
+    }
+
+    // Leaves every mark as the sweep does, cleared, so the next collection
+    // marks from nothing and what's let go meanwhile is collected.
+    void clear() {
+        for (const Marked &each : chunks)
+            std::memset(each.chunk->blackBitmap, 0, sizeof(each.chunk->blackBitmap));
+    }
+
+private:
+    static std::size_t span(const QV4::Chunk *chunk, std::size_t index) {
+        using QV4::Chunk;
+        constexpr auto last = static_cast<std::size_t>(Chunk::NumSlots);
+        constexpr auto bits = static_cast<std::size_t>(Chunk::Bits);
+        std::size_t length = 1;
+        while (index + length < last &&
+               ((chunk->extendsBitmap[(index + length) / bits] >> ((index + length) % bits)) &
+                1U) != 0)
+            ++length;
+        return length;
+    }
+
+    std::vector<Marked> chunks;
+    std::vector<quintptr> seen;
+};
+
+// The file that declares one level of an object's properties, as the
+// holders' line says it: its name, after its folder's where that's named as
+// code is, since the shell has a Spend.qml in launcher/ and in pieces/; or
+// `~` for one not named as code is. Each level is its own file's, as
+// `Base { property var added }` in Launcher.qml declares `added` there and
+// Base's own in Base.qml. The filters keep data out of the line only while
+// the shell's files are named in its code, as they are: a file named for a
+// session or a host, with no space, would pass them.
+QString fileSaid(const QQmlVMEMetaObject *level) {
+    static const QRegularExpression plain(QStringLiteral("^[A-Za-z0-9_.-]{1,48}$"));
+    static const QRegularExpression folder(QStringLiteral("^[A-Za-z_][A-Za-z0-9_]{0,31}$"));
+    const auto unit = level->compilationUnit();
+    if (!unit)
+        return QStringLiteral("~");
+    const QStringList path = unit->finalUrl().path().split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    const QString file = path.value(path.size() - 1);
+    if (!plain.match(file).hasMatch())
+        return QStringLiteral("~");
+    const QString in = path.value(path.size() - 2);
+    return folder.match(in).hasMatch() ? in + QLatin1Char('/') + file : file;
+}
+
+// One property's value, and the holder it's counted for.
+struct Held {
+    QString key;
+    QV4::Heap::MemberData *storage;
+    uint index;
+};
+
+} // namespace
+
+QVariantMap Heap::holders(int top, int namingMs) const {
+    QV4::ExecutionEngine *v4 = engine->handle();
+    QV4::MemoryManager *manager = v4->memoryManager;
+    if (manager->gcStateMachine->inProgress())
+        return {{QStringLiteral("busy"), true}};
+    NewlyMarked marks(markedChunks(manager));
+    // Marks set with no collection under way would hide what they mark from
+    // every holder, and clearing them might undo work it trusts; they're
+    // said apart, since the sweep clears them all and none should be there.
+    if (marks.anyMarked())
+        return {{QStringLiteral("busy"), true}, {QStringLiteral("marked"), true}};
+    // From here to marks.clear(), nothing may make anything in the engine's
+    // heap or run JavaScript: either could start a collection with these
+    // marks set, which would take them as its own and free what they hide.
+    // What it makes, QStrings, lists and maps, is C++'s own.
+    QElapsedTimer clock;
+    clock.start();
+    double total = 0;
+    const auto weigh = [&total](QV4::Heap::Base *, double bytes) { total += bytes; };
+    walk(manager->blockAllocator, weigh);
+    walk(manager->icAllocator, weigh);
+    for (const auto &huge : manager->hugeItemAllocator.chunks)
+        total += static_cast<double>(huge.size);
+    // Every object, its properties' storage and every QML context is marked
+    // first, without what it reaches, so marking from one property stops at
+    // them and what another object's properties hold is counted for them.
+    std::vector<QV4::Heap::Base *> objects;
+    std::vector<QV4::Heap::Base *> contexts;
+    std::vector<Held> held;
+    QSet<const QObject *> found;
+    walk(manager->blockAllocator, [&](QV4::Heap::Base *item, double) {
+        if (item->internalClass == nullptr)
+            return;
+        const QV4::VTable *vtable = item->internalClass->vtable;
+        if (vtable == QV4::QQmlContextWrapper::staticVTable() ||
+            vtable == QV4::QmlContext::staticVTable()) {
+            item->setMarkBit();
+            contexts.push_back(item);
+            return;
+        }
+        if (!isA(vtable, QV4::QObjectWrapper::staticVTable()))
+            return;
+        item->setMarkBit();
+        objects.push_back(item);
+        QObject *object = static_cast<QV4::Heap::QObjectWrapper *>(item)->object();
+        if (object == nullptr || found.contains(object))
+            return;
+        found.insert(object);
+        const QMetaObject *meta = object->metaObject();
+        for (QQmlVMEMetaObject *vme = QQmlVMEMetaObject::get(object); vme != nullptr;
+             vme = vme->parentVMEMetaObject()) {
+            // Another engine's storage sits in chunks whose marks it never
+            // clears, as Qt's own marking skips it (QQmlVMEMetaObject::mark).
+            if (vme->engine() != v4)
+                continue;
+            QV4::MemberData *storage = vme->propertyAndMethodStorageAsMemberData();
+            if (storage == nullptr)
+                continue;
+            const QString file = fileSaid(vme);
+            if (!storage->d()->isMarked())
+                storage->d()->setMarkBit();
+            const auto count = std::min<uint>(static_cast<uint>(vme->propCount()),
+                                              storage->size());
+            for (uint at = 0; at < count; ++at) {
+                const QV4::Value &value = storage->d()->values[at];
+                if (!value.isManaged())
+                    continue;
+                const QString name = saidName(QString::fromLatin1(
+                    meta->property(vme->propOffset() + static_cast<int>(at)).name()));
+                held.push_back({file + QLatin1Char(' ') + name, storage->d(), at});
+            }
+            // The file's functions follow its properties in the same
+            // storage, each made anew for every object, and count together.
+            const QString functions = file + QStringLiteral(" (functions)");
+            for (uint at = count; at < storage->size(); ++at) {
+                if (storage->d()->values[at].isManaged())
+                    held.push_back({functions, storage->d(), at});
+            }
+        }
+    });
+    Tally themselves;
+    marks.take(themselves);
+    // What the engine keeps of its own, as the collector's first steps mark
+    // it: its builtins and global object, the shapes and names it knows,
+    // and the code it has compiled with the shapes that code has cached.
+    // It's marked before any property, since otherwise the first to reach a
+    // plain object would take Object.prototype and all it leads to, and
+    // cutting a property frees none of it.
+    QV4::MarkStack stack(v4);
+    v4->markObjects(&stack);
+    manager->collectFromJSStack(&stack);
+    stack.drain();
+    Tally engineOwn;
+    marks.take(engineOwn);
+    std::stable_sort(held.begin(), held.end(),
+                     [](const Held &a, const Held &b) { return a.key < b.key; });
+    QHash<QString, Tally> byHolder;
+    std::vector<const Held *> unnamedHeld;
+    int names = 0;
+    int named = 0;
+    QElapsedTimer naming;
+    naming.start();
+    for (std::size_t at = 0; at < held.size(); ++names) {
+        const QString &key = held[at].key;
+        if (naming.elapsed() >= namingMs) {
+            for (; at < held.size() && held[at].key == key; ++at)
+                unnamedHeld.push_back(&held[at]);
+            continue;
+        }
+        ++named;
+        for (; at < held.size() && held[at].key == key; ++at) {
+            held[at].storage->values[held[at].index].mark(&stack);
+            stack.drain();
+        }
+        // One reaching nothing another hadn't, as a property holding
+        // another object does, isn't said.
+        Tally reached;
+        marks.take(reached);
+        if (reached.count > 0)
+            byHolder.insert(key, reached);
+    }
+    // Names it had no time for are marked together and said as properties
+    // unnamed: their storage is marked already, so nothing after would
+    // reach what they hold.
+    for (const Held *each : unnamedHeld) {
+        each->storage->values[each->index].mark(&stack);
+        stack.drain();
+    }
+    Tally unnamed;
+    marks.take(unnamed);
+    // What no property reaches, through the contexts and the scripts they
+    // import, then through the objects otherwise.
+    const auto through = [&stack, &marks](const std::vector<QV4::Heap::Base *> &from) {
+        Tally reached;
+        for (QV4::Heap::Base *item : from) {
+            item->internalClass->vtable->markObjects(item, &stack);
+            stack.drain();
+        }
+        marks.take(reached);
+        return reached;
+    };
+    const Tally fromContexts = through(contexts);
+    const Tally fromObjects = through(objects);
+    marks.clear();
+    double counted = themselves.bytes + engineOwn.bytes + unnamed.bytes + fromContexts.bytes +
+                     fromObjects.bytes;
+    for (const Tally &each : std::as_const(byHolder))
+        counted += each.bytes;
+    const double rest = std::max(0.0, total - counted);
+    QVariantList holding;
+    QStringList holdingSaid;
+    for (const auto &[key, each] : largest(byHolder, top)) {
+        holding.append(QVariant(QVariantList{key, megabytes(each.bytes), each.count}));
+        holdingSaid.append(QStringLiteral("%1 %2 MB (%3)")
+                               .arg(key, sized(megabytes(each.bytes)))
+                               .arg(each.count, 0, 'f', 0));
+    }
+    const QString stopped =
+        named < names ? QStringLiteral(" (%1 of %2 names before its %3 ms were up, the rest's %4 "
+                                       "MB unnamed)")
+                            .arg(named)
+                            .arg(names)
+                            .arg(namingMs)
+                            .arg(sized(megabytes(unnamed.bytes)))
+                      : QString();
+    const double ms = static_cast<double>(clock.nsecsElapsed()) / 1e6;
+    return {{QStringLiteral("holders"), holding},
+            {QStringLiteral("names"), names},
+            {QStringLiteral("named"), named},
+            {QStringLiteral("themselves"), megabytes(themselves.bytes)},
+            {QStringLiteral("engine"), megabytes(engineOwn.bytes)},
+            {QStringLiteral("unnamed"), megabytes(unnamed.bytes)},
+            {QStringLiteral("contexts"), megabytes(fromContexts.bytes)},
+            {QStringLiteral("objects"), megabytes(fromObjects.bytes)},
+            {QStringLiteral("rest"), megabytes(rest)},
+            {QStringLiteral("total"), megabytes(total)},
+            {QStringLiteral("ms"), ms},
+            {QStringLiteral("said"),
+             QStringLiteral("%1 MB counted in %2 ms: by property%3 %4; the objects, their "
+                            "storage and contexts themselves %5 MB; the engine's own %6 MB; "
+                            "reached through contexts and scripts %7 MB, through objects "
+                            "otherwise %8 MB, from none of these %9 MB")
+                 .arg(sized(megabytes(total)))
+                 .arg(ms, 0, 'f', 0)
+                 .arg(stopped, holdingSaid.join(QStringLiteral(", ")),
+                      sized(megabytes(themselves.bytes)), sized(megabytes(engineOwn.bytes)),
+                      sized(megabytes(fromContexts.bytes)),
+                      sized(megabytes(fromObjects.bytes)), sized(megabytes(rest)))}};
 }
 
 double Heap::collected() const {

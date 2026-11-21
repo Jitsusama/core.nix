@@ -88,6 +88,30 @@ public:
     // counts nothing and answers only `busy`.
     Q_INVOKABLE QVariantMap census(int top) const;
 
+    // What's live, by the QML property that holds it: properties of one
+    // name declared in one file counted together, the file named after its
+    // folder, as `launcher/Spend.qml rows`, and each file's functions as
+    // `File.qml (functions)`. Each item is counted once, for the first
+    // holder reaching it in the order of their names, so what several share,
+    // as the shapes of objects made alike, goes to the one sorting first;
+    // what the engine keeps of its own is counted before any. `holders`, the
+    // `top` that hold the most, each its name, its megabytes and its count;
+    // `names` and `named`, how many there were and how many it named before
+    // `namingMs` had passed, what the rest hold being `unnamed`;
+    // `themselves`, the megabytes of the objects, their properties' storage
+    // and the QML contexts, which no property is said to hold; `engine`, its
+    // builtins, global object, shapes, names and compiled code; `contexts`,
+    // what's reached from the contexts and the scripts they import and no
+    // property; `objects`, what's reached from the objects otherwise, their
+    // children and the like; `rest`, what none of them reaches: what's held
+    // from C++, and what was made since the last collection and is no longer
+    // reached; `total`, `ms` and `said`, as census() says them. It
+    // marks what each reaches with the collector's own marks and clears
+    // them before it returns, so while a collection is under way it counts
+    // nothing and answers only `busy`, and with marks already set outside
+    // one, which the sweep should leave none of, `busy` and `marked`.
+    Q_INVOKABLE QVariantMap holders(int top, int namingMs = 100) const;
+
 private:
     QJSEngine *engine;
 };
