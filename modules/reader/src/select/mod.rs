@@ -360,7 +360,10 @@ impl Layout {
             .into_iter()
             .map(|(_, top)| top)
             .collect();
-        Self::new(lines, units(frame), &starts, source)
+        Self {
+            version,
+            ..Self::new(lines, units(frame), &starts, source)
+        }
     }
 
     /// The page's lines and the pieces' marks, each block's start, in
@@ -476,7 +479,7 @@ impl Layout {
             words,
             spans,
             code,
-            version,
+            version: 0,
         }
     }
 
