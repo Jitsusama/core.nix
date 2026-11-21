@@ -4396,8 +4396,9 @@ fn an_account_unit_home_manager_keeps_running_needs_no_hold() {
 
 /// sd-switch keeps a changed unit whose new file says keep-old running as
 /// it was, as the sessions' kitty is, so changing it closes no window and
-/// needs no grant (2026-11-21). The new file alone decides, as sd-switch
-/// reads it, so one gaining keep-old is kept at the switch it gains it in.
+/// needs no grant (2026-11-21). The new unit, its drop-ins with it, alone
+/// decides, as sd-switch reads it, so one gaining keep-old is kept at the
+/// switch it gains it in.
 #[test]
 fn an_account_unit_a_switch_keeps_needs_no_hold() {
     let mut world = World::new();
@@ -4422,54 +4423,122 @@ fn account_drop_in(system: &Path, name: &str, says: &str) {
 }
 
 /// Asserts the follow was refused for the hold on joel's windows.service.
-fn held_for_windows(world: &mut World) {
+fn held_for_windows(world: &World, case: &str) {
     let Line::Refused { why, .. } = world.update().1 else {
-        panic!("not refused")
+        panic!("{case}: not refused")
     };
-    assert!(why.starts_with(update::NEEDS_HOLD), "{why}");
-    assert!(why.contains("joel's windows.service"), "{why}");
+    assert!(why.starts_with(update::NEEDS_HOLD), "{case}: {why}");
+    assert!(why.contains("joel's windows.service"), "{case}: {why}");
 }
 
-/// What doesn't keep the unit as systemd reads it is held: keep-old
+/// One new account unit a switch is judged by: its file, or none, and its
+/// drop-ins by name.
+struct NewUnit {
+    case: &'static str,
+    file: Option<&'static str>,
+    drop_ins: &'static [(&'static str, &'static str)],
+}
+
+const KEPT: &str = "[Unit]\nX-SwitchMethod=keep-old\n";
+const RESTARTED: &str = "[Unit]\nX-SwitchMethod=restart\n";
+
+/// Switches from a kept unit to `new`, giving how the follow ended.
+fn switch_to(new: &NewUnit) -> (World, String) {
+    let mut world = World::new();
+    hold_the_daemon(&mut world, "same");
+    account_unit(&world.system("first"), KEPT);
+    let head = world.signed(new.case);
+    let system = world.system(&head);
+    daemon_unit(&system, "same");
+    account_unit(&system, new.file.unwrap_or(""));
+    if new.file.is_none() {
+        fs::remove_file(
+            system.join("home-manager-generation/home-files/.config/systemd/user/windows.service"),
+        )
+        .unwrap();
+    }
+    for (name, says) in new.drop_ins {
+        account_drop_in(&system, name, says);
+    }
+    (world, head)
+}
+
+/// What doesn't keep the unit as sd-switch reads it is held: keep-old
 /// dropped, as a revert drops it; said outside [Unit]; overridden by a
-/// drop-in; or the unit gone from the new system.
+/// drop-in later by name; said only in a file systemd doesn't read as a
+/// drop-in; a legacy keep under a method that restarts; a unit refusing a
+/// start, which sd-switch stops; or the unit gone from the new system.
 #[test]
 fn an_account_unit_a_switch_doesnt_keep_waits_for_a_hold() {
-    let kept = "[Unit]\nX-SwitchMethod=keep-old\n";
-    let cases: [(&str, Option<&str>, Option<(&str, &str)>); 4] = [
-        ("dropped", Some("[Service]\nExecStart=new\n"), None),
-        (
-            "outside",
-            Some("[Service]\nX-SwitchMethod=keep-old\nExecStart=new\n"),
-            None,
-        ),
-        (
-            "overridden",
-            Some(kept),
-            Some(("later.conf", "[Unit]\nX-SwitchMethod=restart\n")),
-        ),
-        ("gone", None, None),
+    let new = "[Service]\nExecStart=new\n";
+    let cases = [
+        NewUnit {
+            case: "dropped",
+            file: Some(new),
+            drop_ins: &[],
+        },
+        NewUnit {
+            case: "outside",
+            file: Some("[Service]\nX-SwitchMethod=keep-old\nExecStart=new\n"),
+            drop_ins: &[],
+        },
+        NewUnit {
+            case: "overridden",
+            file: Some(KEPT),
+            drop_ins: &[("10-kept.conf", KEPT), ("20-later.conf", RESTARTED)],
+        },
+        NewUnit {
+            case: "not-a-drop-in",
+            file: Some(new),
+            drop_ins: &[("kept.txt", KEPT)],
+        },
+        NewUnit {
+            case: "method-over-legacy",
+            file: Some("[Unit]\nX-RestartIfChanged=false\nX-SwitchMethod=restart\n"),
+            drop_ins: &[],
+        },
+        NewUnit {
+            case: "refuses-a-start",
+            file: Some("[Unit]\nX-SwitchMethod=keep-old\nRefuseManualStart=yes\n"),
+            drop_ins: &[],
+        },
+        NewUnit {
+            case: "gone",
+            file: None,
+            drop_ins: &[],
+        },
     ];
-    for (case, new, drop_in) in cases {
-        let mut world = World::new();
-        hold_the_daemon(&mut world, "same");
-        account_unit(&world.system("first"), kept);
-        let head = world.signed(case);
-        let system = world.system(&head);
-        daemon_unit(&system, "same");
-        account_unit(&system, new.unwrap_or(""));
-        if new.is_none() {
-            fs::remove_file(
-                system.join(
-                    "home-manager-generation/home-files/.config/systemd/user/windows.service",
-                ),
-            )
-            .unwrap();
-        }
-        if let Some((name, says)) = drop_in {
-            account_drop_in(&system, name, says);
-        }
-        held_for_windows(&mut world);
+    for new in &cases {
+        held_for_windows(&switch_to(new).0, new.case);
+    }
+}
+
+/// What keeps it as sd-switch reads it needs no hold: a drop-in adding
+/// keep-old, the last by name winning over an earlier one, and the legacy
+/// key in any of the words systemd reads as false.
+#[test]
+fn an_account_unit_its_drop_ins_keep_needs_no_hold() {
+    let new = "[Service]\nExecStart=new\n";
+    let cases = [
+        NewUnit {
+            case: "added",
+            file: Some(new),
+            drop_ins: &[("kept.conf", KEPT)],
+        },
+        NewUnit {
+            case: "last-wins",
+            file: Some(RESTARTED),
+            drop_ins: &[("10-restarted.conf", RESTARTED), ("20-kept.conf", KEPT)],
+        },
+        NewUnit {
+            case: "legacy-no",
+            file: Some("[Unit]\nX-RestartIfChanged = No\n"),
+            drop_ins: &[],
+        },
+    ];
+    for new in &cases {
+        let (world, head) = switch_to(new);
+        assert_eq!(world.update().1, done(&head), "{}", new.case);
     }
 }
 
