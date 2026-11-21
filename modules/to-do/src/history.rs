@@ -10,10 +10,10 @@
 //!
 //! Left to the shell, which alone knows them: a terminal look's Go, to its
 //! session; Talk, Go To and Explain It on the cell behind a look, found by
-//! the `cell` its row holds; the drawer's eyebrow, its quest's title and how it stands; an
-//! answer the node took, which moves a look still waiting in its file to
-//! History at once; and settling a quiet look Joel opens, as `held.state`
-//! says one is.
+//! the `cell` its row holds; the drawer's eyebrow, its quest's title and
+//! how it stands; an answer the node took, which moves a look still
+//! waiting in its file to History at once; and settling a quiet look Joel
+//! opens, as `held.state` says one is.
 //!
 //! A look waiting past its time is History's by the clock alone, its file
 //! unchanged: expired at its `expiresAt`, or gone quiet three days after it
@@ -333,7 +333,7 @@ mod tests {
         let look = json!({"v": 1, "id": "b1", "kind": "pr", "title": "Fix the drawer",
             "state": "opened", "target": "https://github.com/Jitsusama/core.nix/pull/4368",
             "why": "It flickers.", "ask": "Merge it?", "session": "s1", "address": "AB12CD",
-            "quest": "QEST-1", "cell": "AB12CD", "at": NOW - 3 * HOUR,
+            "quest": "QEST-1", "cell": "CE11XX", "at": NOW - 3 * HOUR,
             "resolvedAt": NOW - 2 * HOUR});
         let (rows, due) = made(&[look], &words(), NOW);
         assert_eq!(due, None, "nothing waits");
@@ -365,7 +365,7 @@ mod tests {
                     "id": "b1", "kind": "pr", "title": "Fix the drawer",
                     "target": "https://github.com/Jitsusama/core.nix/pull/4368",
                     "session": "s1", "address": "AB12CD", "quest": "QEST-1",
-                    "cell": "AB12CD", "state": "opened", "how": null, "at": NOW - 3 * HOUR,
+                    "cell": "CE11XX", "state": "opened", "how": null, "at": NOW - 3 * HOUR,
                     "resolvedAt": NOW - 2 * HOUR, "since": NOW - 3 * HOUR,
                     "doneAt": NOW - 2 * HOUR,
                 },

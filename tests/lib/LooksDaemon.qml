@@ -1,7 +1,6 @@
 // A stand-in for the to-do daemon (modules/to-do), for a QML test of what
 // the launcher makes of the looks done with: it serves `looks`, each as
-// { id, kind, title, why, how, doneAt } and who left it where a case says
-// (session, address, quest, cell), as ready rows in the place
+// { id, kind, title, why, how, doneAt }, as ready rows in the place
 // the daemon serves History's looks, `looks-history`, newest done with
 // first, each holding the look as the daemon read it, which names no file,
 // with beside them how many there are (modules/to-do's history.rs). Each time `looks` is said anew it tells each watch only
@@ -51,8 +50,6 @@ Scope {
                     : [{ key: "verb:on:look:open", open: "https://example.com" }],
                 held: { id: look.id, kind: look.kind, title: look.title,
                     target: "https://example.com", state: look.how, how: look.how,
-                    session: look.session ?? null, address: look.address ?? null,
-                    quest: look.quest ?? null, cell: look.cell ?? null,
                     at: look.doneAt, resolvedAt: look.doneAt, doneAt: look.doneAt },
                 forYou: { kind: "look", source: "looks" }
             }
