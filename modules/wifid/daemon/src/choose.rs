@@ -397,12 +397,13 @@ impl Chooser {
         // None of that leaves a wider band holding well (`holds_wide`).
         // A point kept off only for carrying worse than the usual twice
         // carried better than the point left did, so a failing link may
-        // still leave for it.
+        // still leave for it, once a whole span says it's failing: echoes
+        // lost on the way back may fall in the first.
         let resting = resting(measured);
         let may_narrow = queued && !used(measured);
         let untried = others.iter().filter(|other| {
             other.point != point
-                && self.may_try(&other.point, failing)
+                && self.may_try(&other.point, failing && !young)
                 && (wide(other.frequency) || !holds_wide)
                 && ((bad && !queued)
                     || resting
@@ -684,12 +685,17 @@ impl Chooser {
             worse(measured, &against).then_some(Against::Usually(against))
         };
         let moved = (trial.from.clone(), point.to_owned());
-        // A trial that stands carried well, so a back on the usual before it
-        // is no longer the first of a repeat.
-        // It ends any keep-off a failing link took it through, too.
+        // A trial that stands carrying as well as the point left usually
+        // does carried well, so a back on the usual before it is no longer
+        // the first of a repeat, and any keep-off a failing link took it
+        // through ends. One that stands only for carrying better than a
+        // failing link says nothing of the usual, so both hold.
         let Some(why) = why else {
-            self.usually.remove(&moved);
-            self.spurned.remove(point);
+            let usual = weighed_by(&trial.before, trial.usual.as_ref(), true);
+            if !worse(measured, &usual) {
+                self.usually.remove(&moved);
+                self.spurned.remove(point);
+            }
             return None;
         };
         // A trial worse only than what the point left usually carries isn't
@@ -2373,57 +2379,26 @@ pub(crate) mod tests {
 
     #[test]
     fn a_second_back_on_the_usual_within_the_hour_keeps_the_point_off() {
-        let start = Instant::now();
-        let unloaded = |p95| Measured {
+        let (mut chooser, again) = hall_kept_off_on_the_usual(Instant::now());
+        let slow = Measured {
             moving: None,
-            ..carried(p95, 0.0)
+            ..carried(76, 0.0)
         };
-        let (slow, there) = (unloaded(76), unloaded(50));
-        let mut chooser = after_a_bad_minute(DESK);
-        let around = [desk_at(-50, Some(unloaded(14))), hall(-45, Some(20), None)];
-        let mut on = |at, point, measured: &Measured| {
-            chooser.choose(at, (point, measured, -50, CH52), &around, false)
-        };
-        let back = start + TRIAL;
-        let again = back + SETTLE + TRIAL;
-        // A merely bad link is left on its second bad minute, so each
-        // retry follows one on the desk.
+        let around = around_the_desk();
+        // A merely bad link is left on its second bad minute, so the third
+        // try would follow one on the desk.
         let primed = SETTLE.saturating_sub(Duration::from_secs(60));
-
-        let tried = on(start, DESK, &slow);
-        let first = on(back, HALL, &there);
-        on(back + primed, DESK, &slow);
-        let retried = on(back + SETTLE, DESK, &slow);
-        let second = on(again, HALL, &there);
-        on(again + primed, DESK, &slow);
-        let third = on(again + SETTLE, DESK, &slow);
-        let failing = on(
-            again + SETTLE + Duration::from_secs(60),
-            DESK,
-            &carried(400, 15.0),
-        );
+        chooser.choose(again + primed, (DESK, &slow, -50, CH52), &around, false);
+        let third = chooser.choose(again + SETTLE, (DESK, &slow, -50, CH52), &around, false);
         let kept = chooser.keeps_off(HALL, again + HOUR_LESS_A_SECOND);
         let ended = chooser.keeps_off(HALL, again + SPURNED);
 
-        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
-        assert_eq!(first, Choice::Back(DESK.into()), "and gone back from");
-        assert_eq!(retried, Choice::Try(HALL.into()), "tried again, settled");
-        assert_eq!(
-            second,
-            Choice::Back(DESK.into()),
-            "and gone back from again"
-        );
         assert!(kept, "so kept off to the hour's last second");
         assert!(!ended, "and no longer");
         assert_eq!(
             third,
             Choice::Stay,
             "the hall kept off, it stays where it is"
-        );
-        assert_eq!(
-            failing,
-            Choice::Try(HALL.into()),
-            "a desk failing may still leave for the hall, which carried better"
         );
     }
 
@@ -2439,7 +2414,8 @@ pub(crate) mod tests {
 
     /// A chooser gone back from the hall to the desk twice within the hour
     /// for carrying worse only than the desk usually does, so keeping the
-    /// hall off, and when the second back has settled.
+    /// hall off, and when the second back was. The desk's span has grown a
+    /// minute since, as a choice every minute grows it.
     fn hall_kept_off_on_the_usual(start: Instant) -> (Chooser, Instant) {
         let unloaded = |p95| Measured {
             moving: None,
@@ -2453,14 +2429,26 @@ pub(crate) mod tests {
         };
         let back = start + TRIAL;
         let again = back + SETTLE + TRIAL;
-        let primed = SETTLE.saturating_sub(Duration::from_secs(60));
-        on(start, DESK, &slow);
-        on(back, HALL, &there);
+        let minute = Duration::from_secs(60);
+        // A merely bad link is left on its second bad minute, so each
+        // retry follows one on the desk.
+        let primed = SETTLE.saturating_sub(minute);
+        let tried = on(start, DESK, &slow);
+        let first = on(back, HALL, &there);
         on(back + primed, DESK, &slow);
-        on(back + SETTLE, DESK, &slow);
-        on(again, HALL, &there);
+        let retried = on(back + SETTLE, DESK, &slow);
+        let second = on(again, HALL, &there);
+        on(again + minute, DESK, &slow);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+        assert_eq!(first, Choice::Back(DESK.into()), "and gone back from");
+        assert_eq!(retried, Choice::Try(HALL.into()), "tried again, settled");
+        assert_eq!(
+            second,
+            Choice::Back(DESK.into()),
+            "and gone back from again"
+        );
         assert!(chooser.keeps_off(HALL, again), "the hall is kept off");
-        (chooser, again + SETTLE)
+        (chooser, again)
     }
 
     #[test]
@@ -2479,39 +2467,68 @@ pub(crate) mod tests {
             chooser.choose(at, (HALL, measured, -45, CH52), &around, false)
         };
 
-        let (mut stood, settled) = hall_kept_off_on_the_usual(start);
-        let tried = desk(&mut stood, settled);
-        let quick = Measured {
+        let unloaded = |p95| Measured {
             moving: None,
-            ..carried(20, 0.0)
+            ..carried(p95, 0.0)
         };
-        let judged = hall(&mut stood, settled + TRIAL, &quick);
+
+        let (mut early, again) = hall_kept_off_on_the_usual(start);
+        let young = desk(&mut early, again + minute * 2);
+        let whole = desk(&mut early, again + minute + SPAN);
+
+        let (mut stood, again) = hall_kept_off_on_the_usual(start);
+        let settled = again + SETTLE;
+        desk(&mut stood, settled);
+        let judged = hall(&mut stood, settled + TRIAL, &unloaded(20));
         let still_kept = stood.keeps_off(HALL, settled + TRIAL);
 
-        let (mut worse, settled) = hall_kept_off_on_the_usual(start);
+        let (mut less_bad, again) = hall_kept_off_on_the_usual(start);
+        let settled = again + SETTLE;
+        desk(&mut less_bad, settled);
+        let less = hall(&mut less_bad, settled + TRIAL, &unloaded(50));
+        let kept_still = less_bad.keeps_off(HALL, settled + TRIAL);
+
+        let (mut worse, again) = hall_kept_off_on_the_usual(start);
+        let settled = again + SETTLE;
         desk(&mut worse, settled);
         let gone_bad = Measured {
             moving: None,
             ..carried(600, 40.0)
         };
         let back = hall(&mut worse, settled + minute, &gone_bad);
-        let retried = desk(&mut worse, settled + minute * 2);
+        // Its span on the desk whole again, so the hall would be tried if
+        // the keep-off yielded.
+        desk(&mut worse, settled + minute * 2);
+        let retried = desk(&mut worse, settled + minute * 2 + SPAN);
 
         assert_eq!(
-            tried,
+            young,
+            Choice::Stay,
+            "a desk failing in its first span after the back keeps off the hall"
+        );
+        assert_eq!(
+            whole,
             Choice::Try(HALL.into()),
-            "a desk failing leaves for the hall, which carried better than it"
+            "a desk failing a whole span leaves for the hall, which carried better than it"
         );
         assert_eq!(judged, Choice::Stay, "the hall at 20 ms stands");
-        assert!(!still_kept, "and is no longer kept off");
+        assert!(
+            !still_kept,
+            "and, carrying as the desk usually does, isn't kept off"
+        );
+        assert_eq!(less, Choice::Stay, "the hall at 50 ms stands too");
+        assert!(
+            kept_still,
+            "but, carrying only better than a failing desk, stays kept off"
+        );
         assert_eq!(
             back,
             Choice::Back(DESK.into()),
             "the hall failing worse goes back"
         );
-        assert_ne!(
+        assert_eq!(
             retried,
-            Choice::Try(HALL.into()),
+            Choice::Stay,
             "kept off now for carrying worse than the failing desk, the hall isn't tried again"
         );
     }
@@ -2636,10 +2653,13 @@ pub(crate) mod tests {
         assert_eq!(why, Some(Against::Worse(left)), "the quicker judged");
         assert!(kept, "worse than it left, kept off an hour");
         let at = now + SETTLE;
+        // A span on the desk first, so the failing minute is a whole one's.
+        let span = now + SETTLE.saturating_sub(SPAN);
+        kept_worse.choose(span, (DESK, &slow, -50, CH52), &around, false);
         let failed = kept_worse.choose(at, (DESK, &failing, -50, CH52), &around, false);
-        assert_ne!(
+        assert_eq!(
             failed,
-            Choice::Try(HALL.into()),
+            Choice::Stay,
             "a point that carried worse than the desk stays kept off, the desk failing or not"
         );
 
