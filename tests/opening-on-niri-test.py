@@ -1282,8 +1282,10 @@ def test_a_way_forward_into_a_copy_shown_before_a_share_is_let_go(shell: Shell) 
 
     Copies never says a share began, so the clipboard left before it stays on the way forward;
     the key lets go of it as it's pressed and says so (Launcher.qml's hiddenForgotten), or the
-    copy's place would come back on a shared screen as it was left. The copy is forgotten
-    after, so the cases after this one find the history as empty as before.
+    copy's place would come back on a shared screen as it was left. Its journal line pins the
+    letting go to the press: a shell whose share's start emptied the ways back (Asks' untold,
+    not loaded here) would say let go too, but forget nothing as the key is pressed. The copy is
+    forgotten after, so the cases after this one find the history as empty as before.
     """
     copied = "a copy shown before the share"
     with contextlib.ExitStack() as after:
@@ -1305,15 +1307,25 @@ def test_a_way_forward_into_a_copy_shown_before_a_share_is_let_go(shell: Shell) 
         stood.say(said=False)
         read_shared(shell, shared=True)
         shell.normal()
+        since = shell.mark()
         shell.send_key("ctrl-i")
         shell.launcher_until(
-            lambda shown: "let go, as the screen may be shared" in str(shown["saying"])
+            lambda shown: len(shown["held"]) != home
+            or "let go, as the screen may be shared" in str(shown["saying"])
         )
         shown = shell.showing()
-        assert len(shown["held"]) == home, f"Ctrl+I went back into: {shown['path']}"
-        drawn = shell.as_account(shell.ipc("drawnTexts"))
-        assert copied not in drawn, f"the copy was drawn on a shared screen: {drawn}"
+        assert len(shown["held"]) == home, f"Ctrl+I went back into {shown['path']} shared"
+        forgot_at_the_press(shell, since)
         shell.close_launcher()
+
+
+def forgot_at_the_press(shell: Shell, since: int) -> None:
+    """Wait until the shell's journal says, after the mark, that a key let ways back go."""
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    forgot = re.compile(r"launcher: let go of [1-9][0-9]* ways back, as the screen may be shared")
+    while not forgot.search(said := shell.log.read_bytes()[since:].decode(errors="replace")):
+        assert time.monotonic() < deadline, f"the press forgot no way back:\n{said[-2000:]}"
+        time.sleep(launcher_on_niri.POLL)
 
 
 def opened_by(shell: Shell, *asked: str) -> Json:
