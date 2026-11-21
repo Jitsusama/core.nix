@@ -278,7 +278,12 @@ fn clean(message: &str) -> String {
 fn uptime(said: &str) -> Option<u64> {
     let mut parts = said.split(':');
     let mut part = |unit| parts.next()?.trim().strip_suffix(unit)?.parse::<u64>().ok();
-    Some(part('h')? * 3600 + part('m')? * 60 + part('s')?)
+    // Checked, since a misread hours field would otherwise wrap, and the
+    // uptime now says when the modem started.
+    part('h')?
+        .checked_mul(3600)?
+        .checked_add(part('m')?.checked_mul(60)?)?
+        .checked_add(part('s')?)
 }
 
 /// A dotted netmask's prefix length.
@@ -354,6 +359,11 @@ mod tests {
     #[test]
     fn uptime_reads_as_seconds() {
         assert_eq!(uptime("226h:33m:39s"), Some(815_619), "the uptime misread");
+        assert_eq!(
+            uptime(&format!("{}h:0m:0s", u64::MAX / 3600 + 1)),
+            None,
+            "an uptime past what seconds can hold was read as one"
+        );
     }
 
     #[test]

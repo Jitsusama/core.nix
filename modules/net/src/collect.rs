@@ -594,4 +594,28 @@ mod tests {
             "eero's devices went with the modem"
         );
     }
+
+    #[test]
+    fn an_outage_collected_carries_at_the_minute_the_daemon_keeps() {
+        // The daemon carries each minute over at the record's own time, so
+        // a source this minute stamps as down since now takes the earlier
+        // minute's since only if the two clocks agree.
+        let down = |now| {
+            let said = Said {
+                modem: Err("timed out".into()),
+                ..contract()
+            };
+            network(said, now)
+        };
+        let mut kept = Vec::new();
+        let mut before = down(NOW - 60);
+        crate::model::carry_over(&mut before.sources, &mut kept, before.collected_at);
+        let mut now = down(NOW);
+        crate::model::carry_over(&mut now.sources, &mut kept, now.collected_at);
+        assert_eq!(
+            now.sources[1].since,
+            Some(NOW - 60),
+            "the modem's outage began again at the minute it was collected"
+        );
+    }
 }
