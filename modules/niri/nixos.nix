@@ -207,7 +207,19 @@
     # trip from swap to screen, but missed 8 in 20 s on the 120 Hz panel.
     # So home.nix starts niri with it on, and the patch made on the rest,
     # renders-by-the-deadline-up-to-a-rate.patch, keeps it to screens of
-    # 60 Hz and slower: a faster one renders at once.
+    # 60 Hz and slower: a faster one renders at once. Over a busy afternoon
+    # on 20 November it missed 3,832 vblanks on the 60 Hz screen in 2.5
+    # hours, as the GPU's other work came and went: each miss at a new
+    # margin let it shrink back into the next within a second.
+    # renders-by-the-deadline-holds-after-misses.patch doubles its hold on
+    # the margin, up to ten minutes, for a miss soon after the last hold
+    # ended at whatever margin, so it gives up a few milliseconds of the
+    # gain while the GPU stays busy. A long hold's margin sits at its floor
+    # nearly all the time, so a burst within one keeps the margin it climbs
+    # to for a minute at most, and the steady need's hold then grows back.
+    # One soon after a hold ended can't be told from a need that came
+    # back, so it keeps its margin for up to ten minutes, which costs a few
+    # milliseconds but no misses.
     #
     # niri tells a sandbox's client apart only to hide globals from it, so
     # a window a fenced command opened through pi-fence-display took the
@@ -323,6 +335,7 @@
         ./fixed-to-output.patch
         ./says-a-layers-wake.patch
         ./renders-by-the-deadline-up-to-a-rate.patch
+        ./renders-by-the-deadline-holds-after-misses.patch
         ./blur-kept-for-its-size.patch
       ];
     });
