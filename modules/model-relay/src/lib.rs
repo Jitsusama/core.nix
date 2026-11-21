@@ -183,6 +183,22 @@ const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(40);
 /// about six seconds at that rate, besides what is already in flight,
 /// which the connection's window bounds and a lossy uplink keeps small.
 const HELD_AHEAD_AT_MOST: usize = 16 * 1024;
+/// How much of one answer the origin may send ahead of the relay reading
+/// it. A streamed answer comes as many DATA frames shorter than 256 bytes,
+/// and h2 counts each one not yet read against an allowance for the whole
+/// connection, half its window, ending the connection with every request
+/// on it once that's spent (`too_many_data_frames`, which 40 connections
+/// were retired on from 19 to 21 November). A pi too busy to read leaves
+/// its answer's frames unread, so what one stream may hold unread has to
+/// be far below that allowance: at 64-byte frames, this much costs about
+/// 768 KiB of it.
+const STREAM_WINDOW: u32 = 256 * 1024;
+/// How much of every answer on a connection the origin may send ahead of
+/// the relay reading it, so h2's allowance for small frames, half of this,
+/// holds about ten streams' unread windows at once even in 64-byte frames.
+/// hyper's adaptive window started both at 64 KiB, an allowance about 300
+/// frames of a streamed answer spent.
+const CONNECTION_WINDOW: u32 = 16 * 1024 * 1024;
 /// The most of an error's account the journal keeps for one line, since
 /// the origin's goodbye carries debug data of its choosing.
 const SAID_AT_MOST: usize = 300;
@@ -2010,7 +2026,8 @@ impl Relay {
                 .keep_alive_interval(PING_EVERY)
                 .keep_alive_timeout(PING_ANSWERED_WITHIN)
                 .keep_alive_while_idle(true)
-                .adaptive_window(true)
+                .initial_stream_window_size(STREAM_WINDOW)
+                .initial_connection_window_size(CONNECTION_WINDOW)
                 .handshake(TokioIo::new(tls))
                 .await
                 .map_err(|why| (io::Error::other(why), Unreachable::Refused))
