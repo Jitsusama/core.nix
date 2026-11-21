@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import re
 import shlex
+import textwrap
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1375,7 +1376,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
 def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
     desktop: Desktop,
 ) -> None:
-    """Install asks once, installs once however often Return is pressed, then waits."""
+    """Install asks once, installs once asked, then waits, a Return on it then doing nothing."""
     machine = desktop.machine
     said = "$XDG_RUNTIME_DIR/fwupd"
     offered = {"Devices": [{"DeviceId": "bios", "Releases": [{"Version": "1.13.0"}]}]}
@@ -1422,27 +1423,76 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.shoot("launcher-firmware-install-asks")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         # Return again writes its line, banged, since the step was the asking, and a fresh
-        # Return there installs, keeping the launcher and saying so; a third Return while
-        # it goes in installs nothing more, at most writing the line again, which Escape
-        # lets go.
+        # Return there installs, keeping the launcher and saying so.
         desktop.line("install!")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
+        # Installing shows only while the stand-in's three seconds run, which a busy builder's
+        # mark after the key can miss, so the journal is marked before it.
+        pressed = desktop.mark()
         machine.send_key("ret")
-        desktop.launcher_until(lambda shown: shown["footer"] == "installing")
-        machine.send_key("ret")
-        desktop.held_still(dt.timedelta(seconds=2))
-        if desktop.showing()["command"] is not None:
-            machine.send_key("esc")
-            desktop.launcher_until(lambda shown: shown["command"] is None)
-        # Once in, Install waits for the restart, dimmed in place.
-        desktop.step_out()
         desktop.launcher_until(
-            lambda shown: (
+            lambda shown: shown["footer"] == "installing" and shown["command"] is None,
+            since=pressed,
+        )
+
+        # Once in, Install offers nothing more, so the launcher leaves the asking by itself, as
+        # a held step whose row offers nothing now is left (launcher/Held.js), back to the
+        # device's step: Install waits for the restart there, dimmed in place. Nothing is
+        # pressed meanwhile, since a minus would leave the device's step too once the asking
+        # was left, so only the launcher can bring Install back, still selected as the row
+        # stepped out from, so the next Return lands on it.
+        def stepped_back(shown: Json) -> bool:
+            return (
                 shown["rows"][:1] == ["Install 1.13.0"]
+                and (shown["selected"] or {}).get("name") == "Install 1.13.0"
                 and shown["things"][0]["gone"] is True
                 and shown["footer"] == "restart to finish"
+                and shown["command"] is None
             )
+
+        desktop.launcher_until(stepped_back)
+        # A third Return there lands on a row that has gone, which runs nothing: it writes no
+        # line, installs nothing more and leaves the step as it was (Y2YBTS, 2026-11-20). The
+        # launcher's journal says when it took that Return, so the screen read after it shows
+        # what the Return's own handler left, where the launcher chooses and runs an act, and a
+        # line it wrote fails the step back; an effect put off past the key isn't read. This
+        # Return comes only once the row has gone: one while the install is going in lands on
+        # the daemon's going row, whose answer races the install's end, so no second install is
+        # proven here.
+        since = desktop.mark()
+        machine.send_key("ret")
+        journal = (
+            f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
         )
+        try:
+            machine.wait_until_succeeds(
+                desktop.in_session(
+                    f"{journal} | grep -q -F 'launcher: Return on a gone row did nothing'"
+                ),
+                timeout=dt.timedelta(seconds=30),
+            )
+        except AssertionError as unheard:
+            # The driver's wait says only that it ran out, so this says what the shell said
+            # since the Return, what the launcher shows and what the stand-in ran, telling a
+            # Return taken another way or a shell gone from a lost key or a second install.
+            # Only the wait running out is caught, so a machine lost meanwhile fails as itself,
+            # which merge-net tells from this subtest failing. Each is read without raising and
+            # paced to the builder, since a shell that hung on the Return fails its read too,
+            # and that error would stand in for this one (desktop.diagnosis). Each has 15 s on a
+            # quiet host, since a hung shell never answers and the driver's own limit would
+            # hold the failure back minutes for nothing. The journal is indented as a wait's
+            # is, so merge-net never takes a guest's line for pytest's.
+            quick = dt.timedelta(seconds=15)
+            print(textwrap.indent(desktop.diagnosis(journal, quick), "  "))
+            showing = desktop.diagnosis("qs ipc call launcher showing", quick).strip()
+            installed = desktop.diagnosis(f"cat {said}/installed", quick).strip()
+            failed = (
+                "the journal never said the gone row's Return was taken,"
+                f" the launcher showing {showing} and the stand-in run as {installed}"
+            )
+            raise AssertionError(failed) from unheard
+        shown = desktop.showing()
+        assert stepped_back(shown), shown
         desktop.shoot("launcher-firmware-install-waits")
         ran = desktop.as_account(f"cat {said}/installed").splitlines()
         assert ran == ["update bios --assume-yes --no-reboot-check"], ran

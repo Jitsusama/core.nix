@@ -18,6 +18,7 @@ import operator
 import re
 import shlex
 import tempfile
+import textwrap
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
+from heard import diagnosed, ended, said_by, until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -435,6 +437,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         allowed = timeout * vm_helpers.pace(vm_helpers.busyness())
         return self.machine.succeed(self.in_session(command), timeout=allowed)
 
+    def diagnosis(self, command: str, quiet: timedelta = ANSWERING) -> str:
+        """Run a command as the account, as as_account does, to say why a failure happened.
+
+        It never raises, since a session gone bad is when its reads fail too, and their error
+        would stand in for the failure they're read to explain; one that stops or raises says
+        so after what it printed (heard.diagnosed). Quiet is how long it may run on a quiet
+        host, paced as every wait is: a read of a shell that may have hung takes less than
+        ANSWERING, since that shell is the one most likely never to answer.
+        """
+        allowed = quiet * vm_helpers.pace(vm_helpers.busyness())
+        return diagnosed(lambda: self.machine.execute(self.in_session(command), timeout=allowed))
+
     # What whereabouts keeps of where the laptop is, read back as it starts.
     KEPT_HERE = "$XDG_RUNTIME_DIR/whereabouts/here.json"
 
@@ -513,19 +527,21 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Wait until something said after a point starts with the prefix and passes the test.
 
         The point is one mark gave, or "" for the boot. What the shell did say is printed when
-        it never says what's wanted.
+        it never says what's wanted. It fails by AssertionError when its time runs out, which a
+        wait on what's heard (heard.py) reads as never hearing it, and by RuntimeError when the
+        reader stops otherwise, which that wait only notes (heard.ended).
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         deadline = time.monotonic() + timeout.total_seconds() * pace
         start = since
 
+        # The journal is printed as well as it can be, never raising, so the wait's own error
+        # is always the one made (diagnosis). Each line is indented, since merge-net takes a
+        # line of the log opening with FAILED for pytest's, and the guest's lines aren't.
         def never() -> str:
             point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
-            print(
-                self.as_account(
-                    f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
-                )
-            )
+            read = f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
+            print(textwrap.indent(self.diagnosis(read), "  "))
             return f"the shell never reported {prefix!r} as wanted"
 
         while True:
@@ -535,9 +551,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
                 timeout=timedelta(seconds=left + 30),
             )
-            assert status == 0, never()
-            for line in said.splitlines():
-                kind, what = line.split("\t", 1)
+            ended(status, never)
+            for kind, what in said_by(said):
                 if kind == "cursor":
                     since = what
                 elif what.startswith(prefix) and test(what[len(prefix) :]):
@@ -693,16 +708,27 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         return cast("Json", json.loads(self.as_account("qs ipc call launcher showing")))
 
     def launcher_until(
-        self, test: Callable[[Json], object], timeout: timedelta = timedelta(seconds=30)
-    ) -> None:
-        """Wait until what the launcher shows passes the test.
+        self,
+        test: Callable[[Json], object],
+        timeout: timedelta = timedelta(seconds=30),
+        since: str | None = None,
+    ) -> Json:
+        """Wait until what the launcher shows passes the test, and give back what passed.
 
         The launcher reports its state each time it changes, so a wait reads it once and then
-        hears every change.
+        hears every change. One that never passes says what it last heard the launcher show
+        (heard.py). Since is a mark taken before the key that brings the state, for a state
+        that may come and go before the wait marks the journal itself. What passed can be older
+        than the first read, so act on it only where no later state can undo it.
         """
-        since = self.mark()
-        if not test(self.showing()):
-            self.reported("showing ", lambda said: test(json.loads(said)), since, timeout)
+        since = self.mark() if since is None else since
+        passed: Json = until_heard(
+            self.showing(),
+            test,
+            lambda passes: self.reported("showing ", passes, since, timeout),
+            "the launcher showed",
+        )
+        return passed
 
     def launcher_ready(self) -> None:
         """Wait until the launcher is open and holds the keys.
