@@ -544,6 +544,13 @@ ShellRoot {
         expect("the last boot's, then those apart", Sessions.toReopen.map(one => one.id).join(" ")
             === "s-before s-fresh s-given-back s-hosted s-far s-ferry s-freed s-ferried",
             JSON.stringify(Sessions.toReopen));
+        // Each says the way it came, which decides whether one kept nowhere
+        // comes back without a window (Reopening.broughtBack). On
+        // 2026-11-21 it was dropped, so two kept nowhere got windows.
+        expect("each says the way it came",
+            Sessions.lastBoot.every(one => one.way === "boot")
+            && Sessions.apart.every(one => one.way !== undefined && one.way !== "boot"),
+            JSON.stringify(Sessions.toReopen.map(one => [one.id, one.way])));
         expect("the boot they're of, which places are kept by",
             Sessions.restoring.boot === "an-earlier-boot", JSON.stringify(Sessions.restoring));
         // Where that boot's windows sat, as the daemon keeps it, never
