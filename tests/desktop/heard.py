@@ -45,16 +45,21 @@ def diagnosed(execute: Callable[[], tuple[int, str]]) -> str:
 
     A session gone bad is when its read fails too, and that error would stand in for the
     failure it's read to explain. So a read the driver cut short says so after what it said,
-    one that fails says only its status, since it may have read all there was, and one that
-    raises says what it raised, rather than being taken for a program that said nothing.
+    one that fails says how it ended after what it said, without calling the rest unread,
+    since it may have read all there was, and one that raises says what it raised, rather
+    than being taken for a program that said nothing. Either note starts a line of its own,
+    since a read cut off mid-line would run on into it.
     """
     try:
         status, said = execute()
     except Exception as broke:  # noqa: BLE001 # What it raised is the diagnosis.
         return f"(unread, since it raised {broke!r})"
-    if status == CUT_SHORT:
-        return f"{said}(unread past here, stopping with {status})"
-    return said if status == 0 else f"{said}(ended with {status})"
+    if status == 0:
+        return said
+    if said and not said.endswith("\n"):
+        said += "\n"
+    stopped = "unread past here, stopping with" if status == CUT_SHORT else "ended with"
+    return f"{said}({stopped} {status})"
 
 
 def until_heard(

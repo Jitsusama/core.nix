@@ -15,6 +15,7 @@ drive the desktop. Every file opens with what it is.
 | [`desktop_session.py`][desktop-session]             | the boot and the helpers every area shares             |
 | [`heard.py`][heard], `heard-test.py`                | how a wait on what's reported ends, and its cases      |
 | [`reports.sh`][reports]                             | the reader that wait reads the shell's journal through |
+| [`reports-tools.nix`][reports-tools]                | the tools that reader runs on, on the VM and off it    |
 | [`keeps_pace.py`][keeps-pace], `keeps-pace-test.py` | what keeps-pace counts its builder took, and its cases |
 | `checks.nix`                                        | the checks of the areas' own logic, off any VM         |
 
@@ -25,4 +26,5 @@ drive the desktop. Every file opens with what it is.
 [desktop-session]: desktop_session.py
 [heard]: heard.py
 [reports]: reports.sh
+[reports-tools]: reports-tools.nix
 [keeps-pace]: keeps_pace.py

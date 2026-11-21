@@ -28,11 +28,7 @@ in
     pkgs.runCommandLocal "a-desktop-wait-says-what-it-last-heard"
       {
         REPORTS_SHELL = pkgs.lib.getExe pkgs.bash;
-        REPORTS_TOOLS = pkgs.lib.makeBinPath [
-          pkgs.coreutils
-          pkgs.gnugrep
-          pkgs.gnused
-        ];
+        REPORTS_TOOLS = pkgs.lib.makeBinPath (import ./reports-tools.nix pkgs);
       }
       ''
         cp ${./heard.py} heard.py

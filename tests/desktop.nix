@@ -493,12 +493,7 @@ let
   # a prefix after a point in its journal (desktop/reports.sh says how).
   reports = pkgs.writeShellApplication {
     name = "reports";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.gnugrep
-      pkgs.gnused
-      pkgs.systemd
-    ];
+    runtimeInputs = import ./desktop/reports-tools.nix pkgs ++ [ pkgs.systemd ];
     text = builtins.readFile ./desktop/reports.sh;
   };
 

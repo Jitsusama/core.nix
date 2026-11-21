@@ -207,25 +207,49 @@ def test_a_diagnosis_read_that_stops_says_so_after_what_it_read() -> None:
     assert said == wanted, f"a read cut short told: {said!r}"
 
 
-def test_a_diagnosis_read_that_fails_says_only_how_it_ended() -> None:
-    # A cat of a file that isn't there read all there was, so nothing went unread.
-    said = diagnosed(lambda: (1, ""))
-    assert said == "(ended with 1)", f"a read that failed told: {said!r}"
+def test_a_diagnosis_read_cut_off_mid_line_says_so_on_a_line_of_its_own() -> None:
+    # The driver's limit cuts a read wherever it is, so its note would run on into a state.
+    said = diagnosed(lambda: (CUT_SHORT, '{"rows": ["Inst'))
+    wanted = '{"rows": ["Inst\n(unread past here, stopping with 124)'
+    assert said == wanted, f"a read cut off mid-line told: {said!r}"
 
 
-def reports(tmp_path: Path, journal: str, seconds: int = 5) -> subprocess.CompletedProcess[str]:
+@pytest.mark.parametrize("said", ["", "first line\n"])
+def test_a_diagnosis_read_that_fails_says_how_it_ended_after_what_it_read(said: str) -> None:
+    # A journal read that failed may have read all there was, so nothing is called unread.
+    told = diagnosed(lambda: (1, said))
+    assert told == f"{said}(ended with 1)", f"a read that failed after {said!r} told: {told!r}"
+
+
+def test_a_reader_stopping_in_a_wait_keeps_its_kind_and_says_the_last_state_heard() -> None:
+    # Retry loops press again on an AssertionError, so a stopped reader must come out as itself.
+    def hear(passes: Callable[[str], object]) -> None:
+        passes('{"rows": ["Install"]}')
+        ended(1, never)
+
+    with pytest.raises(RuntimeError) as stopped:
+        until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, WHO)
+    notes = getattr(stopped.value, "__notes__", [])
+    wanted = ['it said, last heard: {"rows": ["Install"]}']
+    assert notes == wanted, f"the stopped reader's wait noted: {notes}"
+
+
+def reports(
+    tmp_path: Path, journal: str, seconds: int = 5, since: str = ""
+) -> subprocess.CompletedProcess[str]:
     """Run the reader the waits read through, for showing, on a stand-in journal.
 
-    The stand-in journalctl runs the journal as a shell's lines, and the reader runs on the
-    shell and tools its check gives (checks.nix), as the VM's writeShellApplication runs it.
+    The stand-in journalctl writes what it was asked to a line of asked, then runs the journal
+    as a shell's lines, and the reader runs on the shell and tools its check gives
+    (checks.nix), as the VM's writeShellApplication runs it.
     """
     shell = os.environ["REPORTS_SHELL"]
     stand_in = tmp_path / "journalctl"
-    stand_in.write_text(f"#!{shell}\n{journal}\n")
+    stand_in.write_text(f"#!{shell}\nprintf '%s\\n' \"$*\" >>{tmp_path}/asked\n{journal}\n")
     stand_in.chmod(0o755)
     reader = Path(__file__).with_name("reports.sh")
     return subprocess.run(
-        [shell, "-euo", "pipefail", reader, "", str(seconds), "showing"],
+        [shell, "-euo", "pipefail", reader, since, str(seconds), "showing"],
         capture_output=True,
         text=True,
         env={"PATH": f"{tmp_path}:{os.environ['REPORTS_TOOLS']}"},
@@ -233,21 +257,49 @@ def reports(tmp_path: Path, journal: str, seconds: int = 5) -> subprocess.Comple
     )
 
 
+def asked(tmp_path: Path) -> list[str]:
+    """Give what the stand-in journal was asked, a read to a line."""
+    return (tmp_path / "asked").read_text().splitlines()
+
+
 def test_the_reader_says_what_follows_a_lines_first_report_mark(tmp_path: Path) -> None:
     # What the launcher shows can hold the mark again, as typed words, which stay its words.
-    journal = "echo 'qml: report[showing {\"typed\": \"report[x]\"}]'; echo '-- cursor: c1'"
-    read = reports(tmp_path, journal)
+    # The line's prefix holds an n, which a bracket read as neither \ nor n would stop at.
+    line = 'launcher qml: report[showing {"typed": "report[x]"}]'
+    read = reports(tmp_path, f"echo '{line}'; echo '-- cursor: c1'")
     wanted = 'said\tshowing {"typed": "report[x]"}\ncursor\tc1\n'
     assert (read.returncode, read.stdout) == (0, wanted), f"the reader said: {read}"
+    reads = asked(tmp_path)
+    since_boot = "--user --unit=quickshell --no-pager --output=cat --lines=all --show-cursor --boot"
+    assert reads == [since_boot], f"with no point the reader asked: {reads}"
+
+
+def test_the_reader_reads_again_after_its_point_until_the_report_comes(tmp_path: Path) -> None:
+    # The reader reads the journal again rather than following it, so a report a later read
+    # finds is heard, and each read starts at the point it was given, which gives the cursor
+    # back only when asked to show it.
+    journal = (
+        f'if [ "$(wc -l <{tmp_path}/asked)" -lt 2 ]; then state=hidden; else state=showing; fi\n'
+        'echo "qml: report[$state {}]"\n'
+        '[[ " $* " == *" --show-cursor "* ]] && echo "-- cursor: c2"'
+    )
+    read = reports(tmp_path, journal, since="c1")
+    wanted = "said\tshowing {}\ncursor\tc2\n"
+    assert (read.returncode, read.stdout) == (0, wanted), f"the reader said: {read}"
+    reads = asked(tmp_path)
+    after = "--user --unit=quickshell --no-pager --output=cat --lines=all --show-cursor"
+    assert reads == [f"{after} --after-cursor=c1"] * 2, f"from c1 the reader asked: {reads}"
 
 
 def test_the_readers_time_running_out_fails_as_never_hearing(tmp_path: Path) -> None:
     # The status ended reads as time running out is the one the reader gives, or retry loops
-    # would stop retrying a wait that only ran out.
-    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=0)
+    # would stop retrying a wait that only ran out, and it comes only once it has read again.
+    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=1)
     with pytest.raises(AssertionError):
         ended(read.returncode, never)
     assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
+    reads = len(asked(tmp_path))
+    assert reads > 1, f"the reader whose time ran out read {reads} times"
 
 
 def test_the_readers_failed_journal_read_fails_as_a_stopped_reader(tmp_path: Path) -> None:

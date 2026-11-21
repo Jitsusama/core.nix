@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import re
 import shlex
+import textwrap
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1460,23 +1461,29 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # proven here.
         since = desktop.mark()
         machine.send_key("ret")
+        journal = (
+            f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
+        )
         try:
             machine.wait_until_succeeds(
                 desktop.in_session(
-                    "journalctl --user -u quickshell --no-pager -o cat"
-                    f" --after-cursor={shlex.quote(since)}"
-                    " | grep -q -F 'launcher: Return on a gone row did nothing'"
+                    f"{journal} | grep -q -F 'launcher: Return on a gone row did nothing'"
                 ),
                 timeout=dt.timedelta(seconds=30),
             )
-        except Exception as unheard:
-            # The driver's wait says only that it ran out, so this says what the launcher shows
-            # and what the stand-in ran, telling a lost key from a second install. Each is read
-            # without raising and paced to the builder, since a shell that hung on the Return
-            # fails its read too, and that error would stand in for this one (desktop.diagnosis).
-            # Each has 15 s on a quiet host, since a hung shell never answers and the driver's
-            # own limit would hold the failure back minutes for nothing.
+        except AssertionError as unheard:
+            # The driver's wait says only that it ran out, so this says what the shell said
+            # since the Return, what the launcher shows and what the stand-in ran, telling a
+            # Return taken another way or a shell gone from a lost key or a second install.
+            # Only the wait running out is caught, so a machine lost meanwhile fails as itself,
+            # which merge-net tells from this subtest failing. Each is read without raising and
+            # paced to the builder, since a shell that hung on the Return fails its read too,
+            # and that error would stand in for this one (desktop.diagnosis). Each has 15 s on a
+            # quiet host, since a hung shell never answers and the driver's own limit would
+            # hold the failure back minutes for nothing. The journal is indented as a wait's
+            # is, so merge-net never takes a guest's line for pytest's.
             quick = dt.timedelta(seconds=15)
+            print(textwrap.indent(desktop.diagnosis(journal, quick), "  "))
             showing = desktop.diagnosis("qs ipc call launcher showing", quick).strip()
             installed = desktop.diagnosis(f"cat {said}/installed", quick).strip()
             failed = (

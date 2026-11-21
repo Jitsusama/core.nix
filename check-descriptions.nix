@@ -25,8 +25,9 @@
     giving back the state that passed, a test's own assert fails the wait the same way, a test
     that trips keeps its error, noting what it last heard, a line that isn't JSON is noted as
     it came, and a wait whose hearing stops before a state passes fails rather than giving back
-    a state its test refused; the reader it waits through, run on a stand-in journal, says what
-    follows a line's first report mark, and its time running out fails as never hearing while
+    a state its test refused; the reader it waits through, run on a stand-in journal, reads it again
+    from the point it's given until the report comes, says what follows a line's first report
+    mark, and its time running out fails as never hearing while
     a failed read fails as a stopped reader; and a read for a failure's diagnosis never raises,
     saying a cut-short read, a failed one or what it raised
   '';
