@@ -889,14 +889,20 @@ impl Inputs {
     }
 }
 
-/// The run of `items`, sorted by budget, that are `budget`'s.
 /// What each session a run names spent by its own log, all of it, asked
 /// once: asked of each session apart, 12,784 of them on 16 November, it
 /// was most of what reading the inputs took on every pass.
+///
+/// It's summed from the turns' hours, which their triggers keep in step
+/// with every turn added or taken, to within float rounding, rather than
+/// from the turns: on 21 November the 28,016 sessions runs
+/// named took 399 seconds and 412 MB of scattered reads from 41 million
+/// turns once the history fell out of memory, and the pass behind each
+/// figure took half an hour.
 fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
     let mut statement = db
         .prepare(
-            "SELECT session, SUM(cost) FROM turns WHERE session IN
+            "SELECT session, SUM(cost) FROM turn_hours WHERE session IN
              (SELECT ids.value FROM runs, json_each(CASE WHEN json_valid(runs.sessions)
               THEN runs.sessions ELSE '[]' END) ids) GROUP BY session",
         )
@@ -909,6 +915,7 @@ fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
     rows.collect::<Result<_, _>>().map_err(fail)
 }
 
+/// The run of `items`, sorted by budget, that are `budget`'s.
 fn of_budget<'a, T>(items: &'a [T], budget: &str, of: impl Fn(&T) -> &String) -> &'a [T] {
     let first = items.partition_point(|item| of(item).as_str() < budget);
     let last = items.partition_point(|item| of(item).as_str() <= budget);
@@ -1295,6 +1302,29 @@ mod tests {
             .map(|p| p.dollars)
             .sum();
         assert!((lump - 1.0).abs() < 1e-9, "{pieces:?}");
+    }
+
+    // An agent whose turns fall in several hours and models counts all of
+    // them against its run, not only one hour's.
+    #[test]
+    fn a_council_agent_over_several_hours_is_taken_from_its_run_whole() {
+        let history = history();
+        turn(&history, "me", H, "opus", 10.0, Some("Q1"));
+        turn(&history, "r1", H + 1, "opus", 3.0, None);
+        turn(&history, "r1", H + 2, "opus", 0.5, None);
+        turn(&history, "r1", H + 2, "haiku", 0.5, None);
+        run(&history, "council", "me", H, 5.0, &["r1"]);
+        let pieces = read(&history, H, H + 3).unwrap().pieces(&Ratios::default());
+        assert!((total(&pieces) - 15.0).abs() < 1e-9, "{pieces:?}");
+        let lump: f64 = pieces
+            .iter()
+            .filter(|p| p.hour == H && p.kind == "subagent:council")
+            .map(|p| p.dollars)
+            .sum();
+        assert!(
+            (lump - 1.0).abs() < 1e-9,
+            "the run's lump should be its total less all its agent's hours: {pieces:?}"
+        );
     }
 
     // A fleet keeps no logs, so its total stands where it started.
