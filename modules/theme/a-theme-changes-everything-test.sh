@@ -24,6 +24,33 @@ mv "$home/kept/style.json" "$home/store/style.json"
 ln -s "$home/store/style.json" "$home/kept/style.json"
 ln -s "$home/store/style.json" "$home/linked/.config/style.json"
 ln -s /nowhere/left "$home/linked/gone"
+# A file may write a colour in either case, so one written in the other
+# case from the theme's is kept all the same: a theme's colour in capitals
+# written small, or one written small in capitals, each where the theme has
+# one. rg's --smart-case reads the whole list case-sensitively once any
+# colour in it has a capital, so the first catches it; with none, it's
+# --ignore-case by another name.
+written=()
+cased() {
+  local lettered flipped
+  lettered=$(grep -m 1 "$2" "$colours") || return 0
+  flipped=$(printf '%s' "$lettered" | tr 'A-Fa-f' 'a-fA-F')
+  # Asked as the check asks, any colour of the list anywhere in it, but
+  # minding case.
+  if grep -q -F -f "$colours" <<< "$flipped"; then
+    echo "$flipped holds a colour of its own in $colours, so it can't show case is let go."
+    exit 1
+  fi
+  mkdir "$home/$1"
+  echo "{\"color\":\"$flipped\"}" > "$home/$1/style.json"
+  written+=("$1")
+}
+cased small '[A-F]'
+cased capitals '[a-f]'
+if [ "${#written[@]}" = 0 ]; then
+  echo "No colour in $colours holds a letter to write in the other case."
+  exit 1
+fi
 : > "$home/none"
 # An rg that ends in error without a word.
 printf '#!%s\nexit 2\n' "$BASH" > "$home/silent/rg"
@@ -53,6 +80,16 @@ fails() {
 passes "$colours" "$home/clean/"
 fails "$colours" "$home/kept/"
 fails "$colours" "$home/linked/"
+# Each home in the other case fails for the colour it keeps, not for some
+# other reason.
+for case in "${written[@]}"; do
+  fails "$colours" "$home/$case/"
+  if ! grep -q "kept Osaka Jade's colours" "$home/said"; then
+    cat "$home/said"
+    echo "The home written in $case failed, but not for the colour it keeps; it said the above."
+    exit 1
+  fi
+done
 fails "$colours" "$home/clean/" "$home/kept/style.json"
 fails "$home/none" "$home/kept/"
 fails "$colours" "$home/clean/" "$home/nowhere"
