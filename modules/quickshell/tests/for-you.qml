@@ -702,6 +702,12 @@ QtObject {
         const naming = cell => Object.assign({}, lookLeft, { cell: cell });
         expect("a cell goes where the daemon says, running",
             Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir], []).address, "BBBBBB");
+        expect("the daemon's answer before another on its quest, running first",
+            Looks.cellFor(naming("AAAAAA"), { "agent-cell:agents:AAAAAA": { goes: "CCCCCC" } },
+                [heir], [resting]).address, "CCCCCC");
+        expect("a look on no quest said to go nowhere, never one listing its address",
+            Looks.cellFor({ cell: "GGGGGG", address: "GGGGGG" }, cells, [{ address: "LLLLLL",
+                presence: { quest: "Q-2", addresses: ["LLLLLL", "GGGGGG"] } }], []), null);
         expect("a cell back again before an older answer",
             Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir, leaver], []).address,
             "AAAAAA");
@@ -739,7 +745,7 @@ QtObject {
         expect("its questInfo's quest before an older quest it names",
             Looks.cellFor(naming("GGGGGG"), cells, [{ address: "PPPPPP",
                 presence: { questInfo: { id: "Q-2" }, quest: "Q-1" } }], []), null);
-        expect("not served yet, a look on no quest, cellOf's search over every session",
+        expect("not served yet, a look on no quest, the session that left it by its id",
             Looks.cellFor({ session: "s-4", cell: "HHHHHH" }, cells, [stranger], []).address,
             "DDDDDD");
         expect("going to a session not listed yet, the cell itself, on another quest too",
