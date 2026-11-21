@@ -431,7 +431,7 @@ mod tests {
              "workspace": 1, "column": 1, "down": 2, "floating": false}
         ]));
         let workspaces = held(&json!([
-            {"key": "workspace:1", "id": 1, "idx": 3, "output": "DP-4"},
+            {"key": "workspace:1", "id": 1, "idx": 3, "name": "LEAD", "output": "DP-4"},
             {"key": "workspace:2", "id": 2, "idx": 1, "output": "eDP-1"}
         ]));
         // Each as the windows daemon sends it: the row whole, under `row`.
@@ -494,13 +494,15 @@ mod tests {
             Value::Object(kept),
             json!({
                 "s-lead": {"screen": "HP Inc. HP Z27k G3 CN41", "output": "DP-4",
-                           "workspace": 3, "column": 1, "tile": 2, "leads": true},
+                           "workspace": 3, "named": "LEAD", "column": 1, "tile": 2,
+                           "leads": true},
                 "s-kelp": {"screen": "HP Inc. HP Z27k G3 CN41", "output": "DP-4",
-                           "workspace": 3, "column": 2, "tile": 1, "leads": false,
-                           "under": "LEAD"}
+                           "workspace": 3, "named": "LEAD", "column": 2, "tile": 1,
+                           "leads": false, "under": "LEAD"}
             }),
-            "one leading another says so, and one under another names it; a closed one and \
-             one with no window aren't kept"
+            "one leading another says so, and one under another names it; each on a named \
+             workspace keeps its name, since named ones come back in another order; a closed \
+             one and one with no window aren't kept"
         );
     }
 

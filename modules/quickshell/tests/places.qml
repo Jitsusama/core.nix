@@ -468,6 +468,17 @@ QtObject {
                 Places.homeToName({ address: "REEF" }, "REEF", null, spaces),
                 Places.homeToName({ address: "REEF" }, "", 3, spaces)],
             ["", "", "", "", ""]);
+        // After the restart on 2026-11-21, WM4KSZ's eleven sessions came
+        // back on workspace 3 by its number, its name gone to an empty
+        // fifth: named workspaces come back from a boot in another order.
+        expect("kept on a named workspace, it goes back to the one named so now",
+            Reopening.namedBack({ workspace: 3, named: "KELP" }, spaces), { join: 5 });
+        expect("none named so now, the workspace it lands on takes the name",
+            Reopening.namedBack({ workspace: 3, named: "REEF" }, spaces), { name: "REEF" });
+        expect("kept on one named nothing, it goes by its number",
+            [Reopening.namedBack({ workspace: 3 }, spaces),
+                Reopening.namedBack({ workspace: 3, named: "" }, spaces),
+                Reopening.namedBack(null, spaces)], [null, null, null]);
         // One handed over while Reopen Them All already holds it, or has
         // begun it, joins nothing, or two pis would write one log.
         const asked = id => ({ one: { id } });
