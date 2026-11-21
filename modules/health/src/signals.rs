@@ -176,16 +176,10 @@ fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
             let held = ran.lock().unwrap_or_else(PoisonError::into_inner);
             resting.notify_all();
             drop(held);
-            let followers_gone = waited(&ENDED, by);
-            let returned = waited(&RAN, by);
-            if !followers_gone {
-                crate::source::fail(&format!(
-                    "health: a stop left a follower running {} seconds on, as its kill hadn't \
-                     ended it",
-                    WRITES_WITHIN.as_secs()
-                ));
-            }
-            if returned {
+            // The run first, so its error is said as soon as it's known,
+            // before a reboot's kill can land on a follower stuck past its
+            // own: both waits end by the same `by` anyway.
+            if waited(&RAN, by) {
                 let unsaid = UNSAID.lock().unwrap_or_else(PoisonError::into_inner).take();
                 if let Some(words) = unsaid {
                     crate::source::fail(&words);
@@ -194,6 +188,13 @@ fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
                 crate::source::fail(&format!(
                     "health: a stop ended health before it wrote the day, as its run hadn't \
                      returned {} seconds on",
+                    WRITES_WITHIN.as_secs()
+                ));
+            }
+            if !waited(&ENDED, by) {
+                crate::source::fail(&format!(
+                    "health: a stop left a follower running {} seconds on, as its kill hadn't \
+                     ended it",
                     WRITES_WITHIN.as_secs()
                 ));
             }
