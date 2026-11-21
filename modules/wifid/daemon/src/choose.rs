@@ -2851,6 +2851,57 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_hour_runs_from_the_last_miss_not_the_first() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let on = (DESK, &badly, -50, CH52);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, on, &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, on, &hall_alone, false);
+
+        // Fifty minutes on, a second misses, and holds a settle.
+        let second_try = back + Duration::from_mins(50);
+        let second = chooser.choose(second_try, on, &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "fifty minutes after the first miss, another is tried"
+        );
+        let near = [quicker_still()];
+        chooser.choose(second_try + Duration::from_secs(60), on, &near, false);
+
+        // A third, past an hour from the first miss but minutes from the
+        // second, misses too.
+        let third_try = second_try + SETTLE + Duration::from_secs(60);
+        let third = chooser.choose(third_try, on, &near, false);
+        assert_eq!(
+            third,
+            Choice::Try(quicker_still().point),
+            "a settle after the second, a third is tried"
+        );
+        let missed = third_try + Duration::from_secs(60);
+        chooser.choose(missed, on, &hall_alone, false);
+        let span_on = chooser.choose(missed + SPAN, on, &hall_alone, false);
+        let settled = third_try + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, on, &hall_alone, false);
+
+        assert_eq!(
+            span_on,
+            Choice::Stay,
+            "within an hour of the second miss, the third holds past a span"
+        );
+        assert_eq!(
+            next,
+            Choice::Try(HALL.into()),
+            "tried a settle from its move"
+        );
+    }
+
+    #[test]
     fn a_miss_an_hour_after_the_last_waits_a_span_again() {
         let mut chooser = after_a_bad_minute(DESK);
         // A settle on, so taking one off is an instant on any clock.

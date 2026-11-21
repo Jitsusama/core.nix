@@ -325,7 +325,7 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         # Moved with its other networks off, it has them on again once back.
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
-            " | grep -qx 'wlan2 may join its other networks again'",
+            " | grep -qx 'wlan2.s other networks are on again'",
             timeout=timedelta(seconds=30),
         )
     finally:
@@ -406,9 +406,9 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     retry(hears_the_second, timeout=timedelta(seconds=60))
     # Stopped, hostapd answers no join, while the kernel still beacons for it and keeps the
     # card joined, so the card leaves the first point for a gone second and can't get back.
-    machine.succeed("systemctl stop lantern-two && systemctl kill -s STOP lantern")
     since = wifid.journal_now()
     try:
+        machine.succeed("systemctl stop lantern-two && systemctl kill -s STOP lantern")
         answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
         assert answer == {"id": 1, "done": True}, answer
         machine.wait_until_succeeds(
@@ -420,11 +420,14 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
         # Let go with its other networks on, it isn't left held to a point that won't answer.
         wifid.joined("Roadside Inn")
     finally:
-        # Logged first, so a clean-up that fails can't hide why.
-        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
-        # wpa_supplicant ignores the first point a while for the joins it refused, which would
-        # keep the card off it below.
-        machine.succeed("systemctl kill -s CONT lantern && wpa_cli -i wlan2 bssid_ignore clear")
+        try:
+            # Logged first, so a clean-up that fails can't hide why.
+            machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
+        finally:
+            # Lantern goes on whether or not the log could be read, so the subtests after
+            # this one aren't left with a frozen point. wpa_supplicant ignores the first point a
+            # while for the joins it refused, which would keep the card off it below.
+            machine.succeed("systemctl kill -s CONT lantern && wpa_cli -i wlan2 bssid_ignore clear")
     said = machine.succeed(
         f"journalctl -o short-unix -u wifid -u wpa_supplicant --after-cursor='{since}'"
     ).splitlines()
