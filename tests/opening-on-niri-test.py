@@ -609,7 +609,7 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
         try:
             shell.launcher_until(
                 lambda shown: (
-                    0 <= shown["card"]["top"]
+                    shown["card"]["top"] >= 0
                     and shown["card"]["foot"] <= shown["card"]["screen"]
                     and shown["restsOnARow"]
                     and shown["cut"] == []
