@@ -619,6 +619,29 @@ fn a_stop_reaches_every_realm_this_machine_joins() {
 }
 
 #[test]
+fn a_machine_a_realm_never_reached_is_named_with_that_realm() {
+    let state = scratch("realm-unreached");
+    let mut here = Machine {
+        unreached: Some("run --realm personal --need machine=builder"),
+        ..machine()
+    };
+    let realms = Plan {
+        machines: vec![],
+        realms: vec!["work".to_owned(), "personal".to_owned()],
+        ..plan()
+    };
+    let took = pause::stop(&realms, &state, "stop-all-1", "here", 1, &mut here).expect("stops");
+    let line = pause::said("stopping", &took, None);
+    assert!(
+        line.contains(&format!(
+            "builder in personal couldn't stop there: {NEVER_RAN}, so its agents run on"
+        )),
+        "Joel is told which realm's link never reached the builder: {line}"
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
 fn a_realm_that_cannot_list_its_sessions_hides_only_its_own_machines() {
     let state = scratch("realm-down");
     let mut here = Machine {

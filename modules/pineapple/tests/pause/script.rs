@@ -96,6 +96,84 @@ fn script_in(
     }
 }
 
+/// Runs the script for `act` of `said` on a machine with no mycelium
+/// anywhere it looks: a path holding only the few programs it needs, and
+/// a login whose profile doesn't exist, so the real one is never found.
+fn script_bare(home: &Path, said: &Value, act: &str) -> Ran {
+    let _held = FORKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let bin = home.join("bare");
+    fs::create_dir_all(&bin).expect("a bare bin folder");
+    for program in ["sh", "mkdir", "mv", "grep"] {
+        let found = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|dir| dir.join(program))
+            .find(|path| path.exists())
+            .expect("the program on the path");
+        let _ = std::os::unix::fs::symlink(found, bin.join(program));
+    }
+    fs::write(bin.join("id"), "#!/bin/sh\necho nobody-here\n").expect("a fake id");
+    std::process::Command::new("chmod")
+        .arg("+x")
+        .arg(bin.join("id"))
+        .status()
+        .expect("chmod runs");
+    let ran = std::process::Command::new(bin.join("sh"))
+        .arg("-c")
+        .arg(pause::script(said, act, None))
+        .env("HOME", home)
+        .env_remove("XDG_STATE_HOME")
+        .env("PATH", &bin)
+        .output()
+        .expect("sh runs");
+    Ran {
+        asked: String::new(),
+        ended: ran.status.code(),
+        said: String::from_utf8_lossy(&ran.stderr).into_owned(),
+    }
+}
+
+#[test]
+fn a_stop_with_no_mycelium_there_leaves_its_resume_nothing_to_fail_on() {
+    let home = scratch("script-bare");
+    let said = pause::record("stop-all-1", "here", 1);
+    let stop = script_bare(&home, &said, "stop");
+    assert_eq!(
+        stop.ended,
+        Some(127),
+        "the stop can't refuse starts: {:?}",
+        stop.said
+    );
+    let resume = script_bare(&home, &said, "resume");
+    assert_eq!(
+        resume.ended,
+        Some(0),
+        "the stop refused nothing there, so its resume ends well: {:?}",
+        resume.said
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
+fn the_stop_notes_its_realms_before_its_record_lands() {
+    let home = scratch("script-noted-first");
+    let said = pause::record("stop-all-1", "here", 1);
+    let stops = home.join(".local/state/pineapple/stops");
+    fs::create_dir_all(stops.join("stop-all-1.realms-noted")).expect("a folder in the way");
+    let ran = script_in(&home, &said, "stop", Some("work"), false, 0);
+    assert_ne!(
+        ran.ended,
+        Some(0),
+        "the stop can't note its realms: {:?}",
+        ran.said
+    );
+    assert!(
+        !stops.join("stop-all-1.json").exists(),
+        "so no record lands that a resume would read as an older stop's"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
+
 #[test]
 fn the_script_says_it_began_before_anything_else() {
     let home = scratch("script-begun");

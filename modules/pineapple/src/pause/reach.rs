@@ -269,7 +269,10 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     // undo here, and letting its starts go would undo Joel's own refusal.
     // So too for a realm whose starts the stop never refused, though it
     // reached another: only a stop made before each noted its realms says
-    // nothing of which it refused, and is let go whole.
+    // nothing of which it refused, and is let go whole. Its note comes
+    // before its record, so no stop cut off between them reads as older.
+    // A resume looks for mycelium only once it has starts to let go, so
+    // a machine with none, which the stop refused nothing on, ends well.
     let (unreached, note) = if act == "resume" {
         (
             format!("[ -e \"$d/{}.json\" ] || exit 0\n", file_of(id)),
@@ -283,13 +286,14 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
             "resumed=\"$d/{file}.resumed{mark}\"\n\
              if [ -e \"$resumed\" ] || [ -e \"$kept\" ] || \
              {{ [ -e \"$noted\" ] && [ ! -e \"$stopped\" ]; }}; then : > \"$resumed\"; \
-             else \"$m\" starts resume{flag} >/dev/null || exit {OWN_FAILURE}; \
+             else found; \"$m\" starts resume{flag} >/dev/null || exit {OWN_FAILURE}; \
              : > \"$resumed\"; fi\n",
             file = file_of(id),
         )
     } else {
         format!(
-            "if \"$m\" starts list{flag} | grep -q '\"stopped\":true'; then : > \"$kept\"; \
+            "found\n\
+             if \"$m\" starts list{flag} | grep -q '\"stopped\":true'; then : > \"$kept\"; \
              else : > \"$stopped\"; \
              \"$m\" starts stop{flag} >/dev/null || exit {OWN_FAILURE}; fi\n"
         )
@@ -299,20 +303,20 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
          echo '{BEGUN}' >&2\n\
          d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
          mkdir -p \"$d\"\n\
-         {unreached}\
-         printf '%s\\n' {record} > \"$d/{file}.new\"\n\
-         mv \"$d/{file}.new\" \"$d/{file}.json\"\n\
          kept=\"$d/{file}.starts-kept{mark}\"\n\
          stopped=\"$d/{file}.stopped{mark}\"\n\
          noted=\"$d/{file}.realms-noted\"\n\
+         {unreached}\
          {note}\
+         printf '%s\\n' {record} > \"$d/{file}.new\"\n\
+         mv \"$d/{file}.new\" \"$d/{file}.json\"\n\
          m=\n\
          for c in \"$(command -v mycelium || true)\" \
          \"/etc/profiles/per-user/$(id -un)/bin/mycelium\" \
          \"$HOME/.nix-profile/bin/mycelium\"; do\n\
          if [ -n \"$c\" ] && [ -x \"$c\" ]; then m=$c; break; fi\n\
          done\n\
-         [ -n \"$m\" ] || {{ echo 'no mycelium here' >&2; exit 127; }}\n\
+         found() {{ [ -n \"$m\" ] || {{ echo 'no mycelium here' >&2; exit 127; }}; }}\n\
          {starts}",
         record = quoted(&said.to_string()),
         file = file_of(id),
