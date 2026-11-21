@@ -52,10 +52,11 @@ esac
 mix=recording-$$
 loaded=()
 
-# Asks the sound server, never waiting on it past a few seconds, since a
-# recording waits on each answer.
+# Asks the sound server, never waiting on it past two seconds, since a
+# recording waits on each answer and the shell takes a press five seconds
+# on as a second recording.
 ask() {
-  timeout 5 pactl "$@" 2> /dev/null
+  timeout 2 pactl "$@" 2> /dev/null
 }
 
 # Lets go of a mix whose recording was killed outright, which no trap
@@ -95,7 +96,8 @@ load() {
 loop=("source_output_properties='application.process.binary=recording-sound'"
   "sink_input_properties='application.process.binary=recording-sound'"
   source_dont_move=true sink_dont_move=true latency_msec=30)
-if sweep && microphone=$(ask get-default-source) && speakers=$(ask get-default-sink) &&
+# A server that doesn't answer the first question is asked nothing more.
+if microphone=$(ask get-default-source) && speakers=$(ask get-default-sink) && sweep &&
   load module-null-sink sink_name="$mix" \
     "sink_properties='device.description=Recording priority.session=0'" &&
   load module-loopback "source='$microphone'" sink="$mix" "${loop[@]}" &&
