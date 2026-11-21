@@ -22,12 +22,13 @@ const UNWATCHED_FOR: i64 = 10 * 60;
 /// again how long no budget was watched, as a boot does: a wake too brief
 /// for spend-watch to write isn't counted into the next, and a nap is never
 /// counted as watched time. A tick skipped or failed while awake slept
-/// none, so it never restarts the count, and slow ticks only delay a stop.
+/// none, so it never restarts the count, and slow ticks only delay a stop,
+/// however slow. A stretch awake that cadence didn't run, as logged out,
+/// counts too: spend-watch runs beside it, so nothing was watched.
 const SLEPT: i64 = 60;
-/// A gap between ticks past this starts the count again whatever the
-/// clocks read, as a stretch cadence didn't run, logged out or off. One
-/// tick missed is absorbed, so a slow tick doesn't hide a stop. Where the
-/// clocks can't be read, a nap under it is counted as watched time.
+/// Where the clocks can't be read, a gap between ticks past this starts the
+/// count again instead, so one tick missed is absorbed, and a nap under it
+/// is counted as watched time.
 const MISSED: i64 = 15 * 60;
 
 /// Whether an alarm's key says a budget passed a share of an allowance,
@@ -59,12 +60,12 @@ pub(super) fn remember(state: &mut State, key: &str, now: i64) {
 /// for `UNWATCHED_FOR` of waking time, so a machine just woken isn't told
 /// of it.
 pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
-    let slept = state.ticked.is_some_and(|at| s.now - at > MISSED)
-        || matches!(
-            (&state.asleep, &s.asleep),
-            (Some(before), Some(now))
-                if before.boot != now.boot || now.millis - before.millis > SLEPT * 1000
-        );
+    let slept = match (&state.asleep, &s.asleep) {
+        (Some(before), Some(now)) => {
+            before.boot != now.boot || now.millis - before.millis > SLEPT * 1000
+        }
+        _ => state.ticked.is_some_and(|at| s.now - at > MISSED),
+    };
     state.ticked = Some(s.now);
     state.asleep.clone_from(&s.asleep);
     let unwatched_for = if s.budgets_unwatched.is_some() {
@@ -284,18 +285,24 @@ mod tests {
             tick(&s, &mut state).is_empty(),
             "time before a boot was counted into a stop"
         );
-        // A stretch cadence didn't run, as logged out, starts it again too.
+        // Ticks slowed past two marks apiece while awake, as by a stalled
+        // fetch, still tell it.
         s.now += 5 * 60;
         assert!(tick(&s, &mut state).is_empty(), "five minutes awake");
-        s.now += 20 * 60;
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "time cadence didn't run was counted into a stop"
+        s.now += 16 * 60;
+        assert_eq!(
+            told_whom(&tick(&s, &mut state)),
+            [(To::Orchestrator, false)],
+            "ticks slowed while awake hid a stop"
         );
         // Where sleep can't be read, one tick missed is absorbed.
+        s.budgets_unwatched = None;
+        s.now += 5 * 60;
+        assert!(tick(&s, &mut state).is_empty(), "spend-watch writes");
+        s.budgets_unwatched = Some("is missing".into());
         s.asleep = None;
         s.now += 5 * 60;
-        assert!(tick(&s, &mut state).is_empty(), "five minutes awake");
+        assert!(tick(&s, &mut state).is_empty(), "a stop told at once");
         s.now += 10 * 60;
         assert_eq!(
             told_whom(&tick(&s, &mut state)),
