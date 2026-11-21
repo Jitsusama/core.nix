@@ -49,8 +49,11 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
         .flat_map(|(text, _)| importing(text))
         .collect();
     // The `checks.nix` that calls a test owns it too, since the values its
-    // call gives, an area or a screen, are part of what the test is. So
-    // does the root's, which gives every test its host (`vmHostPkgs`).
+    // call gives, an area or a screen, are part of what the test is, and so
+    // does each path its call names, in a `let` or the values it passes:
+    // until 21 November modules/pi/hosted-pi.nix named no test. So does
+    // the root's, with what it builds every test's host from.
+    let host = host(&checks, read);
     let called_from = |name: &str| {
         sources
             .iter()
@@ -63,8 +66,12 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
             // A file it can't read still owns itself.
             let text = fs::read_to_string(root.join(&test.file)).unwrap_or_default();
             let mut paths = owned(&test.file, &text, &test.given, &folders, read);
-            paths.extend(called_from(&test.name));
+            if let Some(caller) = called_from(&test.name) {
+                named(&caller, &test.call, &BTreeMap::new(), &read, &mut paths);
+                paths.push(caller);
+            }
             paths.push("checks.nix".to_owned());
+            paths.extend(host.iter().cloned());
             (test.name, paths)
         })
         .collect();
@@ -86,13 +93,75 @@ pub fn in_tree(root: &Path, files: &[String]) -> Option<Owning> {
     Some(Owning { tests, unread })
 }
 
+/// What the root `checks.nix`, holding `checks`, builds every VM test's
+/// host from: what its `vmHostPkgs` names, and each binding beside it the
+/// value names in turn, as `qemuAfterItsSockets`, until 21 November owned
+/// by no test. Without a `vmHostPkgs` to read, every test owns everything,
+/// so a renamed host runs each too often rather than never.
+fn host(checks: &str, read: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    let Some((indent, _)) = binding(checks, "vmHostPkgs", None) else {
+        return vec!["*".to_owned()];
+    };
+    let mut names = vec!["vmHostPkgs".to_owned()];
+    let mut value = String::new();
+    let mut at = 0;
+    while let Some(name) = names.get(at) {
+        if let Some((_, text)) = binding(checks, name, Some(indent)) {
+            let more: Vec<String> = text
+                .split(|c: char| !c.is_ascii_alphanumeric())
+                .filter(|word| !word.is_empty())
+                .filter(|word| binding(checks, word, Some(indent)).is_some())
+                .map(str::to_owned)
+                .collect();
+            value.push_str(&text);
+            value.push('\n');
+            for word in more {
+                if !names.contains(&word) {
+                    names.push(word);
+                }
+            }
+        }
+        at += 1;
+    }
+    let mut paths = Vec::new();
+    named("checks.nix", &value, &BTreeMap::new(), &read, &mut paths);
+    paths
+}
+
+/// The indent and the text of `name`'s binding in `text`, at `indent`
+/// when given: its own line and each line below it indented deeper, which
+/// `nix fmt` keeps.
+fn binding(text: &str, name: &str, indent: Option<usize>) -> Option<(usize, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let depth = |line: &str| line.len() - line.trim_start().len();
+    let at = lines.iter().position(|line| {
+        line.trim_start()
+            .strip_prefix(name)
+            .is_some_and(|rest| rest.starts_with(" ="))
+            && indent.is_none_or(|indent| depth(line) == indent)
+    })?;
+    let own = depth(lines[at]);
+    let value = std::iter::once(lines[at])
+        .chain(
+            lines[at + 1..]
+                .iter()
+                .take_while(|below| below.trim().is_empty() || depth(below) > own)
+                .copied(),
+        )
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some((own, value))
+}
+
 /// A VM test a `checks.nix` names: its name, the file it imports for it,
-/// and each string the import gives that file by name, `area = "captures";`.
+/// each string the import gives that file by name, `area = "captures";`,
+/// and the rest of the call's text, its `let` and the values it passes.
 #[derive(Debug, PartialEq, Eq)]
 pub struct VmTest {
     pub name: String,
     pub file: String,
     pub given: BTreeMap<String, String>,
+    pub call: String,
 }
 
 /// Each VM test the root `checks.nix`, holding `checks`, names, and each
@@ -152,19 +221,25 @@ pub fn vm_tests(checks: &str) -> Vec<VmTest> {
             continue;
         }
         let mut rest = rest.trim();
+        let mut call = String::new();
         if rest.is_empty() {
-            let Some(call) = called(&mut lines) else {
+            let Some(line) = called(&mut lines, &mut call) else {
                 continue;
             };
-            rest = call;
+            rest = line;
         }
-        let Some(file) = rest
+        let Some((file, after)) = rest
             .strip_prefix("import ")
-            .and_then(|call| call.split_whitespace().next())
-            .filter(|file| file.starts_with("./") || file.starts_with("../"))
+            .map(str::trim_start)
+            .map(|line| line.split_once(char::is_whitespace).unwrap_or((line, "")))
+            .filter(|(file, _)| file.starts_with("./") || file.starts_with("../"))
         else {
             continue;
         };
+        // The test's own file is read with the values the call gives it;
+        // read again without, it would own every area's files.
+        call.push_str(after);
+        call.push('\n');
         let file = match Path::new(file).extension() {
             Some(extension) if extension == "nix" => file.to_owned(),
             None => format!("{}/default.nix", file.trim_end_matches('/')),
@@ -173,7 +248,8 @@ pub fn vm_tests(checks: &str) -> Vec<VmTest> {
         found.push(VmTest {
             name: name.to_owned(),
             file: file.strip_prefix("./").unwrap_or(&file).to_owned(),
-            given: given_by(rest, &mut lines),
+            given: given_by(rest, &mut lines, &mut call),
+            call,
         });
     }
     found
@@ -653,13 +729,26 @@ mod tests {
                 .iter()
                 .map(|&(name, value)| (name.to_owned(), value.to_owned()))
                 .collect(),
+            call: String::new(),
         }
+    }
+
+    /// `tests` with the text of their calls left out, which these cases
+    /// don't read.
+    fn uncalled(tests: Vec<VmTest>) -> Vec<VmTest> {
+        tests
+            .into_iter()
+            .map(|test| VmTest {
+                call: String::new(),
+                ..test
+            })
+            .collect()
     }
 
     #[test]
     fn checks_name_each_vm_test_with_its_file_and_what_it_is_given() {
         assert_eq!(
-            vm_tests(CHECKS),
+            uncalled(vm_tests(CHECKS)),
             vec![
                 test("vm-apps-come-first", "tests/slices.nix", &[]),
                 test(
@@ -670,11 +759,11 @@ mod tests {
             ]
         );
         assert_eq!(
-            vm_tests(
+            uncalled(vm_tests(
                 "vm-a = import ./a.nix { inherit pkgs; area = \"x\"; n = \"${y}\"; };\n\
                  vm-b = import ./b.nix {\n  inherit pkgs;\n  side = \"left\";\n};\n\
                  side = \"right\";"
-            ),
+            )),
             vec![
                 test("vm-a", "a.nix", &[("area", "x")]),
                 test("vm-b", "b.nix", &[("side", "left")]),
@@ -686,7 +775,7 @@ mod tests {
     #[test]
     fn a_folder_the_root_gathers_names_its_vm_tests_from_there() {
         assert_eq!(
-            every_vm_test(GATHERING, read_area),
+            uncalled(every_vm_test(GATHERING, read_area)),
             vec![
                 test("vm-apps-come-first", "tests/slices.nix", &[]),
                 test("vm-commits-are-signed", "tests/vm/keys/signing.nix", &[]),
