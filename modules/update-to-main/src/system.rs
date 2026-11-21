@@ -1321,7 +1321,7 @@ pub fn daemon_changed(kind: Kind, old: &Path, new: &Path, name: &str) -> bool {
 
 /// Whether switching from `old` to `new` restarts an account's unit:
 /// home-manager restarts one whose file or drop-ins changed, or that only
-/// one system has, unless the new file says `X-RestartIfChanged=false`, or
+/// one system has, unless the new unit says `X-RestartIfChanged=false`, or
 /// `X-SwitchMethod=keep-old`, which sd-switch keeps running as it was, as
 /// the sessions' kitty holding every session's window is (2026-11-21).
 /// Each system's `home-manager-<account>.service` names the generation
@@ -1339,14 +1339,38 @@ pub fn account_unit_restarts(old: &Path, new: &Path, account: &str, name: &str) 
     };
     let (before, after) = (unit(old), unit(new));
     let kept = after.0.as_deref().is_some_and(|file| {
-        file.lines().any(|l| {
-            matches!(
-                l.trim(),
-                "X-RestartIfChanged=false" | "X-SwitchMethod=keep-old"
-            )
-        })
+        let says = |key| unit_says(file, &after.1, key);
+        says("X-RestartIfChanged").as_deref() == Some("false")
+            || says("X-SwitchMethod").as_deref() == Some("keep-old")
     });
     before != after && !kept
+}
+
+/// What a unit's `[Unit]` section says `key` is, as systemd reads it: the
+/// file, then its `.conf` drop-ins in name order, the last saying it
+/// winning, so a drop-in setting another method is heard.
+fn unit_says(file: &str, drop_ins: &BTreeMap<String, Option<String>>, key: &str) -> Option<String> {
+    let mut said = None;
+    let read = std::iter::once(file).chain(
+        drop_ins
+            .iter()
+            .filter(|(name, _)| name.ends_with(".conf"))
+            .filter_map(|(_, text)| text.as_deref()),
+    );
+    for text in read {
+        let mut in_unit = false;
+        for line in text.lines().map(str::trim) {
+            if line.starts_with('[') {
+                in_unit = line == "[Unit]";
+            } else if let Some((name, value)) = line.split_once('=')
+                && in_unit
+                && name.trim() == key
+            {
+                said = Some(value.trim().to_owned());
+            }
+        }
+    }
+    said
 }
 
 /// The home-manager generation a NixOS system activates for an account, as
