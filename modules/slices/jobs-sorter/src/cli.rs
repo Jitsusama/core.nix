@@ -5,7 +5,7 @@
 use terminal_kit::{Exit, Failure, Help};
 
 /// Every flag the sorter takes, each with a value, as its units give it.
-const FLAGS: [(&str, &str); 27] = [
+const FLAGS: [(&str, &str); 29] = [
     (
         "--under SLICE[=CGROUP]",
         "a slice of terminals it watches, and where their busy work goes; app.slice",
@@ -68,6 +68,14 @@ const FLAGS: [(&str, &str); 27] = [
     (
         "--hosts PREFIX",
         "a pi host's unit by its prefix, ranked as its sessions",
+    ),
+    (
+        "--conversations PREFIX",
+        "a unit a host runs a conversation in, ranked as its session, with --hosts",
+    ),
+    (
+        "--slots DIR",
+        "the hosts' slots, which name each conversation's session, with --conversations",
     ),
     (
         "--revive CGROUP",

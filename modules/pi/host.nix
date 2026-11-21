@@ -254,11 +254,13 @@ let
   # KEY being its REALM-KIND, which parks each one; stop the host first, or
   # it takes them up again at their next wake, and run it before moving the
   # harness back to one without children, whose host would take up what
-  # they hold. jobs-sorter, the shaper and cadence know only `pi-host-*`
-  # units so far, so a conversation's busy commands stay in its own unit,
-  # held back by its memory throttle below, and aren't ranked first while
-  # Joel watches it; its uploads aren't yet raised while he types in it;
-  # and cadence doesn't see one still running an old pi after a switch.
+  # they hold. jobs-sorter ranks each conversation's unit as a host's, by
+  # the windows showing it (jobs-sorter/src/hosts.rs), but moves busy
+  # commands out of `pi-host-*` units only, and the shaper and cadence
+  # know only those. So a conversation's busy commands stay in its own
+  # unit, held back by its memory throttle below; its uploads aren't yet
+  # raised while he types in it; and cadence doesn't see one still
+  # running an old pi after a switch.
   conversationOf =
     realm: host: kind:
     let

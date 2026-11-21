@@ -38,6 +38,35 @@ use serde_json::Value;
 /// agents' slice's own floor.
 pub const FLOOR: u64 = 1 << 30;
 
+/// The memory any other window running a pi keeps under pressure, softly
+/// and without oomd's avoid. Only an orchestrator's window kept a floor
+/// of its own here, and on 21 November at 07:15, 17 of Joel's 20 windows'
+/// pis held 196 to 448 MB each in swap; a stall counts against his window
+/// whether he's at it or not.
+pub const PI_FLOOR: u64 = 512 << 20;
+
+/// The floor a window keeps, by what it holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Floor {
+    /// An orchestrator: [`FLOOR`] and oomd's avoid.
+    Orchestrator,
+    /// Any other pi: [`PI_FLOOR`].
+    Pi,
+    /// No pi: systemd's defaults.
+    Nothing,
+}
+
+/// The floor of a window running `pis` pis, whether any `orchestrates`.
+pub fn floor_of(pis: usize, orchestrates: bool) -> Floor {
+    if orchestrates {
+        Floor::Orchestrator
+    } else if pis > 0 {
+        Floor::Pi
+    } else {
+        Floor::Nothing
+    }
+}
+
 /// The adjustment a pi that orchestrates nothing is given, between the
 /// account's and work's, so the kernel ends a builder's session before an
 /// orchestrator's, and work before either.
@@ -190,14 +219,14 @@ pub fn adjust(proc: &Path, pid: u32, wanted: i32, warned: &mut bool) {
     }
 }
 
-/// What busctl is given to keep a window's unit, with [`FLOOR`] and
-/// systemd-oomd's avoid preference, or to give both back, as runtime
-/// properties gone at the next boot.
-pub fn keep_call(unit: &str, keep: bool) -> Vec<String> {
-    let (floor, preference) = if keep {
-        (FLOOR.to_string(), "avoid")
-    } else {
-        ("0".to_owned(), "none")
+/// What busctl is given to keep a window's unit at its [`Floor`], with
+/// systemd-oomd's avoid preference for an orchestrator's, or to give both
+/// back, as runtime properties gone at the next boot.
+pub fn keep_call(unit: &str, floor: Floor) -> Vec<String> {
+    let (floor, preference) = match floor {
+        Floor::Orchestrator => (FLOOR.to_string(), "avoid"),
+        Floor::Pi => (PI_FLOOR.to_string(), "none"),
+        Floor::Nothing => ("0".to_owned(), "none"),
     };
     [
         "--user",
@@ -223,39 +252,42 @@ pub fn keep_call(unit: &str, keep: bool) -> Vec<String> {
     .collect()
 }
 
-/// The windows kept, so each is set once and given back once it holds no
-/// orchestrator.
+/// The windows kept, each at its floor, so each is set once and changed
+/// once what it holds changes.
 #[derive(Debug, Default)]
 pub struct Keeping {
-    kept: HashSet<String>,
+    kept: HashMap<String, Floor>,
     /// Whether a failure to keep a window has been said.
     pub failed: bool,
 }
 
 impl Keeping {
-    /// The windows to change, each with whether to keep it, from each
-    /// window's unit and whether it holds an orchestrator. One never kept
-    /// and holding none is left as it is.
-    pub fn changes(&self, windows: &[(String, bool)]) -> Vec<(String, bool)> {
+    /// The windows to change, each with its floor, from each window's unit
+    /// and the floor it wants. One never kept and holding none is left as
+    /// it is.
+    pub fn changes(&self, windows: &[(String, Floor)]) -> Vec<(String, Floor)> {
         windows
             .iter()
-            .filter(|(unit, keep)| self.kept.contains(unit) != *keep)
+            .filter(|(unit, floor)| {
+                self.kept.get(unit).copied().unwrap_or(Floor::Nothing) != *floor
+            })
             .cloned()
             .collect()
     }
 
-    /// Notes a window as kept or given back.
-    pub fn done(&mut self, unit: &str, keep: bool) {
-        if keep {
-            self.kept.insert(unit.to_owned());
-        } else {
+    /// Notes a window as kept at `floor`, or forgotten at none, as one a
+    /// hold gave back is, so it's kept again from nothing.
+    pub fn done(&mut self, unit: &str, floor: Floor) {
+        if floor == Floor::Nothing {
             self.kept.remove(unit);
+        } else {
+            self.kept.insert(unit.to_owned(), floor);
         }
     }
 
     /// Forgets the windows no longer among `units`, which have closed.
     pub fn keep_only(&mut self, units: &[String]) {
-        self.kept.retain(|unit| units.contains(unit));
+        self.kept.retain(|unit, _| units.contains(unit));
     }
 }
 
@@ -404,7 +436,7 @@ mod tests {
 
     #[test]
     fn a_window_is_kept_with_a_floor_and_avoided_or_given_both_back() {
-        let kept = keep_call("kitty-1-9.scope", true);
+        let kept = keep_call("kitty-1-9.scope", Floor::Orchestrator);
         assert_eq!(
             kept[8..],
             [
@@ -419,29 +451,82 @@ mod tests {
                 "avoid"
             ]
         );
-        let back = keep_call("kitty-1-9.scope", false);
+        let back = keep_call("kitty-1-9.scope", Floor::Nothing);
         assert_eq!(back[13], "0");
         assert_eq!(back[16], "none");
     }
 
     #[test]
+    fn a_window_running_a_pi_keeps_a_soft_floor_and_isnt_avoided() {
+        let kept = keep_call("mycelium-pi-55deb2a5.scope", Floor::Pi);
+        assert_eq!(
+            kept[13],
+            (512_u64 << 20).to_string(),
+            "a pi's window keeps 512 MiB"
+        );
+        assert_eq!(
+            kept[16], "none",
+            "oomd may still end it before an orchestrator's"
+        );
+        const {
+            assert!(
+                PI_FLOOR < FLOOR,
+                "an orchestrator's window keeps more than any pi's"
+            );
+        };
+    }
+
+    #[test]
+    fn a_windows_floor_is_by_what_it_holds() {
+        assert_eq!(floor_of(1, true), Floor::Orchestrator);
+        assert_eq!(floor_of(2, false), Floor::Pi);
+        assert_eq!(
+            floor_of(0, false),
+            Floor::Nothing,
+            "a window running no pi keeps nothing"
+        );
+    }
+
+    #[test]
     fn a_window_is_kept_once_and_given_back_once_it_holds_no_orchestrator() {
         let mut keeping = Keeping::default();
-        let windows = [("a".to_owned(), true), ("b".to_owned(), false)];
+        let windows = [
+            ("a".to_owned(), Floor::Orchestrator),
+            ("b".to_owned(), Floor::Nothing),
+            ("c".to_owned(), Floor::Pi),
+        ];
         assert_eq!(
             keeping.changes(&windows),
-            [("a".to_owned(), true)],
+            [
+                ("a".to_owned(), Floor::Orchestrator),
+                ("c".to_owned(), Floor::Pi)
+            ],
             "one never kept and holding none is left"
         );
-        keeping.done("a", true);
-        assert_eq!(keeping.changes(&windows), Vec::<(String, bool)>::new());
+        keeping.done("a", Floor::Orchestrator);
+        keeping.done("c", Floor::Pi);
+        assert_eq!(keeping.changes(&windows), Vec::<(String, Floor)>::new());
         assert_eq!(
-            keeping.changes(&[("a".to_owned(), false)]),
-            [("a".to_owned(), false)]
+            keeping.changes(&[("a".to_owned(), Floor::Pi)]),
+            [("a".to_owned(), Floor::Pi)],
+            "an orchestrator's window that holds none goes down to a pi's"
+        );
+        assert_eq!(
+            keeping.changes(&[("c".to_owned(), Floor::Nothing)]),
+            [("c".to_owned(), Floor::Nothing)],
+            "a pi's window whose pi has gone gives its floor back"
+        );
+        keeping.done("c", Floor::Nothing);
+        assert_eq!(
+            keeping.changes(&[("c".to_owned(), Floor::Pi)]),
+            [("c".to_owned(), Floor::Pi)],
+            "one forgotten, as a hold given back forgets it, is kept again"
         );
         keeping.keep_only(&["b".to_owned()]);
         assert!(
-            keeping.changes(&[("a".to_owned(), false)]).is_empty(),
+            keeping
+                .changes(&[("a".to_owned(), Floor::Nothing)])
+                .is_empty(),
             "a closed"
         );
     }
