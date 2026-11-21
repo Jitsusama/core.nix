@@ -143,11 +143,11 @@ pub(crate) fn read() -> System {
             Some(kept) => kept.used(&words.join(" "), answer, at, clock),
             None => kept::Used { answer, note: None },
         });
-    let mut next = || {
+    let mut answered = || {
         used.next()
             .unwrap_or_else(|| unreachable!("one answer is given for each command asked"))
     };
-    let (machines, health, net, repos) = (next(), next(), next(), next());
+    let (machines, health, net, repos) = (answered(), answered(), answered(), answered());
     let notes = Notes {
         machines: machines.note,
         health: health.note,
