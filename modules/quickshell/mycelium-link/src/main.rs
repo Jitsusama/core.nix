@@ -8,6 +8,11 @@
 //! selected, as `qs ipc call launcher machine` does, which the system page
 //! offers as each machine's Open in the Launcher: the page can't act, so
 //! the row's own acts are where Joel starts a session there or updates it.
+//! `mycelium:repository/<key>` opens Code on that repository's row,
+//! selected, as `qs ipc call launcher code` does, which Code's page offers
+//! as each repository's Open in the Launcher, for the same reason: its
+//! row's acts are where Joel pulls it, forgets its gone trees or gathers
+//! its store.
 //! `mycelium:cell/<ADDRESS>/go` goes to that session instead, its window
 //! raised or one opened on it, as `qs ipc call launcher goTo` does, which a
 //! notice from a session offers as its Go To. A cell may say where it runs
@@ -60,6 +65,11 @@ const LONGEST: usize = 64;
 /// cell (notice.rs's `LONGEST_ADDRESS`): six or eight today, with room.
 const LONGEST_ADDRESS: usize = 12;
 
+/// The longest repository key a link carries: where it's kept and its path
+/// there, `github:owner/name` or `local:~/src/name`, which run to a few
+/// dozen letters, with room for a folder nested deep.
+const LONGEST_KEY: usize = 200;
+
 /// `qs`, by the path the package was built with, or found on PATH.
 const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
     Some(path) => path,
@@ -78,6 +88,7 @@ enum Link {
     Network(String),
     Machine(String),
     Sprout { words: String, from: Option<String> },
+    Repository(String),
 }
 
 impl Link {
@@ -96,6 +107,7 @@ impl Link {
                 format!("{WORDS_SAID}{words}"),
                 format!("{FROM_SAID}{}", from.as_deref().unwrap_or("")),
             ],
+            Self::Repository(key) => call("code", key),
         }
     }
 }
@@ -123,6 +135,35 @@ fn named(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+/// Whether `key` is shaped as a repository's key is (modules/repos's
+/// keys.rs): where it's kept, in small letters, digits, dots and hyphens,
+/// then a colon and its path there, in letters, digits and the dot, hyphen,
+/// underscore, tilde and slash a path joins words with, no more than
+/// `LONGEST_KEY` in all, and each part's first a letter or a digit, the
+/// path's a tilde or a slash too, so `qs` never takes it for a flag. A key
+/// of other letters, as a folder with a space in its name gives, is no
+/// link's to carry.
+fn keyed(key: &str) -> bool {
+    let Some((place, path)) = key.split_once(':') else {
+        return false;
+    };
+    key.len() <= LONGEST_KEY
+        && place
+            .bytes()
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
+        && place.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-')
+        })
+        && path
+            .bytes()
+            .next()
+            .is_some_and(|first| first.is_ascii_alphanumeric() || matches!(first, b'~' | b'/'))
+        && path.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b'~' | b'/')
+        })
 }
 
 /// Whether `address` is one a session has on the mesh: capital letters and
@@ -166,8 +207,15 @@ fn read(link: &str) -> Result<Link, Failure> {
     let path = rest.split(['?', '#']).next().unwrap_or("");
     let mut steps = path.split('/');
     let kind = steps.next().unwrap_or("");
+    // A repository's key holds slashes of its own, so the whole of what
+    // follows its kind is its key.
+    let whole = path.split_once('/').map_or("", |(_, after)| after);
     let name = steps.next().unwrap_or("");
     match kind {
+        "repository" if keyed(whole) => Ok(Link::Repository(whole.to_owned())),
+        "repository" => Err(wrong(
+            "it names no repository by a key such as github:owner/name or local:~/src/name",
+        )),
         "cell" => {
             let address = address_of(name).ok_or_else(|| {
                 wrong("its cell isn't an address in capitals, and a machine after @ if any")
@@ -188,7 +236,7 @@ fn read(link: &str) -> Result<Link, Failure> {
         )),
         "sprout" => sprouted(query_of(rest)).map_err(|why| wrong(&why)),
         _ => Err(wrong(
-            "its kind is none of cell, network, machine or sprout",
+            "its kind is none of cell, network, machine, sprout or repository",
         )),
     }
 }
@@ -328,14 +376,19 @@ fn help() -> Help {
         "mycelium-link 'mycelium:sprout?words=tidy%20the%20rows&from=DAHTNJ'",
         "opens Start New Work with \"tidy the rows\" in its field, from DAHTNJ",
     )
+    .example(
+        "mycelium-link mycelium:repository/github:someone/thing",
+        "opens Code on someone's thing",
+    )
     .argument(
         "<link>",
         "mycelium:cell/<ADDRESS>[@machine][/go][#anchor], mycelium:network/<name>, \
-         mycelium:machine/<name> or mycelium:sprout?words=<words>[&from=<ADDRESS>]",
+         mycelium:machine/<name>, mycelium:repository/<key> or \
+         mycelium:sprout?words=<words>[&from=<ADDRESS>]",
     )
     .exit(
         Exit::Usage,
-        "the link names no cell, network or machine, or offers no plain words",
+        "the link names no cell, network, machine or repository, or offers no plain words",
     )
     .exit(Exit::Failed, "qs couldn't be run")
 }
@@ -534,6 +587,100 @@ mod tests {
         ] {
             assert!(read(link).is_err(), "{link} was followed");
         }
+    }
+
+    #[test]
+    fn a_repository_link_names_its_whole_key_and_nothing_after_it() {
+        for (link, key) in [
+            (
+                "mycelium:repository/github:Jitsusama/core.nix",
+                "github:Jitsusama/core.nix",
+            ),
+            (
+                "mycelium://repository/github:someone/thing",
+                "github:someone/thing",
+            ),
+            (
+                "mycelium:repository/github:someone/thing#trees",
+                "github:someone/thing",
+            ),
+            (
+                "mycelium:repository/github:someone/thing?from=code",
+                "github:someone/thing",
+            ),
+            (
+                "mycelium:repository/gitlab:group/sub/thing",
+                "gitlab:group/sub/thing",
+            ),
+            (
+                "mycelium:repository/git.example.org:a/b_c",
+                "git.example.org:a/b_c",
+            ),
+            (
+                "mycelium:repository/local:~/scratch/thing",
+                "local:~/scratch/thing",
+            ),
+            ("mycelium:repository/local:/srv/thing", "local:/srv/thing"),
+        ] {
+            assert_eq!(
+                named_by(link),
+                Ok(Link::Repository(key.to_owned())),
+                "{link} named another"
+            );
+        }
+        let longest = format!("github:someone/{}", "t".repeat(LONGEST_KEY - 15));
+        assert_eq!(longest.len(), LONGEST_KEY);
+        assert_eq!(
+            named_by(&format!("mycelium:repository/{longest}")),
+            Ok(Link::Repository(longest.clone()))
+        );
+        assert_eq!(
+            Link::Repository("github:someone/thing".to_owned()).call(),
+            ["code", "github:someone/thing"],
+            "a repository opens its row and acts on nothing"
+        );
+    }
+
+    #[test]
+    fn a_repository_link_with_a_misshaped_key_is_refused() {
+        let past = format!("github:someone/{}", "t".repeat(LONGEST_KEY - 14));
+        assert_eq!(past.len(), LONGEST_KEY + 1);
+        for link in [
+            // Shapes no key has.
+            "mycelium:repository/",
+            "mycelium:repository",
+            "mycelium:repository/core.nix",
+            "mycelium:repository/github:",
+            "mycelium:repository/:someone/thing",
+            "mycelium:repository/GitHub:someone/thing",
+            "mycelium:repository/-help:x",
+            "mycelium:repository/github:-help",
+            // Letters no key holds.
+            "mycelium:repository/github:someone/thing;rm",
+            "mycelium:repository/local:~/my%20thing",
+            "mycelium:repository/local:~/my thing",
+            "mycelium:repository/github:someone/thing@main",
+            "mycelium:repository/github:someone/th$ing",
+            // Longer than a key runs.
+            &format!("mycelium:repository/{past}"),
+        ] {
+            assert!(read(link).is_err(), "{link} was followed");
+        }
+    }
+
+    #[test]
+    fn a_repository_link_within_the_gap_of_another_is_let_go() {
+        // The gap is kept whatever a link names, so a page can't follow a
+        // machine's link and then a repository's over Joel's work.
+        let stamp = stamp_in("repository");
+        let first = UNIX_EPOCH + Duration::from_hours(500_000);
+        assert!(named_by("mycelium:machine/osprey").is_ok());
+        assert!(goes_ahead(&stamp, first).expect("the stamp should be kept"));
+        assert!(named_by("mycelium:repository/github:someone/thing").is_ok());
+        assert!(
+            !goes_ahead(&stamp, first + Duration::from_secs(1)).expect("the stamp should be kept"),
+            "a repository's link within the gap went ahead"
+        );
     }
 
     #[test]

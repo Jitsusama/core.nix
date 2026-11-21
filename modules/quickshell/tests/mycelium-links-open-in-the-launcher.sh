@@ -98,6 +98,10 @@ opening 'mycelium:sprout?words=-rf+now&from=tern02' \
   '[ipc][call][launcher][newWork][words:-rf now][from:]'
 opening 'mycelium:sprout?from=TERN02' ''
 opening 'mycelium:sprout?words=tidy&words=reboot' ''
+# Code's page's Open it in the launcher, on a repository's row.
+opening 'mycelium:repository/github:someone/thing' \
+  '[ipc][call][launcher][code][github:someone/thing]'
+opening 'mycelium:repository/github:someone/thing;reboot' ''
 opening 'mycelium:cell/dahtnj' ''
 opening 'mycelium:cell/DAHTNJ@kes;trel' ''
 opening 'mycelium:cell/-h' ''
