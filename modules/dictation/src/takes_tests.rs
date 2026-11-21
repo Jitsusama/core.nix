@@ -543,17 +543,19 @@ fn a_short_answer_on_a_rumbling_line_after_a_mute_is_a_take() {
     // of a second, as hiss doesn't, so after a mute it must still be
     // known for the line's own sound, or the line stays gated, its
     // rumble all speech, and an answer in it is one long take, lost
-    // once it holds too few voiced frames for its length.
+    // once it holds too few voiced frames for its length. The answer
+    // comes 0.7 s after the mute, so the line's own sound must be known
+    // inside that.
     let sound = [
         rumble(3.0, 0.01),
         vec![0.0; RATE],
-        rumble(4.0, 0.01),
+        rumble(0.7, 0.01),
         voice(0.3, 150.0),
         rumble(4.0, 0.01),
         quiet(1.0),
     ]
     .concat();
-    let answer = RATE * 8;
+    let answer = RATE * 47 / 10;
     let takes = cut(&sound);
     let take = takes
         .iter()
