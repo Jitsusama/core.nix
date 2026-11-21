@@ -456,10 +456,10 @@ fn a_file_that_cant_go_keeps_what_finds_it() {
     // A folder nothing may be removed from, though its node files may.
     let folder = watch.file.parent().unwrap().to_owned();
     fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
-    if File::create(folder.join("probe")).is_ok() {
-        eprintln!("skipped: a privileged run may remove from any folder");
-        return;
-    }
+    assert!(
+        File::create(folder.join("probe")).is_err(),
+        "a privileged run may remove from any folder, so no file here is stuck"
+    );
     watch.stop();
     let ended = watch.ended();
     // Then the unit's stop step, as it runs after a failed run.
@@ -487,10 +487,10 @@ fn a_file_that_cant_go_keeps_what_finds_it() {
 #[test]
 fn a_watch_that_cant_be_made_fails_so_it_starts_again() {
     let mut watch = Watch::blind("blind");
-    if fs::read_dir(&watch.node).is_ok() {
-        eprintln!("skipped: a privileged run may watch any node");
-        return;
-    }
+    assert!(
+        fs::read_dir(&watch.node).is_err(),
+        "a privileged run may watch any node, so no watch here is refused"
+    );
     // It waits five seconds before giving up on the watch.
     let ended = (0..3).find_map(|_| watch.ended());
     fs::set_permissions(&watch.node, Permissions::from_mode(0o755)).unwrap();
