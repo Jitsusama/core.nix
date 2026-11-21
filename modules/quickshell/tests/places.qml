@@ -4,7 +4,10 @@
 // Reopening.js and Viewers.js beside this file and runs
 // `qml -platform offscreen places.qml`. Each case is one a boot or a
 // dock can make: the same monitor on another connector, a screen gone, and
-// a place kept before screens were named by what they are.
+// a place kept before screens were named by what they are. Long because
+// every case runs in the one engine the check starts, so splitting it
+// would start that engine again for each part, and its cases share the
+// screens and places they're built from.
 import QtQuick
 import "Places.js" as Places
 import "Reopening.js" as Reopening
