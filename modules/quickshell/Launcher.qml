@@ -13790,6 +13790,7 @@ Scope {
                             const chosen = Arming.returnAct({
                                 asking: !!root.asking,
                                 landed: root.landedJustNow(),
+                                gone: !!one?.gone,
                                 held: root.heldWhyOf([one], one?.returns) !== null,
                                 arming: !!root.arms(one),
                                 steps: root.stepsThing(one),
