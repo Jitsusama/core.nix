@@ -184,15 +184,14 @@ fn a_take_that_runs_from_one_voice_into_another_is_split_between_them() {
     );
 }
 
-#[test]
-fn joels_answer_to_one_part_of_a_split_take_is_written() {
+/// A take of 9 s, 40 s in, Ada's for two pieces and Bo's for the last,
+/// heard after one take of each.
+fn ada_then_bo() -> Writing {
     let mut writing = Writing {
         whole: true,
         ..Writing::default()
     };
     hear_takes(&mut writing, &[(ADA, true), (BO, true)]);
-    // A take of 9 s, 40 s in, Ada's for two pieces and Bo's for the last,
-    // and Joel saying Bo's words back as his own answer.
     let timed = [
         ("We", 0),
         ("could", 1),
@@ -203,23 +202,99 @@ fn joels_answer_to_one_part_of_a_split_take_is_written() {
         ("yet.", 7),
     ];
     hear_take(&mut writing, 40, &[ADA, ADA, BO], &timed);
-    writing.lines.push(Line {
-        start: 50 * SECOND,
-        end: 51 * SECOND,
-        text: "Not yet.".to_owned(),
-        ..line(Side::Mine, 50, None)
-    });
-    give_voices(&mut writing, None);
-    let written = transcript::read(&transcript_of(&writing, "Joel", None, None), "Joel");
-    let joels: Vec<&str> = written
-        .iter()
+    writing
+}
+
+/// A line of Joel's from `from` to `to` seconds into the call.
+fn joels(from: usize, to: usize, text: &str) -> Line {
+    Line {
+        start: from * SECOND,
+        end: to * SECOND,
+        text: text.to_owned(),
+        ..line(Side::Mine, from, None)
+    }
+}
+
+/// What of Joel's `writing`'s transcript holds, as its file is read.
+fn joels_written(writing: &Writing) -> Vec<String> {
+    transcript::read(&transcript_of(writing, "Joel", None, None), "Joel")
+        .into_iter()
         .filter(|line| line.side == Side::Mine)
-        .map(|line| line.text.as_str())
-        .collect();
+        .map(|line| line.text)
+        .collect()
+}
+
+/// `ada_then_bo` told apart, with Joel saying Bo's part back as his own
+/// answer, 47 s in, where he'd be taken for its echo if judged against
+/// the part alone.
+fn answered() -> Writing {
+    let mut writing = ada_then_bo();
+    let answer = joels(47, 48, "Not yet.");
+    writing.lines.push(answer.clone());
+    give_voices(&mut writing, None);
+    let bo = writing.lines[1].voice;
+    assert!(
+        said_by(&writing).contains(&("Not yet.", bo)),
+        "the take wasn't split, so the answer is never judged near Bo's part alone"
+    );
+    assert!(
+        transcript::echoes(&answer, &writing.lines),
+        "the answer isn't an echo of Bo's part alone, so keeping it shows nothing"
+    );
+    writing
+}
+
+#[test]
+fn joels_answer_to_one_part_of_a_split_take_is_written() {
     assert_eq!(
-        joels,
+        joels_written(&answered()),
         ["Not yet."],
         "Joel's answer was taken for an echo of Bo's part, not judged against the whole take"
+    );
+}
+
+#[test]
+fn joels_echoes_of_their_takes_are_left_out_of_what_is_written() {
+    let mut writing = ada_then_bo();
+    // Bo again, straight after, in a take of his own.
+    hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
+    // Joel's microphone hearing the split take across its cut, and Bo's
+    // short take, then Joel saying something of his own.
+    writing.lines.push(joels(43, 48, "It today, not yet."));
+    writing.lines.push(joels(49, 51, "Sounds good."));
+    writing.lines.push(joels(60, 61, "Right."));
+    give_voices(&mut writing, None);
+    let bo = writing.lines[1].voice;
+    assert!(
+        said_by(&writing).contains(&("Not yet.", bo)),
+        "the take wasn't split, so its echo across the cut shows nothing"
+    );
+    assert_eq!(
+        joels_written(&writing),
+        ["Right."],
+        "an echo of the split take, or of Bo's take after it, was written as Joel's"
+    );
+}
+
+#[test]
+fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join("transcript.md");
+    std::fs::write(&file, transcript_of(&answered(), "Joel", None, None)).unwrap();
+    let mut call = in_meet(&["Ada", "Bo"]);
+    call.folder = folder.path().join("call:e1");
+    call.transcript = Some(file);
+    let book = Shared::new(Book::default());
+    book.lock().put(call);
+    // Taken up from the file, Bo's part is a line of its own, with no
+    // pieces to join it to Ada's again; then Ada says more.
+    let mut writing = resumed(&book, "call:e1", "Joel");
+    hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
+    give_voices(&mut writing, None);
+    assert_eq!(
+        joels_written(&writing),
+        ["Not yet."],
+        "Joel's answer, written before the restart, was judged again against Bo's part alone"
     );
 }
 
