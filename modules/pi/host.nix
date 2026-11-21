@@ -209,8 +209,10 @@ let
         # in /etc/opt/chrome names, and takes that policy's forced
         # extensions, so every agent's look at a page added one more browser
         # to an organisation's books. Chromium reads only /etc/chromium's
-        # policies. A machine's own value still wins.
-        CHROME_PATH = lib.getExe pkgs.chromium;
+        # policies. A machine names its own browser once, in the account's
+        # CHROME_PATH (home.nix sets Chromium as its default), and its hosts
+        # follow it; a realm's environment still wins over both.
+        CHROME_PATH = config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium);
       }
       // host.environment
       // {

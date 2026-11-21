@@ -3032,8 +3032,8 @@
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's
-    environment, proof, node, frame flag and SSH agent, its machine's own browser in place of
-    Chromium where it names one, and only that one, but a plain pi's pools, its realm's
+    environment, proof, node, frame flag and SSH agent, the browser its account names in
+    place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
     agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park

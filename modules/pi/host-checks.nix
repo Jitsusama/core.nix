@@ -303,15 +303,14 @@ in
                 inherit pi node proof;
                 conversationHeapMb = 3072;
                 asyncContextFrame = true;
-                environment = {
-                  PROXY_ORIGIN = "https://proxy.example.com";
-                  # A machine's own browser wins over Chromium.
-                  CHROME_PATH = "/own/chrome";
-                };
+                environment.PROXY_ORIGIN = "https://proxy.example.com";
               };
               # Where pi's SSH agent proxy runs.
               agentProxy.builderKey = "/builders/key";
             };
+            # A machine names its own browser once, for the account, and its
+            # hosts follow it rather than Chromium.
+            home-manager.users.someone.home.sessionVariables.CHROME_PATH = "/own/chrome";
           }
         ])).systemd.user.services;
       mac =
@@ -369,7 +368,6 @@ in
         && lib.elem ''"SSH_AUTH_SOCK=%t/pi-agent.sock"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
         && lib.elem ''"CHROME_PATH=/own/chrome"'' environment
-        && lib.count (lib.hasPrefix ''"CHROME_PATH='') environment == 1
         # One conversation keeps a plain pi's pools, not a host's.
         && !(lib.any (lib.hasPrefix ''"PI_CODEMODE_MAX_WORKERS='') environment)
         && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);
