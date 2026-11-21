@@ -67,7 +67,10 @@ Every health is good, watch, bad or not read, each with its own mark.
     network names as a concern, other than its ceiling, is worth a look.
   - Code: good whenever its owner answers. Trees git still lists whose
     folders are gone are agents' leftovers, said in what it holds.
-  - A part whose owner can't be asked is Not read, with why.
+  - A part whose owner can't be asked is Not read, with why, unless the
+    owner answered in the last ten minutes. Then that answer stands, and
+    the part and each machine's tie read from it say when it was read and
+    why the newest read missed.
 
 ## Keys
 

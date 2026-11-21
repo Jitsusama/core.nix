@@ -15,8 +15,10 @@ use system::parts::Answer;
 
 /// How long an owner may take. Each answers from what it holds in well
 /// under a second; `repos` reads every checkout's git files, about two
-/// seconds over a thousand trees, so this leaves it room on a busy machine.
-const CLOCK: Duration = Duration::from_secs(10);
+/// seconds over a thousand trees, and past ten under a load of 200, so
+/// this leaves it room on a machine under every pressure at once. A read
+/// that misses even so stands on its owner's last answer (kept.rs).
+const CLOCK: Duration = Duration::from_secs(20);
 /// How often a running owner is looked at.
 const LOOK: Duration = Duration::from_millis(20);
 /// How much of an owner's complaint a failure says: enough for its first

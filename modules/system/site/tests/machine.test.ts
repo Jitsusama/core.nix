@@ -189,6 +189,24 @@ it("its cells are counted busy and idle, with those ended aside", () => {
   assert.equal(cellsSaid(tiesOf({ cells: null })).said, "Not read");
 });
 
+it("a tie read from an owner's last good answer says when and why", () => {
+  const note = "as read at 11:54; mycelium health gave no answer in 10 s just now";
+  const kept = tiesOf({ ...ties, kept: { cells: note } });
+  assert.deepEqual(
+    cellsSaid(kept),
+    {
+      said: "45 busy and 27 idle",
+      aside: `And 50 that have ended. ${note.charAt(0).toUpperCase()}${note.slice(1)}.`,
+    },
+    "cells read from a kept health say when it was read",
+  );
+  assert.deepEqual(
+    networkSaid(kept),
+    networkSaid(tiesOf(ties)),
+    "a tie read from its own answer says nothing of another's",
+  );
+});
+
 it("its network says where it meets it, by band or by wire, and how well", () => {
   assert.deepEqual(networkSaid(tiesOf(ties)), {
     said: "Wi-Fi to the Hall point, on 2.4 GHz",

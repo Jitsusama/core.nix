@@ -42,8 +42,26 @@ impl Said {
     }
 }
 
+/// What goes beside `said`, a tie read from an owner's kept answer, with
+/// when that was read and why the newest read wasn't (system's kept.rs).
+fn kept(ties: &Value, tie: &str, said: Said) -> Said {
+    match ties
+        .get("kept")
+        .and_then(|kept| kept.get(tie))
+        .and_then(Value::as_str)
+    {
+        Some(note) if said.aside.is_empty() => Said::new(said.said, note),
+        Some(note) => Said::new(said.said, format!("{}, {note}", said.aside)),
+        None => said,
+    }
+}
+
 /// A machine's cells, busy and idle, with those that have ended aside.
 pub fn cells(ties: &Value) -> Said {
+    kept(ties, "cells", cells_now(ties))
+}
+
+fn cells_now(ties: &Value) -> Said {
     let Some(cells) = ties.get("cells").filter(|cells| cells.is_object()) else {
         return Said::new(NOT_READ, "the mycelium's health couldn't be had");
     };
@@ -68,6 +86,10 @@ pub fn cells(ties: &Value) -> Said {
 /// well each reaches, in the same order: its radio's signal and its room,
 /// so no place's figure is said as another's.
 pub fn network(ties: &Value) -> Said {
+    kept(ties, "network", network_now(ties))
+}
+
+fn network_now(ties: &Value) -> Said {
     let Some(places) = ties.get("network").and_then(Value::as_array) else {
         return Said::new(NOT_READ, "the network's answer couldn't be had");
     };
@@ -165,6 +187,10 @@ fn signal(bars: u64) -> &'static str {
 /// another, as `repos` reads only the machine it runs on; on the machine
 /// it's read on, `here`, no code is a read that failed.
 pub fn code(ties: &Value, name: &str, here: bool) -> Said {
+    kept(ties, "code", code_now(ties, name, here))
+}
+
+fn code_now(ties: &Value, name: &str, here: bool) -> Said {
     let Some(code) = ties.get("code").filter(|code| code.is_object()) else {
         if here {
             return Said::new(NOT_READ, "repos couldn't be had");
@@ -367,6 +393,26 @@ mod tests {
         assert_eq!(
             cells(&json!({"cells": null})),
             said("not read", "the mycelium's health couldn't be had")
+        );
+    }
+
+    #[test]
+    fn a_tie_read_from_a_kept_answer_says_when_and_why() {
+        let note = "as read at 11:54; mycelium health gave no answer in 10 s just now";
+        let ties = json!({
+            "cells": {"busy": 2, "idle": 3, "ended": 0},
+            "network": [],
+            "kept": {"cells": note},
+        });
+        assert_eq!(
+            cells(&ties),
+            said("2 busy and 3 idle", &format!("none has ended, {note}")),
+            "cells read from a kept health say when it was read"
+        );
+        assert_eq!(
+            network(&ties).aside,
+            "no device on it carries this machine's name",
+            "a tie read from its own answer says nothing of another's"
         );
     }
 

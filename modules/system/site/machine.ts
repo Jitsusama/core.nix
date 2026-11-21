@@ -188,8 +188,21 @@ function standing(thing: Thing, items = thing.side.length): string {
 
 const NOT_READ = "Not read";
 
+/** `said`, with `note` beside it when the tie was read from an owner's kept answer. */
+function keptSaid<T extends Said>(said: T, note: string | undefined): T {
+  if (note === undefined || note === "") {
+    return said;
+  }
+  const told = `${note.charAt(0).toUpperCase()}${note.slice(1)}.`;
+  return { ...said, aside: said.aside === "" ? told : `${said.aside} ${told}` };
+}
+
 /** A machine's cells, busy and idle, with those that have ended aside. */
 function cellsSaid(ties: Ties): Said {
+  return keptSaid(cellsNow(ties), ties.kept.cells);
+}
+
+function cellsNow(ties: Ties): Said {
   const { cells } = ties;
   if (cells === undefined) {
     return { said: NOT_READ, aside: "The mycelium's health couldn't be had." };
@@ -273,6 +286,10 @@ function placeWords(place: Place): string {
  * Its device is the first place's, to go to.
  */
 function networkSaid(ties: Ties): Said & { readonly device: string | undefined } {
+  return keptSaid(networkNow(ties), ties.kept.network);
+}
+
+function networkNow(ties: Ties): Said & { readonly device: string | undefined } {
   const places = ties.network;
   if (places === undefined) {
     return { said: NOT_READ, aside: "The network's answer couldn't be had.", device: undefined };
@@ -309,6 +326,10 @@ function noneOr(count: number, one: string, more = `${one}s`): string {
  * failed.
  */
 function codeSaid(ties: Ties, name: string, here: boolean): Said & { readonly read: boolean } {
+  return keptSaid(codeNow(ties, name, here), ties.kept.code);
+}
+
+function codeNow(ties: Ties, name: string, here: boolean): Said & { readonly read: boolean } {
   const { code } = ties;
   if (code === undefined) {
     return here

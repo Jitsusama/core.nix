@@ -23,6 +23,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use system::homes::Homes;
+use system::kept::{self, Kept, Notes};
 use system::parts;
 use system::record::System;
 use terminal_kit::{Context, Exit, Failure, Help};
@@ -131,9 +132,30 @@ pub(crate) fn read() -> System {
     }
     let mut answers = ask::all(&asked);
     let journal = journal_asked.then(|| answers.pop()).flatten();
-    let [mut machines, health, net, repos]: [_; 4] = answers
-        .try_into()
-        .unwrap_or_else(|_| unreachable!("one answer is given for each command asked"));
+    // Each owner's answer stands on its last good one for a read missed,
+    // as under load one may be; with no state home, none is kept.
+    let kept = state_home().map(|state| Kept::in_folder(state.join("system/kept")));
+    let at = now();
+    let mut used = asked
+        .iter()
+        .zip(answers)
+        .map(|(words, answer)| match &kept {
+            Some(kept) => kept.used(&words.join(" "), answer, at, clock),
+            None => kept::Used { answer, note: None },
+        });
+    let mut next = || {
+        used.next()
+            .unwrap_or_else(|| unreachable!("one answer is given for each command asked"))
+    };
+    let (machines, health, net, repos) = (next(), next(), next(), next());
+    let notes = Notes {
+        machines: machines.note,
+        health: health.note,
+        net: net.note,
+        repos: repos.note,
+    };
+    let (mut machines, health, net, repos) =
+        (machines.answer, health.answer, net.answer, repos.answer);
     let journal = system::power::remembered(&FOUND, journal);
     note_a_firmware_error(&mut machines, &journal, since_boot);
     let mut system = System {
@@ -152,6 +174,7 @@ pub(crate) fn read() -> System {
             parts::code(&repos),
         ],
     };
+    kept::mark(&mut system, &notes);
     if let Some(sites) = sites() {
         Homes::read(&sites).place(&mut system);
     }
@@ -187,15 +210,26 @@ fn sites() -> Option<PathBuf> {
 /// under its state home (epoch seconds); none where this machine keeps no
 /// backup.
 fn backup() -> Option<parts::Backup> {
-    let state = std::env::var_os("XDG_STATE_HOME")
-        .filter(|state| !state.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
-        })?;
+    let state = state_home()?;
     parts::backup(
         std::fs::read_to_string(state.join("quest-backup/landed")),
         now(),
+    )
+}
+
+/// The state home, where a command keeps what outlives one run.
+fn state_home() -> Option<PathBuf> {
+    std::env::var_os("XDG_STATE_HOME")
+        .filter(|state| !state.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+}
+
+/// A moment as a time of day where the machine is, as `11:54`.
+fn clock(at: i64) -> String {
+    terminal_kit::local::at(at).map_or_else(
+        || "an unknown time".to_owned(),
+        |local| format!("{:02}:{:02}", local.hour, local.minute),
     )
 }
 

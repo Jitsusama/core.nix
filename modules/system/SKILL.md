@@ -19,11 +19,14 @@ never from its sources:
 - **Network**, the home network, from `net --json`.
 - **Code**, the repositories and their trees, from `repos --json`.
 
-`system` asks all four together, each given ten seconds, and judges each
+`system` asks all four together, each given twenty seconds, and judges each
 part good, watch (worth a look) or bad; a part whose owner couldn't be
 asked is unread, with why. The whole takes the worst part that was read.
-It keeps no daemon and no record, so its answer is always now; a run takes
-under a second.
+It keeps each owner's last good answer, so an owner that misses a read but
+answered in the last ten minutes stands on that answer, and the part and
+each machine's tie read from it say "as read at 11:54" and why the newest
+read missed. Otherwise its answer is now; a run takes under a second when
+the machine isn't loaded.
 
 ## Reading It
 
