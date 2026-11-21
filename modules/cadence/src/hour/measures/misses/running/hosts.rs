@@ -87,7 +87,10 @@ pub(super) fn listed_host(line: &str) -> Option<(&str, Standing)> {
 /// A host unit's main process and when it started, from `systemctl show`:
 /// when that process began, before it opened its program through
 /// `current`, rather than when it said it was ready, which a host does
-/// only once its socket listens, minutes later under load.
+/// only once its socket listens, minutes later under load. A process
+/// not yet ready since it began has no start: a host crashing or hanging
+/// on a new program restarts in place, each try a later process, for an
+/// hour before its unit fails, and must not read as running it.
 pub(super) fn shown_host(shown: &str) -> (Option<u32>, Option<i64>) {
     let field = |name: &str| {
         shown
@@ -102,7 +105,11 @@ pub(super) fn shown_host(shown: &str) -> (Option<u32>, Option<i64>) {
             .and_then(|at| at.trim().strip_prefix('@')?.parse().ok())
             .filter(|&at| at > 0)
     };
-    let started = stamp("ExecMainStartTimestamp").or_else(|| stamp("ActiveEnterTimestamp"));
+    let ready = stamp("ActiveEnterTimestamp");
+    let started = match stamp("ExecMainStartTimestamp") {
+        Some(exec) => ready.filter(|&ready| ready >= exec).map(|_| exec),
+        None => ready,
+    };
     (pid, started)
 }
 

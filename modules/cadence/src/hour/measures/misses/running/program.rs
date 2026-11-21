@@ -22,10 +22,14 @@ const PACKAGES: &[&str] = &["package.json", "pnpm-lock.yaml"];
 
 /// A relative import as the harness writes one: `from "./x"`, a
 /// re-export's or a split import's `from "../x"`, a bare `import "./x"` or
-/// `import("./x")`, in either quote; or a script it runs on a thread or in
-/// a process of its own, named `new URL("./x.mjs", import.meta.url)`.
+/// `import("./x")`, in either quote; or any relative path to a file named
+/// in quotes, as a script it runs on a thread or in a process of its own,
+/// or a schema or query it reads, by `new URL("./schema.sql",
+/// import.meta.url)`, on one line or split over two. A path written only
+/// in a comment counts too, which errs toward a change waiting on the
+/// hosts.
 const IMPORT: &str =
-    r#"(from|import) *\(? *["']\.\.?/[^"']+["']|new URL\( *["']\.\.?/[^"']+\.[cm]?[jt]sx?["']"#;
+    r#"(from|import) *\(? *["']\.\.?/[^"']+["']|["']\.\.?/[^"'[:space:]]+\.[A-Za-z0-9]+["']"#;
 
 /// The files that import, as the harness names its scripts.
 const SCRIPTS: &[&str] = &["*.ts", "*.mts", "*.cts", "*.tsx", "*.js", "*.mjs", "*.cjs"];
@@ -35,13 +39,20 @@ const SCRIPTS: &[&str] = &["*.ts", "*.mts", "*.cts", "*.tsx", "*.js", "*.mjs", "
 /// imports nothing, as when it moved, or it names a file the commit
 /// doesn't hold, as a `./x.js` written for `x.ts` or a folder would: a
 /// walk that can't follow each step would read a change past it as
-/// loading nowhere.
+/// loading nowhere. A load by a path made at run time isn't followed:
+/// the harness makes one only for a session's extensions, which aren't
+/// counted, and a worker's own code, written inline.
 pub fn files(path: &str, sha: &str) -> Option<BTreeSet<String>> {
     let mut args = vec!["-C", path, "grep", "--null", "-o", "-E", IMPORT, sha, "--"];
     args.extend(SCRIPTS);
     let found = command("git", &args).ok()?;
-    let held = command("git", &["-C", path, "ls-tree", "-r", "--name-only", sha]).ok()?;
-    let mut files = imported(&found, sha, &held.lines().collect())?;
+    // Split on NUL, as the grep writes names, since git quotes a line's odd one.
+    let held = command(
+        "git",
+        &["-C", path, "ls-tree", "-r", "-z", "--name-only", sha],
+    )
+    .ok()?;
+    let mut files = imported(&found, sha, &held.split('\0').collect())?;
     files.extend(PACKAGES.iter().map(|file| (*file).to_owned()));
     Some(files)
 }
@@ -117,6 +128,30 @@ pub fn swapped(mirror: &Path) -> Option<i64> {
     let at = link.modified().ok()?;
     let at = at.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     Some(i64::try_from(at).ok()? + 1)
+}
+
+/// Each version `current` left at or after `at`, by its commit, as
+/// pi-packages marks one in `retired`, beside `mirror`, with the time it
+/// left: `current` named each such version after `at`, so a host or
+/// conversation started since may run it. pi-packages drops a version's
+/// mark as it drops the version, once nothing runs it. `None` when the
+/// marks can't be read; none when there are none yet.
+pub fn left_since(mirror: &Path, at: i64) -> Option<Vec<String>> {
+    let marks = match std::fs::read_dir(mirror.parent()?.join("retired")) {
+        Ok(marks) => marks,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(Vec::new()),
+        Err(_) => return None,
+    };
+    let mut left = Vec::new();
+    for mark in marks {
+        let mark = mark.ok()?;
+        let when = mark.metadata().ok()?.modified().ok()?;
+        let when = when.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        if i64::try_from(when).ok()? >= at {
+            left.push(mark.file_name().into_string().ok()?);
+        }
+    }
+    Some(left)
 }
 
 #[cfg(test)]
@@ -198,6 +233,22 @@ mod tests {
             Some(1_000_000_001),
             "the link's own time, a second on, wasn't read, or the link was followed to its \
              version's"
+        );
+        assert_eq!(
+            left_since(&mirror, 0),
+            Some(Vec::new()),
+            "no version left yet read as unreadable"
+        );
+        std::fs::create_dir_all(place.join("retired")).expect("the marks' folder");
+        for (commit, at) in [("old", "@999999999"), ("stepped", "@1000000500")] {
+            let mark = place.join("retired").join(commit);
+            std::fs::write(&mark, "").expect("a mark");
+            touch(&["-d", at, &mark.to_string_lossy()]);
+        }
+        assert_eq!(
+            left_since(&mirror, 1_000_000_001),
+            Some(vec!["stepped".to_owned()]),
+            "a version current left after the time kept wasn't found, or one it left before was"
         );
         std::fs::remove_dir_all(&place).ok();
     }

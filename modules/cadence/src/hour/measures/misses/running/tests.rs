@@ -287,6 +287,25 @@ fn a_host_is_read_by_its_units_main_process() {
         (Some(3_342_173), Some(1_795_138_373))
     );
     assert_eq!(
+        shown_host(
+            "MainPID=7\nExecMainStartTimestamp=@1795138300\nActiveEnterTimestamp=@1795138373\n"
+        ),
+        (Some(7), Some(1_795_138_300)),
+        "a ready process's start wasn't read as when it began"
+    );
+    assert_eq!(
+        shown_host(
+            "MainPID=8\nExecMainStartTimestamp=@1795139000\nActiveEnterTimestamp=@1795138373\n"
+        ),
+        (Some(8), None),
+        "a host restarting in place, not ready since its process began, read as started"
+    );
+    assert_eq!(
+        shown_host("MainPID=9\nExecMainStartTimestamp=@1795139000\nActiveEnterTimestamp=\n"),
+        (Some(9), None),
+        "a host never yet ready read as started"
+    );
+    assert_eq!(
         shown_host("MainPID=0\nActiveEnterTimestamp=\n"),
         (None, None),
         "a unit with no process or start read as one"

@@ -100,8 +100,9 @@ struct Host {
 /// and never read again, so a closed miss isn't reopened, and told fixed
 /// twice, by an hour that can't see for a moment: a host restarting at
 /// :10, or a switch from a branch. When the harness installed first
-/// carried a program change is kept in its `installed.json` while each
-/// hour sees it carried, so a later install doesn't hold it open again.
+/// carried a program change is kept in its `installed.json` until an hour
+/// sees it not carried, or pi-packages marks a version lacking it left
+/// since, so a later install doesn't hold it open again.
 #[must_use]
 pub fn unrun(
     merged: &BTreeSet<Named>,
@@ -141,9 +142,17 @@ pub fn unrun(
                 let read = hosts.get_or_insert_with(read_hosts).as_deref();
                 let carried = |rev: &str| carries(&path, sha, rev) == Some(true);
                 let (talks, since) = if reaches.program {
-                    let since = first_installed(&firsts, &mut now_firsts, &key, || {
-                        program::swapped(&crate::axes::landings::harness_mirror())
-                    });
+                    let mirror = crate::axes::landings::harness_mirror();
+                    let since = first_installed(
+                        &firsts,
+                        &mut now_firsts,
+                        &key,
+                        |at| {
+                            program::left_since(&mirror, at)
+                                .is_none_or(|left| left.iter().any(|rev| !carried(rev)))
+                        },
+                        || program::swapped(&mirror),
+                    );
                     (talks.get_or_insert_with(conversations).as_deref(), since)
                 } else if reaches.unit {
                     (None, first_switched(switches, carried))
@@ -160,6 +169,7 @@ pub fn unrun(
                 })
             },
         );
+        keep_unseen(&firsts, &mut now_firsts, &key, why);
         if let Some(why) = why {
             unrun.insert(change.clone(), why);
         }
@@ -193,21 +203,50 @@ pub fn unrun(
     unrun
 }
 
+/// Why the harness installed doesn't hold a change, which ends the time
+/// kept for its first install.
+const NOT_CARRIED: &str = "the harness installed doesn't carry it";
+
 /// When the harness installed first carried the change kept as `key`: as
 /// `firsts`, last hour's, kept it, else as `swapped` reads `current` now,
 /// kept in `now_firsts` for the next hour. An hour that doesn't see it
-/// carried keeps nothing, so a step back counts from the step forward.
+/// carried keeps nothing, so a step back counts from the step forward; a
+/// step back and forward between two hours does too, once `stepped_back`
+/// says `current` named a version lacking it since the time kept.
 fn first_installed(
     firsts: &BTreeMap<String, i64>,
     now_firsts: &mut BTreeMap<String, i64>,
     key: &str,
+    stepped_back: impl FnOnce(i64) -> bool,
     swapped: impl FnOnce() -> Option<i64>,
 ) -> Option<i64> {
-    let since = firsts.get(key).copied().or_else(swapped);
+    let since = firsts
+        .get(key)
+        .copied()
+        .filter(|&at| !stepped_back(at))
+        .or_else(swapped);
     if let Some(at) = since {
         now_firsts.insert(key.to_owned(), at);
     }
     since
+}
+
+/// Keeps the first install `firsts` holds for `key` through an hour that
+/// didn't reach it, as one that couldn't read git, so a later install
+/// doesn't hold a conversation started on the first; but not once the
+/// change ran, judged `why` as `None`, or the hour saw it not carried.
+fn keep_unseen(
+    firsts: &BTreeMap<String, i64>,
+    now_firsts: &mut BTreeMap<String, i64>,
+    key: &str,
+    why: Option<&str>,
+) {
+    if why.is_some_and(|why| why != NOT_CARRIED)
+        && !now_firsts.contains_key(key)
+        && let Some(&at) = firsts.get(key)
+    {
+        now_firsts.insert(key.to_owned(), at);
+    }
 }
 
 /// Why the pi hosts lack a change that `reaches` them, as `hosts_lack`
@@ -247,7 +286,8 @@ struct Reaches {
 /// doesn't: `rev` is its repository's running revision, `carries` says
 /// whether a revision holds a commit (`None` for a revision cadence doesn't
 /// have), `changed` the files a merge changed, `program` the harness's
-/// files the hosts' program loads at a commit, and `hosts` why the pi
+/// files the hosts' program loads at a commit, any change reaching it
+/// when cadence can't follow it, and `hosts` why the pi
 /// hosts lack a change that reaches them. What cadence couldn't read counts
 /// as not running.
 fn judge(
@@ -270,7 +310,7 @@ fn judge(
     };
     match carries(sha, rev) {
         None => return Some("cadence can't find the revision running here"),
-        Some(false) if repo == "harness" => return Some("the harness installed doesn't carry it"),
+        Some(false) if repo == "harness" => return Some(NOT_CARRIED),
         Some(false) => return Some("the last switch doesn't carry it"),
         Some(true) => {}
     }
@@ -281,11 +321,11 @@ fn judge(
         return Some("cadence can't read what it changed");
     };
     if repo == "harness" {
-        let Some(loaded) = program(sha) else {
-            return Some("cadence can't tell which harness files a pi host loads");
-        };
+        // A program cadence can't follow may load anything, so every change
+        // waits on the hosts, rather than none closing until it's followed.
         let reaches = Reaches {
-            program: files.lines().any(|file| loaded.contains(file)),
+            program: program(sha)
+                .is_none_or(|loaded| files.lines().any(|file| loaded.contains(file))),
             ..Reaches::default()
         };
         return reaches.program.then(|| hosts(sha, reaches)).flatten();

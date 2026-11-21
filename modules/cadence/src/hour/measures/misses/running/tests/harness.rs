@@ -35,9 +35,18 @@ fn a_harness_change_to_the_hosts_program_waits_on_them() {
         "a change no host's program loads waited on the hosts"
     );
     assert_eq!(
-        judge("harness", at, Some("f00d"), all, to_program, |_| None, lack),
-        Some("cadence can't tell which harness files a pi host loads"),
-        "a program cadence couldn't read counted as loading nothing"
+        judge(
+            "harness",
+            at,
+            Some("f00d"),
+            all,
+            to_extension,
+            |_| None,
+            lack
+        ),
+        Some("program"),
+        "a program cadence couldn't follow counted as loading nothing, or held a change \
+         without waiting on the hosts, which would hold it for good"
     );
     assert_eq!(
         judge("harness", at, Some("f00d"), all, |_| None, loads, lack),
@@ -93,31 +102,77 @@ fn every_host_must_have_started_since_its_program_was_installed() {
 #[test]
 fn a_program_change_counts_from_the_first_install_seen_carrying_it() {
     let key = "harness #1900";
+    let stayed = |_| false;
     let mut first = BTreeMap::new();
     let mut kept = BTreeMap::new();
     assert_eq!(
-        first_installed(&first, &mut kept, key, || Some(100)),
+        first_installed(&first, &mut kept, key, stayed, || Some(100)),
         Some(100)
     );
     first = std::mem::take(&mut kept);
     assert_eq!(
-        first_installed(&first, &mut kept, key, || Some(300)),
+        first_installed(&first, &mut kept, key, stayed, || Some(300)),
         Some(100),
         "a later install moved the time a conversation on an earlier one carrying it is \
          judged by"
     );
-    // An hour not seeing it carried keeps nothing, so it counts afresh.
-    first = BTreeMap::new();
+    first = std::mem::take(&mut kept);
     assert_eq!(
-        first_installed(&first, &mut kept, key, || Some(500)),
-        Some(500)
+        first_installed(&first, &mut kept, key, |at| at == 100, || Some(500)),
+        Some(500),
+        "a step back and forward between two hours kept the first time, so a conversation \
+         started on the version lacking it read as running it"
+    );
+    assert_eq!(
+        kept.get(key),
+        Some(&500),
+        "the time after a step back wasn't kept"
     );
     let mut none = BTreeMap::new();
     assert_eq!(
-        first_installed(&BTreeMap::new(), &mut none, key, || None),
+        first_installed(&BTreeMap::new(), &mut none, key, stayed, || None),
         None
     );
     assert!(none.is_empty(), "an unread install was kept as one");
+}
+
+#[test]
+fn an_hour_that_cant_see_keeps_the_first_install_and_one_seeing_it_lacked_drops_it() {
+    let key = "harness #1900";
+    let first = BTreeMap::from([(key.to_owned(), 100)]);
+    let kept_after = |why: Option<&str>| {
+        let mut kept = BTreeMap::new();
+        keep_unseen(&first, &mut kept, key, why);
+        kept.get(key).copied()
+    };
+    assert_eq!(
+        kept_after(Some("cadence can't find its merge")),
+        Some(100),
+        "an hour that couldn't read git forgot the first install, so a later one would hold \
+         a conversation started on it"
+    );
+    assert_eq!(
+        kept_after(Some("the harness installed doesn't carry it")),
+        None,
+        "an hour seeing it not carried kept the time, so a step back wouldn't count afresh"
+    );
+    assert_eq!(
+        kept_after(None),
+        None,
+        "a change that ran kept its time for good"
+    );
+    let mut kept = BTreeMap::from([(key.to_owned(), 500)]);
+    keep_unseen(
+        &first,
+        &mut kept,
+        key,
+        Some("a pi host failed and waits on a reset"),
+    );
+    assert_eq!(
+        kept.get(key),
+        Some(&500),
+        "the hour's own reading was replaced by last hour's"
+    );
 }
 
 #[test]
@@ -176,14 +231,19 @@ fn the_program_is_followed_through_the_harness_as_git_holds_it() {
     );
     write(
         "host/a.ts",
-        "export {\n  b,\n} from './b.mjs';\nawait import(\"./c.ts\");\n",
+        "export {\n  b,\n} from './b.mjs';\nawait import(\"./c.ts\");\nimport \"./été.ts\";\n",
     );
     write("host/b.mjs", "export const b = 1;\n");
+    write("host/été.ts", "export {};\n");
     write(
         "host/c.ts",
-        "new Worker(fileURLToPath(new URL(\"./d.mjs\", import.meta.url)));\n",
+        concat!(
+            "new Worker(fileURLToPath(new URL(\"./d.mjs\", import.meta.url)));\n",
+            "const SCHEMA = new URL(\n  \"../data/schema.sql\",\n  import.meta.url,\n);\n",
+        ),
     );
     write("host/d.mjs", "export {};\n");
+    write("data/schema.sql", "create table t (x);\n");
     write("extensions/x/index.ts", "import \"../../host/e.ts\";\n");
     git(&repo, &["init", "-q", "-b", "main"]);
     git(&repo, &["add", "."]);
@@ -200,13 +260,16 @@ fn the_program_is_followed_through_the_harness_as_git_holds_it() {
                 "host/b.mjs",
                 "host/c.ts",
                 "host/d.mjs",
+                "host/été.ts",
+                "data/schema.sql",
                 "package.json",
                 "pnpm-lock.yaml",
             ]
             .map(str::to_owned)
         )),
         "git's grep didn't follow a split import, either quote, a dynamic import, a script \
-         run on a thread or a script, or followed an extension's"
+         run on a thread, a schema read over two lines or a file named past ASCII, or \
+         followed an extension's"
     );
     write("host/c.ts", "await import(\"./gone.ts\");\n");
     git(
