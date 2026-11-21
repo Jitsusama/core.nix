@@ -449,9 +449,18 @@ struct Asked {
     /// Whether only [`LENT`] names it, no file root's Nix reads, so it's
     /// asked of every [`ASK_LENT`].
     lent_only: bool,
-    /// Whether the cloud was silent when last asked of it, so it's asked
-    /// again at [`ASK_SILENT`].
-    silent: bool,
+    /// How the cloud met the last ask of it.
+    last: Last,
+}
+
+/// How the cloud met the last ask of an instance.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Last {
+    /// It answered, whether it vouched for the instance or not.
+    #[default]
+    Answered,
+    /// It was silent, so it's asked again at [`ASK_SILENT`].
+    Silent,
 }
 
 impl Asked {
@@ -460,7 +469,7 @@ impl Asked {
     /// vouched for when last asked, waits [`ASK_LENT`]; any other
     /// [`ASK_AGAIN`].
     fn every(&self, lent_only: bool) -> Duration {
-        if self.silent {
+        if self.last == Last::Silent {
             ASK_SILENT
         } else if lent_only && self.vouched.is_some() && self.vouched == self.at {
             ASK_LENT
@@ -666,7 +675,7 @@ impl HostKeys {
                 return Asked {
                     host_key: before.host_key.filter(|_| stands),
                     at: Some(now),
-                    silent: true,
+                    last: Last::Silent,
                     ..before
                 };
             }
@@ -680,7 +689,7 @@ impl HostKeys {
                 return Asked {
                     host_key: None,
                     at: Some(now),
-                    silent: false,
+                    last: Last::Answered,
                     ..before
                 };
             }
@@ -693,7 +702,7 @@ impl HostKeys {
                     host_key: None,
                     at: Some(now),
                     spoiled: before.started.is_some(),
-                    silent: false,
+                    last: Last::Answered,
                     ..before
                 };
             }
