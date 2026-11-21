@@ -11,6 +11,7 @@ const RUNTIME_CONTROL: &str = "/systemd/user.control/";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Own {
     pub floor: u64,
+    pub hard: u64,
     pub writeback: bool,
     pub preference: String,
 }
@@ -20,6 +21,7 @@ impl Default for Own {
     fn default() -> Self {
         Own {
             floor: 0,
+            hard: 0,
             writeback: true,
             preference: "none".to_owned(),
         }
@@ -60,6 +62,13 @@ pub fn own(text: &str, total: u64) -> Own {
                     0
                 } else {
                     size(value, total).unwrap_or(own.floor)
+                };
+            }
+            "MemoryMin" => {
+                own.hard = if value.is_empty() {
+                    0
+                } else {
+                    size(value, total).unwrap_or(own.hard)
                 };
             }
             "MemoryZSwapWriteback" => {
@@ -122,6 +131,7 @@ ManagedOOMPreference=none
             own(text, 64 * GIB),
             Own {
                 floor: 512 << 20,
+                hard: 0,
                 writeback: true,
                 preference: "avoid".to_owned(),
             },
@@ -148,6 +158,11 @@ MemoryLow=10%
             "the last floor said is the one that holds"
         );
         assert!(!own.writeback, "writeback turned off stays off");
+        assert_eq!(
+            super::own("[Service]\nMemoryMin=64M\n", GIB).hard,
+            64 << 20,
+            "a unit's own hard floor is read, to be given back"
+        );
         assert_eq!(
             super::own("[Service]\nMemoryLow=\n", GIB).floor,
             0,

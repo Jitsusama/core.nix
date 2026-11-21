@@ -1061,12 +1061,9 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
+        let hard = hold.then(|| holds::hard_floor(holds::current(&scope)));
         let result = Command::new("busctl")
-            .args(holds::hold_call(
-                &unit,
-                hold.then(|| holds::hard_floor(holds::current(&scope))),
-                kept.contains(&scope),
-            ))
+            .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
             .stdout(Stdio::null())
             .output();
         match result {
@@ -1075,8 +1072,13 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
                 // An orchestrator's window gave its floor up to this one,
                 // so it's kept again from nothing once given back.
                 ranks.keeping.done(&unit, keep::Floor::Nothing);
-                let says = if hold { "Held" } else { "Gave back" };
-                eprintln!("{says} {unit}, a window Joel is or was just at.");
+                match hard {
+                    Some(hard) => eprintln!(
+                        "Held {unit}, a window Joel is at, {} MiB of it hard.",
+                        hard >> 20
+                    ),
+                    None => eprintln!("Gave back {unit}, a window Joel was just at."),
+                }
             }
             Ok(output) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
@@ -1381,9 +1383,14 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         {
             Ok(output) if output.status.success() => {
                 eprintln!(
-                    "Ranked {unit} at weight {}, floor {}: {} windows Joel's at of {} showing it, \
-                     {} orchestrators.",
-                    rank.weight, rank.floor, signs.viewed, signs.shown, signs.orchestrators
+                    "Ranked {unit} at weight {}, floor {}, hard {}: {} windows Joel's at of {} \
+                     showing it, {} orchestrators.",
+                    rank.weight,
+                    rank.floor,
+                    rank.hard,
+                    signs.viewed,
+                    signs.shown,
+                    signs.orchestrators
                 );
                 ranks.hosts.done(unit, rank);
             }
