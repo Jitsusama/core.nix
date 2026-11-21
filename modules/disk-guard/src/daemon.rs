@@ -3229,7 +3229,10 @@ fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
 enum Why {
     /// Free space short of the target, or forecast to be.
     Reach,
-    /// A healthy disk's routine, or an owner ending.
+    /// A healthy disk's routine: every six hours, and at once when an
+    /// owner ends, a new boot or guard binary starts, a snapshot's build
+    /// goes an hour unused, a builds disk passes its budget, or a garbage
+    /// listing finds some to let go. The line can't say which of these.
     Upkeep,
     /// Nix's garbage, once something let some go: alone, with no survey,
     /// unless another disk was due in the same step, when the survey's
@@ -3537,5 +3540,34 @@ impl Reclaimer for Pretending {
         self.free
             .set(self.free.get().saturating_add(freed).min(self.total));
         Outcome::Reclaimed
+    }
+}
+
+// Garbage beside another disk's survey needs two watched disks in one
+// step, which no fixture builds, so the mapping a pass's line reads from
+// is pinned here.
+#[cfg(test)]
+mod tests {
+    use super::{Band, Decision, Goal, Why, aim};
+
+    #[test]
+    fn each_decision_aims_its_pass_with_its_why_and_the_survey_it_was_given() {
+        let garbage = aim(Decision::Collect, None);
+        assert_eq!(
+            (garbage.goal, garbage.why, garbage.surveyed),
+            (Goal::Upkeep, Why::Garbage, None)
+        );
+        let beside = aim(Decision::Collect, Some(1.5));
+        assert_eq!((beside.why, beside.surveyed), (Why::Garbage, Some(1.5)));
+        let reach = aim(Decision::Reach(Band::Filling), Some(2.0));
+        assert_eq!(
+            (reach.goal, reach.why, reach.surveyed),
+            (Goal::Reach, Why::Reach, Some(2.0))
+        );
+        assert_eq!(reach.band, Band::Filling);
+        for routine in [Decision::Upkeep, Decision::Rest] {
+            let upkeep = aim(routine, Some(3.0));
+            assert_eq!((upkeep.why, upkeep.surveyed), (Why::Upkeep, Some(3.0)));
+        }
     }
 }
