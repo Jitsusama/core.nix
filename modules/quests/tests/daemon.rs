@@ -46,11 +46,13 @@ fn the_ended_one_is_found_and_titled(daemon: &Daemon) {
 
 /// A stand-in node at `socket`: each watch answered with its kind's
 /// records whole, and the open quests' watch then told each change sent
-/// down `later`.
+/// down `later`. Every watch is held open, as the node holds it, so the
+/// daemon never hears one end and makes its records again unasked.
 fn node(socket: &Path, later: Receiver<Value>) {
     let listener = UnixListener::bind(socket).expect("the stand-in node listens");
     thread::spawn(move || {
         let mut later = Some(later);
+        let mut held = Vec::new();
         for stream in listener.incoming() {
             let Ok(stream) = stream else { continue };
             let mut asks = BufReader::new(stream.try_clone().expect("its stream"));
@@ -96,6 +98,8 @@ fn node(socket: &Path, later: Receiver<Value>) {
                         let _ = writeln!(stream, "{change}");
                     }
                 });
+            } else {
+                held.push(stream);
             }
         }
     });
