@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -260,8 +261,13 @@ def reports(
     The stand-in journalctl writes what it was asked to a line of asked, then runs the journal
     as a shell's lines, and the reader runs on the shell and tools its check gives
     (checks.nix), as the VM's writeShellApplication runs it, in a UTF-8 locale as the VM's
-    session is.
+    session is. A reader that never ends fails its case after 30 s rather than hanging it.
     """
+    if "REPORTS_SHELL" not in os.environ or "REPORTS_TOOLS" not in os.environ:
+        pytest.fail(
+            "the reader's cases run in a-desktop-wait-says-what-it-last-heard, which gives them"
+            " REPORTS_SHELL and REPORTS_TOOLS"
+        )
     shell = os.environ["REPORTS_SHELL"]
     stand_in = tmp_path / "journalctl"
     stand_in.write_text(
@@ -275,6 +281,7 @@ def reports(
         text=True,
         encoding="utf-8",
         env={"PATH": f"{tmp_path}:{os.environ['REPORTS_TOOLS']}", "LC_ALL": "C.UTF-8"},
+        timeout=30,
         check=False,
     )
 
@@ -291,7 +298,8 @@ def test_the_reader_says_what_follows_a_lines_first_report_mark(tmp_path: Path) 
     showing = 'showing {"typed": "report[x]\u2028\u0085"}'
     read = reports(tmp_path, f"echo 'launcher qml: report[{showing}]'; echo '-- cursor: c1'")
     wanted = f"said\t{showing}\ncursor\tc1\n"
-    assert (read.returncode, read.stdout) == (0, wanted), f"the reader said: {read}"
+    # Nothing on stderr, which is where a locale that didn't apply would say so.
+    assert (read.returncode, read.stdout, read.stderr) == (0, wanted, ""), f"it said: {read}"
     said = said_by(read.stdout)
     assert said == [("said", showing), ("cursor", "c1")], f"the waits took it as: {said}"
     reads = asked(tmp_path)
@@ -310,7 +318,7 @@ def test_the_reader_reads_again_after_its_point_until_the_report_comes(tmp_path:
     )
     read = reports(tmp_path, journal, since="c1")
     wanted = "said\tshowing {}\ncursor\tc2\n"
-    assert (read.returncode, read.stdout) == (0, wanted), f"the reader said: {read}"
+    assert (read.returncode, read.stdout, read.stderr) == (0, wanted, ""), f"it said: {read}"
     reads = asked(tmp_path)
     after = "--user --unit=quickshell --no-pager --output=cat --lines=all --show-cursor"
     assert reads == [f"{after} --after-cursor=c1"] * 2, f"from c1 the reader asked: {reads}"
@@ -320,9 +328,13 @@ def test_the_readers_time_running_out_fails_as_never_hearing(tmp_path: Path) -> 
     # The status ended reads as time running out is the one the reader gives, or retry loops
     # would stop retrying a wait that only ran out, and it comes only once it has read again.
     # Three seconds, since bash counts its seconds whole by the clock, which leaves two whole
-    # seconds for a second read on a busy builder.
-    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=3)
+    # seconds for a second read on a busy builder, and it ends near its time, not long after.
+    seconds, longest = 3, 10
+    began = time.monotonic()
+    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds)
+    took = time.monotonic() - began
     assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
+    assert took < longest, f"the reader given {seconds} s took {took:.1f} s"
     with pytest.raises(AssertionError):
         ended(read.returncode, never)
     reads = len(asked(tmp_path))
