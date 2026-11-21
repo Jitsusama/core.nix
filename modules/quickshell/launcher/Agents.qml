@@ -825,6 +825,14 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
+    // What the foot names a session by (SessionRow.footName): its row's
+    // name, else its quest's title, its address only when neither is known.
+    function footName(session) {
+        return SessionRow.footName(provider.standingOf(session.address)?.name,
+            session.presence ? Sessions.named(session.presence).title : "",
+            session.address);
+    }
+
     // A session elsewhere that couldn't be joined, a hosted one with no
     // window to go to, or any the node couldn't tell, is said in the foot,
     // by its address in the alert colour, where the act was pressed: at
@@ -839,18 +847,18 @@ Provider {
         }
 
         function onUnjoined(session) {
-            provider.launcher?.tellOnOpen([[session.address,
+            provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
                 Theme.alert]]);
         }
 
         function onUnhosted(session) {
-            provider.launcher?.tellOnOpen([[session.address,
+            provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("hosted", session), Theme.alert]]);
         }
 
         function onUnopened(session) {
-            provider.launcher?.tellOnOpen([[session.address,
+            provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unopened", session), Theme.alert]]);
         }
 
@@ -862,12 +870,23 @@ Provider {
         function onUnsteered(session, why, act) {
             const key = `agent:${session.address}`;
             if (act === "wake" && why !== "" && provider.launcher?.becoming?.[key]) {
-                provider.refused(key, why);
+                provider.refused(key, SessionRow.reasonOf(why, session.address));
                 return;
             }
-            provider.launcher?.tellOnOpen([[session.address,
-                provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
-                Theme.alert]]);
+            const named = act !== "" ? Words.name(`verb:agent:${act}`) : "";
+            const [name, said] = SessionRow.refusal(Words.of("agents:machine").said ?? {}, {
+                act: named, why, address: session.address, name: provider.footName(session)
+            });
+            provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+        }
+
+        // A parked session Wake would reopen with no fence it can say,
+        // which might bring it back looser than it ran, is left asleep and
+        // said so, rather than as the node's refusal, which blames its
+        // missing holder (#5901's F16).
+        function onUnfenced(session) {
+            provider.launcher?.tellOnOpen([[provider.footName(session),
+                provider.elsewhere("unfenced", session), Theme.alert]]);
         }
     }
 
