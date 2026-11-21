@@ -230,6 +230,9 @@ pub struct Chooser {
     trial: Option<Trial>,
     /// Each access point kept off and until when.
     spurned: HashMap<String, Instant>,
+    /// Each access point a trial went back from for carrying worse only
+    /// than the usual, and when, so a second within `SPURNED` keeps it off.
+    usually: HashMap<String, Instant>,
     /// Why the last choice sent the card back, for the journal to say once.
     went_back: Option<Against>,
     /// The access point a move on trial never reached, kept off from the
@@ -562,6 +565,11 @@ impl Chooser {
         self.went_back.take()
     }
 
+    /// Whether the card keeps off this access point.
+    pub fn keeps_off(&self, point: &str) -> bool {
+        self.spurned.contains_key(point)
+    }
+
     /// The narrower access point the last choice began keeping a wider band
     /// holding well off, if it did, said once.
     pub fn began_keeping_wide(&mut self) -> Option<String> {
@@ -648,14 +656,18 @@ impl Chooser {
         };
         let why = why?;
         // A trial worse only than what the point left usually carries isn't
-        // kept off: the settle every move takes already keeps the card from
-        // trying it again at once, and a keep-off past that would only hold
-        // the card off its way out should the point gone back to fail.
-        // Nor does it repeat for long: each minute back on a point gone slow
-        // moves its usual a tenth of the way there, so ten minutes take 14
-        // ms to about 54 against 76, and the next trial stands. A point
-        // slowed without loss costs one or two more pairs of moves an hour.
-        if !matches!(why, Against::Usually(_)) {
+        // kept off the first time: the settle every move takes already keeps
+        // the card from trying it again at once, and a keep-off past that
+        // would hold the card off its way out should the point gone back to
+        // fail. A second within `SPURNED` is: learning doesn't end the
+        // repeats, since a usual is blended over neighbouring steps, and
+        // under load over every hour, so ten slow minutes barely move it.
+        let again = matches!(why, Against::Usually(_))
+            && self
+                .usually
+                .insert(point.to_owned(), now)
+                .is_some_and(|last| now.saturating_duration_since(last) < SPURNED);
+        if again || !matches!(why, Against::Usually(_)) {
             self.spurned.insert(point.to_owned(), now + SPURNED);
         }
         self.moved = Some(now);
@@ -2317,6 +2329,50 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_second_back_on_the_usual_within_the_hour_keeps_the_point_off() {
+        let start = Instant::now();
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let (slow, there) = (unloaded(76), unloaded(50));
+        let mut chooser = after_a_bad_minute(DESK);
+        let around = [desk_at(-50, Some(unloaded(14))), hall(-45, Some(20), None)];
+        let mut on = |at, point, measured: &Measured| {
+            chooser.choose(at, (point, measured, -50, CH52), &around, false)
+        };
+        let back = start + TRIAL;
+        let again = back + SETTLE + TRIAL;
+        // A merely bad link is left on its second bad minute, so each
+        // retry follows one on the desk.
+        let primed = SETTLE.saturating_sub(Duration::from_secs(60));
+
+        let tried = on(start, DESK, &slow);
+        let first = on(back, HALL, &there);
+        on(back + primed, DESK, &slow);
+        let retried = on(back + SETTLE, DESK, &slow);
+        let second = on(again, HALL, &there);
+        on(again + primed, DESK, &slow);
+        let third = on(again + SETTLE, DESK, &slow);
+        let kept = chooser.spurned.get(HALL).copied();
+
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+        assert_eq!(first, Choice::Back(DESK.into()), "and gone back from");
+        assert_eq!(retried, Choice::Try(HALL.into()), "tried again, settled");
+        assert_eq!(
+            second,
+            Choice::Back(DESK.into()),
+            "and gone back from again"
+        );
+        assert_eq!(kept, Some(again + SPURNED), "so kept off the hour");
+        assert_ne!(
+            third,
+            Choice::Try(HALL.into()),
+            "and not tried a third time"
+        );
+    }
+
+    #[test]
     fn a_trial_only_less_bad_than_one_slow_minute_goes_back() {
         let start = Instant::now();
         let unloaded = |p95, lost| Measured {
@@ -2456,6 +2512,13 @@ pub(crate) mod tests {
             quick,
             (None, None),
             "a move off a quick minute isn't for slowness"
+        );
+        let at_slow = judged(unloaded(40), Some(unloaded(14)), &unloaded(30));
+        assert_eq!(at_slow, (None, None), "a minute at SLOW isn't slow");
+        let past_slow = judged(unloaded(41), Some(unloaded(14)), &unloaded(30));
+        assert!(
+            matches!(past_slow.0, Some(Against::Usually(_))),
+            "a minute past SLOW is judged by its usual: {past_slow:?}"
         );
         let unlike = judged(moving(76, 40), Some(unloaded(14)), &unloaded(30));
         assert_eq!(

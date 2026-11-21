@@ -45,9 +45,12 @@ struct Asked {
 /// the card is now, so the chooser weighs like with like: what it carried
 /// in the span, else what it's learned to carry under load, loaded, or at
 /// this hour, not. For the card's own point, what's learned alone, as
-/// what it usually carries. Under load, one learned to carry badly idle
-/// and never learned under load is known by that, since a radio slow
+/// what it usually carries. Under load, another learned to carry badly
+/// idle and never learned under load is known by that, since a radio slow
 /// idle is no quicker bringing a download down, and isn't tried blind.
+/// The card's own isn't: its minute is known, and an idle figure is a
+/// floor on a loaded one, which as the bar a trial off it must beat would
+/// send a download back for carrying worse than no download could.
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
@@ -68,7 +71,7 @@ fn known<'a>(
                 learned
                     .loaded(point, signal)
                     .map(|measured| (measured, Whence::Loaded))
-                    .or_else(|| idle().filter(|(measured, _)| choose::badly(measured)))
+                    .or_else(|| idle().filter(|(measured, _)| !own && choose::badly(measured)))
             } else {
                 idle()
             }
@@ -167,7 +170,8 @@ fn chosen(
         }
         Choice::Back(to) => {
             let why = chooser.went_back();
-            println!("<6>{}", went_back(on, measured, &to, why.as_ref()));
+            let kept = chooser.keeps_off(&on.point);
+            println!("<6>{}", went_back(on, measured, &to, (why.as_ref(), kept)));
             Some(Next::Move(to))
         }
         Choice::Look => {
@@ -276,8 +280,14 @@ fn kept_wide(on: &Joined, measured: &Measured, signal: i16, narrower: &str) -> S
 
 /// Why a card goes back from a trial: what the point tried carried, and
 /// what it was judged against, so a trial judged on what the point left
-/// usually carries can be read from the journal.
-fn went_back(on: &Joined, measured: &Measured, to: &str, why: Option<&Against>) -> String {
+/// usually carries can be read from the journal, and whether the card
+/// keeps off the point tried.
+fn went_back(
+    on: &Joined,
+    measured: &Measured,
+    to: &str,
+    (why, kept): (Option<&Against>, bool),
+) -> String {
     let carried = format!(
         "{} carried {} at p95 with {:.1}% lost",
         on.point,
@@ -295,13 +305,26 @@ fn went_back(on: &Joined, measured: &Measured, to: &str, why: Option<&Against>) 
             measure::ms(than.p95),
             than.lost
         ),
-        Some(Against::Usually(than)) => format!(
-            "{carried}, worse than the {} {to} usually carries at p95, with the {:.1}% lost \
-             it carried before; it may try {} again once settled",
-            measure::ms(than.p95),
-            than.lost,
-            on.point
-        ),
+        Some(Against::Usually(than)) => {
+            // The usual is as loaded as the minute: under load what the
+            // point carried loaded at any hour, else idle at this hour.
+            let when = if choose::loaded(measured) {
+                "under load"
+            } else {
+                "at this hour"
+            };
+            let after = if kept {
+                format!("{spurned}, having gone back from it once already")
+            } else {
+                format!("; it may try {} again once settled", on.point)
+            };
+            format!(
+                "{carried}, worse than the {} {to} usually carries {when} at p95, with the \
+                 {:.1}% lost it carried before{after}",
+                measure::ms(than.p95),
+                than.lost
+            )
+        }
         Some(Against::Slowed(before)) => format!(
             "{} moved {} Mbit/s under load, where {to} moved {before}{spurned}",
             on.point,
@@ -569,6 +592,15 @@ mod tests {
         let (hall, whence) = known(HALL, -50, LOADED).expect("119 ms idle is slow loaded");
         assert_eq!(hall.p95, Some(ms(119)), "so it isn't tried as untried");
         assert_eq!(whence, Whence::Learned);
+        let own = Asked {
+            own: true,
+            ..LOADED
+        };
+        assert_eq!(
+            known(HALL, -50, own),
+            None,
+            "the card's own isn't usually known under load by what it carried idle"
+        );
     }
 
     #[test]
@@ -806,19 +838,31 @@ mod tests {
             lost: 1.5,
             ..carried(76)
         };
-        let line = |why: &Against| went_back(&on, &carried(50), DESK, Some(why));
+        let line = |why: &Against| went_back(&on, &idle(50), DESK, (Some(why), true));
         let usual = Measured {
             p95: Some(ms(14)),
             ..before.clone()
         };
 
         let worse = line(&Against::Worse(before));
-        let usually = line(&Against::Usually(usual));
+        let usually_again = line(&Against::Usually(usual.clone()));
+        let loaded_usually = went_back(
+            &on,
+            &carried(50),
+            DESK,
+            (Some(&Against::Usually(usual.clone())), false),
+        );
+        let usually = went_back(
+            &on,
+            &idle(50),
+            DESK,
+            (Some(&Against::Usually(usual)), false),
+        );
         let cut = Measured {
             moving: Some(30),
             ..carried(50)
         };
-        let slowed = went_back(&on, &cut, DESK, Some(&Against::Slowed(52)));
+        let slowed = went_back(&on, &cut, DESK, (Some(&Against::Slowed(52)), true));
         let badly = line(&Against::Badly);
 
         let carried =
@@ -830,12 +874,29 @@ mod tests {
             )),
             "a worse trial says what it left carried, and its hour off: {worse}"
         );
+        let usual_line = |when: &str| {
+            format!(
+                "{carried}, worse than the 14.0 ms {DESK} usually carries {when} at p95, with \
+                 the 1.5% lost it carried before"
+            )
+        };
         assert!(
             usually.ends_with(&format!(
-                "{carried}, worse than the 14.0 ms {DESK} usually carries at p95, with the \
-                 1.5% lost it carried before; it may try {HALL} again once settled"
+                "{}; it may try {HALL} again once settled",
+                usual_line("at this hour")
             )),
             "a trial judged on the usual says so, and that it isn't kept off: {usually}"
+        );
+        assert!(
+            loaded_usually.contains(&usual_line("under load")),
+            "a download's usual says it was learned under load: {loaded_usually}"
+        );
+        assert!(
+            usually_again.ends_with(&format!(
+                "{}{kept}, having gone back from it once already",
+                usual_line("at this hour")
+            )),
+            "a second back on the usual says it keeps off the point: {usually_again}"
         );
         assert!(
             slowed.ends_with(&format!(
