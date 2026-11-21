@@ -12484,7 +12484,13 @@ Scope {
     // took, since a key pressed in those 200 or so milliseconds waits for
     // them, once an hour; no opening can begin between the three, which run
     // in one turn of the shell's thread. Mid-collection it counts nothing,
-    // and the next closing tries.
+    // and the next closing tries. Once collected, it counts what's live by
+    // the property holding it too, since the counts by class, shape and
+    // place can't say who keeps the 273,000 strings and 71,000 shapes live
+    // in his shell, and only cutting what the shell keeps has cut what the
+    // heap holds. It marks the whole heap again, up to about 100 ms naming
+    // and then the rest, so it runs a second later in a turn of its own,
+    // only if the launcher is still shut, and says how long it took.
     property real censusDue: KeyTimes.now() + 10 * 60 * 1000
     Timer {
         id: censusLater
@@ -12509,6 +12515,19 @@ Scope {
                 + (lines.said || "none"));
             console.info(`launcher: what's live once collected in ${took} ms, `
                 + (live.busy ? "not counted, a collection under way" : live.said));
+            holdersLater.restart();
+        }
+    }
+    Timer {
+        id: holdersLater
+        interval: 1000
+        onTriggered: {
+            if (root.open || root.opening || root.parting !== "")
+                return;
+            const holders = Heap.holders(12);
+            console.info("launcher: what holds what's live, " + (!holders.busy ? holders.said
+                : holders.marked ? "not counted, marks were left set outside a collection"
+                : "not counted, a collection under way"));
         }
     }
 

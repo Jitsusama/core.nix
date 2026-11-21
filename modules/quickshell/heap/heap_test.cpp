@@ -20,9 +20,15 @@
 // stores after them, reading back as they were made
 // (qtdeclarative-small-runs-split-first.patch). Its census counts all that's
 // live and names a shape kept by its property names, but no key taken from
-// data. And what it says of jemalloc, which the test is linked with as Quickshell is: what's in use
-// grows by a block kept, and what's freed and kept by one let go, and
-// neither is more than what's resident. And where it stands, read without a
+// data. Its holders count names the property that keeps the most first,
+// each by the file declaring it and its folder, counts what the engine
+// keeps and what it had no time to name apart, and leaves no mark behind:
+// asked twice it says the same, and what was counted and then let go is
+// collected; and it counts nothing during a collection or over a mark it
+// didn't set. And what it says of jemalloc, which
+// the test is linked with as Quickshell is: what's in use grows by a block
+// kept, and what's freed and kept by one let go, and neither is more than
+// what's resident. And where it stands, read without a
 // walk, is where weigh() says the collector starts, and says a collection
 // under way while one is left between its slices, and none once it's
 // ended. It exits 0 once all of it holds, and otherwise 1, saying what
@@ -33,14 +39,20 @@
 #include "heap.h"
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QJSEngine>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QRegularExpression>
+#include <QTemporaryDir>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
 
@@ -793,6 +805,281 @@ bool saysOneUnderWay() {
     return said;
 }
 
+// How many items the holders test's largest property keeps, a dictionary
+// another object holds, and its smallest.
+constexpr int HOLDS_MOST = 40000;
+constexpr int KEEPS = 5000;
+constexpr int HOLDS_LITTLE = 100;
+
+// Asks holders() for every holder it names, so their parts add up, with no
+// time limit to naming them, so the case never reads a busy builder's clock.
+constexpr int EVERY = 1000;
+constexpr int UNHURRIED_MS = 10000000;
+
+// Whether any mark is set in the engine's heap, read from every chunk's
+// own bitmap rather than as holders() reads them.
+bool anyMarked(const QV4::MemoryManager *manager) {
+    const auto marked = [](const QV4::Chunk *chunk) {
+        for (const quintptr word : chunk->blackBitmap) {
+            if (word != 0)
+                return true;
+        }
+        return false;
+    };
+    for (const QV4::Chunk *chunk : manager->blockAllocator.chunks) {
+        if (marked(chunk))
+            return true;
+    }
+    for (const QV4::Chunk *chunk : manager->icAllocator.chunks) {
+        if (marked(chunk))
+            return true;
+    }
+    for (const auto &huge : manager->hugeItemAllocator.chunks) {
+        if (marked(huge.chunk))
+            return true;
+    }
+    return false;
+}
+
+// What a holder in the holders' list says: its megabytes and count, or none.
+struct Holding {
+    double mb = 0;
+    double count = 0;
+    int rank = -1;
+};
+
+Holding holding(const QVariantMap &holders, const QString &key) {
+    const QVariantList rows = holders.value(QStringLiteral("holders")).toList();
+    for (int at = 0; at < rows.size(); ++at) {
+        const QVariantList row = rows.at(at).toList();
+        if (row.value(0).toString() == key)
+            return {row.value(1).toDouble(), row.value(2).toDouble(), at};
+    }
+    return {};
+}
+
+// How many items the property a file's type declares keeps, where it's used
+// with more declared beside it.
+constexpr int OWN = 2000;
+
+// How many numbers one property keeps in a single array, whose values, at
+// 8 bytes each, are one huge item of about 1.6 MB, past a chunk's 64 KB.
+constexpr int HUGE_ITEMS = 200000;
+constexpr double HUGE_MB = 1.5;
+
+// Writes one of the holders test's QML files.
+bool written(const QDir &into, const QString &name, const QString &text) {
+    QFile file(into.filePath(name));
+    return file.open(QIODevice::WriteOnly) && file.write(text.toUtf8()) >= 0;
+}
+
+// Whether holders() names the property keeping the most first, counting
+// each of its objects and their strings; names one held by an object
+// declared inside the file by that file, its dictionary's arrays counted,
+// and not the property holding that object; names a property by the file
+// that declares it, a type's own by its file and one added where it's used
+// by the file using it; names a file's functions; says a file named from
+// data as `~` and none of its name; counts a small one apart; names no
+// property holding a number; counts all that's live, each item once; says
+// the same asked twice, so it cleared the marks it set; and counts for the
+// largest about what letting it go frees, the next collection taking it.
+// The files sit in a folder named as code is, so each is said after it.
+bool namesWhatHoldsIt() {
+    QTemporaryDir shell;
+    QDir files(shell.path());
+    const bool wrote =
+        files.mkdir(QStringLiteral("pieces")) && files.cd(QStringLiteral("pieces")) &&
+        written(files, QStringLiteral("Base.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    property var own: []\n"
+                               "    Component.onCompleted: {\n"
+                               "        for (let i = 0; i < %1; i++) own.push({ o: i });\n"
+                               "    }\n}\n")
+                    .arg(OWN)) &&
+        written(files, QStringLiteral("Holding.qml"),
+                QStringLiteral("import QtQml\nBase {\n    property var holdsMost: []\n"
+                               "    property var holdsLittle: []\n    property var holdsHuge: []\n"
+                               "    property var notData: 4\n"
+                               "    property QtObject inner:\n"
+                               "        QtObject { property var keeps: ({}) }\n"
+                               "    function letGo() { holdsMost = []; }\n"
+                               "    Component.onCompleted: {\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            holdsMost.push({ n: i, s: 'w' + i });\n"
+                               "        for (let i = 0; i < %2; i++) inner.keeps['k' + i] = [i];\n"
+                               "        for (let i = 0; i < %3; i++) holdsLittle.push({ n: i });\n"
+                               "        for (let i = 0; i < %4; i++) holdsHuge.push(i);\n"
+                               "    }\n}\n")
+                    .arg(HOLDS_MOST)
+                    .arg(KEEPS)
+                    .arg(HOLDS_LITTLE)
+                    .arg(HUGE_ITEMS)) &&
+        written(files, QStringLiteral("from the clipboard.qml"),
+                QStringLiteral("import QtQml\n"
+                               "QtObject { property var pasted: [{ a: 1 }, { a: 2 }] }\n"));
+    if (!wrote) {
+        std::fprintf(stderr, "FAIL the holders' files weren't written in %s\n",
+                     qPrintable(shell.path()));
+        return false;
+    }
+    QQmlEngine engine;
+    Heap heap(&engine);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(files.filePath(QStringLiteral("Holding.qml"))));
+    QQmlComponent pasting(
+        &engine, QUrl::fromLocalFile(files.filePath(QStringLiteral("from the clipboard.qml"))));
+    const std::unique_ptr<QObject> made(component.create());
+    const std::unique_ptr<QObject> pasted(pasting.create());
+    if (!made || !pasted) {
+        std::fprintf(stderr, "FAIL the holders' objects weren't made: %s %s\n",
+                     qPrintable(component.errorString()), qPrintable(pasting.errorString()));
+        return false;
+    }
+    // Weighed before it's counted, and let go before any collection after,
+    // since a collection's sweep clears every mark: a mark holders() left
+    // would keep what it marked through the one that follows.
+    const double before = weighed(engine, heap).live;
+    const QVariantMap first = heap.holders(EVERY, UNHURRIED_MS);
+    const QVariantMap second = heap.holders(EVERY, UNHURRIED_MS);
+    // With no time to name any, what the properties hold is said as unnamed,
+    // not as held from C++.
+    const QVariantMap hurried = heap.holders(EVERY, 0);
+    const bool cleared = !anyMarked(engine.handle()->memoryManager);
+    const QString line = first.value(QStringLiteral("said")).toString();
+    const Holding most = holding(first, QStringLiteral("pieces/Holding.qml holdsMost"));
+    const Holding keeps = holding(first, QStringLiteral("pieces/Holding.qml keeps"));
+    const Holding little = holding(first, QStringLiteral("pieces/Holding.qml holdsLittle"));
+    const Holding huge = holding(first, QStringLiteral("pieces/Holding.qml holdsHuge"));
+    const Holding own = holding(first, QStringLiteral("pieces/Base.qml own"));
+    const Holding functions = holding(first, QStringLiteral("pieces/Holding.qml (functions)"));
+    const Holding fromData = holding(first, QStringLiteral("~ pasted"));
+    const Holding mostAgain = holding(second, QStringLiteral("pieces/Holding.qml holdsMost"));
+    const bool ranked = most.rank == 0 && most.count >= 2 * HOLDS_MOST && most.mb > keeps.mb;
+    // The object `inner` holds is no property's, so what its own property
+    // keeps is counted for that one rather than for `inner`.
+    const bool inner = keeps.rank > 0 && keeps.count >= 2 * KEEPS &&
+                       holding(first, QStringLiteral("pieces/Holding.qml inner")).rank < 0;
+    // The first property in name order is counted for its own items and not
+    // the engine's builtins, which every plain object reaches.
+    const bool byFile = own.count >= OWN && own.count < OWN + OWN / 4 &&
+                        holding(first, QStringLiteral("pieces/Holding.qml own")).rank < 0 &&
+                        functions.count >= 1 && huge.mb >= HUGE_MB;
+    const bool hidden = fromData.count >= 2 && !line.contains(QStringLiteral("clipboard"));
+    // Each item counted once: what it counts for each part comes to what's
+    // live, with nothing over, and that's what weigh() says is live.
+    double parts = 0;
+    for (const QVariant &row : first.value(QStringLiteral("holders")).toList())
+        parts += row.toList().value(1).toDouble();
+    for (const char *part : {"themselves", "engine", "unnamed", "contexts", "objects", "rest"})
+        parts += first.value(QString::fromLatin1(part)).toDouble();
+    const double total = first.value(QStringLiteral("total")).toDouble();
+    const double rest = first.value(QStringLiteral("rest")).toDouble();
+    const bool whole =
+        std::abs(total - before) < 0.05 && std::abs(parts - total) < 0.05 &&
+        first.value(QStringLiteral("named")) == first.value(QStringLiteral("names")) &&
+        first.value(QStringLiteral("engine")).toDouble() > 0;
+    const bool unnamed = hurried.value(QStringLiteral("named")).toInt() == 0 &&
+                         hurried.value(QStringLiteral("unnamed")).toDouble() >= most.mb &&
+                         std::abs(hurried.value(QStringLiteral("rest")).toDouble() - rest) < 0.05;
+    // The small one's count takes in the shapes and storage its objects
+    // share with the largest's, since its name sorts first and the first
+    // property reaching an item is the one it's counted for.
+    const bool apart = little.rank > keeps.rank && little.count > HOLDS_LITTLE &&
+                       little.count < most.count / 50;
+    const bool numbers = !line.contains(QStringLiteral("notData"));
+    const bool said = line.contains(QStringLiteral("pieces/Holding.qml holdsMost "));
+    const bool again = !second.value(QStringLiteral("busy")).toBool() &&
+                       mostAgain.count == most.count;
+    QMetaObject::invokeMethod(made.get(), "letGo");
+    const double after = weighed(engine, heap).live;
+    const double freed = before - after;
+    const bool collected = std::abs(most.mb - freed) <= freed / 5;
+    const bool held = ranked && inner && byFile && hidden && apart && numbers && said && whole &&
+                      unnamed && cleared && again && collected;
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL holders() names what holds the most first, one inside another "
+                     "object by its file and not its holder, each level by its file, the "
+                     "functions, a file named from data as ~, a small one apart, no number, "
+                     "all that's live once, what it had no time for as unnamed, no mark left, "
+                     "the same twice, and about what's freed for the largest: most %.0f (rank "
+                     "%d, %.2f MB), keeps %.0f (rank %d), own %.0f, functions %.0f, huge %.2f "
+                     "MB, ~ %.0f, little %.0f (rank %d), most again %.0f, total %.2f of %.2f "
+                     "live in %.2f of parts, unnamed %s, cleared %s, freed %.2f MB: %s; "
+                     "hurried: %s\n",
+                     most.count, most.rank, most.mb, keeps.count, keeps.rank, own.count,
+                     functions.count, huge.mb, fromData.count, little.count, little.rank,
+                     mostAgain.count, total, before, parts, unnamed ? "yes" : "no",
+                     cleared ? "yes" : "no", freed, qPrintable(line),
+                     qPrintable(hurried.value(QStringLiteral("said")).toString()));
+    return held;
+}
+
+// Whether holders() counts nothing while a collection is under way between
+// its slices, saying only that it's busy, rather than clearing the marks
+// the collection has set: what the collection keeps still reads back once
+// it's ended.
+bool waitsOutACollection() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = keepScattered(engine);
+    QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const std::chrono::microseconds slice = manager->gcStateMachine->timeLimit;
+    manager->gcStateMachine->timeLimit = A_MOMENT;
+    manager->runGC();
+    const bool running = manager->gcStateMachine->inProgress();
+    const QVariantMap during = heap.holders(EVERY, UNHURRIED_MS);
+    manager->gcStateMachine->timeLimit = slice;
+    engine.collectGarbage();
+    constexpr int LAST = KEPT / SCATTERED - 1;
+    const bool busy = during.value(QStringLiteral("busy")).toBool() &&
+                      !during.value(QStringLiteral("marked")).toBool() &&
+                      !during.contains(QStringLiteral("said"));
+    const bool kept = few.property(QStringLiteral("length")).toInt() == LAST + 1 &&
+                      few.property(LAST).property(QStringLiteral("n")).toInt() ==
+                          LAST * SCATTERED;
+    const bool held = running && busy && kept;
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL holders() says only that it's busy during a collection and leaves "
+                     "what it keeps: left running %s, busy %s, kept %s\n",
+                     running ? "yes" : "no", busy ? "yes" : "no", kept ? "yes" : "no");
+    return held;
+}
+
+// Whether holders() counts nothing over a mark it finds set outside a
+// collection, saying so, and leaves that mark as it was.
+bool leavesAStrayMark() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue kept = engine.evaluate(QStringLiteral("({ kept: true })"));
+    QV4::Chunk *chunk = engine.handle()->memoryManager->blockAllocator.chunks.front();
+    constexpr auto WORDS = static_cast<std::size_t>(QV4::Chunk::EntriesInBitmap);
+    std::size_t word = 0;
+    while (word < WORDS && chunk->objectBitmap[word] == 0)
+        ++word;
+    if (word == WORDS) {
+        std::fprintf(stderr, "FAIL the first chunk holds an item to mark\n");
+        return false;
+    }
+    const quintptr bit = chunk->objectBitmap[word] & (~chunk->objectBitmap[word] + 1);
+    chunk->blackBitmap[word] |= bit;
+    const QVariantMap stray = heap.holders(EVERY, UNHURRIED_MS);
+    const bool left = (chunk->blackBitmap[word] & bit) != 0;
+    chunk->blackBitmap[word] &= ~bit;
+    const bool held = stray.value(QStringLiteral("busy")).toBool() &&
+                      stray.value(QStringLiteral("marked")).toBool() &&
+                      !stray.contains(QStringLiteral("said")) && left &&
+                      kept.property(QStringLiteral("kept")).toBool();
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL holders() says marks were left set outside a collection and leaves "
+                     "them: busy %s, marked %s, counted %s, left %s\n",
+                     stray.value(QStringLiteral("busy")).toBool() ? "yes" : "no",
+                     stray.value(QStringLiteral("marked")).toBool() ? "yes" : "no",
+                     stray.contains(QStringLiteral("said")) ? "yes" : "no", left ? "yes" : "no");
+    return held;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -885,10 +1172,13 @@ int main(int argc, char **argv) {
     const bool placed = placesWhatMadeIt();
     const bool stands = standsAsWeighed();
     const bool underWay = saysOneUnderWay();
+    const bool holdsIt = namesWhatHoldsIt();
+    const bool waitsItOut = waitsOutACollection();
+    const bool stray = leavesAStrayMark();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && fits && whole && census &&
-                   placed && stands && underWay
+                   placed && stands && underWay && holdsIt && waitsItOut && stray
                ? 0
                : 1;
 }
