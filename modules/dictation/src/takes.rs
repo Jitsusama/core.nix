@@ -51,24 +51,31 @@ const QUIETEST_SPEECH_DB: f32 = -55.0;
 /// Quieter than this is a line sending nothing, as a call does while
 /// its far end is muted, between words its far end gates out, or for a
 /// packet it lost. The nothing sets no floor, nor does a frame holding
-/// this many samples of it in a row, a millisecond: the frame a mute
-/// starts or ends in, or a packet lost part of the way into it, holds
-/// only some of the line's sound, and would set a floor under its hiss.
+/// this many samples in a row each quieter than it, a millisecond: the
+/// frame a mute starts or ends in, or a packet lost part of the way into
+/// it, holds only some of the line's sound, and would set a floor under
+/// its hiss. A sample is judged by its size, so a mute sent as a faint
+/// dither is nothing as exact zeros are.
 const NOTHING_DB: f32 = -90.0;
 const NOTHING_SAMPLES: usize = RATE / 1000;
-/// Nothing this long is a mute, across which the line may change, so it
-/// clears the floor: the quiet from before it mustn't make the line's
-/// hiss, back with the next word, read as loud. Less is packets lost,
-/// across which the line holds, so the floor does: cleared mid-speech,
-/// the words after would set it at their own level.
-const MUTE_FRAMES: usize = 25;
-/// For this long after a line sends nothing, any sound that could be
-/// speech is, while the floor is found again from what the line sends
-/// now: words with nothing between, from a far end that gates its line,
-/// would otherwise set it themselves. A floor that holds a frame that
-/// wasn't speech is the line's own, and needs finding by nobody, so a
-/// packet lost on a hissy line doesn't make its hiss speech.
-const SETTLE_FRAMES: usize = 50;
+/// `NOTHING_DB` as the size of a sample.
+const NOTHING_SAMPLE: f32 = 3.16e-5;
+/// Nothing this long, 0.4 s, is a mute, across which the line may change,
+/// so it clears the floor: the quiet from before it mustn't make the
+/// line's hiss, back with the next word, read as loud. Less is packets
+/// lost, across which the line holds, so the floor does. It's under the
+/// half second `follow` fills a lost link with, which straddling frames
+/// may leave only 24 of whole.
+const MUTE_FRAMES: usize = 20;
+/// A line that has sent nothing within the floor's ten seconds may gate
+/// its words, sending nothing between them, so its floor may be its words
+/// alone, which would be judged against themselves: on it, any sound that
+/// could be speech is. Once the floor holds this long a run of the line's
+/// own sound, too quiet to be speech or with no voice in it, as hiss or a
+/// room is, the line isn't gated, and its floor is judged as any other's,
+/// so a packet lost on a hissy line doesn't make its hiss speech. A fifth
+/// of a second is longer than a word's unvoiced sounds.
+const OWN_SOUND_FRAMES: usize = 10;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
 /// lone "Yeah." holds several times as much. Five left out 13 of the
@@ -118,8 +125,9 @@ pub struct Cutter {
     partial: Vec<f32>,
     /// Frames fed so far.
     frames: usize,
-    /// The last frames' loudness, for the floor.
-    recent: VecDeque<f32>,
+    /// The last frames' loudness, for the floor, each with whether it
+    /// ends a run of the line's own sound.
+    recent: VecDeque<(f32, bool)>,
     /// The frames just before a take, so its start can be kept.
     before: VecDeque<Vec<f32>>,
     /// The take under way, frame by frame with each one's loudness.
@@ -130,8 +138,10 @@ pub struct Cutter {
     since_nothing: Option<usize>,
     /// Frames of nothing in a row, up to the one just fed.
     nothing_run: usize,
-    /// Whether the floor holds a frame that wasn't speech.
-    grounded: bool,
+    /// Frames of the line's own sound in a row, up to the one just fed.
+    own_run: usize,
+    /// The frame fed before this one, which voicing is read with.
+    last: Vec<f32>,
 }
 
 impl Cutter {
@@ -175,20 +185,25 @@ impl Cutter {
             self.nothing_run += 1;
             if self.nothing_run >= MUTE_FRAMES {
                 self.recent.clear();
-                self.grounded = false;
             }
             self.since_nothing = Some(0);
+            self.own_run = 0;
         } else {
             self.nothing_run = 0;
-            if !holds_nothing(&frame) {
-                self.grounded |= !speech;
-                self.recent.push_back(level);
+            if holds_nothing(&frame) {
+                self.own_run = 0;
+            } else {
+                let own = level <= QUIETEST_SPEECH_DB || !voiced(&self.last, &frame);
+                self.own_run = if own { self.own_run + 1 } else { 0 };
+                self.recent
+                    .push_back((level, self.own_run >= OWN_SOUND_FRAMES));
                 if self.recent.len() > FLOOR_FRAMES {
                     self.recent.pop_front();
                 }
             }
             self.since_nothing = self.since_nothing.map(|frames| frames + 1);
         }
+        self.last.clone_from(&frame);
         let index = self.frames;
         self.frames += 1;
         if self.take.is_empty() {
@@ -258,14 +273,18 @@ impl Cutter {
     }
 
     fn threshold(&self) -> f32 {
-        let settling = self
+        let gated = self
             .since_nothing
-            .is_some_and(|frames| frames < SETTLE_FRAMES)
-            && !self.grounded;
-        if self.recent.is_empty() || settling {
+            .is_some_and(|frames| frames < FLOOR_FRAMES)
+            && !self.recent.iter().any(|&(_, own)| own);
+        if self.recent.is_empty() || gated {
             return QUIETEST_SPEECH_DB;
         }
-        let floor = self.recent.iter().copied().fold(f32::INFINITY, f32::min);
+        let floor = self
+            .recent
+            .iter()
+            .map(|&(level, _)| level)
+            .fold(f32::INFINITY, f32::min);
         (floor + ABOVE_FLOOR_DB).max(QUIETEST_SPEECH_DB)
     }
 }
@@ -274,7 +293,7 @@ impl Cutter {
 fn holds_nothing(frame: &[f32]) -> bool {
     let mut run = 0;
     frame.iter().any(|&sample| {
-        run = if sample.abs() < f32::MIN_POSITIVE {
+        run = if sample.abs() < NOTHING_SAMPLE {
             run + 1
         } else {
             0
@@ -627,14 +646,17 @@ mod tests {
         // be lost in it: whether the call was quieter before the mute, or
         // the nothing ends a few samples into a frame, so that frame
         // holds only a little of the hiss, or the nothing is a faint
-        // dither, about -120 dBFS, rather than exact zeros.
-        for (before, into_a_frame, faint) in [
-            (0.0, 0, 0.0),
-            (5.0, 0, 0.0),
-            (0.0, FRAME - 10, 0.0),
-            (0.0, FRAME - 10, 1e-6),
+        // dither, about -120 dBFS, rather than exact zeros, or the mute is
+        // the half second the recorder fills a lost link with, starting
+        // half a frame in, so that only 24 of its frames are whole.
+        for (before, mute, into_a_frame, faint) in [
+            (0.0, RATE * 3, 0, 0.0),
+            (5.0, RATE * 3, 0, 0.0),
+            (0.0, RATE * 3, FRAME - 10, 0.0),
+            (0.0, RATE * 3, FRAME - 10, 1e-6),
+            (5.01, RATE / 2, 0, 0.0),
         ] {
-            let nothing: Vec<f32> = (0..RATE * 3 + into_a_frame)
+            let nothing: Vec<f32> = (0..mute + into_a_frame)
                 .map(|i| if i % 2 == 0 { faint } else { -faint })
                 .collect();
             let sound = [
@@ -653,7 +675,7 @@ mod tests {
                 "the answer in the hiss, after {before} s of quiet, \
                  {into_a_frame} samples of a frame and nothing of {faint}"
             );
-            let answer = quiet(before).len() + RATE * 3 + into_a_frame + RATE * 7 / 2;
+            let answer = quiet(before).len() + mute + into_a_frame + RATE * 7 / 2;
             let take = &takes[0];
             assert!(
                 take.start <= answer
@@ -756,22 +778,27 @@ mod tests {
         // A gated line's words may run past a second with no nothing
         // between, steady enough that none of them is 12 dB under the
         // rest: they mustn't become the floor the words after them are
-        // judged against.
-        let sound = [
-            vec![0.0; RATE * 2],
-            voice(1.5, 150.0),
-            vec![0.0; RATE / 10],
-            voice(1.0, 150.0),
-            vec![0.0; RATE * 2],
-        ]
-        .concat();
-        let takes = cut(&sound);
-        assert_eq!(takes.len(), 1, "the words");
-        assert!(
-            seconds(takes[0].samples.len()) >= 2.6,
-            "{}",
-            seconds(takes[0].samples.len())
-        );
+        // judged against, nor may a word's unvoiced sound, a tenth of a
+        // second of loud hiss, be taken for the line's own.
+        for hiss in [0.0, 0.1] {
+            let sound = [
+                vec![0.0; RATE * 2],
+                voice(0.7, 150.0),
+                noise(hiss, 0.05, false),
+                voice(0.8, 150.0),
+                vec![0.0; RATE / 10],
+                voice(1.0, 150.0),
+                vec![0.0; RATE * 2],
+            ]
+            .concat();
+            let takes = cut(&sound);
+            assert_eq!(takes.len(), 1, "the words, with {hiss} s of hiss");
+            assert!(
+                seconds(takes[0].samples.len()) >= 2.6 + hiss,
+                "{}, with {hiss} s of hiss",
+                seconds(takes[0].samples.len())
+            );
+        }
     }
 
     #[test]
