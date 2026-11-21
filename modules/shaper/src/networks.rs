@@ -17,11 +17,34 @@ pub type Anchors = BTreeMap<String, f64>;
 /// one: under a second shaper past ours, so the queue stands in ours.
 pub type Ceilings = BTreeMap<String, f64>;
 
+/// A network's house: the most the upload this machine and another on the
+/// same line send between them may come to, in kbit/s, and the address
+/// the other reports what it sends from (src/house.rs).
+#[derive(Clone, Debug, PartialEq)]
+pub struct House {
+    pub most: u64,
+    pub from: std::net::IpAddr,
+}
+
+/// A house as written, read loosely so one written wrongly loses only
+/// itself, not every network's anchor with it.
+#[derive(Deserialize)]
+struct Written {
+    most: f64,
+    from: String,
+}
+
+/// Each network's house, by its router's hardware address, where
+/// `jitsusama.shaper.networks` sets one.
+pub type Houses = BTreeMap<String, House>;
+
 #[derive(Deserialize)]
 struct Network {
     up: f64,
     #[serde(default)]
     most: Option<f64>,
+    #[serde(default)]
+    house: Option<Written>,
 }
 
 /// The networks written at `path`, by router in lower case, or none where
@@ -56,6 +79,23 @@ pub fn ceilings(path: &Path) -> Ceilings {
         .into_iter()
         .filter_map(|(router, network)| Some((router, network.most?)))
         .filter(|(_, most)| most.is_finite() && *most >= crate::oneway::MOST_KBIT_LEAST)
+        .collect()
+}
+
+/// The houses written at `path`, or none where there is no such file or it
+/// can't be read as one, leaving out one whose address isn't one or whose
+/// ceiling is under the least a trial may set, as nixos.nix refuses too.
+pub fn houses(path: &Path) -> Houses {
+    networks(path)
+        .into_iter()
+        .filter_map(|(router, network)| {
+            let house = network.house?;
+            let from = house.from.parse().ok()?;
+            (house.most.is_finite() && house.most >= crate::oneway::MOST_KBIT_LEAST).then(|| {
+                let most = crate::rate::whole(house.most);
+                (router, House { most, from })
+            })
+        })
         .collect()
 }
 
@@ -138,9 +178,47 @@ mod tests {
         )
         .expect("the least ceiling");
         assert_eq!(ceilings(&file).len(), 1, "the least nixos.nix takes");
+        assert!(houses(&file).is_empty(), "a network with no house");
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5E:00:53:01": {"up": 12000, "most": null, "#,
+                r#""house": {"most": 7000, "from": "192.0.2.7"}}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "house": null}}"#,
+            ),
+        )
+        .expect("a house");
+        assert_eq!(
+            houses(&file),
+            Houses::from([(
+                "00:00:5e:00:53:01".to_string(),
+                House {
+                    most: 7_000,
+                    from: "192.0.2.7".parse().expect("an address"),
+                },
+            )]),
+            "as nixos.nix writes them, null where none is set"
+        );
+        assert!(
+            ceilings(&file).is_empty(),
+            "a house is no ceiling of its own"
+        );
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5e:00:53:01": {"up": 12000, "#,
+                r#""house": {"most": 7000, "from": "the mac"}}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "#,
+                r#""house": {"most": 7, "from": "192.0.2.7"}}}"#,
+            ),
+        )
+        .expect("houses written wrongly");
+        assert!(houses(&file).is_empty(), "no address, or a ceiling in Mb/s");
+        assert_eq!(anchors(&file).len(), 2, "which loses no anchor");
         fs::write(&file, "not json").expect("a broken file");
         assert!(anchors(&file).is_empty(), "a broken file anchors nothing");
         assert!(ceilings(&file).is_empty(), "nor sets a ceiling");
+        assert!(houses(&file).is_empty(), "nor a house");
         let _ = fs::remove_dir_all(&folder);
     }
 }

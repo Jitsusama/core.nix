@@ -61,6 +61,13 @@ pub struct Line {
     /// the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<u64>,
+    /// What another machine on the line said it sent, and the most the
+    /// house's ceiling left this one, in kbit/s, while it said so lately
+    /// (src/house.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house_sent: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house_most: Option<u64>,
 }
 
 impl Line {
@@ -78,6 +85,8 @@ impl Line {
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
             plateau: heard.plateau.map(crate::rate::whole),
             ceiling: heard.ceiling.map(crate::rate::whole),
+            house_sent: None,
+            house_most: None,
         }
     }
 }

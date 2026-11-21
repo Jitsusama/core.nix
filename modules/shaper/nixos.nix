@@ -90,6 +90,9 @@ let
   vpns = config.jitsusama.shaper.vpns;
   networks = config.jitsusama.shaper.networks;
   networksFile = pkgs.writeText "shaper-networks.json" (builtins.toJSON networks);
+  # The port src/house.rs hears another machine's reports on.
+  housePort = 47110;
+  houses = lib.filter (house: house != null) (map (network: network.house) (lib.attrValues networks));
 in
 {
   imports = [
@@ -149,6 +152,39 @@ in
             never higher. Under nine tenths of `up`, it also stands for
             the line's hold below: the router's queue is looked for, and
             the guard returns the upload, against it rather than `up`.
+          '';
+        };
+        options.house = lib.mkOption {
+          type = lib.types.nullOr (
+            lib.types.submodule {
+              options.most = lib.mkOption {
+                type = lib.types.ints.between 4000 10000000;
+                example = 7000;
+                description = ''
+                  The most this machine and the other send up between
+                  them, in kbit/s, under the rate where the router's queue
+                  starts.
+                '';
+              };
+              options.from = lib.mkOption {
+                type = lib.types.strMatching "[0-9a-fA-F:.]+";
+                example = "192.0.2.7";
+                description = ''
+                  The address the other machine reports from, the only one
+                  heard, so a report from anywhere else holds nothing.
+                '';
+              };
+            }
+          );
+          default = null;
+          description = ''
+            Another machine on this network's line, which says each second
+            what it sends up, to UDP port ${toString housePort}. While it
+            has said so in the last 3 s, this machine's upload is held under
+            `most` less what it sent, never under the shaper's floor of 1
+            Mb/s; with no word lately, the house holds nothing. Its uploads
+            fill the router's queue this machine's VPN waits in, which this
+            machine never sees otherwise.
           '';
         };
       }
@@ -212,6 +248,13 @@ in
 
   # The shaper makes the IFBs it needs, one per link; the module's own two
   # would only sit there.
+  # Only the house's other machine reaches the port its reports go to.
+  config.networking.firewall.extraInputRules = lib.concatMapStrings (house: ''
+    ${
+      if lib.hasInfix ":" house.from then "ip6" else "ip"
+    } saddr ${house.from} udp dport ${toString housePort} accept
+  '') houses;
+
   config.boot.extraModprobeConfig = "options ifb numifbs=0";
 
   # udev gives every new link systemd's default .link, whose name, address
