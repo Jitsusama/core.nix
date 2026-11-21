@@ -20,6 +20,10 @@
 let
   system = pkgs.callPackage ./package.nix { };
   inherit (pkgs.stdenv.hostPlatform) isDarwin;
+  # The realm its machines and mycelium are read from. A machine running a
+  # node for more than one realm has mycelium ask which, and refuse with
+  # nothing named, so every part read from it said not read.
+  realm = config.home.sessionVariables.MYCELIUM_REALM or null;
 in
 {
   home.packages = [ system ];
@@ -56,7 +60,8 @@ in
               "/run/current-system/sw/bin"
             ]
           }"
-        ];
+        ]
+        ++ lib.optional (realm != null) "MYCELIUM_REALM=${toString realm}";
         Restart = "on-failure";
         RestartSec = 5;
         Slice = "background.slice";
@@ -90,12 +95,15 @@ in
       # The owners it asks are the account's own commands, found where its
       # login shell finds them, as on Linux; without them every part reads
       # "not read".
-      EnvironmentVariables.PATH = lib.concatStringsSep ":" [
-        "${config.home.profileDirectory}/bin"
-        "/run/current-system/sw/bin"
-        "/usr/bin"
-        "/bin"
-      ];
+      EnvironmentVariables = {
+        PATH = lib.concatStringsSep ":" [
+          "${config.home.profileDirectory}/bin"
+          "/run/current-system/sw/bin"
+          "/usr/bin"
+          "/bin"
+        ];
+      }
+      // lib.optionalAttrs (realm != null) { MYCELIUM_REALM = toString realm; };
       RunAtLoad = true;
       # As on Linux, it only stops on a fault; launchd waits 10 s between
       # starts.

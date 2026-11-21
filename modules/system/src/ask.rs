@@ -17,6 +17,9 @@ use system::parts::Answer;
 const CLOCK: Duration = Duration::from_secs(10);
 /// How often a running owner is looked at.
 const LOOK: Duration = Duration::from_millis(20);
+/// How much of an owner's complaint a failure says: enough for its first
+/// line's reason, short enough for a row's side.
+const SAID_OF_ITS_COMPLAINT: usize = 160;
 
 /// Each command's answer, in the order asked.
 pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
@@ -43,7 +46,7 @@ fn one(words: &[String]) -> Answer {
         .args(&words[1..])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::NotFound => format!("{} isn't on this machine", words[0]),
@@ -51,11 +54,14 @@ fn one(words: &[String]) -> Answer {
         })?;
     // Read as it writes, so a long answer never fills the pipe and stalls
     // the owner while it's waited on.
-    let mut out = child.stdout.take().ok_or("its answer couldn't be read")?;
-    let reading = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        out.read_to_end(&mut bytes).map(|_| bytes)
-    });
+    let out = child.stdout.take().ok_or("its answer couldn't be read")?;
+    let reading = thread::spawn(move || read_all(out));
+    // Its complaint is read the same way, so a failure can say why.
+    let complaint = child
+        .stderr
+        .take()
+        .ok_or("its complaint couldn't be read")?;
+    let complaining = thread::spawn(move || read_all(complaint));
     let started = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
@@ -75,12 +81,43 @@ fn one(words: &[String]) -> Answer {
         .map_err(|_| "its answer's reader stopped on a bug".to_owned())?
         .map_err(|error| error.to_string())?;
     if !status.success() {
-        return Err(match status.code() {
-            Some(code) => format!("{said} ended with {code}"),
-            None => format!("{said} was stopped"),
-        });
+        // A complaint that can't be had leaves the failure said as it ended.
+        let complaint = complaining
+            .join()
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        return Err(failed(&said, status.code(), &complaint));
     }
     first(&said, &bytes)
+}
+
+/// Everything `stream` writes, read until it closes.
+fn read_all(mut stream: impl Read) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    stream.read_to_end(&mut bytes).map(|_| bytes)
+}
+
+/// Why an owner that ended badly gave no answer: how it ended, and the
+/// first line of its complaint, when it made one, which is where an owner
+/// says what it needed.
+fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
+    let ended = match code {
+        Some(code) => format!("{said} ended with {code}"),
+        None => format!("{said} was stopped"),
+    };
+    let complaint = String::from_utf8_lossy(complaint);
+    let line = complaint
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty());
+    match line {
+        Some(line) => {
+            let line: String = line.chars().take(SAID_OF_ITS_COMPLAINT).collect();
+            format!("{ended}: {line}")
+        }
+        None => ended,
+    }
 }
 
 /// The document an owner's answer opens with. An owner may say more on
@@ -96,8 +133,35 @@ fn first(said: &str, bytes: &[u8]) -> Answer {
 
 #[cfg(test)]
 mod tests {
-    use super::first;
+    use super::{failed, first};
     use serde_json::json;
+
+    #[test]
+    fn an_owner_that_ends_badly_says_its_complaints_first_line() {
+        let complaint = b"\nmycelium: say which realm, with --realm or MYCELIUM_REALM\nmore\n";
+        assert_eq!(
+            failed("mycelium machines", Some(1), complaint),
+            "mycelium machines ended with 1: mycelium: say which realm, with --realm or \
+             MYCELIUM_REALM",
+            "what it needed is said, not only that it failed"
+        );
+        assert_eq!(
+            failed("repos --json", Some(2), b"  \n"),
+            "repos --json ended with 2",
+            "an owner that says nothing is said as it ended"
+        );
+        assert_eq!(
+            failed("net --json", None, b""),
+            "net --json was stopped",
+            "one stopped by a signal is said stopped"
+        );
+        let long = "x".repeat(500);
+        assert_eq!(
+            failed("net --json", Some(1), long.as_bytes()).len(),
+            "net --json ended with 1: ".len() + 160,
+            "a long complaint is cut to a row's room"
+        );
+    }
 
     #[test]
     fn an_answer_followed_by_another_line_is_read_as_its_first() {
