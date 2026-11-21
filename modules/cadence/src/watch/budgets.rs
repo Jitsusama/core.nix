@@ -123,13 +123,21 @@ pub fn read(text: &str, now: i64) -> Result<Vec<Allowance>, String> {
 #[must_use]
 pub fn standing(s: &Snapshot) -> Vec<Breach> {
     if let Some(why) = &s.budgets_unwatched {
+        // A spend-watch whose every pass fails still reads as running, so a
+        // cause on its side says where its reason is; one on cadence's
+        // side, as a version it doesn't read, has nothing in that journal.
+        let theirs = ["is missing", "was last written", "can't be read"]
+            .iter()
+            .any(|cause| why.starts_with(cause));
+        let look = if theirs {
+            " (journalctl --user -u spend-watch says why)"
+        } else {
+            ""
+        };
         return vec![Breach {
             key: UNWATCHED.to_owned(),
-            // A spend-watch whose every pass fails still reads as running, so
-            // the alarm says where its reason is.
             text: format!(
-                "no budget's allowance is watched: spend-watch's budgets.json {why} \
-                 (journalctl --user -u spend-watch says why)"
+                "no budget's allowance is watched: spend-watch's budgets.json {why}{look}"
             ),
         }];
     }
@@ -432,6 +440,16 @@ mod tests {
                     .to_owned(),
             }],
             "no budget watched read the same as every budget being fine"
+        );
+        let s = Snapshot {
+            budgets_unwatched: Some("is of a version cadence doesn't read".to_owned()),
+            ..Snapshot::default()
+        };
+        assert_eq!(
+            standing(&s)[0].text,
+            "no budget's allowance is watched: spend-watch's budgets.json \
+             is of a version cadence doesn't read",
+            "a cause on cadence's side sent the orchestrator to spend-watch's journal"
         );
     }
 }

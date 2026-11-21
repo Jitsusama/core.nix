@@ -21,7 +21,9 @@ const UNWATCHED_FOR: i64 = 10 * 60;
 /// A gap between ticks past this means the machine slept, as cadence ticks
 /// every five minutes, so how long no budget was watched starts again: a
 /// wake too brief for spend-watch to write isn't counted into the next.
-const SLEPT: i64 = 15 * 60;
+/// It is a tick missed, well short of `UNWATCHED_FOR`, so a nap is never
+/// counted as watched time; ticks held late by load only delay a stop.
+const SLEPT: i64 = 7 * 60;
 
 /// Whether an alarm's key says a budget passed a share of an allowance,
 /// which only the orchestrator can act on, by moving work to another
@@ -184,10 +186,15 @@ mod tests {
                 );
                 s.now += 5 * 60;
             }
-            // spend-watch writes again, and stops an hour later.
+            // spend-watch writes again for an hour awake, and stops.
             s.budgets_unwatched = None;
-            tick(&s, &mut state);
-            s.now += 3600;
+            for _ in 0..12 {
+                s.now += 5 * 60;
+                assert!(
+                    tick(&s, &mut state).is_empty(),
+                    "a watched hour told something"
+                );
+            }
         }
     }
 
@@ -209,6 +216,12 @@ mod tests {
         assert!(
             tick(&s, &mut state).is_empty(),
             "the sleep after a brief wake was counted as unwatched time"
+        );
+        // A wake, a nap of nine minutes, and a wake again.
+        s.now += 10 * 60;
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a nap was counted as unwatched time"
         );
         s.now += 5 * 60;
         assert!(tick(&s, &mut state).is_empty(), "five minutes awake");
