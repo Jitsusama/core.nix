@@ -4191,7 +4191,9 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         landed, second = shell.said_since(first)
         assert not [one for one in landed if one.startswith("becoming agent:PARKED")], landed
         shell.send_key("ret")
-        unheld = "PARKED isn't parked with a holder to wake it this boot"
+        # Said without the address the node's refusal opens with, which means nothing to Joel
+        # and which the row already stands for (SessionRow.reasonOf).
+        unheld = "isn't parked with a holder to wake it this boot"
         # Fenced, with no holder, it's reopened by its own id under its fence instead, and
         # with no session file of its own that's refused too (Sessions' reopensUnwoken).
         shell.reported(
@@ -4210,6 +4212,7 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         shell.launcher_until(
             lambda shown: (
                 any(unheld in said.replace("\u00a0", " ") for said in shown["saying"])
+                and not any("PARKED" in said for said in shown["saying"])
                 and (shown["selected"] or {}).get("side") == asleep
             )
         )
@@ -4270,8 +4273,12 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         shell.launcher_until(lambda shown: not shown["open"])
         shell.as_account(shell.ipc("collection", "agents"))
         shell.launcher_ready()
+        # Named by its row's name, not its address, which means nothing to Joel.
         shell.launcher_until(
-            lambda shown: any("ASKING not opened" in said for said in shown["saying"])
+            lambda shown: any(
+                "Asking Quest not opened" in said.replace("\xa0", " ") for said in shown["saying"]
+            )
+            and not any("ASKING" in said for said in shown["saying"])
         )
     finally:
         (PRESENCE / "asking.json").unlink(missing_ok=True)

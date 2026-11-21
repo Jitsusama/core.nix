@@ -415,6 +415,49 @@ QtObject {
                 failures.push(`beside ${address}, ${what}: "${said}", not "${want}"`);
         }
 
+        // What the foot says of an act refused: the session by its name, never
+        // its address while a name is known, and the node's reason without
+        // the address it opens with.
+        const machineSaid = { untold: "not told, {why}", refused: "{act} refused, {why}",
+            unanswered: "the node didn't answer" };
+        const unheld = "isn't parked with a holder to wake it this boot";
+        const refusals = [
+            ["a Wake refused, by its row's name, the address left out", "Wake",
+                `PARKED ${unheld}`, "PARKED", "Parked Quest",
+                ["Parked Quest", `Wake refused, ${unheld}`]],
+            ["the address left out whatever case the node wrote it in", "Pause",
+                "parked is out of reach", "PARKED", "Parked Quest",
+                ["Parked Quest", "Pause refused, is out of reach"]],
+            ["a reason not opening with its address is said whole", "Wake",
+                "lighthouse is out of reach, so PARKED can't be told now", "PARKED", "Parked Quest",
+                ["Parked Quest", "Wake refused, lighthouse is out of reach, so PARKED can't be "
+                    + "told now"]],
+            ["nor one only opening with its address's letters", "Wake", "PARKEDS went away",
+                "PARKED", "Parked Quest", ["Parked Quest", "Wake refused, PARKEDS went away"]],
+            ["no answer is said as the node's silence", "Wake", "", "PARKED", "Parked Quest",
+                ["Parked Quest", "Wake refused, the node didn't answer"]],
+            ["words talked to it name no act", "", "PARKED is busy", "PARKED", "Parked Quest",
+                ["Parked Quest", "not told, is busy"]],
+            ["its address only with no name known", "Wake", `PARKED ${unheld}`, "parked", "",
+                ["PARKED", `Wake refused, ${unheld}`]]
+        ];
+        for (const [what, act, why, address, name, want] of refusals) {
+            const said = SessionRow.refusal(machineSaid, { act, why, address, name });
+            if (JSON.stringify(said) !== JSON.stringify(want))
+                failures.push(`refusal, ${what}: ${JSON.stringify(said)}`);
+        }
+        const names = [
+            ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
+            ["its quest's title with no row served", undefined, "Its Quest", "PARKED", "Its Quest"],
+            ["a blank name is none", "  ", "", "PARKED", "PARKED"],
+            ["nothing at all is nothing", null, null, undefined, ""]
+        ];
+        for (const [what, served, title, address, want] of names) {
+            const said = SessionRow.footName(served, title, address);
+            if (said !== want)
+                failures.push(`footName, ${what}: "${said}", not "${want}"`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
