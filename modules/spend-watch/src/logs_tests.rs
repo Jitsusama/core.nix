@@ -198,6 +198,7 @@ fn an_agent_in_a_workspace_serves_its_quest() {
             cwd: "/w/QEST-2/hub/agents/acp@team/team".into(),
             at: crate::time::parse("2026-10-14T10:00:00Z").unwrap(),
             kind: Some("swarm".into()),
+            machine: None,
         }
     );
     assert_eq!(

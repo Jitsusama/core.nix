@@ -15,6 +15,16 @@ pub struct Config {
     /// that run them put them.
     #[serde(default)]
     pub agents: Vec<AgentLogs>,
+    /// What this machine is called, which its own logs' work is shown
+    /// under beside other machines'; by default its host name.
+    #[serde(default)]
+    machine: Option<String>,
+    /// Other machines whose logs are brought here, each read as this
+    /// machine's are and its work shown under its name, so a machine
+    /// elsewhere is counted whole rather than as a bill nobody here
+    /// explains.
+    #[serde(default)]
+    pub machines: Vec<MachineLogs>,
     /// Where the harness gives each quest a workspace, a directory named
     /// by its id: a session working in one serves that quest.
     #[serde(default)]
@@ -207,6 +217,21 @@ pub struct AllowanceConfig {
     pub stands_in: bool,
 }
 
+/// Another machine's logs, where they're brought to here: its own
+/// sessions, laid out as pi lays out this machine's, and its agents'.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MachineLogs {
+    pub name: String,
+    pub sessions: PathBuf,
+    #[serde(default)]
+    pub agents: Vec<AgentLogs>,
+}
+
+/// What a machine's work is shown under when no log says which machine
+/// it was, as a bill no log here explains.
+pub const ELSEWHERE: &str = "elsewhere";
+
 /// One place agents' logs are kept: a pattern of their paths, each `*`
 /// standing for any one name, and the kind of work their sessions are.
 #[derive(Debug, Clone, Deserialize)]
@@ -327,7 +352,11 @@ impl Config {
         if names.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err("two feeds share a name".into());
         }
-        for agents in &self.agents {
+        let agents = self
+            .agents
+            .iter()
+            .chain(self.machines.iter().flat_map(|machine| &machine.agents));
+        for agents in agents {
             if !agents.pattern.starts_with('/') || agents.pattern.contains("**") {
                 return Err(format!(
                     "agents' logs are found by a whole path, each `*` one name: {}",
@@ -339,6 +368,7 @@ impl Config {
                 return Err(format!("an agent's kind is one word: {:?}", agents.kind));
             }
         }
+        self.check_machines()?;
         if !(0.0..1.0).contains(&self.detectors.false_discovery) {
             return Err("the false discovery rate is a fraction below one".into());
         }
@@ -346,6 +376,49 @@ impl Config {
             return Err("the burn's run length is a positive number of days".into());
         }
         self.check_budgets()
+    }
+
+    /// What machines can't mean: two of one name, one named as this
+    /// machine or as elsewhere, whose work it would be mistaken for, or
+    /// logs found by anything but a whole path.
+    fn check_machines(&self) -> Result<(), String> {
+        let here = self.machine();
+        let mut names: Vec<&str> = vec![here.as_str(), ELSEWHERE];
+        for machine in &self.machines {
+            if machine.name.trim().is_empty() {
+                return Err("a machine has no name".into());
+            }
+            if names.contains(&machine.name.as_str()) {
+                return Err(format!(
+                    "a machine's name is its own, not this machine's, elsewhere or another's: \
+                     {:?}",
+                    machine.name
+                ));
+            }
+            if !machine.sessions.is_absolute() {
+                return Err(format!(
+                    "a machine's logs are found by a whole path: {}",
+                    machine.sessions.display()
+                ));
+            }
+            names.push(&machine.name);
+        }
+        Ok(())
+    }
+
+    /// What this machine is called: as the config names it, else its host
+    /// name, else "this machine".
+    pub fn machine(&self) -> String {
+        self.machine
+            .clone()
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| {
+                std::fs::read_to_string("/proc/sys/kernel/hostname")
+                    .ok()
+                    .map(|name| name.trim().to_owned())
+                    .filter(|name| !name.is_empty())
+            })
+            .unwrap_or_else(|| "this machine".into())
     }
 
     /// What budgets can't mean: none or two to fall back on, a provider
@@ -600,6 +673,51 @@ mod tests {
             "resets": "2026-11-09T05:00:00Z",
         });
         assert!(declared(held).is_ok());
+    }
+
+    fn with_machines(machines: &serde_json::Value) -> Result<(), String> {
+        let config = serde_json::json!({
+            "sessions": "/s", "runs": "/r", "registry": "/g", "quests": "/q",
+            "state": "/t", "machine": "slate", "machines": machines,
+        });
+        serde_json::from_value::<Config>(config)
+            .map_err(|error| error.to_string())?
+            .check()
+    }
+
+    // Another machine's work is shown under its name, so a name it
+    // shares with this machine, with elsewhere or with another would
+    // count one's work as the other's.
+    #[test]
+    fn each_machine_has_a_name_of_its_own() {
+        let machine = |name: &str| serde_json::json!({"name": name, "sessions": "/m/s"});
+        let two = serde_json::json!([machine("teal"), machine("ochre")]);
+        assert_eq!(
+            with_machines(&two),
+            Ok(()),
+            "two machines of their own names were refused"
+        );
+        for named in ["slate", "elsewhere", ""] {
+            assert!(
+                with_machines(&serde_json::json!([machine(named)])).is_err(),
+                "a machine named {named:?} was taken"
+            );
+        }
+        assert!(
+            with_machines(&serde_json::json!([machine("teal"), machine("teal")])).is_err(),
+            "two machines of one name were taken"
+        );
+        let relative = serde_json::json!([{"name": "teal", "sessions": "m/s"}]);
+        assert!(
+            with_machines(&relative).is_err(),
+            "a machine's logs were found by part of a path"
+        );
+        let walked = serde_json::json!([{"name": "teal", "sessions": "/m/s",
+            "agents": [{"pattern": "/m/**/*.jsonl", "kind": "review"}]}]);
+        assert!(
+            with_machines(&walked).is_err(),
+            "a machine's agents' logs walked a tree"
+        );
     }
 
     // A pattern is a whole path whose each star is one name, so finding

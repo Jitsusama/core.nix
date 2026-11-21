@@ -143,6 +143,9 @@ pub struct Picture {
     /// Each quest's root, the quest at the top of its family, by id.
     pub roots: HashMap<String, String>,
     pub titles: HashMap<String, String>,
+    /// What this machine is called, which its own sessions' work is shown
+    /// under beside other machines'.
+    pub machine: String,
     /// When pi's logs last grew.
     pub logs_at: Option<f64>,
     /// Each allowance over now, with where what every source said as it
@@ -335,6 +338,7 @@ impl Picture {
                 .map(|quest| (quest.id.clone(), quest.title.clone()))
                 .collect(),
             quests,
+            machine: config.machine(),
             logs_at,
             crossings,
             fed: inputs.fed,

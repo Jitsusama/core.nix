@@ -4,7 +4,8 @@
 //!
 //! The logs are a person's own sessions, and the agents' that the config
 //! finds by pattern: a swarm's, a review council's. Where an agent's log
-//! was found says what kind of work it is.
+//! was found says what kind of work it is. Another machine's, brought
+//! here, are read the same way and are that machine's.
 
 use crate::config::Config;
 use crate::history::History;
@@ -24,11 +25,13 @@ pub struct Pass {
     pub behind: bool,
 }
 
-/// A log to read, and the kind of work it is where an agent's it is.
-#[derive(Debug, Clone, PartialEq)]
+/// A log to read, the kind of work it is where an agent's it is, and the
+/// machine it was written on where that's another.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Found {
     pub path: PathBuf,
     pub kind: Option<String>,
+    pub machine: Option<String>,
 }
 
 /// What every log is read with.
@@ -48,30 +51,64 @@ impl<'a> Reading<'a> {
 }
 
 /// Every log the config names: the person's own, then each agents'
-/// pattern's in turn. A log two patterns find is read once, as the first.
+/// pattern's in turn, then each other machine's the same way. A log two
+/// patterns find is read once, as the first.
 pub fn found(config: &Config) -> Vec<Found> {
     let mut seen = std::collections::HashSet::new();
-    let own = logs(&config.sessions)
-        .into_iter()
-        .map(|path| Found { path, kind: None });
-    let agents = config.agents.iter().flat_map(|agents| {
-        matching(&agents.pattern).into_iter().map(|path| Found {
-            path,
-            kind: Some(agents.kind.clone()),
-        })
-    });
-    own.chain(agents)
+    let here = machine_logs(&config.sessions, &config.agents, None);
+    let elsewhere = config
+        .machines
+        .iter()
+        .flat_map(|machine| machine_logs(&machine.sessions, &machine.agents, Some(&machine.name)));
+    here.chain(elsewhere)
         .filter(|found| seen.insert(found.path.clone()))
         .collect()
 }
 
-/// The directories agents' logs are in, to watch.
-pub fn agents_directories(config: &Config) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = config
+/// One machine's logs: its own sessions', then each agents' pattern's.
+fn machine_logs<'a>(
+    sessions: &Path,
+    agents: &'a [crate::config::AgentLogs],
+    machine: Option<&'a String>,
+) -> impl Iterator<Item = Found> + 'a {
+    let own = logs(sessions).into_iter().map(move |path| Found {
+        path,
+        kind: None,
+        machine: machine.cloned(),
+    });
+    let agents = agents.iter().flat_map(move |agents| {
+        matching(&agents.pattern)
+            .into_iter()
+            .map(move |path| Found {
+                path,
+                kind: Some(agents.kind.clone()),
+                machine: machine.cloned(),
+            })
+    });
+    own.chain(agents)
+}
+
+/// The directories logs are in beyond this machine's own sessions, to
+/// watch: its agents', and every other machine's sessions' and agents'.
+pub fn followed_directories(config: &Config) -> Vec<PathBuf> {
+    let patterns = config
         .agents
         .iter()
+        .chain(config.machines.iter().flat_map(|machine| &machine.agents));
+    let machines = config
+        .machines
+        .iter()
+        .flat_map(|machine| logs(&machine.sessions));
+    let mut dirs: Vec<PathBuf> = patterns
         .flat_map(|agents| matching(&agents.pattern))
+        .chain(machines)
         .filter_map(|path| path.parent().map(Path::to_path_buf))
+        .chain(
+            config
+                .machines
+                .iter()
+                .map(|machine| machine.sessions.clone()),
+        )
         .collect();
     dirs.sort();
     dirs.dedup();
@@ -282,6 +319,7 @@ fn scan_slice(
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     carry.kind.clone_from(&found.kind);
+    carry.machine.clone_from(&found.machine);
     carry.workspaces = reading
         .workspaces
         .map(|workspaces| workspaces.to_string_lossy().into_owned());
@@ -470,7 +508,10 @@ mod tests {
         std::fs::write(&path, format!("{HEADER}\n{TURN}\n{long}\n{TURN}\n{long}")).unwrap();
         let history = History::memory();
         let slice = 512;
-        let found = Found { path, kind: None };
+        let found = Found {
+            path,
+            ..Found::default()
+        };
         for _ in 0..20 {
             scan_slice(&history, &found, Reading::default(), slice).unwrap();
         }
@@ -484,7 +525,10 @@ mod tests {
     fn own(dir: &Path) -> Vec<Found> {
         logs(dir)
             .into_iter()
-            .map(|path| Found { path, kind: None })
+            .map(|path| Found {
+                path,
+                ..Found::default()
+            })
             .collect()
     }
 
@@ -597,6 +641,7 @@ mod tests {
         let logs = [Found {
             path: session.join("2026_s1.jsonl"),
             kind: Some("swarm".into()),
+            machine: None,
         }];
         let reading = Reading {
             refusals: &[],
@@ -615,5 +660,66 @@ mod tests {
             .query_row("SELECT quest FROM turns", [], |row| row.get(0))
             .unwrap();
         assert_eq!(quest, "QEST-2");
+    }
+
+    // Another machine's logs, brought here, are found as this one's are,
+    // its agents' as their kind, and each session is kept as that
+    // machine's; this machine's own are kept as nobody else's.
+    #[test]
+    fn another_machine_s_logs_are_that_machine_s() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |at: &str, id: &str| {
+            let path = dir.path().join(at);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let header = HEADER.replace("\"s1\"", &format!("{id:?}"));
+            std::fs::write(&path, format!("{header}\n{TURN}\n")).unwrap();
+        };
+        write("here/project/2026_a.jsonl", "here");
+        write("teal/sessions/project/2026_b.jsonl", "there");
+        write("teal/runs/r1/session/2026_c.jsonl", "its-reviewer");
+        let root = dir.path().display();
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": format!("{root}/here"), "runs": "/r", "registry": "/g",
+            "quests": "/q", "state": "/t", "machine": "slate",
+            "machines": [{"name": "teal", "sessions": format!("{root}/teal/sessions"),
+                "agents": [{"pattern": format!("{root}/teal/runs/*/session/*.jsonl"),
+                    "kind": "review"}]}],
+        }))
+        .unwrap();
+        let history = History::memory();
+        scan(&history, &found(&config), Reading::default()).unwrap();
+        let sessions: Vec<(String, Option<String>, Option<String>)> = history
+            .db
+            .prepare("SELECT id, kind, machine FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            sessions,
+            [
+                ("here".into(), None, None),
+                (
+                    "its-reviewer".into(),
+                    Some("review".into()),
+                    Some("teal".into())
+                ),
+                ("there".into(), None, Some("teal".into())),
+            ],
+            "a machine's logs weren't found, or weren't kept as its own"
+        );
+        assert_eq!(turns(&history), 3);
+        let watched = followed_directories(&config);
+        for folder in [
+            "teal/sessions",
+            "teal/sessions/project",
+            "teal/runs/r1/session",
+        ] {
+            assert!(
+                watched.contains(&dir.path().join(folder)),
+                "{folder} wasn't watched: {watched:?}"
+            );
+        }
     }
 }

@@ -79,6 +79,9 @@ pub struct Piece {
     pub persona: String,
     /// The budget it drew on, by name, declared or not.
     pub budget: String,
+    /// The machine its session ran on where that's another than this
+    /// one; empty for this one's, or for spend no log here knows.
+    pub machine: String,
     pub dollars: f64,
     pub list: f64,
     pub source: Source,
@@ -128,6 +131,9 @@ pub struct Inputs {
     settled: HashMap<String, (i64, i64)>,
     /// Sessions a log here knows.
     logged: HashSet<String>,
+    /// The machine each session ran on, by its id, for those that ran on
+    /// another than this one.
+    machines: HashMap<String, String>,
     /// A subagent's session, by id, to the run it was part of.
     subagents: HashMap<String, Known>,
     /// Whether any feed has ever billed anything.
@@ -162,6 +168,7 @@ impl Inputs {
             billed: BTreeMap::new(),
             settled: HashMap::new(),
             logged: HashSet::new(),
+            machines: HashMap::new(),
             subagents: HashMap::new(),
             fed: false,
             fed_budgets: HashSet::new(),
@@ -186,13 +193,13 @@ impl Inputs {
         Ok(inputs)
     }
 
-    /// Every session a log here knows, with its repo, and an agent's kind
-    /// and name, by where its log was found.
+    /// Every session a log here knows, with its repo, an agent's kind and
+    /// name, by where its log was found, and the machine it ran on.
     fn read_sessions(&mut self, db: &Connection) -> Result<(Repos, Agents), String> {
         let mut repos = Repos::new();
         let mut agents = Agents::new();
         let mut statement = db
-            .prepare("SELECT id, repo, kind, name FROM sessions")
+            .prepare("SELECT id, repo, kind, name, machine FROM sessions")
             .map_err(fail)?;
         let rows = statement
             .query_map([], |row| {
@@ -201,12 +208,16 @@ impl Inputs {
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             })
             .map_err(fail)?;
         for row in rows {
-            let (id, repo, kind, name) = row.map_err(fail)?;
+            let (id, repo, kind, name, machine) = row.map_err(fail)?;
             self.logged.insert(id.clone());
+            if let Some(machine) = machine {
+                self.machines.insert(id.clone(), machine);
+            }
             if let Some(kind) = kind {
                 agents.insert(id.clone(), (kind, name.unwrap_or_default()));
             }
@@ -569,6 +580,16 @@ impl Inputs {
         for hour in hours {
             self.hour_pieces(hour, ratios, &mut out);
         }
+        // A piece is shown under the session that spent it or started its
+        // run, which ran where its log was written, so its machine is
+        // that session's, whichever way the piece was priced.
+        if !self.machines.is_empty() {
+            for piece in &mut out {
+                if let Some(machine) = self.machines.get(&piece.session) {
+                    piece.machine.clone_from(machine);
+                }
+            }
+        }
         out
     }
 
@@ -583,6 +604,7 @@ impl Inputs {
             kind: known.kind.clone(),
             persona: known.persona.clone(),
             budget: known.budget.clone(),
+            machine: String::new(),
             dollars,
             list: known.list,
             source,
@@ -610,6 +632,7 @@ impl Inputs {
             kind: tool.into(),
             persona: String::new(),
             budget: budget.into(),
+            machine: String::new(),
             dollars,
             list: 0.0,
             source,

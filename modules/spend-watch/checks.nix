@@ -38,7 +38,8 @@
       # Every option set, so each shape the module renders is one the
       # daemon reads: a feed for a budget, the Claude plan's as a machine
       # names it for its plan, budgets with their allowances and a price, a
-      # cap of the account's own, a zone.
+      # cap of the account's own, a zone, and another machine whose logs are
+      # brought here.
       fed = account (bareNixos [
         self.nixosModules.workstation
         {
@@ -86,6 +87,8 @@
             zone = "America/Toronto";
             premium = [ "big-model" ];
             detectors.notesOnly = [ "spikes" ];
+            machine = "slate";
+            machines.teal = { };
           };
         }
       ]);

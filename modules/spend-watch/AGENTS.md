@@ -68,6 +68,16 @@ feed speaks.
   name, and serves the quest whose workspace it works in until a quest
   entry says otherwise. `src/ingest.rs` finds them; `src/series.rs` maps
   them.
+- **Machines.** Another machine is counted as this one is, the only
+  difference being where its credentials live: the config names where its
+  session logs and its agents' logs are brought, and each is read the
+  same way, so its budgets come from its own logs' entries. Each session
+  is its machine's, kept on the session rather than each turn, since a
+  run's agents run where their session does; a session read before
+  machines were is this machine's. The by-machine cut shows each machine
+  by its name, this one by the config's `machine` or else its host name,
+  pi spend no log explains as elsewhere, and another tool's bill as its
+  tool's, since a bill names no machine.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each
   turn's budget is worked out: the budget claiming its provider, since
