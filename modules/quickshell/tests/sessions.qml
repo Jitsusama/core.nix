@@ -326,6 +326,17 @@ ShellRoot {
         Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
         expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
             && Niri.spawns.length === before + 1, `${root.unhosted} ${Niri.spawned.join(" ")}`);
+        // One whose id no app id could carry has no viewer to raise, even
+        // while niri lists a window that opened with no app id.
+        const windows = Niri.windows;
+        Niri.windows = Object.assign({}, windows, { "99": { id: 99, pid: 990, opened: "" } });
+        Niri.acted = null;
+        Sessions.goTo(Object.assign({}, hosted, { address: "UNNAMED",
+            presence: Object.assign({}, hosted.presence, { session: "s unnamed" }) }));
+        Niri.windows = windows;
+        expect("one whose viewer can't be named raises no window, but is said",
+            Niri.acted === null && root.unhosted === "UNNAMED"
+            && Niri.spawns.length === before + 1, `${JSON.stringify(Niri.acted)} ${root.unhosted}`);
         // pi run here in another terminal: no window, kitty or holder.
         Sessions.goTo({ address: "ELSETERM", window: null, kitty: null, held: null,
             here: true, presence: { session: "s-elsewhere-term" } });
