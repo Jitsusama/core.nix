@@ -54,10 +54,71 @@ pub fn pieces(frame: &Frame) -> Vec<Link> {
     found
 }
 
-/// Whether something standing on `baseline_pt` is on `line`, as the page's
-/// words are read into lines.
-pub fn on_line(baseline_pt: f64, line: &crate::text::Line) -> bool {
+/// Whether something standing on `baseline_pt`, from `left_pt` to
+/// `right_pt` across, is on `line`, as the page's words are read into
+/// lines: on its baseline and within it, so in a table row it's the
+/// cursor's own cell, as the paths written there are.
+pub fn on_line(baseline_pt: f64, left_pt: f64, right_pt: f64, line: &crate::text::Line) -> bool {
+    let (from, to) = crate::text::across(line);
     (baseline_pt - line.baseline_pt).abs() < crate::text::SAME_LINE_PT
+        && left_pt < to
+        && right_pt > from
+}
+
+/// A name gf can take on a line: a link's target, or a path written there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Name {
+    Link(String),
+    Written(String),
+}
+
+/// The link under a character `x_pt` across `line`, or else the first after
+/// it there, of the page's link `pieces`: what Ctrl+] follows.
+pub fn link_here<'a>(pieces: &'a [Link], line: &crate::text::Line, x_pt: f64) -> Option<&'a Link> {
+    let named = pieces.iter().map(|link| {
+        let right = link.left_pt + link.width_pt;
+        (link.baseline_pt, link.left_pt, right, link)
+    });
+    under_or_after(named, line, x_pt)
+}
+
+/// The name under a character `x_pt` across `line`, or else the first after
+/// it there, of the page's link `pieces` and the paths written on the line:
+/// what gf takes, whether or not it names a file. Links are given first, so
+/// one wins over the path its label writes.
+pub fn name_here(pieces: &[Link], line: &crate::text::Line, x_pt: f64) -> Option<Name> {
+    let linked = pieces.iter().map(|link| {
+        let right = link.left_pt + link.width_pt;
+        (
+            link.baseline_pt,
+            link.left_pt,
+            right,
+            Name::Link(link.href.clone()),
+        )
+    });
+    let written = crate::moves::written_paths(line)
+        .into_iter()
+        .map(|(path, left, right)| (line.baseline_pt, left, right, Name::Written(path)));
+    under_or_after(linked.chain(written), line, x_pt)
+}
+
+/// The file a name stands for, from the page `page` in its folder, when it
+/// names one on this machine at all: a site's address names none. Whether
+/// the file is there is for the disk to say.
+pub fn file_of(name: &Name, page: &Path) -> Option<PathBuf> {
+    match name {
+        Name::Link(href) => match target(href, page) {
+            Target::Page(file, _) => Some(file),
+            Target::Elsewhere(to) if !to.contains("://") => Some(to.into()),
+            _ => None,
+        },
+        Name::Written(path) => {
+            let folder = page
+                .parent()
+                .filter(|folder| !folder.as_os_str().is_empty());
+            Some(folder.unwrap_or(Path::new(".")).join(path))
+        }
+    }
 }
 
 fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
@@ -98,7 +159,7 @@ pub fn under_or_after<T>(
 ) -> Option<T> {
     let mut taken: Option<(f64, T)> = None;
     for (baseline, left, right, item) in named {
-        if !on_line(baseline, line) || right <= x_pt {
+        if !on_line(baseline, left, right, line) || right <= x_pt {
             continue;
         }
         if taken.as_ref().is_none_or(|(least, _)| left < least - 0.5) {
@@ -301,16 +362,19 @@ mod tests {
 
     #[test]
     fn the_name_under_the_character_or_the_next_after_it_on_its_line_is_taken() {
-        // Two links on the line set on 40 pt, given out of their order
-        // across, and one on the line under it.
+        // Two links on a line set on 40 pt and running to 300 pt across,
+        // given out of their order, one past its end on its baseline, as
+        // in a table's next cell, and one on the line under it.
         let named = || {
             [
                 (41.5, 100.0, 160.0, "second"),
                 (40.0, 10.0, 60.0, "first"),
+                (40.0, 320.0, 360.0, "next cell"),
                 (61.0, 0.0, 300.0, "under"),
             ]
         };
-        let line = crate::text::test_line(40.0, "words");
+        let mut line = crate::text::test_line(40.0, "words");
+        line.spans = vec![(0.0, 1.0), (1.0, 2.0), (2.0, 3.0), (3.0, 4.0), (4.0, 300.0)];
         assert_eq!(under_or_after(named(), &line, 30.0), Some("first"), "on it");
         assert_eq!(
             under_or_after(named(), &line, 60.0),
@@ -325,7 +389,7 @@ mod tests {
         assert_eq!(
             under_or_after(named(), &line, 170.0),
             None,
-            "past the line's last, none, though a line below has one"
+            "past the line's last, none, though the next cell and a line below have one"
         );
         let together = [(40.0, 10.2, 60.0, "link"), (40.0, 10.0, 60.0, "path")];
         assert_eq!(
@@ -337,7 +401,7 @@ mod tests {
 
     /// A page set from `markdown`, its lines and the pieces of its links.
     fn set(name: &str, markdown: &str) -> (Vec<crate::text::Line>, Vec<Link>) {
-        let dir = std::env::temp_dir().join(format!("reader-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("reader-links-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("a folder");
         let file = dir.join("page.md");
         std::fs::write(&file, markdown).expect("the file");
@@ -349,10 +413,13 @@ mod tests {
         (lines, pieces(&page.frame))
     }
 
-    /// What a character takes, links before written paths as gf gives
-    /// them: the line that has `words`, at the middle of the character
-    /// `at` characters into them.
-    fn taken(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize) -> String {
+    /// The line that has `words`, and the middle of the character `at`
+    /// characters into them, as the cursor's character gives it.
+    fn character<'a>(
+        lines: &'a [crate::text::Line],
+        words: &str,
+        at: usize,
+    ) -> (&'a crate::text::Line, f64) {
         let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
         let line = lines
             .iter()
@@ -362,16 +429,24 @@ mod tests {
             .chars()
             .count()
             + at;
-        let (from, to) = line.spans[ch];
-        let linked = pieces.iter().map(|link| {
-            let right = link.left_pt + link.width_pt;
-            (link.baseline_pt, link.left_pt, right, link.href.clone())
-        });
-        let written = crate::moves::written_paths(line)
-            .into_iter()
-            .map(|(path, left, right)| (line.baseline_pt, left, right, path));
-        under_or_after(linked.chain(written), line, f64::midpoint(from, to))
-            .unwrap_or_else(|| format!("nothing at {words:?}"))
+        let x_pt = crate::text::middle_of(line, ch).expect("a character there");
+        (line, x_pt)
+    }
+
+    /// What gf takes with the character `at` characters into `words`.
+    fn taken(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize) -> String {
+        let (line, x_pt) = character(lines, words, at);
+        match name_here(pieces, line, x_pt) {
+            Some(Name::Link(said) | Name::Written(said)) => said,
+            None => format!("nothing at {words:?}"),
+        }
+    }
+
+    /// What Ctrl+] follows with the character `at` characters into `words`.
+    fn followed(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize) -> String {
+        let (line, x_pt) = character(lines, words, at);
+        link_here(pieces, line, x_pt)
+            .map_or_else(|| format!("nothing at {words:?}"), |link| link.href.clone())
     }
 
     #[test]
@@ -381,6 +456,16 @@ mod tests {
             "Read [the one](one.md) and then [the other](other.md) here, or notes.md.\n",
         );
         assert_eq!(taken(&lines, &pieces, "the other", 4), "other.md", "on it");
+        assert_eq!(
+            followed(&lines, &pieces, "the other", 4),
+            "other.md",
+            "Ctrl+] too"
+        );
+        assert_eq!(
+            followed(&lines, &pieces, "here", 0),
+            "nothing at \"here\"",
+            "Ctrl+] past the last link, nothing, not a link behind"
+        );
         assert_eq!(
             taken(&lines, &pieces, "the one", 4),
             "one.md",
@@ -426,6 +511,11 @@ mod tests {
             "https://example.com",
             "the link the character is on, not the next"
         );
+        assert_eq!(
+            followed(&lines, &pieces, "so it", 0),
+            "https://example.com",
+            "Ctrl+] too"
+        );
     }
 
     #[test]
@@ -433,6 +523,56 @@ mod tests {
         let (lines, pieces) = set("labelled", "See [docs/design.md](other.md) first.\n");
         assert_eq!(taken(&lines, &pieces, "docs/design.md", 0), "other.md");
         assert_eq!(taken(&lines, &pieces, "docs/design.md", 6), "other.md");
+    }
+
+    #[test]
+    fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
+        let (lines, pieces) = set(
+            "no-file",
+            "See [the site](https://example.com) or [old](gone.md), or notes.md.\n",
+        );
+        // gf settles the name and only then asks the disk, so it says it
+        // can't find these rather than opening notes.md.
+        assert_eq!(taken(&lines, &pieces, "the site", 4), "https://example.com");
+        assert_eq!(taken(&lines, &pieces, "old", 0), "gone.md");
+        let page = Path::new("/notes/page.md");
+        assert_eq!(
+            file_of(&Name::Link("https://example.com".into()), page),
+            None,
+            "a site's address names no file"
+        );
+        assert_eq!(
+            file_of(&Name::Link("gone.md".into()), page),
+            Some(PathBuf::from("/notes/gone.md")),
+            "a link names its file whether or not it's there"
+        );
+        assert_eq!(
+            file_of(&Name::Written("notes.md".into()), page),
+            Some(PathBuf::from("/notes/notes.md")),
+            "a written path is from the page's folder"
+        );
+    }
+
+    #[test]
+    fn in_a_table_a_character_takes_only_from_its_own_cell() {
+        let (lines, pieces) = set(
+            "table-row",
+            "| a | b | c |\n|---|---|---|\n| see below | notes.md | [spec](spec.md) |\n",
+        );
+        let (line, _) = character(&lines, "see below", 0);
+        assert!(
+            !line.text.contains("notes.md"),
+            "a row's cells are lines of their own: {:?}",
+            line.text
+        );
+        assert_eq!(
+            taken(&lines, &pieces, "see below", 4),
+            "nothing at \"see below\"",
+            "not the next cell's link, past the path in the cell between"
+        );
+        assert_eq!(taken(&lines, &pieces, "notes.md", 0), "notes.md");
+        assert_eq!(taken(&lines, &pieces, "spec", 0), "spec.md");
+        assert_eq!(followed(&lines, &pieces, "spec", 0), "spec.md");
     }
 
     #[test]

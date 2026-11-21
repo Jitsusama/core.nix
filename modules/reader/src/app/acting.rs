@@ -310,12 +310,7 @@ impl App {
         let page = self.painter.page();
         let frame = &page.frame;
         let (link, missing) = if let Some((line, x_pt)) = self.character_on() {
-            let pieces = links::pieces(frame);
-            let named = pieces.iter().map(|link| {
-                let right = link.left_pt + link.width_pt;
-                (link.baseline_pt, link.left_pt, right, link)
-            });
-            let link = links::under_or_after(named, line, x_pt).cloned();
+            let link = links::link_here(&links::pieces(frame), line, x_pt).cloned();
             (link, "No link under or after the cursor")
         } else {
             let (from, (_, foot)) = (self.cursor_pt(), self.view_pt());

@@ -209,6 +209,10 @@ pub struct Layout {
     /// Each span of code: its words, and the bytes it takes with its
     /// backticks.
     code: Vec<(Range<usize>, Range<usize>)>,
+    /// Which of the page's settings its lines were read from, given once
+    /// they're back, so a key reading a line with the page's links knows
+    /// both are of one setting.
+    pub version: u32,
 }
 
 /// Lines this close to a mark are under it: the mark sits on its first
@@ -472,6 +476,7 @@ impl Layout {
             words,
             spans,
             code,
+            version: 0,
         }
     }
 

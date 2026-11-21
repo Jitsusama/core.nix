@@ -70,10 +70,11 @@ impl App {
 
     /// The page's words for selecting have been read. A selection holds
     /// while its lines are the same on the new page, and ends otherwise.
-    pub(crate) fn layout_read(&mut self, version: u32, layout: select::Layout) {
+    pub(crate) fn layout_read(&mut self, version: u32, mut layout: select::Layout) {
         if version != self.painter.version {
             return;
         }
+        layout.version = version;
         if let (Some(selection), Some(old)) = (&self.selection, &self.layout) {
             let (from, to) = selection.ends();
             if !(layout.same_line(old, from.line) && layout.same_line(old, to.line)) {
@@ -299,11 +300,17 @@ impl App {
 
     /// The cursor's character's line, and its middle across the page,
     /// while it stands, for gf and Ctrl+] to take what's under or after it.
+    /// Between a page set again and its lines read, the lines are the old
+    /// page's and its links the new one's, so there is none until they
+    /// agree.
     pub(crate) fn character_on(&self) -> Option<(&crate::text::Line, f64)> {
         let at = self.standing()?.cursor;
-        let line = self.layout.as_ref()?.lines.get(at.line)?;
-        let (from, to) = line.spans.get(at.ch)?;
-        Some((line, (from + to) / 2.0))
+        let layout = self.layout.as_ref()?;
+        if layout.version != self.painter.version {
+            return None;
+        }
+        let line = layout.lines.get(at.line)?;
+        Some((line, crate::text::middle_of(line, at.ch)?))
     }
 
     /// Lets the character go once the cursor has left its line, so it

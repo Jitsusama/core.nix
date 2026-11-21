@@ -1,57 +1,42 @@
 //! The command line's side: the file followed, what it says, the commands it
 //! runs and their history.
 
-use super::{Landing, desktop_open, folder_of};
+use super::{Landing, desktop_open};
 use crate::{App, ex, keys_logged, links, moves, outline, search};
 
 impl App {
     /// gf: with the cursor on a character, opens the file named under it or
-    /// after it on its line, by a link or written, and none behind it, as
-    /// vi's gf opens the one under the cursor; with the cursor on a whole
-    /// line, the file the first link from it down names, or the first path
-    /// written from there that is a file: markdown in this window, and
-    /// anything else as the desktop opens it.
+    /// after it on its line, by a link or written, and none behind it, or
+    /// says it can't find that one, as vi's gf does with the name under the
+    /// cursor; with the cursor on a whole line, the file the first link
+    /// from it down names, or the first path written from there that is a
+    /// file: markdown in this window, and anything else as the desktop
+    /// opens it.
     pub(crate) fn follow_file(&mut self) {
-        let folder = folder_of(&self.file).to_path_buf();
         let page = self.painter.page();
-        // The file a link names, when it's one on this machine.
-        let file_of = |link: &links::Link| {
-            let file: std::path::PathBuf = match links::target(&link.href, &self.file) {
-                links::Target::Page(file, _) => file,
-                links::Target::Elsewhere(to) if !to.contains("://") => to.into(),
-                _ => return None,
-            };
-            file.is_file().then_some(file)
-        };
-        let written = |line: &crate::text::Line| {
-            moves::written_paths(line)
-                .into_iter()
-                .filter_map(|(path, left, right)| {
-                    let file = folder.join(path);
-                    file.is_file()
-                        .then_some((line.baseline_pt, left, right, file))
-                })
-                .collect::<Vec<_>>()
-        };
+        // The file a name stands for, when it's one on this machine.
+        let file_of =
+            |name: &links::Name| links::file_of(name, &self.file).filter(|file| file.is_file());
         let found = if let Some((line, x_pt)) = self.character_on() {
-            // Only the line's own are asked of the disk, links first, so
-            // a link wins over the path its label writes.
-            let named = links::pieces(&page.frame)
-                .into_iter()
-                .filter(|link| links::on_line(link.baseline_pt, line))
-                .filter_map(|link| {
-                    let right = link.left_pt + link.width_pt;
-                    file_of(&link).map(|file| (link.baseline_pt, link.left_pt, right, file))
-                })
-                .chain(written(line));
-            links::under_or_after(named, line, x_pt)
+            // The name is settled first and only then asked of the disk, so
+            // a missing one is said rather than passed for the next.
+            let Some(name) = links::name_here(&links::pieces(&page.frame), line, x_pt) else {
+                self.say("E446: No file name under cursor");
+                return;
+            };
+            let Some(file) = file_of(&name) else {
+                let (links::Name::Link(said) | links::Name::Written(said)) = name;
+                self.say(&format!("E447: Can't find file \"{said}\" in path"));
+                return;
+            };
+            Some(file)
         } else {
             let (from, (_, foot)) = (self.cursor_pt(), self.view_pt());
             let mut named: Vec<(f64, f64, std::path::PathBuf)> = links::links(&page.frame)
                 .into_iter()
                 .filter(|link| link.baseline_pt > from && link.top_pt < foot)
                 .filter_map(|link| {
-                    let file = file_of(&link)?;
+                    let file = file_of(&links::Name::Link(link.href))?;
                     Some((link.baseline_pt.round(), link.left_pt, file))
                 })
                 .collect();
@@ -60,8 +45,10 @@ impl App {
                 if line.baseline_pt <= from || moves::foot_of(line) > foot {
                     continue;
                 }
-                for (.., file) in written(line) {
-                    named.push((line.baseline_pt.round(), f64::INFINITY, file));
+                for (path, ..) in moves::written_paths(line) {
+                    if let Some(file) = file_of(&links::Name::Written(path)) {
+                        named.push((line.baseline_pt.round(), f64::INFINITY, file));
+                    }
                 }
             }
             named.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
