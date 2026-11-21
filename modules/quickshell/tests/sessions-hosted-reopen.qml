@@ -35,6 +35,15 @@ ShellRoot {
         return ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-background",
             "--session", id];
     }
+    // The words a hosted session's restore entry says its viewer runs, the
+    // harness's join, which waits for the host its roster names.
+    function waitingView(id) {
+        return ["node", "/lasting/scripts/host-join.ts", "--view", "--session", id, "--",
+            "pi", "--session", id];
+    }
+    // What titles a viewer's window before its words run, as niri's
+    // stand-in records a spawn.
+    readonly property string titling: 'sh -c printf "\\033]2;%s\\007" "$0"; exec "$@"'
 
     // A session pi's host runs here, as the node tells of it, its owner the
     // host's process, whose own list the state script lays out naming
@@ -118,6 +127,8 @@ ShellRoot {
                 asked();
             else if (stage === "adrift")
                 adrift();
+            else if (stage === "unserved")
+                unserved();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -145,11 +156,11 @@ ShellRoot {
         const spawned = viewerSpawns("s-viewed");
         if (spawned.length === 0)
             return;
-        Expect.expect("its viewer opens by the node's words, held, without the focus",
+        Expect.expect("its viewer opens by the node's words, held, titled, without the focus",
             spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
             && spawned[0].includes("/pi-sessions/kitty.sock pi-hosted.s-viewed ")
             && spawned[0].includes("mycelium --realm harbour holds add -- "
-                + viewing("s-viewed").join(" ")), spawned[0]);
+                + `${titling} \u03c0 - VIEWED ` + viewing("s-viewed").join(" ")), spawned[0]);
         Expect.expect("niri is told where it opens: the monitor's empty workspace",
             JSON.stringify(opensOn("s-viewed")) === JSON.stringify([{
                 app_id: "pi-hosted.s-viewed", reference: { Id: 41 }, column: 1 }]),
@@ -343,6 +354,43 @@ ShellRoot {
             started.length === 1 && started[0].includes(`--directory ${start} env `)
             && /pi --session-id [0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab]/u.test(started[0])
             && !Niri.spawns.some(command => command.includes("s-adrift")), Niri.spawns.join("\n"));
+        // niri opens it, so the walk goes on without waiting it out.
+        const classed = Sessions.reopening?.waiting?.classed ?? "";
+        if (classed !== "") {
+            const window = { id: 60, pid: 600, workspace_id: 42, session: true,
+                opened: classed, layout: { pos_in_scrolling_layout: [1, 1] } };
+            Niri.windows = Object.assign({}, Niri.windows, { "60": window });
+            Niri.revision += 1;
+            Niri.windowOpenedOrChanged(window);
+        }
+        // After a crash its host is still coming back, so it serves nothing
+        // yet, but the restore entry says the words its viewer runs.
+        stage = "unserved";
+        Sessions.reopenAll([{ id: "s-waiting", cwd: "/home/skiff/harbour", title: "Reef",
+            hosted: true, way: "boot", view: waitingView("s-waiting") }], root.never,
+            kept({ "s-waiting": keptOn(3) }), "");
+    }
+
+    // Its viewer opens at once, where its window was, quietly, held and
+    // titled as its host will title it, to wait there for its host; its
+    // place isn't kept for a viewer to open later by itself, and no pi is
+    // started for it (20 November: three viewers opened unasked at 15:03,
+    // nearly two hours after the walk, titled "mycelium").
+    function unserved() {
+        const spawned = viewerSpawns("s-waiting");
+        if (spawned.length === 0)
+            return;
+        Expect.expect("it opens by its entry's words, held and titled, without the focus",
+            spawned.length === 1
+            && spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
+            && spawned[0].includes("mycelium --realm harbour holds add -- "
+                + `${titling} \u03c0 - Reef - harbour ` + waitingView("s-waiting").join(" ")),
+            spawned[0]);
+        Expect.expect("niri is told where it opens", opensOn("s-waiting").length === 1
+            && typeof opensOn("s-waiting")[0].reference.Id === "number"
+            && opensOn("s-waiting")[0].column === 1, JSON.stringify(Niri.acts));
+        Expect.expect("its place isn't kept for later",
+            Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }

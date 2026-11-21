@@ -587,6 +587,35 @@ QtObject {
         expect("no window keeps nothing", [Viewers.placeOf(null, 100),
             Viewers.placeOf(laid(null, null), 100)], [null, null]);
 
+        // A viewer's window is titled as pi's host will title it, from the
+        // first moment, never for the command it runs: what the session's
+        // record says, else its quest's name and its folder, or its folder
+        // alone where its name is its folder, as one with no quest is named.
+        expect("a viewer titled as its record says",
+            Viewers.viewerTitle("\u03c0 - Reef - harbour", "Shoal", "/home/skiff/keel"),
+            "\u03c0 - Reef - harbour");
+        expect("a viewer titled by its quest and folder",
+            Viewers.viewerTitle(undefined, "Reef", "/home/skiff/harbour/"),
+            "\u03c0 - Reef - harbour");
+        expect("a viewer named for its folder titled by its folder once",
+            Viewers.viewerTitle("", "harbour", "/home/skiff/harbour"), "\u03c0 - harbour");
+        expect("a record's title that isn't pi's is no viewer's",
+            Viewers.viewerTitle("mycelium", "Reef", "/home/skiff/harbour"),
+            "\u03c0 - Reef - harbour");
+        expect("words titled first, the title one word, said to nothing but the title",
+            Viewers.titled("\u03c0 - Reef\u001b]2;x\u0007", ["mycelium", "attach"]),
+            ["sh", "-c", 'printf "\\033]2;%s\\007" "$0"; exec "$@"',
+                "\u03c0 - Reef ]2;x ", "mycelium", "attach"]);
+        // A hosted session's restore entry says the words its viewer runs
+        // while its host isn't serving it yet; an entry an older harness
+        // wrote says none, and words not whole are none.
+        const viewWords = ["node", "/lasting/host-join.ts", "--view", "--session", "s-a"];
+        expect("a hosted entry's view words", Viewers.waitingWords({ view: viewWords }),
+            viewWords);
+        expect("no view words, or none whole, are none", [Viewers.waitingWords({}),
+            Viewers.waitingWords({ view: [] }), Viewers.waitingWords({ view: ["node", 3] }),
+            Viewers.waitingWords(null)], [null, null, null, null]);
+
         // Each kept place is one viewer to open once its session runs
         // hosted with words to view it by, and then kept no more; one whose
         // viewer is open already is let go, and one a day old lapses, as
