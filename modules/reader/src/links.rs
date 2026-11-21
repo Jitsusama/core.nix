@@ -8,13 +8,12 @@ use typst::model::Destination;
 
 use crate::numbers::f32_of;
 
-/// A link's first piece on the page, in points from the page's top left,
-/// and what it points at as written.
+/// A link's first piece on the page, or any one piece of it, in points from
+/// the page's top left, and what it points at as written.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Link {
     pub left_pt: f64,
-    /// How far across its first piece runs, to its line's end when it
-    /// breaks.
+    /// How far across the piece runs, to its line's end when it breaks.
     pub width_pt: f64,
     pub top_pt: f64,
     pub height_pt: f64,
@@ -26,15 +25,8 @@ pub struct Link {
 /// Every link on the page, in reading order, each once: a link broken
 /// across lines is labelled where it starts.
 pub fn links(frame: &Frame) -> Vec<Link> {
-    let mut found = Vec::new();
-    walk(frame, Point::zero(), &mut found);
-    found.sort_by(|a, b| {
-        a.top_pt
-            .total_cmp(&b.top_pt)
-            .then(a.left_pt.total_cmp(&b.left_pt))
-    });
     let mut kept: Vec<Link> = Vec::new();
-    for link in found {
+    for link in pieces(frame) {
         // A link's later pieces follow its first, on the lines below it.
         let continues = kept.last().is_some_and(|last| {
             last.href == link.href
@@ -46,6 +38,26 @@ pub fn links(frame: &Frame) -> Vec<Link> {
         }
     }
     kept
+}
+
+/// Every piece of every link on the page, in reading order: a link broken
+/// across lines is a piece on each, so what's under a character on its
+/// second line is the link too.
+pub fn pieces(frame: &Frame) -> Vec<Link> {
+    let mut found = Vec::new();
+    walk(frame, Point::zero(), &mut found);
+    found.sort_by(|a, b| {
+        a.top_pt
+            .total_cmp(&b.top_pt)
+            .then(a.left_pt.total_cmp(&b.left_pt))
+    });
+    found
+}
+
+/// Whether something standing on `baseline_pt` is on `line`, as the page's
+/// words are read into lines.
+pub fn on_line(baseline_pt: f64, line: &crate::text::Line) -> bool {
+    (baseline_pt - line.baseline_pt).abs() < crate::text::SAME_LINE_PT
 }
 
 fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
@@ -75,19 +87,25 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Link>) {
 }
 
 /// Of what the page names, each with its baseline and where it starts and
-/// ends across, the one under a character `x_pt` across the line set on
-/// `baseline_pt`, or else the first after it there, as Vim's gf and Ctrl+]
-/// take the name under or after the cursor.
+/// ends across, the one under a character `x_pt` across `line`, or else the
+/// first after it there, as Vim's gf and Ctrl+] take the name under or
+/// after the cursor. Of names starting within half a point of each other,
+/// as a link and the path its label writes do, the first given is taken.
 pub fn under_or_after<T>(
     named: impl IntoIterator<Item = (f64, f64, f64, T)>,
-    baseline_pt: f64,
+    line: &crate::text::Line,
     x_pt: f64,
 ) -> Option<T> {
-    named
-        .into_iter()
-        .filter(|(baseline, _, right, _)| (baseline - baseline_pt).abs() < 1.0 && *right > x_pt)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(.., item)| item)
+    let mut taken: Option<(f64, T)> = None;
+    for (baseline, left, right, item) in named {
+        if !on_line(baseline, line) || right <= x_pt {
+            continue;
+        }
+        if taken.as_ref().is_none_or(|(least, _)| left < least - 0.5) {
+            taken = Some((left, item));
+        }
+    }
+    taken.map(|(_, item)| item)
 }
 
 /// Where a label is drawn, in whole device pixels down the view, so its
@@ -283,30 +301,138 @@ mod tests {
 
     #[test]
     fn the_name_under_the_character_or_the_next_after_it_on_its_line_is_taken() {
-        // Two links on the line set on 40 pt, one on the line under it.
+        // Two links on the line set on 40 pt, given out of their order
+        // across, and one on the line under it.
         let named = || {
             [
+                (41.5, 100.0, 160.0, "second"),
                 (40.0, 10.0, 60.0, "first"),
-                (40.3, 100.0, 160.0, "second"),
                 (61.0, 0.0, 300.0, "under"),
             ]
         };
-        assert_eq!(under_or_after(named(), 40.0, 30.0), Some("first"), "on it");
+        let line = crate::text::test_line(40.0, "words");
+        assert_eq!(under_or_after(named(), &line, 30.0), Some("first"), "on it");
         assert_eq!(
-            under_or_after(named(), 40.0, 60.0),
+            under_or_after(named(), &line, 60.0),
             Some("second"),
-            "at the first's very end, the next"
+            "at the first's very end, the next, a superscript's nudge off"
         );
         assert_eq!(
-            under_or_after(named(), 40.0, 5.0),
+            under_or_after(named(), &line, 5.0),
             Some("first"),
-            "before them all, the first after"
+            "before them all, the least across, not the first given"
         );
         assert_eq!(
-            under_or_after(named(), 40.0, 170.0),
+            under_or_after(named(), &line, 170.0),
             None,
             "past the line's last, none, though a line below has one"
         );
+        let together = [(40.0, 10.2, 60.0, "link"), (40.0, 10.0, 60.0, "path")];
+        assert_eq!(
+            under_or_after(together, &line, 30.0),
+            Some("link"),
+            "of two starting together, the first given"
+        );
+    }
+
+    /// A page set from `markdown`, its lines and the pieces of its links.
+    fn set(name: &str, markdown: &str) -> (Vec<crate::text::Line>, Vec<Link>) {
+        let dir = std::env::temp_dir().join(format!("reader-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a folder");
+        let file = dir.join("page.md");
+        std::fs::write(&file, markdown).expect("the file");
+        let (page, _) = crate::page::Setter::new(file.to_str().expect("a path"))
+            .set()
+            .expect("set");
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+        let lines = crate::text::lines(crate::text::runs(&page.frame));
+        (lines, pieces(&page.frame))
+    }
+
+    /// What a character takes, links before written paths as gf gives
+    /// them: the line that has `words`, at the middle of the character
+    /// `at` characters into them.
+    fn taken(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize) -> String {
+        let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+        let line = lines
+            .iter()
+            .find(|line| line.text.contains(words))
+            .unwrap_or_else(|| panic!("no line has {words:?}: {texts:?}"));
+        let ch = line.text[..line.text.find(words).expect("found")]
+            .chars()
+            .count()
+            + at;
+        let (from, to) = line.spans[ch];
+        let links = pieces.iter().map(|link| {
+            let right = link.left_pt + link.width_pt;
+            (link.baseline_pt, link.left_pt, right, link.href.clone())
+        });
+        let written = crate::moves::written_paths(line)
+            .into_iter()
+            .map(|(path, left, right)| (line.baseline_pt, left, right, path));
+        under_or_after(links.chain(written), line, f64::midpoint(from, to))
+            .unwrap_or_else(|| format!("nothing at {words:?}"))
+    }
+
+    #[test]
+    fn a_character_on_a_lines_second_link_takes_that_one() {
+        let (lines, pieces) = set(
+            "two-links",
+            "Read [the one](one.md) and then [the other](other.md) here, or notes.md.\n",
+        );
+        assert_eq!(taken(&lines, &pieces, "the other", 4), "other.md", "on it");
+        assert_eq!(
+            taken(&lines, &pieces, "the one", 4),
+            "one.md",
+            "on the first"
+        );
+        assert_eq!(
+            taken(&lines, &pieces, "and then", 0),
+            "other.md",
+            "between them, the one after"
+        );
+        assert_eq!(
+            taken(&lines, &pieces, "here", 0),
+            "notes.md",
+            "past the last link, the path written after, never a link behind"
+        );
+        assert_eq!(
+            taken(&lines, &pieces, "notes.md", 8),
+            "nothing at \"notes.md\"",
+            "on the full stop past it all, nothing"
+        );
+    }
+
+    #[test]
+    fn a_character_on_a_broken_links_second_line_takes_that_link() {
+        let (lines, pieces) = set(
+            "broken-link",
+            &format!(
+                "{}[a link long enough to run on past the end of its first line and onto the next one, so it breaks](https://example.com) and [a second](#here).\n",
+                "Words before it. ".repeat(5)
+            ),
+        );
+        let ends = lines
+            .iter()
+            .find(|line| line.text.contains("so it"))
+            .expect("the link's end is set");
+        assert!(
+            !ends.text.contains("a link long"),
+            "the link ends on a line below its start: {:?}",
+            ends.text
+        );
+        assert_eq!(
+            taken(&lines, &pieces, "so it", 0),
+            "https://example.com",
+            "the link the character is on, not the next"
+        );
+    }
+
+    #[test]
+    fn a_link_whose_label_is_a_path_is_taken_over_the_path() {
+        let (lines, pieces) = set("labelled", "See [docs/design.md](other.md) first.\n");
+        assert_eq!(taken(&lines, &pieces, "docs/design.md", 0), "other.md");
+        assert_eq!(taken(&lines, &pieces, "docs/design.md", 6), "other.md");
     }
 
     #[test]

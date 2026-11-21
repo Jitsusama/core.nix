@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     fn a_written_path_is_read_as_gf_reads_one() {
-        let mut written = line(0.0, "See docs/design.md, or `notes.md`.");
+        let mut written = line(0.0, "See docs/design.md, or `notes.md`, then a.md.");
         // Each character five points across, so where each path stands
         // can be read.
         let mut x = 0.0;
@@ -658,8 +658,10 @@ mod tests {
             said,
             [
                 ("docs/design.md".to_string(), 20.0, 90.0),
-                ("notes.md".to_string(), 120.0, 160.0)
-            ]
+                ("notes.md".to_string(), 120.0, 160.0),
+                ("a.md".to_string(), 200.0, 220.0)
+            ],
+            "a sentence's full stop is no part of its path"
         );
     }
 }

@@ -91,7 +91,7 @@ pub struct Found {
 
 /// Runs this close in baseline are one line: a superscript's or a mark's
 /// nudge is less than this.
-const SAME_LINE_PT: f64 = 2.0;
+pub(crate) const SAME_LINE_PT: f64 = 2.0;
 
 /// A gap wider than a word space, in ems: a space is set between runs
 /// this far apart that neither spells one.

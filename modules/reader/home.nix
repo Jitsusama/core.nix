@@ -17,9 +17,9 @@
 # and zb, % and N%, counts, / and ? to search with n and N, * and # for the
 # word here, marks, '' and Ctrl+O and Ctrl+I through the jumps, which a
 # move longer than a screen joins, g x to follow a link by its label and
-# Ctrl+] the one here, gf for the file named here, each taking what's under
-# or after the cursor's character first, as Vim's do, ]b and [b to the
-# folder's next markdown file, gO for the headings as a list, ZZ, Space w
+# Ctrl+] the one here, gf for the file named here, each taking only what's
+# under or after the cursor's character when it has one, as Vim's do, ]b
+# and [b to the folder's next markdown file, gO for the headings as a list, ZZ, Space w
 # or :q to close, and Space ? or F1 for every key. The command line takes
 # Vim's ranges and names: :{n} and :$, :noh, :y with a range, :%y the
 # whole file and :'<,'>y the last selection's lines, as the file's
