@@ -50,7 +50,8 @@
   # share through the portal or a recorder's screencopy, and until niri has
   # said its casts, but not for the shell's own recording of one window, and
   # what a hidden copy's row is made of says only its kind and when it came,
-  # as modules/quickshell/tests/copies-hidden.qml holds launcher/Shared.js
+  # and a row made showing names what hides it, as
+  # modules/quickshell/tests/copies-hidden.qml holds launcher/Shared.js
   # to it in Qt's own engine.
   copies-hide-while-the-screen-is-shared =
     let
@@ -59,6 +60,7 @@
     pkgs.runCommandLocal "copies-hide-while-the-screen-is-shared" { } ''
       cp ${../tests/copies-hidden.qml} copies-hidden.qml
       cp ${../launcher/Shared.js} Shared.js
+      cp ${../launcher/Steady.js} Steady.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
