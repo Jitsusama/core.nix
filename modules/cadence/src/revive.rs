@@ -564,13 +564,13 @@ pub fn holding(
         Some(all) if hosted => {
             let counted: Vec<Holder> = all
                 .iter()
-                .filter(|h| !views(&h.command) && !(h.pid > 0 && is_viewer(h.pid)))
+                .filter(|h| !(views(&h.command) || (h.pid > 0 && is_viewer(h.pid))))
                 .cloned()
                 .collect();
             held(&counted, &seen.session, is_pi)
         }
         Some(all) => held(all, &seen.session, |pid| is_pi(pid) || is_viewer(pid)),
-        None if named_here(&|pid| !is_pi(pid) && !(hosted && is_viewer(pid))) => Held::Running,
+        None if named_here(&|pid| !(is_pi(pid) || (hosted && is_viewer(pid)))) => Held::Running,
         None => Held::Not,
     }
 }
