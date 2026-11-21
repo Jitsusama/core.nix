@@ -56,12 +56,22 @@ const PACE: Duration = Duration::from_secs(2);
 /// process per lent builder each time.
 const ASK_AGAIN: Duration = Duration::from_secs(30);
 
-/// How long what the cloud last vouched for stands while it can't be
-/// heard, so a few calls lost to the network don't drop every lent
-/// builder. A cloud refusing to answer, or a token that isn't one, stands
-/// for nothing: the lender's account writes the token, so either could
+/// How long, past [`ASK_LENT`], what the cloud last vouched for stands
+/// while it can't be heard, for a builder only [`LENT`] names, so a call
+/// lost to the network doesn't drop it. A builder root's files name is
+/// held at once instead, taking no new builds until the cloud answers for
+/// it again: root's build hook takes back what it builds unchecked, so one
+/// changed while the cloud was silent would otherwise be trusted this long.
+/// A cloud refusing to answer, or a token that isn't one, stands for
+/// nothing: the lender's account writes the token, so either could
 /// otherwise buy this long for a change made unseen.
 const STANDS: Duration = Duration::from_secs(120);
+
+/// How soon the cloud is asked again of an instance it was silent about,
+/// so a builder held then takes builds again within seconds of its
+/// answering. The cloud was silent 4 times in the day to 21 November, so
+/// asking this often while it is costs little.
+const ASK_SILENT: Duration = Duration::from_secs(5);
 
 /// How often the cloud is asked again of a builder only [`LENT`] names,
 /// while it vouches for it: one asked every [`ASK_AGAIN`] costs a gcloud
@@ -439,6 +449,9 @@ struct Asked {
     /// Whether only [`LENT`] names it, no file root's Nix reads, so it's
     /// asked of every [`ASK_LENT`].
     lent_only: bool,
+    /// Whether the cloud was silent when last asked of it, so it's asked
+    /// again at [`ASK_SILENT`].
+    silent: bool,
 }
 
 impl Asked {
@@ -447,7 +460,9 @@ impl Asked {
     /// vouched for when last asked, waits [`ASK_LENT`]; any other
     /// [`ASK_AGAIN`].
     fn every(&self, lent_only: bool) -> Duration {
-        if lent_only && self.vouched.is_some() && self.vouched == self.at {
+        if self.silent {
+            ASK_SILENT
+        } else if lent_only && self.vouched.is_some() && self.vouched == self.at {
             ASK_LENT
         } else {
             ASK_AGAIN
@@ -458,8 +473,9 @@ impl Asked {
 /// Why the cloud didn't vouch for an instance.
 enum Unvouched {
     /// It wasn't heard in time, or the network to it failed: what it said
-    /// last stands a while, since nothing running as Joel can bring that
-    /// about.
+    /// last stands a while for a builder only [`LENT`] names, since nothing
+    /// running as Joel can bring that about, and one root's files name is
+    /// held until it's heard again ([`STANDS`]).
     Silent,
     /// It wasn't asked, its token being no token, or it refused to answer:
     /// nothing stands, though the instance isn't known to be changed, and
@@ -634,19 +650,23 @@ impl HostKeys {
         let (token, (started, marks)) = match verdict {
             Ok((token, vouched)) => (token, vouched.unzip()),
             Err(Unvouched::Silent) => {
+                let stands = before.lent_only
+                    && before
+                        .vouched
+                        .is_some_and(|at| at.elapsed() < STANDS + ASK_LENT);
+                let held = if stands {
+                    ""
+                } else {
+                    ", so it takes no new builds until it does"
+                };
                 self.say(
                     name,
-                    Some(format!("the cloud didn't describe {name} in {zone}")),
+                    Some(format!("the cloud didn't describe {name} in {zone}{held}")),
                 );
-                let window = if before.lent_only {
-                    STANDS + ASK_LENT
-                } else {
-                    STANDS
-                };
-                let stands = before.vouched.is_some_and(|at| at.elapsed() < window);
                 return Asked {
                     host_key: before.host_key.filter(|_| stands),
                     at: Some(now),
+                    silent: true,
                     ..before
                 };
             }
@@ -660,6 +680,7 @@ impl HostKeys {
                 return Asked {
                     host_key: None,
                     at: Some(now),
+                    silent: false,
                     ..before
                 };
             }
@@ -672,6 +693,7 @@ impl HostKeys {
                     host_key: None,
                     at: Some(now),
                     spoiled: before.started.is_some(),
+                    silent: false,
                     ..before
                 };
             }
@@ -1780,27 +1802,41 @@ mod tests {
     }
 
     #[test]
-    fn what_the_cloud_vouched_for_stands_a_while_when_it_stops_answering() {
+    fn a_builder_root_reads_is_held_while_the_cloud_cant_be_heard() {
+        // Until 21 November what the cloud last vouched for stood two
+        // minutes while it was silent, so a builder changed meanwhile could
+        // take root's builds, which come back unchecked, all that time.
         let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
         copy_once(&settings, &mut keys);
-        fs::write(dir.path().join("unreachable"), "").expect("the network gone");
-        due(&mut keys);
-        copy_once(&settings, &mut keys);
         let trusted = format!("{}\n", line(URI, KEY, HOST));
-        assert_eq!(
-            lent_to_root(&dir),
-            trusted,
-            "one unanswered call dropped the line"
-        );
-        for asked in keys.asked.values_mut() {
-            asked.vouched = Instant::now().checked_sub(STANDS);
-        }
+        assert_eq!(lent_to_root(&dir), trusted, "the instance wasn't trusted");
+        fs::write(dir.path().join("unreachable"), "").expect("the network gone");
         due(&mut keys);
         copy_once(&settings, &mut keys);
         assert_eq!(
             lent_to_root(&dir),
             "",
-            "a line stood long after the cloud last vouched"
+            "a line stood while the cloud couldn't be heard"
+        );
+        assert!(
+            keys.asked
+                .values()
+                .all(|asked| asked.every(false) == ASK_SILENT),
+            "a builder held for silence waited as long as one vouched for"
+        );
+        fs::remove_file(dir.path().join("unreachable")).expect("the network back");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "the line didn't come back once the cloud answered"
+        );
+        assert!(
+            keys.asked
+                .values()
+                .all(|asked| asked.every(false) == ASK_AGAIN),
+            "a builder heard again was still asked of as though silent"
         );
     }
 
