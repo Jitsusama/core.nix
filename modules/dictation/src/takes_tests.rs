@@ -135,6 +135,22 @@ fn stepping(sound: &[f32], gain: f32) -> Vec<f32> {
         .collect()
 }
 
+/// `seconds` of a room's rumble at `level`: white noise through a filter
+/// that passes little above 50 Hz, so its loudness swells and fades by
+/// several decibels from one fifth of a second to the next.
+fn rumble(seconds: f32, level: f32) -> Vec<f32> {
+    let mut low = 0.0;
+    let raw: Vec<f32> = noise(seconds, 1.0, false)
+        .into_iter()
+        .map(|white| {
+            low = 0.98 * low + white;
+            low
+        })
+        .collect();
+    let rms = (raw.iter().map(|s| s * s).sum::<f32>() / raw.len() as f32).sqrt();
+    raw.iter().map(|s| s * level / rms).collect()
+}
+
 /// A room's quiet, about -70 dBFS.
 fn quiet(seconds: f32) -> Vec<f32> {
     tone(seconds, 0.0004, 1.3)
@@ -486,26 +502,62 @@ fn a_line_that_starts_gating_is_heard_once_its_hiss_is_gone() {
 }
 
 #[test]
-fn a_laugh_on_a_gated_line_keeps_it_gated() {
-    // A laugh, a cough or a long "s" between a gated line's words is
-    // loud and has no voice, as hiss hasn't, but rises and falls as
-    // hiss doesn't: it mustn't be taken for the line's own sound and
-    // set a floor the words after it are lost under. This one's level
-    // steps 6 dB from one frame to the next.
+fn a_laugh_or_a_held_s_on_a_gated_line_keeps_it_gated() {
+    // A laugh, a cough or a held "s" between a gated line's words is
+    // loud and has no voice, as hiss hasn't, but a laugh or a cough
+    // rises and falls as hiss doesn't, and an "s" ends sooner: none may
+    // be taken for the line's own sound and set a floor the words after
+    // it are lost under. The laugh's level steps 6 dB from one frame to
+    // the next; the "s" is steady, as loud as the words, for 0.4 s.
+    for (what, sound) in [
+        ("laugh", stepping(&noise(0.3, 0.045, false), 0.5)),
+        ("held s", noise(0.4, 0.045, false)),
+    ] {
+        let long = 1.5 + seconds(sound.len());
+        let sound = [
+            vec![0.0; RATE * 2],
+            voice(0.7, 150.0),
+            sound,
+            voice(0.8, 150.0),
+            vec![0.0; RATE * 2],
+        ]
+        .concat();
+        let takes = cut(&sound);
+        assert_eq!(takes.len(), 1, "the words around the {what}");
+        assert!(
+            seconds(takes[0].samples.len()) >= long,
+            "{} s of {long}, around the {what}",
+            seconds(takes[0].samples.len())
+        );
+    }
+}
+
+#[test]
+fn a_short_answer_on_a_rumbling_line_after_a_mute_is_a_take() {
+    // A room's rumble swells and fades by several decibels in a fifth
+    // of a second, as hiss doesn't, so after a mute it must still be
+    // known for the line's own sound, or the line stays gated, its
+    // rumble all speech, and an answer in it is one long take, lost
+    // once it holds too few voiced frames for its length.
     let sound = [
-        vec![0.0; RATE * 2],
-        voice(0.7, 150.0),
-        stepping(&noise(0.3, 0.045, false), 0.5),
-        voice(0.8, 150.0),
-        vec![0.0; RATE * 2],
+        rumble(3.0, 0.01),
+        vec![0.0; RATE],
+        rumble(4.0, 0.01),
+        voice(0.25, 150.0),
+        rumble(4.0, 0.01),
+        quiet(1.0),
     ]
     .concat();
+    let answer = RATE * 8;
     let takes = cut(&sound);
-    assert_eq!(takes.len(), 1, "the words around the laugh");
+    let take = takes
+        .iter()
+        .find(|take| take.start <= answer && take.start + take.samples.len() >= answer + RATE / 4)
+        .expect("the answer in the rumble");
     assert!(
-        seconds(takes[0].samples.len()) >= 1.8,
-        "{}",
-        seconds(takes[0].samples.len())
+        seconds(take.samples.len()) < 2.0,
+        "{} s of take for a 0.25 s answer",
+        seconds(take.samples.len())
     );
 }
 
