@@ -47,6 +47,11 @@ import { drawnWidth } from "./lines.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
+  builderParts,
+  builderSays,
+  builderTone,
+  builderWords,
+  builds,
   countsOf,
   described,
   money,
@@ -589,7 +594,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, foraged, shared, machines, standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -635,7 +640,7 @@ import {
   const lay = (m) => {
     const room = new Map();
     for (const h of m.hubs.values()) room.set(h.key, roomFor((seeds.get(h.key) || []).length));
-    const key = [...room].map(([k, r]) => `${k}:${r}:${m.hubs.get(k)?.machine || ""}:${m.hubs.get(k)?.within || ""}`).join("|") + `|${m.machines.map((x) => x.name).join(",")}`;
+    const key = [...room].map(([k, r]) => `${k}:${r}:${m.hubs.get(k)?.machine || ""}:${m.hubs.get(k)?.within || ""}`).join("|") + `|${m.machines.map((x) => x.name).join(",")}|${m.builders.map((b) => b.name).join(",")}`;
     if (key === layoutKey && layout) return layout;
     layoutKey = key;
     const disc = new Map([...room].map(([k, r]) => [k, discRadius(r)]));
@@ -651,7 +656,8 @@ import {
     };
     const widths = tops.map((h) => familyWidth(h) + GAP);
     const total = widths.reduce((a, b) => a + b, 0);
-    const machineSpan = ((m.machines.length - 1) * MACHINE_STEP) / 2 + MACHINE_R;
+    const column = m.machines.length;
+    const machineSpan = ((column - 1) * MACHINE_STEP) / 2 + MACHINE_R;
     const ring = Math.max(RING_MIN + machineSpan, total / (2 * Math.PI));
     const at = new Map();
     const angle = new Map();
@@ -684,15 +690,21 @@ import {
     // The receptors stand at the edge, above everything the ring and its
     // branches reach, since they are where the outside comes in.
     const edge = m.hubs.get(OUTSIDE);
-    if (edge) {
-      const outer = Math.max(ring, ...[...at].map(([k, [x, y]]) => Math.hypot(x, y) + disc.get(k)));
-      place(edge, 0, -(outer + EDGE_GAP + disc.get(OUTSIDE)), -Math.PI / 2);
-    }
+    const outer = Math.max(ring, ...[...at].map(([k, [x, y]]) => Math.hypot(x, y) + disc.get(k)));
+    if (edge) place(edge, 0, -(outer + EDGE_GAP + disc.get(OUTSIDE)), -Math.PI / 2);
     // Machines stand in a column, apart in proportion to the ring, since a
     // machine's mark is its name, wide and short: a row of them would
     // need several times the room to keep their boxes apart.
     const step = Math.max(MACHINE_STEP, ring * MACHINE_SPREAD);
-    const machines = new Map(m.machines.map((x, i) => [x.name, [0, (i - (m.machines.length - 1) / 2) * step]]));
+    const inColumn = (i) => [0, (i - (column - 1) / 2) * step];
+    const machines = new Map(m.machines.map((x, i) => [x.name, inColumn(i)]));
+    // A builder carries no cord, and inside the ring a mark of words
+    // stands on the hubs once the map is zoomed out to its whole, so the
+    // builders stand under the ring, below everything it and its branches
+    // reach, as the receptors stand above it: under the machines' column,
+    // a step apart, kept there when the machines move out to their arcs.
+    const foot = outer + EDGE_GAP + MACHINE_R;
+    const builders = new Map(m.builders.map((b, j) => [b.name, [0, foot + j * MACHINE_STEP]]));
     // Once a machine's cords bundle, the ring is too wide for a row of
     // machines at its middle to be told apart: each machine carrying
     // networks moves out to the middle of its own arc, so its trunks start
@@ -706,7 +718,7 @@ import {
         machines.set(name, [Math.cos(a) * ring * MACHINE_ORBIT, Math.sin(a) * ring * MACHINE_ORBIT]);
       }
     }
-    layout = { at, angle, disc, machines, ring };
+    layout = { at, angle, disc, machines, builders, ring };
     return layout;
   };
 
@@ -1140,6 +1152,8 @@ import {
   // the network it is part of, so the map is networks and cells alone.
   let machinesShown = false;
   const shownMachines = () => (machinesShown ? current.machines : []);
+  // The builders the machines send their builds to are shown with them.
+  const shownBuilders = () => (machinesShown ? current.builders : []);
 
   // Each mark says which level the arrows walk it on and which network it
   // sits in, so a probe can judge the map by level from outside.
@@ -1279,6 +1293,11 @@ import {
   const machineMarkup = (x, [mx, my]) =>
     `<g class="${machineClass(x)}" data-key="m:${esc(x.name)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${mx},${my})">` +
     `<circle class="m-hit" r="${MACHINE_R}"/></g>`;
+  const builderClass = (b) => (near && !near.builders.has(b.name) ? "builder far" : "builder");
+  // A builder's mark is its name too, in a box with rounded corners.
+  const builderMarkup = (b, [bx, by]) =>
+    `<g class="${builderClass(b)}" data-key="b:${esc(b.name)}" data-level="${TOP_LEVEL}" data-within="" transform="translate(${bx},${by})">` +
+    `<circle class="m-hit" r="${MACHINE_R}"/></g>`;
 
   // Each phase of a redraw is measured under its own name, so where the
   // time goes at any size reads from outside, layout included.
@@ -1386,6 +1405,8 @@ import {
     for (const el of world.querySelectorAll("g.knot")) setClass(el, knotClass(shared.get(el.dataset.key.slice(2))));
     const machines = new Map(current.machines.map((x) => [x.name, x]));
     for (const el of world.querySelectorAll("g.machine")) setClass(el, machineClass(machines.get(el.dataset.key.slice(2))));
+    const builders = new Map(current.builders.map((b) => [b.name, b]));
+    for (const el of world.querySelectorAll("g.builder")) setClass(el, builderClass(builders.get(el.dataset.key.slice(2))));
     for (const el of world.querySelectorAll(".cell.chosen")) setClass(el, "cell m-hit");
     if (chosen?.kind === "cell") world.querySelector(`[data-key="c:${CSS.escape(chosen.id)}"]`)?.setAttribute("class", "cell chosen m-hit");
   };
@@ -1436,6 +1457,7 @@ import {
     const was = folded;
     drawnFor = { shape, L, machines: machinesShown };
     const machines = shownMachines();
+    const builders = shownBuilders();
     const cords = [];
     const hyphae = [];
     const cross = [];
@@ -1451,6 +1473,10 @@ import {
     for (const x of machines) {
       spots.set(`m:${x.name}`, L.machines.get(x.name));
       sizes.set(`m:${x.name}`, MACHINE_R);
+    }
+    for (const b of builders) {
+      spots.set(`b:${b.name}`, L.builders.get(b.name));
+      sizes.set(`b:${b.name}`, MACHINE_R);
     }
     for (const h of m.hubs.values()) {
       spots.set(`h:${h.key}`, L.at.get(h.key));
@@ -1597,8 +1623,13 @@ import {
       lineShapes.push(line);
       cords.push({ tag: "path", ...inked("m-link", () => false), line });
     }
+    // The keys walk down the column from the last machine to each builder,
+    // though no line joins them: a builder is no machine of the realm.
+    const column = [...machines.map((x) => `m:${x.name}`), ...builders.map((b) => `b:${b.name}`)];
+    for (let i = Math.max(1, machines.length); i < column.length; i++) link(treeAdj, column[i - 1], column[i]);
     if (!marks) {
       machines.forEach((x) => nodes.push(machineMarkup(x, L.machines.get(x.name))));
+      builders.forEach((b) => nodes.push(builderMarkup(b, L.builders.get(b.name))));
       for (const h of m.hubs.values()) nodes.push(hubMarkup(h, L.at.get(h.key)));
       for (const n of m.shared) if (knotsAt.has(n.key)) nodes.push(knotMarkup(n, knotsAt.get(n.key)));
       for (const s of m.cells) if (pos.has(s.id) && !isFolded(s)) nodes.push(cellMarkup(s, pos.get(s.id)));
@@ -1688,6 +1719,12 @@ import {
       const down = offWords(x);
       const sub = x.state !== "ready" ? "off" : [carried, down, p ? `cpu ${Math.round(p.cpu)}%` : ""].filter(Boolean).join(" \u00b7 ");
       out.push({ ...mark, sub });
+    }
+    for (const b of shownBuilders()) {
+      const key = `b:${b.name}`;
+      const strong = key === pointed || (chosen?.kind === "builder" && chosen.id === b.name);
+      const far = near && !near.builders.has(b.name) && key !== pointed;
+      out.push({ key, kind: "builder", mark: true, off: !builds(b), strong, far, rank: -1, at: L.builders.get(b.name), r: MACHINE_R, name: [b.name], mono: true, sub: far ? "" : builderParts(b).join(" \u00b7 ") });
     }
     // One tier of names at a time, so the map is never a wall of words:
     // the whole map names machines and networks; a cell is named only when
@@ -1958,8 +1995,12 @@ import {
       moved += top - one.top;
       placed.push({ left, w: bw, bottom: top + bh });
     }
-    const mean = moved / Math.max(1, marks.length);
-    if (moved) for (const [key, s] of shifts) shifts.set(key, s - mean);
+    // The machines are centred on where their cords leave; the builders
+    // under them keep their own shift, so they only ever move down, away
+    // from the ring, and the machines rising leaves them more room.
+    const rooted = marks.filter((one) => one.l.kind !== "builder");
+    const mean = rooted.reduce((sum, one) => sum + shifts.get(one.l.key), 0) / Math.max(1, rooted.length);
+    if (moved) for (const one of rooted) shifts.set(one.l.key, shifts.get(one.l.key) - mean);
     return shifts;
   };
 
@@ -2109,12 +2150,13 @@ import {
       adj.get(p).add(q);
     }
   };
-  const KIND_OF = { c: "cell", h: "net", n: "net", m: "machine" };
+  const KIND_OF = { c: "cell", h: "net", n: "net", m: "machine", b: "builder" };
   const choiceOf = (key) => ({ kind: KIND_OF[key[0]], id: key.slice(2) });
   const keyOf = (c) => {
     if (!c) return null;
     if (c.kind === "cell") return `c:${c.id}`;
     if (c.kind === "machine") return `m:${c.id}`;
+    if (c.kind === "builder") return `b:${c.id}`;
     return current?.hubs.has(c.id) ? `h:${c.id}` : null;
   };
   const firstKey = () => (shownMachines()[0] ? `m:${shownMachines()[0].name}` : spots.keys().next().value);
@@ -2403,13 +2445,16 @@ import {
   };
 
   // The view that shows `box` whole, with room for the names past it.
-  const viewOf = ([x0, y0, x1, y1], most = 1.4, room = LABEL_ROOM) => {
+  // `under` is room kept below the box on screen, for marks that stack
+  // there whatever the zoom.
+  const viewOf = ([x0, y0, x1, y1], most = 1.4, room = LABEL_ROOM, under = 0) => {
     const [w, h] = seen();
     // On a narrow view the names sit on the map, clear of its lines,
     // rather than taking most of the width as a margin.
     const side = Math.min(room, w * ROOM_SHARE);
-    const kk = Math.max(kFloor(), Math.min(most, (w - 2 * (FIT_PAD + side)) / (x1 - x0), (h - 2 * (FIT_PAD + 44)) / (y1 - y0)));
-    return [kk, w / 2 - kk * ((x0 + x1) / 2), h / 2 - kk * ((y0 + y1) / 2)];
+    const tall = h - 2 * (FIT_PAD + 44) - under;
+    const kk = Math.max(kFloor(), Math.min(most, (w - 2 * (FIT_PAD + side)) / (x1 - x0), tall / (y1 - y0)));
+    return [kk, w / 2 - kk * ((x0 + x1) / 2), (h - under) / 2 - kk * ((y0 + y1) / 2)];
   };
 
   const steps = (animate) => !animate || still.matches || (current?.cells.length || 0) > GLIDE_UNDER;
@@ -2441,6 +2486,7 @@ import {
 
   const wholeBox = () => {
     const points = shownMachines().map((x) => L.machines.get(x.name));
+    for (const b of shownBuilders()) points.push(L.builders.get(b.name));
     for (const h of current.hubs.values()) {
       const [x, y] = L.at.get(h.key);
       const r = L.disc.get(h.key);
@@ -2449,10 +2495,20 @@ import {
     return boundsOf(points, 0);
   };
 
+  // Zoomed out to the whole map, the builders' marks stack under the
+  // ring, each taking its own height on screen whatever the zoom, so the
+  // whole map keeps room under it for them: a mark and its line, in px.
+  // It takes at most half the view's height, so many builders on a short
+  // view leave the ring room to be seen, the last of them past the edge.
+  const FOOT_MARK = 60;
+  const footRoom = () => {
+    const room = Math.max(0, seen()[1] - 2 * (FIT_PAD + 44));
+    return Math.min(room / 2, Math.max(0, shownBuilders().length - 1) * FOOT_MARK);
+  };
   const fit = (animate = true) => {
     auto = true;
     if (!current) return;
-    goTo(viewOf(wholeBox()), animate);
+    goTo(viewOf(wholeBox(), 1.4, LABEL_ROOM, footRoom()), animate);
   };
 
   // The farthest out the view goes: K_MIN, or further when the whole map
@@ -2461,7 +2517,7 @@ import {
     if (!current || !L) return K_MIN;
     const [w, h] = seen();
     const [x0, y0, x1, y1] = wholeBox();
-    const whole = Math.min((w - 2 * FIT_PAD) / (x1 - x0), (h - 2 * (FIT_PAD + 44)) / (y1 - y0));
+    const whole = Math.min((w - 2 * FIT_PAD) / (x1 - x0), (h - 2 * (FIT_PAD + 44) - footRoom()) / (y1 - y0));
     return Math.max(K_LEAST, Math.min(K_MIN, whole * WHOLE_SLACK));
   };
 
@@ -2518,6 +2574,11 @@ import {
       const { v, words } = groupHealth(cells);
       return [c.id, `A machine running ${plural(cells.length, "cell")}.`, v, words];
     }
+    if (c.kind === "builder") {
+      const b = m.builders.find((y) => y.name === c.id);
+      // Taking builds is well, unheard is worth watching, refusing them is to tend.
+      return b ? [b.name, "A builder this machine sends Nix builds to.", builderTone(b), builderWords(b)] : null;
+    }
     if (c.kind !== "net") return null;
     const h = m.hubs.get(c.id);
     if (h) {
@@ -2568,6 +2629,7 @@ import {
     const node = keyUnder(e.target);
     if (node) return node[0] === "c" ? null : choiceOf(node);
     if (line) return line.opens.kind === "net" || line.opens.kind === "machine" ? line.opens : null;
+    // A builder is named among the words, as a machine is, with no line of its own.
     const box = svg.getBoundingClientRect();
     const ground = groundAt((e.clientX - box.left - tx) / k, (e.clientY - box.top - ty) / k);
     return ground ? { kind: "net", id: ground } : null;
@@ -2752,7 +2814,9 @@ import {
       ? current.byAddress.has(c.id)
       : c.kind === "machine"
         ? current.machines.some((x) => x.name === c.id)
-        : c.kind === "talk"
+        : c.kind === "builder"
+          ? current.builders.some((b) => b.name === c.id)
+          : c.kind === "talk"
           ? talkEndsKnown(c.id)
           : current.hubs.has(c.id) || current.shared.some((n) => n.key === c.id));
 
@@ -2782,7 +2846,11 @@ import {
     const shared = new Set();
     let root = false;
     const machines = new Set();
-    if (c.kind === "talk") {
+    const builders = new Set();
+    if (c.kind === "builder") {
+      // A builder touches nothing on the map: no cell runs on it.
+      builders.add(c.id);
+    } else if (c.kind === "talk") {
       for (const end of c.id.split("|")) {
         if (end[0] === "h") hubs.add(end.slice(2));
         else if (m.byAddress.has(end.slice(2))) ids.add(m.byAddress.get(end.slice(2)).id);
@@ -2856,7 +2924,7 @@ import {
         }
       }
     }
-    return { ids, hubs, hyphae, shared, root, machines };
+    return { ids, hubs, hyphae, shared, root, machines, builders };
   };
 
   // Bring the chosen thing to the middle of the map: a cell close up, a
@@ -2874,6 +2942,9 @@ import {
     } else if (c.kind === "talk") {
       const points = c.id.split("|").map((end) => spots.get(end)).filter(Boolean);
       if (points.length) goTo(viewOf(boundsOf(points, HUB_R * 2), 1.6), animate);
+    } else if (c.kind === "builder") {
+      const p = L.builders.get(c.id);
+      if (p) goTo(viewOf(boundsOf([p], MACHINE_STEP), 1.4), animate);
     } else if (c.kind === "machine") {
       const p = L.machines.get(c.id);
       const points = [p];
@@ -2915,7 +2986,7 @@ import {
   // A stray % in a hash typed by hand names nothing, rather than throwing
   // out of the draw that reads it.
   const fromHash = () => {
-    const m = location.hash.match(/^#(cell|net|machine|talk)=(.+)$/);
+    const m = location.hash.match(/^#(cell|net|machine|builder|talk)=(.+)$/);
     if (!m) return null;
     try {
       return { kind: m[1], id: decodeURIComponent(m[2]) };
@@ -3003,7 +3074,7 @@ import {
   const apply = (animate) => {
     const c = cellFor(standFor(fromHash()));
     chosen = knows(c) ? c : null;
-    if (chosen?.kind === "machine") machinesShown = true;
+    if (chosen?.kind === "machine" || chosen?.kind === "builder") machinesShown = true;
     const key = keyOf(chosen);
     if (key) {
       pointed = key;
@@ -3296,6 +3367,7 @@ import {
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-14,0H-9M9,0H14" style="--w:2px"/><rect class="m-box" x="-9" y="-6" width="18" height="12"/></svg></dt><dd>A machine: its name in a hairline box, its cords leaving the box's edge; the box is dashed while the machine is off</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:9 11 9 5;stroke-dashoffset:4.5"/></svg></dt><dd>A lent machine, here until its lease ends: only its box's corners</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:0 20 48"/></svg></dt><dd>A basin: machines borrowed from a pool in the cloud, drawn as one box open at the top and named by the basin; its drawer lists each machine</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box" x="-10" y="-7" width="20" height="14" rx="5"/></svg></dt><dd>A builder this machine sends Nix builds to, under the map: its name in a box with rounded corners, dashed while it takes no builds</dd></div>` +
       `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/><path class="m-hub-shape" d="${SHAPES.square(5)}"/></svg></dt><dd>A network's hub, a knot: spokes round its ring, and its own shape in the middle; a click on its ground opens it</dd></div>` +
       `<div><dt><svg viewBox="-17 -17 34 34" aria-hidden="true"><path class="m-spokes" d="${spokesPath(10)}" style="stroke-width:1.75"/><circle class="m-hub" r="10"/></svg></dt><dd>A network with no leader, shared by cells of other networks: the same knot, empty in the middle; the cells it shares are the bridge between them</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-colony folded" r="12"/><circle class="m-hub" r="7"/></svg></dt><dd>A folded network: drawn too small to read${m.cells.length > FOLD_OVER ? ", or off the map" : ""}, so its cells wait in its ground until you come closer or open it</dd></div>` +
@@ -3310,6 +3382,25 @@ import {
         : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="birth" d="M-12,8L2,-4"/><circle class="ghost" cx="6" cy="-6" r="6"/></svg></dt><dd>Born: a hypha draws itself out of the hub to the new cell. Ended: its membrane shrinks back, dashed. Both stay listed in Now for ten minutes${PULSES && still.matches ? ", and only listed while your system asks for less motion" : ""}</dd></div>` +
       `</dl></details>`
+    );
+  };
+
+  // A builder's drawer: what it is, how it stands and who said so, and what
+  // it builds. No cell runs on it, so it has nothing of theirs to say.
+  const builderPanel = (name) => {
+    const b = current.builders.find((y) => y.name === name);
+    if (!b) return overview();
+    const facts = [
+      ["Builds for", b.systems.join(", ")],
+      ["At once", b.jobs ? plural(b.jobs, "build") : ""],
+      ["Lent", b.lent ? "made for a while by its lender, and paid for while it runs" : ""],
+    ].filter(([, v]) => v);
+    return (
+      backButton("Now") +
+      `<h2 id="panel-title" class="mono">${esc(name)}</h2>` +
+      `<p class="carries">${esc("A builder this machine sends Nix builds to, which is no machine of the realm: nothing runs on it but builds, so no cord runs to it.")}</p>` +
+      `<p class="led" data-builder-says>${esc(builderSays(b))}</p>` +
+      factList(facts)
     );
   };
 
@@ -3844,7 +3935,9 @@ import {
         ? cellPanel(current.byAddress.get(chosen.id))
         : chosen.kind === "machine"
           ? machinePanel(chosen.id)
-          : chosen.kind === "talk"
+          : chosen.kind === "builder"
+            ? builderPanel(chosen.id)
+            : chosen.kind === "talk"
             ? talkPanel(chosen.id)
             : netPanel(chosen.id);
     const key = hashOf(chosen);
@@ -4670,11 +4763,11 @@ import {
   const toggleKeys = () => (keys.open ? keys.close() : keys.showModal());
   const toggleMachines = () => {
     machinesShown = !machinesShown;
-    if (!machinesShown && chosen?.kind === "machine") letGo();
-    if (pointed?.[0] === "m" && !machinesShown) pointed = null;
+    if (!machinesShown && (chosen?.kind === "machine" || chosen?.kind === "builder")) letGo();
+    if ((pointed?.[0] === "m" || pointed?.[0] === "b") && !machinesShown) pointed = null;
     draw();
     if (!tree.parentElement.hidden) renderTree();
-    where.textContent = machinesShown ? "The machines are shown, with each network's cord to the machine it runs on; m hides them." : "The machines are hidden; m shows them.";
+    where.textContent = machinesShown ? "The machines are shown, with each network's cord to the machine it runs on and the builders under the map; m hides them." : "The machines are hidden; m shows them.";
   };
   // Out, as Enter is in: out of what's open, else up from where the walk
   // has reached to what it hangs from.

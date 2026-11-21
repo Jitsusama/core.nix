@@ -9,7 +9,10 @@
 // interface's; both are put back as the command says them. The machines add
 // what their cells leave out (memory, disk, power, room), a basin's machines
 // folded into the one stand the map draws of it, and the messages only who
-// sent, to whom and when, which is all the feed passes of them.
+// sent, to whom and when, which is all the feed passes of them. The
+// builders the machine sends its builds to are the node's own records too
+// (its `builder` kind), apart from the cells, since nothing runs on them
+// but builds.
 // What waits on the mesh, each question still waiting on a peer and each
 // hold still standing, is the node's own judgement (its `unanswered` kind),
 // read likewise without its words. The ties between cells, each pair that
@@ -19,9 +22,18 @@
 // whom, when and the kind in a word, never the change itself; who started
 // each cell is read off its forage (lineage.ts).
 
-import { type Fields, type Held, isObject, object, text } from "../../local-sites/kit/records.ts";
+import {
+  type Fields,
+  type Held,
+  isObject,
+  number,
+  object,
+  text,
+  texts,
+} from "../../local-sites/kit/records.ts";
 import { BALANCE_FRESH_MS, type Balance, balanceOf, latestReading, sharesOf } from "./balance.ts";
 import { foragedOf, type Started, startedOf } from "./lineage.ts";
+import type { Builder } from "./words.ts";
 
 /** How many messages the map hears, the latest, as `mycelium messages` says. */
 const LATEST_MESSAGES = 20;
@@ -53,7 +65,8 @@ const TIE_SEPARATOR = "~";
 /**
  * The node's records, a watch's for each kind the map reads. The balance is
  * the balance service's latest reading, which a node serves only where the
- * service runs, so a map without it draws as before. What waits on the
+ * service runs, so a map without it draws as before; the builders are
+ * watched the same way, so a node too old to serve them draws none. What waits on the
  * mesh, and who started each cell, is there only once its watch has
  * answered, since a node too old to serve it would otherwise read as one
  * with nothing waiting, or no cell started by another.
@@ -64,6 +77,7 @@ interface Heard {
   readonly machine: Held;
   readonly message: Held;
   readonly balance?: Held;
+  readonly builder?: Held;
   readonly unanswered?: Held | undefined;
   readonly tie?: Held | undefined;
   readonly fed?: Held | undefined;
@@ -126,6 +140,7 @@ interface Now {
   readonly networks: readonly Fields[];
   readonly cells: readonly Fields[];
   readonly machines: readonly Fields[];
+  readonly builders: readonly Builder[];
   readonly messages: readonly Message[];
   readonly balance: Balance | null;
   readonly waits: readonly Wait[] | null;
@@ -418,6 +433,29 @@ function drawn(cell: Fields): boolean {
   return cell["type"] === "session" || cell["type"] === "receptor";
 }
 
+/**
+ * A builder record as the map draws it: what is missing reads as nothing
+ * said, and a state the node didn't give, or gave empty, as unknown.
+ */
+function builderOf(record: Fields): Builder {
+  return {
+    name: text(record, "name") ?? "",
+    state: text(record, "state") || "unknown",
+    systems: texts(record, "systems") ?? [],
+    jobs: number(record, "jobs") ?? 0,
+    lent: record["lent"] === true,
+    said: text(record, "said") ?? null,
+  };
+}
+
+/** The builders, by name, and none without one. */
+function buildersOf(records: readonly Fields[]): Builder[] {
+  return records
+    .map(builderOf)
+    .filter((builder) => builder.name !== "")
+    .sort((one, other) => collate(one.name, other.name));
+}
+
 /** What the map draws from `heard`, read at `at` (milliseconds since the epoch). */
 function nowOf(heard: Heard, at: number): Now {
   const reading = latestReading(heard.balance, at);
@@ -435,6 +473,7 @@ function nowOf(heard: Heard, at: number): Now {
         share: shares.get(text(record, "name") ?? "") ?? null,
       })),
     ),
+    builders: buildersOf(heard.builder?.all() ?? []),
     messages: messagesOf(heard.message),
     balance: balanceOf(reading),
     waits: waitsOf(heard.unanswered),
