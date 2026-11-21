@@ -84,6 +84,33 @@ in
       ProtectControlGroups = true;
       RestrictAddressFamilies = "none";
       SystemCallArchitectures = "native";
+      # It only reads sysfs and /proc and writes files, so the rest of what
+      # root could reach is taken away too: changing the kernel's settings,
+      # which stay readable, its log, the clock, the host's name, other
+      # processes, new namespaces, other personalities, memory both written
+      # and run, real-time scheduling and set-id bits. /proc isn't cut to
+      # its processes, since the boot's id and when it began are read there.
+      ProtectKernelTunables = true;
+      ProtectKernelLogs = true;
+      ProtectClock = true;
+      ProtectHostname = true;
+      ProtectProc = "invisible";
+      RestrictNamespaces = true;
+      LockPersonality = true;
+      MemoryDenyWriteExecute = true;
+      RestrictRealtime = true;
+      RestrictSUIDSGID = true;
+      # A service's usual calls, less those that need privilege or set
+      # limits. One refused fails with EPERM rather than killing the caller,
+      # so even a call keep.sh's own shell makes fails one step, and the
+      # tables after it are still kept. So "Operation not permitted" from
+      # this unit may be this filter, not a file's permissions.
+      SystemCallFilter = [
+        "@system-service"
+        "~@privileged"
+        "~@resources"
+      ];
+      SystemCallErrorNumber = "EPERM";
     };
   };
 
