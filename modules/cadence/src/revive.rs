@@ -1032,8 +1032,7 @@ mod tests {
         assert_eq!(
             held_hosted,
             Held::Not,
-            "a viewer only shows what its host runs, so it holds nothing, \
-             and its window is none a restart closes"
+            "a viewer only shows what its host runs, so it holds nothing"
         );
         // Once its host stays away past attach's patience, the holder
         // keeps the window with its viewer down, parked.
@@ -1076,6 +1075,21 @@ mod tests {
             holding(&hosted, Some(&parked), pi, viewer, here),
             Held::Parked,
             "a hosted one parked in a holder of its own is held"
+        );
+        assert!(
+            Held::Parked.names() && Held::Running.names(),
+            "and one parked or running keeps a second pi from starting on its log"
+        );
+        // A pi keeps its session running whatever its holder's words say,
+        // as one carried on as plain pi in a viewer's window would.
+        let became = holders(concat!(
+            r#"{"command":["node","/lasts/scripts/host-join.ts","--session","s-A-1"],"#,
+            r#""pid":9}"#
+        ));
+        assert_eq!(
+            holding(&hosted, Some(&became), pi, viewer, here),
+            Held::Running,
+            "a pi under a viewer's words still holds it"
         );
         assert_eq!(
             holding(&hosted, None, pi, viewer, |counts: &dyn Fn(u32) -> bool| {
