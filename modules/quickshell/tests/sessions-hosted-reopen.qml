@@ -39,6 +39,9 @@ ShellRoot {
     id: root
 
     property string stage: "listed"
+    // When the case began, so its end says how long it ran, which the
+    // check's timeout is set by.
+    readonly property real begunAt: Date.now()
 
     function find(address) {
         return Sessions.running.find(session => session.address === address);
@@ -782,7 +785,8 @@ ShellRoot {
         Expect.expect("with no boot's places known, one kept nowhere opens in a window",
             started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
             && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
-        console.log("a hosted viewer reopens where it was");
+        console.log("a hosted viewer reopens where it was, in "
+            + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
         Qt.exit(0);
     }
     // Each steer the node was asked.

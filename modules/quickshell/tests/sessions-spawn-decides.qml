@@ -136,6 +136,10 @@ ShellRoot {
         // its window is named by.
         Expect.expect("its viewer is named for it",
             viewer[0].includes("/kitty.sock pi-hosted.s-begun "), viewer[0]);
+        // Titled for its quest before its words run, not "mycelium".
+        Expect.expect("and titled for its quest before its words run",
+            viewer[0].includes('sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" '
+                + "\u03c0 - QEST-HOSTED"), viewer[0]);
         decided.reload();
         const lines = decided.text().split("\n");
         const started = (quest, orchestrates) => `started ${quest} in ${root.folder}`
