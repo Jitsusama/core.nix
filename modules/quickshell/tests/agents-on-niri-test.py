@@ -2033,22 +2033,38 @@ def scaled(shell: Shell, scales: Mapping[str, object]) -> None:
     the launcher keeps the height it opened at until it closes (Launcher.qml's tall). Opened in
     between, Networks stood as tall as the screen at 1 on the screen at 2: on 19 and 20
     November it rested on all three rows whole, its card 493.5 tall and its top 53 above a
-    screen 388 high (the net, at d1061758 and ed3c8438).
+    screen 388 high (the net, at d1061758 and ed3c8438). The height is read once niri says the
+    focused output is at its new scale, so it's never the old one read before niri took it.
     """
     for name, scale in scales.items():
         shell.as_account(f"niri msg output {name} scale {scale}")
-    height = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["height"]
-    # Within a pixel, as Qt and niri may round a fractional scale's height apart.
-    shell.launcher_until(lambda shown: abs(shown["card"]["screen"] - height) <= 1)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while True:
+        focused = json.loads(shell.as_account("niri msg --json focused-output"))
+        wanted = scales.get(focused["name"])
+        if wanted is None or float(focused["logical"]["scale"]) == float(str(wanted)):
+            break
+        assert time.monotonic() < deadline, f"niri never took the scale {wanted}: {focused}"
+        time.sleep(launcher_on_niri.POLL)
+    height = focused["logical"]["height"]
+    try:
+        # Within a pixel, as Qt and niri may round a fractional scale's height apart.
+        shell.launcher_until(lambda shown: abs(shown["card"]["screen"] - height) <= 1)
+    except AssertionError as missed:
+        failed = f"the shell never heard the screen {height} high at {dict(scales)}"
+        raise AssertionError(failed) from missed
 
 
 @pytest.fixture
 def at_twice(shell: Shell) -> Iterator[None]:
     """Hold niri's screen at twice its size, where the card holds three rows' room."""
     outputs = json.loads(shell.as_account("niri msg --json outputs"))
-    scaled(shell, dict.fromkeys(outputs, 2))
-    yield
-    scaled(shell, {name: output["logical"]["scale"] for name, output in outputs.items()})
+    # Put back however setting it ends, so a wait that times out leaves no case after it at 2.
+    try:
+        scaled(shell, dict.fromkeys(outputs, 2))
+        yield
+    finally:
+        scaled(shell, {name: output["logical"]["scale"] for name, output in outputs.items()})
 
 
 # The rows Networks rests on as it's stepped into, each numbered and neither cut.
@@ -2876,9 +2892,11 @@ def at_shots_scale(shell: Shell) -> Iterator[None]:
         yield
         return
     outputs = json.loads(shell.as_account("niri msg --json outputs"))
-    scaled(shell, dict.fromkeys(outputs, scale))
-    yield
-    scaled(shell, {name: output["logical"]["scale"] for name, output in outputs.items()})
+    try:
+        scaled(shell, dict.fromkeys(outputs, scale))
+        yield
+    finally:
+        scaled(shell, {name: output["logical"]["scale"] for name, output in outputs.items()})
 
 
 @pytest.fixture(scope="module")
