@@ -4160,8 +4160,8 @@
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
-    with a hard memory floor agents.slice keeps as large, so a session opening never starves the
-    window Joel types in
+    with a hard memory floor agents.slice keeps beside the 3 GiB jobs-sorter holds for the
+    windows Joel is at, so a session opening never starves the window Joel types in
   '';
   a-paste-lands-while-the-shell-is-busy-on-niri = ''
     on niri, Return on a copy in the launcher pastes it into the terminal under, though the
