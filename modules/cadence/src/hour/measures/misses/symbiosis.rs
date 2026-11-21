@@ -410,11 +410,16 @@ fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>
                         && opens_with(one, "withdr")))
         })
     };
+    // A withdrawal is no finding, whatever it was sent as.
+    let withdraws = |one: &Posted| {
+        let answered = one.re.as_ref().and_then(|re| by_id.get(re));
+        answered.is_some_and(|it| it.from == one.from) && opens_with(one, "withdr")
+    };
     let mut found: Vec<Finding> = Vec::new();
     let mut counted_as: BTreeMap<&str, usize> = BTreeMap::new();
     for one in posted {
         let thread = ancestors(&by_id, one).find_map(|id| counted_as.get(id).copied());
-        if is_finding(one) && !withdrawn(one) {
+        if is_finding(one) && !withdrawn(one) && !withdraws(one) {
             if let Some(at) = thread.filter(|&at| found[at].landed.is_none()) {
                 counted_as.insert(&one.id, at);
             } else {
@@ -452,9 +457,12 @@ fn owner(finding: &Posted, orchestrator: &str, known: &BTreeSet<String>) -> Stri
     let named = opening.split_once(':').and_then(|(head, _)| {
         let mut words = head.split_whitespace();
         words.find(|word| word.eq_ignore_ascii_case("for"))?;
-        let word = words.next()?;
-        let word = word.trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
-        Some(word.strip_suffix("'s").unwrap_or(word).to_owned())
+        // The address ends where a word does: "OSPHT4's", "A2VLJN/WCJQSG".
+        let word = words
+            .next()?
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .next()?;
+        Some(word.to_owned())
     });
     named
         .filter(|word| is_address(word) && known.contains(word))
