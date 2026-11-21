@@ -54,12 +54,13 @@ const ABOVE_FLOOR_DB: f32 = 12.0;
 const QUIETEST_SPEECH_DB: f32 = -55.0;
 /// Quieter than this is a line sending nothing, as a call does while
 /// its far end is muted, between words its far end gates out, or for a
-/// packet it lost. The nothing sets no floor, nor does a frame holding
-/// this many samples in a row each quieter than it, a millisecond: the
-/// frame a mute starts or ends in, or a packet lost part of the way into
-/// it, holds only some of the line's sound, and would set a floor under
-/// its hiss. A sample is judged by its size, so a mute sent as a faint
-/// dither is nothing as exact zeros are.
+/// packet it lost. The nothing sets no floor, nor does a frame starting
+/// or ending with this many samples in a row each quieter than it, a
+/// millisecond: the frame a mute starts or ends in, or a packet lost part
+/// of the way into it, holds only some of the line's sound, and would set
+/// a floor under its hiss. Inside a frame, such a run is a faint hum
+/// crossing zero, the line's own sound. A sample is judged by its size,
+/// so a mute sent as a faint dither is nothing as exact zeros are.
 const NOTHING_DB: f32 = -90.0;
 const NOTHING_SAMPLES: usize = RATE / 1000;
 /// `NOTHING_DB` as the size of a sample.
@@ -337,17 +338,12 @@ impl Cutter {
     }
 }
 
-/// Whether a frame holds a run of nothing, `NOTHING_SAMPLES` long.
+/// Whether a frame starts or ends with a run of nothing,
+/// `NOTHING_SAMPLES` long.
 fn holds_nothing(frame: &[f32]) -> bool {
-    let mut run = 0;
-    frame.iter().any(|&sample| {
-        run = if sample.abs() < NOTHING_SAMPLE {
-            run + 1
-        } else {
-            0
-        };
-        run >= NOTHING_SAMPLES
-    })
+    let nothing = |sample: &&f32| sample.abs() < NOTHING_SAMPLE;
+    frame.iter().take_while(nothing).count() >= NOTHING_SAMPLES
+        || frame.iter().rev().take_while(nothing).count() >= NOTHING_SAMPLES
 }
 
 /// Whether a frame, read with the one before it so a low voice's period
