@@ -41,6 +41,13 @@ const ECHO_SLACK: usize = 2 * RATE;
 /// How many of a line's words must be in theirs for it to be their echo.
 const ECHO_SHARE: f32 = 0.6;
 
+/// How many words a line must share with theirs to be their echo on that
+/// alone. A shorter one, such as "Okay." or "Okay, that's fine.", is
+/// as likely Joel answering them in their own words, so it's their echo
+/// only when it holds most of their line's words too: a long line of
+/// theirs heard through his speakers comes back as long takes.
+const ECHO_WORDS: usize = 4;
+
 /// What the others on a call are called where nobody knows who they are.
 pub const OTHERS: &str = "Others";
 
@@ -203,11 +210,16 @@ pub fn echoes(line: &Line, lines: &[Line]) -> bool {
             && {
                 let said = words(&theirs.text);
                 let shared = mine.intersection(&said).count();
-                #[expect(clippy::cast_precision_loss, reason = "a line's words are few")]
-                let share = shared as f32 / mine.len() as f32;
-                share >= ECHO_SHARE
+                share(shared, &mine) >= ECHO_SHARE
+                    && (shared >= ECHO_WORDS || share(shared, &said) >= ECHO_SHARE)
             }
     })
+}
+
+/// The share of `of`'s words that `shared` of them are.
+#[expect(clippy::cast_precision_loss, reason = "a line's words are few")]
+fn share(shared: usize, of: &HashSet<String>) -> f32 {
+    shared as f32 / of.len() as f32
 }
 
 /// A line's words, lowercased, without their punctuation.
