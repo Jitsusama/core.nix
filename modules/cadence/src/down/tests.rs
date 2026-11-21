@@ -111,9 +111,13 @@ fn a_working_machine_down_ten_minutes_is_told_once_and_again_once_back() {
     );
 }
 
+/// A reading at so many minutes past `NOW`, and whether a session on the
+/// machine was busy then.
+type At = (i64, Reading, bool);
+
 #[test]
 fn a_machine_idle_never_ready_slept_away_from_or_back_in_moments_is_never_told() {
-    let cases: [(&str, Vec<(i64, Reading, bool)>); 4] = [
+    let cases: [(&str, Vec<At>); 4] = [
         // Asleep with no work, as its node lets it.
         (
             "idle",
