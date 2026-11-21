@@ -697,6 +697,24 @@ mod tests {
     }
 
     #[test]
+    fn under_load_the_cards_own_idle_figure_is_a_floor_only_past_slow() {
+        let floor = |p95| {
+            let dir = tempfile::tempdir().unwrap();
+            let learned = the_hall_at_eight(dir.path(), p95);
+            let lately = Measures::default();
+            let known = known(&lately, &learned, (Instant::now(), 20));
+            let own = Asked {
+                own: true,
+                ..LOADED
+            };
+            known(HALL, -50, own).and_then(|(measured, _)| measured.p95)
+        };
+
+        assert_eq!(floor(40), None, "40 ms idle is no floor");
+        assert_eq!(floor(41), Some(ms(41)), "41 is");
+    }
+
+    #[test]
     fn under_load_nothing_learned_idle_is_gone_by() {
         let dir = tempfile::tempdir().unwrap();
         let learned = the_hall_at_eight(dir.path(), 15);

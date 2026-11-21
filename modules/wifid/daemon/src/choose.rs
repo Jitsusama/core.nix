@@ -1921,6 +1921,7 @@ pub(crate) mod tests {
             assert_eq!(tried, Choice::Try(HALL.into()), "9 ms is far quicker");
             let now = start + TRIAL;
             let judged = chooser.choose(now, (HALL, there, -43, CH52), &others, false);
+            assert!(chooser.trial.is_none(), "the trial ended, judged");
             (judged, chooser.went_back())
         };
         let usually = |(choice, why): &(Choice, Option<Against>)| {
@@ -1930,6 +1931,8 @@ pub(crate) mod tests {
         let learned = judged(&loaded(163), carried(21, 0.0), &loaded(100));
         let lossy = judged(&loaded(163), carried(21, 3.0), &loaded(100));
         let floor = judged(&loaded(163), carried(60, 0.0), &loaded(100));
+        let at_slow = judged(&loaded(163), carried(40, 0.0), &loaded(100));
+        let past_slow = judged(&loaded(163), carried(41, 0.0), &loaded(100));
         let idle = judged(&unloaded(120), carried(50, 0.0), &unloaded(70));
 
         assert!(
@@ -1944,6 +1947,15 @@ pub(crate) mod tests {
             floor,
             (Choice::Stay, None),
             "but 60 ms is a floor, no bar for a download to beat"
+        );
+        assert!(
+            usually(&at_slow),
+            "a usual of SLOW is no floor, so still bars: {at_slow:?}"
+        );
+        assert_eq!(
+            past_slow,
+            (Choice::Stay, None),
+            "one a millisecond past it is"
         );
         assert!(
             usually(&idle),
@@ -3215,10 +3227,9 @@ pub(crate) mod tests {
         let left = unloaded(45, 0.0);
         assert_eq!(why, Some(Against::Worse(left)), "the quicker judged");
         assert!(kept, "worse than it left, kept off an hour");
+        // The span since the back is whole by the settle, so the desk's
+        // failing link would leave through a keep-off that yields.
         let at = now + SETTLE;
-        // A span on the desk first, so the failing minute is a whole one's.
-        let span = now + SETTLE.saturating_sub(SPAN);
-        kept_worse.choose(span, (DESK, &slow, -50, CH52), &around, false);
         let failed = kept_worse.choose(at, (DESK, &failing, -50, CH52), &around, false);
         assert_eq!(
             failed,
@@ -3370,9 +3381,11 @@ pub(crate) mod tests {
 
         let few = judged(sparse(ECHOED - 1), false);
         let enough = judged(sparse(ECHOED), false);
-        // A trial made for a wider band's room goes back only carrying
-        // badly, never for what the narrower one left usually carries.
-        let banded = judged(unloaded(76), true);
+        // A trial made for a wider band's room, off a minute using the
+        // narrower one's, goes back only carrying badly, never for what
+        // the narrower one usually carries.
+        let banded =
+            judged_off_the_desk(start, (carried(76, 0.0), usual()), &carried(30, 0.0), true);
 
         assert_eq!(
             few,
