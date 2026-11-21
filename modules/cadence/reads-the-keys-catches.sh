@@ -15,14 +15,11 @@ standing=5
 config=7
 work=$(mktemp -d)
 
-keys() {
-  bash "$check" "$@" 2>"$work/said"
-}
-
-keys "${files[@]}" || {
-  echo "the check refused spend-watch's own files: $(cat "$work/said")" >&2
+if ! bash "$check" "${files[@]}" 2>"$work/said"; then
+  echo "the check refused spend-watch's own files:" >&2
+  cat "$work/said" >&2
   exit 1
-}
+fi
 
 # A copy of file number $2 changed by the sed program $3 must be refused.
 refused() {
@@ -33,7 +30,7 @@ refused() {
     exit 1
   fi
   given[at]=$copy
-  if keys "${given[@]}"; then
+  if bash "$check" "${given[@]}" 2>"$work/said"; then
     echo "the check passed ${files[$at]} with $name" >&2
     exit 1
   fi
