@@ -82,7 +82,9 @@ const HEAVY_STEADY: Duration = Duration::from_millis(24);
 /// slow end past `SLOW`.
 const TAIL: Duration = Duration::from_secs(90);
 
-/// Past this loss the link is failing, and it's left even during a call.
+/// Past this loss the link is failing, and it's left even during a call,
+/// but in the span just after a back, whose losses may be the way back's
+/// (`holds_still`).
 const FAILING: f64 = 10.0;
 
 /// How much fainter than the one it's on another access point may be
@@ -272,7 +274,7 @@ pub struct Chooser {
 
 /// An access point kept off, until when, and whether a failing link may
 /// still leave for it: one kept off for carrying worse only than the
-/// usual carried better than the point left did, so it may.
+/// usual carried no worse than the point left did, so it may.
 struct Kept {
     until: Instant,
     yields: bool,
@@ -411,7 +413,7 @@ impl Chooser {
         // its trial goes back where it does (`MOVED_BY`).
         // None of that leaves a wider band holding well (`holds_wide`).
         // A point kept off only for carrying worse than the usual twice
-        // carried better than the point left did, so a failing link may
+        // carried no worse than the point left did, so a failing link may
         // still leave for it, once a whole span says it's failing, as after
         // a back: one may come from a join or a resume as well.
         let resting = resting(measured);
@@ -783,8 +785,9 @@ impl Chooser {
         // doesn't end the repeats, since a usual is blended over neighbouring
         // steps, and under load over every hour, so ten slow minutes barely
         // move it. Another point's usual is another bar, so counts apart.
-        // That keep-off yields to a failing link, which the point tried
-        // carried better than, so the card isn't held on a point gone bad.
+        // That keep-off yields to a failing link, as the point tried carried
+        // no worse than the one left, so the card isn't held on a point
+        // gone bad.
         self.usually
             .retain(|_, at| now.saturating_duration_since(*at) < SPURNED);
         let usual = matches!(why, Against::Usually(_));
@@ -2881,9 +2884,10 @@ pub(crate) mod tests {
             ..desk_at(-50, None)
         };
         let around = [stairs, hall(-45, Some(20), None)];
-        // wpa_supplicant roams the card to the stairs, so no hold after a
-        // back keeps it, only its span there being young.
-        let roamed = again + SETTLE;
+        // wpa_supplicant roams the card to the stairs within the span the
+        // back holds the desk, so only the point it went back to would be
+        // held, and only the stairs' span there being young keeps it.
+        let roamed = again + Duration::from_secs(61);
         let on = (STAIRS, &failing, -50, CH52);
         chooser.choose(roamed, on, &around, false);
         let young = chooser.choose(
@@ -2895,12 +2899,11 @@ pub(crate) mod tests {
         let held = chooser.held();
         let whole = chooser.choose(roamed + SPAN, on, &around, false);
 
-        assert_ne!(
-            young,
-            Choice::Try(HALL.into()),
-            "the stairs failing less than a whole span keep off the hall"
+        assert!(
+            !matches!(young, Choice::Try(_)),
+            "the stairs failing less than a whole span keep off the hall: {young:?}"
         );
-        assert_eq!(held, None, "held by no back");
+        assert_eq!(held, None, "held by no back, as the stairs aren't the desk");
         assert_eq!(
             whole,
             Choice::Try(HALL.into()),
@@ -3184,6 +3187,21 @@ pub(crate) mod tests {
         assert!(
             matches!(past_slow.0, Some(Against::Usually(_))),
             "a minute past SLOW is judged by its usual: {past_slow:?}"
+        );
+        let sparse = |echoes| Measured {
+            echoes,
+            ..unloaded(41)
+        };
+        let few = judged(sparse(ECHOED - 1), Some(unloaded(14)), &unloaded(30));
+        assert_eq!(
+            few,
+            (None, false),
+            "a minute echoing short of ECHOED gives too few to weigh"
+        );
+        let enough = judged(sparse(ECHOED), Some(unloaded(14)), &unloaded(30));
+        assert!(
+            matches!(enough.0, Some(Against::Usually(_))),
+            "one echoing ECHOED is judged by its usual: {enough:?}"
         );
         let unlike = judged(moving(76, 40), Some(unloaded(14)), &unloaded(30));
         assert_eq!(
