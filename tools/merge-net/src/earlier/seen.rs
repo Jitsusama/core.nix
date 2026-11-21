@@ -89,6 +89,26 @@ pub fn witnessed(folder: &Path) -> Result<HashSet<Read>, String> {
     Ok(texts.iter().flat_map(|(_, text)| read_in(text)).collect())
 }
 
+/// The folder beside the review rounds where another machine's rounds
+/// are mirrored, one folder a machine named for it, read as the harness's
+/// gates read it. A unit of the machine's own fills it, so nothing here
+/// names a machine. On 21 November councils ran on a second machine while
+/// this one's memory kept its own shut, and ready couldn't see them.
+const MIRRORED: &str = "runs-from";
+
+/// Every commit a round read, kept under `folder` or mirrored beside it
+/// from another machine. Only `folder` can refuse, as [`witnessed`] says:
+/// a mirror that can't be read, or holds another shape, adds no read but
+/// takes none away, since it can only show more heads read.
+pub fn witnessed_here_or_mirrored(folder: &Path) -> Result<HashSet<Read>, String> {
+    let mut reads = witnessed(folder)?;
+    let mirrors = fs::read_dir(folder.with_file_name(MIRRORED));
+    for mirror in mirrors.into_iter().flatten().flatten() {
+        reads.extend(witnessed(&mirror.path()).unwrap_or_default());
+    }
+    Ok(reads)
+}
+
 /// Whether the newest round in the change's file `text` is the shape
 /// merge-net reads: a kind, when it started, and the commits it was asked
 /// of, whether or not it has been collected.
@@ -386,5 +406,45 @@ mod tests {
         let said = witnessed(&folder).unwrap_err();
         fs::remove_dir_all(&folder).unwrap();
         assert!(said.contains("record shape"), "{said}");
+    }
+
+    // A round mirrored from another machine reads its head as one kept
+    // here does; a mirror that can't be read, or holds another shape,
+    // takes nothing away from what's read here.
+    #[test]
+    fn a_round_mirrored_from_another_machine_reads_its_head() {
+        let review = folder("mirrored");
+        let runs = review.join("runs");
+        let other = review.join("runs-from/other");
+        let odd = review.join("runs-from/odd");
+        fs::create_dir_all(&runs).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::create_dir_all(&odd).unwrap();
+        fs::write(review.join("runs-from/file"), "").unwrap();
+        let change =
+            |witness| json!({"change": {}, "runs": [round(&json!({"witness": id(witness)}))]});
+        written(&runs, "here.json", &change('a'), 0);
+        written(&other, "there.json", &change('b'), 0);
+        for each in 0..SHAPE_JUDGED_BY {
+            written(
+                &odd,
+                &format!("new-{each}.json"),
+                &json!({"change": {}, "rounds": [round(&json!({}))]}),
+                0,
+            );
+        }
+        let seen = witnessed_here_or_mirrored(&runs);
+        let unmirrored = witnessed_here_or_mirrored(&other.join("runs"));
+        fs::remove_dir_all(&review).unwrap();
+        assert_eq!(
+            seen,
+            Ok(HashSet::from([change_read('a'), change_read('b')])),
+            "a mirrored round reads its head beside one kept here"
+        );
+        assert_eq!(
+            unmirrored,
+            Ok(HashSet::new()),
+            "with no rounds here and no mirrors beside them, nothing is read"
+        );
     }
 }

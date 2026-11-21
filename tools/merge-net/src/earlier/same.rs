@@ -24,7 +24,7 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// `ready` past 15 minutes while four ran at once.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
     let repo = Path::new(".");
-    let rounds = seen::witnessed(&seen::rounds_folder())?;
+    let rounds = seen::witnessed_here_or_mirrored(&seen::rounds_folder())?;
     read_in(
         commit,
         &rounds,

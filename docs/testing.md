@@ -196,7 +196,9 @@ through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main
 as it is now, or at which no `changed-checks` run that built what it named
 passed, from nix-offload's record of what passed at each commit. It refuses
-one no review round read too, from the rounds the harness keeps, unless it
+one no review round read too, from the rounds the harness keeps, those
+another machine's harness kept among them where the harness's review
+state mirrors them under `review/runs-from/<machine>`, unless it
 is a clean rebase of a commit one read, by the same patch id taken with
 its context lines and whitespace, so a block moved within its file is
 another change. A round over a range of commits stands for its head only
