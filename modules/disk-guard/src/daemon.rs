@@ -2594,8 +2594,6 @@ impl Guard {
         Ok((scan, offers))
     }
 
-    /// Runs a pass over what lies on the watched filesystem `device` and
-    /// journals it.
     /// The watched filesystems but `device`'s, as their last measure left
     /// them, for a pass there to give way to.
     fn elsewhere(&self, device: u64) -> Vec<Elsewhere> {
@@ -2613,6 +2611,23 @@ impl Guard {
             .collect()
     }
 
+    /// Whether a pass, with the system daemon unheard, kept something only
+    /// it could vouch for: kept by the survey before it was offered, or by
+    /// the pass.
+    fn kept_unvouched(&self, scan: &Scan, report: &crate::pass::Report) -> bool {
+        scan.went_unheard()
+            && (self
+                .kept
+                .iter()
+                .any(|(_, used)| matches!(used, crate::activity::Use::Unknown(_)))
+                || report
+                    .actions
+                    .iter()
+                    .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))))
+    }
+
+    /// Runs a pass over what lies on the watched filesystem `device` and
+    /// journals it.
     fn pass_on(
         &mut self,
         tick: &Tick,
@@ -2684,17 +2699,7 @@ impl Guard {
         } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
-            // Kept by the survey before it was offered, or by the pass.
-            let unvouched = scan.went_unheard()
-                && (self
-                    .kept
-                    .iter()
-                    .any(|(_, used)| matches!(used, crate::activity::Use::Unknown(_)))
-                    || report
-                        .actions
-                        .iter()
-                        .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))));
-            self.memory.upkept = Some(if unvouched {
+            self.memory.upkept = Some(if self.kept_unvouched(scan, &report) {
                 tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
             } else {
                 tick.wall
