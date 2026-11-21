@@ -134,9 +134,11 @@ def test_udev_no_longer_hands_the_brio_to_the_seat(machine: BaseMachine, switche
 def test_the_switch_ends_the_brios_old_watch(machine: BaseMachine, switched: str) -> None:
     """The watch started as the seat's camera ends, leaving the loopback's watch to say who."""
     old = the_old_watch(switched)
+    # is-active fails for every state but active, and the driver's shell stops at a failure.
     try:
         machine.wait_until_succeeds(
-            f'state=$(systemctl is-active {old}); [ "$state" = inactive ] || [ "$state" = failed ]',
+            f"state=$(systemctl is-active {old} || true); "
+            '[ "$state" = inactive ] || [ "$state" = failed ]',
             timeout=SEATING,
         )
     except RequestedAssertionFailed:
