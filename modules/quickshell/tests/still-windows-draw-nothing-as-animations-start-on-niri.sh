@@ -41,19 +41,21 @@ if [ "$ran" -ne 0 ]; then
   exit 1
 fi
 
-# Without these, the case is another loop's, or fewer windows', or the
-# still window wasn't shown as the squares started, which it says nothing
-# about: a start that misses the patch's early return asks every shown
-# window for a frame, so the case fails on its own, but a window not
+# Without these, the case is another loop's, or fewer windows', or its
+# starts never reached the patched branch, which it says nothing about.
+# The patch acts in animationStarted(), which Qt runs only as its driver
+# starts again after stopping, and where it starts its timer: a start
+# whose driver never stopped passes untested, and one with a window not
 # shown draws nothing patched or not. Qt's line starting its timer with
-# all three windows shown, inside a start, shows all three were shown
-# then. So each of the case's starts, from its own line to the next
-# start's or the count's, is asked for that line, and at least half of
-# the starts the case counted must have one. Not every start: Qt logs it
-# only as it starts the timer, and on a loaded builder it logged it 8
-# times over a whole run of ten starts, one stop finding a window not
-# shown, its cause not known (2026-11-21). The timer's line is Qt's own
-# wording, which a Qt bump may change.
+# all three windows shown, inside a start, shows that start reached the
+# branch with all three shown. So each of the case's starts, from its
+# own line to the next start's or the count's, is asked for that line,
+# and at least half of the starts the case counted must have one. Not
+# every start: on a loaded builder Qt logged it 8 times over a whole run
+# of ten starts, one stop finding a window not shown, its cause not
+# known (2026-11-21), and how many of those fell within the starts that
+# log doesn't say; a passing run logged 11 over the run and 10 within
+# them. The timer's line is Qt's own wording, which a Qt bump may change.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
