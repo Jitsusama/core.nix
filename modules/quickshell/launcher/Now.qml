@@ -181,8 +181,15 @@ Provider {
 
         function onOpenChanged() {
             if (!provider.launcher.open) {
+                // Shut before Now woke, when it opened never left infinity,
+                // so nothing else puts Desktop back where a shut launcher
+                // keeps it (replaceLately), and the next opening would
+                // start from where this one left it.
+                const neverOpened = provider.openedAt === Number.POSITIVE_INFINITY;
                 provider.openingAt = -1;
                 provider.openedAt = Number.POSITIVE_INFINITY;
+                if (neverOpened)
+                    provider.replaceLately();
                 return;
             }
             provider.openingAt = Date.now();
@@ -204,9 +211,10 @@ Provider {
             opensIfWaiting();
     }
     // Its opening work run now, while it waits for Now to wake in an open
-    // launcher. A notice come or read before then would be held still from
-    // no opening (latelyNotices), so a row read under the cursor would drop
-    // and come back as Now woke.
+    // launcher, as the notices' history is given again, which every change
+    // the daemon sends does. A notice come or read before then would be
+    // held still from no opening (latelyNotices), so a row read under the
+    // cursor would drop and come back as Now woke.
     function opensIfWaiting() {
         if (openingAt >= 0 && provider.launcher?.open)
             provider.feltOpening(() => provider.opens());
