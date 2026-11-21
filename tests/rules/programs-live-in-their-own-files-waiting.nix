@@ -77,7 +77,7 @@
   "modules/zathura/checks.nix" = 4;
   "modules/zoxide/checks.nix" = 2;
   "tests/vm/sound/call-transcripts.nix" = 1;
-  "tests/desktop.nix" = 4;
+  "tests/desktop.nix" = 3;
   "tests/vm/sound/dictation-chord.nix" = 1;
   "tests/vm/devices/ir-camera.nix" = 1;
   "tests/lib/qemu-after-its-sockets.nix" = 1;
