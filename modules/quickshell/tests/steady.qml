@@ -378,6 +378,9 @@ QtObject {
             ["a room grown under the card", 32, [{}, {}, {}], 3, 1000, 32],
             ["a room shrunk below the card", 48, [{}, {}, {}], 3, 40, 32],
             ["a room shrunk with home not yet found", 48, [], 3, 40, 32],
+            // Sized from home's rows, a heading (10), a row (16) and a row
+            // standing apart (24), not from whole bands, which would stand 32.
+            ["a room shrunk below a headed card", 64, [{ heading: true }, {}, { gap: true }, {}], 3, 40, 26],
             ["a room too small for a row", 48, [{}, {}, {}], 3, 10, 0]
         ];
         for (const [what, tall, shown, fit, room, want] of refits) {

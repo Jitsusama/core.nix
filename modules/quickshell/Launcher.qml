@@ -12308,8 +12308,8 @@ Scope {
     }
 
     // An open card keeps the height it opened at, so its rows never jump
-    // as Joel reads them, but a screen that shrinks under it (a dock, a
-    // new scale) fits it again to as many of home's rows as now fit, as
+    // as Joel reads them, but a screen that shrinks under it (a new
+    // scale) fits it again to as many of home's rows as now fit, as
     // every opening sizes it, or it stands taller than the screen
     // (Steady.refitted). Called later, once for both handlers, so it reads
     // rows and their sizes both worked out from the new room, whichever

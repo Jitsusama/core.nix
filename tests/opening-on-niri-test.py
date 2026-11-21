@@ -582,7 +582,8 @@ def test_home_kept_fits_a_screen_that_shrank_while_it_was_shut(shell: Shell) -> 
         card = shell.showing()["card"]
         assert card["foot"] < card["screen"], f"kept at 1, opened at 2, it's off the bottom: {card}"
         assert card["chrome"] == card["drawn"], f"its rows were fitted to a card it isn't: {card}"
-        warned = shell.log.read_text(errors="replace")[since:].splitlines()
+        # The mark counts bytes, so the log is cut as bytes before it's read as text.
+        warned = shell.log.read_bytes()[since:].decode(errors="replace").splitlines()
         looped = [line for line in warned if "Binding loop" in line]
         assert not looped, f"refitting, it looped: {looped}"
     finally:
@@ -593,7 +594,7 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
     """Open at one scale and shrunk under it to a larger, the card refits inside the screen.
 
     The card keeps the height it opened at, so its rows never jump as Joel reads them, and a
-    screen that shrank under it (a dock, a new scale) left it taller than the screen:
+    screen that shrank under it (a new scale) left it taller than the screen:
     Networks' card stood 493.5 tall, its top 53 above a screen 388 high (the net, 2026-11-19
     and 20, at d1061758 and ed3c8438). It refits only as the room drops below it, so a screen
     that grows under it leaves it as it stands until it closes.
@@ -640,7 +641,7 @@ def test_an_open_card_fits_a_screen_that_shrinks_under_it(shell: Shell) -> None:
         )
         assert shown["current"] == last, shown
         assert seen["top"] <= last <= seen["bottom"], f"the selection fell out of view: {seen}"
-        warned = shell.log.read_text(errors="replace")[since:].splitlines()
+        warned = shell.log.read_bytes()[since:].decode(errors="replace").splitlines()
         looped = [line for line in warned if "Binding loop" in line]
         assert not looped, f"refitting, it looped: {looped}"
         shell.as_account("niri msg output winit scale 1")

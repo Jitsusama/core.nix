@@ -259,7 +259,7 @@ function tallFor(shown, rows, sizes, heading) {
 // changed: as `tall` while the room still holds it, so its rows never move
 // as Joel reads them, however much the room grows, and sized again by
 // tallFor's rule for `by`, its `shown`, `rows`, `sizes` and `heading`, once
-// the room drops below it, as a dock or a new scale leaves it. The net's
+// the room drops below it, as a new scale leaves it. The net's
 // Networks card stood 493.5 tall, its top 53 above a screen 388 high, kept
 // from the room it opened in (2026-11-19, 20).
 function refitted(tall, by) {
