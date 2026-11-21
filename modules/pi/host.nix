@@ -134,14 +134,28 @@ let
   # 1 GB floor jobs-sorter gives it: the account's soft floors add up past
   # what is free, and then the kernel reclaims from every cgroup alike, a
   # window's pages as soon as a resting conversation's. Another floor
-  # would change nothing, so background gets a ceiling instead. It leaves
-  # agents' last 12% to the windows and attended conversations, which held
-  # about 5 GB. Past it background's own allocations reclaim background's
-  # pages, slowing its turns rather than his windows. A default, so a
-  # machine may move it.
+  # would change nothing, so background gets a ceiling instead: agents'
+  # own 42%, moved onto background alone (agentsUnceiled below), so that
+  # it adds no limit the machine didn't already have. Past it background's
+  # own allocations reclaim background's pages, slowing its turns rather
+  # than his windows. A default, so a machine may move it.
   backgroundSlice = {
-    MemoryHigh = lib.mkDefault "30%";
+    MemoryHigh = lib.mkDefault "42%";
   };
+
+  # agents.slice's ceiling (modules/slices) lifted where hosts run, as it
+  # now sits on background's slice: under it, Joel's windows and attended's
+  # conversations were reclaimed alongside background's resting ones. On
+  # 21 November agents.slice sat at its ceiling with 36.6 GB in swap and
+  # 2.1 million times slowed, background holding 20 of its 25 GB. A
+  # drop-in, so the slice keeps its floors; named to sort after
+  # systemctl's 50-MemoryHigh.conf, so a ceiling set on agents.slice at
+  # runtime is lifted too. Each conversation keeps its own ceiling
+  # (MemoryHigh above), and the windows' floors are jobs-sorter's.
+  agentsUnceiled = ''
+    [Slice]
+    MemoryHigh=infinity
+  '';
 
   # How long systemd gives a conversation's own process to stop, in seconds.
   # It parks one conversation, not many, and is told the same number, so its
@@ -546,9 +560,9 @@ in
               The most JavaScript heap each of the realm's hosts may hold, in MB.
               node's own limit is about 4 GB, and on 18 November the background
               host, holding some sixty conversations, ran out of it and aborted,
-              ending every one of their turns. A realm's two hosts share
-              agents.slice, which slows past 42% of the machine's memory, so both
-              together stay under it: 8 GB each fits a 64 GB machine, and a
+              ending every one of their turns. A realm's background host runs
+              in agents-background.slice, which slows past 42% of the machine's
+              memory, so it stays under it: 8 GB fits a 64 GB machine, and a
               machine with less memory sets less. A host past its limit still
               aborts alone, rather than slowing every agent beside it.
             '';
@@ -684,6 +698,10 @@ in
         } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
+
+  config.xdg.configFile = lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && cfg != { }) {
+    "systemd/user/agents.slice.d/90-background-holds-the-ceiling.conf".text = agentsUnceiled;
+  };
 
   config.systemd.user.slices = lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && cfg != { }) {
     agents-background = {

@@ -523,6 +523,8 @@ in
     systemd.user.slices.agents.sliceConfig = {
       MemoryLow = agents;
       MemoryMin = agentsHeld;
+      # Where pi hosts run, this moves onto their background slice inside, and
+      # is lifted here (modules/pi/host.nix, agentsUnceiled).
       MemoryHigh = agentsHigh;
     };
 

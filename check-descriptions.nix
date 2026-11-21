@@ -3038,9 +3038,9 @@
   '';
   pi-background-gives-way-to-his-windows = ''
     a realm's background pi host and its conversations run in agents-background.slice, a slice
-    inside agents.slice slowed past 30% of the machine's memory, while its attended host and
-    conversations stay in agents.slice itself; a machine naming no realm, and a Mac, get no
-    such slice
+    inside agents.slice slowed past 42% of the machine's memory, while its attended host and
+    conversations stay in agents.slice itself, whose own ceiling is lifted by a drop-in; a
+    machine naming no realm, and a Mac, get no such slice and no lift
   '';
   pi-conversations-run-apart = ''
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'

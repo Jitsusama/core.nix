@@ -385,10 +385,11 @@ in
       );
 
   # Background's host and conversations run in a slice of their own inside
-  # agents.slice, slowed past 30% of the machine's memory, so their pages
+  # agents.slice, slowed past 42% of the machine's memory, so their pages
   # are reclaimed before Joel's windows' are; attended's stay in
-  # agents.slice itself. Only a machine that names a realm, on Linux, gets
-  # the slice.
+  # agents.slice itself, whose own ceiling is lifted, as it moved onto
+  # background's. Only a machine that names a realm, on Linux, gets the
+  # slice and the lift.
   pi-background-gives-way-to-his-windows =
     let
       hosts.one = {
@@ -413,20 +414,25 @@ in
       services = home.systemd.user.services;
       slice = home.systemd.user.slices.agents-background or { };
       sliceOfUnit = name: services.${name}.Service.Slice or null;
+      lift = "systemd/user/agents.slice.d/90-background-holds-the-ceiling.conf";
+      lifted = user: lib.hasInfix "MemoryHigh=infinity" (user.xdg.configFile.${lift}.text or "");
     in
     holds "pi-background-gives-way-to-his-windows"
-      "A realm's background pi host or its conversations run outside agents-background.slice, that slice has no ceiling of 30%, sits outside agents.slice or goes unseen by jobs-sorter, attended's host or conversations leave agents.slice itself, or a machine naming no realm, or a Mac, gets the slice."
+      "A realm's background pi host or its conversations run outside agents-background.slice, that slice has no ceiling of 42%, sits outside agents.slice or goes unseen by jobs-sorter, attended's host or conversations leave agents.slice itself, agents.slice keeps its ceiling, or a machine naming no realm, or a Mac, gets the slice or the lift."
       (
         sliceOfUnit "pi-host-one-background" == "agents-background.slice"
         && sliceOfUnit "pi-conversation-one-background@" == "agents-background.slice"
         && sliceOfUnit "pi-host-one-attended" == "agents.slice"
         && sliceOfUnit "pi-conversation-one-attended@" == "agents.slice"
         # systemd puts a slice named a-b.slice inside a.slice.
-        && slice.Slice.MemoryHigh or null == "30%"
+        && slice.Slice.MemoryHigh or null == "42%"
         && !(slice.Slice ? Slice)
         && sorted
+        && lifted home
         && !((account workstation).systemd.user.slices ? agents-background)
+        && !(lifted (account workstation))
         && !(mac.systemd.user.slices ? agents-background)
+        && !(lifted mac)
       );
 
   # A realm a machine names gets two hosts, attended and background, started
