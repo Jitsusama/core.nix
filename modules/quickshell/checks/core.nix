@@ -674,7 +674,10 @@ in
         export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
         mkdir -m 700 launcher $XDG_RUNTIME_DIR
-        ${copied [ "Trials.qml" ]}
+        ${copied [
+          "Options.qml"
+          "Trials.qml"
+        ]}
         cp ${../tests/trials-kept.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         ${shellFolderLint}

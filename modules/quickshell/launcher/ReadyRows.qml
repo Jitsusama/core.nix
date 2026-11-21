@@ -500,7 +500,7 @@ Scope {
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
             console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `
-                + `${JSON.stringify(answer?.error ?? null)}`);
+                + `${Presented.errorShown(answer?.error ?? null, Options.reports)}`);
         const records = refused ? {} : answer.rows ?? {};
         for (const key of Object.keys(typedHeld)) {
             if (!(key in records) && !(key in held))
@@ -537,8 +537,9 @@ Scope {
                 out.push(row);
             } else if (!(key in unserved)) {
                 unserved[key] = true;
-                console.warn(`launcher: ${place}'s search found `
-                    + `${Presented.rowShown({ key }, Options.reports)}, which isn't served yet`);
+                // Quoted, as a drawer's row is, since a search's key is a daemon's.
+                const found = Presented.quoted(Presented.rowShown({ key }, Options.reports));
+                console.warn(`launcher: ${place}'s search found ${found}, which isn't served yet`);
             }
         }
         return out;
@@ -978,17 +979,24 @@ Scope {
         }
     }
 
+    // An act as its lines in the journal say it: by its key with reports on, and
+    // otherwise by its verb alone (Presented.actShown), since what follows may be
+    // an agent's id or a calendar's words.
+    function actSaid(one) {
+        return Presented.actShown(one.key, Options.reports);
+    }
+
+    // Why an act was refused or withheld, as its line in the journal says it: quoted
+    // with reports on, and otherwise by how many letters, as typed words are
+    // (Presented.typedShown), since a daemon's words can name a row (Y2YBTS,
+    // 2026-11-20, 41ca61c4). A code, no one's words, is said whole by its own lines.
+    function whySaid(why) {
+        return Presented.typedShown(why, Options.reports);
+    }
+
     // An open whose program went between its rows being listed and Return opens nothing and says
     // so as a refused ask does, on the next opening, since the launcher has gone by then; nothing
     // was done, so nothing else it asks is sent.
-    // An act as its lines in the journal say it: by its key with reports on, said
-    // bare since an act's key is its daemon's own and the desktop's tests read it so,
-    // and otherwise by its verb alone (Presented.keyShown), since what follows may be
-    // an agent's id or a calendar's words.
-    function actSaid(one) {
-        return Presented.rowShown({ key: one.key }, Options.reports);
-    }
-
     function notOpened(key, one, why) {
         const row = served(key);
         const shown = row?.thing ?? key;
@@ -1110,7 +1118,7 @@ Scope {
         link.ask(also, answer => {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "")
-                console.info(`launcher: ${actSaid(one)}'s also refused: ${why}`);
+                console.info(`launcher: ${actSaid(one)}'s also refused: ${whySaid(why)}`);
         });
     }
 
@@ -1121,7 +1129,7 @@ Scope {
     function withheld(key, one) {
         const why = (typeof whyWithheld === "function" ? whyWithheld(key) : undefined)
             ?? Words.field.becoming?.keyed ?? "";
-        console.info(`launcher: ${actSaid(one)} withheld: ${why}`);
+        console.info(`launcher: ${actSaid(one)} withheld: ${whySaid(why)}`);
         maker?.launcher?.toldNot(toldName(key), one.ask.act ?? verbOf(one), why);
     }
 
@@ -1132,7 +1140,7 @@ Scope {
     function shut(key, one) {
         const name = toldName(key);
         const refused = why => {
-            console.info(`launcher: ${actSaid(one)} refused: ${why}`);
+            console.info(`launcher: ${actSaid(one)} refused: ${whySaid(why)}`);
             maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
         };
         const words = Words.field.becoming ?? {};

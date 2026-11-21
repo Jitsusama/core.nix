@@ -8212,7 +8212,9 @@ Scope {
             waited.firedAt = KeyTimes.now();
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
-            console.info(`launcher: "${waited.text}" listed without`
+            // The words as Trials's slow key says them (Presented.typedShown).
+            const words = Presented.typedShown(waited.text, Options.reports);
+            console.info(`launcher: ${words} listed without`
                 + ` ${waited.sources.map(one => one.settings?.name ?? "").join(", ")},`
                 + ` which hadn't answered in ${root.answersWaitedFor} ms`);
             Report.say("listed without answers");
