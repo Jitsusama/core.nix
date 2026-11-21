@@ -1277,15 +1277,27 @@ def unshared_and_closed(shell: Shell, stood: CastsStandIn) -> None:
     read_shared(shell, shared=False)
 
 
-def test_a_way_forward_into_a_copy_shown_before_a_share_is_let_go(shell: Shell) -> None:
-    """Ctrl+I into the clipboard left showing a copy goes nowhere once a share begins.
+@pytest.mark.parametrize(
+    ("way", "keys"),
+    [
+        ("Ctrl+I", ("ctrl-i",)),
+        ("Space Tab", ("spc", "tab")),
+        ("Ctrl+T", ("ctrl-t",)),
+    ],
+)
+def test_a_way_into_a_copy_shown_before_a_share_is_let_go(
+    shell: Shell, way: str, keys: tuple[str, ...]
+) -> None:
+    """Each way into the clipboard left showing a copy goes nowhere once a share begins.
 
-    Copies never says a share began, so the clipboard left before it stays on the way forward;
-    the key lets go of it as it's pressed and says so (Launcher.qml's hiddenForgotten), or the
-    copy's place would come back on a shared screen as it was left. Its journal line pins the
-    letting go to the press: a shell whose share's start emptied the ways back (Asks' untold,
-    not loaded here) would say let go too, but forget nothing as the key is pressed. The copy is
-    forgotten after, so the cases after this one find the history as empty as before.
+    Copies never says a share began, so the clipboard left before it stays on the way forward
+    (Ctrl+I), as the last place (Space Tab) and, once Ctrl+] has left it, on the tags' way back
+    (Ctrl+T). Each key lets go of it as it's pressed and says so (Launcher.qml's
+    hiddenForgotten, called first by jump, toLastPlace and tagBack), or the copy's place would
+    come back on a shared screen as it was left. Its journal line pins the letting go to the
+    press: a shell whose share's start emptied the ways back (Asks' untold, not loaded here)
+    would say let go too, but forget nothing as the key is pressed. The copy is forgotten
+    after, so the cases after this one find the history as empty as before.
     """
     copied = "a copy shown before the share"
     with contextlib.ExitStack() as after:
@@ -1302,13 +1314,20 @@ def test_a_way_forward_into_a_copy_shown_before_a_share_is_let_go(shell: Shell) 
         drawn_until(shell, lambda texts: copied in texts, "drew the copy unshared")
         home = len(shell.showing()["held"]) - 1
         shell.normal()
+        # Into the copy's acts, which leaves the clipboard on the tags' way back, then home by
+        # the jumps, which leaves it ahead and as the last place.
+        shell.send_key("ctrl-bracketright")
+        shell.launcher_until(lambda shown: len(shown["held"]) == home + 2)
+        shell.send_key("ctrl-o")
+        shell.launcher_until(lambda shown: len(shown["held"]) == home + 1)
         shell.send_key("ctrl-o")
         shell.launcher_until(lambda shown: len(shown["held"]) == home)
         stood.say(said=False)
         read_shared(shell, shared=True)
         shell.normal()
         since = shell.mark()
-        shell.send_key("ctrl-i")
+        for key in keys:
+            shell.send_key(key)
         shell.launcher_until(
             lambda shown: (
                 len(shown["held"]) != home
@@ -1316,7 +1335,7 @@ def test_a_way_forward_into_a_copy_shown_before_a_share_is_let_go(shell: Shell) 
             )
         )
         shown = shell.showing()
-        assert len(shown["held"]) == home, f"Ctrl+I went back into {shown['path']} shared"
+        assert len(shown["held"]) == home, f"{way} went back into {shown['path']} shared"
         forgot_at_the_press(shell, since)
         shell.close_launcher()
 
