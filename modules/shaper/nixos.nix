@@ -298,9 +298,10 @@ in
       # would hold a switch for systemd's 90 s. Stops took 0.04 to 3.6 s on
       # 21 November, the slowest under a load of 160. It bounds the stop's
       # sweep too, one tc read for each of a handful of devices, which took
-      # 46 ms. Past this the shaper is killed, and the stop's sweep, or the
-      # next shaper taking the queues back, still sets each queue right
-      # that it can read, and names in the journal any it can't.
+      # 46 ms. Past this the shaper is killed. The stop's sweep names in the
+      # journal any device it can't read, and one cut off at this bound
+      # leaves those it hadn't reached at their last rate, until a shaper
+      # starts and takes them back.
       TimeoutStopSec = 15;
       Restart = "always";
       RestartSec = 2;
