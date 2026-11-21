@@ -172,21 +172,8 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key == FINDINGS {
         return findings_filed(m);
     }
-    // Joel's terms for a queue (20 November): what it protects, whether the
-    // work could go without it, and a change weighed against others.
     if m.key.starts_with(QUEUE) {
-        return vec![Filed {
-            key: format!("hour:{}", m.key),
-            owner: m.owner.clone(),
-            text: format!(
-                "cadence hour: the worst queue today is yours, {says}. Please reply within a \
-                 day with what it protects, whether the work could go without it, and the \
-                 change that keeps the protection without the wait, weighed against at least \
-                 two designs beside the obvious one, with its date. It closes by itself once \
-                 its p90 is back in."
-            ),
-            says,
-        }];
+        return vec![queue_asked(m, says)];
     }
     let owners = by_owner(m);
     if !owners.is_empty() {
@@ -223,6 +210,24 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// The worst queue's ask, in Joel's terms for a queue (20 November): what
+/// it protects, whether the work could go without it, and a change weighed
+/// against others, with its date.
+fn queue_asked(m: &Measure, says: String) -> Filed {
+    Filed {
+        key: format!("hour:{}", m.key),
+        owner: m.owner.clone(),
+        text: format!(
+            "cadence hour: the worst queue today is yours, {says}. Please reply within a day \
+             with what it protects, whether the work could go without it, and the change that \
+             keeps the protection without the wait, weighed against at least two designs \
+             beside the obvious one, with its date. It closes by itself once its p90 is back \
+             in."
+        ),
+        says,
+    }
 }
 
 /// A clean measure's files, or a cell measure's cells, by the owner each

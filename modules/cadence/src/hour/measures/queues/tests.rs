@@ -90,6 +90,13 @@ fn each_queue_reads_its_own_record_for_the_day_against_its_target() {
         ),
         outcome(
             "world-walk",
+            "2026-11-21T11:05:00Z",
+            Some("2026-11-21T11:05:01Z"),
+            None,
+            1,
+        ),
+        outcome(
+            "world-walk",
             "2026-11-21T11:10:00Z",
             Some("2026-11-21T11:13:00Z"),
             None,
@@ -112,12 +119,12 @@ fn each_queue_reads_its_own_record_for_the_day_against_its_target() {
         "no builds today, so no builds line: {measures:?}"
     );
     let walks = found(&measures, "world-walks");
-    assert_eq!(walks.now, 180.0, "the p90 of two is the longer");
+    assert_eq!(walks.now, 180.0, "the p90 of three is the longest");
     assert_eq!(walks.target, Some(60.0), "a minute at most");
     assert_eq!(walks.owner, "80ECO2", "the workflow's owner");
     assert_eq!(walks.class, Class::Queues, "on the queues section");
     assert_eq!(
-        walks.says, "p90 seconds waiting for a World git turn (median 1, worst 180; 2 in a day)",
+        walks.says, "p90 seconds waiting for a World git turn (median 1, worst 180; 3 in a day)",
         "names the wait, its spread and its flow"
     );
     let sent = found(&measures, "sends");

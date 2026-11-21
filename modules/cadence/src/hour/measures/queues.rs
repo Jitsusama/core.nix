@@ -8,8 +8,6 @@
 //! hour asks the owner of the one furthest past for that change
 //! (owing.rs).
 
-use serde_json::Value;
-
 use super::{Class, Measure, count, lines, seconds};
 use crate::stats::spread;
 
