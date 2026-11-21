@@ -255,7 +255,7 @@
         "unread": "its node's answer couldn't be read",
         "empty": "say what the work is: a link or a few words",
         "unplaced": "that folder isn't a whole path",
-        "busy": "still starting the last one; say it again once that's done",
+        "busy": "still starting the last one; once that's done, say it again, or follow a page's link again",
         "outside": "new work starts only from your own Return in the launcher",
         "offered": "a page offered this work; read it to its end, then Return starts it",
         "offeredFrom": "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"

@@ -69,10 +69,28 @@ const FORMATTING = [
     [0xe0001, 0xe0001], [0xe0020, 0xe007f]
 ];
 
+// What draws nothing or a blank yet isn't Cf, as mycelium-link's BLANK has
+// it: Unicode's other default ignorables (Hangul fillers, variation
+// selectors and the rest) and the braille blank, U+2800, which the shell
+// draws full width. Kept, a run of them pushes a page's words out of sight
+// between the start Joel reads and the end Return waits for.
+const BLANK = [
+    [0x034f, 0x034f], [0x115f, 0x1160], [0x17b4, 0x17b5], [0x180b, 0x180d],
+    [0x180f, 0x180f], [0x2065, 0x2065], [0x2800, 0x2800], [0x3164, 0x3164],
+    [0xfe00, 0xfe0f], [0xffa0, 0xffa0], [0xfff0, 0xfff8], [0xe0000, 0xe0000],
+    [0xe0002, 0xe001f], [0xe0080, 0xe0fff]
+];
+
+// Whether `code` is a format character or draws a blank.
+function unseen(code) {
+    return [FORMATTING, BLANK].some(runs =>
+        runs.some(([first, last]) => code >= first && code <= last));
+}
+
 // The first code point past the 16 bits one UTF-16 half holds.
 const FIRST_PAIRED = 0x10000;
 
-// `text` with every format character left out, read by code point, so a
+// `text` with every format or blank character left out, read by code point, so a
 // tag character (a pair of halves) goes whole: Qt's engine walks a string
 // by its halves, even in Array.from.
 function unformatted(text) {
@@ -80,7 +98,7 @@ function unformatted(text) {
     for (let at = 0; at < text.length;) {
         const code = text.codePointAt(at);
         const width = code >= FIRST_PAIRED ? 2 : 1;
-        if (!FORMATTING.some(([first, last]) => code >= first && code <= last)) {
+        if (!unseen(code)) {
             kept += text.slice(at, at + width);
         }
         at += width;

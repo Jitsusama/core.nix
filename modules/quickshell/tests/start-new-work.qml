@@ -76,6 +76,13 @@ QtObject {
             { words: "tidythe rows", from: null });
         Expect.same("words holding only format characters offer nothing",
             Sprouting.offered("words:\u202e\u200b", "from:", sessionNamed), null);
+        // A run of blanks would hide words between the start and the end.
+        const hidden = "\u2800\u3164\u115f\uffa0\ufe0f\u{e0100}".repeat(40);
+        Expect.same("words lose what draws a blank, as mycelium-link's do",
+            Sprouting.offered(`words:tidy${hidden} the${hidden}rows`, "from:", sessionNamed),
+            { words: "tidy therows", from: null });
+        Expect.same("words holding only blanks offer nothing",
+            Sprouting.offered(`words:${hidden}`, "from:", sessionNamed), null);
         Expect.same("the longest words are offered whole",
             Sprouting.offered(`words:${"\u{1F331}".repeat(1000)}`, "from:", sessionNamed)?.words,
             "\u{1F331}".repeat(1000));
