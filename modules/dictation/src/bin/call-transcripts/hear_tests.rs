@@ -21,12 +21,14 @@ fn line(side: Side, at: usize, voice: Option<usize>) -> Line {
 const ADA: [f32; 2] = [1.0, 0.0];
 const BO: [f32; 2] = [0.0, 1.0];
 
-/// Hears each take into `writing`, a line of theirs for each said.
+/// Hears each take into `writing`, one piece of 5 s, a line of theirs
+/// for each said.
 fn hear_takes(writing: &mut Writing, takes: &[([f32; 2], bool)]) {
     for &(voice, said) in takes {
         let at = writing.lines.len();
         let line_at = said.then_some(at);
-        writing.heard(voice.to_vec(), 5 * SECOND, line_at);
+        let start = (20 + 5 * at) * SECOND;
+        writing.heard(line_at, vec![(voice.to_vec(), start, 5 * SECOND)]);
         if said {
             writing.lines.push(line(Side::Theirs, 20 + 5 * at, None));
         }
@@ -92,6 +94,62 @@ fn a_take_with_no_words_helps_tell_the_voices_apart() {
         voices(&unhelped),
         [Some(0), Some(1), Some(2)],
         "Ada's lines were one voice without the wordless take, so it proved nothing"
+    );
+}
+
+fn word(text: &str, at: usize) -> Word {
+    Word {
+        text: text.to_owned(),
+        at,
+    }
+}
+
+#[test]
+fn a_take_that_runs_from_one_voice_into_another_is_split_between_them() {
+    let mut writing = Writing {
+        whole: true,
+        ..Writing::default()
+    };
+    hear_takes(&mut writing, &[(ADA, true), (BO, true)]);
+    // A take of 6 s, 40 s in: its first piece Ada's, its second Bo's.
+    let start = 40 * SECOND;
+    let index = writing.lines.len();
+    writing.heard(
+        Some(index),
+        vec![
+            (ADA.to_vec(), start, 3 * SECOND),
+            (BO.to_vec(), start + 3 * SECOND, 3 * SECOND),
+        ],
+    );
+    writing.lines.push(Line {
+        start,
+        end: start + 6 * SECOND,
+        text: "Done. Not yet.".to_owned(),
+        ..line(Side::Theirs, 40, None)
+    });
+    let said = [("Done.", 1), ("Not", 4), ("yet.", 5)];
+    let words = said.map(|(text, at)| word(text, start + at * SECOND));
+    writing.words.insert(index, words.into());
+    give_voices(&mut writing, None);
+    let lines: Vec<(&str, Option<usize>)> = writing
+        .lines
+        .iter()
+        .map(|line| (line.text.as_str(), line.voice))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            ("Said.", Some(0)),
+            ("Said.", Some(1)),
+            ("Done.", Some(0)),
+            ("Not yet.", Some(1)),
+        ],
+        "the take running from Ada into Bo wasn't split between their voices"
+    );
+    assert_eq!(
+        writing.lines[3].start,
+        start + 3 * SECOND,
+        "Bo's part doesn't start where his piece does, so the Meet names it by the wrong time"
     );
 }
 
