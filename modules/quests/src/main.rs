@@ -318,8 +318,12 @@ fn looked(said: &Value, kept: &Path, looked: &Mutex<Option<Looked>>) -> Value {
     let mut next = held.clone().unwrap_or_default();
     next.extend(seen);
     if let Err(why) = keep_looked(kept, &next) {
-        return json!({"error": {"code": "failed",
-            "message": format!("what was looked at couldn't be kept: {why}")}});
+        // Said here too, since the launcher asks it on its way shut and
+        // reads no answer: unsaid, What Moved would never clear, and why
+        // nowhere.
+        let said = format!("what was looked at couldn't be kept: {why}");
+        eprintln!("quests: {said}");
+        return json!({"error": {"code": "failed", "message": said}});
     }
     *held = Some(next);
     json!({"done": true})
@@ -360,6 +364,25 @@ fn own_asks(
         answer["id"] = said["id"].clone();
         Some(answer)
     })
+}
+
+/// What's heard next: `Some` of what was said, or `None` once `due`, the
+/// soonest date What Moved shows, passes with nothing said, so its record
+/// is made again rather than showing a passed date as the next owed; an
+/// error once nothing is left to say anything.
+fn next_heard(
+    heard: &mpsc::Receiver<Heard>,
+    due: Option<i64>,
+) -> Result<Option<Heard>, mpsc::RecvError> {
+    let Some(at) = due else {
+        return heard.recv().map(Some);
+    };
+    let wait = u64::try_from(at.saturating_sub(now_ms())).unwrap_or(0);
+    match heard.recv_timeout(Duration::from_millis(wait.saturating_add(1))) {
+        Ok(one) => Ok(Some(one)),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(mpsc::RecvError),
+    }
 }
 
 /// Follows the node's quests and serves their rows for as long as it
@@ -415,11 +438,12 @@ fn serve_quests(args: &Args) -> Result<(), Failure> {
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .is_none();
-    while let Ok(first) = heard.recv() {
+    let mut due = None;
+    while let Ok(first) = next_heard(&heard, due) {
         // Everything said meanwhile is taken before the rows are made, so
         // the node writing both lists at once makes the rows once.
-        let mut moved = false;
-        for one in std::iter::once(first).chain(heard.try_iter()) {
+        let mut moved = first.is_none();
+        for one in first.into_iter().chain(heard.try_iter()) {
             moved |= match one {
                 Heard::Open(answer) => !open.took(&answer).is_empty(),
                 Heard::Ended(answer) => !ended.took(&answer).is_empty(),
@@ -446,6 +470,8 @@ fn serve_quests(args: &Args) -> Result<(), Failure> {
         });
         *searched.lock().unwrap_or_else(PoisonError::into_inner) = Searched::of(&made);
         let quests: Vec<Quest> = open.records().map(|(_, record)| Quest(record)).collect();
+        let now = now_ms();
+        due = moved::next_due(&asks, now);
         let beside = vec![
             served::summary_record(&made.said),
             folders::record(&made.open, &home),
@@ -458,7 +484,7 @@ fn serve_quests(args: &Args) -> Result<(), Failure> {
                     .unwrap_or_default(),
                 &quests,
                 &words,
-                now_ms(),
+                now,
             ),
         ];
         if !kept.take(made.open, beside).is_empty() {
@@ -466,4 +492,41 @@ fn serve_quests(args: &Args) -> Result<(), Failure> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A folder of its own for one case, gone before and made afresh.
+    fn folder(case: &str) -> PathBuf {
+        let at = std::env::temp_dir().join(format!("quests-{}-{case}", std::process::id()));
+        let _ = fs::remove_dir_all(&at);
+        fs::create_dir_all(&at).expect("a folder for the case");
+        at
+    }
+
+    #[test]
+    fn nothing_kept_takes_the_first_asks_as_shown() {
+        let kept = folder("none").join("looked");
+        assert_eq!(looked_kept(&kept), None, "nothing kept is a first start");
+    }
+
+    #[test]
+    fn a_kept_file_unread_or_strange_says_every_ask_once() {
+        let at = folder("strange");
+        let strange = at.join("looked");
+        fs::write(&strange, "{\"seen\": 3").expect("a strange kept file");
+        // A folder where the file goes can't be read as one, as root too.
+        let unread = at.join("unread");
+        fs::create_dir(&unread).expect("a folder in the kept file's place");
+        for kept in [strange, unread] {
+            assert_eq!(
+                looked_kept(&kept),
+                Some(Looked::new()),
+                "{} is taken as nothing looked at, never as a first start",
+                kept.display()
+            );
+        }
+    }
 }

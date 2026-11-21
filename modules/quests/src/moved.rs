@@ -214,6 +214,23 @@ fn names(quest: Quest, owner: &str) -> bool {
     quest.id() == owner || quest.id().rsplit('-').next() == Some(owner)
 }
 
+/// The soonest date still owed of any ask, after `now`: when a record made
+/// now would show a date that has passed, so it's made again then, though
+/// nothing else has moved.
+#[must_use]
+pub fn next_due(asks: &[Ask], now: i64) -> Option<i64> {
+    soonest(asks.iter(), now.saturating_add(1))
+}
+
+/// The soonest date of `asks` not landed and not passed by `now`, which
+/// is the next one owed; a passed one is a slip its keeper dates again.
+fn soonest<'a>(asks: impl Iterator<Item = &'a Ask>, now: i64) -> Option<i64> {
+    asks.filter(|ask| ask.landed.is_none())
+        .filter_map(|ask| ask.expected)
+        .filter(|at| *at >= now)
+        .min()
+}
+
 /// What moved, as one record served beside Quests' rows, `moved:quests`,
 /// holding an entry for each open quest with an ask moved since he
 /// looked, and `seen`, what showing them shows of each, for the launcher
@@ -292,12 +309,7 @@ fn entry(quest: Quest, own: &[&Ask], moved: &[(&Ask, How)], words: &Words, now: 
         ([], None, Some(one)) => words.fill("moved-taken", &[("words", &one.words)]),
         ([], None, None) => String::new(),
     };
-    let next = own
-        .iter()
-        .filter(|ask| ask.landed.is_none())
-        .filter_map(|ask| ask.expected)
-        .filter(|at| *at >= now)
-        .min();
+    let next = soonest(own.iter().copied(), now);
     let side: Vec<Value> = next
         .map(|at| time::said(at, Form::Moment, &words.fill("moved-next", &[])))
         .into_iter()
@@ -502,6 +514,9 @@ mod tests {
     /// A date ONE owed that passed unlanded, before the records are made.
     const OVERDUE: &str = "2026-11-20T12:00:00-05:00";
 
+    /// A date ONE owes after its soonest, which is never the next.
+    const LATER: &str = "2026-11-25T18:00:00-05:00";
+
     /// Their asks once moved: ONE's two landed and took one on, TWO's
     /// date moved, THREE took one on, STILL's didn't move and ENDED ended.
     fn moved_after() -> String {
@@ -526,6 +541,7 @@ mod tests {
                 &json!({"expected": "2026-11-21T18:00:00-05:00"}),
             ),
             line("ONE", AT, "overdue", &json!({"expected": OVERDUE})),
+            line("ONE", AT, "later", &json!({"expected": LATER})),
             line(
                 "TWO",
                 AT,
@@ -554,6 +570,27 @@ mod tests {
             quest("QEST-20261025-STILL", "active"),
             quest("QEST-20261026-ENDED", "concluded"),
         ]
+    }
+
+    #[test]
+    fn a_record_is_made_again_as_the_soonest_date_still_owed_passes() {
+        let asks = asks(&moved_after());
+        let soonest = ms("2026-11-21T18:00:00-05:00");
+        assert_eq!(
+            next_due(&asks, now()),
+            Some(soonest),
+            "the soonest owed, not LATER"
+        );
+        assert_eq!(
+            next_due(&asks, soonest),
+            Some(ms("2026-11-22T18:00:00-05:00")),
+            "once it's here, the one after"
+        );
+        assert_eq!(
+            next_due(&asks, ms(LATER)),
+            None,
+            "none once the last has come, nor a landed one's"
+        );
     }
 
     #[test]
@@ -611,7 +648,7 @@ mod tests {
         let mut looked = shown_before();
         let made = record(&after, &looked, &quests, &words(), now());
         let seen = seen_in(&made["seen"]).expect("what it shows reads back");
-        assert_eq!(seen.len(), 5, "every ask moved is shown: {seen:?}");
+        assert_eq!(seen.len(), 6, "every ask moved is shown: {seen:?}");
         looked.extend(seen);
         assert_eq!(
             record(&after, &looked, &quests, &words(), now())["moved"],
