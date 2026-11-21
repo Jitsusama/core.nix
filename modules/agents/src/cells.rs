@@ -5,7 +5,14 @@
 //! cell running or parked is itself. One ended goes to its quest's own
 //! session, the one whose address is the quest id's last part, else to
 //! another on its quest, one running before one parked, as Looks.cellOf
-//! chose in the launcher; with none, it goes nowhere, and says so.
+//! chose in the launcher; with none, it goes nowhere, and says so. It
+//! reads every session the node holds, ended ones too, since a look's
+//! cell is most often one that has since ended. Where two sessions go by
+//! one name, the one that is it now wins: live and named by it first,
+//! then live and once named by it, then ended and named by it, then any
+//! other, so a session that lists another's address can't take its looks.
+
+use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
@@ -49,17 +56,14 @@ fn names(one: Session<'_>) -> impl Iterator<Item = &str> {
 }
 
 /// The live session an ended one's work goes on in: its quest's own,
-/// else one running on its quest, else one parked there.
-fn successor<'a>(sessions: &[Session<'a>], quest: &str) -> Option<Session<'a>> {
+/// else one running on its quest, else one parked there. `on` holds the
+/// live sessions by their quest, gathered once for every ended one.
+fn successor<'a>(on: &HashMap<&str, Vec<Session<'a>>>, quest: &str) -> Option<Session<'a>> {
     if quest.is_empty() {
         return None;
     }
     let own = quest.rsplit('-').next().unwrap_or("").to_uppercase();
-    let on: Vec<Session> = sessions
-        .iter()
-        .copied()
-        .filter(|one| live(*one) && quest_of(*one) == quest)
-        .collect();
+    let on = on.get(quest)?;
     on.iter()
         .find(|one| one.address().to_uppercase() == own)
         .or_else(|| on.iter().find(|one| one.lives() == Lives::Running))
@@ -67,25 +71,54 @@ fn successor<'a>(sessions: &[Session<'a>], quest: &str) -> Option<Session<'a>> {
         .copied()
 }
 
+/// How strongly a session that goes by `name` is that cell: 0 live and
+/// named by it now, 1 live and once named by it, 2 ended and named by it,
+/// 3 ended and once named by it. The least wins.
+fn claim(one: Session<'_>, name: &str) -> u8 {
+    let own = u8::from(one.address() != name);
+    if live(one) { own } else { 2 + own }
+}
+
 /// Every cell's `agent-cell` record, one a name it goes by: the address
-/// of the live session it is now (`goes`), or null where none is.
+/// of the live session it is now (`goes`), or null where none is. Each
+/// name is served once, by the session with the strongest claim to it.
 pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
-    sessions
-        .iter()
-        .flat_map(|one| {
-            let goes = if live(*one) {
-                Some(*one)
-            } else {
-                successor(sessions, quest_of(*one))
-            };
-            let goes = goes
-                .map(Session::address)
-                .filter(|address| !address.is_empty());
-            names(*one).map(move |cell| {
-                json!({
-                    "key": format!("{KIND}:{PLACE}:{cell}"), "kind": KIND,
-                    "cell": cell, "goes": goes,
-                })
+    let mut on: HashMap<&str, Vec<Session>> = HashMap::new();
+    for one in sessions.iter().copied().filter(|one| live(*one)) {
+        on.entry(quest_of(one)).or_default().push(one);
+    }
+    let mut order: Vec<&str> = Vec::new();
+    let mut best: HashMap<&str, (u8, Option<&str>)> = HashMap::new();
+    for one in sessions.iter().copied() {
+        let goes = if live(one) {
+            Some(one)
+        } else {
+            successor(&on, quest_of(one))
+        };
+        let goes = goes
+            .map(Session::address)
+            .filter(|address| !address.is_empty());
+        for cell in names(one) {
+            let rank = claim(one, cell);
+            match best.get(cell) {
+                Some((held, _)) if *held <= rank => {}
+                Some(_) => {
+                    best.insert(cell, (rank, goes));
+                }
+                None => {
+                    order.push(cell);
+                    best.insert(cell, (rank, goes));
+                }
+            }
+        }
+    }
+    order
+        .into_iter()
+        .map(|cell| {
+            let goes = best.get(cell).and_then(|(_, goes)| *goes);
+            json!({
+                "key": format!("{KIND}:{PLACE}:{cell}"), "kind": KIND,
+                "cell": cell, "goes": goes,
             })
         })
         .collect()
@@ -169,6 +202,43 @@ mod tests {
             ]),
             ["E>null", "N>null"],
             "it says it goes nowhere, so the launcher says the cell has ended"
+        );
+    }
+
+    #[test]
+    fn a_name_two_sessions_go_by_is_the_one_that_is_it_now() {
+        let quest = "QEST-20261120-HHHHHH";
+        let mut thief = session("T", "running", "QEST-20261120-IIIIII");
+        thief["presence"]["addresses"] = json!(["T", "V"]);
+        let mut heir = session("W", "running", quest);
+        heir["presence"]["addresses"] = json!(["W", "V2"]);
+        let mut moved = session("V", "closed", quest);
+        moved["presence"]["addresses"] = json!(["V", "V2"]);
+        let served = goes(&[thief, session("V", "parked", quest), heir, moved]);
+        assert!(
+            served.contains(&"V>\"V\"".to_owned()),
+            "a live session named V now keeps V's looks over one listing V: {served:?}"
+        );
+        assert!(
+            served.contains(&"V2>\"W\"".to_owned()),
+            "a live session once named V2 holds it over an ended one: {served:?}"
+        );
+        assert_eq!(
+            served.iter().filter(|one| one.starts_with("V>")).count(),
+            1,
+            "each name is served once: {served:?}"
+        );
+    }
+
+    #[test]
+    fn an_ended_name_is_served_even_where_a_live_one_lists_it() {
+        let mut ended = session("E", "closed", "QEST-20261120-JJJJJJ");
+        ended["presence"]["addresses"] = json!(["E"]);
+        let mut other = session("O", "running", "QEST-20261120-KKKKKK");
+        other["presence"]["addresses"] = json!(["O", "E"]);
+        assert!(
+            goes(&[other, ended]).contains(&"E>\"O\"".to_owned()),
+            "a live session once named E is E now, over the ended one"
         );
     }
 

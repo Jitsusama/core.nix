@@ -713,7 +713,7 @@ QtObject {
         expect("naming no cell, cellOf's search",
             Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
         expect("nothing served, cellOf's search",
-            Looks.cellFor(lookLeft, undefined, [heir], [leaver]).address, "AAAAAA");
+            Looks.cellFor(naming("AAAAAA"), undefined, [heir], [leaver]).address, "AAAAAA");
 
         if (failures.length > 0) {
             for (const failure of failures)
