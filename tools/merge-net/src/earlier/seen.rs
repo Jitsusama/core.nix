@@ -35,7 +35,10 @@ pub fn rounds_folder() -> PathBuf {
 /// Every commit a round kept under `folder` read in full. A folder that
 /// can't be read is said so, since a council asked at the head wouldn't
 /// help where the net can't see the rounds at all, as on a machine where
-/// the harness keeps its review state elsewhere.
+/// the harness keeps its review state elsewhere. So is one whose round
+/// files name no commit read at all, which is what a change to the
+/// harness's record shape would look like, rather than refusing every
+/// head as unread.
 pub fn witnessed(folder: &Path) -> Result<HashSet<String>, String> {
     let files = fs::read_dir(folder).map_err(|error| {
         format!(
@@ -44,12 +47,22 @@ pub fn witnessed(folder: &Path) -> Result<HashSet<String>, String> {
             folder.display()
         )
     })?;
-    Ok(files
+    let texts: Vec<String> = files
         .flatten()
         .filter(|file| file.path().extension().is_some_and(|e| e == "json"))
         .filter_map(|file| fs::read_to_string(file.path()).ok())
-        .flat_map(|text| read_in(&text))
-        .collect())
+        .collect();
+    let seen: HashSet<String> = texts.iter().flat_map(|text| read_in(text)).collect();
+    if seen.is_empty() && !texts.is_empty() {
+        return Err(format!(
+            "the {} review round files at {} name no commit read in full as merge-net \
+             reads them, so the harness's record shape may have changed: earlier/seen.rs \
+             must follow it",
+            texts.len(),
+            folder.display()
+        ));
+    }
+    Ok(seen)
 }
 
 /// The commits the rounds of one change's file `text` read in full.
@@ -74,10 +87,21 @@ fn read_in(text: &str) -> Vec<String> {
                         .flatten()
                         .filter_map(Value::as_str),
                 )
+                .filter(|witness| is_commit_id(witness))
                 .map(str::to_owned)
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// Whether `witness` is a full commit id, which is all a round names, so
+/// a symbolic name such as a branch's, which git would read as whatever
+/// it points at now, never stands for a read.
+fn is_commit_id(witness: &str) -> bool {
+    matches!(witness.len(), 40 | 64)
+        && witness
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// Whether `round` is a council or stack round that was collected, whose
@@ -112,12 +136,17 @@ mod tests {
 
     use super::*;
 
+    /// A full commit id of the letter `letter`, as a round names one.
+    fn id(letter: char) -> String {
+        letter.to_string().repeat(40)
+    }
+
     fn round(extra: &Value) -> Value {
         let mut round = json!({
             "id": "council-1",
             "round": "council",
             "startedAt": "2026-11-19T17:00:00.000Z",
-            "witness": "aaa",
+            "witness": id('a'),
             "outcomes": [{"participantId": "a", "findingIds": [1], "answerPath": "/x"}],
         });
         for (key, value) in extra.as_object().unwrap() {
@@ -132,20 +161,39 @@ mod tests {
 
     #[test]
     fn a_collected_round_reads_its_witness() {
-        assert_eq!(read(&[round(&json!({}))]), ["aaa"]);
+        assert_eq!(read(&[round(&json!({}))]), [id('a')]);
         assert_eq!(
             read(&[round(
-                &json!({"round": "stack", "witness": null, "witnesses": ["c", "d"]})
+                &json!({"round": "stack", "witness": null, "witnesses": [id('c'), id('d')]})
             )]),
-            ["c", "d"]
+            [id('c'), id('d')]
         );
         assert_eq!(
             read(&[round(&json!({"outcomes": [
                 {"participantId": "a", "failure": "timed out"},
                 {"participantId": "b", "stopped": true, "findingIds": [2]},
             ]}))]),
-            ["aaa"]
+            [id('a')]
         );
+    }
+
+    // A witness that isn't a full commit id, which git would read as
+    // whatever it names now, stands for no read.
+    #[test]
+    fn a_witness_that_is_no_commit_id_reads_nothing() {
+        for witness in [
+            "main",
+            "HEAD",
+            "aaa",
+            &id('A'),
+            &id('g'),
+            &format!("{}a", id('a')),
+        ] {
+            assert!(
+                read(&[round(&json!({"witness": witness}))]).is_empty(),
+                "{witness}"
+            );
+        }
     }
 
     // A judge or critique, which read findings rather than code, a round
@@ -172,6 +220,7 @@ mod tests {
     #[test]
     fn every_change_s_rounds_are_read_from_the_folder() {
         let folder = std::env::temp_dir().join(format!("merge-net-seen-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(&folder).unwrap();
         let file = |name: &str, rounds: &[Value]| {
             fs::write(
@@ -183,9 +232,9 @@ mod tests {
         file("github_github_o_r_1.json", &[round(&json!({}))]);
         file(
             "local-range_github_o_r_main..b.json",
-            &[round(&json!({"witness": "bbb"}))],
+            &[round(&json!({"witness": id('b')}))],
         );
-        file("notes.txt", &[round(&json!({"witness": "ccc"}))]);
+        file("notes.txt", &[round(&json!({"witness": id('c')}))]);
         let seen = witnessed(&folder).unwrap();
         let gone = witnessed(&folder.join("gone")).unwrap_err();
         assert!(
@@ -193,10 +242,26 @@ mod tests {
             "a folder that's gone is said so: {gone}"
         );
         fs::remove_dir_all(&folder).unwrap();
-        assert_eq!(
-            seen,
-            HashSet::from(["aaa".to_owned(), "bbb".to_owned()]),
-            "{seen:?}"
-        );
+        assert_eq!(seen, HashSet::from([id('a'), id('b')]), "{seen:?}");
+    }
+
+    // Round files of which none names a commit read, as a change to the
+    // harness's record shape would leave them, are said so rather than
+    // read as no head ever reviewed.
+    #[test]
+    fn round_files_naming_no_read_commit_are_said_so() {
+        let folder =
+            std::env::temp_dir().join(format!("merge-net-seen-shape-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
+        assert_eq!(witnessed(&folder), Ok(HashSet::new()), "an empty folder");
+        fs::write(
+            folder.join("github_github_o_r_1.json"),
+            json!({"change": {}, "rounds": [round(&json!({}))]}).to_string(),
+        )
+        .unwrap();
+        let said = witnessed(&folder).unwrap_err();
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(said.contains("record shape"), "{said}");
     }
 }

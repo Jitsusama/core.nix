@@ -14,7 +14,7 @@ use crate::{candidates, git_at, patch_of, ready, short};
 pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 
 /// Whether a review round of ours read `commit`, or an earlier commit of
-/// the same change that a clean rebase carried here (`seen.rs`). The
+/// the same change that a clean rebase carried here (`same_patch`). The
 /// earlier commits are looked for among those the rounds read, so a
 /// reviewed commit with no pass of its own still counts. Why not, when not.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
@@ -91,10 +91,18 @@ fn same_patch(
 /// `repo`: with git's lines of context, so a block moved within its file
 /// is another change, and whitespace kept, since it is code in some
 /// languages. A rebase over an edit beside the change asks for a round
-/// again, which costs little beside a head merging unread.
+/// again, which costs little beside a head merging unread. The diff's
+/// shape is named rather than left to git's config, where
+/// `diff.context=0` would drop the context the id is read with.
 fn read_patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
+    let shape = [
+        "--unified=3",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+    ];
     // Verbatim ids are stable ones too; git takes only one of the two.
-    patch_of(repo, base, head, &[], "--verbatim")
+    patch_of(repo, base, head, &shape, "--verbatim")
 }
 
 #[cfg(test)]
@@ -138,8 +146,12 @@ mod tests {
     #[test]
     fn a_clean_rebase_of_a_read_commit_is_read_and_a_changed_one_is_not() {
         let repo = env::temp_dir().join(format!("merge-net-rebase-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
         fs::create_dir_all(&repo).unwrap();
         git_in(&repo, &["init", "-q", "-b", "main"]);
+        // A config dropping the diff's context must not make a moved block
+        // the same change.
+        git_in(&repo, &["config", "diff.context", "0"]);
         fs::write(repo.join("w"), "a\nb\nc\n").unwrap();
         fs::write(repo.join("v"), "x\n").unwrap();
         git_in(&repo, &["add", "w", "v"]);
@@ -190,6 +202,7 @@ mod tests {
     #[test]
     fn a_review_goes_to_no_edit_of_whitespace_or_beside_the_change() {
         let repo = env::temp_dir().join(format!("merge-net-read-id-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
         fs::create_dir_all(&repo).unwrap();
         git_in(&repo, &["init", "-q", "-b", "main"]);
         fs::write(repo.join("w"), "a\nb\nc\nd\ne\n").unwrap();
