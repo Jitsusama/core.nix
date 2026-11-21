@@ -93,7 +93,8 @@ impl Watch {
         // killed the same way.
         let plugged = format!(".Plugged.{}", std::process::id());
         fs::write(devices.join(plugged), format!("{}\n", real.display())).unwrap();
-        fs::write(devices.join("Webcam 2.0"), format!("{}\n", real.display())).unwrap();
+        // Named for init's pid, 1, which always runs.
+        fs::write(devices.join("Webcam 2.1"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -222,8 +223,13 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
         "a file being written was taken from its writer"
     );
     assert!(
-        !devices.join("Webcam 2.0").exists(),
+        !devices.join("Webcam 2.1").exists(),
         "a camera named for a version was taken for a file being written"
+    );
+    let log = fs::read_to_string(&watch.log).unwrap();
+    assert!(
+        log.contains("forgot Unplugged, said at "),
+        "what a killed run left went unsaid: {log}"
     );
 }
 
@@ -244,7 +250,8 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
     // it has counted 300 frames over ten to eleven seconds.
     for _ in 0..600 {
         let log = fs::read_to_string(&watch.log).unwrap();
-        if let Some(line) = log.lines().next() {
+        // After what it forgot as it started.
+        if let Some(line) = log.lines().find(|line| !line.starts_with("forgot ")) {
             assert!(line.starts_with("streams to \""), "{line}");
             let rate: f64 = line
                 .split_once("gave ")
@@ -314,6 +321,8 @@ fn forgetting_a_node_takes_only_what_says_it() {
     for (name, says) in [
         ("Killed", said.as_str()),
         ("Webcam 2.0", said.as_str()),
+        // Named for init's pid, 1, which always runs.
+        ("Webcam 2.1", said.as_str()),
         (".Written.7", said.as_str()),
         ("Another", "/dev/video9\n"),
     ] {
@@ -339,6 +348,30 @@ fn forgetting_a_node_takes_only_what_says_it() {
         [".Written.7", ".Written.7", ".devices", "Another", "Another"],
         "what says the node, and only it, goes, as a file being written is left"
     );
+}
+
+#[test]
+fn a_node_there_again_is_left_to_whoever_has_it() {
+    let root = std::env::temp_dir().join(format!("holders-usb-again-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let folder = root.join("camera-holders");
+    let devices = folder.join(".devices");
+    fs::create_dir_all(&devices).unwrap();
+    // A loopback took the number as the camera went.
+    let node = root.join("dev/video0");
+    fs::create_dir_all(&node).unwrap();
+    fs::write(devices.join("Loopback"), format!("{}\n", node.display())).unwrap();
+    fs::write(folder.join("Loopback"), "zoom\n").unwrap();
+    let status = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .args(["--usb", "--forget"])
+        .arg(&node)
+        .arg(&folder)
+        .status()
+        .unwrap();
+    let kept = devices.join("Loopback").exists() && folder.join("Loopback").exists();
+    let _ = fs::remove_dir_all(&root);
+    assert!(status.success(), "forgetting ended {status}");
+    assert!(kept, "the files of what has the node now were forgotten");
 }
 
 #[test]
