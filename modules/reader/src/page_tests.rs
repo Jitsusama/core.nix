@@ -15,7 +15,6 @@ fn a_window_too_narrow_for_the_whole_page_gives_way_measure_then_margin() {
     // The whole page: the measure, its outer column and xxl either side.
     let spread = super::spread_pt();
     let whole = 435.0 + 2.0 * (spread + 24.0);
-    assert_eq!(width(1080.0), (435.0, spread), "the whole page");
     assert_eq!(width(whole), (435.0, spread), "the whole page, just");
     assert_eq!(
         width(whole - 1.0),
@@ -44,6 +43,29 @@ fn a_window_too_narrow_for_the_whole_page_gives_way_measure_then_margin() {
         (264.0, 0.0),
         "under 45 characters, xl either side"
     );
+}
+
+#[test]
+fn a_window_wider_than_the_whole_page_widens_the_measure_by_half_up_to_80_characters() {
+    let spread = super::spread_pt();
+    let whole = 435.0 + 2.0 * (spread + 24.0);
+    let widest = 435.0 * 80.0 / 66.0;
+    assert_eq!(
+        width(whole + 40.0),
+        (455.0, spread),
+        "half of what it has past"
+    );
+    assert_eq!(
+        width(whole + 40.7),
+        (455.0, spread),
+        "a fraction wider sets no new page"
+    );
+    assert_eq!(
+        width(whole + 2.0 * (widest - 435.0) + 10.0),
+        (widest, spread),
+        "80 characters at most"
+    );
+    assert_eq!(width(2560.0), (widest, spread), "however wide");
 }
 
 #[test]
@@ -474,6 +496,58 @@ fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
     assert!(
         sizes.iter().all(|size| *size < 1.5 * words),
         "a short opening dropped a letter: {sizes:?}"
+    );
+}
+
+/// A page's lines from the first holding `from` on, each without the
+/// spaces it ends on, and their baselines.
+fn lines_from(name: &str, markdown: &str, from: &str) -> Vec<(String, f64)> {
+    crate::text::lines(crate::text::runs(&page_of(name, markdown).frame))
+        .into_iter()
+        .skip_while(|line| !line.text.contains(from))
+        .map(|line| (line.text.trim_end().to_owned(), line.baseline_pt))
+        .collect()
+}
+
+#[test]
+fn long_code_breaks_only_at_its_spaces_or_after_a_slash_and_never_leaves_a_scrap() {
+    let code = "nix-offload there --here-when-idle . checks.x86_64-linux.reader-sets-its-pages -L --keep-going ~/.cache/pi/agentic-harness.pi/work/trees/a-tree-with-a-long-name/tmp/runs/reader-sets-its-pages.log";
+    let lines = lines_from("wraps", &format!("Run this:\n\n`{code}`\n"), "nix-offload");
+    assert!(lines.len() >= 3, "the code took {lines:?}");
+    let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
+    // Every break is at a space the code has, or just after a slash.
+    let read = texts.join("\n").replace("/\n", "/").replace('\n', " ");
+    assert_eq!(read, code, "the code broke inside a word: {texts:?}");
+    // A scrap under four characters, the stop or -L, keeps to the word
+    // before it, so no line opens on one or ends on one alone.
+    for text in &texts {
+        let words: Vec<&str> = text.split(' ').collect();
+        let last = words[words.len() - 1];
+        assert!(
+            words[0].chars().count() >= 4 && (last.chars().count() >= 4 || words.len() > 1),
+            "a scrap stands alone at a line's end: {text:?}"
+        );
+    }
+    let pitch = super::pitch_pt();
+    let baselines: Vec<f64> = lines.iter().map(|(_, baseline)| *baseline).collect();
+    assert!(
+        steps(pitch, &baselines).iter().all(|s| *s == 100),
+        "the code's lines step otherwise: {baselines:?}"
+    );
+}
+
+#[test]
+fn short_code_is_kept_whole_on_one_line() {
+    // After an opening, so no letter is dropped beside the lines.
+    let markdown = "Short.\n\nKeep it short. ".to_owned()
+        + &"Never run `nix build` here, where it evaluates beside the work. ".repeat(12)
+        + "\n";
+    let lines = lines_from("whole", &markdown, "Keep it");
+    assert!(lines.len() >= 6, "too few lines to show it: {lines:?}");
+    let texts: Vec<&str> = lines.iter().map(|(text, _)| text.as_str()).collect();
+    assert!(
+        texts.iter().all(|text| !text.ends_with("nix")),
+        "a short span broke across lines: {texts:?}"
     );
 }
 

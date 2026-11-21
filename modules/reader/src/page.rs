@@ -18,9 +18,19 @@ use crate::numbers::ms_of_ns;
 use crate::walk::{self, Costs, Pieces};
 use crate::world::PageWorld;
 
-/// The measure: 580 px, about 66 characters of the text face, the most a
-/// line should hold.
+/// The measure: 580 px, about 66 characters of the text face, the line a
+/// page is set to in a window just wide enough for it.
 const MEASURE_PT: f64 = 435.0;
+
+/// The widest measure, about 80 characters of the text face: the most a
+/// line should hold, past which the eye loses its way back to the next
+/// line's start.
+const WIDEST_MEASURE_PT: f64 = MEASURE_PT * 80.0 / 66.0;
+
+/// How much of a window's width past the whole page's the measure takes,
+/// the rest going to the margins, so a wider window reads wider without
+/// the words running to its edges.
+const WIDENS_BY: f64 = 0.5;
 
 /// The least a measure holds: 45 characters of the text face, below which
 /// lines break too often to read.
@@ -76,13 +86,19 @@ impl Width {
     }
 
     /// The page for a window this many points of the page wide at zoom 1.
-    /// A narrower window than the whole page's has no room to spread a
-    /// table into, and the measure gives way to keep xxl either side, down
-    /// to 45 characters; then the margins give way to xl, and only then the
-    /// measure again.
+    /// A wider window than the whole page's widens the measure by half of
+    /// what it has past it, up to 80 characters. A narrower one has no
+    /// room to spread a table into, and the measure gives way to keep xxl
+    /// either side, down to 45 characters; then the margins give way to
+    /// xl, and only then the measure again.
     pub fn for_window(window_pt: f64) -> Width {
         if window_pt >= whole_from_pt() {
-            return Width::whole();
+            // In whole points, so a window a fraction wider sets no new page.
+            let measure_pt = (MEASURE_PT + (window_pt - whole_from_pt()) * WIDENS_BY).round();
+            return Width {
+                measure_pt: measure_pt.min(WIDEST_MEASURE_PT),
+                spread_pt: spread_pt(),
+            };
         }
         let measure_pt = if window_pt >= LEAST_MEASURE_PT + 2.0 * XL_PT {
             (window_pt - 2.0 * XXL_PT).clamp(LEAST_MEASURE_PT, MEASURE_PT)
@@ -101,11 +117,12 @@ impl Width {
     }
 
     /// What Typst counts a hyphen as costing, in percent of its own: 200 on
-    /// the whole measure, and dearer as the measure narrows, with the square
-    /// of how much, since a narrow line has fewer spaces to take up the
-    /// slack and Typst would otherwise hyphenate line after line.
+    /// the whole measure or a wider one, and dearer as the measure narrows,
+    /// with the square of how much, since a narrow line has fewer spaces to
+    /// take up the slack and Typst would otherwise hyphenate line after
+    /// line. A wider line has spaces to spare, so it is no cheaper there.
     pub fn hyphen_cost(self) -> f64 {
-        (200.0 * (MEASURE_PT / self.measure_pt).powi(2)).round()
+        (200.0 * (MEASURE_PT / self.measure_pt.min(MEASURE_PT)).powi(2)).round()
     }
 }
 
@@ -159,7 +176,26 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // Code in a line stands at the line's top edge rather than the mono's
 // lower capitals, so a line that is all code steps as far as one of
 // words.
-#let code(s) = context text(top-edge: line-top(), raw(s))
+//
+// Code short enough to keep whole, under a third of the measure, never
+// breaks. Longer code breaks only at its spaces and after a slash,
+// never at a hyphen or inside a name, so a flag or a path's piece is
+// read whole; and a piece under four characters stays with the one
+// beside it, so no line ends or opens on a stray `-o`, `|` or `/`. A
+// piece wider than the measure is left to break where Typst can.
+#let glued(parts, by) = parts.fold((), (out, part) => {
+  if out.len() > 0 and (part.clusters().len() < 4 or out.last().clusters().len() < 4) {
+    out.slice(0, -1) + (out.last() + by + part,)
+  } else {
+    out + (part,)
+  }
+})
+#let code(s) = context text(top-edge: line-top(), {
+  if measure(raw(s)).width < measure-width / 3 { return box(raw(s)) }
+  let piece(p) = if measure(raw(p)).width > measure-width { raw(p) } else { box(raw(p)) }
+  let word(w) = glued(w.matches(regex("[^/]*/|[^/]+")).map(m => m.text), "").map(piece).join()
+  glued(s.split(" "), " ").map(word).join(raw(" "))
+})
 // An emoji in the colour face, whichever face the words around it are
 // set in, as the desktop draws them: a pictograph drawn as one, with
 // its skin tone, its joined people and its keycap, or a flag's pair of
