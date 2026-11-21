@@ -107,6 +107,7 @@ mod elsewhere;
 mod focus;
 mod holds;
 mod hosts;
+mod joins;
 mod keep;
 mod kitty;
 mod low;
@@ -1415,9 +1416,9 @@ fn viewers_and_shown(
         windows
             .conversations
             .and_then(|(conversations, slots)| {
-                hosts::conversation(words, conversations, slots, |unit| names.contains(unit))
+                joins::conversation(words, conversations, slots, |unit| names.contains(unit))
             })
-            .or_else(|| hosts::viewed(words, prefix))
+            .or_else(|| joins::viewed(words, prefix))
     };
     let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
     let viewers = windows
