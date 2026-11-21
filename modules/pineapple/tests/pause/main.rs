@@ -27,7 +27,9 @@ struct Unit {
 /// writes down each program it's asked to run, stops, starts, freezes and
 /// thaws what it's asked to, refuses whatever `refusing` names, and
 /// answers as mycelium does a command it never ran for what `unreached`
-/// names.
+/// names, and one whose link dropped once it began for what `dropped`
+/// names. When `peek` names a file, what it holds as the Mac is asked is
+/// kept in `peeked`.
 #[derive(Default)]
 struct Machine {
     asked: Vec<String>,
@@ -35,11 +37,17 @@ struct Machine {
     units: Vec<Unit>,
     refusing: Option<&'static str>,
     unreached: Option<&'static str>,
+    dropped: Option<&'static str>,
+    peek: Option<PathBuf>,
+    peeked: Option<String>,
     starts_stopped: bool,
 }
 
 /// What a run says when mycelium couldn't run the command there at all.
 const NEVER_RAN: &str = "mycelium: mac's mycelium is too old to run commands (exit status: 255)";
+
+/// Why a run failed when the node hung up on it, once it began.
+const DROPPED: &str = "mycelium: the node hung up before the run ended (exit status: 255)";
 
 impl Machine {
     fn unit(&mut self, id: &str) -> Option<&mut Unit> {
@@ -73,11 +81,18 @@ impl Runs for Machine {
     fn run(&mut self, program: &Path, args: &[String]) -> Result<String, String> {
         let asked = format!("{} {}", program.to_string_lossy(), args.join(" "));
         self.asked.push(asked.clone());
+        if let Some(peek) = self.peek.as_ref().filter(|_| asked.contains("machine=mac")) {
+            self.peeked = fs::read_to_string(peek).ok();
+        }
         if self.refusing.is_some_and(|refused| asked.contains(refused)) {
             return Err("refused here".to_owned());
         }
         if self.unreached.is_some_and(|never| asked.contains(never)) {
             return Err(NEVER_RAN.to_owned());
+        }
+        if self.dropped.is_some_and(|dropped| asked.contains(dropped)) {
+            // What the script says first, before mycelium's own word.
+            return Err(format!("pineapple: begun there\n{DROPPED}"));
         }
         let words: Vec<&str> = args.iter().map(String::as_str).collect();
         Ok(match words.as_slice() {

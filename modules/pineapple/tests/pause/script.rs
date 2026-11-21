@@ -90,17 +90,20 @@ fn the_script_resumes_nothing_where_the_stop_never_landed() {
 
 #[test]
 fn the_script_never_ends_as_mycelium_does_a_command_it_never_ran() {
-    let home = scratch("script-ends");
     let said = pause::record("stop-all-1", "here", 1);
-    let (_, stop) = script_ends(&home, &said, "stop", false, 255);
-    let (_, resume) = script_ends(&home, &said, "resume", false, 255);
+    let stopping = scratch("script-ends-stop");
+    let (_, stop) = script_ends(&stopping, &said, "stop", false, 255);
+    let resuming = scratch("script-ends-resume");
+    script_run(&resuming, &said, "stop", false);
+    let (_, resume) = script_ends(&resuming, &said, "resume", false, 255);
     assert_eq!(
         (stop, resume),
         (Some(70), Some(70)),
-        "a mycelium there failing ends the script with its own code, so this one is still \
-         resumed"
+        "a mycelium there failing to refuse or let go of starts ends the script with its own \
+         code, never mycelium's 255 for a command it never ran"
     );
-    let _ = fs::remove_dir_all(&home);
+    let _ = fs::remove_dir_all(&stopping);
+    let _ = fs::remove_dir_all(&resuming);
 }
 
 #[test]

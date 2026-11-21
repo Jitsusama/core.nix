@@ -40,7 +40,14 @@ impl Reached {
 /// The status `mycelium run` ends with when it couldn't run the command
 /// at all, as SSH's does, such as on a machine out of reach, one whose
 /// mycelium is too old to run commands, or one whose link isn't proven.
+/// It ends so too when the node hangs up on a run under way, which
+/// [`BEGUN`] tells apart.
 const DIDNT_RUN: &str = "(exit status: 255)";
+
+/// What the script says on its error output before anything else, so a
+/// run that failed after it began, as one whose link dropped, isn't taken
+/// for one that never ran.
+const BEGUN: &str = "pineapple: begun there";
 
 /// What the script ends with when the mycelium it asks there fails, so a
 /// 255 of that mycelium's own can't read as the script never running.
@@ -48,7 +55,15 @@ const OWN_FAILURE: u8 = 70;
 
 /// Whether `why` a run failed is mycelium saying the command never ran.
 fn didnt_run(why: &str) -> bool {
-    why.trim_end().ends_with(DIDNT_RUN)
+    why.trim_end().ends_with(DIDNT_RUN) && !why.lines().any(|line| line.trim() == BEGUN)
+}
+
+/// `why` a run failed, without the script's word that it began.
+fn without_begun(why: &str) -> String {
+    why.lines()
+        .filter(|line| line.trim() != BEGUN)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The realms the plan names, or mycelium's own default when it names
@@ -265,6 +280,7 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     };
     format!(
         "set -e\n\
+         echo '{BEGUN}' >&2\n\
          d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
          mkdir -p \"$d\"\n\
          {unreached}\
@@ -306,7 +322,7 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
     let (failed, reached) = match runs.run(mycelium, &args) {
         Ok(_) => (Vec::new(), true),
         Err(why) => (
-            vec![couldnt(&format!("{act} there"), &why)],
+            vec![couldnt(&format!("{act} there"), &without_begun(&why))],
             !didnt_run(&why),
         ),
     };
@@ -315,5 +331,48 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
         recorded: failed.is_empty(),
         failed,
         reached,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::time::Duration;
+
+    use super::{BEGUN, didnt_run, without_begun};
+    use crate::pause::{Runs, System};
+
+    /// How a program ending as `line` says ends, run as the stop runs
+    /// mycelium, fails.
+    fn failed(line: &str) -> String {
+        let mut system = System {
+            limit: Duration::from_secs(10),
+        };
+        system
+            .run(Path::new("sh"), &["-c".to_owned(), line.to_owned()])
+            .expect_err("the program fails")
+    }
+
+    #[test]
+    fn only_a_run_mycelium_never_began_reads_as_never_run() {
+        let never = failed("echo 'mycelium: too old to run commands' >&2; exit 255");
+        assert!(didnt_run(&never), "a 255 before the script began: {never}");
+        let dropped = failed(&format!(
+            "echo '{BEGUN}' >&2; echo 'mycelium: the node hung up' >&2; exit 255"
+        ));
+        assert!(
+            !didnt_run(&dropped),
+            "a 255 after the script began may have stopped it: {dropped}"
+        );
+        assert_eq!(
+            without_begun(&dropped),
+            "mycelium: the node hung up (exit status: 255)",
+            "Joel is told why, not that it began"
+        );
+        let refused = failed("echo 'refused' >&2; exit 1");
+        assert!(
+            !didnt_run(&refused),
+            "any other end may have run: {refused}"
+        );
     }
 }

@@ -220,18 +220,30 @@ pub fn stop(
         recorded: true,
         reached: true,
     }];
-    let mut reached = Vec::new();
+    let mut kept = Vec::new();
     for machine in &asked {
         let one = reach::elsewhere(plan, runs, machine, &said, "stop");
-        // A machine the stop never ran on is said so once, here, and left
-        // out of the resume, which would only fail there each minute.
-        if one.reached {
-            reached.push(machine.kept());
-        }
+        // A machine mycelium never ran the stop on is kept as not asked:
+        // its resume is tried once, which does nothing there if the stop
+        // never landed, and is let go if mycelium never runs that either,
+        // rather than tried each minute.
+        kept.push(
+            Reached {
+                asked: one.reached,
+                ..machine.clone()
+            }
+            .kept(),
+        );
         took.push(one);
     }
-    paused["machines"] = json!(reached);
-    write_paused(state, id, &paused)?;
+    paused["machines"] = json!(kept);
+    // The stop is done by now, so failing to note this keeps the record
+    // above, where every machine is resumed until it can be.
+    if let Err(why) = write_paused(state, id, &paused) {
+        took[0].failed.push(format!(
+            "couldn't note which machines it reached, so each is resumed until it can be: {why}"
+        ));
+    }
     Ok(took)
 }
 
@@ -510,7 +522,7 @@ pub fn said(act: &str, took: &[Took], sessions: Option<usize>) -> String {
         let so = if one.recorded || act == "resuming" {
             after
         } else if !one.reached {
-            ", so its agents run on, and nothing there is resumed"
+            ", so its agents run on"
         } else {
             ", so its agents may run on"
         };
