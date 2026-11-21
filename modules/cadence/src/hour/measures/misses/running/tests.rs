@@ -1,4 +1,7 @@
+use super::hosts::{host_unit, listed_host, runtime, shown_host, unit_runtime};
 use super::*;
+
+mod harness;
 
 const OLD: &str = "xi5w06adwa04v6ifnajk1l37fp9hn79c";
 
@@ -15,138 +18,6 @@ fn judge(
 ) -> Option<&'static str> {
     let program = |_: &str| -> Option<BTreeSet<String>> { panic!("the program was read") };
     super::judge(repo, rev, merge, carries, changed, program, hosts)
-}
-
-#[test]
-fn a_harness_change_to_the_hosts_program_waits_on_them() {
-    let all = |_: &str, _: &str| Some(true);
-    let loads = |_: &str| Some(BTreeSet::from(["host/service/program.ts".to_owned()]));
-    let program_only = Reaches {
-        program: true,
-        ..Reaches::default()
-    };
-    let lack = |_: &str, reaches: Reaches| {
-        Some(if reaches == program_only {
-            "program"
-        } else {
-            "misread"
-        })
-    };
-    let at = Some("a1b2c3d");
-    let to_program = |_: &str| Some("host/service/program.ts\ndocs/host.md".to_owned());
-    assert_eq!(
-        super::judge("harness", at, Some("f00d"), all, to_program, loads, lack),
-        Some("program"),
-        "installed, but a change to the hosts' program didn't wait on them alone"
-    );
-    let to_extension = |_: &str| Some("extensions/quest/index.ts".to_owned());
-    assert_eq!(
-        super::judge("harness", at, Some("f00d"), all, to_extension, loads, lack),
-        None,
-        "a change no host's program loads waited on the hosts"
-    );
-    assert_eq!(
-        super::judge("harness", at, Some("f00d"), all, to_program, |_| None, lack),
-        Some("cadence can't tell which harness files a pi host loads"),
-        "a program cadence couldn't read counted as loading nothing"
-    );
-    assert_eq!(
-        super::judge("harness", at, Some("f00d"), all, |_| None, loads, lack),
-        Some("cadence can't read what it changed"),
-        "an unread diff skipped the hosts"
-    );
-}
-
-#[test]
-fn every_host_must_have_started_since_its_program_was_installed() {
-    let program = Reaches {
-        program: true,
-        ..Reaches::default()
-    };
-    let lack = |hosts: &[Host], at| hosts_lack(Some(hosts), &program, at, |_| Some(true));
-    assert_eq!(lack(&[host(None, Some(200))], Some(100)), None);
-    assert_eq!(
-        lack(&[host(None, Some(200)), host(None, Some(50))], Some(100)),
-        Some("a pi host or conversation runs the harness from before it"),
-        "a host started before the install counted as running the new program"
-    );
-    let stopped = Host {
-        stopped: true,
-        ..host(None, Some(50))
-    };
-    assert_eq!(
-        lack(&[host(None, Some(200)), stopped], Some(100)),
-        None,
-        "a stopped host, which loads what current names when it starts, held it"
-    );
-    assert_eq!(
-        lack(&[host(None, None)], None),
-        Some("cadence can't tell when the harness carrying it was installed"),
-        "an unread install was reported as an unread host"
-    );
-    assert_eq!(
-        lack(&[host(None, Some(200))], None),
-        Some("cadence can't tell when the harness carrying it was installed"),
-        "no install found carrying it, yet the hosts counted as started since"
-    );
-    assert_eq!(
-        lack(&[host(None, None)], Some(100)),
-        Some("cadence can't tell when a pi host started")
-    );
-}
-
-#[test]
-fn the_program_is_followed_through_the_harness_as_git_holds_it() {
-    let repo = scratch("program");
-    let write = |file: &str, text: &str| {
-        let at = repo.join(file);
-        std::fs::create_dir_all(at.parent().expect("a folder")).expect("a folder made");
-        std::fs::write(at, text).expect("written");
-    };
-    write(
-        "scripts/pi-host.ts",
-        "import { a } from \"../host/a.ts\";\n",
-    );
-    write(
-        "host/a.ts",
-        "export {\n  b,\n} from './b.mjs';\nawait import(\"./c.ts\");\n",
-    );
-    write("host/b.mjs", "export const b = 1;\n");
-    write("host/c.ts", "export {};\n");
-    write("extensions/x/index.ts", "import \"../../host/d.ts\";\n");
-    git(&repo, &["init", "-q", "-b", "main"]);
-    git(&repo, &["add", "."]);
-    git(&repo, &["commit", "-q", "-m", "a program"]);
-    let head =
-        command("git", &["-C", &repo.to_string_lossy(), "rev-parse", "HEAD"]).expect("the head");
-    let path = repo.to_string_lossy();
-    assert_eq!(
-        program::files(&path, head.trim()),
-        Some(BTreeSet::from(
-            [
-                "scripts/pi-host.ts",
-                "host/a.ts",
-                "host/b.mjs",
-                "host/c.ts",
-                "package.json",
-                "pnpm-lock.yaml",
-            ]
-            .map(str::to_owned)
-        )),
-        "git's grep didn't follow a split import, either quote, a dynamic import or a script"
-    );
-    write("scripts/pi-host.ts", "export {};\n");
-    git(
-        &repo,
-        &["commit", "-q", "-am", "a program importing nothing"],
-    );
-    let head = command("git", &["-C", &path, "rev-parse", "HEAD"]).expect("the head");
-    assert_eq!(
-        program::files(&path, head.trim()),
-        None,
-        "a program cadence can't follow read as loading nothing"
-    );
-    std::fs::remove_dir_all(&repo).ok();
 }
 
 #[test]

@@ -22,21 +22,26 @@ const PACKAGES: &[&str] = &["package.json", "pnpm-lock.yaml"];
 
 /// A relative import as the harness writes one: `from "./x"`, a
 /// re-export's or a split import's `from "../x"`, a bare `import "./x"` or
-/// `import("./x")`, in either quote.
-const IMPORT: &str = r#"(from|import) *\(? *["']\.\.?/[^"']+["']"#;
+/// `import("./x")`, in either quote; or a script it runs on a thread or in
+/// a process of its own, named `new URL("./x.mjs", import.meta.url)`.
+const IMPORT: &str =
+    r#"(from|import) *\(? *["']\.\.?/[^"']+["']|new URL\( *["']\.\.?/[^"']+\.[cm]?[jt]sx?["']"#;
 
 /// The files that import, as the harness names its scripts.
-const SCRIPTS: &[&str] = &["*.ts", "*.mts", "*.js", "*.mjs"];
+const SCRIPTS: &[&str] = &["*.ts", "*.mts", "*.cts", "*.tsx", "*.js", "*.mjs", "*.cjs"];
 
 /// The files the host's program loads as the harness's commit `sha` left
-/// them, from one grep of `path`; `None` when git can't say, or the
-/// program imports nothing, as when it moved, since a program that can't
-/// be followed would read every change to it as loading nowhere.
+/// them, from one grep of `path`; `None` when git can't say, the program
+/// imports nothing, as when it moved, or it names a file the commit
+/// doesn't hold, as a `./x.js` written for `x.ts` or a folder would: a
+/// walk that can't follow each step would read a change past it as
+/// loading nowhere.
 pub fn files(path: &str, sha: &str) -> Option<BTreeSet<String>> {
     let mut args = vec!["-C", path, "grep", "--null", "-o", "-E", IMPORT, sha, "--"];
     args.extend(SCRIPTS);
     let found = command("git", &args).ok()?;
-    let mut files = imported(&found, sha)?;
+    let held = command("git", &["-C", path, "ls-tree", "-r", "--name-only", sha]).ok()?;
+    let mut files = imported(&found, sha, &held.lines().collect())?;
     files.extend(PACKAGES.iter().map(|file| (*file).to_owned()));
     Some(files)
 }
@@ -44,8 +49,8 @@ pub fn files(path: &str, sha: &str) -> Option<BTreeSet<String>> {
 /// Every file `PROGRAM` imports, itself and through what it imports, from
 /// `found`'s lines, each `SHA:FILE`, a NUL, then the import, as
 /// `git grep --null -o` writes them for the commit `sha`; `None` when no
-/// line comes from `PROGRAM`.
-fn imported(found: &str, sha: &str) -> Option<BTreeSet<String>> {
+/// line comes from `PROGRAM`, or it reaches a file not `held`.
+fn imported(found: &str, sha: &str, held: &BTreeSet<&str>) -> Option<BTreeSet<String>> {
     let mut imports: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     let prefix = format!("{sha}:");
     for line in found.lines() {
@@ -69,6 +74,9 @@ fn imported(found: &str, sha: &str) -> Option<BTreeSet<String>> {
     let mut next = VecDeque::from([PROGRAM.to_owned()]);
     while let Some(file) = next.pop_front() {
         for target in imports.get(file.as_str()).into_iter().flatten() {
+            if !held.contains(target.as_str()) {
+                return None;
+            }
             if loaded.insert(target.clone()) {
                 next.push_back(target.clone());
             }
@@ -100,9 +108,10 @@ fn resolve(file: &str, to: &str) -> Option<String> {
 /// it moves, so its own time is the move, however long the version waited
 /// built under a hold, and a step back and forward again counts from the
 /// step forward. The version `current` names is the one checked to carry
-/// the change, so any host started since loaded it; one started after an
-/// earlier version carrying it reads as before, which only waits on that
-/// host's next start. `None` when the link can't be read.
+/// the change, so any host started since loaded it; the hour keeps the
+/// first such time it saw, so a later install doesn't hold a conversation
+/// started on an earlier one carrying it. `None` when the link can't be
+/// read.
 pub fn swapped(mirror: &Path) -> Option<i64> {
     let link = std::fs::symlink_metadata(mirror.parent()?.join("current")).ok()?;
     let at = link.modified().ok()?;
@@ -122,30 +131,45 @@ mod tests {
             "f00d:host/service/program.ts\0from './rollout.ts'\n",
             "f00d:host/screen/screens.ts\0import \"../../lib/core/x:y.mjs\"\n",
             "f00d:lib/core/x:y.mjs\0from \"./z.mjs\"\n",
+            "f00d:lib/core/z.mjs\0new URL(\"./read.cjs\"\n",
             "f00d:host/screen/screens.ts\0from \"../../../outside.ts\"\n",
             "f00d:extensions/quest/index.ts\0from \"../../lib/core/y.ts\"\n",
             "beef:host/service/rollout.ts\0from \"./elsewhere.ts\"\n",
         );
+        let loaded = [
+            "scripts/pi-host.ts",
+            "host/service/program.ts",
+            "host/screen/screens.ts",
+            "host/service/rollout.ts",
+            "lib/core/x:y.mjs",
+            "lib/core/z.mjs",
+            "lib/core/read.cjs",
+        ];
+        let held: BTreeSet<&str> = loaded
+            .into_iter()
+            .chain(["extensions/quest/index.ts"])
+            .collect();
         assert_eq!(
-            imported(found, "f00d"),
-            Some(BTreeSet::from(
-                [
-                    "scripts/pi-host.ts",
-                    "host/service/program.ts",
-                    "host/screen/screens.ts",
-                    "host/service/rollout.ts",
-                    "lib/core/x:y.mjs",
-                    "lib/core/z.mjs",
-                ]
-                .map(str::to_owned)
-            )),
+            imported(found, "f00d", &held),
+            Some(BTreeSet::from(loaded.map(str::to_owned))),
             "the program's files weren't followed through each import, or an extension, \
              another commit's line or a path out of the repository was taken in"
         );
         assert_eq!(
-            imported("f00d:host/a.ts\0from \"./b.ts\"\n", "f00d"),
+            imported("f00d:host/a.ts\0from \"./b.ts\"\n", "f00d", &held),
             None,
             "a program importing nothing, as one moved away, read as loading only itself"
+        );
+        let unheld: BTreeSet<&str> = held
+            .iter()
+            .copied()
+            .filter(|f| !f.ends_with(".cjs"))
+            .collect();
+        assert_eq!(
+            imported(found, "f00d", &unheld),
+            None,
+            "a program naming a file its commit doesn't hold was followed as if it loaded nothing \
+             past it"
         );
     }
 
@@ -156,15 +180,24 @@ mod tests {
         std::fs::create_dir_all(place.join("versions/abc")).expect("a version");
         let mirror = place.join("mirror.git");
         assert_eq!(swapped(&mirror), None, "a missing link read as a move");
-        let before = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("after 1970")
-            .as_secs();
-        std::os::unix::fs::symlink("versions/abc", place.join("current")).expect("the link");
-        let at = swapped(&mirror).expect("the link's time");
-        assert!(
-            u64::try_from(at).is_ok_and(|at| at > before),
-            "the link's own time, a second on, wasn't read: {at} against {before}"
+        let current = place.join("current");
+        std::os::unix::fs::symlink("versions/abc", &current).expect("the link");
+        // The version and the link at two known times, read off no clock.
+        let touch = |args: &[&str]| {
+            let done = std::process::Command::new("touch").args(args).status();
+            assert!(
+                done.is_ok_and(|done| done.success()),
+                "touch {args:?} failed"
+            );
+        };
+        let version = place.join("versions/abc");
+        touch(&["-d", "@2000000000", &version.to_string_lossy()]);
+        touch(&["-h", "-d", "@1000000000", &current.to_string_lossy()]);
+        assert_eq!(
+            swapped(&mirror),
+            Some(1_000_000_001),
+            "the link's own time, a second on, wasn't read, or the link was followed to its \
+             version's"
         );
         std::fs::remove_dir_all(&place).ok();
     }

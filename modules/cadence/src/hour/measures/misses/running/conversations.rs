@@ -5,11 +5,12 @@
 //! install keeps the program it started with however often its host
 //! restarts.
 
-use super::{Host, shown_host};
+use super::Host;
+use super::hosts::shown_host;
 use crate::command;
 
-/// Each running conversation as a host started when its unit last became
-/// active; `None` when systemd can't list them.
+/// Each running conversation as a host started when its process began;
+/// `None` when systemd can't list them.
 pub fn conversations() -> Option<Vec<Host>> {
     let units = command(
         "systemctl",
@@ -31,6 +32,8 @@ pub fn conversations() -> Option<Vec<Host>> {
         "--user",
         "show",
         "--timestamp=unix",
+        "-p",
+        "ExecMainStartTimestamp",
         "-p",
         "ActiveEnterTimestamp",
     ];
@@ -96,12 +99,15 @@ mod tests {
             ],
             "a failed or stopped conversation, or a host, was read as one running"
         );
-        let shown = "ActiveEnterTimestamp=@1795256762\n\nActiveEnterTimestamp=\n";
+        let shown = concat!(
+            "ExecMainStartTimestamp=@1795256700\nActiveEnterTimestamp=@1795256762\n\n",
+            "ExecMainStartTimestamp=\nActiveEnterTimestamp=\n",
+        );
         let starts = |hosts: Vec<Host>| hosts.iter().map(|host| host.started).collect::<Vec<_>>();
         assert_eq!(
             starts(started(shown, 2)),
-            [Some(1_795_256_762), None],
-            "each conversation's start wasn't read from its own block"
+            [Some(1_795_256_700), None],
+            "each conversation's start wasn't read from its own block, as its process began"
         );
         assert_eq!(
             starts(started(shown, 3)),
