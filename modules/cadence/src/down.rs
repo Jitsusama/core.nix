@@ -1,18 +1,22 @@
 //! Each realm's other machines gone down while they hold work: one its node
-//! read ready within the hour before, with a session on it busy, and that
-//! has read unreachable or turned away for ten minutes of readings since,
+//! read ready within the hour before, on mains power with a session on it
+//! busy, and that has read unreachable for ten minutes of readings since,
 //! is told to Joel by a desktop notice and to the orchestrator and its owner
 //! as a finding, once, and again once it's back. On 17 November this machine
 //! powered off by itself and no one heard for minutes; the node knows each
 //! link's state, so the tick reads it rather than wait on another session
-//! to. A machine with no work sleeps as its node lets it, which isn't news,
-//! and every other machine dropping at once is this one cut off.
+//! to. A machine with no work sleeps as its node lets it, and one on battery
+//! sleeps when its lid shuts whatever it holds, so neither is news. Two or
+//! more machines that read ready a tick before all dropping at once is this
+//! one cut off; with one other machine, the two can't be told apart.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -30,99 +34,97 @@ const READY_WITHIN: i64 = 60 * 60;
 const READ_GAP: i64 = 15 * 60;
 /// How long a machine no realm lists any more is remembered.
 const FORGET: i64 = 2 * 86_400;
-/// The most of a node's words a finding carries.
-const SAID: usize = 120;
+/// How long a node may take to answer: one stalled on a peer it can't reach
+/// would otherwise hold the whole tick, and every alarm with it.
+const ASK_WITHIN: Duration = Duration::from_secs(30);
 
 /// What a realm's node reads of a machine now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reading {
     Ready,
-    /// Unreachable, or turned away.
     Down,
     /// In a state that's neither, or listed by a realm that didn't answer.
     Unread,
 }
 
 /// A machine as its realm's node reads it now.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Seen {
     pub machine: String,
     pub realm: String,
     pub reading: Reading,
-    /// Whether a session on it is busy, so its node keeps it awake.
-    pub working: bool,
-    /// Why its node turns it away, when it does rather than only not
-    /// reaching it, as for speaking another version.
-    pub refused: Option<String>,
+    /// Whether a session on it is busy, so its node keeps it awake; none
+    /// when the node didn't say which sessions are.
+    pub working: Option<bool>,
+    /// Whether it runs on battery, where a lid shut sleeps it however busy.
+    pub battery: bool,
 }
 
 /// Each machine the realm's node lists but this one, from what `mycelium
-/// machines`, `sessions` and `health` answer; none when the node doesn't
-/// answer `machines`.
+/// machines` and `sessions` answer; none when the node doesn't answer
+/// `machines`.
 #[must_use]
-pub fn seen(realm: &str, machines: &str, sessions: &str, health: &str, this: &str) -> Vec<Seen> {
-    let said = |answer: &str| {
-        serde_json::Deserializer::from_str(answer)
-            .into_iter::<serde_json::Value>()
-            .map_while(Result::ok)
-            .collect::<Vec<_>>()
-    };
-    let refused: BTreeMap<String, String> = said(health)
-        .iter()
-        .filter_map(|line| line["links"].as_array())
-        .flatten()
-        .filter(|link| link["state"] == "refused")
-        .filter_map(|link| {
-            let why = link["why"].as_str().unwrap_or("it gave no reason");
-            Some((link["machine"].as_str()?.to_owned(), why.to_owned()))
-        })
-        .collect();
-    let working: BTreeSet<String> = said(sessions)
-        .iter()
-        .filter_map(|line| line["Ok"]["Sessions"].as_array())
-        .flatten()
-        .filter(|session| session["state"] == "busy")
-        .filter_map(|session| session["machine"].as_str().map(str::to_owned))
-        .collect();
+pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen> {
+    let listed: Option<Vec<serde_json::Value>> = serde_json::Deserializer::from_str(sessions)
+        .into_iter::<serde_json::Value>()
+        .map_while(Result::ok)
+        .find_map(|said| said["Ok"]["Sessions"].as_array().cloned());
+    let working: Option<BTreeSet<String>> = listed.map(|sessions| {
+        sessions
+            .iter()
+            .filter(|session| session["state"] == "busy")
+            .filter_map(|session| session["machine"].as_str().map(str::to_owned))
+            .collect()
+    });
     crate::elsewhere::machines(machines)
         .unwrap_or_default()
         .iter()
         .filter_map(|machine| {
             let name = machine["name"].as_str().filter(|name| *name != this)?;
-            let turned_away = refused.get(name).cloned();
             let reading = match machine["state"].as_str() {
                 Some("ready") => Reading::Ready,
                 Some("unreachable") => Reading::Down,
-                _ if turned_away.is_some() => Reading::Down,
                 _ => Reading::Unread,
             };
             Some(Seen {
                 machine: name.to_owned(),
                 realm: realm.to_owned(),
                 reading,
-                working: working.contains(name),
-                refused: turned_away.filter(|_| reading == Reading::Down),
+                working: working.as_ref().map(|busy| busy.contains(name)),
+                battery: machine["power"]["on_battery"].as_bool() == Some(true),
             })
         })
         .collect()
 }
 
 /// What cadence remembers of each machine between ticks.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Told {
     #[serde(default)]
     pub machines: BTreeMap<String, Spell>,
+    /// When the machines were last read, so those ready then are told
+    /// from those that went down earlier.
+    #[serde(default)]
+    pub read_at: Option<i64>,
+    /// Whether this machine reads as cut off: it holds until any machine
+    /// reads ready again, however long that takes.
+    #[serde(default)]
+    pub cut_off: bool,
 }
 
 /// One machine's readings.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Spell {
     /// When it last read ready.
     #[serde(default)]
     pub ready_at: Option<i64>,
-    /// Whether a session on it was busy when it last read ready.
+    /// Whether a session on it was busy when it last read ready, as last
+    /// said: a tick the node didn't say keeps what the one before did.
     #[serde(default)]
     pub working: bool,
+    /// Whether it ran on battery when it last read ready.
+    #[serde(default)]
+    pub battery: bool,
     /// When it was last read ready or down.
     #[serde(default)]
     pub read_at: Option<i64>,
@@ -148,17 +150,19 @@ pub struct Spell {
 }
 
 /// What to tell of one machine.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tell {
     Down {
         machine: String,
         realm: String,
         minutes: i64,
-        refused: Option<String>,
     },
     Back {
         machine: String,
         minutes: i64,
+        /// Whether it went unread a while before it was back, so `minutes`
+        /// counts only to its last reading down.
+        at_least: bool,
         /// Who had the finding of its going down.
         to: BTreeSet<String>,
         /// Joel's notice of its going down, to replace.
@@ -170,35 +174,61 @@ pub enum Tell {
 /// it, down when one reads it down and none ready.
 fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
     let mut by: BTreeMap<&str, (Seen, BTreeSet<String>)> = BTreeMap::new();
+    let rank = |reading| match reading {
+        Reading::Ready => 2,
+        Reading::Down => 1,
+        Reading::Unread => 0,
+    };
     for one in seen {
         let (kept, realms) = by
             .entry(&one.machine)
             .or_insert_with(|| (one.clone(), BTreeSet::new()));
         realms.insert(one.realm.clone());
-        kept.working |= one.working;
-        let rank = |reading| match reading {
-            Reading::Ready => 2,
-            Reading::Down => 1,
-            Reading::Unread => 0,
+        let working = match (kept.working, one.working) {
+            (None, None) => None,
+            (a, b) => Some(a == Some(true) || b == Some(true)),
         };
         if rank(one.reading) > rank(kept.reading) {
-            let working = kept.working;
-            *kept = Seen {
-                working,
-                ..one.clone()
-            };
+            *kept = one.clone();
         }
+        kept.working = working;
     }
     by
 }
 
-/// What's newly down or back, given what each of the `answered` realms
-/// reads now, keeping each machine's spell in `told`.
-pub fn due(seen: &[Seen], answered: &[String], told: &mut Told, now: i64) -> Vec<Tell> {
+/// Whether this machine reads as cut off, kept in `told`: two or more
+/// machines ready at the last reading and none ready now, until one reads
+/// ready again. A machine that went down earlier wasn't ready then, so it
+/// doesn't count toward dropping at once.
+fn cut_off(by: &BTreeMap<&str, (Seen, BTreeSet<String>)>, told: &mut Told, now: i64) -> bool {
+    let last = told.read_at.replace(now);
+    let just_up = by
+        .keys()
+        .filter(|machine| last.is_some() && told.machines[**machine].ready_at == last)
+        .count();
+    if by.values().any(|(one, _)| one.reading == Reading::Ready) {
+        told.cut_off = false;
+    } else if just_up >= 2 {
+        told.cut_off = true;
+    }
+    told.cut_off
+}
+
+/// What's newly down or back, given what each of the `answered` realms of
+/// those `asked` reads now, keeping each machine's spell in `told`.
+pub fn due(
+    seen: &[Seen],
+    asked: &[String],
+    answered: &[String],
+    told: &mut Told,
+    now: i64,
+) -> Vec<Tell> {
     let mut by = merged(seen);
     for (machine, (one, realms)) in &mut by {
         let spell = told.machines.entry((*machine).to_owned()).or_default();
         spell.listed_at = now;
+        // A realm no longer asked never answers again, so it's let go.
+        spell.realms.retain(|realm| asked.contains(realm));
         let unanswered = spell.realms.iter().any(|realm| !answered.contains(realm));
         if unanswered && one.reading != Reading::Ready {
             one.reading = Reading::Unread;
@@ -209,18 +239,7 @@ pub fn due(seen: &[Seen], answered: &[String], told: &mut Told, now: i64) -> Vec
             spell.realms = std::mem::take(realms);
         }
     }
-    // Every machine up within the hour reading down at once, two or more,
-    // is this machine cut off; with one, the two can't be told apart.
-    let lately_up: Vec<Reading> = by
-        .iter()
-        .filter(|(machine, _)| {
-            told.machines[**machine]
-                .ready_at
-                .is_some_and(|ready| now - ready <= READY_WITHIN)
-        })
-        .map(|(_, (one, _))| one.reading)
-        .collect();
-    let cut_off = lately_up.len() >= 2 && lately_up.iter().all(|r| *r == Reading::Down);
+    let cut_off = cut_off(&by, told, now);
     let mut tells = Vec::new();
     for (machine, (one, _)) in by {
         let spell = told
@@ -234,16 +253,21 @@ pub fn due(seen: &[Seen], answered: &[String], told: &mut Told, now: i64) -> Vec
                 if let Some(since) = spell.down_since
                     && (spell.notice.is_some() || !spell.sent.is_empty())
                 {
+                    let last_down = spell.read_at.unwrap_or(now);
+                    let at_least = now - last_down > READ_GAP;
+                    let until = if at_least { last_down } else { now };
                     tells.push(Tell::Back {
                         machine: machine.to_owned(),
-                        minutes: (now - since) / 60,
+                        minutes: (until - since) / 60,
+                        at_least,
                         to: std::mem::take(&mut spell.sent),
                         notice: spell.notice,
                     });
                 }
                 *spell = Spell {
                     ready_at: Some(now),
-                    working: one.working,
+                    working: one.working.unwrap_or(spell.working),
+                    battery: one.battery,
                     read_at: Some(now),
                     realms: std::mem::take(&mut spell.realms),
                     listed_at: now,
@@ -261,12 +285,12 @@ pub fn due(seen: &[Seen], answered: &[String], told: &mut Told, now: i64) -> Vec
                 let lately = spell
                     .ready_at
                     .is_some_and(|ready| since - ready <= READY_WITHIN);
-                if !spell.told && spell.working && lately && now - since >= DOWN_FOR {
+                let holds = spell.working && !spell.battery;
+                if !spell.told && holds && lately && now - since >= DOWN_FOR {
                     tells.push(Tell::Down {
                         machine: machine.to_owned(),
                         realm: one.realm.clone(),
                         minutes: (now - since) / 60,
-                        refused: one.refused.clone(),
                     });
                 }
             }
@@ -275,21 +299,6 @@ pub fn due(seen: &[Seen], answered: &[String], told: &mut Told, now: i64) -> Vec
     told.machines
         .retain(|_, spell| now - spell.listed_at < FORGET);
     tells
-}
-
-/// Up to `SAID` of a node's words, on one line and quoted, so a finding
-/// shows them as the node's rather than cadence's.
-fn quoted(words: &str) -> String {
-    let line: String = words
-        .chars()
-        .map(|c| match c {
-            '"' => '\'',
-            c if c.is_control() => ' ',
-            c => c,
-        })
-        .take(SAID)
-        .collect();
-    format!("\"{line}\"")
 }
 
 impl Tell {
@@ -312,24 +321,21 @@ impl Tell {
     }
 
     /// The notice's words, beneath the machine's name: what's true, and
-    /// what Joel can do about it. The node's own words stay in the finding.
+    /// what Joel can do about it.
     #[must_use]
     pub fn notice(&self) -> String {
         match self {
-            Self::Down {
-                minutes,
-                refused: None,
-                ..
-            } => format!(
+            Self::Down { minutes, .. } => format!(
                 "Can't be reached for {minutes} min, and its work waits until it's back. \
                  Check it's awake and online."
             ),
-            Self::Down { minutes, .. } => format!(
-                "Won't link with this machine for {minutes} min, and its work waits. The \
-                 orchestrator has been told why."
-            ),
+            Self::Back {
+                minutes,
+                at_least: false,
+                ..
+            } => format!("Back after {minutes} min, and its work carries on."),
             Self::Back { minutes, .. } => {
-                format!("Back after {minutes} min, and its work carries on.")
+                format!("Back after at least {minutes} min, and its work carries on.")
             }
         }
     }
@@ -343,26 +349,27 @@ impl Tell {
                 machine,
                 realm,
                 minutes,
-                refused,
             } => {
-                let state = refused.as_ref().map_or_else(
-                    || "unreachable".to_owned(),
-                    |why| format!("turned away, its node saying {}", quoted(why)),
-                );
                 let joel = if noticed {
                     "Joel has a notice of it."
                 } else {
                     "Joel's notice of it couldn't be shown."
                 };
                 format!(
-                    "Cadence alarm: {machine} has read {state} in the {realm} realm for \
-                     {minutes} min, after reading ready within the hour before with a \
-                     session on it busy. {joel}"
+                    "Cadence alarm: {machine} has read unreachable in the {realm} realm for \
+                     {minutes} min, after reading ready within the hour before, on mains \
+                     power with a session on it busy. {joel}"
                 )
             }
             Self::Back {
-                machine, minutes, ..
-            } => format!("{machine} reads ready again, after {minutes} min down."),
+                machine,
+                minutes,
+                at_least,
+                ..
+            } => {
+                let least = if *at_least { "at least " } else { "" };
+                format!("{machine} reads ready again, after {least}{minutes} min down.")
+            }
         }
     }
 }
@@ -434,23 +441,30 @@ fn escaped(text: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// Shows Joel `one`'s notice, a coming back in place of its going down,
-/// with its id when it was shown.
-fn notify(one: &Tell) -> Option<u32> {
-    let mut args = vec!["-p", "-a", "Machines", "-u", one.urgency()];
-    let replaces = match one {
-        Tell::Back {
-            notice: Some(id), ..
-        } => id.to_string(),
-        _ => String::new(),
-    };
-    if !replaces.is_empty() {
-        args.extend(["-r", &replaces]);
+/// What `notify-send` is given to show `one`: printing the id it's shown
+/// by, and a coming back replacing its going down.
+fn notice_args(one: &Tell) -> Vec<String> {
+    let mut args: Vec<String> = ["-p", "-a", "Machines", "-u", one.urgency()]
+        .map(str::to_owned)
+        .into();
+    if let Tell::Back {
+        notice: Some(id), ..
+    } = one
+    {
+        args.extend(["-r".to_owned(), id.to_string()]);
     }
-    let body = escaped(&one.notice());
-    args.extend(["--", one.machine(), &body]);
+    args.extend([
+        "--".to_owned(),
+        one.machine().to_owned(),
+        escaped(&one.notice()),
+    ]);
+    args
+}
+
+/// Shows Joel `one`'s notice, with its id when it was shown.
+fn notify(one: &Tell) -> Option<u32> {
     let out = Command::new("notify-send")
-        .args(&args)
+        .args(notice_args(one))
         .stdin(Stdio::null())
         .output()
         .ok()
@@ -461,6 +475,49 @@ fn notify(one: &Tell) -> Option<u32> {
             .parse()
             .unwrap_or(0),
     )
+}
+
+/// What `program` prints given `args`, or an error when it fails or is
+/// still running after `within`, when it's stopped.
+fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut out = child.stdout.take().expect("its output was piped");
+    // Read beside the wait, so an answer past a pipe's buffer can't stall it.
+    let reader = thread::spawn(move || {
+        let mut said = String::new();
+        out.read_to_string(&mut said).map(|_| said)
+    });
+    let deadline = Instant::now() + within;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("{program} {} took over {within:?}", args.join(" ")),
+            ));
+        }
+        thread::sleep(Duration::from_millis(100));
+    };
+    let said = reader
+        .join()
+        .map_err(|_| io::Error::other("reading its answer failed"))??;
+    if status.success() {
+        Ok(said)
+    } else {
+        Err(io::Error::other(format!(
+            "{program} {} failed",
+            args.join(" ")
+        )))
+    }
 }
 
 /// One tick's watch: reads each of `realms`, tells what's newly down or
@@ -485,19 +542,22 @@ pub fn run(
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     let this = terminal_kit::environment::machine();
-    let ask = |realm: &str, what: &str| crate::command("mycelium", &["--realm", realm, what]);
+    let ask = |realm: &str, what: &str| answer("mycelium", &["--realm", realm, what], ASK_WITHIN);
     let mut answered = Vec::new();
     let mut read = Vec::new();
     for realm in realms {
-        let Ok(machines) = ask(realm, "machines") else {
+        // An answer naming no machines, as an error, says nothing of them.
+        let Some(machines) = ask(realm, "machines")
+            .ok()
+            .filter(|said| crate::elsewhere::machines(said).is_some())
+        else {
             continue;
         };
         let sessions = ask(realm, "sessions").unwrap_or_default();
-        let health = ask(realm, "health").unwrap_or_default();
         answered.push(realm.clone());
-        read.extend(seen(realm, &machines, &sessions, &health, &this));
+        read.extend(seen(realm, &machines, &sessions, &this));
     }
-    let tells = due(&read, &answered, &mut told, now);
+    let tells = due(&read, realms, &answered, &mut told, now);
     let owner_of = |key: &str| crate::findings::owner_of(key, owners);
     let write = |told: &Told| crate::write_whole(&path, &serde_json::to_string_pretty(told)?);
     let mut promised = told.clone();
@@ -519,7 +579,14 @@ pub fn run(
         |to, text| mesh.send(&crate::message(to, "finding", text)),
     );
     for one in &tells {
-        println!("{}", one.finding(true));
+        let noticed = match one {
+            Tell::Down { machine, .. } => told
+                .machines
+                .get(machine)
+                .is_some_and(|spell| spell.notice.is_some()),
+            Tell::Back { notice, .. } => notice.is_some(),
+        };
+        println!("{}", one.finding(noticed));
     }
     write(&told)?;
     told_all
