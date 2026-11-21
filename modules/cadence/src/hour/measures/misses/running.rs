@@ -5,6 +5,7 @@
 //! older runtime's pi. Whatever cadence can't read counts as not running,
 //! so a blind hour never tells him fixed.
 
+mod program;
 mod resumed;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,8 +78,10 @@ struct Host {
 /// Which of `merged` don't run here yet, each with why. A change runs once
 /// its repository's running revision carries its merge, a core change to
 /// the hosts' patches once every running host also loads a runtime that
-/// applied each as merged or since, and one to the hosts' unit once
-/// every host started after the switch that carried it. A change seen
+/// applied each as merged or since, one to the hosts' unit once every
+/// host started after the switch that carried it, and a harness change to
+/// the hosts' program once every host started after it was installed. A
+/// change seen
 /// running is kept in `folder`'s `ran.json` and never read again, so a
 /// closed miss isn't reopened, and told fixed twice, by an hour that can't
 /// see for a moment: a host restarting at :10, or a switch from a branch.
@@ -108,15 +111,20 @@ pub fn unrun(
             merge_of(&path, change.number).as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
+            |sha| program::files(&path, sha),
             |sha, reaches| {
                 let read = hosts.get_or_insert_with(read_hosts);
-                let switched_at = reaches
-                    .unit
-                    .then(|| first_switched(switches, |rev| carries(&path, sha, rev) == Some(true)))
-                    .flatten();
+                let carried = |rev: &str| carries(&path, sha, rev) == Some(true);
+                let since = if reaches.program {
+                    program::first_installed(Path::new(&*path), carried)
+                } else if reaches.unit {
+                    first_switched(switches, carried)
+                } else {
+                    None
+                };
                 // Walked only once a host keeps copies to compare with it.
                 let merged = std::cell::OnceCell::new();
-                hosts_lack(read.as_deref(), &reaches, switched_at, |applied| {
+                hosts_lack(read.as_deref(), &reaches, since, |applied| {
                     merged
                         .get_or_init(|| versions(&path, sha, &reaches.patches))
                         .as_ref()
@@ -147,26 +155,30 @@ pub fn unrun(
     unrun
 }
 
-/// What a core change reaches that only a host's restart brings in: the
-/// patches the hosts' runtime applies, by path, or their unit.
+/// What a change reaches that only a host's restart brings in: the
+/// patches the hosts' runtime applies, by path, or their unit, of core's,
+/// or their program, of the harness's.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Reaches {
     patches: Vec<String>,
     unit: bool,
+    program: bool,
 }
 
 /// Why a change of `repo` merged as `merge` doesn't run here yet, if it
 /// doesn't: `rev` is its repository's running revision, `carries` says
 /// whether a revision holds a commit (`None` for a revision cadence doesn't
-/// have), `changed` the files a merge changed, and `hosts` why the pi hosts
-/// lack a change that reaches them. What cadence couldn't read counts as
-/// not running.
+/// have), `changed` the files a merge changed, `program` the harness's
+/// files the hosts' program loads at a commit, and `hosts` why the pi
+/// hosts lack a change that reaches them. What cadence couldn't read counts
+/// as not running.
 fn judge(
     repo: &str,
     rev: Option<&str>,
     merge: Option<&str>,
     carries: impl Fn(&str, &str) -> Option<bool>,
     changed: impl Fn(&str) -> Option<String>,
+    program: impl FnOnce(&str) -> Option<BTreeSet<String>>,
     hosts: impl FnOnce(&str, Reaches) -> Option<&'static str>,
 ) -> Option<&'static str> {
     if !RUN_HERE.contains(&repo) {
@@ -184,12 +196,22 @@ fn judge(
         Some(false) => return Some("the last switch doesn't carry it"),
         Some(true) => {}
     }
-    if repo != "core" {
+    if repo != "core" && repo != "harness" {
         return None;
     }
     let Some(files) = changed(sha) else {
         return Some("cadence can't read what it changed");
     };
+    if repo == "harness" {
+        let Some(loaded) = program(sha) else {
+            return Some("cadence can't tell which harness files a pi host loads");
+        };
+        let reaches = Reaches {
+            program: files.lines().any(|file| loaded.contains(file)),
+            ..Reaches::default()
+        };
+        return reaches.program.then(|| hosts(sha, reaches)).flatten();
+    }
     let reaches = Reaches {
         patches: files
             .lines()
@@ -217,14 +239,14 @@ fn judge(
 /// Why the pi hosts lack a change that `reaches` them, if they do: each
 /// host's runtime must have applied its patches, as `loads` says of what a
 /// runtime applied (`None` when it can't tell), and each must have started
-/// after `switched_at`, when a switch first carried a change to their
-/// unit, `None` when no switch read did. `hosts` is `None` when they
-/// couldn't be listed.
+/// after `since`: when a switch first carried a change to their unit, or a
+/// version carrying one to their program was first installed, `None` when
+/// cadence found neither. `hosts` is `None` when they couldn't be listed.
 /// Something lacking outranks what can't be read, so the owner is asked.
 fn hosts_lack(
     hosts: Option<&[Host]>,
     reaches: &Reaches,
-    switched_at: Option<i64>,
+    since: Option<i64>,
     loads: impl Fn(&Applied) -> Option<bool>,
 ) -> Option<&'static str> {
     let runtime = !reaches.patches.is_empty();
@@ -243,16 +265,24 @@ fn hosts_lack(
     }
     // A stopped host keeps no unit: it starts on the one switched in.
     let running = || hosts.iter().filter(|host| !host.stopped);
-    if reaches.unit
-        && let Some(at) = switched_at
+    let restarts = reaches.unit || reaches.program;
+    if restarts
+        && let Some(at) = since
         && running().any(|host| host.started.is_some_and(|started| started < at))
     {
-        return Some("a pi host keeps its unit from before it");
+        return Some(if reaches.program {
+            "a pi host runs the harness from before it"
+        } else {
+            "a pi host keeps its unit from before it"
+        });
     }
     if runtime && loaded.contains(&None) {
         return Some("cadence can't tell what a pi host loads");
     }
-    if reaches.unit && (switched_at.is_none() || running().any(|host| host.started.is_none())) {
+    if reaches.program && since.is_none() {
+        return Some("cadence can't tell when the harness carrying it was installed");
+    }
+    if restarts && (since.is_none() || running().any(|host| host.started.is_none())) {
         return Some("cadence can't tell when a pi host started");
     }
     None

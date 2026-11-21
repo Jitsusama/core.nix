@@ -4,6 +4,79 @@ const OLD: &str = "xi5w06adwa04v6ifnajk1l37fp9hn79c";
 
 const CODE: &str = "modules/cadence/src/main.rs";
 
+/// `judge` for a change whose case never reads the harness's program.
+fn judge(
+    repo: &str,
+    rev: Option<&str>,
+    merge: Option<&str>,
+    carries: impl Fn(&str, &str) -> Option<bool>,
+    changed: impl Fn(&str) -> Option<String>,
+    hosts: impl FnOnce(&str, Reaches) -> Option<&'static str>,
+) -> Option<&'static str> {
+    let program = |_: &str| -> Option<BTreeSet<String>> { panic!("the program was read") };
+    super::judge(repo, rev, merge, carries, changed, program, hosts)
+}
+
+#[test]
+fn a_harness_change_to_the_hosts_program_waits_on_them() {
+    let all = |_: &str, _: &str| Some(true);
+    let loaded = |_: &str| Some(BTreeSet::from(["host/service/program.ts".to_owned()]));
+    let lack = |_: &str, reaches: Reaches| {
+        Some(if reaches.program {
+            "program"
+        } else {
+            "misread"
+        })
+    };
+    let at = Some("a1b2c3d");
+    let program = |_: &str| Some("host/service/program.ts\ndocs/host.md".to_owned());
+    assert_eq!(
+        super::judge("harness", at, Some("f00d"), all, program, loaded, lack),
+        Some("program"),
+        "installed, but a change to the hosts' program didn't wait on them"
+    );
+    let extension = |_: &str| Some("extensions/quest/index.ts".to_owned());
+    assert_eq!(
+        super::judge("harness", at, Some("f00d"), all, extension, loaded, lack),
+        None,
+        "a change no host's program loads waited on the hosts"
+    );
+    assert_eq!(
+        super::judge("harness", at, Some("f00d"), all, program, |_| None, lack),
+        Some("cadence can't tell which harness files a pi host loads"),
+        "a program cadence couldn't read counted as loading nothing"
+    );
+    assert_eq!(
+        super::judge("harness", at, Some("f00d"), all, |_| None, loaded, lack),
+        Some("cadence can't read what it changed"),
+        "an unread diff skipped the hosts"
+    );
+}
+
+#[test]
+fn every_host_must_have_started_since_its_program_was_installed() {
+    let program = Reaches {
+        program: true,
+        ..Reaches::default()
+    };
+    let lack = |hosts: &[Host], at| hosts_lack(Some(hosts), &program, at, |_| Some(true));
+    assert_eq!(lack(&[host(None, Some(200))], Some(100)), None);
+    assert_eq!(
+        lack(&[host(None, Some(200)), host(None, Some(50))], Some(100)),
+        Some("a pi host runs the harness from before it"),
+        "a host started before the install counted as running the new program"
+    );
+    assert_eq!(
+        lack(&[host(None, Some(200))], None),
+        Some("cadence can't tell when the harness carrying it was installed"),
+        "no install found carrying it, yet the hosts counted as started since"
+    );
+    assert_eq!(
+        lack(&[host(None, None)], Some(100)),
+        Some("cadence can't tell when a pi host started")
+    );
+}
+
 #[test]
 fn a_switch_names_what_runs_while_its_system_still_does() {
     let switch: Value = serde_json::from_str(
@@ -307,7 +380,7 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
     let merged = Wanted::from([("x.patch".to_owned(), vec![Some("new".to_owned())])]);
     let runtime = Reaches {
         patches: vec!["modules/pi/host-patches/x.patch".to_owned()],
-        unit: false,
+        ..Reaches::default()
     };
     let lack = |hosts: Option<&[Host]>| {
         hosts_lack(hosts, &runtime, None, |applied| {
@@ -547,8 +620,8 @@ fn a_runtime_is_read_by_the_copies_it_keeps() {
 #[test]
 fn every_host_must_have_started_since_its_unit_switched_in() {
     let unit = Reaches {
-        patches: Vec::new(),
         unit: true,
+        ..Reaches::default()
     };
     let lack = |hosts: &[Host], at| hosts_lack(Some(hosts), &unit, at, |_| Some(true));
     assert_eq!(lack(&[host(None, Some(200))], Some(100)), None);
