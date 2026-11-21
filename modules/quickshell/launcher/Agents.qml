@@ -912,6 +912,9 @@ Provider {
             mark: Theme.glyph[held.mark],
             markHue: held.markHue,
             hue: served.hue,
+            // Waiting on Joel, parked with his want open too, so a wake
+            // keeps his mark's hue (wakeNow).
+            waitsOnJoel: held.waitsOnJoel === true,
             side: said(served.side),
             sideItems: served.side ?? [],
             note: String(held.note ?? ""),
@@ -1357,7 +1360,9 @@ Provider {
         provider.becomes(key, {
             side: items.map(item => item.said).join(" \u00b7 "),
             sideItems: items,
-            hue: SessionRow.hue("listening", full !== "")
+            // Woken, one waiting on Joel still waits on him, so his mark
+            // keeps the alert's hue rather than a program's.
+            hue: SessionRow.hue(now?.waitsOnJoel ? "needs" : "listening", full !== "")
         }, session.title, "wake", {
             done: () => !Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
             within: Sessions.startsWithin

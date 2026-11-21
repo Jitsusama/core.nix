@@ -167,3 +167,15 @@ function closedAt(endedAt, now, said, day) {
     return String(said[today ? "closedAt" : "closedOn"] ?? "").replace("{time}", time)
         .replace("{day}", today ? "" : day(ended));
 }
+
+// The glyph and hue a session's row wears in For You, from Agents' row
+// `made`: its mark and hue as it'd stand not waiting (the agents daemon's
+// held mark and markHue), since every session here waits and the person
+// with a clock is a to-do's here, so they aren't all alert and a nearing
+// limit still warns. With none served, the row's own.
+function unwaited(made) {
+    return {
+        glyph: made?.mark ?? made?.glyph,
+        hue: made?.markHue ?? made?.hue
+    };
+}

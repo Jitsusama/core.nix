@@ -165,7 +165,8 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "name": row.name, "glyph": glyph, "hue": hue, "depth": 0,
             "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
-            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
+            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
+                "waitsOnJoel": row.waits_on_joel},
         }),
     )
 }
@@ -188,7 +189,7 @@ fn worn(row: &Row, under_waits: bool) -> (&'static str, &'static str) {
 /// Whether a row laid in `shown` waits on Joel: a session that does
 /// (row.rs `waits_on_joel`). A fold never holds one, since tree.rs folds
 /// only those standing as listening or quieter, and one waiting on Joel
-/// stands there as needing him (row.rs `for_joel`), so its row keeps its
+/// stands there as needing him (`Session::stands_to_joel`), so its row keeps its
 /// own mark.
 fn waits(one: &Shown) -> bool {
     match one {
@@ -304,7 +305,8 @@ fn member(row: &Row, parent: &str, depth: usize, under_waits: bool) -> Value {
             "kind": "session", "name": row.name, "glyph": glyph, "hue": hue,
             "depth": depth, "side": items(&row.side_items), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
-            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
+            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
+                "waitsOnJoel": row.waits_on_joel},
         }),
     )
 }
@@ -760,7 +762,7 @@ mod tests {
         let lead = || wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning");
         let asking =
             |at: &str, depth| wearing(row(at, "needs", depth, LIVE), "waitsOnJoel", "alert");
-        // Parked with his want still open, as For You lists it waiting (row.rs for_joel).
+        // Parked with his want still open, as For You lists it waiting (stands_to_joel).
         let parked_asking = |at: &str| {
             let mut shown = row(at, "parked", 1, &["wake", "talk"]);
             if let Shown::Session(row) = &mut shown {
@@ -853,6 +855,44 @@ mod tests {
             found(&rows, "row:agents-top:B")["side"][0]["said"],
             "working",
             "a session inside says what its own row says"
+        );
+    }
+
+    #[test]
+    fn a_session_parked_with_joels_want_open_talks_counts_and_sorts_as_waiting() {
+        // Its state stays "parked"; only waits_on_joel says he's wanted.
+        let made = |waits| {
+            let mut parked = row("A", "parked", 1, &["wake", "talk"]);
+            if let Shown::Session(row) = &mut parked {
+                row.waits_on_joel = waits;
+            }
+            top(&[
+                row("P", "working", 0, LIVE),
+                row("O", "listening", 0, LIVE),
+                parked,
+            ])
+        };
+        let (asking, resting) = (made(true), made(false));
+        let talks =
+            |rows: &[Value]| acts(found(rows, "row:agents-top:A")).contains(&"verb:agent:talk");
+        let counted = |rows: &[Value]| {
+            sides(found(rows, "row:agents-top:O"))
+                .iter()
+                .any(|said| said.contains("needs you"))
+        };
+        let first = |rows: &[Value]| {
+            rows.iter()
+                .find(|row| row["depth"] == 0)
+                .map(|row| row["key"].clone())
+        };
+        assert_eq!(
+            [&asking, &resting].map(|rows| (talks(rows), counted(rows), first(rows))),
+            [
+                (true, true, Some(json!("row:agents-top:O"))),
+                (false, false, Some(json!("row:agents-top:P"))),
+            ],
+            "waiting on Joel, it keeps Talk, its team says it needs him and sorts first; \
+             at rest, none of those"
         );
     }
 

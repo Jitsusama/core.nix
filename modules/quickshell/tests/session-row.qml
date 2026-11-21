@@ -211,6 +211,14 @@ QtObject {
             .map(state => `${state}:${SessionRow.hue(state, true)}`).join(" ");
         if (warned !== "needs:alert working:warning listening:warning paused:muted off:muted")
             failures.push(`the glyphs' roles warned: "${warned}"`);
+        // One waiting on Joel wears his mark in Agents; For You keeps the
+        // mark and hue it'd wear not waiting, or with none served, its own.
+        const kept = [
+            { glyph: "waitsOnJoel", hue: "alert", mark: "shapeSquare", markHue: "warning" },
+            { glyph: "agent", hue: "program", mark: undefined }
+        ].map(made => JSON.stringify(SessionRow.unwaited(made))).join(" ");
+        if (kept !== '{"glyph":"shapeSquare","hue":"warning"} {"glyph":"agent","hue":"program"}')
+            failures.push(`For You's own marks: ${kept}`);
 
         // Past 80% of its window its row says how full, in whole percent,
         // and nothing under it or where the record says no context.

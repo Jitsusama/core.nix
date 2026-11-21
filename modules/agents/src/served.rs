@@ -191,8 +191,8 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     let acts: Vec<Value> = row.acts.iter().map(|id| row.act(id)).collect();
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "doing": row.doing,
-        "mark": row.mark, "markHue": row.mark_hue,
-        "rank": crate::standing::rank(row.state),
+        "mark": row.mark, "markHue": row.mark_hue, "waitsOnJoel": row.waits_on_joel,
+        "rank": crate::standing::rank(if row.waits_on_joel { "needs" } else { row.state }),
         "gone": row.gone,
         "orchestrates": row.orchestrates,
         "returns": format!("verb:agent:{}", row.returns),
@@ -440,9 +440,11 @@ mod tests {
             "it says how it stands and where that comes, second after needing Joel"
         );
         assert_eq!(row["order"], SPACING);
-        // One waiting on Joel wears his mark, and holds its own for For You (Now.qml).
-        let mut waiting = self::row("W", "needs");
+        // One waiting on Joel wears his mark, and holds its own for For You (Now.qml);
+        // parked with his want open, it ranks first all the same.
+        let mut waiting = self::row("W", "parked");
         if let Shown::Session(one) = &mut waiting {
+            (one.waits_on_joel, one.state) = (true, "parked");
             (one.glyph, one.hue) = ("waitsOnJoel", "alert");
             (one.mark, one.mark_hue) = ("shapeSquare", "warning");
         }
@@ -458,6 +460,14 @@ mod tests {
             ],
             ["waitsOnJoel", "alert", "shapeSquare", "warning"],
             "Agents draws Joel's mark; For You reads its own from held"
+        );
+        assert_eq!(
+            (
+                worn["held"]["state"].as_str(),
+                worn["held"]["rank"].as_u64()
+            ),
+            (Some("parked"), Some(0)),
+            "parked with his want open, it ranks with those needing him"
         );
         assert_eq!(
             served

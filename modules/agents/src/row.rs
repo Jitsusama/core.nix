@@ -343,7 +343,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         .orchestrates
         .then(|| (known.shape)(session.id()))
         .flatten();
-    let wears = for_joel(stands, asks);
+    let wears = session.stands_to_joel(known.joel_can, known.jobs);
     let waits_on_joel = wears == Stands::Needs;
     let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
@@ -467,18 +467,6 @@ pub fn fold_name(counts: &[(Stands, usize)], words: &Words) -> String {
         .join(", ")
 }
 
-/// How a session stands as Joel looks for what waits on him: one parked
-/// with its want his still open needs him, as For You lists it (wants.rs),
-/// so it wears his mark, sorts first and is never folded away, though its
-/// acts stay a parked one's (`standing::acts`).
-fn for_joel(stands: Stands, asks: bool) -> Stands {
-    if asks && stands == Stands::Parked {
-        Stands::Needs
-    } else {
-        stands
-    }
-}
-
 /// Every session's row, in Sessions' order (`session::in_order`), laid
 /// under their orchestrators with the waiting folded (tree.rs). One the
 /// harness lists as an orchestrator orchestrates, though none of its
@@ -489,10 +477,7 @@ pub fn rows(sessions: &[Session], known: &Known, words: &Words) -> Vec<Shown> {
         .map(|session| Member {
             address: session.address(),
             under: session.under(),
-            stands: for_joel(
-                session.stands(known.joel_can, known.jobs),
-                session::asks_joel(session.presence(), known.joel_can),
-            ),
+            stands: session.stands_to_joel(known.joel_can, known.jobs),
             at_top: session.at_top().is_some(),
         })
         .collect();
@@ -859,6 +844,53 @@ mod tests {
         );
         let held: Vec<_> = fold.held.iter().map(Shown::key).collect();
         assert_eq!(held, ["agent:A", "agent:B"]);
+    }
+
+    #[test]
+    fn one_parked_with_joels_want_open_is_never_folded_and_counts_as_needing_him() {
+        let records = [
+            json!({"presence": {"addresses": ["O"], "busy": true}}),
+            json!({"presence": {"addresses": ["B"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["C"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["A"], "orchestratedBy": "O", "state": "parked",
+                "session": "s-1", "wants": {"kind": "approval", "said": "May I push?"}}}),
+        ];
+        let sessions: Vec<_> = records.iter().map(Session).collect();
+        let given = given();
+        let none = |_: &str| None::<String>;
+        let unlisted = |_: &str| None::<(String, String)>;
+        let windowed = |_: Session| false;
+        let known = Known {
+            joel_can: &given.joel_can,
+            jobs: &given.jobs,
+            spent: &none,
+            family: &none,
+            listed: &unlisted,
+            windowed: &windowed,
+            sharing: false,
+            needs: &|_| 0,
+            shape: &|_| None,
+        };
+        let shown = rows(&sessions, &known, &words());
+        let keys: Vec<_> = shown.iter().map(Shown::key).collect();
+        assert_eq!(
+            keys,
+            ["agent:O", "agent:A", "agents:fold:O"],
+            "parked with his want open, it sorts first and stays out of the fold"
+        );
+        // Home's summary counts it from the same answer (inputs.rs).
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|one| one.stands_to_joel(&given.joel_can, &given.jobs))
+                .collect::<Vec<_>>(),
+            [
+                Stands::Working,
+                Stands::Paused,
+                Stands::Paused,
+                Stands::Needs
+            ]
+        );
     }
 
     #[test]

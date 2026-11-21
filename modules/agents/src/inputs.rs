@@ -584,7 +584,7 @@ impl Inputs {
         );
         let states: Vec<_> = sessions
             .iter()
-            .map(|one| one.stands(&joel_can, &jobs))
+            .map(|one| one.stands_to_joel(&joel_can, &jobs))
             .collect();
         let mut rows = row::rows(&sessions, &known, &self.words);
         let answers = self.answers();

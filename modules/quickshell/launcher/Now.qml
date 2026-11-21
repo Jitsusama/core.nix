@@ -1879,14 +1879,10 @@ Provider {
             })),
             putOffWant(address, key, known)
         ].filter(row => row !== null);
-        const row = member(Object.assign({}, made, {
+        // The mark and hue it wears not waiting (SessionRow.unwaited).
+        const row = member(Object.assign({}, made, SessionRow.unwaited(made), {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
-            // The mark it wears not waiting: every session here waits, and
-            // the person with a clock is a to-do's here (ForYou.js). Its
-            // hue too, so they aren't all alert and a nearing limit warns.
-            glyph: made.mark ?? made.glyph,
-            hue: made.markHue ?? made.hue,
             // Its Return is stepping in, not Agents' own act on the session.
             returns: null,
             verb: "more",
@@ -2002,11 +1998,9 @@ Provider {
             run: () => Sessions.wakeToGo(resting, session())
         })), putOffWant(address, key, known)].filter(row => row !== null));
         const count = answers.choices.length;
-        const row = member(Object.assign({}, made, {
+        const row = member(Object.assign({}, made, SessionRow.unwaited(made), {
             key: key,
             forYou: { kind: "agent", source: "sessions" },
-            glyph: made.mark ?? made.glyph,
-            hue: made.markHue ?? made.hue,
             side: count === 1 ? said.answerOne ?? ""
                 : filledIn(said.answer ?? "", { count: String(count) }),
             drawer: () => ({
