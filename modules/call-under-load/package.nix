@@ -1,13 +1,16 @@
 # call-under-load, built from this directory, its tests run as it builds,
 # with the call's page in share/ and on its path what a run starts:
-# Weston for the near end's display, a-call-is-on for Joel's calls and
-# journalctl for the launcher's openings. Chrome is the machine's own,
-# found on the path the user manager gives it. It takes its shape from
+# Weston for the near end's display, a-call-is-on for Joel's calls,
+# journalctl for the launcher's openings and Chromium for the call. Not
+# Google Chrome: a managed machine's Chrome enrols every fresh profile
+# with its owner's management, and Chromium reads none of Chrome's
+# policies. It takes its shape from
 # the terminal kit (../terminal-kit), so the source is cut from the folder
 # holding both, and built from this one.
 {
   lib,
   callPackage,
+  chromium,
   makeWrapper,
   rustPlatform,
   systemd,
@@ -38,6 +41,7 @@ rustPlatform.buildRustPackage rec {
     wrapProgram $out/bin/call-under-load --prefix PATH : ${
       lib.makeBinPath [
         calls
+        chromium
         systemd
         weston
       ]

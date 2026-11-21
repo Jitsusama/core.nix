@@ -205,10 +205,12 @@ fn run(context: &Context) -> Result<(), Failure> {
     if let Some(why) = gate::kept_clear(&calendar, started * 1000, LONGEST * 1000) {
         return skip(why);
     }
-    let chrome = on_path("google-chrome-stable").ok_or_else(|| {
-        Failure::new(Exit::Unavailable, "there's no Chrome to call with")
-            .because("google-chrome-stable isn't on PATH")
-            .try_this("command -v google-chrome-stable")
+    // Chromium, never Google Chrome, which a managed machine enrols with
+    // its owner's management at every fresh profile (package.nix).
+    let chrome = on_path("chromium").ok_or_else(|| {
+        Failure::new(Exit::Unavailable, "there's no Chromium to call with")
+            .because("chromium isn't on the program's PATH")
+            .try_this("nix build .#call-under-load")
     })?;
     let page = std::env::current_exe()
         .ok()

@@ -96,6 +96,8 @@ impl Drop for Started {
 /// cleaning up as it goes.
 struct Watch {
     said: Receiver<String>,
+    /// What the watch said, kept, so every later ask hears it too.
+    heard: Mutex<Option<String>>,
     over: Arc<AtomicBool>,
     started: Arc<Mutex<Vec<u32>>>,
 }
@@ -137,6 +139,7 @@ impl Watch {
         });
         Watch {
             said,
+            heard: Mutex::new(None),
             over,
             started,
         }
@@ -151,17 +154,28 @@ impl Watch {
 
     /// Why the call must stop, if it must.
     fn stop(&self) -> Result<(), Ended> {
-        self.said
-            .try_recv()
-            .map_or(Ok(()), |why| Err(Ended::Stopped(why)))
+        self.hearing(|said| said.try_recv().ok())
     }
 
     /// Waits until `then`, unless the call must stop first.
     fn wait_until(&self, then: Instant) -> Result<(), Ended> {
         let wait = then.saturating_duration_since(Instant::now());
-        self.said
-            .recv_timeout(wait)
-            .map_or(Ok(()), |why| Err(Ended::Stopped(why)))
+        self.hearing(|said| said.recv_timeout(wait).ok())
+    }
+
+    /// What the watch has said, kept, or else what `listen` hears now.
+    fn hearing(
+        &self,
+        listen: impl FnOnce(&Receiver<String>) -> Option<String>,
+    ) -> Result<(), Ended> {
+        let mut heard = self
+            .heard
+            .lock()
+            .map_err(|_| Ended::Stopped("the watch broke".into()))?;
+        if heard.is_none() {
+            *heard = listen(&self.said);
+        }
+        heard.clone().map_or(Ok(()), |why| Err(Ended::Stopped(why)))
     }
 }
 
@@ -264,19 +278,7 @@ fn steps(
     };
     let config = memory.join("config");
     let far_profile = memory.join("far");
-    fs::create_dir_all(config.join("pkcs11/modules")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(memory.join("home")).map_err(|e| e.to_string())?;
-    fs::write(
-        config.join("pkcs11/modules/tpm2_pkcs11.module"),
-        "enable-in: none-of-these\n",
-    )
-    .map_err(|e| e.to_string())?;
-    for folder in MAPPED {
-        let (kept, linked) = (memory.join("maps").join(folder), profile.join(folder));
-        fs::create_dir_all(&kept).map_err(|e| e.to_string())?;
-        fs::create_dir_all(linked.parent().unwrap_or(&profile)).map_err(|e| e.to_string())?;
-        std::os::unix::fs::symlink(&kept, &linked).map_err(|e| e.to_string())?;
-    }
+    lay_out(&memory, &profile, &config).map_err(|e| e.to_string())?;
 
     let mut weston = Command::new("weston");
     weston
@@ -320,6 +322,8 @@ fn steps(
     far.arg("--headless=new");
     let mut far = Browser::start(far).map_err(|e| format!("the far end's Chrome: {e}"))?;
     watch.ends(far.pid());
+    let profiles = [profile.as_path(), far_profile.as_path()];
+    unenrolled(&profiles)?;
     watch.stop()?;
 
     let url = format!("file://{}", page.display());
@@ -348,6 +352,7 @@ fn steps(
         // Each click comes on the call's own 5 s beat, and Joel's call
         // stops it the moment the watch hears of one.
         watch.wait_until(next)?;
+        unenrolled(&profiles)?;
     }
     let mine = list(near.eval("window.samples", WAIT)?);
     connected(&mine)?;
@@ -372,6 +377,44 @@ fn connected(samples: &[Value]) -> Result<(), Step> {
         return Ok(());
     }
     Err("the call never connected".to_string().into())
+}
+
+/// Makes the call's folders: a home and a config in `memory`, whose
+/// pkcs11 module file keeps the Chromes off the TPM, and Chrome's mapped
+/// caches in `memory`, linked from `profile`.
+fn lay_out(memory: &Path, profile: &Path, config: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(config.join("pkcs11/modules"))?;
+    fs::create_dir_all(memory.join("home"))?;
+    fs::write(
+        config.join("pkcs11/modules/tpm2_pkcs11.module"),
+        "enable-in: none-of-these\n",
+    )?;
+    for folder in MAPPED {
+        let (kept, linked) = (memory.join("maps").join(folder), profile.join(folder));
+        fs::create_dir_all(&kept)?;
+        fs::create_dir_all(linked.parent().unwrap_or(profile))?;
+        std::os::unix::fs::symlink(&kept, &linked)?;
+    }
+    Ok(())
+}
+
+/// Ends the call the moment either browser has enrolled with a management
+/// service, which keeps the token it's given in its profile's
+/// `Policy/Enrollment`. Chromium reads no enrolment token, so it never
+/// should; this is the alarm behind that, since an enrolled test browser
+/// shows up in the machine owner's management as one of Joel's.
+fn unenrolled(profiles: &[&Path]) -> Result<(), Step> {
+    for profile in profiles {
+        let enrolment = profile.join("Policy/Enrollment");
+        if fs::read_dir(&enrolment).is_ok_and(|mut tokens| tokens.next().is_some()) {
+            return Err(format!(
+                "the test browser enrolled with a management service, in {}",
+                enrolment.display()
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// Refuses a camera that isn't Chrome's fake one, as `end`'s page named it.
@@ -510,8 +553,21 @@ mod tests {
         // Dropped well within its grace, so the watch never ends the tests.
         drop(watch);
         let watch = Watch::asking(on, Duration::from_millis(10));
-        thread::sleep(Duration::from_millis(100));
-        assert!(watch.stop().is_err(), "a step went on through Joel's call");
+        assert!(heard(&watch), "a step went on through Joel's call");
+    }
+
+    /// Whether the watch hears of a call within ten seconds: its first ask
+    /// comes at once, but these tests run in the package's build, which can
+    /// share a loaded builder, so a fixed sleep could end before it.
+    fn heard(watch: &Watch) -> bool {
+        let until = Instant::now() + Duration::from_secs(10);
+        while watch.stop().is_ok() {
+            if Instant::now() > until {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        true
     }
 
     #[test]
@@ -554,7 +610,7 @@ mod tests {
     fn a_step_broken_off_for_joel_s_call_counts_as_stopped_and_any_other_as_failed() {
         let broken = || Err(Step::Failed("Chrome's DevTools pipe closed".into()));
         let watch = Watch::asking(on, Duration::from_millis(10));
-        thread::sleep(Duration::from_millis(100));
+        assert!(heard(&watch), "the watch never heard of Joel's call");
         assert!(
             matches!(settled(broken(), &watch), Ok(Ended::Stopped(ref why)) if why == "Joel's call began"),
             "a step the watch broke off read as a failed hour"
@@ -605,6 +661,24 @@ mod tests {
             "a real camera was taken"
         );
         assert!(refused(json!({})), "a camera with no name is refused");
+    }
+
+    #[test]
+    fn a_browser_that_enrolled_ends_the_call() {
+        let profile = std::env::temp_dir().join(format!("cul-enrol-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&profile);
+        fs::create_dir_all(profile.join("Policy/Enrollment")).expect("the folder is made");
+        assert!(
+            unenrolled(&[profile.as_path()]).is_ok(),
+            "an empty enrolment folder stopped the call"
+        );
+        fs::write(profile.join("Policy/Enrollment/token"), "t").expect("the token is written");
+        let stopped = unenrolled(&[Path::new("/nonexistent"), profile.as_path()]);
+        let _ = fs::remove_dir_all(&profile);
+        assert!(
+            matches!(stopped, Err(Step::Failed(ref why)) if why.contains("enrolled")),
+            "an enrolled browser's call went on"
+        );
     }
 
     #[test]

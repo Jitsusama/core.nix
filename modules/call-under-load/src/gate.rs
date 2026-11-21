@@ -179,7 +179,9 @@ mod tests {
 
     #[test]
     fn the_ask_reads_each_exit_and_a_late_answer_as_can_t_tell() {
-        let ask = |script: &str| asking("sh", &["-c", script], Duration::from_millis(300));
+        // The exits get ten seconds, since these tests run in the package's
+        // build, which can share a loaded builder; only the late one is short.
+        let ask = |script: &str| asking("sh", &["-c", script], Duration::from_secs(10));
         assert_eq!(ask("exit 0"), Call::On);
         assert_eq!(ask("exit 1"), Call::Off);
         assert_eq!(
@@ -188,7 +190,7 @@ mod tests {
         );
         let started = Instant::now();
         assert_eq!(
-            ask("sleep 5"),
+            asking("sh", &["-c", "sleep 5"], Duration::from_millis(300)),
             Call::Unknown("a-call-is-on didn't answer in 300 ms".into())
         );
         assert!(
