@@ -509,6 +509,8 @@ ShellRoot {
                 stage = 29;
                 expect("a batch of counts is said once, as the last is heard, not as each comes",
                     countsLeft.length === 1 && countsLeft[0] === "0", countsLeft.join(", "));
+                // Put back, so a case after this one counts as the chooser does.
+                theChooser.countsHeldFor = 200;
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -520,7 +522,8 @@ ShellRoot {
     // Four folders asked to be counted at once, held long enough that only
     // the last count heard says them. The last is a path with a line end,
     // which the chooser answers itself with nothing (FileChooser.qml's
-    // put), so what the three before it said is shown by a silent answer.
+    // put), so only a silent answer can say the batch. The stand-in says no
+    // counts, so this shows the batch said once, not which counts it holds.
     function countingOnce() {
         theChooser.countsHeldFor = 60000;
         const deep = `${home}/elsewhere/deep`;
