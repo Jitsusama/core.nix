@@ -215,7 +215,7 @@ fn a_card_that_cant_be_sent_keeps_last_hour_as_it_was() {
 #[test]
 fn a_finding_two_days_open_counts_apart_and_is_owed_to_its_owner() {
     let account = account();
-    let sent = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 24 * 3600);
+    let sent = std::time::SystemTime::now() - std::time::Duration::from_hours(48);
     let ms = sent
         .duration_since(std::time::UNIX_EPOCH)
         .expect("a clock past 1970")
