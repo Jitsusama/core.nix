@@ -2633,8 +2633,9 @@
   '';
   passwords-copier-keeps-a-secret-in-memory-on-niri = ''
     on a nested niri, Passwords' copier, given a secret on its standard input as the daemon gives
-    it, pastes it whole on Joel's display, makes nothing under TMPDIR, runs nothing from PATH,
-    can't be read through /proc and holds it in locked memory, says it's ready only once it can't
+    it, pastes it whole on Joel's display, offered marked secret, makes nothing under TMPDIR,
+    runs nothing from PATH, typed or not, can't be read through /proc and holds it in locked
+    memory, says it's ready only once it can't
     be read and held once it holds the copy, and refuses a standard input it can't read whole,
     never saying it held it
   '';
