@@ -267,13 +267,18 @@ fn the_name_under_the_character_is_taken_though_it_names_no_file_here() {
 fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
     let (lines, pieces) = set(
         "heading-here",
-        "See [the keys](#the-keys) and [its part](other.md#part) first.\n",
+        "See [the keys](#the-keys) and [its part](other.md#part) first, or [the sheet](sheet.pdf).\n",
     );
-    let there = ["page.md", "other.md"];
+    let there = ["other.md", "sheet.pdf"];
     assert_eq!(
         opened(&lines, &pieces, ("the keys", 0), &there),
         "#the-keys here",
-        "this page's heading, which needs no disk"
+        "this page's heading, which needs no disk, where the page isn't there"
+    );
+    assert_eq!(
+        opened(&lines, &pieces, ("the sheet", 4), &there),
+        "/notes/sheet.pdf",
+        "a file that isn't markdown, for the desktop to open"
     );
     assert_eq!(
         opened(&lines, &pieces, ("its part", 0), &there),
@@ -301,32 +306,48 @@ fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
 fn gf_from_a_whole_line_takes_the_first_other_file_down_at_its_heading() {
     let (lines, linked) = set_reading(
         "whole-line",
-        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md.\n",
+        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md and [the spec](spec.md).\n",
         links,
     );
     let page = Path::new("/notes/page.md");
-    let down = |there: &[&str]| {
-        going_down(
-            linked.clone(),
-            &lines,
-            (0.0, f64::INFINITY),
-            page,
-            in_notes(there),
-        )
-        .as_ref()
-        .map_or_else(|| "nothing".to_string(), read)
+    let baseline = |words: &str| {
+        lines
+            .iter()
+            .find(|line| line.text.contains(words))
+            .map_or_else(|| panic!("no line has {words:?}"), |line| line.baseline_pt)
     };
+    let (first, second) = (baseline("See"), baseline("Or notes"));
+    let down = |(from, foot): (f64, f64), there: &[&str]| {
+        going_down(linked.clone(), &lines, (from, foot), page, in_notes(there))
+            .as_ref()
+            .map_or_else(|| "nothing".to_string(), read)
+    };
+    let all = ["page.md", "other.md", "notes.md", "spec.md"];
     assert_eq!(
-        down(&["page.md", "other.md", "notes.md"]),
+        down((0.0, f64::INFINITY), &all),
         "/notes/other.md at part",
         "past a heading here, which is Ctrl+]'s, to another file at its heading"
     );
     assert_eq!(
-        down(&["page.md", "notes.md"]),
-        "/notes/notes.md",
-        "past a link to no file, to a path written below"
+        down((first + 1.0, f64::INFINITY), &all),
+        "/notes/spec.md",
+        "from below the first line, the next, a link before a path written left of it"
     );
-    assert_eq!(down(&["page.md"]), "nothing");
+    assert_eq!(
+        down((0.0, f64::INFINITY), &["page.md", "notes.md"]),
+        "/notes/notes.md",
+        "past links to no file, to a path written below"
+    );
+    assert_eq!(
+        down((0.0, first + 2.0), &["page.md", "notes.md", "spec.md"]),
+        "nothing",
+        "nothing below the view's foot"
+    );
+    assert_eq!(
+        down((second, f64::INFINITY), &all),
+        "nothing",
+        "nor above the cursor"
+    );
 }
 
 #[test]

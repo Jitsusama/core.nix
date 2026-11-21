@@ -350,7 +350,7 @@ let
     (jumping "go-to-mark" "`" "Go to a letter's mark")
     (links "links" "g x" "Follow a link on screen, by its label")
     (links "follow-link" "Ctrl+]" "Follow the link here")
-    (links "follow-file" "g f" "Open the file a link here names")
+    (links "follow-file" "g f" "Go to the file or heading named here")
     (links "next-file" "] b" "On to the next markdown file here")
     (links "previous-file" "[ b" "Back to the markdown file before")
     (searching "search-word-forward" "*" "Search down for the word here")
