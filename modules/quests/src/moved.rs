@@ -234,7 +234,9 @@ fn soonest<'a>(asks: impl Iterator<Item = &'a Ask>, now: i64) -> Option<i64> {
 /// What moved, as one record served beside Quests' rows, `moved:quests`,
 /// holding an entry for each open quest with an ask moved since he
 /// looked, and `seen`, what showing them shows of each, for the launcher
-/// to give back once he's looked: one record, as `folders:quests` is,
+/// to give back once he's looked, only the asks an entry's note names, so
+/// a date moved or an ask taken on behind a landing is said at a later
+/// look rather than counted as seen unsaid: one record, as `folders:quests` is,
 /// since the launcher holds what's served beside a place's rows by the
 /// kind and the place alone. `now` tells which dates are still to come.
 #[must_use]
@@ -242,14 +244,15 @@ pub fn record(asks: &[Ask], looked: &Looked, quests: &[Quest], words: &Words, no
     let made = entries(asks, looked, quests, words, now);
     let seen: Vec<Value> = made
         .iter()
-        .flat_map(|(moved, _)| moved.iter().map(|ask| said(&ask.key, ask.seen())))
+        .flat_map(|(named, _)| named.iter().map(|ask| said(&ask.key, ask.seen())))
         .collect();
     let moved: Vec<Value> = made.into_iter().map(|(_, entry)| entry).collect();
     json!({ "key": format!("{KIND}:quests"), "kind": KIND, "moved": moved, "seen": seen })
 }
 
 /// One entry for each open quest with an ask moved since he looked, with
-/// those asks, the quest whose line names the latest moment first.
+/// the asks its note names, the quest whose line names the latest moment
+/// first.
 fn entries<'a>(
     asks: &'a [Ask],
     looked: &Looked,
@@ -270,12 +273,8 @@ fn entries<'a>(
                 .filter_map(|ask| Some((*ask, how(ask, looked)?)))
                 .collect();
             let latest = moved.iter().map(|(ask, _)| ask.latest).max()?;
-            let entry = entry(*quest, &own, &moved, words, now);
-            Some((
-                latest,
-                moved.into_iter().map(|(ask, _)| ask).collect(),
-                entry,
-            ))
+            let (entry, named) = entry(*quest, &own, &moved, words, now);
+            Some((latest, named, entry))
         })
         .collect();
     made.sort_by(|(one, ..), (other, ..)| other.cmp(one));
@@ -287,9 +286,15 @@ fn entries<'a>(
 /// A quest's entry: what landed, else that a date moved, else what it
 /// took on, and the next date it still owes: the soonest still to come,
 /// since a date passed unlanded is a slip its keeper dates again, never
-/// the next one owed.
-fn entry(quest: Quest, own: &[&Ask], moved: &[(&Ask, How)], words: &Words, now: i64) -> Value {
-    let all = |how: How| -> Vec<&Ask> {
+/// the next one owed; with the asks its note names.
+fn entry<'a>(
+    quest: Quest,
+    own: &[&'a Ask],
+    moved: &[(&'a Ask, How)],
+    words: &Words,
+    now: i64,
+) -> (Value, Vec<&'a Ask>) {
+    let all = |how: How| -> Vec<&'a Ask> {
         let mut these: Vec<&Ask> = moved
             .iter()
             .filter(|(_, was)| *was == how)
@@ -309,17 +314,23 @@ fn entry(quest: Quest, own: &[&Ask], moved: &[(&Ask, How)], words: &Words, now: 
         ([], None, Some(one)) => words.fill("moved-taken", &[("words", &one.words)]),
         ([], None, None) => String::new(),
     };
+    let named: Vec<&Ask> = match (landed.as_slice(), dated.first(), taken.first()) {
+        ([_, ..], ..) => landed.clone(),
+        ([], Some(one), _) | ([], None, Some(one)) => vec![*one],
+        ([], None, None) => Vec::new(),
+    };
     let next = soonest(own.iter().copied(), now);
     let side: Vec<Value> = next
         .map(|at| time::said(at, Form::Moment, &words.fill("moved-next", &[])))
         .into_iter()
         .collect();
-    json!({
+    let entry = json!({
         "key": format!("{KIND}:quests:{}", quest.id()), "kind": KIND,
         "thing": format!("quest:{}", quest.id()), "name": quest.name(),
         "reads": quest.summary(), "note": note, "side": side,
         "held": { "id": quest.id(), "landed": landed.len(), "moved": moved.len() },
-    })
+    });
+    (entry, named)
 }
 
 #[cfg(test)]
@@ -648,12 +659,25 @@ mod tests {
         let mut looked = shown_before();
         let made = record(&after, &looked, &quests, &words(), now());
         let seen = seen_in(&made["seen"]).expect("what it shows reads back");
-        assert_eq!(seen.len(), 6, "every ask moved is shown: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            4,
+            "ONE's two landings, TWO's date and THREE's new one, what the notes name: {seen:?}"
+        );
         looked.extend(seen);
+        // What ONE took on behind its landings wasn't said, so it's said
+        // now rather than counted as seen, one look each.
+        let next = record(&after, &looked, &quests, &words(), now());
+        assert_eq!(next["moved"][0]["note"], "taken on: later", "{next}");
+        assert_eq!(next["moved"].as_array().map(Vec::len), Some(1), "{next}");
+        looked.extend(seen_in(&next["seen"]).expect("what it shows reads back"));
+        let last = record(&after, &looked, &quests, &words(), now());
+        assert_eq!(last["moved"][0]["note"], "taken on: owed", "{last}");
+        looked.extend(seen_in(&last["seen"]).expect("what it shows reads back"));
         assert_eq!(
             record(&after, &looked, &quests, &words(), now())["moved"],
             json!([]),
-            "once looked at, nothing moved"
+            "once all it said is looked at, nothing moved"
         );
     }
 

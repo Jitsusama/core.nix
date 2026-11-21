@@ -345,7 +345,7 @@ fn a_next_date_once_passed_is_no_longer_said() {
     let (mut client, mut held) = moved_watch(&daemon);
     kept_at_start(&looked);
     let soon = json!({"at": at, "owner": "QEST-A", "words": "the soon",
-        "expected": moment_in(4)});
+        "expected": moment_in(8)});
     write_asks(&asks, &[old, soon]);
     let record = moved_named(&mut client, &mut held);
     assert_eq!(
@@ -367,6 +367,11 @@ fn said_of(held: &BTreeMap<String, Value>, words: &str) -> bool {
             seen.iter()
                 .any(|one| one["key"].as_str().is_some_and(|key| key.ends_with(words)))
         })
+}
+
+/// How many of the first quest's asks what moved counts as moved.
+fn moved_of(held: &BTreeMap<String, Value>) -> Option<u64> {
+    held.get("moved:quests")?["moved"][0]["held"]["moved"].as_u64()
 }
 
 /// Waits for what moved to name something, then gives its record.
@@ -458,6 +463,11 @@ fn what_moved_since_he_looked_is_served_until_he_looks() {
         "what it read last stands while the lock's held: {now:?}"
     );
     drop(lock);
+    heard_until(&mut client, &mut held, |held| moved_of(held) == Some(2));
+    // Looked at, the third's landing is seen, and what it took on, not
+    // yet said, is said next.
+    let answer = give_looked(&daemon, &held["moved:quests"]["seen"]);
+    assert_eq!(answer["done"], true, "{answer}");
     heard_until(&mut client, &mut held, |held| said_of(held, "mid-write"));
 
     // Put down by its keeper, the fix is let go of what's kept once he

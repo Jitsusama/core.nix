@@ -16,6 +16,7 @@
 
 use std::fs::{self, File, TryLockError};
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
@@ -55,6 +56,12 @@ const ASKS_EVERY: Duration = Duration::from_secs(2);
 /// How many looks running the asks file may go unread before it's said:
 /// six seconds, past any moment its keeper holds the lock to write.
 const UNREAD_SAID: u32 = 3;
+
+/// The longest the loop waits for a date What Moved shows to pass: its
+/// wait runs on the monotonic clock, which stops while the machine
+/// sleeps, so a date passed in a suspend is seen within this of waking
+/// rather than after the time asleep again.
+const DUE_EVERY: Duration = Duration::from_secs(30);
 
 /// Something heard, of the node's watches, the asks file or the launcher.
 enum Heard {
@@ -234,9 +241,12 @@ fn watch_asks(asks: PathBuf, to: mpsc::Sender<Heard>) {
         let mut was = None;
         let mut unread = 0_u32;
         loop {
+            // Its inode too, since its keeper moves a new file into place
+            // each write, and two of a length within one mtime tick would
+            // otherwise look the same.
             let now = fs::metadata(&asks)
                 .ok()
-                .map(|m| (m.len(), m.modified().ok()));
+                .map(|m| (m.len(), m.modified().ok(), m.ino()));
             if was != Some(now) {
                 let text = if now.is_some() {
                     read_asks(&asks)
@@ -367,8 +377,9 @@ fn own_asks(
 }
 
 /// What's heard next: `Some` of what was said, or `None` once `due`, the
-/// soonest date What Moved shows, passes with nothing said, so its record
-/// is made again rather than showing a passed date as the next owed; an
+/// soonest date What Moved shows, passes with nothing said, or once
+/// `DUE_EVERY` does on the way, so its record is made again rather than
+/// showing a passed date as the next owed; an
 /// error once nothing is left to say anything.
 fn next_heard(
     heard: &mpsc::Receiver<Heard>,
@@ -377,12 +388,18 @@ fn next_heard(
     let Some(at) = due else {
         return heard.recv().map(Some);
     };
-    let wait = u64::try_from(at.saturating_sub(now_ms())).unwrap_or(0);
-    match heard.recv_timeout(Duration::from_millis(wait.saturating_add(1))) {
+    match heard.recv_timeout(waited(at, now_ms())) {
         Ok(one) => Ok(Some(one)),
         Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
         Err(mpsc::RecvTimeoutError::Disconnected) => Err(mpsc::RecvError),
     }
+}
+
+/// How long to wait from `now` for `at` to pass, a millisecond past it,
+/// and never more than `DUE_EVERY`.
+fn waited(at: i64, now: i64) -> Duration {
+    let wait = u64::try_from(at.saturating_sub(now)).unwrap_or(0);
+    Duration::from_millis(wait.saturating_add(1)).min(DUE_EVERY)
 }
 
 /// Follows the node's quests and serves their rows for as long as it
@@ -504,6 +521,18 @@ mod tests {
         let _ = fs::remove_dir_all(&at);
         fs::create_dir_all(&at).expect("a folder for the case");
         at
+    }
+
+    #[test]
+    fn a_date_is_waited_for_at_most_a_while_so_a_suspend_cant_stretch_it() {
+        let now = 1_000_000;
+        assert_eq!(waited(now + 5, now), Duration::from_millis(6));
+        assert_eq!(waited(now - 5, now), Duration::from_millis(1));
+        assert_eq!(
+            waited(now + 36_000_000, now),
+            DUE_EVERY,
+            "ten hours waits a while"
+        );
     }
 
     #[test]
