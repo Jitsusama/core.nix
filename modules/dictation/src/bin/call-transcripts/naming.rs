@@ -15,9 +15,16 @@
 //! names it.
 //!
 //! Two numbers are kept: of the far end's speech in takes given a name,
-//! how much is that person's, so a wrong name loses; and of all the far
-//! end's speech, how much is given a name, so naming nobody to be sure
-//! loses too.
+//! sure or likely, how much is that person's, so a wrong name loses; and
+//! of the far end's speech in the takes kept, how much is given a name, so
+//! naming nobody to be sure loses too. A voice given the name of anyone
+//! but whoever holds most of it fails the check outright, since that is
+//! a wrong name rather than another's words under a right one.
+//!
+//! It measures the rule where it can name: everyone who joins speaks,
+//! nobody leaves, the clocks agree and grouping is told how many there
+//! are. A silent guest, a voice split in two, two at one seat or a stale
+//! leave each name fewer or wrongly, and nothing here measures them.
 
 use std::collections::HashMap;
 
@@ -37,6 +44,8 @@ struct Names {
     named: usize,
     /// In any take.
     speech: usize,
+    /// Voices given the name of anyone but whoever holds most of them.
+    wrong: usize,
 }
 
 impl Names {
@@ -44,6 +53,7 @@ impl Names {
         self.right += other.right;
         self.named += other.named;
         self.speech += other.speech;
+        self.wrong += other.wrong;
     }
 
     /// Of the speech given a name, the tenths of a percent named right.
@@ -64,7 +74,8 @@ fn tenths(part: usize, whole: usize) -> usize {
 /// Names each meeting's voices in `set`, told apart with the speaker model
 /// in `model`, says how well for each and for the set, and fails when the
 /// set names right less than `floors`' first, in tenths of a percent, of
-/// what it names, or names less than its second of the speech.
+/// what it names, or names less than its second of the speech, or gives
+/// any voice a name not its own.
 pub fn names(
     model: &std::path::Path,
     set: &std::path::Path,
@@ -88,6 +99,12 @@ pub fn names(
     let Some((right, named)) = floors else {
         return Ok(());
     };
+    if all.wrong > 0 {
+        return Err(format!(
+            "{} voices were given the name of someone who isn't most of what they hold",
+            all.wrong
+        ));
+    }
     let (got_right, got_named) = (all.right_tenths(), all.named_tenths());
     let said = format!(
         "of what it named, {} was named right, and {} of the speech was given a name",
@@ -166,11 +183,12 @@ fn name(heard: &[Heard], cuts: &[Cut]) -> (Names, String) {
                 *held[voice].entry(speaker.as_str()).or_default() += samples;
             }
         }
-        if let Some(Who::Is(name)) = voice.map(|voice| &who[voice]) {
+        if let Some(name) = voice.and_then(|voice| given(&who[voice])) {
             named.named += speech;
             named.right += cut.speakers.get(name).copied().unwrap_or(0);
         }
     }
+    named.wrong = wrong(&who, &held);
     let mut first: Vec<Option<usize>> = vec![None; voices];
     for (cut, voice) in kept.iter().zip(&voice_of) {
         if let Some(voice) = voice.filter(|_| !cut.speakers.is_empty()) {
@@ -194,6 +212,30 @@ fn name(heard: &[Heard], cuts: &[Cut]) -> (Names, String) {
     (named, said)
 }
 
+/// How many voices were given the name of anyone but whoever `held` most
+/// of them.
+fn wrong(who: &[Who], held: &[HashMap<&str, usize>]) -> usize {
+    who.iter()
+        .zip(held)
+        .filter(|(who, held)| {
+            given(who).is_some_and(|name| {
+                let most = held
+                    .iter()
+                    .max_by_key(|(speaker, samples)| (**samples, **speaker));
+                most.is_none_or(|(speaker, _)| *speaker != name)
+            })
+        })
+        .count()
+}
+
+/// The name a voice was given, sure or likely.
+fn given(who: &Who) -> Option<&str> {
+    match who {
+        Who::Is(name) | Who::Likely(name) => Some(name),
+        Who::MayBe(_) => None,
+    }
+}
+
 /// Whether `cut` is said by someone before they joined: `LEAST_SHARE` or
 /// more of its speech is theirs.
 fn before(cut: &Cut, joins: &HashMap<String, usize>) -> bool {
@@ -211,7 +253,7 @@ fn as_f64(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
-/// Who each voice was taken to be, and whose speech it holds, by share.
+/// Who each voice was taken to be, and whose speech it holds, by name.
 fn described(who: &[Who], held: &[HashMap<&str, usize>], first: &[Option<usize>]) -> String {
     if who.is_empty() {
         return "no voices".to_owned();
@@ -223,6 +265,7 @@ fn described(who: &[Who], held: &[HashMap<&str, usize>], first: &[Option<usize>]
         .map(|(at, (who, held))| {
             let taken = match who {
                 Who::Is(name) => format!("is {name}"),
+                Who::Likely(name) => format!("is likely {name}"),
                 Who::MayBe(names) if names.is_empty() => "may be nobody".to_owned(),
                 Who::MayBe(names) => format!("may be {}", names.join(" or ")),
             };
@@ -288,6 +331,9 @@ fn millis(samples: usize) -> u64 {
 
 /// How well a meeting's voices were named, in a line.
 fn report(name: &str, named: &Names) -> String {
+    if named.named == 0 {
+        return format!("{name}: named none of the speech");
+    }
     format!(
         "{name}: of what was named {} named right, {} of the speech given a name",
         percent(named.right_tenths()),
@@ -389,6 +435,25 @@ mod tests {
             (named.right, named.named),
             (20 * SECOND, 21 * SECOND),
             "B's second in a take of A's voice was counted as named right"
+        );
+    }
+
+    #[test]
+    fn a_voice_named_for_one_holding_less_of_it_is_wrong() {
+        let held: Vec<HashMap<&str, usize>> = vec![
+            HashMap::from([("A", 9), ("B", 1)]),
+            HashMap::from([("A", 6), ("B", 4)]),
+            HashMap::from([("B", 1)]),
+        ];
+        let who = [
+            Who::Is("A".to_owned()),
+            Who::Likely("B".to_owned()),
+            Who::MayBe(vec!["A".to_owned()]),
+        ];
+        assert_eq!(
+            wrong(&who, &held),
+            1,
+            "a voice mostly A's taken as likely B wasn't counted wrong, or another was"
         );
     }
 }
