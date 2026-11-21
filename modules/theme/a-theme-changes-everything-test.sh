@@ -35,8 +35,10 @@ cased() {
   local lettered flipped
   lettered=$(grep -m 1 "$2" "$colours") || return 0
   flipped=$(printf '%s' "$lettered" | tr 'A-Fa-f' 'a-fA-F')
-  if grep -q -x -F "$flipped" "$colours"; then
-    echo "$flipped is a colour of its own in $colours, so it can't show case is let go."
+  # Asked as the check asks, any colour of the list anywhere in it, but
+  # minding case.
+  if grep -q -F -f "$colours" <<< "$flipped"; then
+    echo "$flipped holds a colour of its own in $colours, so it can't show case is let go."
     exit 1
   fi
   mkdir "$home/$1"
