@@ -2,7 +2,7 @@
 //! the hour can wait out a resume before counting quests no cell runs:
 //! the node lists a host's cells again only as each resumes.
 
-use super::host_unit;
+use super::hosts::host_unit;
 use crate::command;
 
 /// How long a host may be reloading before it's taken as stuck rather than
