@@ -581,12 +581,16 @@ Singleton {
             return;
         }
         // A hosted one is gone to, which views it, since its host runs it.
+        // One no host serves yet, as just after a crash, is viewed by its
+        // entry's own words, focused where Go To would open it, to wait
+        // there for its host as the walk's do; or said, never a press that
+        // does nothing.
         if (lost.hosted === true) {
             const session = root.hostedHere(lost.id);
             if (session)
                 goTo(session);
             else
-                console.info(`sessions: ${lost.id} not viewed, since no host serves it`);
+                reopenWaiting(lost);
             return;
         }
         lookFor([lost.cwd], there => {
@@ -595,6 +599,30 @@ Singleton {
             else
                 gone?.(lost.cwd, "");
         });
+    }
+
+    // A hosted one asked for by itself before its host serves it: its
+    // waiting viewer, raised when niri lists it already, never a second.
+    function reopenWaiting(lost) {
+        const named = viewerNamed(lost.id);
+        const words = Viewers.waitingWords(lost);
+        const listed = named === "" ? undefined
+            : Object.values(Niri.windows).find(window => window.opened === named);
+        if (listed) {
+            Niri.act({ FocusWindow: { id: listed.id } });
+            return;
+        }
+        if (words === null || named === "") {
+            console.info(`sessions: ${lost.id} not viewed, since no host serves it `
+                + "and its entry gives no words to wait with");
+            unhosted({ address: String(reopenRows[lost.id]?.name ?? lost.id), machine: "" });
+            return;
+        }
+        const into = root.opensOn(lost, null, []);
+        const title = Viewers.viewerTitle("", lost.title, lost.cwd);
+        if (viewWith(words, named, into === null ? null
+            : Object.assign({}, into, { focused: true }), title))
+            console.info(`sessions: viewing ${lost.id} to wait for its host`);
     }
 
     // A window the last boot had joined to a session another machine
@@ -1692,9 +1720,13 @@ Singleton {
                 const [said, host, id] = last.split(" ");
                 const named = /^[A-Za-z0-9._-]+$/;
                 if (hosted && said === "hosted" && named.test(host ?? "") && named.test(id ?? "")) {
-                    root.inSessions("pi-hosted", root.viewing(["mycelium", "--realm",
-                        host.replace(/-attended$/, ""), "attach", "--host", host, "--session", id]),
-                        null, `pi-hosted.${id}`);
+                    // Opened as any viewer is (viewWith), titled for its
+                    // quest and folder until pi titles it, and never a
+                    // second while it comes, rather than a bare attach
+                    // whose window reads "mycelium".
+                    root.viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""),
+                        "attach", "--host", host, "--session", id], `pi-hosted.${id}`, null,
+                        Viewers.viewerTitle("", quest, folder));
                     console.info(`sessions: started ${quest} in pi's host ${host}, as ${id}`);
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
                         + " in pi's host");
