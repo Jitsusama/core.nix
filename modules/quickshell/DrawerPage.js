@@ -118,6 +118,84 @@ function sought(page, pattern, forward, count) {
     };
 }
 
+// What a move needs laid of a run whose rest is still to come, so it never
+// lands on what follows the run while that rest would come between:
+// "whole" for one past the line the laid run ends on (`last`), as G's;
+// "more" for one that comes within `off` lines of it, or whose view, a
+// `height` tall from the move's top, reaches past that line's `top`; or
+// "" for one that stays clear of it.
+function runReach(landed, last, edge) {
+    if (landed.line > last) {
+        return "whole";
+    }
+    if (landed.line + edge.off >= last || landed.top + edge.height > edge.top) {
+        return "more";
+    }
+    return "";
+}
+
+// What a move does next while its run's rest is still to come, from what
+// runReach says the move (`landed`) needs of the run laid to `last`, in
+// its view's `edge`: "whole" lays the rest at once, read once; "show"
+// shows the parts laid quietly; "part" lays one part more, each read as
+// it's laid; "" stops. `so` says how many parts it has laid already
+// (`parts`) and whether the parts laid are still unshown (`quiet`). One
+// that lands on the laid end again after a part, as G does each time,
+// lays the rest whole, read once rather than some 45 times on Emoji's; a
+// page move that needs a second part lays only that, since the rest laid
+// whole in its key's turn would cost some 850 ms there.
+function runStep(landed, last, edge, so) {
+    const reach = runReach(landed, last, edge);
+    if (reach === "whole") {
+        return "whole";
+    }
+    if (reach !== "more") {
+        return "";
+    }
+    if (so.quiet) {
+        return "show";
+    }
+    return so.parts > 0 && landed.line >= last ? "whole" : "part";
+}
+
+// A part's pieces as last read, moved by what moved above the part since:
+// each one's left, top and baseline, so its lines, wash and view follow it.
+function shifted(pieces, dx, dy) {
+    return pieces.map(piece => Object.assign({}, piece,
+        { x: piece.x + dx, top: piece.top + dy, base: piece.base + dy }));
+}
+
+// The parts shown, each with its pieces as last read, moved by what their
+// box moved since that read, `was`, to `now`. None with no part shown, no
+// read, or a part that wasn't read, since the rest would then be kept
+// without it and its lines lost.
+function partsKept(pieces, texts, was, now) {
+    if (!was || texts.length === 0) {
+        return null;
+    }
+    const carried = new Map();
+    for (const text of texts) {
+        const read = pieces.get(text);
+        if (!read) {
+            return null;
+        }
+        carried.set(text, shifted(read, now.x - was.x, now.y - was.y));
+    }
+    return carried;
+}
+
+// The pieces a part laid under the run leaves where they were read: all
+// but those it moves, `moving`. None once the parts' box has moved since its last
+// read, `was`, to `now`, since pieces kept then would sit where the parts
+// were, and nothing reading from that read would ever move them back; nor
+// with no last read, as partsKept keeps none then, so every line is read.
+function keptStill(pieces, moving, was, now) {
+    if (!was || now.x !== was.x || now.y !== was.y) {
+        return null;
+    }
+    return new Map(Array.from(pieces).filter(([text]) => !moving.has(text)));
+}
+
 // Whether a view's top cuts a line partway, which Vim's never does, its
 // topline always a whole line. An eyebrow or a title isn't a pitch tall,
 // so a pitch can fall inside one (VKCF3Z, 2026-11-05: "Deploy log" as

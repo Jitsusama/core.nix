@@ -1056,6 +1056,56 @@ QtObject {
             Search.found("pirate flag", "Pinata \u00b7 Pirate\u00a0flag"), [[9, 20]]);
         holds("a no-break space pasted finds a space",
             Search.found("pirate\u00a0flag", "Pinata \u00b7 Pirate flag"), [[9, 20]]);
+        // A drawer holds a hyphenated word whole with a word joiner after
+        // its hyphen, and a zero-width space may stand where it breaks, so
+        // /t-shirt in Emoji's drawer would be found nowhere; the place
+        // found spans the joiner, on the text as it stands.
+        holds("a hyphen typed finds one a word joiner holds",
+            Search.found("t-shirt", "T-\u2060shirt"), [[0, 8]]);
+        holds("and finds it past one, at the text's own letters",
+            Search.found("wi-fi", "a \u00b7 wi-\u2060fi \u00b7 wi-\u2060fi"), [[4, 10], [13, 19]]);
+        holds("a zero-width space is passed over too",
+            Search.found("ab", "a\u200bb"), [[0, 3]]);
+        holds("and a joiner pasted in a pattern finds a plain hyphen",
+            Search.found("t-\u2060shirt", "T-shirt"), [[0, 7]]);
+        holds("a place found ends at its last letter, not the joiner after",
+            Search.found("wi-", "wi-\u2060fi"), [[0, 3]]);
+        // Lower case can be longer than its letter, as an I with a dot
+        // above lowers to an i and a dot, and a place found after one
+        // still stands on the text's own letters.
+        holds("a letter that lowers longer leaves what follows in its place",
+            Search.found("x", "\u0130x"), [[1, 2]]);
+        holds("and two places never share one such letter",
+            Search.found("\u0307xi", "\u0130x\u0130x\u0130"), [[0, 3]]);
+        holds("nor does one dropped for sharing hide one after it",
+            Search.found("\u0307i\u0307i", "\u0130\u0130\u0130\u0130\u0130\u0130"),
+            [[0, 3], [3, 6]]);
+        // In a text holding a joiner, a letter of two units, as an emoji
+        // is, leaves what follows it in its place, as does a half with no
+        // other half after it, as a title cut mid-pair leaves, a letter alone.
+        holds("a letter of two units before a joiner leaves what follows in its place",
+            Search.found("x", "\ud83d\ude00\u2060x"), [[3, 4]]);
+        holds("and half of it, found, is washed whole",
+            Search.found("\ud83d", "\ud83d\ude00\u2060x"), [[0, 2]]);
+        holds("with no joiner in the line too", Search.found("\ud83d", "\ud83d\ude00x"),
+            [[0, 2]]);
+        holds("from either half", Search.found("\ude00x", "a\ud83d\ude00x"), [[1, 4]]);
+        holds("but a half alone takes in nothing after it",
+            Search.found("\ud83d", "\ud83dx"), [[0, 1]]);
+        holds("nor anything before it", Search.found("\ude00x", "a\ude00x"), [[1, 3]]);
+        holds("even at the line's start", Search.found("\ude00", "\ude00x"), [[0, 1]]);
+        holds("or its end", Search.found("\ud83d", "x\ud83d"), [[1, 2]]);
+        // A text read a letter at a time, for one that lowers longer, passes
+        // over a joiner as the fast way does. The pattern is lower case, as one
+        // with a capital is found by its case and never lowered.
+        holds("a letter that lowers longer is found across a joiner after it",
+            Search.found("i\u0307x", "\u0130\u2060x"), [[0, 3]]);
+        holds("a half alone before a joiner leaves what follows in its place",
+            Search.found("x", "\ud83d\u2060x"), [[2, 3]]);
+        // A pattern of what's passed over alone is nothing to find, and
+        // looking for nothing would find it in place for ever.
+        holds("a pattern of joiners alone finds nothing",
+            Search.found("\u2060\u200b", "a-\u2060b"), []);
     }
 
     function drawerSearch(holds) {
@@ -1982,6 +2032,69 @@ QtObject {
             Page.moved("first", 0, onHeaded({ line: 12, top: 145 })).top, 16);
         holds("a view resting below the top: G at its end, on a stop",
             Page.moved("last", 0, onHeaded({ top: 16 })).top, 361);
+        // While a drawer's run is still laid a part a turn, a move that
+        // reaches past the line its laid run ends on lays the rest first,
+        // and one that comes near it lays more, so the cursor never lands
+        // on the acts under the run while its rest is still to come.
+        const edge = { off: 5, height: 300, top: 900 };
+        holds("a move past a run's laid end lays its rest whole",
+            Page.runReach({ line: 41, top: 0 }, 40, edge), "whole");
+        holds("one landing on that line lays more, not the rest",
+            Page.runReach({ line: 40, top: 0 }, 40, edge), "more");
+        holds("one within scrolloff of it lays more",
+            Page.runReach({ line: 35, top: 0 }, 40, edge), "more");
+        holds("as does one whose view reaches past it",
+            Page.runReach({ line: 10, top: 601 }, 40, edge), "more");
+        holds("and one clear of it lays nothing",
+            Page.runReach({ line: 34, top: 600 }, 40, edge), "");
+        // What go() does with it: G lands on the laid end each time, so
+        // once a part hasn't cleared it the rest is laid whole, read once;
+        // a page move that needs a second part lays only that.
+        const shown = { parts: 1, quiet: false };
+        holds("a move needing more lays a part first",
+            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: false }), "part");
+        holds("and one on the laid end again after it lays the rest whole",
+            Page.runStep({ line: 40, top: 0 }, 40, edge, shown), "whole");
+        holds("but one a line short of that end lays another part",
+            Page.runStep({ line: 39, top: 0 }, 40, edge, shown), "part");
+        holds("parts laid quietly are shown before any more is laid",
+            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: true }), "show");
+        holds("a move past the laid end lays the rest whole at once",
+            Page.runStep({ line: 41, top: 0 }, 40, edge, { parts: 0, quiet: true }), "whole");
+        holds("and one clear of it stops",
+            Page.runStep({ line: 34, top: 600 }, 40, edge, { parts: 2, quiet: false }), "");
+        // The parts read before the going-in frame keep their pieces, moved
+        // by what moved above them, rather than read every line again.
+        holds("a part's pieces move right and down by what moved above them",
+            Page.shifted([{ line: 3, x: 1, top: 10, base: 18, height: 9 }], 2, 5),
+            [{ line: 3, x: 3, top: 15, base: 23, height: 9 }]);
+        // Each case reads afresh, so a case that changed what it was given
+        // fails on its own name and no other.
+        const read = () => new Map([["one", [{ line: 0, x: 0, top: 4, base: 8 }]],
+            ["acts", [{ line: 9, x: 0, top: 90, base: 94 }]]]);
+        const kept = got => got ? Array.from(got) : got;
+        holds("the parts shown keep their pieces, moved by what moved the parts' box",
+            kept(Page.partsKept(read(), ["one"], { x: 0, y: 0 }, { x: 1, y: 6 })),
+            [["one", [{ line: 0, x: 1, top: 10, base: 14 }]]]);
+        const given = read();
+        Page.partsKept(given, ["one"], { x: 0, y: 0 }, { x: 1, y: 6 });
+        holds("and leave the pieces they were read from where they were", kept(given),
+            kept(read()));
+        holds("but none where a part shown wasn't read",
+            Page.partsKept(read(), ["one", "two"], { x: 0, y: 0 }, { x: 0, y: 6 }), null);
+        holds("nor with no part shown",
+            Page.partsKept(read(), [], { x: 0, y: 0 }, { x: 0, y: 0 }), null);
+        holds("nor before the parts were read",
+            Page.partsKept(read(), ["one"], undefined, { x: 0, y: 6 }), null);
+        holds("a part laid keeps all but what it moves, while the parts stand where read",
+            kept(Page.keptStill(read(), new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 0 })),
+            [["one", [{ line: 0, x: 0, top: 4, base: 8 }]]]);
+        holds("but keeps none once the parts' box has moved down since",
+            Page.keptStill(read(), new Set(["acts"]), { x: 0, y: 0 }, { x: 0, y: 6 }), null);
+        holds("or across",
+            Page.keptStill(read(), new Set(["acts"]), { x: 0, y: 0 }, { x: 2, y: 0 }), null);
+        holds("or before the parts were read, as the parts shown keep none then",
+            Page.keptStill(read(), new Set(["acts"]), null, { x: 0, y: 0 }), null);
         holds("and stays where a line is in view", Page.shown(lines[4], 0, page({})), 0);
         holds("never past the end", Page.shown(lines[19], 0, page({})), 288);
         holds("a short view keeps less about it, never past its middle",

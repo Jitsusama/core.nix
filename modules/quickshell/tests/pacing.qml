@@ -800,6 +800,14 @@ QtObject {
         check(failures, "and says when it came in its key's own frame",
             Presented.drawerSaid(Object.assign({ came: Pacing.drawerCame(true) }, drawer))
                 .endsWith("frame's start, in the key's frame"), true);
+        // A slow drawer's own line, which reports off or on names its row
+        // by a key a title may be in, so it stays one line, its key quoted
+        // as the lab's ' took ' reads it.
+        const slow = { making: 200, waiting: 40, drawing: 60, came: "the frame after" };
+        check(failures, "a slow drawer's line says where its time went, its key quoted",
+            Presented.drawerTook("window:a \"b\"\nlauncher: x", 300, slow, " (split)"),
+            'launcher: drawer for "window:a \\"b\\"\\nlauncher: x" took 300 ms to its frame, '
+            + "200 ms making (split), 40 waiting for its frame, 60 drawing it, the frame after");
         const drawers = Presented.drawersSaid([drawer,
             { key: "program:kitty", place: "programs", from: 0, followed: 5, begun: 15, at: 40 },
             { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,
@@ -844,6 +852,109 @@ QtObject {
             Presented.intoSaid({ key: "win:a\u2028b\u2029c\u0085d", from: 0, at: 20, laid: 1 }),
             'launcher: into the drawer for "win:a\\u2028b\\u2029c\\u0085d" presented 20 ms '
             + "from the key, 1 line laid first");
+        // Going back from the drawer's list of keys is a going-in under the
+        // same row, which read as a second of Emoji's with another count.
+        check(failures, "going in names the page it went into",
+            Presented.intoSaid({ key: "place:emoji", page: "The Drawer's Keys", from: 0,
+                at: 20, laid: 12 }),
+            'launcher: into the drawer for "place:emoji" on "The Drawer\'s Keys" presented '
+            + "20 ms from the key, 12 lines laid first");
+        check(failures, "and quotes the page, as a window's title may name it",
+            Presented.intoSaid({ key: "place:x", page: 'a "b"\nlauncher: x', from: 0, at: 20,
+                laid: 1 }),
+            'launcher: into the drawer for "place:x" on "a \\"b\\"\\nlauncher: x" presented '
+            + "20 ms from the key, 1 line laid first");
+        check(failures, "a drawer quotes its key too, so a title can't forge a line",
+            Presented.drawerSaid(Object.assign({}, drawer, { key: 'win:a "b"\nlauncher: x' }))
+                .startsWith('launcher: drawer for "win:a \\"b\\"\\nlauncher: x" presented 90 ms'),
+            true);
+        // j typed 0 to 480 ms after Ctrl+W l waited on the rest of Emoji's
+        // run being laid (2026-11-19), so a key in a drawer says its time
+        // from going in when it came soon after, which the drawer lab reads.
+        check(failures, "a key in a drawer says its time from the key and from going in",
+            Presented.keyInSaid({ act: "next", key: "place:emoji", from: 1040, into: 1000,
+                at: 1131, screen: "DP-4", refresh: 1000 / 59.997 }),
+            'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
+            + "131 from going in; on DP-4 at 60 Hz");
+        check(failures, "and the shell's share to its frame's swap",
+            Presented.keyInSaid({ act: "next", key: "place:emoji", from: 1040, into: 1000,
+                at: 1131, swapped: 1058.4 }),
+            'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
+            + "18 to the shell's swap, 131 from going in");
+        // Two minutes into a drawer, its time from going in would read as
+        // a fault, so a key long after says none; but while reports are on
+        // every key says it, as the drawer lab reads it however long the
+        // lay held the key.
+        check(failures, "a key just inside a second of going in keeps its time from it",
+            Presented.intoKept(1999, 1000, false), 1000);
+        check(failures, "and one a second after keeps none",
+            Presented.intoKept(2000, 1000, false), undefined);
+        check(failures, "but one long after keeps it while reports are on",
+            Presented.intoKept(121000, 1000, true), 1000);
+        check(failures, "and a key that keeps none says none from going in",
+            Presented.keyInSaid({ act: "previous", key: "place:emoji", from: 0, at: 60 }),
+            'launcher: previous in the drawer for "place:emoji" presented 60 ms from the key');
+        check(failures, "a key in a drawer quotes its key so a title can't forge a line",
+            Presented.keyInSaid({ act: "next", key: 'x "y"\nlauncher: z', from: 0, at: 60 }),
+            'launcher: next in the drawer for "x \\"y\\"\\nlauncher: z" presented 60 ms '
+            + "from the key");
+        // A window's row is keyed by its title, a mail's subject or a
+        // document's name, which a slow key would write once per key.
+        check(failures, "a window's key is said without its title unless reports are on",
+            Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
+            "window:org.gnome.Evolution");
+        check(failures, "as is one with an empty title",
+            Presented.keyShown("window:kitty:", false), "window:kitty");
+        check(failures, "a window key of one part, which may be a title, is said as window",
+            Presented.keyShown("window:Inbox", false), "window");
+        check(failures, "as is one that names no app, as niri's records leave it",
+            Presented.keyShown("window::Inbox", false), "window");
+        check(failures, "or one whose app was read as null",
+            Presented.keyShown("window:null:Inbox", false), "window");
+        check(failures, "or as undefined",
+            Presented.keyShown("window:undefined:Inbox", false), "window");
+        check(failures, "but an app whose id starts with a digit is said",
+            Presented.keyShown("window:1Password:Vault", false), "window:1Password");
+        check(failures, "as is one whose app holds a page's address, as a browser's may",
+            Presented.keyShown("window:chrome-docs.google.com__document_d_1x_edit-Default:Plan",
+                false), "window");
+        check(failures, "and whole while they are",
+            Presented.keyShown("window:kitty:~/src", true), "window:kitty:~/src");
+        check(failures, "and the launcher's own ids are said whole",
+            Presented.keyShown("place:emoji", false), "place:emoji");
+        check(failures, "a category's too",
+            Presented.keyShown("category:power", false), "category:power");
+        check(failures, "and a collection's, as Emoji's row has",
+            Presented.keyShown("collection:emoji", false), "collection:emoji");
+        check(failures, "but any other key only by its kind, as a network's name is",
+            Presented.keyShown("wifi:Harbour House", false), "wifi");
+        check(failures, "a row named but with no key is said only as an answer with reports off",
+            Presented.rowShown({ name: "Re: my offer" }, false), "answer");
+        check(failures, "and its name while they're on",
+            Presented.rowShown({ name: "Address" }, true), "Address");
+        check(failures, "a key of no kind is said as nothing",
+            Presented.keyShown("github.com", false), "");
+        check(failures, "as is a name with a colon in it, which no kind is",
+            Presented.keyShown("Call: Dr Smith", false), "");
+        check(failures, "or one in lower case with a space",
+            Presented.keyShown("dr smith: call", false), "");
+        check(failures, "or a device's name, as a sound's trail has",
+            Presented.keyShown("alsa_output.pci-0000_00_1f.3:by-ear", false), "");
+        check(failures, "and a key that came as a number is read as text",
+            Presented.keyShown(42, false), "");
+        check(failures, "and said as text with reports on, so the line quotes it",
+            Presented.rowShown({ key: 42 }, true), "42");
+        check(failures, "a row with neither key nor name is said as a row",
+            Presented.rowShown({}, false), "row");
+        check(failures, "as is one missing, whether reports are on or off",
+            Presented.rowShown(null, true), "row");
+        check(failures, "so its row is said only as a row with reports off",
+            Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, false), "row");
+        check(failures, "and whole while they're on",
+            Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, true), "stopwatch");
+        check(failures, "a row's key is what's said of a row that has one",
+            Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
+            "window:kitty");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

@@ -1124,7 +1124,17 @@ in
       Whether the shell writes what it does to the journal, a line for each,
       such as a surface drawn or taking the keys, a notice held back, or the
       launcher's state. The desktop test turns it on and waits on these lines
-      rather than guessing how long something takes.
+      rather than guessing how long something takes. While it's on, the
+      drawer's timing lines name each row whole, so window titles, which
+      may be a mail's subject or a document's name, go to the journal too.
+      While it's off, they name a row by its kind alone, such as power or
+      wifi, or the launcher's own id for a place, a category or a
+      collection; a window by its app where that's shaped as a program's
+      id, of letters, digits, dots and hyphens, even with an empty title,
+      and otherwise as window, as where it names no app or its key holds
+      nothing past the app; a place's own answer as answer; a row of no
+      kind as row; and no drawer's page. A slow key's line still says what
+      was typed, and the launcher's other lines aren't held to this.
     '';
   };
 

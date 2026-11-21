@@ -214,24 +214,37 @@ const drawerParts = [["from", "followed", "before it followed"],
 // drawer on the 60 Hz screen took 54 ms, on the 120 Hz panel 33, and the
 // day's median followed which he worked on (2026-11-17).
 function drawerSaid(one) {
-    return `launcher: drawer for "${one.key}" presented ${Math.round(one.at - one.from)} ms `
+    return `launcher: drawer for ${quoted(one.key)} presented ${Math.round(one.at - one.from)} ms `
         + `from the key${partsSwapped([one], drawerParts)}, ${one.came ?? "the frame after"}`
         + screensSaid([one]);
 }
 
-// The keys gone into a drawer, `{ key, from, at, swapped, laid, screen,
-// refresh }`, said as the frame they came in is presented, with how much
-// of it was the shell's, to that frame's swap where it was kept, and how
-// many of its lines that frame laid: Ctrl+W l into Emoji's laid all 1,833
-// lines first, where its view shows some 37, until only those were
-// (2026-11-19).
+// The keys gone into a drawer, `{ key, page, from, at, swapped, laid,
+// screen, refresh }`, said as the frame they came in is presented, with
+// how much of it was the shell's, to that frame's swap where it was kept,
+// and how many of its lines that frame laid: Ctrl+W l into Emoji's laid
+// all 1,833 lines first, where its view shows some 37, until only those
+// were (2026-11-19). The page is named, since going back from its list of
+// keys is a going-in under the same row.
 function intoSaid(one) {
     const swap = one.swapped > 0
         ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
     const key = quoted(one.key);
-    return `launcher: into the drawer for ${key} presented `
+    const page = one.page ? ` on ${quoted(one.page)}` : "";
+    return `launcher: into the drawer for ${key}${page} presented `
         + `${Math.round(one.at - one.from)} ms from the key${swap}, ${one.laid} `
         + `${one.laid === 1 ? "line" : "lines"} laid first${screensSaid([one])}`;
+}
+
+// A slow drawer's time from the work begun for it to the frame that drew
+// it, said as a slow key is, by its row's key, quoted so a title in it
+// can't end the line early or forge another: `parts` what of it went on
+// making it, `split` what of that went on which, as Trials.makingSplit
+// says it, then waiting for its frame and drawing it.
+function drawerTook(key, ms, parts, split) {
+    return `launcher: drawer for ${quoted(key)} took ${ms} ms to its frame,`
+        + ` ${parts.making} ms making${split}, ${parts.waiting} waiting for its frame,`
+        + ` ${parts.drawing} drawing it, ${parts.came}`;
 }
 
 // A row's key quoted as JSON, so a quote or a line break in a row's name
@@ -244,15 +257,92 @@ function quoted(key) {
 
 // A key in a drawer, `{ act, key, from, into, at, swapped, screen, refresh
 // }`, said as its frame is presented: from its press, or where it had none
-// from when it was heard, and from going in (`into`), so a key typed a set
-// time after Ctrl+W l says its whole wait, queued behind the drawer's lay
-// or not, as that less the time it was typed after.
+// from when it was heard, and from going in (`into`) where it came soon
+// after, so a key typed a set time after Ctrl+W l says its whole wait,
+// queued behind the drawer's lay or not, as that less the time it was
+// typed after.
 function keyInSaid(one) {
     const swap = one.swapped > 0
         ? `, ${Math.round(one.swapped - one.from)} to the shell's swap` : "";
+    const into = one.into === undefined ? "" : `, ${Math.round(one.at - one.into)} from going in`;
     return `launcher: ${one.act} in the drawer for ${quoted(one.key)} presented `
-        + `${Math.round(one.at - one.from)} ms from the key${swap}, `
-        + `${Math.round(one.at - one.into)} from going in${screensSaid([one])}`;
+        + `${Math.round(one.at - one.from)} ms from the key${swap}${into}${screensSaid([one])}`;
+}
+
+// How long after going in a key in a drawer still says its time from it.
+const intoSoon = 1000;
+
+// When a key pressed at `keyAt` says its time from going in at `into`, both
+// on KeyTimes's clock: always where `whole`, as while reports are on and
+// the drawer lab reads it for every key, however long the lay held it;
+// otherwise only within a second of going in, which is what that time is
+// read for, since two minutes on it would read as a fault. Undefined where
+// it says none.
+function intoKept(keyAt, into, whole) {
+    return whole || keyAt - into < intoSoon ? into : undefined;
+}
+
+// The kinds of key whose rest is an id of the launcher's own, which says
+// nothing a person or another program wrote, so it's said whole: a
+// collection's is the name its place has in the Nix config.
+const keysOwn = ["place:", "category:", "collection:"];
+
+// A kind's word, as the launcher and its daemons write one.
+const kindWord = /^[a-z][a-z0-9-]*$/;
+
+// A program's own id, as kitty, 1Password or org.gnome.Evolution. A
+// browser's app window may build one from a page's address, with
+// underscores for its slashes, so one that isn't shaped like this is said
+// as no app at all, as is a window that names none: niri's records leave
+// its app empty, and a key built from a window read past them would say
+// null or undefined.
+const appWord = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
+const appsUnnamed = ["null", "undefined"];
+
+// A row's key as a line in the journal may say it: whole where `whole`,
+// as while reports are on; otherwise only its kind, since most keys carry
+// what someone else wrote, a network's name, a program's or a window's
+// title, which may be a mail's subject. The launcher's own ids are said
+// whole, and a window's app, `window:<app>:<title>` said as
+// `window:<app>`, or as `window` where its app isn't a program's id or
+// nothing follows it. A new kind says nothing more until it's named here,
+// and a first part that isn't a kind's word, lower case, as a record's
+// name with a colon in it, says nothing at all. A daemon's key may come
+// as a number, so it's read as text first.
+function keyShown(key, whole) {
+    const text = String(key);
+    if (whole || keysOwn.some(own => text.startsWith(own))) {
+        return text;
+    }
+    if (text.startsWith("window:")) {
+        const end = text.indexOf(":", "window:".length);
+        const app = end < 0 ? "" : text.slice("window:".length, end);
+        const named = appWord.test(app) && !appsUnnamed.includes(app);
+        return named ? `window:${app}` : "window";
+    }
+    const kind = text.indexOf(":");
+    const said = kind < 0 ? "" : text.slice(0, kind);
+    return kindWord.test(said) ? said : "";
+}
+
+// The row a drawer is for as the journal may say it: by its key, or by
+// its name where it has none, as a place's own answers have, but only
+// while reports are on, since a name is what a source wrote. Otherwise
+// such a row is said as `answer`, and one whose key has no kind, as the
+// stopwatch's, as `row`, the launcher's own words, since a daemon's key
+// may be a record's name. A row with neither, or no row at all, is `row`
+// whether reports are on or off: so a drawer is never said as
+// `drawer for ""`, and the place it's tallied in tells whose.
+function rowShown(row, whole) {
+    let said = "";
+    if (whole) {
+        said = row?.key || row?.name;
+    } else if (row?.key) {
+        said = keyShown(row.key, false);
+    } else if (row?.name) {
+        said = "answer";
+    }
+    return said ? String(said) : "row";
 }
 
 // The drawers presented since the launcher opened, a line a place, as a

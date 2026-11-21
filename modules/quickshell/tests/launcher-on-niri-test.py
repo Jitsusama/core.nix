@@ -444,24 +444,32 @@ def test_a_drawers_prose_shows_five_lines_and_za_opens_the_rest(shell: Shell) ->
     shell.close_launcher()
 
 
-# How many lines going into a drawer laid for its frame, as the shell says once niri presents it
-# (launcher/Presented.js's intoSaid).
-LAID_GOING_IN = re.compile(r"launcher: into the drawer for .* (\d+) lines? laid first")
+# How many lines going into a drawer's page laid for its frame, as the shell says once niri
+# presents it (launcher/Presented.js's intoSaid), with the page it named.
+LAID_GOING_IN = re.compile(
+    r'launcher: into the drawer for "(?:[^"\\]|\\.)*"(?: on ("(?:[^"\\]|\\.)*"))? presented .* '
+    r"(\d+) lines? laid first"
+)
 
 
-def laid_going_in(shell: Shell, mark: int) -> int:
-    """Wait for the shell to say it went into a drawer since the mark, and give the lines laid."""
+def laid_going_in(shell: Shell, mark: int, page: str) -> int:
+    """Wait for the shell to say it went into the page since the mark, and give the lines laid.
+
+    Only the page's own line is read, since another going-in under the same row, as its list
+    of keys is, may be said after the mark, its frame presented late.
+    """
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     while time.monotonic() < deadline:
         with shell.log.open("rb") as log:
             log.seek(mark)
             written = log.read().decode(errors="replace")
-        found = LAID_GOING_IN.search(written)
-        if found:
-            return int(found.group(1))
+        # An untitled page's line names none, so it's never the page waited for.
+        for found in LAID_GOING_IN.finditer(written):
+            if found.group(1) is not None and json.loads(found.group(1)) == page:
+                return int(found.group(2))
         # The line is written once niri presents the frame, so it's read again a poll apart.
         time.sleep(launcher_on_niri.POLL)
-    failed = "going into the drawer was never said presented"
+    failed = f"going into {page} was never said presented"
     raise AssertionError(failed)
 
 
@@ -509,7 +517,7 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # The frame the keys came in laid only what shows, the rest after it, as counted at its
     # swap: Emoji's whole run laid first held that frame back a median 558 ms in the drawer
     # lab (2026-11-19).
-    laid = laid_going_in(shell, going_in)
+    laid = laid_going_in(shell, going_in, "Emoji")
     assert laid < whole_least, f"going in laid {laid} lines before its frame, not its view's"
     shell.send_chars("j" * deep)
     shell.launcher_until(
@@ -531,7 +539,9 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # G typed with the chord, before the rest is laid after its frame, still goes to the run's
     # end rather than the end of what was laid first, which the rest laid after would leave
     # the cursor far above. Both are held to the whole run's count, since what's laid first
-    # this deep is itself past whole_least.
+    # this deep is itself past whole_least. G lands each time on the end of what's laid, the
+    # run's end as far as it's laid, so this is also the case for go()'s showing or laying more
+    # and moving again, whose edges are cased in Qt's engine (DrawerPage.runReach).
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l G")
     shell.launcher_until(
         lambda shown: (
@@ -551,22 +561,52 @@ def searched_mid_laying(shell: Shell, drawn: str, whole_least: int) -> None:
     """Search, typed with the chord from the run's top, for a name its first part doesn't hold.
 
     The run's rest is laid a part a turn after going in, so a search typed before the last
-    part lays it all first rather than search only what's laid.
+    part lays it all first, as it's typed, rather than search only what's laid: it counts
+    what it finds before Return, which would lay the rest itself.
     """
-    # The last name made only of letters and spaces, which the search reads as typed, and
-    # found nowhere else, so the search lands on it alone.
+    # The last name of two words or more, made only of letters and spaces, which the search
+    # reads as typed, and found nowhere else, so the search lands on it alone: its space is
+    # a no-break one in the run, which a space typed finds (Search.js).
     plain = drawn.replace("\u00a0", " ")
     names = re.split(r" \u00b7 |\n", plain)
     name = next(
-        name
-        for name in reversed(names)
-        if re.fullmatch(r"[A-Za-z ]+", name) and plain.count(name) == 1
+        (
+            name
+            for name in reversed(names)
+            if re.fullmatch(r"[A-Za-z]+ [A-Za-z ]+", name) and plain.count(name) == 1
+        ),
+        None,
     )
+    assert name, f"no name of two plain words is found once in the run's {len(names)}"
     # Left at the run's top, so it's laid short at rest and the keys lay it again.
     shell.send_chars("gg")
     shell.as_account("wtype -M ctrl -k w -m ctrl -k h")
     shell.launcher_until(lambda shown: not shown["drawer"]["keys"])
-    shell.as_account(f"wtype -M ctrl -k w -m ctrl -k l {shlex.quote('/' + name)} -k Return")
+    going_in = shell.mark()
+    shell.as_account(f"wtype -M ctrl -k w -m ctrl -k l {shlex.quote('/' + name)}")
+    # The first the launcher shows of the whole name typed, which has its count already, and
+    # whether the run's rest was still being laid as the search was first shown: the search
+    # lays it as it's typed, so it's done by then, and a part a turn after the frame would
+    # still be laying it, some 46 turns for Emoji's, which then finds the name without it.
+    # Its reports are read from the mark before the name went in, since wtype has typed it
+    # all by the time it returns, and a wait marked then would miss the first.
+    typed: list[object] = []
+    laying: list[bool] = []
+
+    def whole_name_typed(shown: Json) -> bool:
+        search = shown["drawer"]["search"]
+        if search["typing"] and not laying:
+            laying.append(shown["drawer"]["laying"])
+        if search["typing"] != name:
+            return False
+        typed.append(search["found"])
+        return True
+
+    shell.reported("showing ", lambda said: whole_name_typed(json.loads(said)), going_in)
+    assert laying[0] is False, f"/{name} typed mid-laying left the run's rest to be laid"
+    assert typed[0] is not None, f"/{name} typed mid-laying found nothing before Return"
+    laid_going_in(shell, going_in, "Emoji")
+    shell.as_account("wtype -k Return")
     # It lands on the name, far past the first part, rather than say it's found nowhere.
     shell.launcher_until(
         lambda shown: (shown["drawer"]["cursor"] or {}).get("line", 0) > whole_least
@@ -582,12 +622,12 @@ def back_from_the_key_list(shell: Shell, whole_least: int, whole: int) -> None:
     to_keys = shell.mark()
     shell.as_account("wtype -k F1")
     shell.launcher_until(lambda shown: shown["drawer"]["title"] == "The Drawer's Keys")
-    # The key list's own going-in is said once niri presents it, after its title shows, so
-    # it's waited for before the mark going back, which would read it as Emoji's otherwise.
-    laid_going_in(shell, to_keys)
+    # The key list's own going-in is said once niri presents it, after its title shows, and
+    # names its page, so going back reads only Emoji's.
+    laid_going_in(shell, to_keys, "The Drawer's Keys")
     going_back = shell.mark()
     shell.as_account("wtype -k F1")
-    laid = laid_going_in(shell, going_back)
+    laid = laid_going_in(shell, going_back, "Emoji")
     assert laid < whole_least, f"going back laid {laid} lines before its frame, not its view's"
     shell.launcher_until(
         lambda shown: (
@@ -2582,7 +2622,7 @@ START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)
 EMOJI_MADE = re.compile(r"\bemoji (\d+)")
 
 DRAWER_SAID = re.compile(
-    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
+    r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
     r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
 )
 # Where a drawer's time from its frame's start went, where the render thread timed its swap.
@@ -2733,7 +2773,9 @@ def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> N
 
     Network's own answers carry no key and its commands no source, so the lab's walk through
     it said 15 of its drawers as `drawer for ""` and all of them as drawers in home
-    (2026-11-12), and neither could be told from home's in Joel's journal.
+    (2026-11-12), and neither could be told from home's in Joel's journal. The nested shell
+    runs with reports on, so each is said by its name here; with them off, as on Joel's
+    machines, an answer is said as one, which pacing.qml's rowShown cases hold.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -2751,7 +2793,9 @@ def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> N
     said = said_once(shell, since, DRAWERS_SAID)
     lines = [line for line in said.splitlines() if "drawer" in line and "presented" in line]
     assert lines, f"no drawer walked in Network was said presented, of {rows}"
-    unnamed = [line for line in lines if 'drawer for ""' in line]
+    # A drawer that loses its row is said as `row` through rowShown, so a walk whose rows all
+    # have names must say it of none; and nothing, only by a line that skipped rowShown.
+    unnamed = [line for line in lines if any(f"drawer for {no}" in line for no in ('"row"', '""'))]
     assert not unnamed, f"drawers said with no row: {unnamed}"
     in_home = [line for line in lines if " in home " in line]
     assert not in_home, f"Network's drawers were tallied in home: {in_home}"

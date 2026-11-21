@@ -16,6 +16,100 @@ const newline = /\n/g;
 // in Emoji's drawer would be found nowhere. A pattern pasted from one is
 // read the same way.
 const unbroken = /\u00a0/g;
+// It holds a hyphenated word whole with a word joiner after its hyphen,
+// and a zero-width space may stand where a line breaks: neither is typed,
+// so they're passed over, or /t-shirt would be found nowhere.
+const unseen = /[\u2060\u200b]/;
+const unseenAll = /[\u2060\u200b]/g;
+const joiner = 0x2060;
+const zeroWidth = 0x200b;
+const highFirst = 0xd800;
+const highLast = 0xdbff;
+const lowFirst = 0xdc00;
+const lowLast = 0xdfff;
+
+// A text as it's searched: what's passed over taken out, in lower case
+// unless `byCase`, with where each of its letters starts and ends in the
+// text, so a place found in it is said on the text as it stands. Lower case
+// can be longer than the letter it lowers (an I with a dot above is an i
+// and a dot), and each of its letters stands where that letter does. Most
+// texts hold nothing passed over and lower letter for letter, so they're
+// searched as they are, with nothing to map, since a search reads every
+// line of a drawer on each key typed.
+function seen(text, byCase) {
+    const lowered = byCase ? text : text.toLowerCase();
+    if (lowered.length !== text.length) {
+        return seenByLetter(text, byCase);
+    }
+    if (!unseen.test(text)) {
+        return { letters: lowered, starts: null, ends: null };
+    }
+    return Object.assign({ letters: lowered.replace(unseenAll, "") }, keptUnits(text));
+}
+
+// Where each unit of a text that lowers unit for unit stands, but for
+// what's passed over, read by its code: an Emoji drawer's every part
+// holds a hyphenated name, and making, testing and lowering each letter of
+// it alone took a median 56 ms a key over its parts, in Qt's engine, where
+// read by code they take 10 (2026-11-20). A pair of units is one letter, so
+// each of the two stands where the pair does; a half with no other half
+// after it, as a title cut mid-pair leaves, is a letter of its own, as
+// seenByLetter reads it, so what follows keeps its place.
+function keptUnits(text) {
+    const starts = [];
+    const ends = [];
+    for (let unit = 0; unit < text.length; unit++) {
+        const code = text.charCodeAt(unit);
+        if (code !== joiner && code !== zeroWidth) {
+            const next = text.charCodeAt(unit + 1);
+            const paired = code >= highFirst && code <= highLast && next >= lowFirst
+                && next <= lowLast;
+            const end = paired ? unit + 2 : unit + 1;
+            starts.push(unit);
+            ends.push(end);
+            if (paired) {
+                starts.push(unit);
+                ends.push(end);
+                unit += 1;
+            }
+        }
+    }
+    return { starts, ends };
+}
+
+// A text as it's searched, a letter at a time, for one that lowers longer
+// than it stands.
+function seenByLetter(text, byCase) {
+    let letters = "";
+    const starts = [];
+    const ends = [];
+    let from = 0;
+    while (from < text.length) {
+        const letter = String.fromCodePoint(text.codePointAt(from));
+        if (!unseen.test(letter)) {
+            const read = byCase ? letter : letter.toLowerCase();
+            letters += read;
+            for (let unit = 0; unit < read.length; unit++) {
+                starts.push(from);
+                ends.push(from + letter.length);
+            }
+        }
+        from += letter.length;
+    }
+    return { letters, starts, ends };
+}
+
+// A place in a text searched as it stands, taking in the whole of a pair
+// of units it begins or ends inside, as a text read letter by letter
+// does, or half a pair found would be washed alone and drawn broken.
+function pairsWhole(text, start, end) {
+    const high = unit => unit >= highFirst && unit <= highLast;
+    const low = unit => unit >= lowFirst && unit <= lowLast;
+    const from = low(text.charCodeAt(start)) && high(text.charCodeAt(start - 1))
+        ? start - 1 : start;
+    const to = high(text.charCodeAt(end - 1)) && low(text.charCodeAt(end)) ? end + 1 : end;
+    return [from, to];
+}
 
 // Whether a pattern is matched by its case: only once it has a capital.
 function cased(pattern) {
@@ -30,14 +124,31 @@ function found(pattern, text) {
         return [];
     }
     const byCase = cased(pattern);
-    const plain = text.replace(unbroken, " ");
-    const looked = byCase ? plain : plain.toLowerCase();
-    const sought = (byCase ? pattern : pattern.toLowerCase()).replace(unbroken, " ");
+    const plain = seen(text, byCase);
+    const looked = plain.letters.replace(unbroken, " ");
+    const sought = seen(pattern, byCase).letters.replace(unbroken, " ");
     const spans = [];
+    if (sought === "") {
+        return spans;
+    }
     let from = looked.indexOf(sought);
     while (from >= 0) {
-        spans.push([from, from + sought.length]);
-        from = looked.indexOf(sought, from + sought.length);
+        // Its end is where its last letter ends: in a text read letter by
+        // letter, a joiner after the place found isn't taken into it.
+        const last = from + sought.length - 1;
+        const span = plain.starts === null ? pairsWhole(text, from, last + 1)
+            : [plain.starts[from], plain.ends[last]];
+        // One that begins inside a letter the last place took, as two
+        // can where a letter lowers longer or a place took in the rest
+        // of a pair, is no place of its own.
+        // The next is looked for past a place kept, but just past one
+        // dropped, as one that begins inside it can begin in a letter of
+        // its own (\u0307i\u0307i in six İ).
+        const kept = spans.length === 0 || span[0] >= spans[spans.length - 1][1];
+        if (kept) {
+            spans.push(span);
+        }
+        from = looked.indexOf(sought, from + (kept ? sought.length : 1));
     }
     return spans;
 }

@@ -418,7 +418,8 @@ DRAWN_IN = "Machine"
 # A drawer's line as the shell says it once niri presented it (launcher/Presented.js), how it
 # came last but for the screen it was shown on.
 DRAWER_PRESENTED = re.compile(
-    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: (.*), ([^,;]+)(?:; on .*)?$'
+    r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: (.*), ([^,;]+)'
+    r"(?:; on .*)?$"
 )
 
 
@@ -587,10 +588,11 @@ def test_each_drawer_is_timed(
 INTO_IN = "Desktop"
 INTO = "Emoji"
 
-# The keys going into a drawer as the shell says them once niri presented their frame
-# (launcher/Presented.js's intoSaid).
+# The keys going into a drawer as the shell says them once niri presented their frame, with the
+# page they went into (launcher/Presented.js's intoSaid).
 INTO_PRESENTED = re.compile(
-    r'launcher: into the drawer for "(?:[^"\\]|\\.)*" presented (\d+) ms from the key'
+    r'launcher: into the drawer for "(?:[^"\\]|\\.)*"(?: on "(?:[^"\\]|\\.)*")? presented (\d+) ms'
+    r" from the key"
     r"(?:, (\d+) to the shell's swap)?, (\d+) lines? laid"
 )
 

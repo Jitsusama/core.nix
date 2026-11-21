@@ -9472,16 +9472,21 @@ Scope {
         if (!open)
             return;
         // A place's own answers, as Network's Address, carry no key and
-        // a command row no source, so they're named by their name and the
-        // place held: each was said as `drawer for ""`, in home.
+        // a command row no source, so they're named by their name, or as
+        // an answer with reports off (Presented.rowShown), and the place
+        // held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
+        // What a source wrote, a window's title or a row's name, kept out
+        // of every line this says, as a key's is, unless reports are on;
+        // the report itself keeps the key whole.
+        const said = Presented.rowShown(drawerRow, Options.reports);
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested, drawerAfterLetter);
         drawerRested = 0;
         drawerAfterLetter = false;
         const split = drawerSplit;
         drawerSplit = null;
-        const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
+        const presenting = drawerKeyAt > 0 ? { key: said, from: drawerKeyAt, followed: began,
             place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
             came } : null;
         drawerKeyAt = 0;
@@ -9510,7 +9515,7 @@ Scope {
                 key, took, making, waiting, drawing, came,
                 count: root.drawerTimedLast.count + 1
             };
-            trials.drawerTimed(key, took, { making, split, waiting, drawing, came });
+            trials.drawerTimed(said, took, { making, split, waiting, drawing, came });
         });
     }
     property bool drawerOut: false
@@ -12736,22 +12741,31 @@ Scope {
     // waited on the rest of Emoji's run being laid, a few hundred ms, and
     // nothing timed it. A key a program typed has no press, so it's timed
     // from when it was heard, which a key queued behind that lay is only
-    // after it; the time from going in says it whole (Presented.keyInSaid).
+    // after it; the time from going in says it whole (Presented.keyInSaid),
+    // where it came soon after or reports are on (Presented.intoKept):
+    // soon after from its press, as going in is timed, so a key queued
+    // behind the lay keeps it.
     function keyInComing() {
         const pressed = KeyTimes.pressed();
-        return { from: pressed > 0 ? pressed : KeyTimes.now(), into: intoFrom };
+        const from = pressed > 0 ? pressed : KeyTimes.now();
+        return { from, into: Presented.intoKept(from, intoFrom, Options.reports) };
     }
     function keyInTimed(one, act) {
         if (!open || !drawerCard.keys)
             return;
         one.act = act;
-        one.key = drawerRow?.key || drawerRow?.name || "";
+        // A window's row is keyed by its title, which may be a mail's
+        // subject or a document's name: unless reports are on, only its
+        // app is said, as a slow key may be said for each one typed.
+        one.key = Presented.rowShown(drawerRow, Options.reports);
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
             Object.assign(one, { at, swapped: root.swappedOf(frame),
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
-            // Only one slow enough to feel, as a key in home is, but every
-            // one while reports are on, as the drawer lab times them.
+            // Only one slow enough to feel from its press, so a key queued
+            // behind the drawer's lay, which is what this line catches, is
+            // said; but every one while reports are on, as the drawer lab
+            // times them.
             if (Options.reports || at - one.from >= 50)
                 console.info(Presented.keyInSaid(one));
         });
@@ -12763,7 +12777,13 @@ Scope {
         intoGoing = null;
         if (!open || !one)
             return;
-        one.key = drawerRow?.key || drawerRow?.name || "";
+        // A window's title kept out, as a key's is (keyInTimed), since
+        // going in is said each time.
+        one.key = Presented.rowShown(drawerRow, Options.reports);
+        // The page shown, so going back from the key list reads apart from
+        // going into the row's own page, under the same row: only while
+        // reports are on, since a window's page is titled by the window.
+        one.page = Options.reports ? drawerCard.title : "";
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
@@ -15882,12 +15902,13 @@ Scope {
             keys: QueryKeys.paged(prompt.mode)
             onKeysComing: root.intoComing()
             onKeysIn: root.intoTimed()
-            // Its whole run is laid once the frame the keys came in is
-            // drawn, not merely at the next turn, which comes before it;
-            // and once that frame's swap is heard, at the turn after, since
-            // laid in the swap's own handler it held the others and the
-            // swap's stamp behind it: the drawer lab read its swap some
-            // 390 ms after niri presented it (2026-11-19).
+            // The rest of its run is laid a part a turn from once the frame
+            // the keys came in is drawn, not merely at the next turn, which
+            // comes before it, and shown whole with its last part; and from
+            // once that frame's swap is heard, at the turn after, since laid
+            // in the swap's own handler it held the others and the swap's
+            // stamp behind it: the drawer lab read its swap some 390 ms
+            // after niri presented it (2026-11-19).
             // The going-in it's for, if any, is the one the keys coming made.
             afterFrame: then => {
                 const going = root.intoGoing;
