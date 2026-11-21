@@ -2712,7 +2712,6 @@ impl Guard {
             seconds,
             why: why.word(),
             offered: here.len(),
-            // Each candidate a pass judges is acted on once, taken or kept.
             judged: report.actions.len(),
             surveyed,
         })?;

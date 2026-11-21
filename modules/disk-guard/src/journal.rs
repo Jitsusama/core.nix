@@ -49,7 +49,7 @@ pub enum Line {
     },
     /// A pass, how it ended, and how long it took; what set it going, how
     /// many things it was offered, how many of those its band's windows
-    /// made due and it judged, taken or kept, and how long the survey
+    /// made due and it judged, each once, taken or kept, and how long the survey
     /// that offered them took, or none when no survey did. A pass that
     /// freed nothing having judged none had nothing due, so it can be
     /// told from one that kept all it judged. Every pass one survey
