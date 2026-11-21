@@ -1895,7 +1895,7 @@
     headers and body as they came, a body of many pieces whole, refuses any other host, carries many
     requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, sends
     a request the origin reset before its answer, or left out of a goodbye saying nothing was
-    wrong, once more on another connection, one already open, even beside one kept, or one opened
+    wrong or a protocol error, once more on another connection, one already open, even beside one kept, or one opened
     for a burst of them together, whose failure to open each hears at once, and sends pi direct
     with its own 421 when reset or left out again or lost, when its connection was kept with none
     other open or when none would open, but says a 502 when a
