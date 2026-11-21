@@ -149,6 +149,8 @@ ShellRoot {
                 leaves();
             else if (stage === "asking")
                 asking();
+            else if (stage === "raised")
+                raised();
             else if (stage === "guarded")
                 guarded();
         } catch (error) {
@@ -332,6 +334,18 @@ ShellRoot {
         return Niri.spawns.filter(command => command.includes(` pi --session ${id}`));
     }
     function asked() {
+        // niri opens the one carried here as its kitty does, beside Joel,
+        // since no place was kept for it, so the walk goes on without
+        // waiting out its patience, and once the rest are back it is done,
+        // with no window it gave up on left to come.
+        const carried = Sessions.reopening?.waiting;
+        if (carried?.id === "s-carried" && carried.classed && carried.opened === null) {
+            const window = { id: 59, pid: 590, workspace_id: 40, session: true,
+                opened: carried.classed, layout: { pos_in_scrolling_layout: [1, 1] } };
+            Niri.windows = Object.assign({}, Niri.windows, { "59": window });
+            Niri.revision += 1;
+            Niri.windowOpenedOrChanged(window);
+        }
         const woken = steers.find(one => one.address === "NAPPED");
         if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken)
             return;
@@ -364,7 +378,7 @@ ShellRoot {
         stage = "adrift";
         Sessions.reopenAll([{ id: "s-adrift", cwd: "/given-back", quest: "QEST-ADRIFT" }],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone, and nothing started afresh`),
-            kept({ "s-adrift": keptOn(3) }), Sessions.carryOn);
+            kept({ "s-adrift": keptOn(2) }), Sessions.carryOn);
     }
 
     // Its folder given back, its quest starts afresh where the harness says,
@@ -383,7 +397,8 @@ ShellRoot {
         // niri opens it, so the walk goes on without waiting it out.
         const classed = Sessions.reopening?.waiting?.classed ?? "";
         if (classed !== "") {
-            const window = { id: 60, pid: 600, workspace_id: 42, session: true,
+            // Kept on a workspace of its own, it leaves the next its place.
+            const window = { id: 60, pid: 600, workspace_id: 41, session: true,
                 opened: classed, layout: { pos_in_scrolling_layout: [1, 1] } };
             Niri.windows = Object.assign({}, Niri.windows, { "60": window });
             Niri.revision += 1;
@@ -566,6 +581,28 @@ ShellRoot {
             Sessions.keptPlaces["s-held"]?.named === "pi-hosted.s-held"
             && viewerSpawns("s-held").length === 0,
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
+        // A session its host serves whose viewer niri lists, as just after
+        // a crash, before the windows daemon does.
+        const window = { id: 63, pid: 630, workspace_id: waitedOn, session: true,
+            opened: "pi-hosted.s-goto", layout: { pos_in_scrolling_layout: [3, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "63": window });
+        Niri.revision += 1;
+        stage = "raised";
+        Watch.tell(root.watch, { changed: [Object.assign(hosted("s-goto", "GOTO"),
+            { told: "0000000000000009" })] });
+    }
+
+    // Go To raises the viewer niri lists, rather than opening a second or
+    // doing nothing.
+    function raised() {
+        const session = find("GOTO");
+        if (!session)
+            return;
+        Sessions.goTo(session);
+        Expect.expect("Go To raises the viewer niri lists, opening no second",
+            Niri.acts.some(act => act.FocusWindow?.id === 63)
+            && viewerSpawns("s-goto").length === 0,
+            `${JSON.stringify(Niri.acts)} ${Niri.spawns.join("\n")}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }
@@ -613,11 +650,11 @@ ShellRoot {
     }
 
     // Long enough for each walk to be done before the next begins, and
-    // short of the check's own 60 s timeout, so a stage that never ends
+    // short of the check's own 120 s timeout, so a stage that never ends
     // says which it is rather than the check ending with no word.
     Timer {
         running: true
-        interval: 57000
+        interval: 110000
         onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }

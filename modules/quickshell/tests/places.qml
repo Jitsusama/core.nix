@@ -741,6 +741,10 @@ QtObject {
             asked: true, there: true } }, [], lateLeft, gone(screens)).kept.held;
         expect("left with nothing to open it by yet, ASKED_FOR runs from then",
             [leftUnviewable?.at, leftUnviewable?.there], [lateLeft, undefined]);
+        expect("parked in its host, it's viewed once he leaves, which wakes it, as he asked",
+            Viewers.viewersDue(keptThere(4), [napped], lateLeft, gone(screens)).open
+                .map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
         expect("kept by a shell before this one, it lapses from the ask all the same",
             Viewers.viewersDue(keptThere(9), [], lateLeft, gone(screens, { since: 5 })),
             { open: [], kept: {} });
