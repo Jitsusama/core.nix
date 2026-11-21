@@ -375,7 +375,13 @@ async fn record(asked: &Asked) -> Result<Ended, String> {
     let status = loop {
         tokio::select! {
             status = encoding.wait() => break status.map_err(|error| error.to_string())?,
-            _ = closed.next(), if !cast_ended => cast_ended = true,
+            // The window gone ends its video, but a recording's sound keeps
+            // coming, so the file is finished here rather than waited on.
+            _ = closed.next(), if !cast_ended => {
+                cast_ended = true;
+                finish(pid);
+                due.get_or_insert_with(|| Instant::now() + FINISHING);
+            }
             () = told_to_stop(&mut interrupt, &mut terminate) => {
                 finish(pid);
                 due.get_or_insert_with(|| Instant::now() + FINISHING);

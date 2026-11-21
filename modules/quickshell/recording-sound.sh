@@ -52,11 +52,27 @@ esac
 mix=recording-$$
 loaded=()
 
+# Asks the sound server, never waiting on it past a few seconds, since a
+# recording waits on each answer.
+ask() {
+  timeout 5 pactl "$@" 2> /dev/null
+}
+
+# Lets go of a mix whose recording was killed outright, which no trap
+# saw: each names the recording-sound that made it, by its process.
+sweep() {
+  local module rest
+  while read -r module _ rest; do
+    [[ $rest =~ recording-([0-9]+) ]] || continue
+    kill -0 "${BASH_REMATCH[1]}" 2> /dev/null || ask unload-module "$module" || true
+  done < <(ask list short modules || true)
+}
+
 # Unloads what was loaded, the loops before the sink they feed.
 let_go() {
   local index
   for ((index = ${#loaded[@]} - 1; index >= 0; index--)); do
-    pactl unload-module "${loaded[index]}" 2> /dev/null || true
+    ask unload-module "${loaded[index]}" || true
   done
   loaded=()
 }
@@ -69,7 +85,7 @@ trap 'exit 130' TERM HUP
 # Loads one module, keeping its number so it's let go of.
 load() {
   local module
-  module=$(pactl load-module "$@" 2> /dev/null) || return
+  module=$(ask load-module "$@") || return
   loaded+=("$module")
 }
 
@@ -79,8 +95,7 @@ load() {
 loop=("source_output_properties='application.process.binary=recording-sound'"
   "sink_input_properties='application.process.binary=recording-sound'"
   source_dont_move=true sink_dont_move=true latency_msec=30)
-if microphone=$(pactl get-default-source 2> /dev/null) &&
-  speakers=$(pactl get-default-sink 2> /dev/null) &&
+if sweep && microphone=$(ask get-default-source) && speakers=$(ask get-default-sink) &&
   load module-null-sink sink_name="$mix" \
     "sink_properties='device.description=Recording priority.session=0'" &&
   load module-loopback "source='$microphone'" sink="$mix" "${loop[@]}" &&

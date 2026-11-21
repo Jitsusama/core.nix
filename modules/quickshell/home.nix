@@ -825,7 +825,10 @@ let
   # it (./recording-sound.sh).
   recordingSound = pkgs.writeShellApplication {
     name = "recording-sound";
-    runtimeInputs = [ pkgs.pulseaudio ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.pulseaudio
+    ];
     text = builtins.readFile ./recording-sound.sh;
   };
 
@@ -1879,8 +1882,8 @@ in
     };
 
     # The recorder's tools (Recorder.qml): wf-recorder records the screen
-    # and record-window a window, with the sound recording-sound mixes, grim takes a region's picture and wl-copy
-    # copies it, and notify-send says where the file went. A terminal
+    # and record-window a window, with the sound recording-sound mixes,
+    # grim takes a region's picture and wl-copy copies it, and notify-send says where the file went. A terminal
     # shows a run's answer through jq (launcher/Runs.qml). A paste with no
     # clipboard history kept presses its window's paste keys through wtype
     # (Pasting.qml).
