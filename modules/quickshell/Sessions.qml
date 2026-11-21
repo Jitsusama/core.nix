@@ -1863,7 +1863,6 @@ Singleton {
                 root.reopenedHeld(next.one, next.one.cwd, waits ? "" : next.told);
                 if (waits)
                     root.carryOnLater(next.one, next.kept);
-                paceFromNow(next.one.id);
                 root.reopenSoon();
                 return;
             }
