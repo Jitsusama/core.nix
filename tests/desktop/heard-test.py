@@ -259,18 +259,22 @@ def reports(
 
     The stand-in journalctl writes what it was asked to a line of asked, then runs the journal
     as a shell's lines, and the reader runs on the shell and tools its check gives
-    (checks.nix), as the VM's writeShellApplication runs it.
+    (checks.nix), as the VM's writeShellApplication runs it, in a UTF-8 locale as the VM's
+    session is.
     """
     shell = os.environ["REPORTS_SHELL"]
     stand_in = tmp_path / "journalctl"
-    stand_in.write_text(f"#!{shell}\nprintf '%s\\n' \"$*\" >>{tmp_path}/asked\n{journal}\n")
+    stand_in.write_text(
+        f"#!{shell}\nprintf '%s\\n' \"$*\" >>{tmp_path}/asked\n{journal}\n", encoding="utf-8"
+    )
     stand_in.chmod(0o755)
     reader = Path(__file__).with_name("reports.sh")
     return subprocess.run(
         [shell, "-euo", "pipefail", reader, since, str(seconds), "showing"],
         capture_output=True,
         text=True,
-        env={"PATH": f"{tmp_path}:{os.environ['REPORTS_TOOLS']}"},
+        encoding="utf-8",
+        env={"PATH": f"{tmp_path}:{os.environ['REPORTS_TOOLS']}", "LC_ALL": "C.UTF-8"},
         check=False,
     )
 
@@ -282,11 +286,14 @@ def asked(tmp_path: Path) -> list[str]:
 
 def test_the_reader_says_what_follows_a_lines_first_report_mark(tmp_path: Path) -> None:
     # What the launcher shows can hold the mark again, as typed words, which stay its words.
-    # The line's prefix holds an n, which a bracket read as neither \ nor n would stop at.
-    line = 'launcher qml: report[showing {"typed": "report[x]"}]'
-    read = reports(tmp_path, f"echo '{line}'; echo '-- cursor: c1'")
-    wanted = 'said\tshowing {"typed": "report[x]"}\ncursor\tc1\n'
+    # The line's prefix holds an n, which a bracket read as neither \ nor n would stop at, and
+    # typed separators, which the launcher's JSON keeps raw, stay inside the one report.
+    showing = 'showing {"typed": "report[x]\u2028\u0085"}'
+    read = reports(tmp_path, f"echo 'launcher qml: report[{showing}]'; echo '-- cursor: c1'")
+    wanted = f"said\t{showing}\ncursor\tc1\n"
     assert (read.returncode, read.stdout) == (0, wanted), f"the reader said: {read}"
+    said = said_by(read.stdout)
+    assert said == [("said", showing), ("cursor", "c1")], f"the waits took it as: {said}"
     reads = asked(tmp_path)
     since_boot = "--user --unit=quickshell --no-pager --output=cat --lines=all --show-cursor --boot"
     assert reads == [since_boot], f"with no point the reader asked: {reads}"
@@ -312,20 +319,21 @@ def test_the_reader_reads_again_after_its_point_until_the_report_comes(tmp_path:
 def test_the_readers_time_running_out_fails_as_never_hearing(tmp_path: Path) -> None:
     # The status ended reads as time running out is the one the reader gives, or retry loops
     # would stop retrying a wait that only ran out, and it comes only once it has read again.
-    # Two seconds, since bash counts its seconds whole by the clock, so one can end at once.
-    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=2)
+    # Three seconds, since bash counts its seconds whole by the clock, which leaves two whole
+    # seconds for a second read on a busy builder.
+    read = reports(tmp_path, "echo 'qml: report[hidden {}]'; echo '-- cursor: c1'", seconds=3)
+    assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
     with pytest.raises(AssertionError):
         ended(read.returncode, never)
-    assert read.returncode == TIMED_OUT, f"the reader whose time ran out gave: {read}"
     reads = len(asked(tmp_path))
     assert reads > 1, f"the reader whose time ran out read {reads} times"
 
 
 def test_the_readers_failed_journal_read_fails_as_a_stopped_reader(tmp_path: Path) -> None:
     read = reports(tmp_path, "exit 1")
+    assert read.returncode == 1, f"the reader whose journal read failed gave: {read}"
     with pytest.raises(RuntimeError):
         ended(read.returncode, never)
-    assert read.returncode == 1, f"the reader whose journal read failed gave: {read}"
 
 
 def test_the_reader_refuses_a_time_that_isnt_a_number(tmp_path: Path) -> None:
