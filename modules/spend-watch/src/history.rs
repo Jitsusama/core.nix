@@ -832,7 +832,7 @@ mod tests {
                 "INSERT INTO turns (session, at, hour, model, provider, kind, quest, input,
                  output, cache_read, cache_write, cache_write_long, cost, cost_cache_write,
                  cost_output, gap, rebuilt, rebuilt_cost, cause) VALUES
-                 (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
+                 (?1, ?2 + (SELECT COUNT(*) FROM turns), ?3, 'opus', 'anthropic', 'agent', ?4,
                  0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL)",
                 params![session, crate::time::hour_start(hour), hour, quest, cost],
             )
