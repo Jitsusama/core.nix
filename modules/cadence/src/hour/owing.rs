@@ -50,6 +50,32 @@ fn asked_of_owner(what: &str, held: &str) -> String {
     }
 }
 
+/// Each finding behind, filed apart as each miss is, so one past a day
+/// reaches its owner though another of theirs is open; one held only by
+/// the hour's blindness isn't put to them.
+fn findings_filed(m: &Measure) -> Vec<Filed> {
+    m.behind
+        .iter()
+        .filter(|line| !held_unseen(line))
+        .filter_map(|line| line.rsplit_once(" · "))
+        .map(|(what, owner)| {
+            let short = what.split(' ').next().unwrap_or_default();
+            Filed {
+                key: format!("hour:{FINDINGS}:{owner}:{short}"),
+                owner: owner.to_owned(),
+                says: format!("a work-system finding open past a day, yours: {what}"),
+                text: format!(
+                    "cadence hour: a finding in #v2-symbiosis open past a day, with no fix \
+                     running here, is yours: {what}. Please reply with its cause and fix \
+                     within a day, or why it can't move. It closes by itself once the \
+                     changes a landing note in its thread names run here, the note opening \
+                     as \"Landed core #6000.\" does."
+                ),
+            }
+        })
+        .collect()
+}
+
 /// What the drag files: one entry for its measure, or, for Joel's misses,
 /// one for each miss with that miss's own owner, since each owner names
 /// the check its own miss needs.
@@ -119,31 +145,8 @@ fn filed(m: &Measure) -> Vec<Filed> {
             says,
         }];
     }
-    // Each finding is filed apart, as each miss is, so one past a day
-    // reaches its owner though another of theirs is open; one held only by
-    // the hour's blindness isn't put to them.
     if m.key == FINDINGS {
-        return m
-            .behind
-            .iter()
-            .filter(|line| !held_unseen(line))
-            .filter_map(|line| line.rsplit_once(" · "))
-            .map(|(what, owner)| {
-                let short = what.split(' ').next().unwrap_or_default();
-                Filed {
-                    key: format!("hour:{FINDINGS}:{owner}:{short}"),
-                    owner: owner.to_owned(),
-                    says: format!("a work-system finding open past a day, yours: {what}"),
-                    text: format!(
-                        "cadence hour: a finding in #v2-symbiosis open past a day, with no fix \
-                         running here, is yours: {what}. Please reply with its cause and fix \
-                         within a day, or why it can't move. It closes by itself once the \
-                         changes a landing note in its thread names run here, the note opening \
-                         as \"Landed core #6000.\" does."
-                    ),
-                }
-            })
-            .collect();
+        return findings_filed(m);
     }
     let owners = by_owner(m);
     if !owners.is_empty() {

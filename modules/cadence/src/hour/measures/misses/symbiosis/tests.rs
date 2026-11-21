@@ -65,14 +65,6 @@ fn owned(one: &Posted) -> String {
     super::owner(one, &known()).unwrap_or_else(|| "P9R1KI".to_owned())
 }
 
-/// The ids of the findings `posted` holds.
-fn ids_of(posted: &[Posted]) -> Vec<String> {
-    open_findings(posted, "P9R1KI", &known())
-        .into_iter()
-        .map(|one| one.posted.id)
-        .collect()
-}
-
 #[test]
 fn a_finding_counts_against_the_owner_its_opening_names() {
     let cases = [
@@ -228,6 +220,12 @@ fn a_follow_up_adds_to_an_open_finding_and_its_landing_notes_are_its_check() {
 fn a_follow_up_after_a_landing_note_waits_on_that_fix_and_counts_once_it_runs() {
     let first = finding(2 * DAY + 900, "IKQ63G", "IKQ63G finding for A2VLJN: x");
     let landed = answer(2 * DAY + 800, "A2VLJN", "Landed core #6000.", &first);
+    // Sent as a finding, a landing note still lands. Written before the
+    // follow-up, it adds to the first's fix alone.
+    let sent_as = answering(
+        finding(2 * DAY + 750, "A2VLJN", "Landed core #6010 too."),
+        &first,
+    );
     let more = answering(
         finding(2 * DAY + 700, "CIJMZQ", "CIJMZQ: still seeing it"),
         &first,
@@ -236,13 +234,8 @@ fn a_follow_up_after_a_landing_note_waits_on_that_fix_and_counts_once_it_runs() 
         finding(2 * DAY + 600, "CIJMZQ", "CIJMZQ: and again"),
         &first,
     );
-    // Sent as a finding, a landing note still lands.
-    let sent_as = answering(
-        finding(2 * DAY + 500, "A2VLJN", "Landed core #6010 too."),
-        &first,
-    );
     let found = open_findings(
-        &[first, landed, more.clone(), again, sent_as],
+        &[first, landed, sent_as, more.clone(), again],
         "P9R1KI",
         &known(),
     );
