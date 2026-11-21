@@ -178,17 +178,21 @@ pub const LATELY: u64 = 5 * 60;
 /// epoch.
 pub type Kept = (u64, Source);
 
-/// Keeps what each source said in a minute before that this minute can't
-/// know: a source still in the same state it wasn't answering in has been
-/// so since the earlier minute said, and one that didn't answer last
-/// answered when the earlier minute said. Each source reads only this
-/// minute, so without this net would say every outage began just now.
-pub fn carry_over(sources: &mut [Source], earlier: &[Kept]) {
-    for source in sources {
-        let Some((_, before)) = earlier
-            .iter()
-            .find(|(_, before)| before.name == source.name)
-        else {
+/// Carries over what each source said in a minute before that the minute
+/// at `now` can't know, then keeps this minute's sources for the next: a
+/// source still in the same state it wasn't answering in has been so since
+/// the earlier minute said, and one that didn't answer last answered when
+/// the earlier minute said. Each source reads only this minute, so without
+/// this net would say every outage began just now.
+///
+/// A source is kept from the last minute that named it, so a minute eero
+/// doesn't answer, naming none of its devices, loses nothing. One kept
+/// longer than `LATELY`, as across a suspend, or dated ahead of the clock,
+/// is dropped before anything is carried.
+pub fn carry_over(sources: &mut [Source], kept: &mut Vec<Kept>, now: u64) {
+    kept.retain(|(at, _)| now.checked_sub(*at).is_some_and(|age| age <= LATELY));
+    for source in sources.iter_mut() {
+        let Some((_, before)) = kept.iter().find(|(_, before)| before.name == source.name) else {
             continue;
         };
         if source.state != SourceState::Answering
@@ -201,18 +205,27 @@ pub fn carry_over(sources: &mut [Source], earlier: &[Kept]) {
             source.read_at = before.read_at;
         }
     }
+    kept.retain(|(_, earlier)| sources.iter().all(|source| source.name != earlier.name));
+    kept.extend(sources.iter().map(|source| (now, source.clone())));
 }
 
-/// Keeps each source as the minute at `now` said it, and one it didn't
-/// name as it was last said, until that's older than `LATELY`: a minute
-/// eero doesn't answer names none of the devices it lists, and their
-/// sources shouldn't start over the minute it's back.
-pub fn keep(kept: &mut Vec<Kept>, sources: &[Source], now: u64) {
-    kept.retain(|(at, earlier)| {
-        now.saturating_sub(*at) <= LATELY
-            && sources.iter().all(|source| source.name != earlier.name)
-    });
-    kept.extend(sources.iter().map(|source| (now, source.clone())));
+/// Each source the record `text` names, at the minute it was collected, so
+/// a daemon starting carries over what the one before it last said. A
+/// record of another schema, or no record, carries nothing; one too old is
+/// dropped by `carry_over`.
+pub fn kept_from(text: &str) -> Vec<Kept> {
+    serde_json::from_str::<Network>(text)
+        .ok()
+        .filter(|network| network.schema == SCHEMA)
+        .map(|network| {
+            let at = network.collected_at;
+            network
+                .sources
+                .into_iter()
+                .map(|source| (at, source))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -554,11 +567,18 @@ mod tests {
         }
     }
 
+    fn named(name: &str, source: Source) -> Source {
+        Source {
+            name: name.into(),
+            ..source
+        }
+    }
+
     #[test]
     fn an_outage_keeps_the_minute_it_began_and_the_last_answer() {
-        let earlier = [(160, source(SourceState::Unreachable, Some(100), Some(160)))];
+        let mut kept = vec![(160, source(SourceState::Unreachable, Some(100), Some(160)))];
         let mut now = [source(SourceState::Unreachable, None, Some(220))];
-        carry_over(&mut now, &earlier);
+        carry_over(&mut now, &mut kept, 220);
         assert_eq!(
             (now[0].read_at, now[0].since),
             (Some(100), Some(160)),
@@ -567,27 +587,35 @@ mod tests {
     }
 
     #[test]
-    fn a_new_state_starts_its_own_since_and_an_answer_its_own_time() {
-        let earlier = [(160, source(SourceState::SignedOut, Some(100), Some(160)))];
-        let mut now = [
-            source(SourceState::Unreachable, None, Some(220)),
-            Source {
-                name: "eero".into(),
-                ..source(SourceState::Answering, Some(220), None)
-            },
+    fn a_new_state_starts_its_own_since_and_another_source_its_own_times() {
+        let mut kept = vec![
+            (
+                160,
+                named("eero", source(SourceState::Answering, Some(160), None)),
+            ),
+            (160, source(SourceState::SignedOut, Some(100), Some(160))),
         ];
-        let mut answering = [source(SourceState::Answering, Some(220), None)];
-        carry_over(&mut now, &earlier);
-        carry_over(&mut answering, &earlier);
+        let mut now = [
+            named("switch", source(SourceState::SignedOut, None, Some(220))),
+            source(SourceState::Unreachable, None, Some(220)),
+        ];
+        carry_over(&mut now, &mut kept, 220);
         assert_eq!(
-            (now[0].since, now[1].read_at, answering[0].since),
-            (Some(220), Some(220), None),
-            "a since crosses states or sources, or an answer keeps an old one"
+            (now[0].read_at, now[0].since, now[1].read_at, now[1].since),
+            (None, Some(220), Some(100), Some(220)),
+            "a since crosses states, or a source takes another's times"
         );
+    }
+
+    #[test]
+    fn an_answer_keeps_its_own_time() {
+        let mut kept = vec![(160, source(SourceState::Unreachable, Some(100), Some(160)))];
+        let mut now = [source(SourceState::Answering, Some(220), None)];
+        carry_over(&mut now, &mut kept, 220);
         assert_eq!(
-            answering[0].read_at,
-            Some(220),
-            "an answer this minute keeps the earlier reading"
+            (now[0].read_at, now[0].since),
+            (Some(220), None),
+            "an answer this minute keeps an earlier reading or outage"
         );
     }
 
@@ -598,29 +626,61 @@ mod tests {
             ..source(SourceState::Answering, read_at, None)
         };
         let mut kept = vec![
+            (100, source(SourceState::Answering, Some(100), None)),
             (100, tv(Some(100))),
-            (100, source(SourceState::Answering, None, None)),
         ];
-        keep(
+        carry_over(
+            &mut [source(SourceState::Unreachable, None, Some(160))],
             &mut kept,
-            &[source(SourceState::Unreachable, None, Some(160))],
             160,
         );
-        let mut back = [tv(None)];
-        carry_over(&mut back, &kept);
-        let names: Vec<(u64, &str)> = kept
+        let names: Vec<(u64, String)> = kept
             .iter()
-            .map(|(at, source)| (*at, source.name.as_str()))
+            .map(|(at, source)| (*at, source.name.clone()))
             .collect();
+        let mut back = [tv(None)];
+        carry_over(&mut back, &mut kept, 220);
+        let mut woken = [tv(None)];
+        carry_over(&mut woken, &mut kept, 220 + LATELY + 1);
         assert_eq!(
-            (names, back[0].read_at),
-            (vec![(100, "samsung"), (160, "modem")], Some(100)),
-            "a source missing a minute starts over, or a source named twice is kept twice"
+            (names, back[0].read_at, woken[0].read_at),
+            (
+                vec![(100, "samsung".to_owned()), (160, "modem".to_owned())],
+                Some(100),
+                None
+            ),
+            "a source missing a minute starts over, is kept twice, or is carried past lately"
         );
-        keep(&mut kept, &[], 160 + LATELY + 1);
+    }
+
+    #[test]
+    fn a_minute_dated_ahead_of_the_clock_carries_nothing() {
+        let mut kept = vec![(300, source(SourceState::Unreachable, Some(100), Some(160)))];
+        let mut now = [source(SourceState::Unreachable, None, Some(220))];
+        carry_over(&mut now, &mut kept, 220);
+        assert_eq!(
+            (now[0].read_at, now[0].since),
+            (None, Some(220)),
+            "a minute dated ahead of the clock was carried"
+        );
+    }
+
+    #[test]
+    fn a_record_is_kept_at_its_minute_only_in_nets_schema() {
+        let network: Network = serde_json::from_str(RECORD).expect("the record reads");
+        let kept = kept_from(RECORD);
+        let other = RECORD.replacen(SCHEMA, "net.network/0", 1);
+        assert_eq!(
+            (
+                kept.len(),
+                kept.iter().all(|(at, _)| *at == network.collected_at)
+            ),
+            (network.sources.len(), true),
+            "a record's sources aren't each kept at the minute it was collected"
+        );
         assert!(
-            kept.is_empty(),
-            "a source unseen past lately is still carried: {kept:?}"
+            kept_from(&other).is_empty() && kept_from("{").is_empty(),
+            "a record of another schema, or no record, is carried"
         );
     }
 

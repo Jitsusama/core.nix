@@ -31,7 +31,7 @@ use ureq::Agent;
 
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
-use crate::model::{self, Kept, Network};
+use crate::model::{self, Kept};
 use crate::room;
 use crate::serve as served;
 use crate::sources::{airplay, hp, modem, samsung, sony, switch};
@@ -94,8 +94,8 @@ pub fn run() -> Result<(), String> {
         .into();
     // Each TV's last answer, so a minute it's silent keeps its name.
     let mut tvs = samsung::Heard::new();
-    // Each source as the last record said it.
-    let mut before = last_sources(&record);
+    // Each source as the last minute that named it said it.
+    let mut kept = last_sources(&record);
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -141,8 +141,7 @@ pub fn run() -> Result<(), String> {
             televisions,
         };
         let mut network = collect::network(said, time::now());
-        model::carry_over(&mut network.sources, &before);
-        model::keep(&mut before, &network.sources, network.collected_at);
+        model::carry_over(&mut network.sources, &mut kept, network.collected_at);
         let earlier = history::read(&day, network.collected_at);
         history::recall(&mut network, &earlier);
         room::work_out(&mut network);
@@ -160,28 +159,11 @@ pub fn run() -> Result<(), String> {
 }
 
 /// Each source as the record a daemon before this one wrote said it, so a
-/// restart doesn't make an outage begin again. A record older than
-/// `LATELY` says nothing of what happened since it was written, so it
-/// carries nothing over, nor does one dated ahead of the clock, one of
-/// another schema, or one that can't be read.
+/// restart doesn't make an outage begin again; `model::kept_from` says
+/// which records count.
 fn last_sources(record: &Path) -> Vec<Kept> {
-    let now = time::now();
     fs::read_to_string(record)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Network>(&text).ok())
-        .filter(|network| network.schema == model::SCHEMA)
-        .filter(|network| {
-            now.checked_sub(network.collected_at)
-                .is_some_and(|age| age <= model::LATELY)
-        })
-        .map(|network| {
-            let at = network.collected_at;
-            network
-                .sources
-                .into_iter()
-                .map(|source| (at, source))
-                .collect()
-        })
+        .map(|text| model::kept_from(&text))
         .unwrap_or_default()
 }
 
