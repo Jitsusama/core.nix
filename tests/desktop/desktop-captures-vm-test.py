@@ -51,10 +51,12 @@ type Box = tuple[int, int, int, int]
 # The loudest a recording's sound may peak and still count as silence, in dB: the
 # microphone's test tone peaks near 0, and silence at minus infinity.
 SILENT = -60.0
-# The speakers' tone, in Hz, and the cut that keeps only it: four high-pass filters at 3 kHz
-# take the microphone's 440 Hz tone down past 130 dB and leave this one whole.
+# The speakers' tone, in Hz, and the cuts that keep only one tone: four high-pass filters at
+# 3 kHz take the microphone's 440 Hz down past 130 dB, and four low-pass filters at 1.5 kHz
+# take this one down past 90.
 SPEAKERS_TONE = 6000
 ABOVE_THE_MICROPHONE = ",".join(["highpass=f=3000"] * 4)
+BELOW_THE_SPEAKERS = ",".join(["lowpass=f=1500"] * 4)
 # What records from a microphone without being a call, as the calls crate's NOT_CALLS has
 # it: the recording's own mix, and pw-record, which stands in for a call here.
 NO_CALL = frozenset({"recording-sound", "pw-record"})
@@ -122,6 +124,10 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     machine = desktop.machine
     mark = "/run/user/1000/before-recording"
     desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
+    # A mix left by a recording killed outright, which no trap saw, for this one to sweep.
+    desktop.as_account("recording-sound sh -c 'kill -KILL $PPID' || true")
+    left = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
+    assert int(left) > 0, "a recording-sound killed outright left no mix to sweep"
     bare, seen, shown = the_launcher_on_a_row(desktop)
     # The margin wears recording's mark from the start, as niri says it records.
     with desktop.told("holds margin recording", timeout=WAKING):
@@ -144,8 +150,9 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
         held = desktop.as_account(f"wpctl inspect @DEFAULT_AUDIO_{default}@ | grep -F node.name")
         assert node in held, f"the recording moved the default {default.lower()}: {held}"
     # Nothing it records from reads as a call to a-call-is-on, which would hold uploads back.
-    calls = callers(json.loads(desktop.as_account("pw-dump"))) - NO_CALL
-    assert not calls, f"the recording reads as a call from {sorted(calls)}"
+    recording = callers(json.loads(desktop.as_account("pw-dump")))
+    assert "recording-sound" in recording, f"the mix's loops aren't seen: {sorted(recording)}"
+    assert not recording - NO_CALL, f"the recording reads as a call from {sorted(recording)}"
     # What the desktop plays goes in too: a tone the microphone has nothing near.
     tone = "/run/user/1000/tone.wav"
     machine.succeed(f"{ffmpeg} -f lavfi -i sine=frequency={SPEAKERS_TONE}:duration=2 -y {tone}")
@@ -174,7 +181,10 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     assert peak > SILENT, f"the recording's sound peaks at {peak} dB, silence"
     played = loudest(machine, ffmpeg, video, ABOVE_THE_MICROPHONE)
     assert played > SILENT, f"what the speakers played peaks at {played} dB, unheard"
-    # The mix it was made from goes with it, its sink and both loops.
+    spoken = loudest(machine, ffmpeg, video, BELOW_THE_SPEAKERS)
+    assert spoken > SILENT, f"the microphone peaks at {spoken} dB, unheard"
+    # The mix it was made from goes with it, its sink and both loops, and so does the one left
+    # before it.
     mixes = desktop.as_account("pw-dump | grep -c 'recording-[0-9]' || true")
     assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
 
