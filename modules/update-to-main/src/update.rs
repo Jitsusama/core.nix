@@ -111,12 +111,6 @@ fn run(
     {
         return switch_waiting(config, waiting, last, tell);
     }
-    // Switching what waited for a grant builds nothing, so a check that
-    // refuses the ask alone is asked only past it: the load it reads may
-    // be the waiting build's own.
-    if let Some(why) = busy::at_the_ask(config, following) {
-        return Line::Refused { commit: last, why };
-    }
     tell(&Line::Fetching);
     let main = Repo::main(config);
     let head = match &config.hosted {
@@ -143,6 +137,15 @@ fn run(
         return refused;
     }
     if let Some(why) = held::stops(config, &head, &followed) {
+        return Line::Refused { commit: last, why };
+    }
+    // A check that refuses the ask alone spares the machine a build, so
+    // it's asked only once main has something to build: on 21 November a
+    // Mac over its load refused 26 asks in half an hour for the head it
+    // already ran. Switching what waited for a grant builds nothing, so
+    // it's asked only past that too: the load it reads may be the waiting
+    // build's own.
+    if let Some(why) = busy::at_the_ask(config, following) {
         return Line::Refused { commit: last, why };
     }
 

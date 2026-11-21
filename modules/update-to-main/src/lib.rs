@@ -55,3 +55,15 @@ pub mod session;
 pub mod system;
 pub mod tell;
 pub mod update;
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// The time now in UTC, as RFC 3339 says it, that the daemon and the
+/// follower stamp their log lines with: a Mac's launchd writes them
+/// with no time of their own, unlike the journal.
+pub fn stamp() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    terminal_kit::time::rfc3339(i64::try_from(now).unwrap_or(i64::MAX))
+}

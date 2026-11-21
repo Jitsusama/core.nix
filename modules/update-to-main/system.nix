@@ -277,7 +277,9 @@ in
               default = false;
               description = ''
                 Whether it refuses only an ask the follower alone made,
-                before anything is fetched, and never the switch of what
+                once main has something to build and before it's built, so
+                an ask for what the machine runs is answered unchanged; and
+                never the switch of what
                 that ask built, such as a load too high to build in: by then
                 the load is the build's own. A person's ask builds anyway,
                 as theirs to make.
