@@ -373,13 +373,11 @@ Provider {
     }
 
     // Whether its own rows after its sessions' are read now: at home, which
-    // shows them, walked from outside, or held in Agents or Now, which reads
-    // Sessions to Reopen. A stopgap until the agents daemon makes them
-    // ready (Fri 13 Nov), so a chord into another place makes none. Now is
-    // the source named "on" (home.nix): asked for as "now", it was never
-    // found, so held in Now none were read, and each step out to home
-    // made all of them again, 47 to 72 ms of Joel's (2026-11-21, 13:13).
-    function readable() {
+    // shows them, walked from outside, or held in Agents, or in one of the
+    // `others` places that read them. A stopgap until the agents daemon
+    // makes them ready (Fri 13 Nov), so a chord into another place makes
+    // none.
+    function readable(others) {
         const launcher = provider.launcher;
         if (!launcher || typeof launcher.wants !== "function")
             return opened();
@@ -387,13 +385,19 @@ Provider {
             held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
             typing: launcher.typing, entering: launcher.entering ?? null,
             viewing: launcher.viewing ?? false },
-            [provider, source("on")]);
+            [provider].concat(others));
     }
     // Held as a bool, so a step made again while it stays readable remakes
     // none of them: each change to Agents remakes the steps held
     // (Launcher.qml's relive), and read as the function, every new step
     // made Landed, Recent and Start again (LR3WMN, 2026-11-12).
-    readonly property bool readNow: readable()
+    readonly property bool readNow: readable([])
+    // Sessions to Reopen is read in Now too, whose For You draws it; the
+    // rest aren't, since Now shows none of them. Now is the source named
+    // "on" (home.nix): asked for as "now", it was never found, so held in
+    // Now none were read, and each step out to home made all of them
+    // again, 47 to 72 ms of Joel's (2026-11-21, 13:13).
+    readonly property bool reopenRead: readable([source("on")])
     // Asleep in a kept opening's waking until its turn, like any source
     // home's rows read (Launcher.qml's wakingOrder), so its own are read
     // as it wakes, after the open's turn: in a slice of its own when Now's
@@ -2061,7 +2065,7 @@ Provider {
     // they came from.
     // Made of what Sessions offers and how it words each, Not Now's last
     // boot read as it's stepped into.
-    readonly property var toReopen: readNow ? ownKept("toReopen", [Words.all, provider.weight,
+    readonly property var toReopen: reopenRead ? ownKept("toReopen", [Words.all, provider.weight,
         Sessions.toReopen, Sessions.reopenRows, Sessions.reopenPlace], toReopenMade)
         : madeBefore("toReopen")
     function toReopenMade() {
@@ -2843,6 +2847,8 @@ Provider {
     // or the day turns, which rewords when each closed: Sessions had made
     // every closed session anew as any one changed, and compared nine of
     // Joel's, about 30,000 characters, each time (2026-11-10).
+    // What it holds changes in place, which recentMoves counts; rowsKind's
+    // held is a part too since a reload of rowsLink gives another.
     readonly property var recent: readNow ? ownKept("recent", [Words.all, provider.weight,
         recentMoves, Calendars.today, rowsKind?.held], recentMade) : madeBefore("recent")
     function recentMade() {

@@ -455,6 +455,11 @@ QtObject {
             readDozing({ held: [{ row: { from: now } }] }, [woken, now]), true);
         check(failures, "or once something's typed there",
             readDozing({ held: [{ row: { from: now } }], typing: true }, [dozing, now]), true);
+        // A kept opening into Now passes through these before Now is held.
+        check(failures, "opening into a place that reads them, it waits to wake too",
+            readDozing({ entering: now }, [dozing, now]), false);
+        check(failures, "and reads them once woken",
+            readDozing({ entering: now }, [woken, now]), true);
         // Which sources wait their turn: any home reads, and of those that
         // say what they hold at home, only one reading rows of its own.
         check(failures, "a source home reads waits its turn to wake",

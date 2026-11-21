@@ -2945,6 +2945,48 @@ def test_a_step_out_of_now_makes_none_of_agents_rows_as_home_is_held(shell: Shel
     assert made == 0, f"- out of Now made {made} of Agents' rows as it held: {lately}"
 
 
+def test_a_session_landing_while_now_is_held_is_counted_in_landed_once_stepped_out(
+    shell: Shell,
+) -> None:
+    """A landing heard while Now is held is in Landed's count after - steps out of Now.
+
+    Agents keeps each of its own rows while what it's made from is as it was, and makes none
+    while Now is held, so a part left out of what Landed is kept by would leave its count as
+    it stood before the landing, for as long as nothing else it's made from changed.
+    """
+    # Not by opened(), whose first rows the sessions the cases before this one laid move.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    before = shell.showing()["selected"]["side"]
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"])
+    landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#6037", "what": "Counted"}
+    try:
+        # Heard whole as one arriving shut is, though Now is held.
+        arrived_shut(
+            shell,
+            lambda: lay("NOWLND", "Landed in Now", {"state": "listening", "landings": [landing]}),
+        )
+        shell.normal()
+        shell.send_chars("-")
+        shell.launcher_until(lambda shown: not shown["held"])
+        shell.close_launcher()
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(
+            lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"]
+        )
+        shell.down_to("Landed")
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") != before)
+    finally:
+        shell.close_launcher()
+        (PRESENCE / "nowlnd.json").unlink(missing_ok=True)
+
+
 # How long Agents makes no row before an opening's work is taken as done: many frames.
 SETTLED = 0.5
 
