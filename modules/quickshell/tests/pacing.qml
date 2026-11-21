@@ -241,10 +241,10 @@ QtObject {
             collectsOutsideAt: 56, collecting: false };
         check(failures, "a stall the collector ran in says where the heap stood at the ask",
             Collector.standingSaid(30, stoodAtAsk),
-            "; at the ask, chunks 300 of 332 MB and outside 27 of 56");
+            "; at the ask, chunks 300 of 332 MB and outside 27 of 56 MB");
         check(failures, "and says a collection was under way as it was asked",
             Collector.standingSaid(30, Object.assign({}, stoodAtAsk, { collecting: true })),
-            "; at the ask, chunks 300 of 332 MB and outside 27 of 56, a collection under way");
+            "; at the ask, chunks 300 of 332 MB and outside 27 of 56 MB, a collection under way");
         check(failures, "a stall the collector didn't run in says nothing of the heap",
             Collector.standingSaid(0.4, stoodAtAsk), "");
         check(failures, "nor does one with no standing read",

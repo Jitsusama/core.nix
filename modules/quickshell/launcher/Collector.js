@@ -16,7 +16,9 @@ function collectorSaid(inStall, inAll) {
 
 // Where the heap stood against the collector as the opening was asked, as
 // Heap.standing says it, said after the collector's part when it took a
-// millisecond or more of the longest stall, or nothing. Collections ran
+// millisecond or more of the longest stall, or nothing. It's the room
+// each limit had then, not which the opening's own work went on to meet,
+// and a collection begun after the ask isn't said under way. Collections ran
 // inside 19 of 670 of Joel's openings' stalls, 57 to 136 ms each, and
 // were most of the slowest, but which limit started them, the chunks', the
 // strings' outside the heap, or one begun while the launcher was shut,
@@ -28,5 +30,5 @@ function standingSaid(inStall, stood) {
     const under = stood.collecting ? ", a collection under way" : "";
     return `; at the ask, chunks ${Math.round(stood.chunks)} of`
         + ` ${Math.round(stood.collectsAt)} MB and outside ${Math.round(stood.outside)} of`
-        + ` ${Math.round(stood.collectsOutsideAt)}${under}`;
+        + ` ${Math.round(stood.collectsOutsideAt)} MB${under}`;
 }
