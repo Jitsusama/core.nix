@@ -235,6 +235,19 @@ fn w_b_and_e_go_by_words_as_vi_does() {
 }
 
 #[test]
+fn star_takes_the_word_under_the_character_or_the_next_on_its_line() {
+    let page = page();
+    // "Some bold words and a"
+    assert_eq!(page.word_at(at(1, 7)), Some(("bold".into(), 30.0)));
+    assert_eq!(
+        page.word_at(at(1, 9)),
+        Some(("words".into(), 60.0)),
+        "from a space, the next word"
+    );
+    assert_eq!(page.word_at(at(2, 20)), None, "nothing after the stop");
+}
+
+#[test]
 fn j_and_k_in_a_table_go_to_the_cell_under_never_the_one_beside() {
     let lines = vec![
         line(20.0, "Name"),

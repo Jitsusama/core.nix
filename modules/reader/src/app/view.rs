@@ -397,16 +397,30 @@ impl App {
         }
     }
 
-    /// Star and hash: a search down or up for the cursor's line's first
-    /// word, whole and whatever its case, from that word on, as vi's.
+    /// Star and hash: a search down or up for the word under the cursor's
+    /// character, or the next on its line, or else the cursor's line's
+    /// first word, whole and whatever its case, from that word on, as vi's.
     pub(crate) fn same_word(&mut self, forward: bool, times: u32) {
-        let Some((from, word)) = self
-            .cursor()
-            .zip(self.words.as_deref())
-            .and_then(|(i, lines)| {
-                moves::first_word(&lines[i]).map(|word| (moves::top_of(&lines[i]), word))
-            })
-        else {
+        // Where the character's word starts across its line, to find its
+        // own match on the line by.
+        let under = self
+            .standing()
+            .zip(self.layout.as_deref())
+            .and_then(|(character, layout)| {
+                let (word, x_pt) = layout.word_at(character.cursor)?;
+                Some((
+                    layout.line_extent(character.cursor.line).0,
+                    word,
+                    Some(x_pt),
+                ))
+            });
+        let Some((from, word, x_pt)) = under.or_else(|| {
+            self.cursor()
+                .zip(self.words.as_deref())
+                .and_then(|(i, lines)| {
+                    moves::first_word(&lines[i]).map(|word| (moves::top_of(&lines[i]), word, None))
+                })
+        }) else {
             return;
         };
         self.searched = Some((format!("\\<{word}\\>"), forward));
@@ -414,7 +428,17 @@ impl App {
         self.refind();
         // From the word itself, as vi's * starts on the word under the
         // cursor, so it's passed over once.
-        self.current = search::from(&self.found, from - 0.5, true);
+        let on_line = |found: &crate::text::Found| (search::top_pt(found) - from).abs() < 0.5;
+        let here = x_pt.and_then(|x_pt| {
+            self.found.iter().rposition(|found| {
+                on_line(found)
+                    && found
+                        .pieces
+                        .first()
+                        .is_some_and(|piece| piece.from_pt <= x_pt + 0.5)
+            })
+        });
+        self.current = here.or_else(|| search::from(&self.found, from - 0.5, true));
         self.go_on(true, times);
     }
 }

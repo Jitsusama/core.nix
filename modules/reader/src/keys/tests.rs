@@ -462,11 +462,16 @@ fn what_a_key_takes_after_it_is_the_languages_to_say() {
     };
     assert_eq!(taken(LANGUAGE, 'f'), Some(Takes::Character));
     assert_eq!(taken(LANGUAGE, 'm'), Some(Takes::Letter));
-    let letters = LANGUAGE.replace(
-        "keys = [\"f\"]\ntakes = \"character\"",
-        "keys = [\"f\"]\ntakes = \"letter\"",
-    );
-    assert_ne!(letters, LANGUAGE, "the language says f takes a character");
+    // The language as the package hands it over, with f said to take a
+    // letter.
+    let mut language: toml::Table = LANGUAGE.parse().expect("the key language is TOML");
+    language
+        .get_mut("acts")
+        .and_then(|acts| acts.get_mut("to-letter"))
+        .and_then(toml::Value::as_table_mut)
+        .expect("the language has f")
+        .insert("takes".into(), "letter".into());
+    let letters = language.to_string();
     assert_eq!(
         taken(&letters, 'f'),
         Some(Takes::Letter),
