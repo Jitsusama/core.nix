@@ -48,8 +48,15 @@ let
       ExecStart = "${lib.getExe holders} --usb /dev/%I ${folder}";
       # A run killed before it could remove its files would leave the
       # camera said there, and its readers said, until another camera came
-      # at this node; as the unit stops, what says the node goes too.
+      # at this node; as the unit stops, what says the node goes too,
+      # unless a loopback has the node by then, whose files say it rightly.
       ExecStopPost = "${lib.getExe holders} --usb --forget /dev/%I ${folder}";
+      # A run that crashes with its camera still plugged in starts again
+      # once its files are forgotten, rather than leaving the camera
+      # unwatched until it's plugged in again; the start limit ends a
+      # run that can never start.
+      Restart = "on-failure";
+      RestartSec = "1s";
       # The same reach as a loopback's watch, every process's open files,
       # and the camera's own node, opened to read its format and controls.
       # ProtectClock allows only the clock's device unless others are named.
