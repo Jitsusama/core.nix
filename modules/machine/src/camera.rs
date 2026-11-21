@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 pub use pipewire::{Global, PW_CLI, PipeWire, readers, registry};
 
 use crate::Root;
-use pipewire::{PIPEWIRE, State, through_pipewire};
+use pipewire::{PIPEWIRE, State, THROUGH_EVERY, through_pipewire};
 
 /// The folder each camera's file is kept in.
 pub const FOLDER: &str = "/run/camera-holders";
@@ -90,9 +90,10 @@ pub fn cameras(root: &Root, pipewire: &PipeWire) -> Vec<Value> {
 /// nothing of, as one whose format has moved on or whose camera is offered
 /// under another path does, since it reads as `PipeWire` alone: said from
 /// a listing that came whole this time, not one kept through a failure,
-/// which says its own why, once a later listing misses it too, as a
-/// camera just made may be held before WirePlumber offers it, and once
-/// until the camera's shown or let go.
+/// which says its own why, once listings have missed it for as long as
+/// they're read apart while it's held, as a camera just made may be held
+/// before `WirePlumber` offers it and listings can come in a burst, and
+/// once until the camera's shown or let go.
 fn unseen(state: &mut State, name: &str, shown: bool) -> bool {
     if shown {
         state.unfound.remove(name);
@@ -106,7 +107,7 @@ fn unseen(state: &mut State, name: &str, shown: bool) -> bool {
         return false;
     };
     let first = *state.missed.entry(name.to_owned()).or_insert(at);
-    first < at && state.unfound.insert(name.to_owned())
+    at.saturating_duration_since(first) >= THROUGH_EVERY && state.unfound.insert(name.to_owned())
 }
 
 /// Each camera's file, by name, sorted, with the programs it lists, each
@@ -275,6 +276,16 @@ mod tests {
         );
     }
 
+    /// As if each camera missed was first missed a read apart ago.
+    fn missed_long_ago(pipewire: &PipeWire) {
+        let then = Instant::now()
+            .checked_sub(THROUGH_EVERY)
+            .expect("the machine has been up longer than a read apart");
+        for first in pipewire.state().missed.values_mut() {
+            *first = then;
+        }
+    }
+
     #[test]
     fn a_camera_its_registry_shows_nothing_of_is_said_once_until_it_does() {
         let root = machine("unfound");
@@ -301,6 +312,13 @@ mod tests {
         );
         listed_whole(&pipewire);
         assert_eq!(programs(), json!(["pipewire"]));
+        assert!(
+            pipewire.state().unfound.is_empty(),
+            "not said from a listing just after the first to miss it"
+        );
+        missed_long_ago(&pipewire);
+        listed_whole(&pipewire);
+        assert_eq!(programs(), json!(["pipewire"]));
         assert!(pipewire.state().unfound.contains("camera"), "said");
         assert!(
             !unseen(&mut pipewire.state(), "camera", false),
@@ -318,10 +336,11 @@ mod tests {
             "to be said again once it's shown"
         );
         fs::write(&listed, listing("Built-in Camera", "/dev/video40", 0)).unwrap();
-        for _ in 0..2 {
-            listed_whole(&pipewire);
-            programs();
-        }
+        listed_whole(&pipewire);
+        programs();
+        missed_long_ago(&pipewire);
+        listed_whole(&pipewire);
+        programs();
         assert!(pipewire.state().unfound.contains("camera"), "said again");
         write(&root, "other", "pipewire\n");
         write(&root, "camera", "");
