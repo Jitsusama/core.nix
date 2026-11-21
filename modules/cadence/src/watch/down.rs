@@ -6,9 +6,10 @@
 //! powered off by itself and no one heard for minutes; the node knows each
 //! link's state, so the tick reads it rather than wait on another session
 //! to. A machine with no work sleeps as its node lets it, and one on battery
-//! sleeps when its lid shuts whatever it holds, so neither is news. Two or
-//! more machines that read ready a tick before all dropping at once is this
-//! one cut off; with one other machine, the two can't be told apart.
+//! sleeps when its lid shuts whatever it holds, so neither is news. With
+//! none ready, the machine down last heard from within minutes of another
+//! is this one cut off, as a lost link loses every peer at once; with one
+//! other machine, the two can't be told apart.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -37,6 +38,11 @@ const FORGET: i64 = 2 * 86_400;
 /// How long a node may take to answer: one stalled on a peer it can't reach
 /// would otherwise hold the whole tick, and every alarm with it.
 const ASK_WITHIN: Duration = Duration::from_secs(30);
+/// How close together machines must have last been heard from to have
+/// dropped at once: a lost link loses each peer as its own link times out,
+/// tens of seconds apart, where machines sleeping or failing on their own
+/// rarely land this close.
+const TOGETHER: i64 = 3 * 60;
 
 /// What a realm's node reads of a machine now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,8 +62,11 @@ pub struct Seen {
     /// Whether a session on it is busy, so its node keeps it awake; none
     /// when the node didn't say which sessions are.
     pub working: Option<bool>,
-    /// Whether it runs on battery, where a lid shut sleeps it however busy.
+    /// Whether it runs on battery, where a lid shut sleeps it however busy;
+    /// for one down, as its node last heard.
     pub battery: bool,
+    /// When its node last heard from it, in seconds.
+    pub heard: Option<i64>,
 }
 
 /// Each machine the realm's node lists but this one, from what `mycelium
@@ -92,6 +101,10 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
                 reading,
                 working: working.as_ref().map(|busy| busy.contains(name)),
                 battery: machine["power"]["on_battery"].as_bool() == Some(true),
+                heard: machine["measured_at"]
+                    .as_str()
+                    .and_then(|at| at.parse::<jiff::Timestamp>().ok())
+                    .map(jiff::Timestamp::as_second),
             })
         })
         .collect()
@@ -102,14 +115,6 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
 pub struct Told {
     #[serde(default)]
     pub machines: BTreeMap<String, Spell>,
-    /// When the machines were last read, so those ready then are told
-    /// from those that went down earlier.
-    #[serde(default)]
-    pub read_at: Option<i64>,
-    /// Whether this machine reads as cut off: it holds until any machine
-    /// reads ready again, however long that takes.
-    #[serde(default)]
-    pub cut_off: bool,
 }
 
 /// One machine's readings.
@@ -122,7 +127,8 @@ pub struct Spell {
     /// said: a tick the node didn't say keeps what the one before did.
     #[serde(default)]
     pub working: bool,
-    /// Whether it ran on battery when it last read ready.
+    /// Whether it ran on battery when it last read ready, or as its node
+    /// last heard while it reads down.
     #[serde(default)]
     pub battery: bool,
     /// When it was last read ready or down.
@@ -184,9 +190,12 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             .entry(&one.machine)
             .or_insert_with(|| (one.clone(), BTreeSet::new()));
         realms.insert(one.realm.clone());
+        // A realm that didn't say keeps the word unsaid, unless another
+        // saw a session busy: its sessions may be the ones it didn't say.
         let working = match (kept.working, one.working) {
-            (None, None) => None,
-            (a, b) => Some(a == Some(true) || b == Some(true)),
+            (Some(true), _) | (_, Some(true)) => Some(true),
+            (Some(false), Some(false)) => Some(false),
+            _ => None,
         };
         if rank(one.reading) > rank(kept.reading) {
             *kept = one.clone();
@@ -196,22 +205,25 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
     by
 }
 
-/// Whether this machine reads as cut off, kept in `told`: two or more
-/// machines ready at the last reading and none ready now, until one reads
-/// ready again. A machine that went down earlier wasn't ready then, so it
-/// doesn't count toward dropping at once.
-fn cut_off(by: &BTreeMap<&str, (Seen, BTreeSet<String>)>, told: &mut Told, now: i64) -> bool {
-    let last = told.read_at.replace(now);
-    let just_up = by
-        .keys()
-        .filter(|machine| last.is_some() && told.machines[**machine].ready_at == last)
-        .count();
+/// Whether this machine reads as cut off: none ready, and the machine down
+/// last heard from was heard within `TOGETHER` of another down. It reads
+/// only what the node heard, so a tick that read nothing, or peers lost
+/// either side of a tick, change nothing; one asleep long before doesn't
+/// pair with one failing now. A machine with no time heard can't count.
+fn cut_off(by: &BTreeMap<&str, (Seen, BTreeSet<String>)>) -> bool {
     if by.values().any(|(one, _)| one.reading == Reading::Ready) {
-        told.cut_off = false;
-    } else if just_up >= 2 {
-        told.cut_off = true;
+        return false;
     }
-    told.cut_off
+    let mut heard: Vec<i64> = by
+        .values()
+        .filter(|(one, _)| one.reading == Reading::Down)
+        .filter_map(|(one, _)| one.heard)
+        .collect();
+    heard.sort_unstable();
+    match heard.as_slice() {
+        [.., before, last] => last - before <= TOGETHER,
+        _ => false,
+    }
 }
 
 /// What's newly down or back, given what each of the `answered` realms of
@@ -239,7 +251,7 @@ pub fn due(
             spell.realms = std::mem::take(realms);
         }
     }
-    let cut_off = cut_off(&by, told, now);
+    let cut_off = cut_off(&by);
     let mut tells = Vec::new();
     for (machine, (one, _)) in by {
         let spell = told
@@ -281,6 +293,9 @@ pub fn due(
                     spell.down_since = Some(now);
                 }
                 spell.read_at = Some(now);
+                // Its node keeps the power it last heard, which may be
+                // the unplugging just before the lid shut.
+                spell.battery |= one.battery;
                 let since = spell.down_since.unwrap_or(now);
                 let lately = spell
                     .ready_at

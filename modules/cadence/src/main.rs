@@ -23,8 +23,8 @@
 //! the account's units restarting in a loop, failed, or a daemon whose
 //! socket reads signed out or doesn't answer, once for each spell
 //! (units.rs), and Joel too, by a notice, of another machine gone down
-//! while it holds work (down.rs). `cadence units [--at SECONDS]` says what that watch reads
-//! and would tell, sending nothing; at a moment past, from the journal.
+//! while it holds work (watch/down.rs). `cadence units [--at SECONDS]`
+//! says what that watch reads and would tell, sending nothing; at a moment past, from the journal.
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day
 //! just ended against the days before it and sends the orchestrator its note
@@ -49,7 +49,6 @@ mod card;
 mod commands;
 mod daily;
 mod day;
-mod down;
 mod elsewhere;
 mod findings;
 mod gate;
@@ -299,7 +298,7 @@ fn run(args: &Args) -> io::Result<()> {
         eprintln!("cadence: telling of broken units: {err}");
     }
     if let Some(orchestrator) = &args.orchestrator
-        && let Err(err) = down::run(
+        && let Err(err) = watch::down::run(
             &mesh,
             &folder,
             orchestrator,

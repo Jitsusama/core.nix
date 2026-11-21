@@ -11,6 +11,15 @@ fn one(machine: &str, reading: Reading, working: bool) -> Seen {
         reading,
         working: Some(working),
         battery: false,
+        heard: None,
+    }
+}
+
+/// A machine read unreachable, last heard from so many seconds past `NOW`.
+fn lost(machine: &str, heard: i64) -> Seen {
+    Seen {
+        heard: Some(NOW + heard),
+        ..one(machine, Reading::Down, false)
     }
 }
 
@@ -30,7 +39,7 @@ fn step(told: &mut Told, now: i64, seen: &[Seen]) -> Vec<Tell> {
 fn the_nodes_answers_are_read_for_each_other_machine() {
     let machines = concat!(
         r#"{"Ok":{"Machines":[{"name":"here","state":"ready"},"#,
-        r#"{"name":"yonder","state":"unreachable"},"#,
+        r#"{"name":"yonder","state":"unreachable","measured_at":"2026-11-21T08:32:49Z"},"#,
         r#"{"name":"far","state":"ready","power":{"on_battery":true}},"#,
         r#"{"name":"near","state":"ready"},{"name":"odd","state":"starting"}]}}"#,
         "\n",
@@ -41,7 +50,10 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
     assert_eq!(
         seen("work", machines, sessions, "here"),
         [
-            one("yonder", Reading::Down, true),
+            Seen {
+                heard: Some(1_795_249_969),
+                ..one("yonder", Reading::Down, true)
+            },
             Seen {
                 battery: true,
                 ..one("far", Reading::Ready, false)
@@ -223,51 +235,119 @@ fn only_readings_in_a_row_count_as_down() {
 }
 
 #[test]
-fn machines_up_a_tick_before_all_dropping_at_once_is_this_one_cut_off() {
-    let mut told = Told::default();
+fn machines_last_heard_together_with_none_ready_is_this_one_cut_off() {
     let up = [
         one("yonder", Reading::Ready, true),
         one("near", Reading::Ready, true),
     ];
-    let down = [
-        one("yonder", Reading::Down, true),
-        one("near", Reading::Down, true),
-    ];
-    step(&mut told, NOW, &up);
+    let down = [lost("yonder", 200), lost("near", 230)];
     // However long it lasts, past the hour they last read ready.
+    let mut told = Told::default();
+    step(&mut told, NOW, &up);
     for minutes in (5..=120).step_by(5) {
         assert!(
             step(&mut told, NOW + minutes * 60, &down).is_empty(),
-            "every machine down at once was told at {minutes} min"
+            "every machine dropping at once was told at {minutes} min"
         );
     }
-    // One down while another stays up is told.
+    // A first tick that reads nothing, or nothing but unread, then the drop.
+    for between in [vec![], vec![one("yonder", Reading::Unread, true)]] {
+        let mut told = Told::default();
+        step(&mut told, NOW, &up);
+        step(&mut told, NOW + 5 * 60, &between);
+        for minutes in (10..=40).step_by(5) {
+            assert!(
+                step(&mut told, NOW + minutes * 60, &down).is_empty(),
+                "a drop after a tick reading {between:?} was told at {minutes} min"
+            );
+        }
+    }
+    // Peers lost either side of a tick.
     let mut told = Told::default();
     step(&mut told, NOW, &up);
-    let mixed = [
-        one("yonder", Reading::Down, false),
+    let straddled = [lost("yonder", 290), one("near", Reading::Ready, true)];
+    step(&mut told, NOW + 5 * 60, &straddled);
+    let down = [lost("yonder", 290), lost("near", 320)];
+    for minutes in (10..=40).step_by(5) {
+        assert!(
+            step(&mut told, NOW + minutes * 60, &down).is_empty(),
+            "peers lost either side of a tick were told at {minutes} min"
+        );
+    }
+}
+
+#[test]
+fn a_machine_down_apart_from_the_others_is_told() {
+    let up = [
+        one("yonder", Reading::Ready, true),
         one("near", Reading::Ready, true),
     ];
+    // One down while another stays up.
+    let mut told = Told::default();
+    step(&mut told, NOW, &up);
+    let mixed = [lost("yonder", 200), one("near", Reading::Ready, true)];
     step(&mut told, NOW + 5 * 60, &mixed);
     assert_eq!(
         step(&mut told, NOW + 15 * 60, &mixed).len(),
         1,
         "one machine down while another stayed up wasn't told"
     );
-    // One asleep since earlier doesn't make another's crash a cut-off.
+    // One asleep since earlier, then another failing on its own.
     let mut told = Told::default();
     step(&mut told, NOW, &up);
-    let asleep = [
-        one("yonder", Reading::Ready, true),
-        one("near", Reading::Down, false),
-    ];
+    let asleep = [one("yonder", Reading::Ready, true), lost("near", 100)];
     step(&mut told, NOW + 5 * 60, &asleep);
+    let down = [lost("yonder", 500), lost("near", 100)];
     step(&mut told, NOW + 10 * 60, &down);
     step(&mut told, NOW + 15 * 60, &down);
     assert_eq!(
         step(&mut told, NOW + 20 * 60, &down).len(),
         1,
         "a working machine's crash after another slept was taken for a cut-off"
+    );
+}
+
+#[test]
+fn a_laptop_unplugged_just_before_its_lid_shut_is_never_told() {
+    let mut told = Told::default();
+    step(&mut told, NOW, &[one("yonder", Reading::Ready, true)]);
+    let unplugged = Seen {
+        battery: true,
+        ..lost("yonder", 120)
+    };
+    for minutes in (5..=30).step_by(5) {
+        assert!(
+            step(
+                &mut told,
+                NOW + minutes * 60,
+                std::slice::from_ref(&unplugged)
+            )
+            .is_empty(),
+            "a laptop its node last heard on battery was told at {minutes} min"
+        );
+    }
+}
+
+#[test]
+fn a_realm_not_saying_who_is_busy_never_reads_another_realms_idle_as_its_own() {
+    let mut told = Told::default();
+    step(&mut told, NOW, &[one("yonder", Reading::Ready, true)]);
+    let personal = Seen {
+        realm: "personal".into(),
+        working: None,
+        ..one("yonder", Reading::Ready, false)
+    };
+    let both = ["work".to_owned(), "personal".to_owned()];
+    due(
+        &[one("yonder", Reading::Ready, false), personal],
+        &both,
+        &both,
+        &mut told,
+        NOW + 5 * 60,
+    );
+    assert!(
+        told.machines["yonder"].working,
+        "one realm's idle and another's unsaid read the machine idle"
     );
 }
 
