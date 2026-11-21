@@ -12,7 +12,13 @@ in
   home.packages = [ package ];
 
   systemd.user.services.call-under-load = {
-    Unit.Description = "Measures Joel's calls and apps under load";
+    Unit = {
+      Description = "Measures Joel's calls and apps under load";
+      # It reads the meetings from the google daemon, so with no daemon (an
+      # account signed out of Google, a VM test) it waits rather than failing;
+      # cadence still says when the hour's figure goes stale.
+      ConditionPathExists = "%t/daemons/google.sock";
+    };
     Service = {
       Type = "oneshot";
       ExecStart = "${lib.getExe package} run";
