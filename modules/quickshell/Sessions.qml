@@ -2430,9 +2430,12 @@ Singleton {
     function goTo(session) {
         if (session.presence?.hosted && !session.window) {
             // niri may list its viewer before the windows daemon does, as
-            // just after a crash: that one is raised, never a second.
-            const listed = Object.values(Niri.windows)
-                .find(window => window.opened === viewerOf(session.presence));
+            // just after a crash: that one is raised, never a second. One
+            // whose viewer can't be named has none to raise, as openNamed
+            // holds, rather than any window niri lists with no app id.
+            const named = viewerOf(session.presence);
+            const listed = named === "" ? undefined
+                : Object.values(Niri.windows).find(window => window.opened === named);
             if (listed)
                 Niri.act({ FocusWindow: { id: listed.id } });
             else
