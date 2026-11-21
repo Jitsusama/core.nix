@@ -399,8 +399,10 @@ fn a_short_answer_after_a_dropped_part_of_a_frame_is_a_take() {
     // Packets dropped part of the way into a frame leave it mostly
     // nothing, but not quite: it mustn't set a floor under the line's
     // hiss, or the hiss reads as loud and the answer is lost in it. The
-    // drop may end a few samples into the frame or start a few in.
-    for into in [0, 10] {
+    // drop may end a few samples into the frame or start a few in, or
+    // sit inside it with a little sound on each side, as a resampler's
+    // ringing leaves it.
+    for into in [0, 5, 10] {
         let sound = [
             noise(3.0, 0.005, false),
             noise(1.0, 0.005, false)[..into].to_vec(),
