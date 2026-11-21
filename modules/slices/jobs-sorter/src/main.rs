@@ -1061,7 +1061,11 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
             .to_string_lossy()
             .into_owned();
         let result = Command::new("busctl")
-            .args(holds::hold_call(&unit, hold, kept.contains(&scope)))
+            .args(holds::hold_call(
+                &unit,
+                hold.then(|| holds::hard_floor(holds::current(&scope))),
+                kept.contains(&scope),
+            ))
             .stdout(Stdio::null())
             .output();
         match result {

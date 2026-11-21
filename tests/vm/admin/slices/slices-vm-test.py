@@ -29,11 +29,12 @@ MIB = 2**20
 # them, soft, and for every slice above both, one of each, the soft one covering all three.
 APPS_SHARE = 0.13
 AGENTS_SHARE = 0.10
-ABOVE_SHARE = 0.21
+ABOVE_SHARE = 0.26
 ABOVE_SOFT_SHARE = 0.31
 SESSION_FLOOR = 4608 * MIB
-# The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself.
-AGENTS_FLOOR = 512 * MIB
+# The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself, and
+# what jobs-sorter's hard floors on at most three windows and their conversations claim.
+AGENTS_FLOOR = 3584 * MIB
 # The journal's soft floor, which every machine's system.slice claims.
 JOURNAL_FLOOR = 64 * MIB
 # The share of memory past which work in jobs is slowed.

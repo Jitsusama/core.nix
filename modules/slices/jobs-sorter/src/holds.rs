@@ -8,17 +8,16 @@ use std::path::{Path, PathBuf};
 
 use crate::focus::FLOOR;
 
-/// What busctl is given to hold a window's unit with [`FLOOR`], no zswap
-/// writeback and systemd-oomd's avoid preference, or to give all three
-/// back, as runtime properties gone at the next boot. One given back
-/// while it's `kept` keeps writeback off ([`crate::focus::KEEP`]).
-pub fn hold_call(unit: &str, hold: bool, kept: bool) -> Vec<String> {
-    let (floor, writeback, preference) = if hold {
-        (FLOOR.to_string(), "false", "avoid")
-    } else if kept {
-        ("0".to_owned(), "false", "none")
-    } else {
-        ("0".to_owned(), "true", "none")
+/// What busctl is given to hold a window's unit with [`FLOOR`], a `hard`
+/// floor ([`hard_floor`]), no zswap writeback and systemd-oomd's avoid
+/// preference, or, with no `hard`, to give all four back, as runtime
+/// properties gone at the next boot. One given back while it's `kept`
+/// keeps writeback off ([`crate::focus::KEEP`]).
+pub fn hold_call(unit: &str, hard: Option<u64>, kept: bool) -> Vec<String> {
+    let (floor, writeback, preference, hard) = match hard {
+        Some(hard) => (FLOOR.to_string(), "false", "avoid", hard.to_string()),
+        None if kept => ("0".to_owned(), "false", "none", "0".to_owned()),
+        None => ("0".to_owned(), "true", "none", "0".to_owned()),
     };
     [
         "--user",
@@ -31,7 +30,7 @@ pub fn hold_call(unit: &str, hold: bool, kept: bool) -> Vec<String> {
         "sba(sv)",
         unit,
         "true",
-        "3",
+        "4",
         "MemoryLow",
         "t",
         &floor,
@@ -41,10 +40,36 @@ pub fn hold_call(unit: &str, hold: bool, kept: bool) -> Vec<String> {
         "ManagedOOMPreference",
         "s",
         preference,
+        "MemoryMin",
+        "t",
+        &hard,
     ]
     .iter()
     .map(|arg| (*arg).to_string())
     .collect()
+}
+
+/// The most a held window keeps hard, a floor the kernel never reclaims
+/// below, where [`FLOOR`] gives way under the pressure that matters: on
+/// 21 November a pi's window with a soft floor and no hard one had the
+/// kernel reclaim below its floor 3,610,883 times. Small, so the at most
+/// [`crate::focus::MOST`] held windows and their conversations claim at
+/// most 3 GiB of memory that can't be taken back.
+pub const HARD: u64 = 512 << 20;
+
+/// A held window's hard floor: what it holds now, up to [`HARD`], so it
+/// claims nothing it doesn't use. Nothing for what can't be read.
+pub fn hard_floor(current: Option<u64>) -> u64 {
+    current.map_or(0, |current| current.min(HARD))
+}
+
+/// What the cgroup at `path` holds now, from its memory.current.
+pub fn current(path: &Path) -> Option<u64> {
+    std::fs::read_to_string(path.join("memory.current"))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// What busctl is given to keep a window's unit's paged-out memory
@@ -161,13 +186,13 @@ mod tests {
 
     #[test]
     fn a_window_is_held_with_a_floor_in_memory_and_avoided_or_given_all_back() {
-        let held = hold_call("kitty-1-9.scope", true, true);
+        let held = hold_call("kitty-1-9.scope", Some(300 << 20), true);
         assert_eq!(
             held[8..],
             [
                 "kitty-1-9.scope",
                 "true",
-                "3",
+                "4",
                 "MemoryLow",
                 "t",
                 "2147483648",
@@ -176,19 +201,30 @@ mod tests {
                 "false",
                 "ManagedOOMPreference",
                 "s",
-                "avoid"
+                "avoid",
+                "MemoryMin",
+                "t",
+                "314572800"
             ]
         );
-        let back = hold_call("kitty-1-9.scope", false, false);
+        let back = hold_call("kitty-1-9.scope", None, false);
         assert_eq!(back[13], "0");
         assert_eq!(back[16], "true");
         assert_eq!(back[19], "none");
-        let still_kept = hold_call("kitty-1-9.scope", false, true);
+        assert_eq!(back[22], "0", "the hard floor is given back with the rest");
+        let still_kept = hold_call("kitty-1-9.scope", None, true);
         assert_eq!(
             (still_kept[13].as_str(), still_kept[16].as_str()),
             ("0", "false"),
             "one given back while kept keeps its memory off the disk"
         );
+    }
+
+    #[test]
+    fn a_held_windows_hard_floor_is_what_it_holds_up_to_a_cap() {
+        assert_eq!(hard_floor(Some(300 << 20)), 300 << 20, "what it holds, under the cap");
+        assert_eq!(hard_floor(Some(3 << 30)), HARD, "the cap, past it");
+        assert_eq!(hard_floor(None), 0, "nothing claimed for what can't be read");
     }
 
     #[test]
