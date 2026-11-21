@@ -1002,8 +1002,8 @@ Singleton {
         // it opens on, so its sessions back before its pi says who it is
         // join it rather than make a workspace of their own (homeSpace).
         const into = root.keptOrKin(one, at, beside, others);
-        const name = into === null ? "" : Places.homeToName(one, naming, into.workspace,
-            Object.values(Niri.workspaces ?? {}));
+        const name = into === null ? "" : into.name || Places.homeToName(one, naming,
+            into.workspace, Object.values(Niri.workspaces ?? {}));
         if (name !== "")
             Niri.act({ SetWorkspaceName: { name, workspace: { Id: into.workspace } } });
         return into;
@@ -1025,16 +1025,18 @@ Singleton {
             const its = Object.values(Niri.workspaces).filter(one => one.output === at.output)
                 .sort((a, b) => a.idx - b.idx);
             const empty = root.lastOn(at.output);
-            const there = named
-                ?? (empty !== null ? Niri.workspace(empty) : null) ?? its[its.length - 1];
+            const emptied = empty !== null ? Niri.workspace(empty) : null;
+            const there = named ?? emptied ?? its[its.length - 1];
             if (!there)
                 return null;
-            if (back?.name)
-                Niri.act({ SetWorkspaceName: { name: back.name, workspace: { Id: there.id } } });
             const columns = Object.values(Niri.windows)
                 .filter(one => one.workspace_id === there.id)
                 .map(one => one.layout?.pos_in_scrolling_layout?.[0] ?? 0);
-            return { workspace: there.id, column: Math.max(0, ...columns) + 1 };
+            // Only the empty workspace it found takes the kept name, and
+            // only unnamed, as homeToName names: the last with windows may
+            // be one Joel named. opensOn sends it, so it's sent once.
+            const name = back?.name && there === emptied && !there.name ? back.name : "";
+            return { workspace: there.id, column: Math.max(0, ...columns) + 1, name };
         }
         const asked = { from: one.from ?? "", quest: one.quest ?? "",
             orchestratedBy: one.orchestratedBy ?? "" };
@@ -1883,8 +1885,10 @@ Singleton {
             }
             // Placed by its connector and the number it's given now, so it
             // goes beside those given the same screen, a gone one's too.
+            // Its workspace's name too, which says where it goes better
+            // than the number (Reopening.namedBack).
             const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-                column: next.at.column, tile: next.at.tile ?? 1 } : null;
+                named: next.at.named, column: next.at.column, tile: next.at.tile ?? 1 } : null;
             // It opens where it goes, its orchestrator's workspace first
             // (opensOn), and never where Joel is unless he asked for it by
             // itself, handed over to be focused with no home and no place.
@@ -1963,7 +1967,7 @@ Singleton {
         const id = next.one.id;
         const session = root.hostedHere(id);
         const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-            column: next.at.column, tile: next.at.tile ?? 1 } : null;
+            named: next.at.named, column: next.at.column, tile: next.at.tile ?? 1 } : null;
         const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
             next.back?.home === false ? "" : undefined) : null;
         if (session?.window || into === null) {
@@ -2040,7 +2044,7 @@ Singleton {
     function wakeReopened(session, next) {
         const id = next.one.id;
         const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-            column: next.at.column, tile: next.at.tile ?? 1 } : null;
+            named: next.at.named, column: next.at.column, tile: next.at.tile ?? 1 } : null;
         const slept = keptPlaces[id]?.slept === true ? keptPlaces[id] : null;
         const into = slept ? null
             : root.opensOn(next.one, at, root.besideOf(reopening.placed),
