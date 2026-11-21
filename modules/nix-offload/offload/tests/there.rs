@@ -6051,21 +6051,38 @@ fn a_runs_copy_waits_for_another_runs_copy_to_the_same_builder() {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
-    // Unheld, the run's copy to the stand-in builder ends well inside
-    // three seconds, so a run still going then is waiting on the turn.
-    std::thread::sleep(std::time::Duration::from_secs(3));
+    let errors = second.stderr.take().unwrap();
+    let (said, heard) = std::sync::mpsc::channel();
+    let reading = std::thread::spawn(move || {
+        use std::io::BufRead;
+        let mut all = String::new();
+        for line in std::io::BufReader::new(errors)
+            .lines()
+            .map_while(Result::ok)
+        {
+            if line.contains("is sending to") && line.contains("so this waits its turn, for up to")
+            {
+                let _ = said.send(());
+            }
+            all += &line;
+            all.push('\n');
+        }
+        all
+    });
+    // Its own words say it waits on the builder's turn, not the uplink's.
+    let waiting = heard.recv_timeout(std::time::Duration::from_secs(60));
     assert!(
         second.try_wait().unwrap().is_none(),
         "a run sent to the builder while another run's copy there held its turn"
     );
     drop(held);
-    let second = second.wait_with_output().unwrap();
-    let said = String::from_utf8_lossy(&second.stderr);
-    assert_eq!(second.status.code(), Some(0), "{said}");
+    let status = second.wait().unwrap();
+    let said = reading.join().unwrap();
     assert!(
-        said.contains("so this waits its turn"),
-        "it waited without saying so: {said}"
+        waiting.is_ok(),
+        "it didn't wait on the builder's turn: {said}"
     );
+    assert_eq!(status.code(), Some(0), "{said}");
 }
 
 // On 20 November a run whose 844 MiB copy ran out of time waited for the

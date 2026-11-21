@@ -8,7 +8,9 @@
 //! does, in a checkout of the same commit, with the store paths it names
 //! by `--copy` sent first and `WORK_RUNS_ELSEWHERE=1` set, so it knows it
 //! runs on a builder. Its output streams back and its status is this
-//! one's.
+//! one's. A `--copy` that ran out of time while the builder still
+//! answered ends the run with 1, since sending it again would only run
+//! out again; a builder lost mid-copy ends it with 75, to try again.
 //!
 //! It goes only to the two lent builders, never a nearby machine, an
 //! evaluator or a VM builder, so work code stays on the account's own
