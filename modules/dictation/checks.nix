@@ -268,6 +268,28 @@
       touch $out
     '';
 
+  # call-transcripts names the far end's voices on the same three AMI
+  # meetings from who was in the Meet as each spoke at least as well as it
+  # last did. Nobody joined those meetings, so naming.rs has their far
+  # ends join one at a time and leaves out what anyone said before they
+  # came. Of the speech given a name, at least `right` is that person's,
+  # and at least `named` of the speech is given one. A change that names
+  # better raises the floors to what it reaches; each sits half a point
+  # under what the last measurement gave.
+  call-transcripts-names-voices-as-well-as-it-did =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      voices = pkgs.callPackage ./titanet.nix { };
+      meetings = pkgs.callPackage ./meetings.nix { };
+      right = "99.9";
+      named = "99.9";
+    in
+    pkgs.runCommand "call-transcripts-names-voices-as-well-as-it-did" { } ''
+      ${dictation}/bin/call-transcripts names ${voices} ${meetings} \
+        ${lib.escapeShellArg right} ${lib.escapeShellArg named}
+      touch $out
+    '';
+
   # screen-text reads a screenshot's words: a picture drawn as the check
   # builds, wider and taller than the detector's tile, holds a heading,
   # then a row of two lines apart, the first across where two tiles

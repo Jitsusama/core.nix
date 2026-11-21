@@ -41,6 +41,12 @@
 //!     how much of what was named was named right, and how much of the
 //!     speech was handled as it should be (apart.rs); fail when the set's
 //!     are below RIGHT and HANDLED, percentages
+//! call-transcripts names SPEAKER_MODEL SET [RIGHT NAMED]
+//!     name the voices of each meeting's far end in SET from who was in
+//!     as each spoke, its speakers made to join one at a time, and print
+//!     how much of what was named was named right, and how much of the
+//!     speech was given a name (naming.rs); fail when the set's are below
+//!     RIGHT and NAMED, percentages
 //! call-transcripts summarize SUMMARIZER_DIR TITLE TRANSCRIPT.md [NAME]
 //!     print the summary of the call titled TITLE that a transcript
 //!     writes down (summary.rs), the others on it called NAME if given,
@@ -75,7 +81,9 @@ mod follow;
 mod hear;
 mod meet;
 mod meeting;
+mod naming;
 mod notices;
+mod presence;
 mod private;
 mod receptor;
 mod rings;
@@ -166,6 +174,21 @@ fn help() -> Help {
                 .exit(Exit::Failed, "a file can't be read, or it's below a floor"),
         )
         .subcommand(
+            Help::new(
+                "names",
+                "how well it names meetings' voices from who was in",
+            )
+            .argument("<speaker-model>", "the speaker model's ONNX file")
+            .argument("<set>", "the meetings' folder, as meetings.nix lays it out")
+            .argument("[right]", "the least percent named right that passes")
+            .argument("[named]", "the least percent of speech named that passes")
+            .example(
+                "call-transcripts names ~/t.onnx ~/set 95 40",
+                "fails below either",
+            )
+            .exit(Exit::Failed, "a file can't be read, or it's below a floor"),
+        )
+        .subcommand(
             Help::new("summarize", "the summary a transcript makes")
                 .argument("<summarizer-dir>", "the language model's folder")
                 .argument("<title>", "the call's title")
@@ -238,6 +261,21 @@ fn act(args: &[String]) -> Result<(), Failure> {
                         "each floor is a percentage below 100, to one place at most",
                     )
                     .try_this(format!("call-transcripts voices {model} {set} 90 70")));
+                }
+            }
+        }
+        ["names", model, set] => naming::names(Path::new(model), Path::new(set), None),
+        ["names", model, set, right, named] => {
+            match (score::ceiling(right), score::ceiling(named)) {
+                (Some(right), Some(named)) => {
+                    naming::names(Path::new(model), Path::new(set), Some((right, named)))
+                }
+                _ => {
+                    return Err(Failure::new(
+                        Exit::Usage,
+                        "each floor is a percentage below 100, to one place at most",
+                    )
+                    .try_this(format!("call-transcripts names {model} {set} 95 40")));
                 }
             }
         }
