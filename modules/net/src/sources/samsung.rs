@@ -10,7 +10,9 @@
 //! A TV heard once is remembered while the daemon runs, so a minute it
 //! doesn't answer keeps its name and role rather than handing it back to
 //! eero's name for it; a box never heard as a TV says nothing, so a phone
-//! eero can't place doesn't count against the source.
+//! eero can't place doesn't count against the source. A TV asleep stays
+//! on eero's list but stops answering, as Joel's Q70C does in standby, so
+//! a remembered TV's silence isn't the source failing either.
 //!
 //! Only that page is read, without pairing: sending it a key waits on
 //! Joel pressing Allow on the TV, and what it's playing, its volume and
@@ -127,20 +129,22 @@ pub fn forget_unlisted(heard: &mut Heard, listed: &[(String, String)]) {
 }
 
 /// Each TV as it answered, or as it last answered while it's silent, and
-/// the source, or none when no box has answered as a TV. The source
-/// answers while any TV does, and is unreachable while every TV it has
-/// heard is silent.
+/// the source, or none when no box has answered as a TV. The source is
+/// unreachable only while no TV answers as one and a TV it has heard
+/// answers as something else; a TV that's silent is asleep, so the source
+/// still answers.
 pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
     let mut found = Vec::new();
     let mut answering = false;
-    let mut silent = None;
+    let mut odd = None;
     for one in asked {
-        let heard = one
-            .answer
-            .and_then(|answer| television(one.mac.clone(), &answer));
-        // A box that hasn't answered as a TV this minute is kept as silent
-        // when it has before, and otherwise left out, so a box that isn't
-        // a TV never counts as the source failing.
+        let (heard, answered) = match one.answer {
+            Ok(answer) => (television(one.mac.clone(), &answer), true),
+            Err(why) => (Err(why), false),
+        };
+        // A box that hasn't answered as a TV this minute is kept, saying
+        // so, when it has before, and otherwise left out, so a box that
+        // isn't a TV never counts as the source failing.
         match (heard, one.earlier) {
             (Ok(tv), _) => {
                 answering = true;
@@ -148,8 +152,10 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
             }
             (Err(why), Some(earlier)) => {
                 if let Ok(tv) = television(one.mac, &earlier) {
-                    let name = tv.name.clone().unwrap_or_else(|| "a TV".into());
-                    silent = silent.or(Some(format!("{name}: {why}")));
+                    if answered {
+                        let name = tv.name.clone().unwrap_or_else(|| "a TV".into());
+                        odd = odd.or(Some(format!("{name}: {why}")));
+                    }
                     found.push(Found {
                         television: Television {
                             power: None,
@@ -166,17 +172,18 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
     if found.is_empty() {
         return (None, found);
     }
+    let failing = if answering { None } else { odd };
     let source = Source {
         name: NAME.into(),
         what: "the Samsung TVs eero lists, read and never changed".into(),
-        state: if answering {
+        state: if failing.is_none() {
             SourceState::Answering
         } else {
             SourceState::Unreachable
         },
-        read_at: answering.then_some(now),
-        since: (!answering).then_some(now),
-        reason: if answering { None } else { silent },
+        read_at: failing.is_none().then_some(now),
+        since: failing.is_some().then_some(now),
+        reason: failing,
     };
     (Some(source), found)
 }
@@ -409,16 +416,10 @@ pub mod tests {
             "its power is said from an old answer"
         );
         assert_eq!(tv.detail, None, "an old answer is kept as this minute's");
-        let source = source.expect("the source is said");
         assert_eq!(
-            source.state,
-            SourceState::Unreachable,
-            "a silent TV reads as answering"
-        );
-        assert_eq!(
-            source.reason.as_deref(),
-            Some("Living Room: it didn't answer: timed out"),
-            "the reason doesn't name the TV"
+            source.map(|source| (source.state, source.reason)),
+            Some((SourceState::Answering, None)),
+            "a TV asleep reads as the source failing"
         );
     }
 
@@ -447,9 +448,12 @@ pub mod tests {
             "an answer that isn't a TV's reads as one"
         );
         assert_eq!(
-            source.and_then(|source| source.reason).as_deref(),
-            Some("Living Room: its answer isn't a TV's: it says it's Samsung Soundbar"),
-            "the reason doesn't say what it answered"
+            source.map(|source| (source.state, source.reason)),
+            Some((
+                SourceState::Unreachable,
+                Some("Living Room: its answer isn't a TV's: it says it's Samsung Soundbar".into())
+            )),
+            "an odd answer isn't said as the source failing, with what it answered"
         );
     }
 
