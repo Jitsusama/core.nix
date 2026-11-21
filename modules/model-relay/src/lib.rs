@@ -1339,9 +1339,8 @@ impl Relay {
             Taking::No(more) => {
                 self.counts.refused.fetch_add(1, Ordering::Relaxed);
                 self.counts.stood_down.fetch_add(1, Ordering::Relaxed);
-                // Its words hold the ones pi goes direct on, as for the
-                // 421 of a request for another host, and are true here
-                // too.
+                // One of the four sentences pi goes direct on, word for
+                // word, so it's worded anew only with pi taught it too.
                 let mut answer = said(
                     StatusCode::MISDIRECTED_REQUEST,
                     "this relay forwards to its own origin alone, and stands down from it for \
@@ -2261,9 +2260,10 @@ fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
 /// relay's path, which pi would send again whole after a 502 anyway, as
 /// pi sends a request the relay answers with one straight to the origin
 /// itself. pi knows one only by its whole body being one of the four
-/// sentences the tests pin, word for word, so a reworded one fails pi's
-/// turn rather than sending it direct, and a new one needs pi taught it
-/// too. A refusal once something went is a 5xx.
+/// sentences the tests pin, word for word, with its one line break or
+/// none, so a reworded one fails pi's turn rather than sending it
+/// direct, and a new one needs pi taught it too. A refusal once
+/// something went is a 5xx.
 fn said(status: StatusCode, why: &'static str) -> Response<Body> {
     let mut answer = Response::new(
         Full::new(Bytes::from_static(why.as_bytes()))

@@ -85,9 +85,10 @@ const GOODBYE_HEARD_WITHIN: Duration = Duration::from_millis(200);
 /// What `/sized` answers, its length named.
 const SIZED: &[u8] = b"whole";
 // The relay's four 421 sentences, each pinned whole here. pi's client
-// goes direct on these exact words alone, and on any other 421 takes it
-// as the origin's answer, so one reworded or added here fails pi's turns
-// until pi learns it too.
+// goes direct on these exact words alone, with their one line break or
+// none, and on any other 421 takes it as the origin's answer. So one
+// reworded in the relay fails these tests, and if it's meant, pi's turns
+// fail on it too until pi learns it.
 
 /// What a relay asked for another origin says in its 421.
 const OTHER_ORIGIN_WORDS: &[u8] = b"this relay forwards to its own origin alone\n";
@@ -1500,10 +1501,10 @@ async fn a_relay_failing_past_its_share_stands_down_sending_pi_direct_then_takes
         StatusCode::MISDIRECTED_REQUEST,
         "a request while the relay stands down"
     );
-    let words = String::from_utf8_lossy(&got.body).into_owned();
-    assert!(
-        words.starts_with("this relay ") && words.trim_end().ends_with("so go directly"),
-        "the stand-down's 421 doesn't say what sends pi direct: {words}"
+    assert_eq!(
+        got.body.as_slice(),
+        STANDS_DOWN_WORDS,
+        "the stand-down's 421 isn't in the words pi goes direct on"
     );
     // Standing down retires its connections, so none stays open on the
     // path it stood down from.
@@ -3358,12 +3359,18 @@ async fn a_request_taken_as_it_leaves_is_told_its_leaving_in_the_words_pi_goes_d
     );
     drop(kept_sender);
 
-    let got = tokio::time::timeout(
+    let Ok(got) = tokio::time::timeout(
         Duration::from_secs(4),
         ask(&relay.socket, request(&host, "/echo", b"")),
     )
     .await
-    .expect("a request taken as the relay left went unanswered");
+    else {
+        panic!(
+            "a request taken as the relay left went unanswered within its 4 s of taking \
+             connections; the relay said:\n{}",
+            relay.said()
+        );
+    };
     // Its body ended, the other host's request gets its own answer.
     drop(halves);
     let refused = tokio::time::timeout(Duration::from_secs(5), elsewhere)
@@ -3386,9 +3393,10 @@ async fn a_request_taken_as_it_leaves_is_told_its_leaving_in_the_words_pi_goes_d
         0,
         "a request taken as the relay left reached the origin"
     );
+    let left = relay.left_within(Duration::from_secs(5));
     assert!(
-        relay.left_within(Duration::from_secs(5)).is_some(),
-        "the relay didn't leave after the request it refused"
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave cleanly after the request it refused: {left:?}"
     );
     drop(relay.said());
 }
