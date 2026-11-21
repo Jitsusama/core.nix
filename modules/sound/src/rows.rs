@@ -202,6 +202,17 @@ impl<'a> Device<'a> {
         self.record["chosen"].as_bool().unwrap_or(false)
     }
 
+    /// Whether it's a device of its own, as Sound lists it: a smart filter
+    /// in front of one isn't, nor is the mix a recording makes of the
+    /// microphone and the desktop's sound, which nothing plays through and
+    /// which lives only while it records (modules/quickshell's
+    /// recording-sound.sh marks it), unless sound has come to play through
+    /// it, which its row then says, as an unplugged one chosen does.
+    pub(crate) fn own(&self) -> bool {
+        self.property("filter.smart") != "true"
+            && (self.property("recording-sound.mix") != "true" || self.chosen())
+    }
+
     /// Whether its card says nothing is plugged in where it plays.
     fn unplugged(&self) -> bool {
         self.record["unplugged"].as_bool().unwrap_or(false)
@@ -356,17 +367,13 @@ pub(crate) fn percent(share: f64) -> String {
     format!("{}%", (share * 100.0).round())
 }
 
-/// Every row Sound lists, outputs first and each way by name. A smart
-/// filter isn't a device of its own, nor is the mix a recording makes of
-/// the microphone and the desktop's sound, which nothing plays through and
-/// which lives only while it records (modules/quickshell's
-/// recording-sound.sh marks it).
+/// Every row Sound lists, outputs first and each way by name: each device
+/// of its own (`Device::own`).
 pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
     let devices: Vec<Device> = records
         .iter()
         .filter_map(Device::of)
-        .filter(|device| device.property("filter.smart") != "true")
-        .filter(|device| device.property("recording-sound.mix") != "true")
+        .filter(Device::own)
         .filter(|device| !device.unplugged() || device.chosen())
         .collect();
     let named: Vec<String> = devices
@@ -744,5 +751,20 @@ pub(crate) mod tests {
         );
         let speakers = device("speakers", true, "Speakers", &json!({}));
         assert_eq!(names(&rows(&[mix, speakers], &words())), ["Speakers"]);
+    }
+
+    // Were sound to come to play through a recording's mix, as it would
+    // were it the only output left, it's listed, so Joel sees where sound
+    // goes, as an unplugged output chosen is.
+    #[test]
+    fn a_recordings_mix_sound_plays_through_is_listed() {
+        let mut mix = device(
+            "recording-4242",
+            true,
+            "Recording",
+            &json!({"recording-sound.mix": "true"}),
+        );
+        mix["chosen"] = json!(true);
+        assert_eq!(names(&rows(&[mix], &words())), ["Recording"]);
     }
 }

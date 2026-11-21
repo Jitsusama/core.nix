@@ -214,7 +214,8 @@ def mixes_marked(dump: list[Json]) -> list[bool]:
         if thing.get("type") == "PipeWire:Interface:Node" and re.fullmatch(
             r"recording-[0-9]+", str(props.get("node.name", ""))
         ):
-            marked.append(str(props.get("recording-sound.mix", "")).lower() == "true")
+            # pw-dump gives a value that reads as JSON typed; the daemon reads it as said.
+            marked.append(props.get("recording-sound.mix") in {True, "true"})
     return marked
 
 
