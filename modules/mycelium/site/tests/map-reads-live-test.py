@@ -1166,8 +1166,13 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page = mycelium_opened.page
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
-    # Now open, so its legend can be opened and focused as he would.
+    # The builders are watched apart, and their first answer lays the map
+    # out again, so the case marks the map only once they stand on it.
     page.locator("#map-view").focus()
+    page.keyboard.press("m")
+    builders = page.locator(".labels .t-builder")
+    expect(builders, "the builders never stood on the map").to_have_count(len(BUILDERS))
+    # Now open, so its legend can be opened and focused as he would.
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
