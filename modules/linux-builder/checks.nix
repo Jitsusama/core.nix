@@ -144,23 +144,48 @@ in
   # renamed the Mac twice and spun a core. The prefix becomes vmnet's mask
   # octet by octet, so a /20 is tried as well as the default /24. Another
   # network changes the daemon's command, so a switch loads the VM again,
-  # even one booted out by hand. One given nothing keeps the cached guest's
-  # network, so it still needs no build.
+  # even one booted out by hand. A network vmnet would refuse is refused by
+  # the Mac's configuration, rather than looping at start, and one set on a
+  # guest that keeps macOS's NAT is warned of. The patch reads the keys the
+  # module writes. One given nothing keeps the cached guest's network, so it
+  # still needs no build.
   linux-builder-keeps-its-network-where-it-is-set =
     let
       narrowly = {
         authorizedKeys = [ another ];
-        network = "10.211.48.0/20";
+        network = "172.31.240.0/20";
       };
       narrow = guestOf narrowly;
       started = settings: (macOf settings).launchd.daemons.linux-builder-vz.script;
+      # Whether the Mac's configuration refuses a network.
+      refuses =
+        network:
+        lib.any (said: !said.assertion && lib.hasInfix "linux-builder.network" said.message)
+          (macOf {
+            authorizedKeys = [ another ];
+            inherit network;
+          }).assertions;
+      warned = settings: lib.any (lib.hasInfix "linux-builder.network") (macOf settings).warnings;
+      patch = builtins.readFile ./vzvm-own-subnet.patch;
+      written = opened.virtualisation.vz.extraConfig;
+      read = key: lib.hasInfix "forKey: .${key})" patch && written ? ${key};
     in
     holds "linux-builder-keeps-its-network-where-it-is-set"
-      "A changed guest's network isn't the one set, by default 192.168.64.0/24, a /20 isn't given vmnet as 255.255.240.0, its vzvm isn't the one patched to set it, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
+      "A changed guest's network isn't the one set, by default 192.168.239.0/24, a /20 isn't given vmnet as 255.255.240.0, an octet past 255 or a host bit set isn't refused, a network set on an unchanged guest isn't warned of, the patch doesn't read the keys written, its vzvm isn't the one patched, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
       (
-        opened.virtualisation.vz.extraConfig.ipv4Subnet or null == "192.168.64.0"
+        opened.virtualisation.vz.extraConfig.ipv4Subnet or null == "192.168.239.0"
         && opened.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.255.0"
-        && narrow.virtualisation.vz.extraConfig.ipv4Subnet or null == "10.211.48.0"
+        && !refuses "192.168.239.0/24"
+        && !refuses "172.31.240.0/20"
+        && refuses "192.168.300.0/24"
+        && refuses "192.168.239.7/24"
+        && refuses "172.31.241.0/20"
+        && warned { network = "172.31.240.0/20"; }
+        && !warned { }
+        && !warned narrowly
+        && read "ipv4Subnet"
+        && read "ipv4Mask"
+        && narrow.virtualisation.vz.extraConfig.ipv4Subnet or null == "172.31.240.0"
         && narrow.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.240.0"
         && lib.elem "vzvm-own-subnet.patch" (
           map (patch: baseNameOf (toString patch)) (opened.virtualisation.vz.package.patches or [ ])

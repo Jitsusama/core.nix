@@ -37,6 +37,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -63,9 +64,19 @@ let
     254
     255
   ];
-  networkMask = lib.concatMapStringsSep "." (
-    octet: toString (lib.elemAt octetMasks (lib.max 0 (lib.min 8 (networkPrefix - 8 * octet))))
+  maskOctets = map (
+    octet: lib.elemAt octetMasks (lib.max 0 (lib.min 8 (networkPrefix - 8 * octet)))
   ) (lib.range 0 3);
+  networkMask = lib.concatMapStringsSep "." toString maskOctets;
+  # vmnet refuses an address past 255 or with bits set past its prefix only
+  # once the VM starts, where launchd restarts it without end, so the Mac's
+  # configuration refuses them first.
+  addressOctets = map lib.toInt (lib.splitString "." networkAddress);
+  networkHolds =
+    lib.all (octet: octet <= 255) addressOctets
+    && lib.all (
+      octet: lib.bitAnd (lib.elemAt addressOctets octet) (255 - lib.elemAt maskOctets octet) == 0
+    ) (lib.range 0 3);
 
   # Sizing it changes only the Mac's side of it, which the Mac builds in
   # seconds; the guest's system still comes from the cache. A key from
@@ -269,14 +280,16 @@ in
       '';
     };
     network = lib.mkOption {
-      type = lib.types.strMatching "([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[6-9]|2[0-9]|30)";
-      default = "192.168.64.0/24";
-      example = "10.211.55.0/24";
+      type = lib.types.strMatching "((0|[1-9][0-9]{0,2})\\.){3}(0|[1-9][0-9]{0,2})/(1[6-9]|2[0-9]|30)";
+      default = "192.168.239.0/24";
+      example = "172.31.250.0/24";
       description = ''
         The IPv4 network a VM given keys or features is put on, between the
         Mac and it. It must sit outside every network the Mac joins, or the
-        Mac hears its own name twice and renames itself. By default it's
-        clear of the low 192.168 networks home routers hand out.
+        Mac hears its own name twice and renames itself, and apart from
+        other VMs' networks on the Mac. By default it's clear of the low
+        192.168 networks home routers hand out, and of 192.168.64.0/24 and
+        up, where macOS puts its own NAT's VMs.
       '';
     };
     builder = lib.mkOption {
@@ -318,6 +331,17 @@ in
   };
 
   config = {
+    assertions = [
+      {
+        assertion = networkHolds;
+        message = "jitsusama.linux-builder.network ${cfg.network} has an octet past 255 or an address bit set past its prefix.";
+      }
+    ];
+    # Only a changed guest is put on its own network; one given nothing
+    # keeps the cached guest, on macOS's NAT.
+    warnings =
+      lib.optional (!changed && options.jitsusama.linux-builder.network.highestPrio < 1500)
+        "jitsusama.linux-builder.network is set, but a VM given no keys or features keeps macOS's own NAT, so it's not used.";
     system.activationScripts.preActivation.text = lib.mkAfter ''
       mkdir -p ${home}
     '';
