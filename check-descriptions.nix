@@ -542,6 +542,11 @@
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
     down with no more of their words wrong than the ceiling the last measurement set
   '';
+  call-transcripts-names-voices-as-well-as-it-did = ''
+    the far ends of three AMI meetings, joined one speaker at a time as if over a Meet, have their
+    voices named from who was in as each spoke, with as much of what was named named right, and as
+    much of the speech given a name, as the floors the last measurement set
+  '';
   call-transcripts-tells-voices-apart-as-well-as-it-did = ''
     the far ends of three AMI meetings laid out as calls are told apart into voices, with as much
     of what was named named right, and of their speech handled as it should be (given a voice,
