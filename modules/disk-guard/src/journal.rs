@@ -49,8 +49,10 @@ pub enum Line {
     },
     /// A pass, how it ended, and how long it took; what set it going, how
     /// many things it was offered, and how long the survey that offered
-    /// them took, if one served it, so a pass that frees nothing can be
-    /// told from one that had nothing to take.
+    /// them took, or none when no survey did, so a pass that frees nothing
+    /// can be told from one that had nothing to take. Every pass one
+    /// survey served carries its seconds, so passes of one step at the
+    /// same seconds shared one walk.
     Pass {
         at: f64,
         band: Band,

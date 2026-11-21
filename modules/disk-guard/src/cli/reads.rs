@@ -347,7 +347,9 @@ const JOURNAL: [(&str, layout::Align); 7] = [
 
 /// Which of the journal's columns give way in a narrow terminal, least
 /// useful first: the band is said again in status, the kind is in the
-/// path, and whose guard is in the path too, as a home or not.
+/// path, and whose guard is in the path too, as a home or not. A pass's
+/// kind, what set it going, is said nowhere else on its row, so a narrow
+/// terminal loses it, and `--json` still gives it.
 const JOURNAL_GIVES_WAY: [usize; 4] = [2, 4, 1, 5];
 
 /// What a journal line says after when, whose and in what band: what

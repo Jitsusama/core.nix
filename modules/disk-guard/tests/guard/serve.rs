@@ -623,6 +623,15 @@ fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
         journal.contains("asked.txt") && journal.contains("reclaimed"),
         "the journal says what went: {journal}"
     );
+    // Its pass says the clear set it going, was offered only what the ask
+    // holds, and the survey of the sources around it.
+    let clear = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .find(|line| line["event"] == "pass" && line["why"] == "clear")
+        .unwrap_or_else(|| panic!("a clear's pass: {journal}"));
+    assert_eq!(clear["offered"], 1, "{journal}");
+    assert!(clear["surveyed"].as_f64() >= Some(0.0), "{journal}");
 }
 
 #[test]

@@ -478,6 +478,14 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
     guard.step(&at(305.0), &CALM).unwrap();
     assert_eq!(runs(), 3, "a file saying something new");
     assert!(trashed.exists(), "only the producer ran, not all of upkeep");
+    // Journaled as the producers' own pass, with the survey of them alone.
+    let journal = home.journal();
+    let pass = journal
+        .iter()
+        .rfind(|line| line["event"] == "pass")
+        .unwrap();
+    assert_eq!(pass["why"], "producers", "{journal:?}");
+    assert!(pass["surveyed"].as_f64() >= Some(0.0), "{journal:?}");
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
