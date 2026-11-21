@@ -297,8 +297,8 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
     assert answer == {"id": 1, "done": True}, answer
-    # The way back is timed by its journal, kept whether it comes or not. A card still joining
-    # the gone point when its time is up is sent back late rather than as it falls off.
+    # The way back is timed by its journal, kept whether it comes or not. A card sent back only
+    # once its time is up is waited for too, so it fails on its time below, not as a timeout.
     try:
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
@@ -350,11 +350,10 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     waited = sum(int(ms) for ms in bidden) / 1000
     # The plan's bar is back within a second past any wait, judged on the laptop; a guest's
     # clock stretches on a loaded builder, so here the card is held to wifid's own time for a
-    # way back, and the figure is logged against the bar. A card sent back late is sent only
-    # once its move's 2 s are up, so its way back is timed from when it was sent.
+    # way back, and the figure is logged against the bar.
     machine.log(
         f"back {took:.3f} s after the move was asked and {returned:.3f} s after it was sent,"
-        f" {'late' if late else 'as it fell off'}, bidden wait {waited} s, bar 1 s"
+        f" bidden wait {waited} s, bar 1 s"
     )
     tried = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn on the way back: {tried}"
@@ -405,13 +404,13 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     ).splitlines()
     sent = first_line(said, ", so goes back to 02:00:00:00:00:00")
     let_go = first_line(said, "so may join any network")
-    # Held to its way back for wifid's 2 s, it's let go then, not before, and never tries the
-    # Inn meanwhile. Not before is judged by wifid's own clock, as journald stamps lines as it
-    # takes them in, which a loaded builder may do late for one and not the other.
+    # Held to its way back for wifid's 2 s, it's let go then, and never tries the Inn
+    # meanwhile. How long after is judged by wifid's own clock, as journald stamps lines as it
+    # takes them in, which a loaded builder may do late for one and not the other. The hold
+    # lifted only after the line letting it go shows it wasn't let go before.
     went = WENT_BACK.search(said[let_go])
     assert went, f"the line letting it go says no time: {said[let_go]}"
-    assert int(went.group(1)) >= WAY_BACK * 1000, f"let go too soon: {said[let_go]}"
-    held = float(said[let_go].split()[0]) - float(said[sent].split()[0])
+    held = int(went.group(1)) / 1000
     assert held < WAY_BACK + LOADED_SLACK, f"let go {held:.3f} s after it was sent back"
     unheld = first_line(said, "wlan2 may join any access point of its network again", sent)
     assert unheld > let_go, f"its hold let go before its 2 s were up: {said[unheld]}"

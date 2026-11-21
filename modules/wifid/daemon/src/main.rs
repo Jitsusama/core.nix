@@ -74,7 +74,7 @@ use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Duration, Instant, MissedTickBehavior, sleep_until};
 use zbus::fdo::{DBusProxy, NameOwnerChanged, PropertiesProxy};
-use zbus::names::InterfaceName;
+use zbus::names::{InterfaceName, WellKnownName};
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::{self, ObjectPath, OwnedObjectPath, OwnedValue};
 use zbus::{Connection, MatchRule, MessageStream, proxy};
@@ -112,6 +112,10 @@ const LOOKING_MASK: [u8; 6] = [0x03, 0, 0, 0, 0, 0];
 
 /// How long a card has to join a network the shell asked for.
 const JOINING: Duration = Duration::from_secs(45);
+
+/// wpa_supplicant's name on the bus.
+const SUPPLICANT: WellKnownName<'static> =
+    WellKnownName::from_static_str_unchecked("fi.w1.wpa_supplicant1");
 
 /// Which pages the check asks.
 const SETTINGS: &str = "/etc/wifid/wifid.conf";
@@ -254,9 +258,9 @@ async fn serve(
     // that point's channel is kept; name the point a move goes back to;
     // end a look early, so a move is sent back after its second; or say a
     // card came off its network mid-move, so wifid itself sends it back.
-    // A card said gone is forgotten only once wpa_supplicant no longer has
-    // it, so a forger can't have wifid drop a hold it would lift later.
-    // It moves the card no further than its own networks.
+    // A card said gone is forgotten only when wpa_supplicant as it runs
+    // now says so, so a forger can't have wifid drop a hold it would lift
+    // later. It moves the card no further than its own networks.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -428,6 +432,10 @@ async fn follow(
                 // out, the signal still queued, would otherwise be sent
                 // back off the point it reached. Only what's queued now is,
                 // so signals coming without end can't hold the judging off.
+                // The tasks reading the bus run first, so a signal read in
+                // the same tick is queued by then; one still on its way
+                // across the bus isn't, which a scheduler's tick makes rare.
+                tokio::task::yield_now().await;
                 for _ in 0..signals.len() {
                     if let Ok(Ok(message)) = signals.try_recv() {
                         take_signal(wifid, &mut air, joining.as_ref(), &message).await;
@@ -788,16 +796,22 @@ impl Air<'_> {
                 let Ok(card) = body.deserialize::<OwnedObjectPath>() else {
                     return;
                 };
-                // Anyone on the bus may send this signal, so a card is
-                // forgotten only once wpa_supplicant no longer answers at
-                // its path. One handed over again since answers at another,
-                // so it's a card of its own, holding networks of its own.
-                let answers = match interface(bus, card.clone()).await {
-                    Ok(interface) => interface.ifname().await.is_ok(),
-                    Err(_) => false,
+                // Any account may send this signal, under any path, a
+                // parent's naming every card, so it's taken only from
+                // wpa_supplicant as it runs now, asked of the bus itself,
+                // which starts nothing. One from a wpa_supplicant since
+                // stopped is left to the restart, which forgets every card.
+                let owner = match DBusProxy::new(bus).await {
+                    Ok(proxy) => proxy.get_name_owner(SUPPLICANT.into()).await.ok(),
+                    Err(_) => None,
                 };
-                if answers {
-                    println!("<4>{card} was said gone, but wpa_supplicant still answers for it");
+                let sender = header.sender();
+                let from_it = sender
+                    .zip(owner.as_ref())
+                    .is_some_and(|(sender, owner)| sender.as_str() == owner.as_str());
+                if !from_it {
+                    let sender = sender.map_or("nobody named", |sender| sender.as_str());
+                    println!("<6>{card} was said gone by {sender}, not wpa_supplicant, so kept");
                     return;
                 }
                 self.gone_under(&format!("{}/", card.as_str()));
@@ -1050,19 +1064,24 @@ impl Air<'_> {
     /// own path is matched with a slash after it, as the paths under it are,
     /// so one gone takes its moves, its steps and where it was with it.
     fn gone_under(&mut self, path: &str) {
-        let under = |card: &str| format!("{card}/").starts_with(path);
         for (card, (name, _)) in &self.cards {
-            if under(card) {
+            if under(card, path) {
                 self.stalls.gone(name);
                 self.arrivals.borrow_mut().forget(name);
                 self.gone.push(name.clone());
             }
         }
-        self.cards.retain(|card, _| !under(card));
-        self.at.retain(|card, _| !under(card));
+        self.cards.retain(|card, _| !under(card, path));
+        self.at.retain(|card, _| !under(card, path));
         self.points.retain(|point, _| !point.starts_with(path));
         change(&self.state, |state| state.unheard_under(path));
     }
+}
+
+/// Whether a card's path is the one given, with a slash after it, or lies
+/// under it.
+fn under(card: &str, path: &str) -> bool {
+    format!("{card}/").starts_with(path)
 }
 
 /// Everything wpa_supplicant says of an access point.
@@ -2745,6 +2764,21 @@ impl Wifid<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_card_is_gone_under_its_own_path_or_any_above_it_alone() {
+        let card = "/fi/w1/wpa_supplicant1/Interfaces/1";
+        assert!(under(card, ""), "a restart takes every card");
+        assert!(under(card, &format!("{card}/")), "a card gone takes itself");
+        assert!(
+            under(card, "/fi/w1/wpa_supplicant1/Interfaces/"),
+            "a parent's path takes every card under it, so only wpa_supplicant is heard on it"
+        );
+        assert!(
+            !under("/fi/w1/wpa_supplicant1/Interfaces/10", &format!("{card}/")),
+            "but not another card whose number starts the same"
+        );
+    }
 
     // zbus hands a stream each message only once the one before has been
     // taken, as a channel with room for one does, so nothing it says after
