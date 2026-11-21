@@ -1061,7 +1061,7 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let hard = hold.then(|| holds::hard_for(&unit, pis));
+        let hard = hold.then(|| holds::hard_for(&scope, pis));
         let result = Command::new("busctl")
             .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
             .stdout(Stdio::null())
@@ -1086,14 +1086,16 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
             Ok(output) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
                     eprintln!(
-                        "Couldn't hold {unit}: {}",
+                        "Couldn't {} {unit}: {}",
+                        if hold { "hold" } else { "give back" },
                         String::from_utf8_lossy(&output.stderr).trim()
                     );
                 }
             }
             Err(error) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
-                    eprintln!("Couldn't run busctl to hold {unit}: {error}");
+                    let what = if hold { "hold" } else { "give back" };
+                    eprintln!("Couldn't run busctl to {what} {unit}: {error}");
                 }
             }
         }
@@ -1334,6 +1336,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         })
         .collect();
     let (viewers, shown) = viewers_and_shown(windows, prefix, held, &units);
+    let shares = shares(windows, held, &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
@@ -1364,6 +1367,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         });
         let signs = hosts::Signs {
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
+            held: shares.get(unit).copied().unwrap_or(0),
             shown: shown.iter().filter(|viewed| *viewed == unit).count(),
             orchestrators,
             marked,
@@ -1451,6 +1455,39 @@ fn own_of(
 /// shows at all, one for each viewer in it. A window showing a
 /// conversation that runs in a unit of its own gives that unit what it
 /// gives, and its host nothing.
+/// How many hard floors each of `units` keeps for the `viewers` in the
+/// windows Joel is at, `held`: the held windows' are shared out across
+/// every unit, after the pis held hard (`set_holds`), to units in
+/// agents.slice alone, whose own hard floor backs them.
+fn shares(
+    windows: &Windows,
+    held: &HashSet<String>,
+    units: &[PathBuf],
+    viewers: &[String],
+) -> HashMap<String, usize> {
+    let pis = held
+        .iter()
+        .filter(|unit| {
+            windows
+                .under
+                .iter()
+                .map(|slice| slice.join(unit))
+                .any(|scope| scope.exists() && holds::hard_for(&scope, windows.pis) > 0)
+        })
+        .count();
+    let in_agents: Vec<String> = viewers
+        .iter()
+        .filter(|unit| {
+            units.iter().any(|path| {
+                path.file_name().and_then(|name| name.to_str()) == Some(unit.as_str())
+                    && holds::in_agents(path)
+            })
+        })
+        .cloned()
+        .collect();
+    holds::shares(pis, &in_agents)
+}
+
 fn viewers_and_shown(
     windows: &Windows,
     prefix: &str,

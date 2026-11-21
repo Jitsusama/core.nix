@@ -76,6 +76,8 @@ pub struct Rank {
 pub struct Signs {
     /// Windows Joel is at that show one of its conversations.
     pub viewed: usize,
+    /// Of those, how many it keeps a hard floor for ([`holds::shares`]).
+    pub held: usize,
     /// Windows that show one of its conversations, whether he's at them
     /// or not.
     pub shown: usize,
@@ -129,8 +131,10 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     // most three. Unread, it might not fit, so writeback stays.
     let fits = signs.current.is_some_and(|current| current <= floor);
     // A window held keeps a hard floor too, whole whatever the unit holds now, so a unit just
-    // started or reclaimed grows into it; no more are counted than are ever held.
-    let held = viewed.min(focus::MOST as u64).saturating_mul(holds::HARD);
+    // started or reclaimed grows into it, for as many as `holds::shares` leaves it.
+    let held = u64::try_from(signs.held)
+        .unwrap_or(u64::MAX)
+        .saturating_mul(holds::HARD);
     Rank {
         weight,
         floor,
@@ -419,6 +423,7 @@ mod tests {
                 &own,
                 Signs {
                     viewed,
+                    held: viewed,
                     current,
                     ..Signs::default()
                 },
@@ -437,9 +442,9 @@ mod tests {
             "so does one whose memory can't be read"
         );
         assert_eq!(
-            held(5, Some(3 * GIB)),
-            (64 << 20) + 3 * holds::HARD,
-            "no more windows are counted than are ever held"
+            held(2, Some(3 * GIB)),
+            (64 << 20) + 2 * holds::HARD,
+            "each window it's given keeps one, whatever the unit holds"
         );
         assert_eq!(
             held(0, Some(GIB)),

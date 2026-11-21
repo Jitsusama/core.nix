@@ -3,7 +3,7 @@
 //! the user manager's runtime properties, through busctl. Which windows
 //! those are is `src/focus.rs`'s to say.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::focus::FLOOR;
@@ -62,7 +62,7 @@ pub const HARD: u64 = 512 << 20;
 // kitty's 512M (agentsHeld in modules/slices/nixos.nix), or the kernel shares it among them all.
 const _: () = assert!(
     crate::focus::MOST as u64 * HARD + (512 << 20) <= 2048 << 20,
-    "the held windows' hard floors outgrow agents.slice's"
+    "the held windows' hard floors outgrow agents.slice's: raise agentsHeld and the kitty check too"
 );
 
 /// The hard floor a window Joel is at keeps on `unit`: [`HARD`] on its
@@ -70,12 +70,44 @@ const _: () = assert!(
 /// scope, which holds a shell or a viewer and may sit in app.slice, whose
 /// floor is Joel's programs'. A viewer's conversation is held hard on its
 /// own unit instead (`src/hosts.rs`).
-pub fn hard_for(unit: &str, pis: &[String]) -> u64 {
-    if crate::focus::runs_a_pi(unit, pis) {
+pub fn hard_for(scope: &Path, pis: &[String]) -> u64 {
+    let unit = scope
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if crate::focus::runs_a_pi(unit, pis) && in_agents(scope) {
         HARD
     } else {
         0
     }
+}
+
+/// How many of the units windows Joel is at show, `viewers`, one for each
+/// viewer, keep a hard floor: of the at most [`crate::focus::MOST`] held
+/// windows' hard floors, what the `pis` held hard leave, given out in the
+/// units' order. A window can hold several viewers, so counting each
+/// unit's alone would let them claim past agents.slice's.
+pub fn shares(pis: usize, viewers: &[String]) -> HashMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for unit in viewers {
+        *counts.entry(unit.clone()).or_insert(0) += 1;
+    }
+    let mut left = crate::focus::MOST.saturating_sub(pis);
+    counts
+        .into_iter()
+        .map(|(unit, count): (String, usize)| {
+            let given = count.min(left);
+            left -= given;
+            (unit, given)
+        })
+        .collect()
+}
+
+/// Whether the cgroup at `path` sits right in agents.slice, whose own
+/// hard floor backs what this sorter holds hard; one in app.slice would
+/// take it from Joel's programs'.
+pub fn in_agents(path: &Path) -> bool {
+    path.parent().and_then(Path::file_name) == Some("agents.slice".as_ref())
 }
 
 /// What the cgroup at `path` holds now, from its memory.current.
@@ -238,15 +270,41 @@ mod tests {
     #[test]
     fn a_held_window_keeps_its_hard_floor_on_its_pi_alone() {
         let pis = ["mycelium-pi-".to_owned()];
+        let hard = |scope: &str| hard_for(Path::new(scope), &pis);
         assert_eq!(
-            hard_for("mycelium-pi-0193.scope", &pis),
+            hard("/cg/agents.slice/mycelium-pi-0193.scope"),
             HARD,
             "its pi's scope, holding the conversation, keeps it"
         );
         assert_eq!(
-            hard_for("app-kitty-2684.scope", &pis),
+            hard("/cg/app.slice/mycelium-pi-0193.scope"),
+            0,
+            "a pi in app.slice keeps none, as that floor is Joel's programs'"
+        );
+        assert_eq!(
+            hard("/cg/app.slice/app-kitty-2684.scope"),
             0,
             "its own scope, a shell or a viewer, keeps none"
+        );
+    }
+
+    #[test]
+    fn the_held_windows_keep_at_most_their_hard_floors_between_them() {
+        let viewers: Vec<String> = ["b", "a", "a", "c"].map(str::to_owned).to_vec();
+        let given = shares(1, &viewers);
+        assert_eq!(
+            given.values().sum::<usize>(),
+            2,
+            "a pi held hard leaves two for the units the windows show, however many viewers"
+        );
+        assert_eq!(
+            given.get("a"),
+            Some(&2),
+            "the units are given theirs in order"
+        );
+        assert!(
+            shares(3, &viewers).values().all(|held| *held == 0),
+            "three pis held hard leave none"
         );
     }
 

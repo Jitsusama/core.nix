@@ -126,6 +126,7 @@ MemoryLow=512M
 [Service]
 MemoryLow=3221225472
 ManagedOOMPreference=none
+MemoryMin=536870912
 ";
         assert_eq!(
             own(text, 64 * GIB),
