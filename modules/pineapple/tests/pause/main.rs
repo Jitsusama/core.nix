@@ -29,7 +29,8 @@ struct Unit {
 /// answers as mycelium does a command it never ran for what `unreached`
 /// names, and one whose link dropped once it began for what `dropped`
 /// names. When `peek` names a file, what it holds as the Mac is asked is
-/// kept in `peeked`.
+/// kept in `peeked`, and when `block` names one, a folder is made there as
+/// the Mac is asked, so no file can be written in its place.
 #[derive(Default)]
 struct Machine {
     asked: Vec<String>,
@@ -40,6 +41,7 @@ struct Machine {
     dropped: Option<&'static str>,
     peek: Option<PathBuf>,
     peeked: Option<String>,
+    block: Option<PathBuf>,
     starts_stopped: bool,
 }
 
@@ -83,6 +85,13 @@ impl Runs for Machine {
         self.asked.push(asked.clone());
         if let Some(peek) = self.peek.as_ref().filter(|_| asked.contains("machine=mac")) {
             self.peeked = fs::read_to_string(peek).ok();
+        }
+        if let Some(block) = self
+            .block
+            .as_ref()
+            .filter(|_| asked.contains("machine=mac"))
+        {
+            fs::create_dir_all(block).expect("a folder in the note's way");
         }
         if self.refusing.is_some_and(|refused| asked.contains(refused)) {
             return Err("refused here".to_owned());

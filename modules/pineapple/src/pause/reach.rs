@@ -54,14 +54,22 @@ const BEGUN: &str = "pineapple: begun there";
 const OWN_FAILURE: u8 = 70;
 
 /// Whether `why` a run failed is mycelium saying the command never ran.
+/// The script's word may share its line with the status, when nothing
+/// was said after it.
 fn didnt_run(why: &str) -> bool {
-    why.trim_end().ends_with(DIDNT_RUN) && !why.lines().any(|line| line.trim() == BEGUN)
+    why.trim_end().ends_with(DIDNT_RUN)
+        && !why.lines().any(|line| line.trim_start().starts_with(BEGUN))
 }
 
 /// `why` a run failed, without the script's word that it began.
 fn without_begun(why: &str) -> String {
     why.lines()
-        .filter(|line| line.trim() != BEGUN)
+        .map(|line| {
+            line.trim_start()
+                .strip_prefix(BEGUN)
+                .map_or(line, str::trim_start)
+        })
+        .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -259,6 +267,9 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     // Joel refused before the stop stay refused.
     // A resume of a stop that never reached this machine has nothing to
     // undo here, and letting its starts go would undo Joel's own refusal.
+    // So too for a realm whose starts the stop never refused, though it
+    // reached another: only a stop noted before this one was kept leaves
+    // no word of which realms it refused, and is let go whole.
     let unreached = if act == "resume" {
         format!("[ -e \"$d/{}.json\" ] || exit 0\n", file_of(id))
     } else {
@@ -267,7 +278,9 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     let starts = if act == "resume" {
         format!(
             "resumed=\"$d/{file}.resumed{mark}\"\n\
-             if [ -e \"$resumed\" ] || [ -e \"$kept\" ]; then : > \"$resumed\"; \
+             set -- \"$d/{file}.stopped\"*\n\
+             if [ -e \"$resumed\" ] || [ -e \"$kept\" ] || \
+             {{ [ ! -e \"$stopped\" ] && [ -e \"$1\" ]; }}; then : > \"$resumed\"; \
              else \"$m\" starts resume{flag} >/dev/null || exit {OWN_FAILURE}; \
              : > \"$resumed\"; fi\n",
             file = file_of(id),
@@ -275,7 +288,8 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     } else {
         format!(
             "if \"$m\" starts list{flag} | grep -q '\"stopped\":true'; then : > \"$kept\"; \
-             else \"$m\" starts stop{flag} >/dev/null || exit {OWN_FAILURE}; fi\n"
+             else : > \"$stopped\"; \
+             \"$m\" starts stop{flag} >/dev/null || exit {OWN_FAILURE}; fi\n"
         )
     };
     format!(
@@ -287,6 +301,7 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
          printf '%s\\n' {record} > \"$d/{file}.new\"\n\
          mv \"$d/{file}.new\" \"$d/{file}.json\"\n\
          kept=\"$d/{file}.starts-kept{mark}\"\n\
+         stopped=\"$d/{file}.stopped{mark}\"\n\
          m=\n\
          for c in \"$(command -v mycelium || true)\" \
          \"/etc/profiles/per-user/$(id -un)/bin/mycelium\" \
@@ -368,6 +383,16 @@ mod tests {
             without_begun(&dropped),
             "mycelium: the node hung up (exit status: 255)",
             "Joel is told why, not that it began"
+        );
+        let quiet = failed(&format!("echo '{BEGUN}' >&2; exit 255"));
+        assert!(
+            !didnt_run(&quiet),
+            "a 255 after the script began reads so with nothing said after it: {quiet}"
+        );
+        assert_eq!(
+            without_begun(&quiet),
+            "(exit status: 255)",
+            "and its status is kept"
         );
         let refused = failed("echo 'refused' >&2; exit 1");
         assert!(

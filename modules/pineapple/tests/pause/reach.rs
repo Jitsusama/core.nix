@@ -17,6 +17,16 @@ fn stopped_and_resumed(
     name: &str,
     mac: impl Fn(&mut Machine),
 ) -> (PathBuf, Machine, String, String) {
+    stopped_then(name, &mac, |_| {})
+}
+
+/// As [`stopped_and_resumed`], with the Mac's answers changed as `then`
+/// says before its resume.
+fn stopped_then(
+    name: &str,
+    mac: impl Fn(&mut Machine),
+    then: impl Fn(&mut Machine),
+) -> (PathBuf, Machine, String, String) {
     let state = scratch(name);
     let mut here = machine();
     mac(&mut here);
@@ -25,6 +35,7 @@ fn stopped_and_resumed(
     let stopping = pause::said("stopping", &took, sessions);
     resumed(&state, 2);
     here.asked.clear();
+    then(&mut here);
     let took = pause::settle(&plan(), &state, "here", 2, &mut here).expect("settles");
     let resuming = pause::said("resuming", &took, None);
     (state, here, stopping, resuming)
@@ -81,9 +92,14 @@ fn a_machine_the_stop_never_ran_on_is_resumed_once_and_let_go() {
 
 #[test]
 fn a_machine_whose_link_drops_once_the_stop_began_is_resumed_until_it_can_be() {
-    let (state, _, stopping, resuming) = stopped_and_resumed("dropped", |mac| {
-        mac.dropped = Some("machine=mac");
-    });
+    let (state, _, stopping, resuming) = stopped_then(
+        "dropped",
+        |mac| mac.dropped = Some("machine=mac"),
+        |mac| {
+            mac.dropped = None;
+            mac.unreached = Some("machine=mac");
+        },
+    );
     assert_eq!(
         stopping,
         format!(
@@ -95,10 +111,10 @@ fn a_machine_whose_link_drops_once_the_stop_began_is_resumed_until_it_can_be() {
     assert_eq!(
         resuming,
         format!(
-            "resuming every session on here; mac couldn't resume there: {DROPPED}, \
+            "resuming every session on here; mac couldn't resume there: {NEVER_RAN}, \
              tried again each minute"
         ),
-        "so its resume is never given up on"
+        "so its resume is never given up on, even where mycelium can't run it"
     );
     let _ = fs::remove_dir_all(&state);
 }
@@ -117,6 +133,33 @@ fn each_machine_is_kept_as_asked_before_it_is_asked() {
         peeked["machines"][0]["asked"],
         Value::Bool(true),
         "a stop cut off as it asks the Mac still resumes it: {peeked}"
+    );
+    let _ = fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_stop_that_cannot_note_whom_it_reached_still_stops_and_resumes_each() {
+    let state = scratch("unnoted");
+    let mut here = Machine {
+        unreached: Some("machine=mac"),
+        block: Some(state.join("paused/stop-all-1.new")),
+        ..machine()
+    };
+    let took = pause::stop(&plan(), &state, "stop-all-1", "here", 1, &mut here)
+        .expect("a stop that froze everything isn't failed by its last note");
+    assert!(
+        took[0]
+            .failed
+            .iter()
+            .any(|why| why.starts_with("couldn't note which machines it reached")),
+        "Joel is told the note failed: {:?}",
+        took[0].failed
+    );
+    let paused = json(&state.join("paused/stop-all-1.json"));
+    assert_eq!(
+        paused["machines"][0]["asked"],
+        Value::Bool(true),
+        "the note from before the asks stands, so the Mac is resumed until it can be: {paused}"
     );
     let _ = fs::remove_dir_all(&state);
 }
