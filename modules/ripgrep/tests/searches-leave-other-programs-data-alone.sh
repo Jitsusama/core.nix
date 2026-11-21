@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # Checks that a search of a home folder holding the Mac's ignore file never
-# opens other apps' data or the folders macOS guards, with ripgrep or fd,
+# opens other programs' data or the folders macOS guards, with ripgrep or fd,
 # started from the home folder or from Library, and still finds everything
 # else. Each guarded folder is made unreadable, so opening it is an error the
 # program reports. Without the file, the same search reports them, so the
 # check can fail.
-# usage: searches-leave-other-apps-data-alone.sh <ignore file> <rg> <fd>
+# usage: searches-leave-other-programs-data-alone.sh <ignore file> <rg> <fd>
 set -euo pipefail
 
 ignore=$1
@@ -47,7 +47,8 @@ fi
 cp "$ignore" "$home/.ignore"
 found=$(searched 2>"$home/said")
 if [ -s "$home/said" ]; then
-  echo "a search opened other apps' data or a folder macOS guards: $(cat "$home/said")" >&2
+  said=$(<"$home/said")
+  echo "a search opened other programs' data or a folder macOS guards: $said" >&2
   exit 1
 fi
 for folder in Library/Logs src; do
@@ -57,7 +58,7 @@ for folder in Library/Logs src; do
   fi
 done
 if grep -q -e Containers -e Desktop -e Documents -e Downloads <<<"$found"; then
-  echo "a search listed other apps' data or a folder macOS guards: $found" >&2
+  echo "a search listed other programs' data or a folder macOS guards: $found" >&2
   exit 1
 fi
 

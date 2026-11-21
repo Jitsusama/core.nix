@@ -3446,9 +3446,9 @@
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
   '';
-  searches-leave-other-apps-data-alone = ''
+  searches-leave-other-programs-data-alone = ''
     a Mac's home folder holds an ignore file, and ripgrep and fd searching from it or from Library
-    never open other apps' data or the folders macOS guards, while still finding the rest
+    never open other programs' data or the folders macOS guards, while still finding the rest
   '';
   secret-asks-keeps-the-item-to-its-yes = ''
     a yes releases the one item to the checker alone, which says its length and never the value;

@@ -12,18 +12,18 @@
 # sandbox can't make unreadable the same way.
 onLinux {
   # A Mac's home folder holds the ignore file, and a search with ripgrep or fd
-  # started there or in Library never opens other apps' data or the folders
+  # started there or in Library never opens other programs' data or the folders
   # macOS guards, while finding everything else; with no file, the same
-  # search opens them (tests/searches-leave-other-apps-data-alone.sh).
-  searches-leave-other-apps-data-alone =
+  # search opens them (tests/searches-leave-other-programs-data-alone.sh).
+  searches-leave-other-programs-data-alone =
     let
       declared = (account macWorkstation).home.file.".ignore".source or null;
     in
     assert lib.assertMsg (
       declared != null && builtins.readFile declared == builtins.readFile ./ignore
     ) "A Mac's home folder holds no ignore file for ripgrep and fd.";
-    pkgs.runCommandLocal "searches-leave-other-apps-data-alone" { } ''
-      ${lib.getExe pkgs.bash} ${./tests/searches-leave-other-apps-data-alone.sh} \
+    pkgs.runCommandLocal "searches-leave-other-programs-data-alone" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/searches-leave-other-programs-data-alone.sh} \
         ${./ignore} ${lib.getExe pkgs.ripgrep} ${lib.getExe pkgs.fd}
       touch $out
     '';
