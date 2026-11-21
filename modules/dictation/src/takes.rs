@@ -626,11 +626,20 @@ mod tests {
         // hiss comes back only with the answer, and the answer must not
         // be lost in it: whether the call was quieter before the mute, or
         // the nothing ends a few samples into a frame, so that frame
-        // holds only a little of the hiss.
-        for (before, into_a_frame) in [(0.0, 0), (5.0, 0), (0.0, FRAME - 10)] {
+        // holds only a little of the hiss, or the nothing is a faint
+        // dither, about -120 dBFS, rather than exact zeros.
+        for (before, into_a_frame, faint) in [
+            (0.0, 0, 0.0),
+            (5.0, 0, 0.0),
+            (0.0, FRAME - 10, 0.0),
+            (0.0, FRAME - 10, 1e-6),
+        ] {
+            let nothing: Vec<f32> = (0..RATE * 3 + into_a_frame)
+                .map(|i| if i % 2 == 0 { faint } else { -faint })
+                .collect();
             let sound = [
                 quiet(before),
-                vec![0.0; RATE * 3 + into_a_frame],
+                nothing,
                 noise(3.5, 0.005, false),
                 voice(0.3, 150.0),
                 noise(3.5, 0.005, false),
@@ -641,8 +650,8 @@ mod tests {
             assert_eq!(
                 takes.len(),
                 1,
-                "the answer in the hiss, after {before} s of quiet and \
-                 {into_a_frame} samples of a frame"
+                "the answer in the hiss, after {before} s of quiet, \
+                 {into_a_frame} samples of a frame and nothing of {faint}"
             );
             let answer = quiet(before).len() + RATE * 3 + into_a_frame + RATE * 7 / 2;
             let take = &takes[0];
@@ -683,7 +692,7 @@ mod tests {
         // hiss, or the hiss reads as loud and the answer is lost in it.
         let sound = [
             noise(3.0, 0.005, false),
-            vec![0.0; FRAME - 20],
+            vec![0.0; FRAME - 10],
             noise(3.5, 0.005, false),
             voice(0.3, 150.0),
             noise(3.5, 0.005, false),
@@ -740,6 +749,29 @@ mod tests {
                 "the answer, after {before} s of quiet"
             );
         }
+    }
+
+    #[test]
+    fn a_long_word_on_a_gated_line_is_heard_whole() {
+        // A gated line's words may run past a second with no nothing
+        // between, steady enough that none of them is 12 dB under the
+        // rest: they mustn't become the floor the words after them are
+        // judged against.
+        let sound = [
+            vec![0.0; RATE * 2],
+            voice(1.5, 150.0),
+            vec![0.0; RATE / 10],
+            voice(1.0, 150.0),
+            vec![0.0; RATE * 2],
+        ]
+        .concat();
+        let takes = cut(&sound);
+        assert_eq!(takes.len(), 1, "the words");
+        assert!(
+            seconds(takes[0].samples.len()) >= 2.6,
+            "{}",
+            seconds(takes[0].samples.len())
+        );
     }
 
     #[test]
