@@ -85,10 +85,10 @@ pub fn revive(
             .as_ref()
             .and_then(|q| fs::read_to_string(reviving.quests.join(q).join("README.md")).ok())
             .map(|readme| revive::quest(&readme));
-        let hold = revive::holding(s, node.as_deref(), is_pi, shows, |counts| {
+        let hold = revive::holding(s, node.as_deref(), is_pi, is_viewer, |counts| {
             held(&s.session, counts)
         });
-        let named = matches!(hold, Held::Running | Held::Parked);
+        let named = hold.names();
         let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
             Verdict::Died { cwd } => cwd,
             Verdict::Stranded(why) => {
@@ -457,26 +457,18 @@ fn close_dead(session: &str, hold: &Held, holders: &[Holder]) -> usize {
 /// Whether a holder keeps its session running is `revive::holding`'s,
 /// where a hosted session's viewer counts for nothing.
 fn lives(pid: u32) -> bool {
-    is_pi(pid) || shows(pid)
+    is_pi(pid) || is_viewer(pid)
 }
 
-/// Whether `pid` is a hosted session's viewer.
-fn shows(pid: u32) -> bool {
+/// Whether `pid` runs a hosted session's viewer, and nothing else.
+fn is_viewer(pid: u32) -> bool {
     fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| views(&line))
 }
 
 /// Whether a command line, its words split by NUL, is a hosted session's
-/// viewer: node running the harness's `scripts/host-join.ts`, or
-/// `mycelium attach` (or `holds ID attach`, as mycelium spells it now).
+/// viewer (`revive::views`).
 fn views(line: &[u8]) -> bool {
-    let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();
-    let mycelium = words
-        .first()
-        .is_some_and(|program| program.rsplit(|&b| b == b'/').next() == Some(b"mycelium"));
-    words
-        .iter()
-        .any(|word| word.ends_with(b"/scripts/host-join.ts"))
-        || (mycelium && words.contains(&b"attach".as_slice()))
+    revive::views(&line.split(|&b| b == 0).collect::<Vec<_>>())
 }
 
 /// Whether a pi, or a hosted session's viewer, runs at or below `pid`.
