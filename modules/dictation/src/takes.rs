@@ -77,13 +77,17 @@ const MUTE_FRAMES: usize = 20;
 /// could be speech is. Once the floor holds this long a run of the line's
 /// own sound, too quiet to be speech or with no voice in it, as hiss or a
 /// room is, the line isn't gated, and its floor is judged as any other's,
-/// so a packet lost on a hissy line doesn't make its hiss speech. A fifth
-/// of a second is longer than a word's unvoiced sounds.
-const OWN_SOUND_FRAMES: usize = 10;
+/// so a packet lost on a hissy line doesn't make its hiss speech. Half a
+/// second is longer than a held "s" or "sh" in speech, while a line's
+/// hiss or rumble lasts as long as the line is open.
+const OWN_SOUND_FRAMES: usize = 25;
 /// A run of the line's own sound loud enough to be speech holds within
 /// this, from its quietest frame to its loudest, as a hiss or a fan does
-/// and a laugh, a cough or a long "s" doesn't: each rises and falls.
-/// A line's hiss wanders a decibel or two over a fifth of a second.
+/// and a laugh or a cough doesn't: each rises and falls. It's judged on
+/// the sound above any rumble, since a room's rumble swells and fades
+/// by several decibels within a fifth of a second while its sound above
+/// that holds. Above its rumble, a line's sound wanders about 2.5 dB
+/// over half a second, and a laugh steps 6 dB a frame.
 const STEADY_DB: f32 = 3.0;
 /// Fewer voiced frames than this and a take has no voice in it. Each is
 /// read with the one before, so three take 80 ms of voice: the vowel of a
@@ -148,9 +152,11 @@ pub struct Cutter {
     /// Frames of nothing in a row, up to the one just fed.
     nothing_run: usize,
     /// Frames of the line's own sound in a row, up to the one just fed,
-    /// and the quietest and loudest of them.
+    /// the quietest and loudest of them above any rumble, and the
+    /// loudest of them as they are.
     own_run: usize,
     own_levels: (f32, f32),
+    own_loudest: f32,
     /// The frame fed before this one, which voicing is read with.
     last: Vec<f32>,
 }
@@ -205,7 +211,11 @@ impl Cutter {
                 self.own_run = 0;
             } else {
                 let own = level <= QUIETEST_SPEECH_DB || !voiced(&self.last, &frame);
-                self.own_run = if own { self.own_sound(level) } else { 0 };
+                self.own_run = if own {
+                    self.own_sound(level, above_rumble(&self.last, &frame))
+                } else {
+                    0
+                };
                 self.recent
                     .push_back((level, self.own_run >= OWN_SOUND_FRAMES));
                 if self.recent.len() > FLOOR_FRAMES {
@@ -286,19 +296,26 @@ impl Cutter {
     }
 
     /// Lengthens the run of the line's own sound by a frame at `level`,
-    /// or starts it afresh there when the run is loud and doesn't hold
-    /// steady, giving how long it now is.
-    fn own_sound(&mut self, level: f32) -> usize {
-        let (quietest, loudest) = if self.own_run == 0 {
-            (level, level)
+    /// `above` its rumble, or starts it afresh there when the run is loud
+    /// and doesn't hold steady above its rumble, giving how long it now
+    /// is.
+    fn own_sound(&mut self, level: f32, above: f32) -> usize {
+        let (quietest, loudest, raw_loudest) = if self.own_run == 0 {
+            (above, above, level)
         } else {
-            (self.own_levels.0.min(level), self.own_levels.1.max(level))
+            (
+                self.own_levels.0.min(above),
+                self.own_levels.1.max(above),
+                self.own_loudest.max(level),
+            )
         };
-        if loudest <= QUIETEST_SPEECH_DB || loudest - quietest <= STEADY_DB {
+        if raw_loudest <= QUIETEST_SPEECH_DB || loudest - quietest <= STEADY_DB {
             self.own_levels = (quietest, loudest);
+            self.own_loudest = raw_loudest;
             self.own_run + 1
         } else {
-            self.own_levels = (level, level);
+            self.own_levels = (above, above);
+            self.own_loudest = level;
             1
         }
     }
@@ -372,6 +389,22 @@ fn voiced(before: &[f32], frame: &[f32]) -> bool {
         return false;
     };
     (unlike.max(SHORTEST_PERIOD)..=longest).any(|period| likeness(period) > VOICED_LIKENESS)
+}
+
+/// A frame's loudness above any rumble, in decibels below full scale:
+/// the loudness of each sample less the one `APART` before it, reading
+/// the frame before for the first few, as `voiced` does. That takes away
+/// most of what lies below a few hundred hertz, a rumble's swells with it.
+fn above_rumble(before: &[f32], frame: &[f32]) -> f32 {
+    let sound: Vec<f32> = before[before.len().saturating_sub(APART)..]
+        .iter()
+        .chain(frame)
+        .copied()
+        .collect::<Vec<_>>()
+        .windows(APART + 1)
+        .map(|run| run[APART] - run[0])
+        .collect();
+    loudness(&sound)
 }
 
 /// A frame's loudness in decibels below full scale.
