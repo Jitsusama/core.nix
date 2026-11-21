@@ -3355,7 +3355,8 @@ async fn a_request_taken_as_it_leaves_is_told_its_leaving_in_the_words_pi_goes_d
     let closed = tokio::time::timeout(Duration::from_secs(15), connection).await;
     assert!(
         closed.is_ok(),
-        "the relay never closed a kept connection, so never left"
+        "the relay never closed a kept connection, so never left; the relay said:\n{}",
+        relay.said()
     );
     drop(kept_sender);
 
@@ -3396,7 +3397,9 @@ async fn a_request_taken_as_it_leaves_is_told_its_leaving_in_the_words_pi_goes_d
     let left = relay.left_within(Duration::from_secs(5));
     assert!(
         left.is_some_and(|status| status.success()),
-        "the relay didn't leave cleanly after the request it refused: {left:?}"
+        "the relay didn't leave cleanly after the request it refused: {left:?}; the relay \
+         said:\n{}",
+        relay.said()
     );
     drop(relay.said());
 }
