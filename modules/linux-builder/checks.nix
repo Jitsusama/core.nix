@@ -171,7 +171,7 @@ in
       read = key: lib.hasInfix "forKey: .${key})" patch && written ? ${key};
     in
     holds "linux-builder-keeps-its-network-where-it-is-set"
-      "A changed guest's network isn't the one set, by default 192.168.239.0/24, a /20 isn't given vmnet as 255.255.240.0, an octet past 255 or a host bit set isn't refused, a network set on an unchanged guest isn't warned of, the patch doesn't read the keys written, its vzvm isn't the one patched, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
+      "A changed guest's network isn't the one set, by default 192.168.239.0/24, a /20 isn't given vmnet as 255.255.240.0, a public network, an octet past 255 or a host bit set isn't refused, the patch never gives vmnet the subnet, a network set on an unchanged guest isn't warned of, the patch doesn't read the keys written, its vzvm isn't the one patched, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
       (
         opened.virtualisation.vz.extraConfig.ipv4Subnet or null == "192.168.239.0"
         && opened.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.255.0"
@@ -180,6 +180,11 @@ in
         && refuses "192.168.300.0/24"
         && refuses "192.168.239.7/24"
         && refuses "172.31.241.0/20"
+        && refuses "8.8.8.0/24"
+        && refuses "127.0.0.0/24"
+        && refuses "172.32.0.0/16"
+        && !refuses "10.211.0.0/16"
+        && lib.hasInfix "set_ipv4_subnet(shared, &address, &netmask)" patch
         && warned { network = "172.31.240.0/20"; }
         && !warned { }
         && !warned narrowly

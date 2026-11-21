@@ -1813,8 +1813,9 @@
   '';
   linux-builder-keeps-its-network-where-it-is-set = ''
     a changed Linux builder guest's network is the one its option sets, 192.168.239.0/24 unless
-    given another, through a vzvm patched to take it, a network vmnet would refuse is refused at
-    build, one set on an unchanged guest is warned of, and a guest given nothing keeps its own
+    given another, through a vzvm patched to hand it to vmnet, a network that isn't private, has an
+    octet past 255 or a host bit set is refused at build, one set on an unchanged guest is warned
+    of, and a guest given nothing keeps its own
   '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,

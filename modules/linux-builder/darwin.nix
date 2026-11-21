@@ -70,10 +70,16 @@ let
   networkMask = lib.concatMapStringsSep "." toString maskOctets;
   # vmnet refuses an address past 255 or with bits set past its prefix only
   # once the VM starts, where launchd restarts it without end, so the Mac's
-  # configuration refuses them first.
+  # configuration refuses them first. It must be private too: a public or
+  # loopback network would hide the real addresses it covers from the Mac.
   addressOctets = map lib.toInt (lib.splitString "." networkAddress);
+  first = lib.elemAt addressOctets 0;
+  second = lib.elemAt addressOctets 1;
+  networkIsPrivate =
+    first == 10 || first == 172 && second >= 16 && second <= 31 || first == 192 && second == 168;
   networkHolds =
-    lib.all (octet: octet <= 255) addressOctets
+    networkIsPrivate
+    && lib.all (octet: octet <= 255) addressOctets
     && lib.all (
       octet: lib.bitAnd (lib.elemAt addressOctets octet) (255 - lib.elemAt maskOctets octet) == 0
     ) (lib.range 0 3);
@@ -287,9 +293,10 @@ in
         The IPv4 network a VM given keys or features is put on, between the
         Mac and it. It must sit outside every network the Mac joins, or the
         Mac hears its own name twice and renames itself, and apart from
-        other VMs' networks on the Mac. By default it's clear of the low
-        192.168 networks home routers hand out, and of 192.168.64.0/24 and
-        up, where macOS puts its own NAT's VMs.
+        other VMs' networks on the Mac, in 10.0.0.0/8, 172.16.0.0/12 or
+        192.168.0.0/16. By default it's clear of the low 192.168 networks
+        home routers hand out, and of 192.168.64.0/24 and the few above it,
+        where macOS's own NAT starts its VMs.
       '';
     };
     builder = lib.mkOption {
@@ -334,7 +341,7 @@ in
     assertions = [
       {
         assertion = networkHolds;
-        message = "jitsusama.linux-builder.network ${cfg.network} has an octet past 255 or an address bit set past its prefix.";
+        message = "jitsusama.linux-builder.network ${cfg.network} isn't a private network, has an octet past 255, or has an address bit set past its prefix.";
       }
     ];
     # Only a changed guest is put on its own network; one given nothing
