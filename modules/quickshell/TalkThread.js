@@ -70,7 +70,22 @@ function pendingOf(key, replies, written) {
         }
     }
     return shown.map(one => ({ text: one.text, answer: false, mine: true, by: "",
-        side: Said.clockOf(one.reply.since), nerd: "" }));
+        side: Said.clockOf(one.reply.since), nerd: "", pending: true }));
+}
+
+// How his last reply stands while nothing has come of it since, a step in the voice under
+// it: sent, until the void writes it, then waiting on whoever has the thread, as the list
+// says of a line; nothing once anything follows it (Joel, 2026-11-21 10:27: "i said heello
+// i think, but it didn't indicate whether it was working on it").
+function standingOf(steps, own, words) {
+    const last = steps.length > 0 ? steps[steps.length - 1] : null;
+    if (last === null || !last.mine) {
+        return [];
+    }
+    // Who has it by name, never the address a reply's owner is written as.
+    const who = Said.heldBy(own) || String(words?.void ?? "");
+    const text = last.pending ? String(words?.sent ?? "") : Said.worded(words, "waiting", who);
+    return [{ text, answer: false, mine: false, by: "", side: "", nerd: "" }];
 }
 
 // The thread of `talk`, a line as the list holds it: his words and when he
@@ -86,10 +101,40 @@ function threadOf(talk, events, words, { dayOf, replies } = {}) {
     const clock = Said.clockOf(talk.since);
     const own = key === "" ? [] : (events ?? []).filter(event => event.line === key);
     const written = own.filter(event => event.event === "replied");
+    const steps = own.map(event => stepOf(event, words))
+        .concat(key === "" ? [] : pendingOf(key, replies, written));
     return { key, line: String(talk.line ?? ""), side: day === "" ? clock : `${day} ${clock}`,
-        steps: own.map(event => stepOf(event, words))
-            .concat(key === "" ? [] : pendingOf(key, replies, written)),
+        steps: steps.concat(standingOf(steps, own, words)),
         nerd: key === "" ? "" : `line ${key}` };
+}
+
+// The line Return opens, by when he said it, where one is picked and no thread is open, in
+// insert as in normal, since Tab or an arrow picks one as he types (Joel, 2026-11-21 10:27:
+// "having to hit escape first is not intuitive when i can use my arrows to select entries
+// without being escaped but enter does nothing"); 0 where Return sends what's typed.
+function opening(picked, talks, opened) {
+    const line = opened === null && picked >= 0 ? talks?.[picked] : undefined;
+    return line === undefined ? 0 : line.since;
+}
+
+// The keys the foot offers, each a key and what it does as KeyHints takes them: in an open
+// thread, how to come back to the lines; with a line picked, that Return opens it; with
+// lines listed, how to pick one, Tab while typing and j in normal; and :take while the void
+// can undo the last line (Joel, 2026-11-21 10:23: "I have no clue how to step into a
+// thread").
+function footKeys({ listed, picked, threadOpen, typing, takes }, words) {
+    const keys = [];
+    if (threadOpen) {
+        keys.push([typing ? "Esc -" : "-", String(words?.back ?? "")]);
+    } else if (picked >= 0) {
+        keys.push(["\u21b5", String(words?.opens ?? "")]);
+    } else if (listed) {
+        keys.push([typing ? "Tab" : "j", String(words?.picks ?? "")]);
+    }
+    if (String(takes ?? "") !== "") {
+        keys.push([":take", String(takes).toLowerCase()]);
+    }
+    return keys;
 }
 
 // The line j and k pick, `count` down from `picked` or up where it's less than
