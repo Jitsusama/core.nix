@@ -40,10 +40,16 @@ pub struct Heard<'a> {
 pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     let mut lines = Vec::with_capacity(heard.lines.len());
     let mut words = HashMap::new();
+    // Each line's pieces, read before any is renumbered, since a piece
+    // renumbered for a part would otherwise be read as a later line's.
+    let mut of_line: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (piece, of) in heard.pieces.iter().enumerate() {
+        if let Some(line) = of.line {
+            of_line.entry(line).or_default().push(piece);
+        }
+    }
     for (index, line) in std::mem::take(heard.lines).into_iter().enumerate() {
-        let of: Vec<usize> = (0..heard.pieces.len())
-            .filter(|&piece| heard.pieces[piece].line == Some(index))
-            .collect();
+        let of = of_line.remove(&index).unwrap_or_default();
         let said = heard.words.remove(&index).unwrap_or_default();
         if of.is_empty() {
             if !said.is_empty() {
