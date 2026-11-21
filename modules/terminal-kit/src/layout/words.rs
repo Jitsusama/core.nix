@@ -15,7 +15,7 @@ use std::borrow::Cow;
 
 use unicode_width::UnicodeWidthChar;
 
-use super::{CUT, ITEMS, Room, width};
+use super::{CUT, GAP, ITEMS, Room, width};
 
 /// The small words a cut never ends on, so it reads as a cut rather than
 /// a sentence missing its end (VKCF3Z, 2026-11-15), as the password
@@ -280,6 +280,33 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
     set(words, lead, room).join(&format!("\n{}", " ".repeat(lead)))
 }
 
+/// Words set as a hanging paragraph: the first line `inset` cells in,
+/// each further line `GAP` cells further, so where one entry of a list
+/// ends and the next begins reads at a glance. Each line is wrapped to
+/// the room its own inset leaves, so the first keeps the cells the hang
+/// gives up. Where `hung` sets words after something already drawn `lead`
+/// cells wide and hands back the lines without the first's lead, this
+/// draws every line's inset itself, one line to an entry. The words are
+/// held to one line first, as the module says; into a pipe that one line
+/// is the paragraph.
+pub fn hanging(words: &str, inset: usize, room: Room) -> Vec<String> {
+    let lines = match room.cells() {
+        None => vec![one_line(words).trim().to_owned()],
+        Some(cells) => {
+            let first = cells.saturating_sub(inset).max(1);
+            measured(words, first, first.saturating_sub(GAP).max(1))
+        }
+    };
+    lines
+        .into_iter()
+        .enumerate()
+        .map(|(at, line)| {
+            let lead = if at == 0 { inset } else { inset + GAP };
+            format!("{}{line}", " ".repeat(lead))
+        })
+        .collect()
+}
+
 /// The words held to one line, wrapped to the room left after `inset`
 /// cells, ready to set at the inset; into a pipe, where nothing wraps,
 /// the one line without the space a trailing break left.
@@ -290,7 +317,9 @@ fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
     }
 }
 
-/// Words wrapped to `measure` cells: a run gives way at its items first,
+/// Words wrapped to `measure` cells, every line to the same measure, the
+/// first among them; `hanging` gives its first line more room than the
+/// rest. A run gives way at its items first,
 /// the dot going with the break, so no line ends or starts on one, and
 /// only an item too long for a line of its own breaks between its words,
 /// never parting what `held` keeps together. A held piece wider than
@@ -302,34 +331,45 @@ fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
 /// doesn't leave the word before it alone, and otherwise on a line of
 /// its own.
 pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
+    measured(words, measure, measure)
+}
+
+/// Words wrapped as `wrapped` says, the first line to `first` cells and
+/// each after it to `rest`, which is never more than `first`, so an item
+/// too wide for the first line is too wide for the next too.
+fn measured(words: &str, first: usize, rest: usize) -> Vec<String> {
     let flat = one_line(words);
     let words = &*flat;
-    let mut lines = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
     let mut line = String::new();
+    let measure_of = |at: usize| if at == 0 { first } else { rest.min(first) };
     for item in words.split(ITEMS).map(str::trim) {
-        if width(&parted(&line, item, ITEMS)) <= measure {
+        if width(&parted(&line, item, ITEMS)) <= measure_of(lines.len()) {
             line = parted(&line, item, ITEMS);
-        } else if width(item) <= measure {
+        } else if !line.is_empty() && width(item) <= measure_of(lines.len() + 1) {
             lines.push(std::mem::replace(&mut line, item.to_owned()));
         } else {
             // An item's first piece is still parted from the line by its
             // dot; the rest of its pieces by spaces.
             let mut between = ITEMS;
             let pieces = held(item).into_iter().flat_map(|piece| {
-                if width(&piece) > measure && piece.contains(' ') {
+                if width(&piece) > rest.min(first) && piece.contains(' ') {
                     piece.split(' ').map(str::to_owned).collect()
                 } else {
                     vec![piece]
                 }
             });
             for piece in pieces {
-                let left = measure.saturating_sub(width(&line) + width(between));
-                let piece = if width(&piece) > measure && !line.is_empty() && left >= SHARES {
+                // The line it's on, or where it goes on one of its own.
+                let here = measure_of(lines.len());
+                let own = measure_of(lines.len() + usize::from(!line.is_empty()));
+                let left = here.saturating_sub(width(&line) + width(between));
+                let piece = if width(&piece) > own && !line.is_empty() && left >= SHARES {
                     shortened(&piece, left)
                 } else {
-                    shortened(&piece, measure)
+                    shortened(&piece, own)
                 };
-                if !line.is_empty() && width(&parted(&line, &piece, between)) > measure {
+                if !line.is_empty() && width(&parted(&line, &piece, between)) > here {
                     lines.push(std::mem::take(&mut line));
                 }
                 line = parted(&line, &piece, between);
@@ -343,7 +383,8 @@ pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
     if words.contains(ITEMS) {
         return lines;
     }
-    unwidowed(lines, measure)
+    // The last line is never the first, so it keeps to the rest's measure.
+    unwidowed(lines, rest.min(first))
 }
 
 /// Lines with no last word left alone on its line: the word before it
@@ -541,6 +582,31 @@ mod tests {
             paragraph("one two three four", 4, Room::Unbounded),
             ["    one two three four"]
         );
+    }
+
+    #[test]
+    fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
+        let words = "one two three four five";
+        assert_eq!(
+            hanging(words, 2, Room::Cells(15)),
+            ["  one two three", "    four five"],
+            "the first line gave up the cells only the lines under it hang by"
+        );
+        assert_eq!(
+            hung(words, 4, Room::Cells(15)),
+            "one two\n    three four\n    five",
+            "hung words keep one measure for every line"
+        );
+        assert_eq!(
+            hanging(words, 2, Room::Unbounded),
+            ["  one two three four five"],
+            "into a pipe a hanging paragraph is one line at its inset"
+        );
+        for room in 6..30 {
+            for line in hanging(words, 2, Room::Cells(room)) {
+                assert!(width(&line) <= room, "{line:?} passed {room} cells");
+            }
+        }
     }
 
     #[test]
