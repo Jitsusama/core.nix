@@ -3763,6 +3763,11 @@
   system-passes-clippy = ''
     clippy finds nothing in system or its tests
   '';
+  system-reads-its-machines-realm = ''
+    the system daemon's unit names the realm its account's sessions are in, on Linux and on a Mac
+    running nodes for two realms, where mycelium refuses a command naming none, and on a machine in
+    no realm names none
+  '';
   system-serves-where-its-node-reads = ''
     the system daemon serves where its machine's mycelium node reads how it stands: on Linux
     the socket systemd holds in the runtime folder, and on a Mac a launchd agent, in the
