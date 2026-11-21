@@ -224,11 +224,13 @@ or launchd, and [`home.nix`][2] the account's.
   disk's room went. A pass's line says what set it going (`reach`,
   `upkeep`, `garbage`, `producers`, `clear` or `collect`), how many things
   it was offered, and how long the survey that offered them took, which
-  its own seconds leave out, so a pass that freed nothing can be told from
-  one with nothing to take: half of them on 20 November freed nothing,
-  and their lines couldn't say which. Any account may pass through the machine's state
-  folder to its journal but not list it, and every other file there is
-  saved as root's alone.
+  its own seconds leave out, or null when none did. Each pass a survey
+  served carries its seconds, so passes at one time and the same seconds
+  shared one walk. A pass that freed nothing can so be told from one with
+  nothing to take: in the day to 03:00 on 21 November, half of them freed
+  nothing, and their lines couldn't say which. Any account may pass
+  through the machine's state folder to its journal but not list it, and
+  every other file there is saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
   under noatime nothing on disk says. A replaced build is an older build
