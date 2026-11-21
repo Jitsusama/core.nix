@@ -376,17 +376,26 @@ impl History {
     /// The shape of the history at `path`, when a newer spend-watch keeps
     /// it, read without writing anything.
     pub fn newer(path: &Path) -> Option<i64> {
+        History::shape(path).filter(|shape| *shape > SCHEMA)
+    }
+
+    /// The shape of the history at `path`, when opening it would bring it
+    /// up to this one's first, read without writing anything. On a large
+    /// history that takes minutes and holds it throughout.
+    pub fn older(path: &Path) -> Option<i64> {
+        History::shape(path).filter(|shape| (1..SCHEMA).contains(shape))
+    }
+
+    fn shape(path: &Path) -> Option<i64> {
         let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
         let db = Connection::open_with_flags(path, flags).ok()?;
         db.busy_timeout(Duration::from_secs(10)).ok()?;
-        let shape: i64 = db
-            .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .ok()?
-            .parse()
-            .ok()?;
-        (shape > SCHEMA).then_some(shape)
+        db.query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .ok()?
+        .parse()
+        .ok()
     }
 
     /// Where a history of `shape` is set aside: a name nothing holds yet,
@@ -560,13 +569,13 @@ impl History {
         forget.commit().map_err(sql)
     }
 
-    /// Whether a session's log has been read, so what it said is counted
-    /// under it.
-    pub fn holds_session(&self, id: &str) -> bool {
+    /// Whether turns of a session from no later than `until` are counted
+    /// under it, as a parent's are once its log is read up to a fork.
+    pub fn holds_turns(&self, id: &str, until: f64) -> bool {
         self.db
             .query_row(
-                "SELECT EXISTS (SELECT 1 FROM sessions WHERE id = ?1)",
-                [id],
+                "SELECT EXISTS (SELECT 1 FROM turns WHERE session = ?1 AND at <= ?2)",
+                rusqlite::params![id, until],
                 |row| row.get(0),
             )
             .unwrap_or(false)

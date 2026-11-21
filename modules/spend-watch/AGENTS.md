@@ -82,12 +82,13 @@ feed speaks.
   another machine's logs are read: its subagent runs and quest
   workspaces stay there, so its runs' spend beyond their logs is
   elsewhere. A copy's turns from before its header are its parent's when
-  the parent's log is beside it or the parent's session is held already,
-  read from any machine's logs, so every copy of a session agrees; a copy
+  the parent's log is beside it or the parent's turns from before the
+  fork are held already, read from any machine's logs, so every copy of a
+  session agrees, and a header alone naming the parent takes nothing; a copy
   brought before its parent counts whole until the parent lands, then is
   read again for its own turns. A brought log drops what a session of
   this machine's was counted for only when its header begins when this
-  machine's log of it does. Each machine's folder
+  machine's log of it does. Each machine's sessions folder
   stands apart from every other's where it really is, links passed over
   inside, so nothing is counted twice. A session copied to another
   machine and gone on there keeps its id, so its logs share the turns
@@ -202,7 +203,10 @@ feed speaks.
   it. It clears on the first pass that finds it back. The history keeps
   since when each source has been as it is, so a restart doesn't reset it.
 - **History.** A shape that only grows is brought up to date where it
-  stands; one that doesn't read is set aside under a name nothing holds
+  stands, by the daemon as it starts, in minutes on a large one; a
+  command reading it meanwhile is told to try again, and with no daemon
+  it moves the history itself under the lock. One that doesn't read is
+  set aside under a name nothing holds
   yet and built again, and each feed is told what's kept of its bill, none
   of it then, so it tells the bill again. One a newer spend-watch keeps,
   as when an older system boots again, is never touched: the watch holds,

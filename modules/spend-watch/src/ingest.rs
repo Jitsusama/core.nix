@@ -372,11 +372,17 @@ fn check_copies(
     Ok(false)
 }
 
-/// The session a header names as its parent, when the history holds it.
+/// The session a header names as its parent, when the history counts its
+/// turns from before the fork. A header alone, brought from anywhere,
+/// names a session without saying anything was spent, so it can't take
+/// what a fork was counted for.
 fn held_parent(history: &History, header: Option<&serde_json::Value>) -> Option<String> {
-    header
-        .and_then(crate::logs::copies::parent_id)
-        .filter(|id| history.holds_session(id))
+    let header = header?;
+    let until = header
+        .get("timestamp")
+        .and_then(serde_json::Value::as_str)
+        .and_then(crate::time::parse)?;
+    crate::logs::copies::parent_id(header).filter(|id| history.holds_turns(id, until))
 }
 
 fn scan_slice(
@@ -815,6 +821,32 @@ mod tests {
                 2,
                 "a fork of a brought session counted its parent's turn again after {scans} \
                  scans"
+            );
+        }
+    }
+
+    // A header is all a brought log needs to name a session, and it says
+    // nothing was spent, so a parent known only by one can't take the
+    // turns a fork of this machine's was counted for before it began.
+    #[test]
+    fn a_parent_s_header_alone_takes_nothing_from_a_fork() {
+        let dir = tempfile::tempdir().unwrap();
+        write_fork(&dir.path().join("here/project"), ELSEWHERE, &[]);
+        let project = dir.path().join("teal/project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n")).unwrap();
+        let teal = "teal".to_owned();
+        let logs = own(&dir.path().join("here"))
+            .into_iter()
+            .chain(machine_logs(&dir.path().join("teal"), &[], Some(&teal)))
+            .collect::<Vec<_>>();
+        let history = History::memory();
+        for scans in 1..=2 {
+            scan(&history, &logs, Reading::default()).unwrap();
+            assert_eq!(
+                turns(&history),
+                2,
+                "a fork lost its turns to a parent known only by its header after {scans} scans"
             );
         }
     }
