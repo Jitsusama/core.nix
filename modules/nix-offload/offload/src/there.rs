@@ -1178,11 +1178,55 @@ fn holder_of(text: &str) -> (Option<&str>, Option<u64>) {
     (pid, words.next().and_then(|until| until.parse().ok()))
 }
 
+/// Makes `folder` for the turns where it isn't there, and holds it to
+/// this account alone, or says why it can't be used.
+fn turns_kept_to_us(folder: &Path) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(folder)
+        .map_err(|error| error.to_string())?;
+    // One already there, as in a shared temporary folder, must be this
+    // account's alone, or another account could hold every turn.
+    match fs::symlink_metadata(folder) {
+        // SAFETY: geteuid only reads the process's own user id.
+        Ok(made) if made.is_dir() && made.uid() == unsafe { libc::geteuid() } => {
+            // One other accounts could write in may hold their files, a
+            // lock among them, so it's never used. One they can only read,
+            // as `create_dir_all` makes under a umask of 022 and
+            // changed-checks' own turns do, is made this account's alone.
+            if made.mode() & 0o022 != 0 {
+                return Err(format!(
+                    "{} can be written by other accounts",
+                    folder.display()
+                ));
+            }
+            if made.mode() & 0o077 != 0 {
+                fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).map_err(
+                    |error| {
+                        format!(
+                            "{} can be read by other accounts: {error}",
+                            folder.display()
+                        )
+                    },
+                )?;
+            }
+            Ok(())
+        }
+        Ok(_) => Err(format!(
+            "{} isn't a folder of this account's own",
+            folder.display()
+        )),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 /// [`sending_to`], waiting at most `waits` for the turn.
 fn sending_to_within(folder: &Path, host: &str, waits: std::time::Duration) -> Option<fs::File> {
     use std::io::Seek;
     use std::os::fd::AsRawFd;
-    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+    use std::os::unix::fs::OpenOptionsExt;
     let name: String = host
         .chars()
         .map(|each| {
@@ -1200,44 +1244,8 @@ fn sending_to_within(folder: &Path, host: &str, waits: std::time::Duration) -> O
         );
         None
     };
-    if let Err(error) = fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(folder)
-    {
-        return untaken(error.to_string());
-    }
-    // One already there, as in a shared temporary folder, must be this
-    // account's alone, or another account could hold every turn.
-    match fs::symlink_metadata(folder) {
-        // SAFETY: geteuid only reads the process's own user id.
-        Ok(made) if made.is_dir() && made.uid() == unsafe { libc::geteuid() } => {
-            // One other accounts could write in may hold their files, a
-            // lock among them, so it's never used. One they can only read,
-            // as `create_dir_all` makes under a umask of 022 and
-            // changed-checks' own turns do, is made this account's alone.
-            if made.mode() & 0o022 != 0 {
-                return untaken(format!(
-                    "{} can be written by other accounts",
-                    folder.display()
-                ));
-            }
-            if made.mode() & 0o077 != 0
-                && let Err(error) = fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
-            {
-                return untaken(format!(
-                    "{} can be read by other accounts: {error}",
-                    folder.display()
-                ));
-            }
-        }
-        Ok(_) => {
-            return untaken(format!(
-                "{} isn't a folder of this account's own",
-                folder.display()
-            ));
-        }
-        Err(error) => return untaken(error.to_string()),
+    if let Err(why) = turns_kept_to_us(folder) {
+        return untaken(why);
     }
     // Never through a link, and readable by this account alone.
     let lock = match fs::OpenOptions::new()
