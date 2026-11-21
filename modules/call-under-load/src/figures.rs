@@ -22,8 +22,9 @@ pub fn percentile(values: &[f64], p: usize) -> Option<f64> {
 }
 
 /// Frames a second over each five seconds of samples, from a running
-/// count: `per` gives, from a window's last sample, the layers an encoded
-/// frame is counted in there.
+/// count: `per` gives, from a sample, the layers an encoded frame is
+/// counted in as of it. A window whose two ends count in different layers
+/// is left out, since how its frames split between them can't be told.
 ///
 /// Chrome's own `framesPerSecond` counts whole frames in the last second,
 /// so a steady 30 reads 29 in about half the seconds; a count over five
@@ -40,7 +41,7 @@ pub fn rates(rows: &[Value], side: &str, key: &str, per: fn(&Value) -> f64) -> V
         .filter_map(|(a, b)| {
             let (from, to) = (a["t"].as_f64()?, b["t"].as_f64()?);
             let frames = (b[side][key].as_f64()? - a[side][key].as_f64()?) / per(b);
-            if to <= from {
+            if to <= from || per(a).total_cmp(&per(b)).is_ne() {
                 return None;
             }
             let slots = ((to - from) / 1000.0 * FPS).round().max(1.0);
@@ -201,11 +202,25 @@ mod tests {
             .map(|t| at(t, 30.0 * count(usize::try_from(t).unwrap())))
             .collect();
         assert_eq!(rates(&rows, "out", "framesEncoded", layers), vec![30.0]);
-        // Shedding a layer under load still sends every frame.
-        let mut shed = rows.clone();
-        shed[5]["out"]["framesEncoded"] =
-            json!(rows[0]["out"]["framesEncoded"].as_f64().unwrap() + 300.0);
-        shed[5]["out"]["scalabilityMode"] = json!("L2T3_KEY");
+        // Sent in two layers throughout, after shedding one under load,
+        // every frame still counts once.
+        let shed: Vec<Value> = rows
+            .iter()
+            .map(|row| {
+                let mut row = row.clone();
+                row["out"]["framesEncoded"] = json!(row["src"]["frames"].as_f64().unwrap() * 2.0);
+                row["out"]["scalabilityMode"] = json!("L2T3_KEY");
+                row
+            })
+            .collect();
+        // A window that sheds a layer partway can't say how its frames
+        // split, so it's left out rather than read as a dip or a surplus.
+        let mut shedding = rows.clone();
+        shedding[5] = shed[5].clone();
+        assert_eq!(
+            rates(&shedding, "out", "framesEncoded", layers),
+            Vec::<f64>::new()
+        );
         assert_eq!(rates(&shed, "out", "framesEncoded", layers), vec![30.0]);
         let one = layers(&json!({"out": {}}));
         assert!(

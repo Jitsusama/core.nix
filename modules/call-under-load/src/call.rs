@@ -3,12 +3,14 @@
 //! with a profile like Joel's, drawing on a headless Weston, never his
 //! screen, and the far end a headless Chrome. Both use Chrome's fake
 //! camera; no real one is ever opened. A call of Joel's stops it within
-//! ten seconds, from its first step to its last.
+//! fifteen seconds, from its first step to its last: the watch asks every
+//! five, an ask has five to answer, and a step five more to end.
 
 use crate::cdp::{self, Browser};
 use crate::gate::{self, Call};
 use serde_json::{Value, json};
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -98,18 +100,23 @@ struct Watch {
 
 impl Watch {
     fn start() -> Self {
+        Watch::asking(gate::a_call, TICK)
+    }
+
+    /// A watch that asks `ask` every `tick`.
+    fn asking(ask: fn() -> Call, tick: Duration) -> Self {
         let (tell, said) = mpsc::channel();
         let over = Arc::new(AtomicBool::new(false));
         let done = Arc::clone(&over);
         thread::spawn(move || {
             let why = loop {
-                match gate::a_call() {
+                match ask() {
                     Call::Off => {}
                     Call::On => break "Joel's call began".to_string(),
                     Call::Unknown(why) => break why,
                 }
                 // Asked on the call's own five-second beat.
-                thread::sleep(TICK);
+                thread::sleep(tick);
                 if done.load(Ordering::SeqCst) {
                     return;
                 }
@@ -118,7 +125,8 @@ impl Watch {
             // The call is given a moment to stop by itself and clean up.
             thread::sleep(GRACE);
             if !done.load(Ordering::SeqCst) {
-                println!("no test call this hour: {why}");
+                // A closed stdout mustn't keep the program from ending.
+                let _ = writeln!(std::io::stdout(), "no test call this hour: {why}");
                 std::process::exit(0);
             }
         });
@@ -314,16 +322,14 @@ fn steps(
         watch.wait_until(next)?;
     }
     let mine = list(near.eval("window.samples", WAIT)?);
-    // A call that never connected measured nothing, and says so as a
-    // failure rather than as an hour of empty figures.
-    if !mine.iter().any(|sample| sample["state"] == "connected") {
-        return Err("the call never connected".to_string().into());
-    }
+    connected(&mine)?;
     let far_samples = list(far.eval("window.samples", WAIT)?);
     let clicks = list(near.eval("window.taps.map((t) => t.frame)", WAIT)?)
         .iter()
         .filter_map(Value::as_f64)
         .collect();
+    // A call of Joel's heard while the samples were read still counts.
+    watch.stop()?;
     Ok(Ended::Ran {
         mine,
         far: far_samples,
@@ -331,8 +337,19 @@ fn steps(
     })
 }
 
-/// Refuses a camera that isn't Chrome's fake one, as `end`'s page named it:
-/// never a real camera, at either end.
+/// Refuses a call that never connected: it measured nothing, and says so
+/// as a failure rather than as an hour of empty figures.
+fn connected(samples: &[Value]) -> Result<(), Step> {
+    if samples.iter().any(|sample| sample["state"] == "connected") {
+        return Ok(());
+    }
+    Err("the call never connected".to_string().into())
+}
+
+/// Refuses a camera that isn't Chrome's fake one, as `end`'s page named it.
+/// It's an alarm, not the gate: the label is read once the camera's open,
+/// and what keeps a real one shut is `--use-fake-device-for-media-stream`,
+/// with which Chrome lists only its fake devices.
 fn fake(said: &Value, end: &str) -> Result<(), Step> {
     let label = said["label"].as_str().unwrap_or("");
     if label.contains("fake") {
@@ -348,6 +365,8 @@ fn fake(said: &Value, end: &str) -> Result<(), Step> {
 /// module's TPM link a closed local port, and neither opens the device.
 /// It's kept off Joel's keyring and his NSS database too, with a home of
 /// its own in the call's folder, and fetches nothing in the background.
+/// Its runtime folder is the call's own, which also keeps it off the
+/// sockets in Joel's, such as the one his open-tabs host answers on.
 fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -> Command {
     let mut command = Command::new(chrome);
     command
@@ -376,7 +395,11 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
 fn loaded(browser: &mut Browser, watch: &Watch) -> Result<(), Step> {
     let until = Instant::now() + WAIT;
     loop {
-        if browser.eval("typeof window.offer", WAIT)? == "function" {
+        // A page still navigating can refuse the ask; it's asked again.
+        if browser
+            .eval("typeof window.offer", WAIT)
+            .is_ok_and(|kind| kind == "function")
+        {
             return Ok(());
         }
         if Instant::now() > until {
@@ -432,6 +455,55 @@ mod tests {
                 "{key}={value} is missing from {env:?}"
             );
         }
+    }
+
+    fn on() -> Call {
+        Call::On
+    }
+
+    fn off() -> Call {
+        Call::Off
+    }
+
+    #[test]
+    fn a_call_of_joel_s_stops_a_step_and_the_call_s_beat() {
+        let watch = Watch::asking(on, Duration::from_millis(10));
+        let started = Instant::now();
+        let beat = watch.wait_until(started + Duration::from_secs(3));
+        assert!(
+            matches!(beat, Err(Ended::Stopped(ref why)) if why == "Joel's call began"),
+            "the call's beat ran on through Joel's call"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "the beat waited {:?} after Joel's call began",
+            started.elapsed()
+        );
+        // Dropped well within its grace, so the watch never ends the tests.
+        drop(watch);
+        let watch = Watch::asking(on, Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(100));
+        assert!(watch.stop().is_err(), "a step went on through Joel's call");
+    }
+
+    #[test]
+    fn with_no_call_on_the_beat_keeps_its_time() {
+        let watch = Watch::asking(off, Duration::from_millis(10));
+        let started = Instant::now();
+        assert!(
+            watch
+                .wait_until(started + Duration::from_millis(200))
+                .is_ok()
+        );
+        assert!(started.elapsed() >= Duration::from_millis(200));
+        assert!(watch.stop().is_ok());
+    }
+
+    #[test]
+    fn a_call_that_never_connected_fails() {
+        let new = [json!({"state": "new"}), json!({"state": "connecting"})];
+        assert!(matches!(connected(&new), Err(Step::Failed(_))));
+        assert!(connected(&[json!({"state": "connected"})]).is_ok());
     }
 
     #[test]

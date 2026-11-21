@@ -22,9 +22,10 @@ in
       # cadence still says when the figure goes stale. The socket always
       # exists, since it's socket-activated, so it can't gate the unit.
       SuccessExitStatus = [ 69 ];
-      # In the apps' slice, as Joel's own calls are, so the shaper classes
-      # its traffic as a call's and the apps' share of the CPU is what it
-      # gets: the figures are what a call of his would see.
+      # In the apps' slice, as Joel's own calls are, so the apps' share of
+      # the CPU is what it gets: the figures are what a call of his would
+      # see of the machine. Both ends are on the machine, so the line
+      # carries none of it.
       Slice = "app.slice";
       # A call runs 150 s and Chrome takes up to a minute to start under
       # load; one stuck past this is ended, its Chromes with it. A oneshot's

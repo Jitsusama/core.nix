@@ -11,9 +11,10 @@
 //! lag-watch's history and the launcher's openings from the journal, to
 //! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges.
 //!
-//! It never runs into a call of Joel's: it asks `a-call-is-on` before it
-//! starts and every five seconds after, and the calendar, and keeps ten
-//! minutes clear of any meeting. A run stopped or skipped writes nothing.
+//! It keeps out of Joel's calls: it asks `a-call-is-on`, which hears a
+//! call by its microphone, before it starts and every five seconds after,
+//! and the calendar, keeping ten minutes clear of any meeting there. A run
+//! stopped or skipped writes nothing.
 //!
 //! `call-under-load`, or `call-under-load now`, says the last hour's
 //! figures, in the form `--format` asks for (docs/commands.md).
@@ -33,9 +34,15 @@ use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
 use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
 
-/// How long the call runs: long enough for 28 five-second windows past
-/// its first ten seconds, short enough to leave the hour to Joel.
+/// How long the call runs: 140 samples past its first ten seconds, read
+/// as about 135 overlapping five-second windows, and short enough to
+/// leave the hour to Joel.
 const SECONDS: u64 = 150;
+
+/// The longest a run may take, its unit's start timeout: a meeting must be
+/// ten minutes clear of all of it, since starting Chrome under load can
+/// take minutes before the call's own 150 s.
+const LONGEST: u64 = 10 * 60;
 
 fn env_dir(var: &str, fallback: &str) -> PathBuf {
     std::env::var_os(var).map_or_else(
@@ -195,7 +202,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             .try_this("systemctl --user status google")
     })?;
     let started = seconds_now();
-    if let Some(why) = gate::kept_clear(&calendar, started * 1000, (SECONDS + 60) * 1000) {
+    if let Some(why) = gate::kept_clear(&calendar, started * 1000, LONGEST * 1000) {
         return skip(why);
     }
     let chrome = on_path("google-chrome-stable").ok_or_else(|| {

@@ -1,15 +1,15 @@
 //! Whether the hour's call may run: no call of Joel's on, as `a-call-is-on`
 //! says, and no meeting of his within ten minutes of it, as the google
 //! daemon's calendar says. The test call takes no camera of his, but it
-//! loads the machine and the line, and a meeting may start a call any
-//! moment.
+//! loads the machine, and a meeting may start a call any moment.
 
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// How long before and after a meeting the call keeps clear.
 const CLEAR_MS: u64 = 10 * 60 * 1000;
@@ -25,21 +25,53 @@ pub enum Call {
     Unknown(String),
 }
 
+/// How long `a-call-is-on` is given to answer: it answers in about 0.2 s
+/// under load, and one that hangs would leave the call running blind.
+const ASKING: Duration = Duration::from_secs(5);
+
 /// Asks `a-call-is-on`, which exits 0 for a call, 1 for none and 69 when
-/// it can't tell.
+/// it can't tell; one that doesn't answer in time can't tell either.
 pub fn a_call() -> Call {
-    match Command::new("a-call-is-on")
+    let mut child = match Command::new("a-call-is-on")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status()
+        .spawn()
     {
-        Ok(status) => match status.code() {
-            Some(0) => Call::On,
-            Some(1) => Call::Off,
-            code => Call::Unknown(format!("a-call-is-on exited {code:?}")),
-        },
-        Err(error) => Call::Unknown(format!("a-call-is-on couldn't run: {error}")),
+        Ok(child) => child,
+        Err(error) => return Call::Unknown(format!("a-call-is-on couldn't run: {error}")),
+    };
+    let until = Instant::now() + ASKING;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return match status.code() {
+                    Some(0) => Call::On,
+                    Some(1) => Call::Off,
+                    code => Call::Unknown(format!("a-call-is-on exited {code:?}")),
+                };
+            }
+            Ok(None) if Instant::now() < until => {
+                // A child's exit can't be waited on with a deadline in std.
+                thread::sleep(Duration::from_millis(20));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Call::Unknown(format!(
+                    "a-call-is-on didn't answer in {} s",
+                    ASKING.as_secs()
+                ));
+            }
+            Err(error) => return Call::Unknown(format!("a-call-is-on: {error}")),
+        }
     }
+}
+
+/// Whether a title's character may be printed: no control character, nor
+/// one that reorders or hides the text around it.
+fn printable(c: char) -> bool {
+    !c.is_control()
+        && !matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 
 /// One meeting from the calendar, its times in ms since 1970.
@@ -79,12 +111,13 @@ pub fn calendar(answer: &Value) -> Result<Calendar, String> {
             let end = meeting["end"].as_u64()?;
             let done = meeting["done"]["at"].as_u64().unwrap_or(end);
             Some(Meeting {
-                // A title is anyone's text, and it's printed to a terminal.
+                // A title is anyone's text, and it's printed to a terminal
+                // and the journal.
                 title: meeting["title"]
                     .as_str()
                     .unwrap_or("a meeting")
                     .chars()
-                    .filter(|c| !c.is_control())
+                    .filter(|c| printable(*c))
                     .collect(),
                 start,
                 end: end.min(done),
@@ -191,6 +224,18 @@ mod tests {
         let stale = calendar(&json!({"read": now - 61 * MIN, "records": []})).unwrap();
         let why = kept_clear(&stale, now, 4 * MIN).unwrap();
         assert_eq!(why, "the calendar was last read 61 min ago");
+    }
+
+    #[test]
+    fn a_title_keeps_its_words_and_loses_what_would_rewrite_a_terminal() {
+        let answer = json!({"read": 0, "records": [
+            meeting("Plan\u{1b}[2J\u{202e}ning\u{200b} sync", 0, MIN)
+        ]});
+        // Without its escape, what's left of a terminal's command is plain text.
+        assert_eq!(
+            calendar(&answer).unwrap().meetings[0].title,
+            "Plan[2Jning sync"
+        );
     }
 
     #[test]

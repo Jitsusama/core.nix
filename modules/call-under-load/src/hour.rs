@@ -113,9 +113,9 @@ pub fn measures(
             call.freezes,
             0.0,
             true,
-            call_too(&format!(
-                "{} s frozen in the run",
-                call.frozen_s.unwrap_or(0.0)
+            call_too(&call.frozen_s.map_or_else(
+                || "how long it froze is unread".to_string(),
+                |s| format!("{s} s frozen in the run"),
             )),
         ),
         measure(
@@ -198,10 +198,17 @@ mod tests {
         assert_eq!(all.len(), 8);
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         assert_eq!(named("call sent fps p10").now, Some(30.0));
-        assert!(
-            !named("call sent fps p10").lower_is_better,
-            "frames sent read as lower is better"
-        );
+        // A figure read the wrong way passes cadence at any value.
+        for m in &all {
+            let fps = m.measure.contains(" fps ");
+            assert_eq!(
+                m.lower_is_better,
+                !fps,
+                "{} reads as {} is better",
+                m.measure,
+                if m.lower_is_better { "lower" } else { "higher" }
+            );
+        }
         assert_eq!(named("Chrome CPU wait per wakeup p99 ms").now, Some(19.7));
         let behind = &named("Chrome CPU wait per wakeup p99 ms").behind;
         assert!(
