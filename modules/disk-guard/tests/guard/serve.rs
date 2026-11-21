@@ -1,3 +1,10 @@
+//! The serving loop's scenarios: what the guard does step by step, what it
+//! tells the desktop, and what the system daemon answers.
+//!
+//! Long because it holds the scenarios of `src/serve.rs`, one file per
+//! source module as this folder's README says, and its cases share the one
+//! `Fake` desk and the guards built to step against it.
+
 use crate::procs::{link, stat, text};
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
