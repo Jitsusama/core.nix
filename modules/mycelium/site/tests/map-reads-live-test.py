@@ -1057,6 +1057,44 @@ def test_a_records_words_are_drawn_as_words(
     expect(drawn, "a cell's title was drawn as markup somewhere on the map").to_have_count(0)
 
 
+# Marks the map's marks and the drawer's first element as drawn now, and
+# counts the readings drawn after it, so a later look can say whether a
+# reading built them again.
+MARK_DRAWN = """() => {
+  document.querySelector('#world g.nodes').dataset.kept = 'yes';
+  document.querySelector('#panel-body').firstElementChild.dataset.kept = 'yes';
+  window.readingsDrawn = 0;
+  document.addEventListener('mycelium:modelled', () => window.readingsDrawn++);
+}"""
+# Whether the marks and the drawer marked by MARK_DRAWN are still the ones drawn.
+STILL_DRAWN = """() => [
+  document.querySelector('#world g.nodes').dataset.kept === 'yes',
+  document.querySelector('#panel-body').firstElementChild.dataset.kept === 'yes']"""
+
+
+def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    page.evaluate(MARK_DRAWN)
+    # A turn's worth of context, which moves no cell and no network.
+    used = {"limit": 1000000, "used": 12000}
+    last = "2026-11-16T10:00:00Z"
+    turned = {"cost_today": 0.1, "context": used, "turns_today": 2, "last_turn": last}
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "usage": turned}])
+    page.wait_for_function("window.readingsDrawn > 0", timeout=PACE_MS)
+    kept_marks, kept_drawer = page.evaluate(STILL_DRAWN)
+    assert kept_marks, "a reading that moved no shape built the map's marks again"
+    assert kept_drawer, "a reading that left the drawer's words built the drawer again"
+    # A cell gone changes the shape, so the map is drawn again.
+    mycelium_node.tell("cell", gone=["cell:TERN03"])
+    page.wait_for_function("window.readingsDrawn > 1", timeout=PACE_MS)
+    kept_marks, _ = page.evaluate(STILL_DRAWN)
+    assert not kept_marks, "a cell gone left the map as it was drawn"
+
+
 # What node.json's cells spent today, as the Spent Today fold lists it under
 # its sum, line by line: by machine and network in Now, by network on osprey
 # with only the cells that run there, and by branch in the skiff's network.

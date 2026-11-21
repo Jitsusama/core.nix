@@ -1318,7 +1318,7 @@ import {
   // reuses them rather than growing every tree again.
   let treesFor = null;
   const treeOf = (key, points) => {
-    if (treesFor?.m !== current || treesFor.L !== L) treesFor = { m: current, L, trees: new Map() };
+    if (treesFor?.shape !== shapeNow || treesFor.L !== L) treesFor = { shape: shapeNow, L, trees: new Map() };
     let tree = treesFor.trees.get(key);
     if (!tree) {
       tree = shortestTree(points);
@@ -1329,9 +1329,40 @@ import {
 
   // A new choice on the map as drawn keeps every mark where it is and inks
   // again only what the choice changes, so a Return at thousands of cells
-  // costs classes rather than a fresh map of them. A new reading, layout
-  // or fold draws the whole map.
+  // costs classes rather than a fresh map of them. So does a new reading
+  // that leaves the map's shape as it was: one comes every two seconds,
+  // and most move only a few cells' turns and spend, which are inks and
+  // words. A new shape, layout or fold draws the whole map.
   let drawnFor = null;
+  // The shape of the reading last placed, which the trees are kept for.
+  let shapeNow = "";
+  // What every shape and mark of the map is built from, as one string:
+  // each network's place in the tree, cells, liveness, feeds and waits
+  // ring, and each cell's home, network, extra networks and place. It is
+  // all the whole draw reads of a reading but inks, which a restyle reads
+  // afresh, so two readings with one shape draw the same map.
+  const SWELL_STEP = 0.5; // how far a waits ring grows, in map units, before the map is drawn again
+  const shapeOf = (m) => {
+    const parts = [];
+    for (const h of m.hubs.values()) {
+      const flags = `${h.edge ? 1 : 0}${h.alone ? 1 : 0}${isLive(h) ? 1 : 0}`;
+      const fed = [...(h.feeds || [])].join(";");
+      const grown = Math.round(swell(h.owes) / SWELL_STEP);
+      const sown = (seeds.get(h.key) || []).join(",");
+      const tree = `${h.within || ""} ${h.machine || ""}`;
+      parts.push(`h ${h.key} ${tree} ${h.cells.length} ${flags} ${h.shape} ${fed} ${grown} ${sown}`);
+    }
+    for (const s of m.cells) {
+      const at = pos.get(s.id);
+      const where = at ? `${at[0].toFixed(1)},${at[1].toFixed(1)}` : "-";
+      const also = (s.also || []).map((h) => h.key).join(",");
+      const asks = s.standing === "asks" ? 1 : 0;
+      parts.push(`c ${s.id} ${s.address} ${homeOf(s)} ${netOf(s)?.key || ""} ${asks} ${also} ${where}`);
+    }
+    for (const n of m.shared) parts.push(`n ${n.key} ${n.shape} ${n.cells.map((s) => s.id).join(",")}`);
+    parts.push(`m ${shownMachines().map((x) => x.name).join(",")}`);
+    return parts.join("\n");
+  };
   const restyleMarks = () => {
     const setClass = (el, cls) => {
       if (el.getAttribute("class") !== cls) el.setAttribute("class", cls);
@@ -1376,9 +1407,11 @@ import {
     const m = current;
     L = lay(m);
     pos = placed(m, L);
+    const shape = shapeOf(m);
+    shapeNow = shape;
     near = chosen ? nearOf(chosen) : null;
     const folds = foldsNow();
-    const same = drawnFor?.m === m && drawnFor.L === L && drawnFor.machines === machinesShown;
+    const same = drawnFor?.shape === shape && drawnFor.L === L && drawnFor.machines === machinesShown;
     if (same && sameSet(folds, folded)) {
       restyle();
       drawnAgain();
@@ -1386,7 +1419,7 @@ import {
     }
     const marks = same ? world.querySelector("g.nodes") : null;
     const was = folded;
-    drawnFor = { m, L, machines: machinesShown };
+    drawnFor = { shape, L, machines: machinesShown };
     const machines = shownMachines();
     const cords = [];
     const hyphae = [];
@@ -3774,6 +3807,7 @@ import {
   const toggleNow = () => (nowOpen && !chosen ? closeNow() : openNow());
 
   let shownKey = "";
+  let shownHtml = "";
   const panel = () => timed("mycelium-panel", drawPanel);
   // Where the column stands, kept as it scrolls, so a new panel need not
   // ask: a read or write of it straight after the map is redrawn lays the
@@ -3812,11 +3846,18 @@ import {
     // lays the whole page out again.
     const column = panelBody.parentElement;
     const same = key === shownKey;
-    const scroll = same ? column.scrollTop : 0;
+    // A reading that leaves the panel's words as they were leaves its
+    // markup alone too, with his place, focus and open folds in it, rather
+    // than parsing the same panel again every two seconds.
+    const unchanged = same && html === shownHtml;
+    const scroll = same && !unchanged ? column.scrollTop : columnTop;
     const hadFocus = panelBody.contains(document.activeElement);
-    panelBody.innerHTML = html;
+    if (!unchanged) {
+      panelBody.innerHTML = html;
+      shownHtml = html;
+    }
     drawer();
-    for (const d of panelBody.querySelectorAll("details[data-keep]")) if (opened.includes(d.dataset.keep) && (same || d.dataset.keep === "legend")) d.open = true;
+    if (!unchanged) for (const d of panelBody.querySelectorAll("details[data-keep]")) if (opened.includes(d.dataset.keep) && (same || d.dataset.keep === "legend")) d.open = true;
     shownKey = key;
     // A cell is looked at alone: the whole network as a tree under it
     // draws the eye away, so its drawer says only where it sits.
@@ -3832,8 +3873,8 @@ import {
       else afterPaint(() => renderTree({ keepScroll: false }));
       if (columnTop) column.scrollTop = columnTop = 0;
     }
-    if (same && held) panelBody.querySelector(`[data-go="${CSS.escape(held)}"]`)?.focus({ preventScroll: true });
-    if (same && onSummary) panelBody.querySelector(`details[data-keep="${onSummary}"] > summary`)?.focus({ preventScroll: true });
+    if (same && !unchanged && held) panelBody.querySelector(`[data-go="${CSS.escape(held)}"]`)?.focus({ preventScroll: true });
+    if (same && !unchanged && onSummary) panelBody.querySelector(`details[data-keep="${onSummary}"] > summary`)?.focus({ preventScroll: true });
     // Focus is never dropped with the panel it was in: it goes to the map,
     // whose pointer is still on the thing just left.
     if (hadFocus && !panelBody.contains(document.activeElement)) view.focus({ preventScroll: true });
