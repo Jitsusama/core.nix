@@ -150,11 +150,11 @@ function cellGoes(one, cells) {
 // The cell a look leads to as the agents daemon names it (cellGoes): the
 // live session found among `running` and `parked` by the address it goes
 // to. Where the daemon names none, cellOf's search decides. Where it names
-// a session those lists don't hold yet, since the daemon and the lists each
-// read the node and either can be a beat behind, the search decides among
-// the cell itself and the sessions on the look's quest alone. Where it says
-// the cell goes nowhere, only the cell itself, back in the lists, is found.
-// Either way a session on another quest that merely lists the cell's
+// a session those lists don't hold, or says the cell goes nowhere, the cell
+// itself is found, else the search decides among the sessions on the
+// look's quest alone: the daemon and the lists each read the node and
+// either can be a beat behind, and a record kept while the daemon is away
+// can be stale. A session on another quest that merely lists the cell's
 // address is never found, as cells.rs refuses it. The search for a look
 // naming no cell goes once every look names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
@@ -164,14 +164,11 @@ function cellFor(one, cells, running, parked) {
     }
     const held = (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
-    const itself = session => session.address === one.cell;
-    if (goes === null) {
-        return held.find(itself) ?? null;
-    }
     const quest = typeof one.quest === "string" ? one.quest : "";
-    const ours = held.filter(session => itself(session)
-        || (quest !== "" && session.presence?.quest === quest));
-    return held.find(session => session.address === goes) ?? cellOf(one, ours, []);
+    const ours = held.filter(session => quest !== "" && session.presence?.quest === quest);
+    return held.find(session => goes !== null && session.address === goes)
+        ?? held.find(session => session.address === one.cell)
+        ?? cellOf(one, ours, []);
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
