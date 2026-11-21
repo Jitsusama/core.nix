@@ -10,6 +10,7 @@ use std::time::Instant;
 use super::*;
 use crate::follow::run::STOP_HEARD_WITHIN;
 use crate::signals::ended_within;
+use crate::source::tests::marks_of;
 
 #[test]
 fn an_end_stuck_past_its_kill_holds_health_only_its_bound() {
@@ -44,18 +45,24 @@ fn an_end_stuck_past_its_kill_holds_health_only_its_bound() {
 }
 
 #[test]
-fn an_end_in_time_is_waited_for() {
-    // As each follower ends on its kill in milliseconds.
+fn an_end_in_time_is_waited_for_and_unsaid() {
+    // As each follower ends on its kill in milliseconds. Its bound of 5s is
+    // this test's alone, naming its line among the others heard.
     let (ended, waited) = mpsc::channel();
     assert!(
         ended_within(
             move || {
+                // A follower's kill taking its few milliseconds to land.
                 thread::sleep(Duration::from_millis(20));
                 let _ = ended.send(());
             },
             Duration::from_secs(5),
         ) && waited.try_recv().is_ok(),
         "an end that returned in time wasn't waited for"
+    );
+    assert!(
+        marks_of(&["ending them hadn't returned", "5s on"]).is_empty(),
+        "an end that returned in time was said to have left a follower running"
     );
 }
 

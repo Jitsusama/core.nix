@@ -48,7 +48,7 @@ pub(crate) fn assert_marked(what: &str, words: &[&str], times: usize, mark: u8) 
 
 /// The mark of each saying heard so far holding every one of `words`,
 /// which name the test's own, since the tests run at once.
-fn marks_of(words: &[&str]) -> Vec<u8> {
+pub(crate) fn marks_of(words: &[&str]) -> Vec<u8> {
     HEARD
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
