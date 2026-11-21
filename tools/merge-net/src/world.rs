@@ -9,6 +9,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{BufRead as _, BufReader, Read as _, Seek as _, SeekFrom, Write as _};
+use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -22,7 +23,7 @@ use crate::running;
 use crate::state::{now, short};
 use crate::subtests;
 use crate::watch::{
-    Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNREACHED, UNSENT, World, untaken,
+    Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNCOMPARED, UNREACHED, UNSENT, World, untaken,
 };
 
 /// What the net's changed-checks runs ask, so a builder lets them ahead of
@@ -49,16 +50,79 @@ const SILENT: Duration = Duration::from_mins(30);
 /// the queue takes, so neither clock may start until it's said.
 const TAKEN: &str = "nix-offload: building on ";
 
+/// What nix-offload says once a lent builder has taken a run, which no
+/// Mac's take says: a `TAKEN` line saying it took no Mac.
+const LENT: &str = "nix-offload: building on the lent builder ";
+
+/// What nix-offload says before a lent builder names a Mac's changed
+/// checks. It may then wait here, silent, for a turn to send them, so the
+/// naming's clocks start only at changed-checks' first line from there:
+/// the naming can hang, and nothing of nix-offload's says it took the run.
+const NAMES: &str = "nix-offload: no lent builder builds for ";
+
+/// What nix-offload says, every five minutes, while a run a builder took
+/// waits there for one of its turns. It says that after `TAKEN`, so a
+/// busy Mac's two hours of waiting would read as two hours of building.
+const WAITS: &str = "waits there for its turn";
+
+/// What begins every line nix-offload says itself. What a build prints
+/// under `-L` begins with its name, so only these say what nix-offload
+/// did, whatever a build prints.
+const OWN: &str = "nix-offload:";
+
+/// How long a run waiting for a turn may go without nix-offload saying it
+/// still waits before its turn counts as come. It says so every five
+/// minutes while it waits and nothing once the turn comes, so a run that
+/// builds silently after its turn reads as building, and one then stopped
+/// as a stall, not as one that compared nothing.
+const TURN_QUIET: Duration = Duration::from_mins(10);
+
+/// The most of a line the clock keeps to read it by, since nix-offload's
+/// own lines say what they are in their first words.
+const LINE_READ: usize = 512;
+
+/// The longest a run a builder took may wait there for a turn before it's
+/// stopped. nix-offload waits for as long as a turn's holder lives, and
+/// the Mac takes one comparison at a time, so a holder that never ends
+/// would otherwise hold every later one. The same holds for a naming's
+/// silent wait here for a turn to send it. One stopped while it waits
+/// compared nothing (`mac_ending`), so it rests and is tried again.
+const WAITS_AT_MOST: Duration = Duration::from_hours(3);
+
 /// When a run sent to a builder has been there too long, or too quiet.
 struct Clock {
     taken: Option<Instant>,
+    /// When the builder that took it gave it a turn and it began to
+    /// build, from which the longest it may run counts; none while it
+    /// waits for one.
+    building: Option<Instant>,
+    /// When nix-offload last said the run waits there for a turn, while
+    /// nothing built has come since.
+    waits: Option<Instant>,
     /// Where this run's part of the log begins. A run the net's restart
     /// cut short records nothing, so the next one has its name and writes
     /// after it, and the builder that took the run cut short hasn't taken
     /// this one.
     from: usize,
+    /// How much of the log the clock has read, so each look reads only
+    /// what was written since: a VM test's log runs to tens of megabytes,
+    /// and on 11 November reading each whole grew the net to 981 MB.
+    read: u64,
+    /// The start of the line being written when the log was last read.
+    line: Vec<u8>,
     written: u64,
     heard: Instant,
+    /// Why the net stopped the run, once it has: a stall's log says so,
+    /// since the runs after it on the same merge write on after it.
+    stopped: Option<&'static str>,
+    /// Whether a machine nearby took the run, rather than only the lent
+    /// builder that names a Mac's changed checks: only then can a Mac's
+    /// comparison have stalled there.
+    nearby: bool,
+    /// When nix-offload said a lent builder would name a Mac's changed
+    /// checks, so that time before a Mac took them went to the naming,
+    /// and a naming that never begins waits at most `WAITS_AT_MOST`.
+    named: Option<Instant>,
 }
 
 impl Clock {
@@ -67,15 +131,88 @@ impl Clock {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         Self {
             taken: None,
+            building: None,
+            waits: None,
             from: usize::try_from(written).unwrap_or(usize::MAX),
+            read: written,
+            line: Vec::new(),
             written,
             heard: now,
+            stopped: None,
+            nearby: false,
+            named: None,
         }
     }
 
-    /// Whether this run's part of `log` says a builder took it, read from
-    /// where it begins rather than from the runs before it.
-    fn said_taken(&self, log: &Path) -> bool {
+    /// Reads what `log` gained since the clock last read it, line by line.
+    /// A log written over shorter, as a test's is, is read again from
+    /// where this run's part begins.
+    fn hear(&mut self, log: &Path, now: Instant) {
+        let from = u64::try_from(self.from).unwrap_or(u64::MAX);
+        if self.written < self.read || self.read < from {
+            self.read = from;
+            self.line.clear();
+        }
+        let mut gained = Vec::new();
+        let read = fs::File::open(log).and_then(|mut file| {
+            file.seek(SeekFrom::Start(self.read))?;
+            file.take(self.written.saturating_sub(self.read))
+                .read_to_end(&mut gained)
+        });
+        let Ok(read) = read else {
+            return;
+        };
+        self.read += u64::try_from(read).unwrap_or(u64::MAX);
+        for piece in gained.split_inclusive(|byte| *byte == b'\n') {
+            let room = LINE_READ.saturating_sub(self.line.len());
+            self.line.extend(piece.iter().take(room));
+            if piece.ends_with(b"\n") {
+                let line = std::mem::take(&mut self.line);
+                self.heard_line(&String::from_utf8_lossy(&line), now);
+            }
+        }
+    }
+
+    /// What one line of the run's log says of it: a builder took it, it
+    /// waits there for a turn, or, once taken, it builds. nix-offload's
+    /// other lines, as that it may wait for room, say neither.
+    fn heard_line(&mut self, line: &str, now: Instant) {
+        let line = line.trim();
+        if line.starts_with(NAMES) {
+            self.named.get_or_insert(now);
+        } else if says_a_mac_took(line) && !self.nearby {
+            // A Mac's turn and its two hours begin at its own take, not
+            // at the naming before it, which took up to 20 minutes.
+            self.nearby = true;
+            self.taken = Some(now);
+            self.waits = None;
+            self.building = Some(now);
+        } else if says_taken(line) {
+            self.taken.get_or_insert(now);
+            self.waits = None;
+            self.building.get_or_insert(now);
+        } else if says_waits(line) {
+            self.waits = Some(now);
+            self.building = None;
+        } else if (self.taken.is_some() || self.named.is_some())
+            && !line.is_empty()
+            && !line.starts_with(OWN)
+        {
+            self.taken.get_or_insert(now);
+            self.waits = None;
+            self.building.get_or_insert(now);
+        }
+    }
+
+    /// Whether the run's turn came on the builder that took it: it said
+    /// it was taken, and either built or stopped saying it waits.
+    fn turn_came(&self) -> bool {
+        self.taken.is_some() && self.waits.is_none() && self.building.is_some()
+    }
+
+    /// This run's part of `log`, read from where it begins rather than
+    /// from the runs before it; none when it can't be read.
+    fn ours(&self, log: &Path) -> Option<Vec<u8>> {
         let mut ours = Vec::new();
         fs::File::open(log)
             .and_then(|mut file| {
@@ -84,25 +221,53 @@ impl Clock {
                 ))?;
                 file.read_to_end(&mut ours)
             })
-            .is_ok_and(|_| {
-                ours.windows(TAKEN.len())
-                    .any(|seen| seen == TAKEN.as_bytes())
-            })
+            .ok()?;
+        Some(ours)
     }
 
-    /// Whether the run whose log is `log` should be stopped at `now`.
+    /// Whether the run whose log is `log` should be stopped at `now`: one
+    /// a builder took that went silent, that built past the longest, or
+    /// that waited there, or here to send a naming, for a turn past the
+    /// most it may. A wait for a
+    /// turn says so every five minutes, so it's never silent, and the
+    /// longest counts only once the wait is over: from what it built
+    /// first, or from when it stopped saying it waits, `TURN_QUIET` on.
     fn overdue(&mut self, log: &Path, now: Instant) -> bool {
         let written = fs::metadata(log).map_or(0, |meta| meta.len());
         if written != self.written {
             self.written = written;
             self.heard = now;
-            if self.taken.is_none() && self.said_taken(log) {
-                self.taken = Some(now);
-            }
+            self.hear(log, now);
         }
-        self.taken.is_some_and(|taken| {
-            now.duration_since(taken) > LONGEST || now.duration_since(self.heard) > SILENT
-        })
+        if self
+            .waits
+            .is_some_and(|waits| now.duration_since(waits) > TURN_QUIET)
+        {
+            self.waits = None;
+            self.building.get_or_insert(now);
+        }
+        self.stopped = self.taken.and_then(|taken| {
+            if now.duration_since(self.heard) > SILENT {
+                return Some("it printed nothing for half an hour");
+            }
+            match self.building {
+                Some(building) if now.duration_since(building) <= LONGEST => None,
+                Some(_) if self.named.is_some() && !self.nearby => {
+                    Some("a lent builder named it past two hours")
+                }
+                Some(_) => Some("it built past two hours"),
+                None => (now.duration_since(taken) > WAITS_AT_MOST)
+                    .then_some("it waited for a turn past three hours"),
+            }
+        });
+        if self.taken.is_none()
+            && self
+                .named
+                .is_some_and(|named| now.duration_since(named) > WAITS_AT_MOST)
+        {
+            self.stopped = Some("it waited here past three hours for a turn to send it");
+        }
+        self.stopped.is_some()
     }
 }
 
@@ -613,6 +778,7 @@ impl Real {
         let args = build_args(&self.flake(commit), &self.system, check, picked, &takes);
         let child = Command::new("nix-offload")
             .args(args)
+            .process_group(0)
             .stdin(Stdio::null())
             .stdout(output.try_clone().ok()?)
             .stderr(output)
@@ -623,8 +789,10 @@ impl Real {
 
     /// Compare a Mac's checks at `commit` against `base` into `log`, as a
     /// gate whose Mac was away would have, in a checkout of `commit`; none
-    /// when it couldn't be started or ran past its time. One no Mac took
-    /// ends `UNSENT`, as nix-offload ends 75 for a Mac part it can't send.
+    /// when a builder took it and it ran past its time or was stopped. One
+    /// no Mac took ends `UNSENT`, as nix-offload ends 75 for a Mac part it
+    /// can't send, and one that compared nothing ends `UNCOMPARED`: one
+    /// that couldn't be started, or that `mac_ending` reads so.
     fn compared_on_a_mac(
         &self,
         commit: &str,
@@ -632,22 +800,246 @@ impl Real {
         log: &Path,
         dropped: &dyn Fn() -> bool,
     ) -> Option<i32> {
-        let apart = Comparing::at(self, commit).ok()?;
-        let output = file(log).ok()?;
+        // One that couldn't be started compared nothing, and says nothing
+        // of the merge, so it waits for the next round rather than being
+        // read as a stall told to the merge's owner. Why is said in the
+        // net's journal and in the run's log, which net.log points at,
+        // since a cause that lasts, as a full disk, is the net's to mend
+        // and not the merge's.
+        let unstarted = |why: String| {
+            let said = format!(
+                "merge-net: a Mac's comparison at {} couldn't start: {why}",
+                commit.get(..12).unwrap_or(commit)
+            );
+            eprintln!("{said}");
+            let _ = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log)
+                .and_then(|mut kept| writeln!(kept, "{said}"));
+            Some(UNCOMPARED)
+        };
+        let apart = match Comparing::at(self, commit) {
+            Ok(apart) => apart,
+            Err(why) => return unstarted(why),
+        };
+        let output = match file(log) {
+            Ok(output) => output,
+            Err(why) => return unstarted(format!("{}: {why}", log.display())),
+        };
         let mut clock = Clock::new(log, Instant::now());
-        let child = Command::new("nix-offload")
-            .args(mac_args(base))
-            .current_dir(&apart.folder)
-            .stdin(Stdio::null())
-            .stdout(output.try_clone().ok()?)
-            .stderr(output)
-            .spawn()
-            .ok()?;
-        match ended(child, &mut clock, commit, log, dropped)? {
-            UNSENT | UNREACHED => Some(UNSENT),
-            code => Some(code),
+        let child = output.try_clone().and_then(|out| {
+            Command::new("nix-offload")
+                .args(mac_args(base))
+                .current_dir(&apart.folder)
+                .process_group(0)
+                .stdin(Stdio::null())
+                .stdout(out)
+                .stderr(output)
+                .spawn()
+        });
+        let child = match child {
+            Ok(child) => child,
+            Err(why) => return unstarted(format!("nix-offload: {why}")),
+        };
+        let code = ended(child, &mut clock, commit, log, dropped);
+        mac_ended(code, &clock, log)
+    }
+}
+
+/// How a Mac's comparison that ended with `code` is read, from its own
+/// part of `log`, which the runs before it on the same merge share.
+fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
+    // One stopped once its turn came on a Mac is a stall, though nothing it
+    // built printed a line and the last its log says is that it waits.
+    let read = match code {
+        None if clock.turn_came() && clock.nearby => None,
+        code => mac_ending(code, clock.ours(log).as_deref()),
+    };
+    // net.log points at the run's log for why it compared nothing, and a
+    // run ended before a Mac took it printed nothing that says so. One the
+    // net stopped says why, as a wait for a turn that never came.
+    if read == Some(UNCOMPARED) {
+        let why = if code.is_none() {
+            clock.stopped.unwrap_or(
+                "it was ended before any Mac took it, or while it waited there for a turn",
+            )
+        } else {
+            "it failed only on reaching a cache, which says nothing of the change"
+        };
+        let _ = fs::OpenOptions::new()
+            .append(true)
+            .open(log)
+            .and_then(|mut kept| writeln!(kept, "merge-net: this compared nothing: {why}"));
+    }
+    // A stall is marked where it ended, since the runs after it write on in
+    // the same log, and its owner reading from the end would find theirs.
+    if read.is_none() {
+        let why = clock
+            .stopped
+            .unwrap_or("something outside the net stopped it");
+        let _ = fs::OpenOptions::new()
+            .append(true)
+            .open(log)
+            .and_then(|mut kept| writeln!(kept, "merge-net: this run stopped unfinished: {why}"));
+    }
+    read
+}
+
+/// Whether a line is nix-offload's saying a builder took the run.
+fn says_taken(line: &str) -> bool {
+    line.trim_start().starts_with(TAKEN)
+}
+
+/// Whether a line is nix-offload's saying a machine nearby, not a lent
+/// builder, took the run.
+fn says_a_mac_took(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with(TAKEN) && !line.starts_with(LENT)
+}
+
+/// Whether a line is nix-offload's saying the run waits there for a turn,
+/// rather than a build's printing the same words.
+fn says_waits(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with(OWN) && line.contains(WAITS)
+}
+
+/// Whether a run's part of its log says a Mac took it: the lent builder
+/// that names what changed builds nothing for a Mac.
+fn taken_in(ours: &[u8]) -> bool {
+    String::from_utf8_lossy(ours).lines().any(says_a_mac_took)
+}
+
+/// Whether a run's part of its log says it still waits for a turn on the
+/// builder that took it: the last line saying it was taken, waits or
+/// built says it waits. nix-offload's other lines, as that the builder may
+/// wait for room, which it says during a wait as well, say neither.
+fn waiting_in(ours: &[u8]) -> bool {
+    String::from_utf8_lossy(ours)
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| {
+            !line.is_empty() && (says_waits(line) || says_taken(line) || !line.starts_with(OWN))
+        })
+        .is_some_and(says_waits)
+}
+
+/// What a Mac's comparison that ended with `code` says of its riders,
+/// read with `ours`, its run's part of the log: `UNCOMPARED` for one
+/// that compared nothing, so it waits for the next round. One whose
+/// process was ended by a signal before any builder took it ran nothing:
+/// on 17 November a hold on the Mac's load stopped 135 that way, each
+/// read as a stall, and 65 merges were let go unchecked. One that failed
+/// on the network alone says nothing of the change either: on 19 November
+/// two such failed #5650's comparison and told its owner so. One ended
+/// while it still waited for a turn on the Mac that took it built
+/// nothing there either. A log that can't be read leaves the ending as it
+/// was.
+fn mac_ending(code: Option<i32>, ours: Option<&[u8]>) -> Option<i32> {
+    let Some(ours) = ours else {
+        return match code {
+            Some(UNSENT | UNREACHED) => Some(UNSENT),
+            code => code,
+        };
+    };
+    match code {
+        None if !taken_in(ours) || waiting_in(ours) => Some(UNCOMPARED),
+        Some(UNSENT | UNREACHED) => Some(UNSENT),
+        Some(code) if code != 0 && unresolved(&String::from_utf8_lossy(ours)) => Some(UNCOMPARED),
+        code => code,
+    }
+}
+
+/// What a download says when the network or the cache failed it, not
+/// what it fetched: on 19 November the Mac couldn't name its caches'
+/// hosts, and a resolver that times out, a link that won't connect or a
+/// cache that's down, resets the connection or fails its TLS fails the
+/// same way. A 404 isn't among them, since a fetch the change names can
+/// be missing.
+const NETWORK_WORDS: [&str; 12] = [
+    "Could not resolve host",
+    "Resolving timed out",
+    "Timeout was reached",
+    "Failed to connect",
+    "Couldn't connect to server",
+    "Recv failure",
+    "SSL connect error",
+    "SSL_ERROR_SYSCALL",
+    "HTTP error 500",
+    "HTTP error 502",
+    "HTTP error 503",
+    "HTTP error 504",
+];
+
+/// Whether a failed download, `why` after nix's "unable to download ", was
+/// a cache's: its nix-cache-info, a store path's narinfo or its nar. A fetch the change names
+/// at evaluation fails the same way when its host is wrong, and that's
+/// the change's.
+fn a_caches(why: &str) -> bool {
+    why.strip_prefix('\'')
+        .and_then(|quoted| quoted.split('\'').next())
+        .is_some_and(|url| {
+            url.ends_with("/nix-cache-info") || url.ends_with(".narinfo") || url.contains("/nar/")
+        })
+}
+
+/// The errors a build prints after a cache couldn't be reached, as nix
+/// printed them on 19 November: each error line's start, and words it must
+/// hold beside.
+const NETWORK_ERRORS: [(&str, &str); 5] = [
+    ("Cannot build ", ""),
+    ("path ", "there is no substituter that can build it"),
+    ("some references of path ", "could not be realised"),
+    (
+        "some substitutes for the outputs of derivation ",
+        "usually happens due to networking issues",
+    ),
+    ("Build failed due to failed dependency", ""),
+];
+
+/// What changed-checks says after any build that failed, a cache's too,
+/// when it builds a Mac's checks itself: what failed is in the errors
+/// above it, so it says nothing more of the change.
+const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
+
+/// Whether a failed run's log says it failed on the network alone: some
+/// download failed with `NETWORK_WORDS`, every other error is one
+/// `NETWORK_ERRORS` names, every reason is that dependencies failed, and
+/// no other line says why, as one that a check no longer evaluates. An evaluation error, a builder that
+/// failed (which a fetch failing on the network prints too, so that stays
+/// a failure) or a check that failed beside a lookup error is a failure.
+fn unresolved(words: &str) -> bool {
+    let mut named = false;
+    for line in words.lines().map(str::trim_start) {
+        if let Some(error) = line.strip_prefix("error:") {
+            let error = error.trim_start();
+            let unreached = error
+                .strip_prefix("unable to download ")
+                .is_some_and(|why| {
+                    a_caches(why) && NETWORK_WORDS.iter().any(|word| why.contains(word))
+                });
+            let known = unreached
+                || NETWORK_ERRORS
+                    .iter()
+                    .any(|(start, beside)| error.starts_with(start) && error.contains(beside));
+            if !known {
+                return false;
+            }
+            named |= unreached;
+        } else if let Some(reason) = line.strip_prefix("Reason:") {
+            let reason = reason.trim();
+            if !(reason.ends_with(" dependencies failed.")
+                || reason.ends_with(" dependency failed."))
+            {
+                return false;
+            }
+        } else if line.starts_with('\u{2715}') && line != CHANGED_FAILED {
+            return false;
         }
     }
+    named
 }
 
 /// What the net asks `nix-offload there` to compare a Mac's checks with,
@@ -661,7 +1053,10 @@ pub fn mac_args(base: &str) -> Vec<String> {
 }
 
 /// How `child`, building at `commit` into `log`, ended; none when it was
-/// dropped or ran past its time, which stops it.
+/// dropped or ran past its time, which stops it with its process group.
+/// nix-offload's ssh to a builder is in that group, and one left when its
+/// caller was ended went on alone: on 8 November two sat for over an hour,
+/// and one waiting for a Mac's turn would take it when it came.
 fn ended(
     mut child: std::process::Child,
     clock: &mut Clock,
@@ -678,6 +1073,11 @@ fn ended(
             }
             Ok(Some(status)) => return status.code(),
             Ok(None) if dropped() || clock.overdue(log, Instant::now()) => {
+                clock.stopped.get_or_insert("the net let it go");
+                let _ = Command::new("kill")
+                    .args(["-s", "KILL", "--", &format!("-{}", child.id())])
+                    .stderr(Stdio::null())
+                    .status();
                 let _ = child.kill();
                 let _ = child.wait();
                 return None;
@@ -1653,6 +2053,37 @@ mod tests {
     }
 
     #[test]
+    fn a_run_on_a_lent_builder_too_long_is_overdue() {
+        let log = std::env::temp_dir().join(format!("merge-net-lent-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = String::from("nix-offload: building on the lent builder lb-1\n");
+        let mut now = start;
+        while now <= start + LONGEST {
+            text.push_str("vm-test> still going\n");
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "a lent builder's run under two hours is overdue"
+            );
+            now += Duration::from_mins(10);
+        }
+        text.push_str("vm-test> still going\n");
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "a lent builder's run past two hours went on, though never silent"
+        );
+        assert_eq!(
+            clock.stopped,
+            Some("it built past two hours"),
+            "a lent builder's run past two hours was told as something else"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
     fn a_log_never_names_the_machine_it_ran_from() {
         assert_eq!(
             unnamed("built on Here, then here", "here"),
@@ -1789,6 +2220,26 @@ mod tests {
         git_in(&net.checkout(), &["config", "user.name", "net"]);
         git_in(&net.checkout(), &["config", "user.email", "net@t"]);
         (net, root)
+    }
+
+    #[test]
+    fn a_mac_comparison_that_cannot_start_compared_nothing() {
+        // Read as a stall, it would be told to the merge's owner, though
+        // the cause, here a commit the checkout lacks, is the net's.
+        let (net, root) = a_net("unstarted-mac", &json!([]));
+        let log = root.join("unstarted.log");
+        let ended = net.compared_on_a_mac(&"0".repeat(40), "base", &log, &|| false);
+        let said = fs::read_to_string(&log).unwrap_or_default();
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(
+            ended,
+            Some(UNCOMPARED),
+            "a Mac's comparison that couldn't start wasn't read as comparing nothing"
+        );
+        assert!(
+            said.contains("couldn't start: "),
+            "why a Mac's comparison couldn't start wasn't kept in its log: {said}"
+        );
     }
 
     #[test]
@@ -1998,5 +2449,603 @@ mod tests {
             "the merge that met a conflict wasn't undone"
         );
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// What #5650's comparison printed on 19 November when the Mac couldn't
+    /// name its caches' hosts, line for line, trimmed to one of each.
+    const LOOKUPS: &str = "\
+nix-offload: building on a-mac, /tmp/compare
+\
+warning: unable to download 'https://cache.nixos.org/6cr488dcf8v0b1rvcj0zwc6vbj9slx3k.narinfo': \
+Could not resolve hostname (6) Could not resolve host: cache.nixos.org; retrying in 277 ms \
+(attempt 1/5)
+error: unable to download \
+'https://cache.nixos.org/nar/0ipa1af092lbrh7nnh508k9r87k29wq1x2agpfd8kpwghdx0z2bh.nar.zst': \
+Could not resolve hostname (6) Could not resolve host: cache.nixos.org
+error: path '/nix/store/zjp7c0q83l4ab8fvz6vvhq2kcinanf71-rustc-1.99.1' is required, but \
+there is no substituter that can build it
+error: some references of path \
+'/nix/store/iy1y0jds2l1nn22rks4va7crg8r835bn-clippy-1.99.1' could not be realised
+error: some substitutes for the outputs of derivation \
+'/nix/store/js8vczs3xzm3gkx4iysycvmhzlrlb5hj-clippy-1.99.1.drv' failed (usually happens due \
+to networking issues); try '--fallback' to build derivation from source
+\u{2705} path:/Users/someone/.cache/nix-offload/there/1840030#checks.aarch64-darwin.stands-alone
+\u{274c} path:/Users/someone/.cache/nix-offload/there/1840030#checks.aarch64-darwin.\
+system-judges-each-part
+error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.drv'.
+       Reason: 3 dependencies failed.
+       Output paths:
+         /nix/store/zixb1jiaqlxc129m1lgdzx8mdl1w8my1-system-0.1.0
+";
+
+    #[test]
+    fn a_mac_comparison_ended_before_a_builder_took_it_compared_nothing() {
+        let ours = b"comparing aarch64-darwin's checks at 7103329c5f54";
+        assert_eq!(
+            mac_ending(None, Some(ours)),
+            Some(UNCOMPARED),
+            "a comparison ended before any builder took it was read as a stall"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_stopped_once_a_builder_took_it_is_a_stall() {
+        assert_eq!(
+            mac_ending(None, Some(b"nix-offload: building on a-mac")),
+            None,
+            "a comparison a builder took and that was stopped wasn't read as a stall"
+        );
+        assert_eq!(
+            mac_ending(None, None),
+            None,
+            "a stopped comparison whose log couldn't be read wasn't left a stall"
+        );
+    }
+
+    /// What nix-offload says while a busy Mac's turns are all held.
+    const WAITING: &str = "nix-offload: building on a-mac, /tmp/compare\n\
+        nix-offload: a-mac already runs as many builds sent to it as it takes at once, so this \
+        waits there for its turn, held in /tmp/turns by shells 41, 42\n";
+
+    #[test]
+    fn a_mac_comparison_stopped_while_it_waited_for_a_turn_compared_nothing() {
+        assert_eq!(
+            mac_ending(None, Some(WAITING.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison stopped while it waited for a turn on the Mac was read as a stall"
+        );
+        let built = format!("{WAITING}building '/nix/store/a-check.drv'\n");
+        assert_eq!(
+            mac_ending(None, Some(built.as_bytes())),
+            None,
+            "a comparison stopped once its turn came and it built wasn't read as a stall"
+        );
+    }
+
+    #[test]
+    fn the_longest_counts_from_a_macs_turn_not_its_wait() {
+        let log = std::env::temp_dir().join(format!("merge-net-turn-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = String::from(WAITING);
+        let mut now = start;
+        while now < start + WAITS_AT_MOST {
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "a run waiting for a turn on the Mac was stopped as overdue"
+            );
+            text.push_str("nix-offload: ... so this waits there for its turn, held\n");
+            now += Duration::from_mins(5);
+        }
+        let turn = now;
+        while now <= turn + LONGEST {
+            text.push_str("a-check> still going\n");
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "stopped before the longest from its turn"
+            );
+            now += Duration::from_mins(10);
+        }
+        text.push_str("a-check> still going\n");
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "past the longest from its turn, though never silent"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_wait_for_a_turn_that_never_comes_is_stopped_as_comparing_nothing() {
+        let log = std::env::temp_dir().join(format!("merge-net-held-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let mut text = String::from(WAITING);
+        let mut now = start;
+        while now <= start + WAITS_AT_MOST {
+            fs::write(&log, &text).unwrap();
+            assert!(
+                !clock.overdue(&log, now),
+                "stopped before the most it may wait"
+            );
+            text.push_str("nix-offload: ... so this waits there for its turn, held\n");
+            now += Duration::from_mins(5);
+        }
+        fs::write(&log, &text).unwrap();
+        assert!(
+            clock.overdue(&log, now),
+            "a turn held for good would hold the Mac's lane for good"
+        );
+        assert_eq!(
+            mac_ending(None, Some(text.as_bytes())),
+            Some(UNCOMPARED),
+            "a run stopped while it waited compared nothing, so it rests"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a run the net stopped while it waited compared nothing"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this compared nothing: it waited for a turn past three hours"),
+            "a wait the net gave up on reads like a stop from outside"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    /// What a Mac's comparison prints while a lent builder names its
+    /// changed checks, before any Mac takes them: nix-offload's one line,
+    /// then changed-checks' own, with no line saying the lent builder took
+    /// it (`captured_on` prints none).
+    const NAMING: &str = "nix-offload: no lent builder builds for aarch64-darwin and a machine \
+        nearby does, so changed-checks only names what changed, and what it names builds nearby\n\
+        changed-checks: naming what main to the change touched\n";
+
+    /// Appends `line` to `log`, as a run printing as it goes does.
+    fn printed(log: &Path, line: &str) {
+        let mut kept = fs::OpenOptions::new().append(true).open(log).unwrap();
+        writeln!(kept, "{line}").unwrap();
+    }
+
+    #[test]
+    fn a_naming_waiting_here_for_a_turn_to_send_it_is_overdue_only_past_three_hours() {
+        let log =
+            std::env::temp_dir().join(format!("merge-net-sending-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(
+            &log,
+            "nix-offload: no lent builder builds for aarch64-darwin and a machine nearby does, \
+             so changed-checks only names what changed, and what it names builds nearby\n\
+             nix-offload: 8 changed-checks runs already go out from this machine, so this \
+             waits its turn\n",
+        )
+        .unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        assert!(
+            !clock.overdue(&log, start + WAITS_AT_MOST),
+            "a naming waiting silently here for a turn to send it was stopped"
+        );
+        assert!(
+            clock.overdue(&log, start + WAITS_AT_MOST + Duration::from_secs(1)),
+            "a naming waiting here past three hours for a turn went on"
+        );
+        assert_eq!(
+            clock.stopped,
+            Some("it waited here past three hours for a turn to send it"),
+            "a naming stopped waiting here for a turn was told as something else"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_naming_past_two_hours_compared_nothing_and_says_the_lent_builder_took_them() {
+        let log = std::env::temp_dir().join(format!("merge-net-named-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        for step in 1..=6 {
+            let at = start + Duration::from_mins(20 * step);
+            printed(&log, "changed-checks: still naming");
+            assert!(
+                !clock.overdue(&log, at),
+                "a naming printing as it goes is overdue"
+            );
+        }
+        assert!(
+            clock.overdue(&log, start + LONGEST + Duration::from_secs(1)),
+            "a naming past two hours went on"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a naming the net stopped was read as a Mac's stall"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this compared nothing: a lent builder named it past two hours"),
+            "a naming's two hours were told as a Mac's build"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_macs_two_hours_count_from_its_own_take_not_the_naming_before_it() {
+        let log = std::env::temp_dir().join(format!("merge-net-take-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        let took = start + Duration::from_mins(20);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare");
+        assert!(!clock.overdue(&log, took), "a Mac's take is overdue");
+        for step in 1..=6 {
+            let at = took + Duration::from_secs(20 * 60 * step - 60);
+            printed(&log, "a-check> building");
+            assert!(
+                !clock.overdue(&log, at),
+                "a Mac building under two hours from its take is overdue"
+            );
+        }
+        assert!(
+            clock.overdue(&log, took + LONGEST + Duration::from_secs(1)),
+            "a Mac building past two hours from its take went on"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            None,
+            "a Mac's build stopped past its two hours wasn't read as a stall"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this run stopped unfinished: it built past two hours"),
+            "a Mac's two-hour stop doesn't say why"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_mac_comparison_stopped_while_a_lent_builder_named_it_compared_nothing() {
+        assert_eq!(
+            mac_ending(None, Some(NAMING.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison no Mac took was read as a Mac's stall"
+        );
+        let log = std::env::temp_dir().join(format!("merge-net-naming-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        assert!(
+            clock.overdue(&log, start + SILENT + Duration::from_secs(1)),
+            "a naming silent half an hour went on"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a run the net stopped while a lent builder named it was read as a Mac's stall"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this compared nothing: it printed nothing for half an hour"),
+            "a naming the net stopped doesn't say why"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_wait_read_through_nix_offloads_other_lines_and_only_its_own() {
+        let room = format!(
+            "{WAITING}nix-offload: the builder runs 2 builds, as many as it runs at once, so \
+             this may wait there for room\n"
+        );
+        assert_eq!(
+            mac_ending(None, Some(room.as_bytes())),
+            Some(UNCOMPARED),
+            "a room notice during a wait for a turn read as building"
+        );
+        let printed = "nix-offload: building on a-mac, /tmp/compare\n\
+            a-check> the stand waits there for its turn, held in /tmp/turns\n";
+        assert_eq!(
+            mac_ending(None, Some(printed.as_bytes())),
+            None,
+            "a build printing nix-offload's words read as waiting for a turn"
+        );
+    }
+
+    #[test]
+    fn a_run_silent_once_its_wait_ends_is_a_stall_not_a_comparison_of_nothing() {
+        let log = std::env::temp_dir().join(format!("merge-net-quiet-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, WAITING).unwrap();
+        assert!(!clock.overdue(&log, start), "a run just begun is overdue");
+        assert!(
+            !clock.overdue(&log, start + SILENT),
+            "a run waiting its turn half an hour is overdue"
+        );
+        assert!(
+            clock.overdue(&log, start + SILENT + Duration::from_secs(1)),
+            "silent half an hour once nix-offload stopped saying it waits"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            None,
+            "a run whose turn came and that then hung was read as comparing nothing"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this run stopped unfinished: it printed nothing for half an hour"),
+            "a stall is marked where it ended, since later runs write on after it"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_line_written_in_two_pieces_is_read_whole() {
+        let log = std::env::temp_dir().join(format!("merge-net-pieces-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        let (first, rest) = WAITING.split_at(WAITING.len() - 30);
+        fs::write(&log, first).unwrap();
+        assert!(!clock.overdue(&log, start), "half a line read is overdue");
+        fs::write(&log, WAITING).unwrap();
+        assert!(
+            !clock.overdue(&log, start + Duration::from_secs(5)),
+            "a line finished is overdue"
+        );
+        assert!(
+            clock.waits.is_some() && !rest.is_empty(),
+            "a wait line read in two pieces wasn't read as waiting"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    // It reads `/proc`, which is Linux's alone, and a Mac's dev shell builds
+    // merge-net too, where every read would say the child was gone.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_run_stopped_is_stopped_with_what_it_started() {
+        let folder = std::env::temp_dir().join(format!("merge-net-group-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
+        let (log, pid) = (folder.join("log"), folder.join("pid"));
+        fs::write(&log, "").unwrap();
+        let child = Command::new("sh")
+            .args([
+                "-c",
+                &format!("sleep 30 & echo $! > {}; wait", pid.display()),
+            ])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let written = (0..100).any(|_| {
+            let there = fs::read_to_string(&pid).is_ok_and(|said| !said.trim().is_empty());
+            if !there {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            there
+        });
+        assert!(written, "the sleep's pid was written");
+        let mut clock = Clock::new(&log, Instant::now());
+        assert_eq!(ended(child, &mut clock, "c", &log, &|| true), None);
+        let sleep = fs::read_to_string(&pid).unwrap();
+        let state = || fs::read_to_string(format!("/proc/{}/stat", sleep.trim())).ok();
+        let stopped = (0..100).any(|_| {
+            let dead = state().is_none_or(|stat| stat.contains(") Z "));
+            if !dead {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            dead
+        });
+        assert!(stopped, "what the stopped run started went on alone");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_mac_comparison_failing_on_host_lookups_alone_compared_nothing() {
+        assert_eq!(
+            mac_ending(Some(1), Some(LOOKUPS.as_bytes())),
+            Some(UNCOMPARED),
+            "a comparison that failed only because its builder couldn't name a cache counted"
+        );
+        let built_here = format!("{LOOKUPS}{CHANGED_FAILED}\n");
+        assert_eq!(
+            mac_ending(Some(1), Some(built_here.as_bytes())),
+            Some(UNCOMPARED),
+            "changed-checks' own word that a check failed, said after any failed build, counted"
+        );
+    }
+
+    #[test]
+    fn a_cache_that_timed_out_refused_or_was_down_compared_nothing_but_a_404_fails() {
+        let resolved = "Could not resolve hostname (6) Could not resolve host: cache.nixos.org\n";
+        // Only the error line ends on the host; the warning retries.
+        let error = LOOKUPS
+            .find(resolved)
+            .expect("the error line's lookup words are in the fixture");
+        let failed_with = |why: &str| {
+            format!(
+                "{}{why}\n{}",
+                &LOOKUPS[..error],
+                &LOOKUPS[error + resolved.len()..]
+            )
+        };
+        // One of curl's words each, so a word dropped from the list fails
+        // its own case.
+        let each = [
+            "Could not resolve host: cache.nixos.org",
+            "(28) Resolving timed out after 5000 milliseconds",
+            "Timeout was reached (28)",
+            "Failed to connect to cache.nixos.org port 443 after 3 ms",
+            "Couldn't connect to server (7)",
+            "Recv failure: Connection reset by peer (56)",
+            "SSL connect error (35)",
+            "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to cache.nixos.org:443",
+            "HTTP error 500 (curl error: Internal Server Error)",
+            "HTTP error 502 (curl error: Bad Gateway)",
+            "HTTP error 503 (curl error: Service Unavailable)",
+            "HTTP error 504 (curl error: Gateway Timeout)",
+        ];
+        for word in NETWORK_WORDS {
+            assert_eq!(
+                each.iter().filter(|why| why.contains(word)).count(),
+                1,
+                "no case, or more than one, holds the network's word {word}"
+            );
+        }
+        for why in each {
+            assert_eq!(
+                mac_ending(Some(1), Some(failed_with(why).as_bytes())),
+                Some(UNCOMPARED),
+                "a comparison that failed only on a cache it couldn't reach counted: {why}"
+            );
+        }
+        let one = LOOKUPS.replace("3 dependencies failed.", "1 dependency failed.");
+        assert_eq!(
+            mac_ending(Some(1), Some(one.as_bytes())),
+            Some(UNCOMPARED),
+            "a build whose one dependency failed on the network alone counted"
+        );
+        let missing = failed_with("HTTP error 404 (curl error: Not Found)");
+        assert_eq!(
+            mac_ending(Some(1), Some(missing.as_bytes())),
+            Some(1),
+            "a download missing from where the change named was let off as the network"
+        );
+        // A fetch the change names at evaluation, from a host that doesn't
+        // resolve, fails with the same words as the caches did.
+        let fetched = "error: unable to download 'https://example.invalid/source.tar.gz': \
+                       Could not resolve hostname (6) Could not resolve host: example.invalid\n";
+        assert_eq!(
+            mac_ending(Some(1), Some(fetched.as_bytes())),
+            Some(1),
+            "a fetch the change names, from a host that doesn't resolve, was let off"
+        );
+        // A cache's narinfo and its nix-cache-info, as well as its nar,
+        // are the cache's.
+        for file in ["0000.narinfo", "nix-cache-info"] {
+            let cache =
+                format!("error: unable to download 'https://cache.nixos.org/{file}': {resolved}");
+            assert_eq!(
+                mac_ending(Some(1), Some(cache.as_bytes())),
+                Some(UNCOMPARED),
+                "a cache's {file} it couldn't reach counted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mac_comparison_that_names_no_unresolved_host_still_fails() {
+        let words = "error: Cannot build '/nix/store/x-check.drv'.\n       \
+                     Reason: 2 dependencies failed.\n";
+        assert_eq!(
+            mac_ending(Some(1), Some(words.as_bytes())),
+            Some(1),
+            "a failure whose every line could follow a lookup's, but with no lookup, was let off"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparison_that_failed_beside_lookups_still_fails() {
+        let built = format!(
+            "{LOOKUPS}error: Cannot build '/nix/store/x-check.drv'.\n       \
+             Reason: builder failed with exit code 1.\n"
+        );
+        let evaluated = format!("{LOOKUPS}error: attribute 'example-darwin' missing\n");
+        let bare = format!("{LOOKUPS}error:\n       \u{2026} while evaluating\n");
+        let told = format!("{LOOKUPS}\u{2715} a check the change touched no longer evaluates\n");
+        for (words, what) in [
+            (built, "a build that failed"),
+            (evaluated, "an evaluation that failed"),
+            (bare, "an evaluation whose error is on the lines after"),
+            (told, "a check that no longer evaluates"),
+        ] {
+            assert_eq!(
+                mac_ending(Some(1), Some(words.as_bytes())),
+                Some(1),
+                "{what} was let off because its builder also couldn't name a cache"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mac_comparison_that_passed_or_was_unsent_stays_so() {
+        assert_eq!(
+            mac_ending(Some(0), Some(LOOKUPS.as_bytes())),
+            Some(0),
+            "a pass was turned uncompared"
+        );
+        assert_eq!(
+            mac_ending(Some(UNREACHED), Some(b"")),
+            Some(UNSENT),
+            "an unreached Mac wasn't read as unsent"
+        );
+        for code in [UNSENT, UNREACHED] {
+            assert_eq!(
+                mac_ending(Some(code), Some(LOOKUPS.as_bytes())),
+                Some(UNSENT),
+                "a run no Mac took waited a round, rather than being sent again"
+            );
+        }
+        assert_eq!(
+            mac_ending(Some(1), Some(b"Reason: builder failed with exit code 1.")),
+            Some(1),
+            "a plain failure was changed"
+        );
+        assert_eq!(
+            mac_ending(
+                Some(1),
+                Some(b"error: unable to download 'x': HTTP error 404")
+            ),
+            Some(1),
+            "a failure naming no unresolved host was let off"
+        );
+    }
+
+    #[test]
+    fn a_mac_comparisons_ending_is_read_from_its_own_part_of_the_log() {
+        let log = std::env::temp_dir().join(format!("merge-net-ours-{}.log", std::process::id()));
+        fs::write(&log, "nix-offload: building on a-mac, /tmp/compare\n").unwrap();
+        let clock = Clock::new(&log, Instant::now());
+        let mut file = fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(file, "comparing aarch64-darwin's checks at 7103329c5f54").unwrap();
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a run ended before a builder took it was read as taken from the run before"
+        );
+        assert!(
+            fs::read_to_string(&log).unwrap().ends_with(
+                "this compared nothing: it was ended before any Mac took it, or while it \
+                     waited there for a turn\n"
+            ),
+            "the log net.log points at didn't say why the run compared nothing"
+        );
+        fs::remove_file(&log).unwrap();
     }
 }

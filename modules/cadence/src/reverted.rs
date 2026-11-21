@@ -95,7 +95,7 @@ pub fn owner(landings: &str, pr: u64) -> Option<String> {
 }
 
 /// The merges already told, by the PR that ended each and its owner's, and
-/// when; and the merges told that no Mac took their checks (unrun.rs), by
+/// when; and the merges told that their Mac checks went uncompared (unrun.rs), by
 /// commit.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Told {

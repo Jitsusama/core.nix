@@ -14,6 +14,10 @@
 //! a net restarted between rounds, as every switch that changes it does,
 //! takes it up again; one that ends in an error stays there, and the next
 //! round takes it up.
+//!
+//! Long because the queue, its lanes and how each kind of job settles
+//! share one lock and one record on disk, so a job's rest, hold or end
+//! can't be read apart from the queue that takes it up.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,11 +28,11 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::{
-    AT_ONCE, Bad, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt, clear_hold_of,
-    fixed_forward, list_flaky_unless_mended, listed_on_main, lock, pr_of, revert_and_tell,
-    same_drv, search, settle,
+    AT_ONCE, Bad, Confirming, Outcome, SEARCHES, SPLITS, World, ask_before_settling, attempt,
+    attempt_confirming, clear_hold_of, fixed_forward, list_flaky_unless_mended, listed_on_main,
+    lock, pr_of, revert_and_tell, same_drv, search, settle,
 };
-use crate::state::{State, now, short};
+use crate::state::{Ran, State, now, short};
 
 /// Something a round found that takes longer than its tests to settle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +140,13 @@ impl Job {
 /// unrun: a day, since a Mac away overnight is usual, and its owner can
 /// still compare it by hand.
 const UNRUN: u64 = 24 * 60 * 60;
+
+/// How long a Mac's comparison that compared nothing rests before it's
+/// taken up again: as long as it has waited, from ten minutes to an hour.
+/// A round can come a minute after the last, and each comparison holds a
+/// lent builder for many minutes, so one rerun each round would spend
+/// the builders on a Mac whose network is out all day.
+const RESTS: (u64, u64) = (10 * 60, 60 * 60);
 
 /// How often a net leaving looks again whether the write it waits on only
 /// builds or has ended.
@@ -353,6 +364,31 @@ impl<'a> Settler<'a> {
         lock(&self.queue).held.iter().any(|held| held == test)
     }
 
+    /// Whether a job for `test` is held or kept on disk, as one resting
+    /// is, so a round handing it again would write over its rest and day.
+    pub fn keeps(&self, test: &str) -> bool {
+        self.holds(test) || self.state.keeps_settling(test)
+    }
+
+    /// Whether a Mac's comparison `check` at `merge` was told to its owner
+    /// and let go, reverted, or let go as fixed forward, so handing it
+    /// again would start another day of tries, or decide its revert again.
+    /// One that failed twice had its revert decided, though a revert
+    /// dropped as the check is flaky at main's newest head leaves no
+    /// finding at the merge.
+    pub fn told(&self, check: &str, merge: &str) -> bool {
+        ["mac-unrun", "failed", "fixed-forward"]
+            .into_iter()
+            .any(|kind| self.state.found(kind, check, merge))
+            || self
+                .state
+                .runs(merge, check)
+                .iter()
+                .filter(|ran| **ran == Ran::Failed)
+                .count()
+                >= super::FAILURES
+    }
+
     /// Run `write` while nothing else writes the hold.
     pub fn write<R>(&self, write: impl FnOnce() -> R) -> R {
         while self.leaving() {
@@ -422,6 +458,15 @@ impl<'a> Settler<'a> {
             let Some(job) = Job::from_json(&kept) else {
                 continue;
             };
+            // A rest is at most `RESTS.1`, so one ending further off was
+            // set before the clock stepped back, and is due rather than
+            // left to rest, untried and untold, for as far as it stepped.
+            if kept["after"]
+                .as_u64()
+                .is_some_and(|after| after > now() && after <= now() + RESTS.1)
+            {
+                continue;
+            }
             let mut queue = lock(&self.queue);
             if queue.held.iter().any(|held| held == job.test()) {
                 continue;
@@ -563,29 +608,81 @@ impl<'a> Settler<'a> {
     }
 
     /// Compare a Mac's checks at `merge` as `check`, and revert the merge
-    /// if they fail twice there. One no Mac took is kept, and the next
-    /// round takes it up again, until it was handed `UNRUN` ago: then it's
-    /// told as a finding naming its PR, and let go.
+    /// if they fail twice there. One no Mac took, or that compared nothing
+    /// (`UNCOMPARED`), is kept, and a round after its rest takes it up
+    /// again, until it was handed `UNRUN` ago: then it's told as a finding
+    /// naming its PR, and let go. One a builder took that stalled twice is
+    /// told the same way at once, since it compared nothing either.
     fn mac(&self, merge: &str, check: &str, since: u64) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
-        match attempt(world, state, merge, check) {
-            Outcome::Unsent if now().saturating_sub(since) >= UNRUN => {
+        // A held net starts nothing, so a rested comparison taken up while
+        // it's held rests again rather than being sent. Its day is moved on
+        // by the rest, so a long hold doesn't use it up and leave one
+        // unsent try after it told as a day with no Mac.
+        if let Some(held) = world.held() {
+            state.say(&format!(
+                "{check} at {} waits while the net is held: {}",
+                short(merge),
+                held.why
+            ));
+            let since = since.saturating_add(RESTS.0).min(now());
+            return rest(state, merge, check, since, RESTS.0);
+        }
+        // The merge has landed, so a run confirming a failure or a stall
+        // can wait out a rest, outside whatever outage the first fell in.
+        let before = state.runs(merge, check).len();
+        let outcome = attempt_confirming(world, state, merge, check, Confirming::AfterARest);
+        // A first failure or stall this attempt saw rests for the run that
+        // confirms it even past the day, which a run of two hours begun
+        // late in it can end in: told then, the merge would go unreverted
+        // and a stall be told as no Mac comparing it.
+        let confirms = state.runs(merge, check).len() > before;
+        // A failure a Mac saw before the runs that compared nothing is the
+        // owner's to read, so the finding names its log.
+        let failed = state
+            .runs(merge, check)
+            .contains(&Ran::Failed)
+            .then(|| state.log(merge, check, 1).display().to_string());
+        match outcome {
+            Outcome::Unsent if !confirms && now().saturating_sub(since) >= UNRUN => {
                 state.say(&format!(
-                    "no Mac took {check} at {} in a day: told, and let go",
+                    "no Mac compared {check} at {} in a day: told, and let go",
                     short(merge)
                 ));
+                // A Mac that took it once and stopped unfinished did
+                // compare something, so cadence says so rather than that
+                // no Mac compared it, naming the log the stall wrote: each
+                // run appends to the log of the failures before it, plus
+                // one. Named, the budget keeps it for the owner to read.
+                let runs = state.runs(merge, check);
+                let stalled = runs.iter().position(|ran| *ran == Ran::Stalled).map(|at| {
+                    let failures = runs[..at].iter().filter(|ran| **ran == Ran::Failed).count();
+                    let run = u32::try_from(failures + 1).unwrap_or(u32::MAX);
+                    state.log(merge, check, run).display().to_string()
+                });
                 let unrun = json!({
                     "kind": "mac-unrun", "test": check, "commit": merge,
                     "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
+                    "failed_log": failed,
+                    "stalled_once": stalled.is_some(),
+                    "log": stalled,
                 });
                 self.end(check, || state.find(&unrun).map(|_| ()))
             }
             Outcome::Unsent => {
+                let after = now().saturating_sub(since).clamp(RESTS.0, RESTS.1);
+                let ran = state.runs(merge, check);
+                let why = match ran.last() {
+                    Some(Ran::Failed) => "a Mac failed it once, and the run that confirms it",
+                    Some(Ran::Stalled) => "it stalled once on a Mac, and the next run",
+                    _ => "no Mac compared it, and it",
+                };
                 state.say(&format!(
-                    "no Mac took {check} at {}: it's tried again next round",
-                    short(merge)
+                    "{check} at {}: {why} is tried in {} min",
+                    short(merge),
+                    after / 60
                 ));
-                Ok(())
+                rest(state, merge, check, since, after)
             }
             Outcome::Failed => {
                 let subject = world.subject(merge);
@@ -598,7 +695,27 @@ impl<'a> Settler<'a> {
                 };
                 self.end(check, || revert_and_tell(world, state, &found, merge))
             }
-            Outcome::Passed | Outcome::Flaky | Outcome::Stalled => self.end(check, || Ok(())),
+            // One a builder took that stalled twice compared nothing, so
+            // it's told to its owner as one no Mac compared, which cadence
+            // tells, rather than let go as if it had passed, unchecked and
+            // unsaid.
+            Outcome::Stalled => {
+                state.say(&format!(
+                    "{check} at {} stalled twice on a Mac: told, and let go",
+                    short(merge)
+                ));
+                // Each run appends to the log of the failures before it,
+                // plus one, so the last stall's is one past the failure,
+                // if any; named, the budget keeps it for the owner to read.
+                let stalled = state.log(merge, check, if failed.is_some() { 2 } else { 1 });
+                let unrun = json!({
+                    "kind": "mac-unrun", "test": check, "commit": merge, "stalled": true,
+                    "owner_pr": pr_of(&world.subject(merge)), "since": since, "at": now(),
+                    "failed_log": failed, "log": stalled.display().to_string(),
+                });
+                self.end(check, || state.find(&unrun).map(|_| ()))
+            }
+            Outcome::Passed | Outcome::Flaky => self.end(check, || Ok(())),
         }
     }
 
@@ -640,6 +757,19 @@ fn clear_an_unsettled_revert(state: &State, test: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Keep a Mac's comparison of `merge` as `check`, handed `since`, to be
+/// taken up again `secs` from now.
+fn rest(state: &State, merge: &str, check: &str, since: u64, secs: u64) -> Result<(), String> {
+    let mut kept = Job::Mac {
+        merge: merge.to_owned(),
+        check: check.to_owned(),
+        since,
+    }
+    .to_json();
+    kept["after"] = json!(now() + secs);
+    state.keep_settling(check, &kept)
 }
 
 #[cfg(test)]

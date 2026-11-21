@@ -18,8 +18,9 @@
 //! record under a commit of its own tree. So `ready`, which reads every
 //! record that speaks for the head, marks the head in the net's state,
 //! and the net compares the merge of a marked head on a Mac, against its
-//! first parent, as a check of its own name. One no Mac takes for a day
-//! is kept as a `mac-unrun` finding naming its PR, and tried no more.
+//! first parent, as a check of its own name. One no Mac compares for a
+//! day, or that a Mac took twice and neither run finished, is kept as a
+//! `mac-unrun` finding naming its PR, and tried no more.
 
 use std::fmt::Write as _;
 use std::fs;
