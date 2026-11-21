@@ -3,8 +3,9 @@
 //! An owner not on this machine, one that fails, and one that runs past
 //! the clock each leave an answer saying why, never a hang.
 
-use std::io::Read;
-use std::process::{Command, Stdio};
+use std::io::{self, Read};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,9 @@ const LOOK: Duration = Duration::from_millis(20);
 /// How much of an owner's complaint a failure says: enough for its first
 /// line's reason, short enough for a row's side.
 const SAID_OF_ITS_COMPLAINT: usize = 160;
+/// How much of an owner's complaint is kept: far more than its first line
+/// needs, so a chatty owner's log costs the daemon no more than this.
+const COMPLAINT_KEPT: u64 = 4096;
 
 /// Each command's answer, in the order asked.
 pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
@@ -27,7 +31,7 @@ pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
         .iter()
         .map(|words| {
             let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
-            thread::spawn(move || one(&words))
+            thread::spawn(move || one(&words, CLOCK))
         })
         .collect();
     asked
@@ -40,7 +44,10 @@ pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
         .collect()
 }
 
-fn one(words: &[String]) -> Answer {
+/// The answer of the command `words`, or why there is none, within
+/// `clock`: the command's own run and its streams' closing both count, as
+/// a helper it left holding one would otherwise hold the ask.
+fn one(words: &[String], clock: Duration) -> Answer {
     let said = words.join(" ");
     let mut child = Command::new(&words[0])
         .args(&words[1..])
@@ -52,55 +59,78 @@ fn one(words: &[String]) -> Answer {
             std::io::ErrorKind::NotFound => format!("{} isn't on this machine", words[0]),
             _ => format!("{said} couldn't start: {error}"),
         })?;
-    // Read as it writes, so a long answer never fills the pipe and stalls
-    // the owner while it's waited on.
-    let out = child.stdout.take().ok_or("its answer couldn't be read")?;
-    let reading = thread::spawn(move || read_all(out));
-    // Its complaint is read the same way, so a failure can say why.
-    let complaint = child
-        .stderr
-        .take()
-        .ok_or("its complaint couldn't be read")?;
-    let complaining = thread::spawn(move || read_all(complaint));
-    let started = Instant::now();
+    let deadline = Instant::now() + clock;
+    let late = || format!("{said} gave no answer in {} s", clock.as_secs());
+    let (Some(out), Some(complaint)) = (child.stdout.take(), child.stderr.take()) else {
+        end(&mut child);
+        return Err(format!("{said}'s answer couldn't be read"));
+    };
+    // Both read as it writes, so neither fills its pipe and stalls the
+    // owner while it's waited on; its complaint so a failure can say why.
+    let reading = reader(out, u64::MAX);
+    let complaining = reader(complaint, COMPLAINT_KEPT);
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
             break status;
         }
-        if started.elapsed() > CLOCK {
+        if Instant::now() > deadline {
             // Its answer would come too late to be of use; it's ended so
             // nothing of it outlives the command.
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("{said} gave no answer in {} s", CLOCK.as_secs()));
+            end(&mut child);
+            return Err(late());
         }
         thread::sleep(LOOK);
     };
-    let bytes = reading
-        .join()
-        .map_err(|_| "its answer's reader stopped on a bug".to_owned())?
-        .map_err(|error| error.to_string())?;
     if !status.success() {
-        // A complaint that can't be had leaves the failure said as it ended.
-        let complaint = complaining
-            .join()
-            .ok()
-            .and_then(Result::ok)
-            .unwrap_or_default();
-        return Err(failed(&said, status.code(), &complaint));
+        // A complaint not had in time leaves the failure said as it ended.
+        let complaint = taken(&complaining, deadline).and_then(Result::ok);
+        return Err(failed(&said, status.code(), &complaint.unwrap_or_default()));
     }
+    let bytes = taken(&reading, deadline)
+        .ok_or_else(late)?
+        .map_err(|error| error.to_string())?;
     first(&said, &bytes)
 }
 
-/// Everything `stream` writes, read until it closes.
-fn read_all(mut stream: impl Read) -> std::io::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    stream.read_to_end(&mut bytes).map(|_| bytes)
+/// Ends a child that won't be waited for, so nothing of it outlives the
+/// ask.
+fn end(child: &mut Child) {
+    // Either may fail only for a child already gone, which is the end
+    // wanted.
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// What `stream` writes, up to `kept` bytes and the rest drained unread,
+/// sent once it closes.
+fn reader(stream: impl Read + Send + 'static, kept: u64) -> Receiver<io::Result<Vec<u8>>> {
+    let (send, receive) = mpsc::channel();
+    thread::spawn(move || {
+        let mut stream = stream;
+        let mut bytes = Vec::new();
+        let read = (&mut stream)
+            .take(kept)
+            .read_to_end(&mut bytes)
+            .and_then(|_| io::copy(&mut stream, &mut io::sink()))
+            .map(|_| bytes);
+        // The ask may have stopped waiting, which leaves no one to tell.
+        let _ = send.send(read);
+    });
+    receive
+}
+
+/// What a reader sent by `deadline`, or none when its stream was still open
+/// then, as it is while a helper the owner left holds it.
+fn taken<T>(receive: &Receiver<T>, deadline: Instant) -> Option<T> {
+    receive
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .ok()
 }
 
 /// Why an owner that ended badly gave no answer: how it ended, and the
 /// first line of its complaint, when it made one, which is where an owner
-/// says what it needed.
+/// says what it needed. Control characters go, as the line is shown on
+/// rows and carried to the realm's other machines.
 fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
     let ended = match code {
         Some(code) => format!("{said} ended with {code}"),
@@ -113,7 +143,11 @@ fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
         .find(|line| !line.is_empty());
     match line {
         Some(line) => {
-            let line: String = line.chars().take(SAID_OF_ITS_COMPLAINT).collect();
+            let line: String = line
+                .chars()
+                .filter(|each| !each.is_control())
+                .take(SAID_OF_ITS_COMPLAINT)
+                .collect();
             format!("{ended}: {line}")
         }
         None => ended,
@@ -133,8 +167,62 @@ fn first(said: &str, bytes: &[u8]) -> Answer {
 
 #[cfg(test)]
 mod tests {
-    use super::{failed, first};
+    use super::{failed, first, one};
     use serde_json::json;
+    use std::time::{Duration, Instant};
+
+    /// A clock short enough for a case, long enough for a shell to start
+    /// on a busy machine.
+    const SHORT: Duration = Duration::from_secs(3);
+
+    fn shell(script: &str) -> Vec<String> {
+        vec!["sh".to_owned(), "-c".to_owned(), script.to_owned()]
+    }
+
+    #[test]
+    fn an_owner_asked_says_its_complaint_when_it_fails() {
+        let said = one(&shell("echo 'say which realm' >&2; exit 1"), SHORT);
+        assert_eq!(
+            said,
+            Err(
+                "sh -c echo 'say which realm' >&2; exit 1 ended with 1: say which realm".to_owned()
+            ),
+            "the complaint is read from the owner itself"
+        );
+    }
+
+    #[test]
+    fn a_chatty_complaint_never_stalls_an_answer() {
+        // Far past a pipe's room, so a complaint not read as it's written
+        // would stall the owner until the clock.
+        let chatty = "i=0; while [ $i -lt 4000 ]; do echo 'a line of the log, again' >&2; \
+                      i=$((i+1)); done; echo '{\"ok\": 1}'";
+        assert_eq!(
+            one(&shell(chatty), SHORT),
+            Ok(json!({ "ok": 1 })),
+            "an owner writing much to its complaint still answers"
+        );
+    }
+
+    #[test]
+    fn a_helper_left_holding_a_stream_never_holds_the_ask() {
+        for script in [
+            "sleep 30 >/dev/null & echo 'gone' >&2; exit 1",
+            "sleep 30 2>/dev/null & echo '{}'",
+        ] {
+            let started = Instant::now();
+            let said = one(&shell(script), SHORT);
+            assert!(
+                started.elapsed() < SHORT + Duration::from_secs(2),
+                "{script} held the ask {:?}, past its clock",
+                started.elapsed()
+            );
+            assert!(
+                said.is_err(),
+                "{script} was answered from a stream not yet closed"
+            );
+        }
+    }
 
     #[test]
     fn an_owner_that_ends_badly_says_its_complaints_first_line() {
@@ -155,11 +243,16 @@ mod tests {
             "net --json was stopped",
             "one stopped by a signal is said stopped"
         );
-        let long = "x".repeat(500);
+        let long = "é".repeat(500);
         assert_eq!(
-            failed("net --json", Some(1), long.as_bytes()).len(),
-            "net --json ended with 1: ".len() + 160,
-            "a long complaint is cut to a row's room"
+            failed("net --json", Some(1), long.as_bytes()),
+            format!("net --json ended with 1: {}", "é".repeat(160)),
+            "a long complaint is cut to a row's room, by characters"
+        );
+        assert_eq!(
+            failed("net --json", Some(1), b"no \x1b[31mroute\x07"),
+            "net --json ended with 1: no [31mroute",
+            "control characters in a complaint go"
         );
     }
 

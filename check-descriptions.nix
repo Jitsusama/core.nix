@@ -3748,8 +3748,8 @@
     clippy finds nothing in system or its tests
   '';
   system-reads-its-machines-realm = ''
-    the system daemon asks mycelium in the realm its account's sessions are in, on Linux and on a
-    Mac, so a machine running nodes for two realms has its machines and mycelium read, and one in
+    the system daemon's unit names the realm its account's sessions are in, on Linux and on a Mac
+    running nodes for two realms, where mycelium refuses a command naming none, and on a machine in
     no realm names none
   '';
   system-serves-where-its-node-reads = ''

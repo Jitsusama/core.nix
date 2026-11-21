@@ -14,15 +14,17 @@
   ...
 }:
 let
-  # A workstation of either system whose account's sessions are in a realm.
-  inRealm =
+  # A workstation of either system running nodes for two realms, its
+  # account's sessions in the first: the machine mycelium asks which of.
+  inTwoRealms =
     bare: role:
     account (bare [
       role
       {
         home-manager.users.someone.jitsusama.mycelium = {
-          realm = "personal";
+          realm = "home";
           links = [ "one" ];
+          alsoJoins.other.links = [ "two" ];
         };
       }
     ]);
@@ -39,18 +41,19 @@ in
   # mycelium parts both said not read. One in no realm names none.
   system-reads-its-machines-realm =
     let
-      linux = inRealm bareNixos self.nixosModules.workstation;
-      mac = inRealm bareDarwin self.darwinModules.workstation;
-      apart = account workstation;
+      linux = inTwoRealms bareNixos self.nixosModules.workstation;
+      mac = inTwoRealms bareDarwin self.darwinModules.workstation;
       said = environment: lib.filter (lib.hasPrefix "MYCELIUM_REALM=") environment;
-      macSaid = mac.launchd.agents.system.config.EnvironmentVariables.MYCELIUM_REALM or null;
+      onLinux = machine: said machine.systemd.user.services.system.Service.Environment;
+      onMac = machine: machine.launchd.agents.system.config.EnvironmentVariables;
     in
     holds "system-reads-its-machines-realm"
       "The system daemon asks mycelium in no realm, or another than its account's sessions, on Linux or on a Mac, or names one on a machine in none."
       (
-        said linux.systemd.user.services.system.Service.Environment == [ "MYCELIUM_REALM=personal" ]
-        && macSaid == "personal"
-        && said apart.systemd.user.services.system.Service.Environment == [ ]
+        onLinux linux == [ "MYCELIUM_REALM=home" ]
+        && (onMac mac).MYCELIUM_REALM or null == "home"
+        && onLinux (account workstation) == [ ]
+        && !(onMac (account macWorkstation) ? MYCELIUM_REALM)
       );
   # The daemon serves where the machine's mycelium node reads how it
   # stands, on both kinds of machine: on Linux from the socket systemd
