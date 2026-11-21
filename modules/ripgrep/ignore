@@ -2,9 +2,13 @@
 # alike: other programs' data and the folders macOS guards. A search that reaches
 # one makes macOS ask whether the searcher may read it, again for every build
 # of the searcher, so an agent's search of the home folder asked over and over.
-# A search that names one of them still searches it.
+# The cloud's folders are here too, since a search reading one downloads
+# each file the Mac doesn't hold yet. A search that names one of them, or starts inside one, still
+# searches it.
 /Library/Containers/
 /Library/Group Containers/
+/Library/Mobile Documents/
+/Library/CloudStorage/
 /Desktop/
 /Documents/
 /Downloads/
