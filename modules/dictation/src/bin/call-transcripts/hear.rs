@@ -36,7 +36,7 @@ use std::time::Duration;
 use dictation::mel::RATE;
 use dictation::parakeet::{Parakeet, Word};
 use dictation::pieces;
-use dictation::transcript::{self, Line, Side, markdown_naming};
+use dictation::transcript::{self, Line, Side, markdown_unechoed};
 use dictation::voices::{self, Heard, Voices};
 
 use crate::Settings;
@@ -602,10 +602,13 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 }
 
 /// The transcript `writing` holds, under their side's name `them` where
-/// it's known and the voices' `note`.
+/// it's known and the voices' `note`. Joel's echoes are left out against
+/// each take of theirs whole, never its parts, so a take split by voice
+/// neither brings back an echo of it nor takes away his answer to it.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
+    let heard = split::unechoed(&writing.lines, &writing.pieces);
     let guesses = writing.guesses.as_deref();
-    markdown_naming(&writing.lines, me, them, note, guesses)
+    markdown_unechoed(&heard, me, them, note, guesses)
 }
 
 #[cfg(test)]

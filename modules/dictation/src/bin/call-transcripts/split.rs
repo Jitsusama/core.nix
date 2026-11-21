@@ -14,15 +14,16 @@
 //! take split when the call was last told apart is joined again before
 //! it's split, so a rejoin's grouping decides its parts afresh.
 //!
-//! Joel's microphone hearing their take is left out against the take
-//! whole, before it's split: an echo of a take that runs across the cut
-//! holds too few of either part's words to be taken for its echo, so it
-//! would otherwise come back as a line of his.
+//! Joel's microphone hearing their take is told against the take whole,
+//! as it was heard, never against its parts: an echo of a take that runs
+//! across the cut holds too few of either part's words to be taken for
+//! its echo, and his short answer in a part's words would be taken for
+//! one.
 
 use std::collections::HashMap;
 
 use dictation::parakeet::Word;
-use dictation::transcript::{self, Line};
+use dictation::transcript::{self, Line, Side};
 
 use crate::said;
 
@@ -58,18 +59,11 @@ struct Whole {
 /// piece's, and splits one whose pieces fall in more than one voice where
 /// the voice changes, each part keeping the words written in it; the
 /// pieces and words then say which of the lines, split, they're of. A
-/// line with no pieces keeps the voice it has, and a line of Joel's that
-/// echoes a whole take of theirs is left out.
+/// line with no pieces keeps the voice it has.
 pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     let mut lines = Vec::with_capacity(heard.lines.len());
     let mut words = HashMap::new();
-    let wholes = wholes(heard);
-    let taken: Vec<Line> = wholes.iter().map(|whole| whole.line.clone()).collect();
-    for whole in wholes {
-        // Joel's lines have no pieces, so leaving one out renumbers none.
-        if transcript::echoes(&whole.line, &taken) {
-            continue;
-        }
+    for whole in wholes(heard) {
         if whole.pieces.is_empty() {
             if !whole.words.is_empty() {
                 words.insert(lines.len(), whole.words);
@@ -96,6 +90,35 @@ pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     }
     *heard.lines = lines;
     *heard.words = words;
+}
+
+/// `lines` but Joel's that echo one of their takes, each take told whole
+/// as it was heard: the parts of one split by voice, next to each other
+/// and of the same take as `pieces` say, are joined again.
+pub fn unechoed(lines: &[Line], pieces: &[Piece]) -> Vec<Line> {
+    let take_of: HashMap<usize, usize> = pieces
+        .iter()
+        .filter_map(|piece| Some((piece.line?, piece.take)))
+        .collect();
+    let mut takes: Vec<Line> = Vec::new();
+    let mut last = None;
+    for (index, line) in lines.iter().enumerate() {
+        let take = take_of.get(&index).copied();
+        match takes.last_mut() {
+            Some(whole) if take.is_some() && take == last => {
+                whole.end = line.end;
+                whole.text = format!("{} {}", whole.text, line.text);
+            }
+            _ if line.side == Side::Theirs => takes.push(line.clone()),
+            _ => {}
+        }
+        last = take;
+    }
+    lines
+        .iter()
+        .filter(|line| !transcript::echoes(line, &takes))
+        .cloned()
+        .collect()
 }
 
 /// The lines as their takes were heard: next to each other, the parts of
@@ -230,8 +253,6 @@ fn spelled(words: &[Word]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use dictation::transcript::Side;
-
     use super::*;
 
     const SECOND: usize = 16_000;
@@ -398,17 +419,13 @@ mod tests {
         by_voice(&mut heard, voices);
     }
 
-    #[test]
-    fn joels_echo_of_a_take_split_across_it_stays_left_out() {
-        // Ada's take runs into Bo's at 16 s, and Joel's microphone hears
-        // its end, across the cut.
-        let echo = Line {
-            side: Side::Mine,
-            ..theirs(13, 18, "It today, not yet.")
-        };
+    /// Ada's take, 10 s to 19 s, running into Bo's at 16 s, and a line of
+    /// Joel's, split by voice; what's then written, Joel's echoes left
+    /// out, and whether `joels` echoes one of the parts alone.
+    fn split_beside(joels: &Line) -> (Vec<Line>, bool) {
         let mut lines = vec![
             theirs(10, 19, "We could ship it today. Not yet."),
-            echo.clone(),
+            joels.clone(),
         ];
         let mut pieces = pieces_of(0, 0, &[10, 13, 16]);
         let timed = [
@@ -427,17 +444,50 @@ mod tests {
             words: &mut words,
         };
         by_voice(&mut heard, &[Some(0), Some(0), Some(1)]);
+        let of_a_part = transcript::echoes(joels, &lines);
+        (unechoed(&lines, &pieces), of_a_part)
+    }
+
+    fn joels(from_s: usize, to_s: usize, text: &str) -> Line {
+        Line {
+            side: Side::Mine,
+            ..theirs(from_s, to_s, text)
+        }
+    }
+
+    #[test]
+    fn joels_echo_of_a_take_split_across_it_stays_left_out() {
+        // Joel's microphone hears the take's end, across the cut.
+        let (written, of_a_part) = split_beside(&joels(13, 18, "It today, not yet."));
+        assert!(
+            !of_a_part,
+            "the echo is one of a part's, so this case shows nothing"
+        );
         assert_eq!(
-            said(&lines),
+            said(&written),
             [
                 ("We could ship it today.", Some(0), 10, 16),
                 ("Not yet.", Some(1), 16, 19)
             ],
             "Joel's echo of the take came back once it was split"
         );
+    }
+
+    #[test]
+    fn joels_answer_in_a_parts_words_is_his_own() {
+        let (written, of_a_part) = split_beside(&joels(20, 21, "Not yet."));
         assert!(
-            !transcript::echoes(&echo, &lines),
-            "the echo is one of a part's, so this case doesn't show it's left out whole"
+            of_a_part,
+            "the answer isn't one of a part's echoes, so this case shows nothing"
+        );
+        assert_eq!(
+            said(&written),
+            [
+                ("We could ship it today.", Some(0), 10, 16),
+                ("Not yet.", Some(1), 16, 19),
+                ("Not yet.", None, 20, 21)
+            ],
+            "Joel's answer was taken for an echo of Bo's part"
         );
     }
 
