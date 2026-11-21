@@ -719,6 +719,31 @@ QtObject {
         expect("back as a plain pi, whose window it would never be, it's let go",
             Viewers.viewersDue(keptAsked(4), [plain("held")], 10, gone(screens)),
             { open: [], kept: {} });
+        // Kept while Joel was on its workspace, ASKED_FOR doesn't run while he
+        // stays there, since he may work there for hours: once he leaves,
+        // it opens, served or not and him away or not, or ASKED_FOR runs
+        // from then if nothing can open it yet.
+        const keptThere = (workspace, more) => keptAsked(workspace,
+            Object.assign({ asked: true, there: true }, more ?? {}));
+        const lateLeft = Viewers.ASKED_FOR + 1;
+        expect("Joel on its workspace past ASKED_FOR, it waits",
+            Viewers.viewersDue(keptThere(9), [], lateLeft, gone(screens)),
+            { open: [], kept: keptThere(9) });
+        expect("and once he leaves, however late, it opens by its words",
+            Viewers.viewersDue(keptThere(4), [], lateLeft, gone(screens, { away: false }))
+                .open.map(one => one.into), [{ workspace: 4, column: 2 }]);
+        expect("served, with no words of its own, it opens by its session's once he leaves",
+            Viewers.viewersDue({ held: { workspace: 4, column: 2, at: 0, asked: true,
+                there: true } }, [hosted("held")], lateLeft, gone(screens, { away: false }))
+                .open.map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+        const leftUnviewable = Viewers.viewersDue({ held: { workspace: 4, column: 2, at: 0,
+            asked: true, there: true } }, [], lateLeft, gone(screens)).kept.held;
+        expect("left with nothing to open it by yet, ASKED_FOR runs from then",
+            [leftUnviewable?.at, leftUnviewable?.there], [lateLeft, undefined]);
+        expect("kept by a shell before this one, it lapses from the ask all the same",
+            Viewers.viewersDue(keptThere(9), [], lateLeft, gone(screens, { since: 5 })),
+            { open: [], kept: {} });
 
         // A viewer never opens where Joel is, so it never takes his focus
         // or flashes beside him: on the workspace he's on it waits until he

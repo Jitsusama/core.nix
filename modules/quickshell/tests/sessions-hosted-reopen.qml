@@ -244,6 +244,10 @@ ShellRoot {
             JSON.stringify(second));
         Expect.expect("and opens nothing while he's there", viewerSpawns("s-second").length === 0,
             Niri.spawns.join("\n"));
+        // He leaves it for another at the machine, not going away, which
+        // is what opens it: kept for him to go away, it would open hours
+        // later, on a workspace he moved on from.
+        Away.now = false;
         stage = "left";
         joelOn(40);
     }
@@ -526,6 +530,7 @@ ShellRoot {
         // and hasn't opened yet, is opening: the walk asks for no second
         // and goes on.
         Sessions.attaching = ({ "pi-hosted.s-asked": Date.now() });
+        walkedAt = Date.now();
         stage = "asking";
         Sessions.reopenAll([waitingEntry("s-asked"), waitingEntry("s-next")], root.never,
             kept({ "s-asked": keptOn(3), "s-next": keptOn(3) }), "");
@@ -534,8 +539,10 @@ ShellRoot {
     function asking() {
         if (viewerSpawns("s-next").length === 0)
             return;
-        Expect.expect("one asked for moments ago isn't asked for again, and the walk goes on",
+        Expect.expect("one asked for moments ago isn't asked for again",
             viewerSpawns("s-asked").length === 0, Niri.spawns.join("\n"));
+        Expect.expect("and the walk goes on without waiting out its patience for it",
+            Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
         // Two kept with words to wait by on a workspace Joel isn't on: one
         // whose viewer is open already, which viewKept leaves be, and one
         // whose viewer was asked for moments ago, which stays kept, so a
@@ -605,10 +612,12 @@ ShellRoot {
         }
     }
 
-    // Long enough for each walk to be done before the next begins.
+    // Long enough for each walk to be done before the next begins, and
+    // short of the check's own 60 s timeout, so a stage that never ends
+    // says which it is rather than the check ending with no word.
     Timer {
         running: true
-        interval: 90000
+        interval: 57000
         onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }
