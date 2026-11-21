@@ -85,7 +85,9 @@ pub fn revive(
             .as_ref()
             .and_then(|q| fs::read_to_string(reviving.quests.join(q).join("README.md")).ok())
             .map(|readme| revive::quest(&readme));
-        let hold = holding(s, node.as_deref());
+        let hold = revive::holding(s, node.as_deref(), is_pi, shows, |counts| {
+            held(&s.session, counts)
+        });
         let named = matches!(hold, Held::Running | Held::Parked);
         let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
             Verdict::Died { cwd } => cwd,
@@ -447,10 +449,13 @@ fn close_dead(session: &str, hold: &Held, holders: &[Holder]) -> usize {
         .count()
 }
 
-/// Whether `pid` shows a session: a pi, or a viewer of one a host runs.
-/// A window handed into a host keeps its session's mark, and its holder
-/// runs the viewer, not pi, so counting only a pi would close the window
-/// Joel reads a hosted session in whenever its host restarts.
+/// Whether `pid` shows a session, for a marked window's process as
+/// `close_dead` checks it (`pi_under`): a pi, or a viewer of one a host
+/// runs. A window handed into a host keeps its session's mark, and its
+/// holder runs the viewer, not pi, so counting only a pi would close the
+/// window Joel reads a hosted session in whenever its host restarts.
+/// Whether a holder keeps its session running is `revive::holding`'s,
+/// where a hosted session's viewer counts for nothing.
 fn lives(pid: u32) -> bool {
     is_pi(pid) || shows(pid)
 }
@@ -500,31 +505,19 @@ fn pi_under(pid: u32) -> bool {
     false
 }
 
-/// How `s` is held: by the node's holders where it lists them, a viewer
-/// counting only for a session no host runs (`revive::keeps_running`),
-/// or by a process here naming it where the node can't be asked.
-fn holding(s: &Seen, node: Option<&[Holder]>) -> Held {
-    match node {
-        Some(all) => revive::held(all, &s.session, |pid| {
-            revive::keeps_running(s.hosted.is_some(), is_pi(pid), shows(pid))
-        }),
-        None if held(&s.session) => Held::Running,
-        None => Held::Not,
-    }
-}
-
-/// Whether a process other than a pi holds `session`, naming it after
-/// `--session` on its command line, as a holder does. A holder whose pi
-/// parked has no pi under it, and waits for a key in its own window to
-/// start it, so a second one started elsewhere would write the same log.
-fn held(session: &str) -> bool {
+/// Whether a process here that `counts` holds `session`, naming it after
+/// `--session` on its command line, as a holder does (`revive::holding`
+/// says which count). A holder whose pi parked has no pi under it, and
+/// waits for a key in its own window to start it, so a second one
+/// started elsewhere would write the same log.
+fn held(session: &str, counts: &dyn Fn(u32) -> bool) -> bool {
     let Ok(procs) = fs::read_dir("/proc") else {
         return false;
     };
     procs
         .filter_map(Result::ok)
         .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        .filter(|&pid| !is_pi(pid))
+        .filter(|&pid| counts(pid))
         .filter_map(|pid| fs::read(format!("/proc/{pid}/cmdline")).ok())
         .any(|line| {
             let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();

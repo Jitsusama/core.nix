@@ -528,6 +528,28 @@ pub fn keeps_running(hosted: bool, pi: bool, viewer: bool) -> bool {
     pi || (viewer && !hosted)
 }
 
+/// How `seen` is held: by the node's `holders` where it lists them, else
+/// by a process here naming it (`named_here`, told which processes
+/// count). Either way a viewer counts only for a session no host runs
+/// (`keeps_running`); a holder here is no pi itself, since its pi runs
+/// under it.
+pub fn holding(
+    seen: &Seen,
+    holders: Option<&[Holder]>,
+    is_pi: impl Fn(u32) -> bool,
+    shows: impl Fn(u32) -> bool,
+    named_here: impl Fn(&dyn Fn(u32) -> bool) -> bool,
+) -> Held {
+    let hosted = seen.hosted.is_some();
+    match holders {
+        Some(all) => held(all, &seen.session, |pid| {
+            keeps_running(hosted, is_pi(pid), shows(pid))
+        }),
+        None if named_here(&|pid| !is_pi(pid)) => Held::Running,
+        None => Held::Not,
+    }
+}
+
 /// The realm the restart words hold a session in, after `--realm`.
 #[must_use]
 pub fn realm_of(restart: &str) -> Option<&str> {
@@ -966,7 +988,17 @@ mod tests {
             }),
             ..seen("A", None, false, "1")
         };
-        let held_hosted = held(&all, "s-A-1", |pid| keeps_running(true, false, viewer(pid)));
+        let plain = seen("A", None, false, "1");
+        let pi = |pid: u32| pid == 9;
+        // Where the node can't be asked, the viewer is the process here
+        // naming the session.
+        let here = |counts: &dyn Fn(u32) -> bool| counts(7);
+        let held_hosted = holding(&hosted, Some(&all), pi, viewer, here);
+        assert_eq!(
+            held_hosted,
+            Held::Dead(Vec::new()),
+            "a viewer only shows what its host runs, so it keeps nothing running"
+        );
         let named = matches!(held_hosted, Held::Running | Held::Parked);
         let q = quest_with("active", "active", None);
         assert_eq!(
@@ -975,20 +1007,35 @@ mod tests {
                 "its host, work-background, is down or gone: bring the host back, which resumes it"
                     .into()
             ),
-            "a viewer only shows what its host runs, so a host left down is still said"
+            "so a host left down is still said, and nothing judged dead is closed for it"
         );
         assert_eq!(
-            held(&all, "s-A-1", |pid| keeps_running(
-                false,
-                false,
-                viewer(pid)
-            )),
+            holding(&hosted, None, pi, viewer, here),
+            Held::Not,
+            "nor where the node can't be asked"
+        );
+        assert_eq!(
+            holding(&plain, Some(&all), pi, viewer, here),
             Held::Running,
             "one no host runs keeps its window while a viewer holds it"
         );
-        assert!(
-            keeps_running(true, true, false),
+        assert_eq!(
+            holding(&plain, None, pi, viewer, here),
+            Held::Running,
+            "the same where the node can't be asked"
+        );
+        let with_pi = holders(r#"{"command":["pi","--session","s-A-1"],"pid":9}"#);
+        assert_eq!(
+            holding(&hosted, Some(&with_pi), pi, viewer, here),
+            Held::Running,
             "a pi keeps any session running"
+        );
+        assert_eq!(
+            holding(&plain, None, pi, viewer, |counts: &dyn Fn(u32) -> bool| {
+                counts(9)
+            }),
+            Held::Not,
+            "a pi naming it here is no holder of it"
         );
     }
 
