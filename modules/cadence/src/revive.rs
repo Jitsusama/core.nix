@@ -516,6 +516,71 @@ pub fn held(holders: &[Holder], session: &str, runs: impl Fn(u32) -> bool) -> He
     }
 }
 
+impl Held {
+    /// Whether it keeps its session from being started again: a holder
+    /// runs it, or keeps it parked to start on a key.
+    #[must_use]
+    pub fn names(&self) -> bool {
+        matches!(self, Self::Running | Self::Parked)
+    }
+}
+
+/// Whether a command, by its words, is a hosted session's viewer: node
+/// running the harness's `scripts/host-join.ts`, as the launcher's
+/// waiting viewers do inside a shell that titles their window, or
+/// `mycelium attach` (or `holds ID attach`, as mycelium spells it now),
+/// inside that shell too, as the launcher runs every viewer.
+#[must_use]
+pub fn views<W: AsRef<[u8]>>(words: &[W]) -> bool {
+    let mycelium = words
+        .iter()
+        .position(|word| word.as_ref().rsplit(|&b| b == b'/').next() == Some(b"mycelium"));
+    words
+        .iter()
+        .any(|word| word.as_ref().ends_with(b"/scripts/host-join.ts"))
+        || mycelium.is_some_and(|at| {
+            words
+                .iter()
+                .skip(at + 1)
+                .any(|word| word.as_ref() == b"attach")
+        })
+}
+
+/// How `seen` is held: by the node's `holders` where it lists them, else
+/// by a process here naming it (`named_here`, told which processes
+/// count); a holder here is no pi itself, since its pi runs under it.
+/// A hosted session's viewer only shows what its host runs, so with the
+/// host down it keeps nothing alive: counted, it hid a host left down,
+/// since after a crash the launcher opens each hosted session's viewer
+/// to wait for its host. So for a session a host runs, a viewer's holder
+/// is left out altogether, known by its command while its viewer is down
+/// and its holder parked, or by its process (`is_viewer`), and its
+/// windows are never among those a restart closes as dead. For one no
+/// host is known to run, a viewer counts as a pi does: a pi started
+/// beside a host's would run twice on one log.
+pub fn holding(
+    seen: &Seen,
+    holders: Option<&[Holder]>,
+    is_pi: impl Fn(u32) -> bool,
+    is_viewer: impl Fn(u32) -> bool,
+    named_here: impl Fn(&dyn Fn(u32) -> bool) -> bool,
+) -> Held {
+    let hosted = seen.hosted.is_some();
+    match holders {
+        Some(all) if hosted => {
+            let counted: Vec<Holder> = all
+                .iter()
+                .filter(|h| !(views(&h.command) || (h.pid > 0 && is_viewer(h.pid))))
+                .cloned()
+                .collect();
+            held(&counted, &seen.session, is_pi)
+        }
+        Some(all) => held(all, &seen.session, |pid| is_pi(pid) || is_viewer(pid)),
+        None if named_here(&|pid| !(is_pi(pid) || (hosted && is_viewer(pid)))) => Held::Running,
+        None => Held::Not,
+    }
+}
+
 /// The realm the restart words hold a session in, after `--realm`.
 #[must_use]
 pub fn realm_of(restart: &str) -> Option<&str> {
@@ -935,6 +1000,118 @@ mod tests {
             judge(&hosted(true, false), Some(&q), |pid| pid == 9, false),
             Verdict::Alive,
             "one its quest's pid still runs is alive, wherever its host is"
+        );
+    }
+
+    #[test]
+    fn a_viewer_holds_a_conversation_only_where_no_host_is_known_to_run_it() {
+        // After a crash the launcher opens each hosted conversation's
+        // viewer to wait for its host, inside a shell titling its window,
+        // so one whose host stays down has a holder running a viewer and
+        // nothing else, its window open.
+        let all = holders(concat!(
+            r#"{"command":["sh","-c","exec \"$@\"","Reef","node","/lasts/scripts/host-join.ts","#,
+            r#""--view","--session","s-A-1"],"pid":7,"windows":"#,
+            r#"[{"terminal":"kitty","id":"4","within":"unix:@kitty-1"}]}"#
+        ));
+        let viewer = |pid: u32| pid == 7;
+        let hosted = Seen {
+            hosted: Some(Hosting {
+                host: "work-background".into(),
+                holds: true,
+                back: false,
+            }),
+            ..seen("A", None, false, "1")
+        };
+        let plain = seen("A", None, false, "1");
+        let pi = |pid: u32| pid == 9;
+        // Where the node can't be asked, the viewer is the process here
+        // naming the session.
+        let here = |counts: &dyn Fn(u32) -> bool| counts(7);
+        let held_hosted = holding(&hosted, Some(&all), pi, viewer, here);
+        assert_eq!(
+            held_hosted,
+            Held::Not,
+            "a viewer only shows what its host runs, so it holds nothing, \
+             and its window is none a restart closes"
+        );
+        // Once its host stays away past attach's patience, the holder
+        // keeps the window with its viewer down, parked.
+        let away = holders(concat!(
+            r#"{"command":["node","/lasts/scripts/host-join.ts","--session","s-A-1"],"#,
+            r#""pid":0,"parked":true}"#
+        ));
+        assert_eq!(
+            holding(&hosted, Some(&away), pi, viewer, here),
+            Held::Not,
+            "nor does one kept parked while its host is away, known by its command"
+        );
+        // One a viewer runs under words that don't say so, its process
+        // does.
+        let unsaid = holders(r#"{"command":["view-it","--session","s-A-1"],"pid":7}"#);
+        assert_eq!(
+            holding(&hosted, Some(&unsaid), pi, viewer, here),
+            Held::Not,
+            "nor one whose process is a viewer"
+        );
+        let named = held_hosted.names();
+        let q = quest_with("active", "active", None);
+        assert_eq!(
+            judge(&hosted, Some(&q), |_| false, named),
+            Verdict::Stranded(
+                "its host, work-background, is down or gone: bring the host back, which resumes it"
+                    .into()
+            ),
+            "so a host left down is still said, and nothing judged dead is closed for it"
+        );
+        assert_eq!(
+            holding(&hosted, None, pi, viewer, here),
+            Held::Not,
+            "nor where the node can't be asked"
+        );
+        // A hosted conversation's own holder, parked or here, still holds
+        // it.
+        let parked = holders(r#"{"command":["pi","--session","s-A-1"],"pid":0,"parked":true}"#);
+        assert_eq!(
+            holding(&hosted, Some(&parked), pi, viewer, here),
+            Held::Parked,
+            "a hosted one parked in a holder of its own is held"
+        );
+        assert_eq!(
+            holding(&hosted, None, pi, viewer, |counts: &dyn Fn(u32) -> bool| {
+                counts(8)
+            }),
+            Held::Running,
+            "and so is one a holder here names, where the node can't be asked"
+        );
+        assert_eq!(
+            holding(&plain, Some(&all), pi, viewer, here),
+            Held::Running,
+            "one no host runs keeps its window while a viewer holds it"
+        );
+        let neither = holders(r#"{"command":["pi","--session","s-A-1"],"pid":8}"#);
+        assert_eq!(
+            holding(&plain, Some(&neither), pi, viewer, here),
+            Held::Dead(Vec::new()),
+            "one no host runs, held by a process that's neither a pi nor a viewer, is dead"
+        );
+        assert_eq!(
+            holding(&plain, None, pi, viewer, here),
+            Held::Running,
+            "the same where the node can't be asked"
+        );
+        let with_pi = holders(r#"{"command":["pi","--session","s-A-1"],"pid":9}"#);
+        assert_eq!(
+            holding(&hosted, Some(&with_pi), pi, viewer, here),
+            Held::Running,
+            "a pi keeps any session running"
+        );
+        assert_eq!(
+            holding(&plain, None, pi, viewer, |counts: &dyn Fn(u32) -> bool| {
+                counts(9)
+            }),
+            Held::Not,
+            "a pi naming it here is no holder of it"
         );
     }
 

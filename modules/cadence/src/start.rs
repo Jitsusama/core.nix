@@ -85,17 +85,10 @@ pub fn revive(
             .as_ref()
             .and_then(|q| fs::read_to_string(reviving.quests.join(q).join("README.md")).ok())
             .map(|readme| revive::quest(&readme));
-        let hold = node.as_deref().map_or_else(
-            || {
-                if held(&s.session) {
-                    Held::Running
-                } else {
-                    Held::Not
-                }
-            },
-            |all| revive::held(all, &s.session, lives),
-        );
-        let named = matches!(hold, Held::Running | Held::Parked);
+        let hold = revive::holding(s, node.as_deref(), is_pi, is_viewer, |counts| {
+            held(&s.session, counts)
+        });
+        let named = hold.names();
         let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
             Verdict::Died { cwd } => cwd,
             Verdict::Stranded(why) => {
@@ -456,26 +449,26 @@ fn close_dead(session: &str, hold: &Held, holders: &[Holder]) -> usize {
         .count()
 }
 
-/// Whether `pid` shows a session: a pi, or a viewer of one a host runs.
-/// A window handed into a host keeps its session's mark, and its holder
-/// runs the viewer, not pi, so counting only a pi would close the window
-/// Joel reads a hosted session in whenever its host restarts.
+/// Whether `pid` shows a session, for a marked window's process as
+/// `close_dead` checks it (`pi_under`): a pi, or a viewer of one a host
+/// runs. A window handed into a host keeps its session's mark, and its
+/// holder runs the viewer, not pi, so counting only a pi would close the
+/// window Joel reads a hosted session in whenever its host restarts.
+/// Whether a holder keeps its session running is `revive::holding`'s,
+/// where a hosted session's viewer counts for nothing.
 fn lives(pid: u32) -> bool {
-    is_pi(pid) || fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| views(&line))
+    is_pi(pid) || is_viewer(pid)
+}
+
+/// Whether `pid` runs a hosted session's viewer, and nothing else.
+fn is_viewer(pid: u32) -> bool {
+    fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| views(&line))
 }
 
 /// Whether a command line, its words split by NUL, is a hosted session's
-/// viewer: node running the harness's `scripts/host-join.ts`, or
-/// `mycelium attach` (or `holds ID attach`, as mycelium spells it now).
+/// viewer (`revive::views`).
 fn views(line: &[u8]) -> bool {
-    let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();
-    let mycelium = words
-        .first()
-        .is_some_and(|program| program.rsplit(|&b| b == b'/').next() == Some(b"mycelium"));
-    words
-        .iter()
-        .any(|word| word.ends_with(b"/scripts/host-join.ts"))
-        || (mycelium && words.contains(&b"attach".as_slice()))
+    revive::views(&line.split(|&b| b == 0).collect::<Vec<_>>())
 }
 
 /// Whether a pi, or a hosted session's viewer, runs at or below `pid`.
@@ -504,18 +497,19 @@ fn pi_under(pid: u32) -> bool {
     false
 }
 
-/// Whether a process other than a pi holds `session`, naming it after
-/// `--session` on its command line, as a holder does. A holder whose pi
-/// parked has no pi under it, and waits for a key in its own window to
-/// start it, so a second one started elsewhere would write the same log.
-fn held(session: &str) -> bool {
+/// Whether a process here that `counts` holds `session`, naming it after
+/// `--session` on its command line, as a holder does (`revive::holding`
+/// says which count). A holder whose pi parked has no pi under it, and
+/// waits for a key in its own window to start it, so a second one
+/// started elsewhere would write the same log.
+fn held(session: &str, counts: &dyn Fn(u32) -> bool) -> bool {
     let Ok(procs) = fs::read_dir("/proc") else {
         return false;
     };
     procs
         .filter_map(Result::ok)
         .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
-        .filter(|&pid| !is_pi(pid))
+        .filter(|&pid| counts(pid))
         .filter_map(|pid| fs::read(format!("/proc/{pid}/cmdline")).ok())
         .any(|line| {
             let words: Vec<&[u8]> = line.split(|&b| b == 0).collect();
@@ -633,6 +627,8 @@ mod tests {
             b"node\0/h/agentic-harness.pi/scripts/host-join.ts\0--session\0s\0".as_slice(),
             b"/nix/store/x-mycelium/bin/mycelium\0attach\0s\0",
             b"/nix/store/x-mycelium/bin/mycelium\0holds\0s\0attach\0",
+            // As the launcher titles every viewer's window first.
+            b"sh\0-c\0printf t; exec \"$@\"\0Reef\0mycelium\0--realm\0h\0attach\0--session\0s\0",
         ] {
             assert!(
                 views(viewer),
