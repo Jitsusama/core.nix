@@ -171,7 +171,8 @@ function drawLooks(read: System): void {
   cursor.across(() => {
     looks.innerHTML = drawn;
   });
-  if (note.textContent === NOT_KNOWN || note.textContent === NOTHING) {
+  const left = note.textContent ?? "";
+  if (left.startsWith(NOT_KNOWN) || left.startsWith(NOTHING)) {
     noteSaid = undefined;
     sayWhen();
   }
@@ -374,7 +375,9 @@ function nextLook(): void {
   if (cursor.next(looks)) {
     return;
   }
-  note.textContent = looks.querySelector(".clear") === null ? NOT_KNOWN : NOTHING;
+  const answer = looks.querySelector(".clear") === null ? NOT_KNOWN : NOTHING;
+  // What the note said stays after it, as which record couldn't be read.
+  note.textContent = [answer, noteSaid ?? ""].filter((line) => line !== "").join(" ");
 }
 
 /** Copies `command`, and says whether it could. */

@@ -248,19 +248,29 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     system_page.wait_for_function(
         "row => document.activeElement?.dataset?.row === row", arg=MYCELIUM_LOOK, timeout=PACE_MS
     )
-    # With nothing anywhere worth a look, the list says so in one line.
-    quiet: list[dict[str, object]] = [
-        {"key": key, "side": []} for key in ["machine:kestrel", "machine:osprey"]
-    ]
-    system_daemon.tell("machine", changed=quiet)
-    parts = ["machines", "mycelium", "network"]
-    system_daemon.tell("part", changed=[{"key": f"part:{part}", "side": []} for part in parts])
-    expect(system_page.locator("#looks"), "an empty list didn't say so").to_have_text(
-        "Nothing is worth a look.", timeout=PACE_MS
-    )
+    quieted(system_page, system_daemon)
     # The cursor was on a look; with none left it rests on the list, not a row below.
     held = system_page.evaluate("document.activeElement?.id ?? null")
     assert held == "looks", "focus left the emptied list for another region"
+
+
+def quieted(page: Page, daemon: StandIn) -> None:
+    """Clear every side, and see the list say nothing is worth a look, in one line."""
+    quiet: list[dict[str, object]] = [
+        {"key": key, "side": []} for key in ["machine:kestrel", "machine:osprey"]
+    ]
+    daemon.tell("machine", changed=quiet)
+    parts = ["machines", "mycelium", "network"]
+    daemon.tell("part", changed=[{"key": f"part:{part}", "side": []} for part in parts])
+    expect(page.locator("#looks"), "an empty list didn't say so").to_have_text(
+        "Nothing is worth a look.", timeout=PACE_MS
+    )
+
+
+def test_a_says_what_the_list_cannot_know(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    quieted(system_page, system_daemon)
+    keyboard = system_page.keyboard
     keyboard.press("a")
     expect(system_page.locator("#note"), "a with no look didn't say why").to_have_text(
         "Nothing is worth a look."
@@ -286,6 +296,22 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     )
     expect(system_page.locator("#note"), "a stale note outlived the list").not_to_have_text(
         "What is worth a look isn't known yet."
+    )
+    # A record that can't be read leaves the list not known, and a's answer
+    # keeps the note's word on which record it was.
+    system_daemon.tell("machine", changed=[{"key": "machine:wren", "kind": "machine"}])
+    system_daemon.tell("part", changed=coming)
+    unread = system_page.locator("#note")
+    expect(unread, "a record not read went unsaid").to_contain_text(
+        "Couldn't read: machine:wren", timeout=PACE_MS
+    )
+    expect(system_page.locator("#looks"), "a record not read was taken as nothing").to_have_text(
+        "What is worth a look isn't known yet."
+    )
+    keyboard.press("a")
+    expect(unread, "a didn't answer").to_contain_text("What is worth a look isn't known yet.")
+    expect(unread, "a hid which record couldn't be read").to_contain_text(
+        "Couldn't read: machine:wren"
     )
 
 
