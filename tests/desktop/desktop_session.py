@@ -532,9 +532,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         def never() -> str:
             point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
             read = f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
-            status, journal = self.machine.execute(
-                self.in_session(read), timeout=ANSWERING * pace
-            )
+            status, journal = self.machine.execute(self.in_session(read), timeout=ANSWERING * pace)
             print(journal if status == 0 else f"{journal}\n(the journal's read stopped: {status})")
             return f"the shell never reported {prefix!r} as wanted"
 
