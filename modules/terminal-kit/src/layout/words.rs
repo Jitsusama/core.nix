@@ -288,7 +288,9 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
 /// cells wide and hands back the lines without the first's lead, this
 /// draws every line's inset itself, one line to an entry. The words are
 /// held to one line first, as the module says; into a pipe that one line
-/// is the paragraph.
+/// is the paragraph. A room too narrow for the hang still draws a cell
+/// of words a line, so below `inset + GAP + 1` cells the lines under the
+/// first run past it, as nothing narrower could read.
 pub fn hanging(words: &str, inset: usize, room: Room) -> Vec<String> {
     let lines = match room.cells() {
         None => vec![one_line(words).trim().to_owned()],
@@ -319,17 +321,15 @@ fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
 
 /// Words wrapped to `measure` cells, every line to the same measure, the
 /// first among them; `hanging` gives its first line more room than the
-/// rest. A run gives way at its items first,
-/// the dot going with the break, so no line ends or starts on one, and
-/// only an item too long for a line of its own breaks between its words,
-/// never parting what `held` keeps together. A held piece wider than
-/// the measure gives way at its words before any is shortened, since a
-/// figure cut to fit its unit loses the digits it's read for. A word
-/// longer than the measure is shortened in its middle, never broken
-/// across two: to the
-/// room left on its line where that's at least `SHARES` cells, so it
-/// doesn't leave the word before it alone, and otherwise on a line of
-/// its own.
+/// rest. A run gives way at its items first, the dot going with the
+/// break, so no line ends or starts on one, and only an item too long for
+/// a line of its own breaks between its words, never parting what `held`
+/// keeps together. A held piece wider than the measure gives way at its
+/// words before any is shortened, since a figure cut to fit its unit
+/// loses the digits it's read for. A word longer than the measure is
+/// shortened in its middle, never broken across two: to the room left on
+/// its line where that's at least `SHARES` cells, so it doesn't leave the
+/// word before it alone, and otherwise on a line of its own.
 pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
     measured(words, measure, measure)
 }
@@ -364,7 +364,11 @@ fn measured(words: &str, first: usize, rest: usize) -> Vec<String> {
                 let here = measure_of(lines.len());
                 let own = measure_of(lines.len() + usize::from(!line.is_empty()));
                 let left = here.saturating_sub(width(&line) + width(between));
-                let piece = if width(&piece) > own && !line.is_empty() && left >= SHARES {
+                // A piece that fits whole where it is stays whole, however
+                // narrow the line it would have gone on.
+                let piece = if !line.is_empty() && width(&parted(&line, &piece, between)) <= here {
+                    piece
+                } else if width(&piece) > own && !line.is_empty() && left >= SHARES {
                     shortened(&piece, left)
                 } else {
                     shortened(&piece, own)
@@ -593,18 +597,27 @@ mod tests {
             "the first line gave up the cells only the lines under it hang by"
         );
         assert_eq!(
-            hung(words, 4, Room::Cells(15)),
-            "one two\n    three four\n    five",
-            "hung words keep one measure for every line"
-        );
-        assert_eq!(
             hanging(words, 2, Room::Unbounded),
             ["  one two three four five"],
             "into a pipe a hanging paragraph is one line at its inset"
         );
-        for room in 6..30 {
-            for line in hanging(words, 2, Room::Cells(room)) {
-                assert!(width(&line) <= room, "{line:?} passed {room} cells");
+        // An item, a piece and a widowed word each fall, at some room,
+        // between the first line's measure and the rest's, so one set to
+        // the wrong measure runs a hung line past the room. Below the
+        // hang's own floor, a line under the first is a cell of words.
+        let cases = [
+            (words, 2),
+            ("aaaa · bbbbbbbbbbb · cc", 0),
+            ("a screen of 1272 × 768 pixels and more", 2),
+            ("aa bb cccc dddd", 0),
+        ];
+        for (said, inset) in cases {
+            for room in 0..30 {
+                let most = room.max(inset + GAP + 1);
+                for line in hanging(said, inset, Room::Cells(room)) {
+                    assert!(width(&line) <= most, "{line:?} passed {most} cells");
+                    assert!(!line.trim().is_empty(), "{said:?} drew an empty line at {room}");
+                }
             }
         }
     }

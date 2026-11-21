@@ -437,6 +437,32 @@ fn status_fits_a_narrow_terminal_without_folding() {
             out.contains("cisternadm-tx-state-4074137-48"),
             "the path's end names it: {out}"
         );
+        // The holder hangs: its first line at the label's two cells, filled
+        // to the prose's room, and each after it two cells further in.
+        let lines: Vec<&str> = out.lines().collect();
+        let first = lines
+            .iter()
+            .position(|line| line.starts_with("  The worktree"))
+            .unwrap_or_else(|| panic!("the holder is said at {cells} columns:\n{out}"));
+        let hung: Vec<&str> = lines[first + 1..]
+            .iter()
+            .take_while(|line| line.starts_with("    "))
+            .copied()
+            .collect();
+        assert!(!hung.is_empty(), "the holder wraps at {cells} columns:\n{out}");
+        for line in &hung {
+            assert!(
+                !line.starts_with("     "),
+                "at {cells} columns, {line:?} hangs other than two cells under the first in\n{out}"
+            );
+        }
+        // Its path is shortened to the room left, so a first line given
+        // only the hung lines' room would end two cells short.
+        assert!(
+            layout::width(lines[first]) > cells.min(layout::MEASURE) - layout::GAP,
+            "at {cells} columns, the holder's first line gave up the cells only the lines \
+             under it hang by:\n{out}"
+        );
     }
 }
 
