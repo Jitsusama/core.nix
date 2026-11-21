@@ -217,14 +217,21 @@ pub fn run(
     state: &Path,
 ) -> Result<Ended, String> {
     let watch = Watch::start();
-    sweep(runtime, "call-under-load-");
-    sweep(cache, "profile-");
+    sweep(runtime, "call-under-load-", state)?;
+    sweep(cache, "profile-", state)?;
     let folders = Folders {
         runtime,
         cache,
         state,
     };
-    settled(steps(chrome, page, seconds, &folders, &watch), &watch)
+    let ended = settled(steps(chrome, page, seconds, &folders, &watch), &watch);
+    // The run starts only with nothing kept, so anything kept now was
+    // found by this run, perhaps only as its clean-up looked, and this
+    // run says so rather than the next hour.
+    match managed::stays_off(state) {
+        Some(why) => Err(why),
+        None => ended,
+    }
 }
 
 /// The folders a call is made in, as `run` names them.
@@ -270,10 +277,12 @@ impl From<Ended> for Step {
 }
 
 /// Removes what an earlier run ended without its cleanup left in
-/// `folder`: each `<prefix><pid>` whose process is gone.
-fn sweep(folder: &Path, prefix: &str) {
+/// `folder`: each `<prefix><pid>` whose process is gone. A run killed by
+/// a signal never looked in its profiles, so each is looked in here, and
+/// an enrolment in one is kept in `state` and refuses the run.
+fn sweep(folder: &Path, prefix: &str, state: &Path) -> Result<(), String> {
     let Ok(entries) = fs::read_dir(folder) else {
-        return;
+        return Ok(());
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -281,9 +290,18 @@ fn sweep(folder: &Path, prefix: &str) {
             continue;
         };
         if pid.parse::<u32>().is_ok() && !Path::new("/proc").join(pid).exists() {
-            let _ = fs::remove_dir_all(entry.path());
+            let left = entry.path();
+            // The far end's profile is made inside the runtime folder.
+            let far = left.join("far");
+            // What it was given is copied into `state` before the folder goes.
+            let looked = unenrolled(&[left.as_path(), far.as_path()], state);
+            let _ = fs::remove_dir_all(&left);
+            if let Err(Step::Refused(why)) = looked {
+                return Err(why);
+            }
         }
     }
+    Ok(())
 }
 
 /// The call's steps in their order, each followed by its check for Joel's call.
@@ -767,10 +785,34 @@ mod tests {
         for path in [&mine, &gone, &other] {
             fs::create_dir_all(path).unwrap();
         }
-        sweep(&folder, "profile-");
+        let state = folder.join("state");
+        assert_eq!(
+            sweep(&folder, "profile-", &state),
+            Ok(()),
+            "a clean sweep refused"
+        );
         assert!(mine.exists(), "a running call's folder stays");
         assert!(!gone.exists(), "a gone run's folder goes");
         assert!(other.exists(), "a folder not named for a run stays");
         fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_sweep_keeps_an_enrolment_a_killed_run_left() {
+        let folder = std::env::temp_dir().join(format!("cul-swept-{}", std::process::id()));
+        let gone = folder.join("call-under-load-4294967294");
+        let state = folder.join("state");
+        fs::create_dir_all(gone.join("far/Policy/Enrollment")).unwrap();
+        fs::write(gone.join("far/Policy/Enrollment/token"), "t").unwrap();
+        let swept = sweep(&folder, "call-under-load-", &state);
+        let off = managed::stays_off(&state);
+        let left = gone.exists();
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(
+            swept.is_err_and(|why| why.contains("enrolled")),
+            "a killed run's enrolment was swept away without refusing the run"
+        );
+        assert!(off.is_some(), "a killed run's enrolment wasn't kept");
+        assert!(!left, "the killed run's folder was left to be found again");
     }
 }
