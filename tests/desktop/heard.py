@@ -26,7 +26,8 @@ def until_heard(
     It gives back the state that passed, so a caller can act on what was seen rather than
     asking again, when the program may have moved on since. A change said just before the
     first read is heard after it, so the state given back can be older than the first read;
-    acting on it is safe for a test no later state can undo.
+    acting on it is safe for a test no later state can undo. Who is a subject and its verb,
+    "the launcher showed", since the messages say what it did and didn't.
 
     Hear calls what it's given with each change said, as JSON, until that passes, and raises
     AssertionError when none does. That error then says what was last heard, on a line of its

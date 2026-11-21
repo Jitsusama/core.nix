@@ -22,8 +22,10 @@
   a-desktop-wait-says-what-it-last-heard = ''
     a desktop area's wait on what the launcher reports that never passes says the last state it
     heard, one a change passes ends there, one whose first read passes hears nothing more, each
-    giving back the state that passed, and a test that trips keeps its error, noting what it
-    last heard
+    giving back the state that passed, a test's own assert fails the wait the same way, a test
+    that trips keeps its error, noting what it last heard, a line that isn't JSON is noted as
+    it came, and a wait whose hearing stops before a state passes fails rather than giving back
+    a state its test refused
   '';
   a-failed-boot-says-what-stopped-it = ''
     a failed boot's shell names up to four failed units and their last lines, fitted to a

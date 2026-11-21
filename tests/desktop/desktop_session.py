@@ -111,6 +111,9 @@ STARTING = timedelta(seconds=120)
 # this never answers. On 14 November a launcher toggle that never answered
 # held a run of vm-desktop-launcher-finds-sessions for an hour.
 ANSWERING = timedelta(seconds=120)
+# What reports (tests/desktop.nix) ends with when its time runs out, kept apart from the 1
+# a failed read gives.
+TIMED_OUT = 3
 # How far apart typed keys go. QEMU's virtio keyboard holds about 64 events, four a key,
 # and drops what comes while it's full; at the driver's 10 ms a key, a guest starved
 # for 180 ms on a loaded builder lost the middle of "quarterly numbers", leaving "qs",
@@ -514,20 +517,25 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Wait until something said after a point starts with the prefix and passes the test.
 
         The point is one mark gave, or "" for the boot. What the shell did say is printed when
-        it never says what's wanted. It fails by AssertionError, which a wait on what's heard
-        (heard.py) reads as never hearing it.
+        it never says what's wanted. It fails by AssertionError when its time runs out, which a
+        wait on what's heard (heard.py) reads as never hearing it, and by RuntimeError when the
+        reader stops otherwise, which that wait only notes, since what it last heard then is no
+        sign of where the shell settled.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         deadline = time.monotonic() + timeout.total_seconds() * pace
         start = since
 
         # The journal is printed as well as it can be, since a session gone bad, when the reader
-        # stopped, is when reading it fails too, and that error would stand in for the wait's.
+        # stopped, is when reading it fails too, and that error would stand in for the wait's;
+        # a read that fails says its status, so it isn't taken for a shell that said nothing.
         def never() -> str:
             point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
             read = f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
-            _, journal = self.machine.execute(self.in_session(read), timeout=ANSWERING * pace)
-            print(journal)
+            status, journal = self.machine.execute(
+                self.in_session(read), timeout=ANSWERING * pace
+            )
+            print(journal if status == 0 else f"{journal}\n(the journal's read stopped: {status})")
             return f"the shell never reported {prefix!r} as wanted"
 
         while True:
@@ -537,11 +545,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
                 timeout=timedelta(seconds=left + 30),
             )
-            # reports stops with 1 once its time runs out, the wait's own end; any other status
-            # is said, since a reader stopped then, and what it last heard is no sign of where
-            # the shell settled.
-            assert status in {0, 1}, f"{never()}, since reports stopped with {status}"
-            assert status == 0, never()
+            # reports stops with 3 once its time runs out, the wait's own end; any other status
+            # means a reader stopped, so it's raised as no wait's failure.
+            assert status != TIMED_OUT, never()
+            if status != 0:
+                stopped = f"{never()}, since reports stopped with {status}"
+                raise RuntimeError(stopped)
             for line in said.splitlines():
                 kind, what = line.split("\t", 1)
                 if kind == "cursor":
