@@ -93,6 +93,7 @@ fn machine_logs<'a>(
         let brought = brought.clone();
         matching(&agents.pattern)
             .into_iter()
+            .filter(move |path| machine.is_none() || !linked(path))
             .map(move |path| Found {
                 path,
                 kind: Some(agents.kind.clone()),
@@ -275,34 +276,6 @@ fn header(path: &Path) -> Option<serde_json::Value> {
     serde_json::from_slice(&line).ok()
 }
 
-/// Whether a new log may take its session. Turns are kept by session, so
-/// a second log naming one already held would count its turns twice, and
-/// reading either again would forget the other's. A log moved, as when a
-/// machine is renamed or its logs are brought somewhere new, takes the
-/// session over from the path that's gone; one beside a log still there
-/// is left unread and said, since a session copied to go on elsewhere is
-/// counted where it began until it's carried into a session of its own.
-fn claim(history: &History, path: &Path, name: &str) -> Result<bool, String> {
-    let session = header(path).and_then(|header| {
-        (header.get("type").and_then(serde_json::Value::as_str) == Some("session"))
-            .then(|| header.get("id")?.as_str().map(str::to_owned))
-            .flatten()
-    });
-    let Some(held) = session
-        .as_deref()
-        .filter(|session| !session.is_empty())
-        .and_then(|session| history.held_by(session, name))
-    else {
-        return Ok(true);
-    };
-    if Path::new(&held).exists() {
-        eprintln!("not reading {name}: its session's turns are {held}'s");
-        return Ok(false);
-    }
-    history.forget_file(&held)?;
-    Ok(true)
-}
-
 /// Where the line under way at `from` ends, just past its newline, if it
 /// has ended yet.
 fn line_end(file: &mut std::fs::File, from: u64, slice: u64) -> Result<Option<u64>, String> {
@@ -339,9 +312,6 @@ fn scan_slice(
     } else {
         // A new log, or one replaced under the same name: start over.
         history.forget_file(&name)?;
-        if !claim(history, path, &name)? {
-            return Ok(Pass::default());
-        }
         (0, Carry::default())
     };
     if metadata.len() < offset {
@@ -866,8 +836,9 @@ mod tests {
         }
     }
 
-    // A link among another machine's logs finds a log already counted, so
-    // it's passed over rather than counted again under that machine.
+    // A link among another machine's logs, its sessions' or its agents',
+    // finds a log already counted, so it's passed over rather than counted
+    // again under that machine.
     #[test]
     fn a_link_among_another_machine_s_logs_is_passed_over() {
         let dir = tempfile::tempdir().unwrap();
@@ -879,53 +850,156 @@ mod tests {
         std::os::unix::fs::symlink(&here, teal.join("project")).unwrap();
         std::os::unix::fs::symlink(here.join("2026_a.jsonl"), teal.join("files/2026_b.jsonl"))
             .unwrap();
+        let runs = dir.path().join("teal-runs/run/session");
+        std::fs::create_dir_all(&runs).unwrap();
+        std::os::unix::fs::symlink(here.join("2026_a.jsonl"), runs.join("2026_c.jsonl")).unwrap();
+        let agents = [crate::config::AgentLogs {
+            pattern: format!("{}/teal-runs/*/session/*.jsonl", dir.path().display()),
+            kind: "review".into(),
+        }];
         let name = "teal".to_owned();
-        let brought: Vec<Found> = machine_logs(&teal, &[], Some(&name)).collect();
+        let brought: Vec<Found> = machine_logs(&teal, &agents, Some(&name)).collect();
         assert!(
             brought.is_empty(),
             "a link among another machine's logs was read: {brought:?}"
         );
     }
 
-    // Turns are kept by session, so a second log naming a session already
-    // held is left unread while the first is there: a session copied to go
-    // on elsewhere counts where it began.
+    /// The machine a session is kept under, `None` for this one.
+    fn machine_of(history: &History, session: &str) -> Option<String> {
+        history
+            .db
+            .query_row(
+                "SELECT machine FROM sessions WHERE id = ?1",
+                [session],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    /// A turn at `minute` past ten, as `TURN` is at one past.
+    fn turn_at(minute: u32) -> String {
+        TURN.replace("10:01:00", &format!("10:{minute:02}:00"))
+    }
+
+    // A session copied to another machine and gone on there keeps its id,
+    // so both logs hold the turns from before the copy and each its own
+    // after. Read together, each turn counts once, whichever log was read
+    // first, and the session stays this machine's.
     #[test]
-    fn a_session_held_by_a_log_still_there_is_read_once() {
+    fn a_session_gone_on_elsewhere_counts_each_turn_once() {
         let dir = tempfile::tempdir().unwrap();
-        let at = |folder: &str| {
+        let write = |folder: &str, lines: &[String]| {
             let project = dir.path().join(folder).join("project");
             std::fs::create_dir_all(&project).unwrap();
-            std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+            let body: String = lines.iter().map(|line| format!("{line}\n")).collect();
+            std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{body}")).unwrap();
         };
-        at("here");
-        at("teal");
+        for teal_first in [false, true] {
+            write("here", &[turn_at(1), turn_at(2)]);
+            write("teal", &[turn_at(1), turn_at(3)]);
+            let history = History::memory();
+            let teal = "teal".to_owned();
+            let here = own(&dir.path().join("here"));
+            let there: Vec<Found> =
+                machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect();
+            let logs: Vec<Found> = if teal_first {
+                there.into_iter().chain(here).collect()
+            } else {
+                here.into_iter().chain(there).collect()
+            };
+            scan(&history, &logs, Reading::default()).unwrap();
+            scan(&history, &logs, Reading::default()).unwrap();
+            assert_eq!(
+                turns(&history),
+                3,
+                "a session two logs hold didn't count each turn once (teal first: {teal_first})"
+            );
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(dir.path().join("teal/project/2026_s1.jsonl"))
+                .unwrap();
+            writeln!(file, "{}", turn_at(4)).unwrap();
+            scan(&history, &logs, Reading::default()).unwrap();
+            assert_eq!(
+                turns(&history),
+                4,
+                "a turn the copy took after was lost (teal first: {teal_first})"
+            );
+            assert_eq!(
+                machine_of(&history, "s1"),
+                None,
+                "a session with a log here wasn't this machine's (teal first: {teal_first})"
+            );
+        }
+    }
+
+    // A session's turns are forgotten whole when one of its logs is
+    // replaced, so its other logs are read again to put back what only
+    // they hold.
+    #[test]
+    fn a_log_replaced_keeps_the_turns_its_session_s_other_logs_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |folder: &str, lines: &[String]| {
+            let project = dir.path().join(folder).join("project");
+            std::fs::create_dir_all(&project).unwrap();
+            let path = project.join("2026_s1.jsonl");
+            let _ = std::fs::remove_file(&path);
+            let body: String = lines.iter().map(|line| format!("{line}\n")).collect();
+            std::fs::write(path, format!("{HEADER}\n{body}")).unwrap();
+        };
+        write("here", &[turn_at(1), turn_at(2)]);
+        write("teal", &[turn_at(1), turn_at(3)]);
         let history = History::memory();
         let teal = "teal".to_owned();
         let mut logs = own(&dir.path().join("here"));
         logs.extend(machine_logs(&dir.path().join("teal"), &[], Some(&teal)));
         scan(&history, &logs, Reading::default()).unwrap();
+        // Written anew, as a rewrite of the session would.
+        write("here", &[turn_at(1), turn_at(5)]);
+        scan(&history, &logs, Reading::default()).unwrap();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            3,
+            "a log replaced lost the turns only its session's other log holds"
+        );
+    }
+
+    // A log first seen before its header is whole still counts each of its
+    // session's turns once, once the rest of it lands.
+    #[test]
+    fn a_copy_seen_half_written_counts_each_turn_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("here/project");
+        std::fs::create_dir_all(&here).unwrap();
+        std::fs::write(here.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let teal = dir.path().join("teal/project");
+        std::fs::create_dir_all(&teal).unwrap();
+        let (start, end) = HEADER.split_at(HEADER.len() / 2);
+        std::fs::write(teal.join("2026_s1.jsonl"), start).unwrap();
+        let history = History::memory();
+        let name = "teal".to_owned();
+        let mut logs = own(&dir.path().join("here"));
+        logs.extend(machine_logs(&dir.path().join("teal"), &[], Some(&name)));
+        scan(&history, &logs, Reading::default()).unwrap();
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(teal.join("2026_s1.jsonl"))
+            .unwrap();
+        writeln!(file, "{end}\n{TURN}").unwrap();
         scan(&history, &logs, Reading::default()).unwrap();
         assert_eq!(
             turns(&history),
             1,
-            "a session two logs name was counted twice"
-        );
-        let machine: Option<String> = history
-            .db
-            .query_row("SELECT machine FROM sessions WHERE id = 's1'", [], |row| {
-                row.get(0)
-            })
-            .unwrap();
-        assert_eq!(
-            machine, None,
-            "a copy brought later took the session's machine"
+            "a copy seen half written counted its session's turn twice"
         );
     }
 
-    // A machine renamed, or its logs brought somewhere new, moves every
-    // log's path; each session is taken over from the path that's gone
-    // rather than counted again.
+    // A machine renamed, or its logs brought somewhere new, finds every log
+    // again under a new path while the old ones stay on disk. Each turn
+    // counts once, the session goes to the new name, and what the session
+    // takes on after is counted.
     #[test]
     fn logs_brought_somewhere_new_are_counted_once() {
         let dir = tempfile::tempdir().unwrap();
@@ -936,13 +1010,31 @@ mod tests {
         let (teal, ochre) = ("teal".to_owned(), "ochre".to_owned());
         let logs: Vec<Found> = machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect();
         scan(&history, &logs, Reading::default()).unwrap();
-        std::fs::rename(dir.path().join("teal"), dir.path().join("ochre")).unwrap();
+        let moved = dir.path().join("ochre/project");
+        std::fs::create_dir_all(&moved).unwrap();
+        std::fs::copy(project.join("2026_s1.jsonl"), moved.join("2026_s1.jsonl")).unwrap();
         let logs: Vec<Found> = machine_logs(&dir.path().join("ochre"), &[], Some(&ochre)).collect();
         scan(&history, &logs, Reading::default()).unwrap();
         assert_eq!(
             turns(&history),
             1,
             "a log brought somewhere new was counted again"
+        );
+        assert_eq!(
+            machine_of(&history, "s1").as_deref(),
+            Some("ochre"),
+            "a session brought somewhere new kept the old machine's name"
+        );
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(moved.join("2026_s1.jsonl"))
+            .unwrap();
+        writeln!(file, "{}", turn_at(2)).unwrap();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a turn taken after the logs were brought somewhere new was lost"
         );
     }
 }
