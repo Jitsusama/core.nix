@@ -1149,6 +1149,22 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         now,
     );
     assert!(news(&written, &told, now), "what's said is news");
+    // Nix's store's disk above Nix's floor counts to the floor instead.
+    let floored = |floor_in: f64| FilesystemStatus {
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(now + floor_in),
+        ..disk(Some(507_791.0), 205_352_626.0, 0.0, said)
+    };
+    let written = status(floored(9_000_000.0), now - 5.0);
+    assert!(
+        !news(&written, &status(floored(9_000_817.0), now), now),
+        "half a percent nearer the floor is no news"
+    );
+    assert!(
+        news(&written, &status(floored(7_000_000.0), now), now),
+        "the floor a fifth sooner is news"
+    );
 }
 
 /// A disk's counts move at every step and are said at each beat, so they
@@ -1476,6 +1492,22 @@ fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
     assert!(
         !status.says.contains("At this rate"),
         "at the floor, neither it nor when it fills: {}",
+        status.says
+    );
+    // Worked out under the floor, it said when it fills, and a pass that
+    // lifts it back above has Nix collecting, so it fills at no time told.
+    status.floor_at = None;
+    status.full_at = Some(1960.0);
+    status.measured(&space(90), &bands, 1900.0, None);
+    assert!(
+        status.says.contains("At this rate it fills in 1 m."),
+        "under the floor, when it fills: {}",
+        status.says
+    );
+    status.measured(&space(200), &bands, 1900.0, None);
+    assert!(
+        !status.says.contains("At this rate"),
+        "back above the floor, not when it fills: {}",
         status.says
     );
 }

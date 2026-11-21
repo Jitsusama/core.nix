@@ -691,19 +691,30 @@ impl FilesystemStatus {
         if self.full_at.is_some_and(|at| at <= now) {
             self.full_at = None;
         }
-        // A fresh measure at or under Nix's floor has reached it, and when
-        // it's full wasn't worked out, so neither is told.
+        // A fresh measure that crossed Nix's floor either way since the
+        // status was worked out has neither time, so neither is told: one
+        // at or under the floor has reached it, and one back above it
+        // doesn't fill while Nix collects.
         let above = self.nix_floor.is_some_and(|floor| space.free > floor);
-        let room = match self.floor_at {
-            Some(at) if above => self.ahead(Some(at - now), true),
-            Some(_) => self.ahead(None, false),
-            None => self.ahead(self.full_at.map(|at| at - now), false),
+        let room = match (self.floor_at, self.full_at) {
+            (Some(at), _) if above => self.ahead(Some(at - now), true),
+            (None, Some(at)) if !above => self.ahead(Some(at - now), false),
+            _ => self.ahead(None, false),
         };
         self.says = crate::words::filesystem(&room, home);
     }
 
     fn room(&self, full_in: Option<f64>) -> crate::words::Room<'_> {
         self.ahead(full_in, false)
+    }
+
+    /// The room it's told from at `now`: until Nix's floor while it has a
+    /// time to reach it, and otherwise until full.
+    fn told(&self, now: f64) -> crate::words::Room<'_> {
+        match self.floor_at {
+            Some(at) => self.ahead(Some(at - now), true),
+            None => self.room(self.full_at.map(|at| at - now)),
+        }
     }
 
     /// Its room, with `next` seconds until it's full, or until it reaches
@@ -3178,17 +3189,13 @@ impl Guard {
                             && last.band >= watched.band
                     }),
                 };
-                status.says = crate::words::filesystem(
-                    &status.ahead(ahead.floor_in.or(ahead.full_in), ahead.floor_in.is_some()),
-                    home,
-                );
+                status.says = crate::words::filesystem(&status.told(now), home);
                 Some(status)
             })
             .collect::<Vec<_>>();
-        let rooms: Vec<_> = filesystems
-            .iter()
-            .map(|status| status.room(status.full_at.map(|at| at - now)))
-            .collect();
+        // The machine's sentence is its worst filesystem's, so the store's
+        // counts to Nix's floor there too.
+        let rooms: Vec<_> = filesystems.iter().map(|status| status.told(now)).collect();
         let says = crate::words::machine(&rooms, home);
         let cleared = self
             .journal
@@ -3388,7 +3395,8 @@ impl Guard {
 
 /// Whether a status says something the one written didn't, beyond its
 /// beats: the heartbeat, each disk's fill rate, and its forecast and time
-/// until full while each is within `ESTIMATE_DRIFT` of what was written.
+/// until full or until Nix's floor while each is within `ESTIMATE_DRIFT`
+/// of what was written.
 /// A forecast that comes or goes is news, and so is anything said in
 /// words, which is how a reader sees a forecast cross into another span.
 pub fn news(written: &Status, status: &Status, now: f64) -> bool {
@@ -3404,7 +3412,9 @@ pub fn news(written: &Status, status: &Status, now: f64) -> bool {
             .iter()
             .zip(&status.filesystems)
             .any(|(was, is)| {
-                !near(was.forecast, is.forecast) || !near(left(was.full_at), left(is.full_at))
+                !near(was.forecast, is.forecast)
+                    || !near(left(was.full_at), left(is.full_at))
+                    || !near(left(was.floor_at), left(is.floor_at))
             });
     if drifted {
         return true;
