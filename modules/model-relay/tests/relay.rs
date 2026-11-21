@@ -1748,8 +1748,9 @@ async fn a_relay_leaving_says_its_trials_apart_from_its_connections_in_its_count
 }
 
 /// The counts said as it left give its trials a figure of their own, one
-/// for each trial it said, whether or not its connection opened, and count
-/// as opened only the connections for requests.
+/// for each trial said by number, and count as opened only the
+/// connections for requests. A trial whose connection didn't open is
+/// counted by the same number, though no test here makes one.
 fn counts_trials_apart(said: &str) {
     let counts = said
         .lines()
@@ -1911,6 +1912,9 @@ enum Drains {
     EveryOther,
     /// Every one, as a drain before a deploy that ends every connection.
     All,
+    /// Every one, with a goodbye saying to calm down rather than that
+    /// nothing was wrong.
+    CalmingDown,
 }
 
 /// Requests past the stand-down's least judged, 20, so judged as failures
@@ -1925,7 +1929,8 @@ struct Draining {
 }
 
 /// An origin writing HTTP/2 by hand over `tls`, leaving out what `drains`
-/// says of a goodbye saying nothing was wrong and answering the rest 200
+/// says of a goodbye saying nothing was wrong, or to calm down, and
+/// answering the rest 200
 /// with no body: h2's own server counts a request it has read as begun,
 /// so it won't leave one out.
 async fn draining_origin(drains: Drains, tls: Tls) -> Draining {
@@ -2008,19 +2013,28 @@ async fn drain_frames<S>(
                 // Once it has said goodbye, the client fails what it sends
                 // after on its own.
                 HEADERS | DATA if flags & END_STREAM_OR_ACK != 0 && !said_goodbye => {
-                    if matches!(drains, Drains::All)
-                        || asked.fetch_add(1, Ordering::SeqCst).is_multiple_of(2)
-                    {
-                        if matches!(drains, Drains::All) {
+                    let every = matches!(drains, Drains::All | Drains::CalmingDown);
+                    if every || asked.fetch_add(1, Ordering::SeqCst).is_multiple_of(2) {
+                        if every {
                             asked.fetch_add(1, Ordering::SeqCst);
                         }
                         left_out.fetch_add(1, Ordering::SeqCst);
                         said_goodbye = true;
                         // It names the last stream begun before this
                         // one, so it leaves this one out, saying nothing
-                        // was wrong.
+                        // was wrong, or to calm down.
                         let last = id.saturating_sub(2).to_be_bytes();
-                        [&[0, 0, 8, GOAWAY, 0, 0, 0, 0, 0][..], &last, &[0, 0, 0, 0]].concat()
+                        let reason = if matches!(drains, Drains::CalmingDown) {
+                            u32::from(h2::Reason::ENHANCE_YOUR_CALM)
+                        } else {
+                            u32::from(h2::Reason::NO_ERROR)
+                        };
+                        [
+                            &[0, 0, 8, GOAWAY, 0, 0, 0, 0, 0][..],
+                            &last,
+                            &reason.to_be_bytes(),
+                        ]
+                        .concat()
                     } else {
                         let head = [0, 0, 1, HEADERS, END_HEADERS | END_STREAM_OR_ACK];
                         [&head[..], &id.to_be_bytes(), &[OK]].concat()
@@ -2101,10 +2115,64 @@ async fn a_request_left_out_again_goes_direct_and_stands_nothing_down() {
     );
     let said = relay.said();
     assert!(
-        said.contains("so it's let go")
-            && said.contains("; pi goes directly")
-            && !said.contains("so it stands down"),
+        said.contains("; pi goes directly") && !said.contains("so it stands down"),
         "requests left out twice weren't said sent direct, unjudged: {said}"
+    );
+    // Each try is on a connection of its own, the one its slot has open,
+    // so each is let go: retired, a resend's would be kept or out of use.
+    assert_eq!(
+        said.matches("left a request out of its goodbye on connection ")
+            .count(),
+        2 * PAST_JUDGED,
+        "each try left out wasn't said: {said}"
+    );
+    assert_eq!(
+        said.lines()
+            .filter(|line| line.contains("out of its goodbye") && line.contains("so it's let go"))
+            .count(),
+        2 * PAST_JUDGED,
+        "a connection a goodbye ended, first try or again, wasn't let go: {said}"
+    );
+}
+
+/// A request a goodbye saying to calm down left out is the origin's
+/// verdict, answered 502 and never sent again, and its connection is let
+/// go; such goodbyes are never judged, so they stand nothing down.
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_a_goodbye_saying_to_calm_down_left_out_is_answered_502() {
+    let tls = tls();
+    let origin = draining_origin(Drains::CalmingDown, tls.clone()).await;
+    let host = origin.address.to_string();
+    let relay = Relay::start(&format!("https://{host}"), &tls.roots, 1);
+    for _ in 0..PAST_JUDGED {
+        let got = ask(&relay.socket, request(&host, "/echo", b"hello")).await;
+        assert_eq!(
+            (got.status, got.body.as_ref()),
+            (
+                StatusCode::BAD_GATEWAY,
+                b"this relay's request to its origin failed\n".as_slice()
+            ),
+            "a request told to calm down wasn't answered 502"
+        );
+    }
+    assert_eq!(
+        origin.left_out.load(Ordering::SeqCst),
+        PAST_JUDGED,
+        "a request told to calm down was sent again"
+    );
+    let said = relay.said();
+    assert_eq!(
+        said.lines()
+            .filter(|line| line.contains("out of its goodbye")
+                && line.contains("so it's let go")
+                && line.contains("pi is answered 502"))
+            .count(),
+        PAST_JUDGED,
+        "a goodbye saying to calm down wasn't said, its connection let go: {said}"
+    );
+    assert!(
+        !said.contains("so it stands down") && !said.contains(" is sent again on "),
+        "goodbyes saying to calm down were judged or sent again: {said}"
     );
 }
 

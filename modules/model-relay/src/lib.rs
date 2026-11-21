@@ -973,10 +973,10 @@ impl<S: Sender> Slot<S> {
     }
 }
 
-/// What a reset did to the connection it came on. Told apart in the log
-/// because a spell's later resets mostly come on requests still in flight
-/// on a connection already retired, and said as kept they read as the
-/// relay holding on to a bad connection.
+/// What a reset or a goodbye did to the connection it came on. Told apart
+/// in the log because a spell's later resets mostly come on requests still
+/// in flight on a connection already out of use, and said as kept they
+/// read as the relay holding on to a bad connection.
 #[derive(Debug, PartialEq, Eq)]
 enum Retiring {
     /// It takes no more requests.
@@ -984,8 +984,9 @@ enum Retiring {
     /// It takes no more requests, as the origin's goodbye ended it, with
     /// none of the slot's allowance for resets spent.
     LetGo,
-    /// It takes no more requests already: retired before, let go after a
-    /// sleep, or closed by the origin's goodbye.
+    /// It takes no more requests already: retired or let go before, let go
+    /// after a sleep, or closed by the origin's goodbye. Said as out of use
+    /// rather than retired, as a goodbye's burst would read as resets.
     Gone,
     /// It's still taking requests, as the slot retired one lately.
     Kept,
@@ -997,7 +998,7 @@ impl Retiring {
         match self {
             Retiring::Retired => "so it's retired",
             Retiring::LetGo => "so it's let go",
-            Retiring::Gone => "already retired",
+            Retiring::Gone => "already out of use",
             Retiring::Kept => "kept, as one was retired lately",
         }
     }
@@ -2504,31 +2505,25 @@ mod tests {
     async fn a_request_a_drain_left_out_goes_once_more_then_direct_unlike_other_endings() {
         let drained = left_out_by(Ending::Goodbye, h2::Reason::NO_ERROR).await;
         assert!(
-            goes_once_more(&drained)
-                && !goes_direct(&drained, false)
-                && goes_direct(&drained, true)
-                && !fails_the_path(&drained),
+            goes_once_more(&drained) && goes_direct(&drained, true) && !fails_the_path(&drained),
             "a request a drain left out wasn't sent once more, then direct, unjudged: {}",
             with_causes(&drained)
         );
         let calm = left_out_by(Ending::Goodbye, h2::Reason::ENHANCE_YOUR_CALM).await;
         assert!(
-            !goes_once_more(&calm) && !goes_direct(&calm, false) && !goes_direct(&calm, true),
+            !goes_once_more(&calm) && !goes_direct(&calm, true),
             "a request told to calm down was sent again or direct: {}",
             with_causes(&calm)
         );
         let broken = left_out_by(Ending::Goodbye, h2::Reason::PROTOCOL_ERROR).await;
         assert!(
-            goes_once_more(&broken)
-                && !goes_direct(&broken, false)
-                && goes_direct(&broken, true)
-                && fails_the_path(&broken),
+            goes_once_more(&broken) && goes_direct(&broken, true) && fails_the_path(&broken),
             "a protocol error's goodbye wasn't sent once more, judged, then direct: {}",
             with_causes(&broken)
         );
         let reset = left_out_by(Ending::Reset, h2::Reason::NO_ERROR).await;
         assert!(
-            !goes_once_more(&reset) && !goes_direct(&reset, false) && !goes_direct(&reset, true),
+            !goes_once_more(&reset) && !goes_direct(&reset, true),
             "a reset saying nothing was wrong was sent again or direct as a drain: {}",
             with_causes(&reset)
         );
@@ -2538,8 +2533,10 @@ mod tests {
             "a request a goodbye had begun was read as left out of it: {}",
             with_causes(&begun)
         );
-        // An error's goodbye is the one an origin closes after at once, so
-        // what h2 hands a request it had begun may be the goodbye's own.
+        // An error's goodbye is the one an origin closes after at once. h2
+        // hands its own error only to streams past its last and to those
+        // sent after it, none of them begun, so a begun one ends with the
+        // connection, as here, never with the goodbye's error.
         let begun_broken =
             left_out_by(Ending::GoodbyeHavingBegun, h2::Reason::PROTOCOL_ERROR).await;
         assert!(
