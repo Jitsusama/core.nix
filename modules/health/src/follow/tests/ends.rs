@@ -38,7 +38,8 @@ fn an_end_stuck_past_its_kill_holds_health_only_its_bound() {
     );
     crate::source::tests::assert_marked(
         "a follower left running",
-        &["left a follower running", "ending them hadn't returned"],
+        // Its own bound names its line among the others' heard.
+        &["ending them hadn't returned", "100ms on"],
         1,
         crate::source::ERROR,
     );
