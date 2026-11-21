@@ -1173,7 +1173,7 @@ Scope {
     // when - climbs back onto it. Listing Landed's 2,600 landings on the
     // way to one took about 40 of To Try's 84 ms Return (2026-11-14).
     function walkTo(spot) {
-        const came = here();
+        const came = placeLeft();
         const begun = stepBegun();
         held = [];
         const last = spot.trail.length - 1;
@@ -1559,6 +1559,34 @@ Scope {
         ask(talk.act);
         prompt.linked();
         return { done: true, said: `${talk.act.name} \u203a ${talk.act.chip}` };
+    }
+
+    // Opens Start New Work's From a Link, its field holding the words a mycelium: link offers, as
+    // `qs ipc call launcher newWork` asks (mycelium-link's sprout), the way the realm's map offers
+    // work from a cell. The foot says a page offered it, and from which session by its quest's
+    // name where one here has that address; any other is let go (Agents' newWorkFor). It starts
+    // nothing: the line holds Joel's first keys back, waits on one typed before Return, and
+    // takes Return only with the caret at the words' end, where he's read to (Prompt.qml's
+    // linked), and the act starts only on his own Return (Sprouting.fromJoel), so no walk or
+    // second link can start it. Like talkTo, it does nothing over a launcher in use, not even
+    // forget how his last start went. Says what it did as JSON, as talkTo does.
+    function newWork(words, from) {
+        if (inUse())
+            return inUseSaid;
+        const agents = collections.find(one => one.settings.name === "agents") ?? null;
+        const offer = agents ? agents.newWorkFor(words, from) : null;
+        console.info(`launcher: asked from outside to start new work, ${offer === null
+            ? "offering no plain words" : `from ${offer.from?.address ?? "no session here"}`}`);
+        if (offer === null)
+            return { error: "the link offered no plain words to start new work with" };
+        const told = toldWhence(offer.said);
+        into("agents");
+        ask(offer.act, offer.words);
+        prompt.linked(true);
+        // The foot itself, to say again with its colours, and as words, to know it's said.
+        offerHeld = { depth: held.length, foot: told, told: JSON.stringify(told) };
+        return { done: true, said: `${offer.act.name} \u203a ${offer.words}`,
+            from: offer.from?.address ?? null };
     }
 
     // Goes to the session `said` names, as `qs ipc call launcher goTo` asks, the way a notice's
@@ -3359,11 +3387,27 @@ Scope {
     // a key that means nothing in normal, so none is silent.
     property var saying: []
     property int sayingKeys: -1
-    readonly property bool sayingNow: saying.length > 0 && prompt.keysTaken === sayingKeys
+    readonly property bool sayingNow: saying.length > 0 && (prompt.keysTaken === sayingKeys
+        || offerSaid)
+    // Where a page offered words (newWork), and what the foot says of it,
+    // which stays while its line is held, past the keys Joel types, so he
+    // reads where the words came from as he checks them and presses Return
+    // (Y2YBTS, 2026-11-20); something else said puts it aside until a held Return says it
+    // again (sayOffer), and the line left (onHeldChanged) or its words given (give) ends it,
+    // so it never stands over a line it didn't offer.
+    property var offerHeld: null
+    readonly property bool offerSaid: offerHeld !== null && held.length === offerHeld.depth
+        && JSON.stringify(saying) === offerHeld.told
     // Words that aren't keys, as what an act didn't do and why, say nothing
     // in Return's place, so its last stands at its own width: held there,
     // the why stood a Return's room away from what it was the why of.
     property bool sayingLoose: false
+    // Says again where the offered words came from and that Return waits for their end, after
+    // another word took the foot's place (Prompt's endWaited).
+    function sayOffer() {
+        if (offerHeld !== null && held.length === offerHeld.depth)
+            say(offerHeld.foot, true);
+    }
     function say(keys, loose) {
         saying = keys;
         sayingLoose = loose === true;
@@ -4177,6 +4221,13 @@ Scope {
     // so where the launcher is still says where the place left was left.
     onHeldChanged: {
         Qt.callLater(rowsPlaced);
+        // Leaving the line a page offered ends its foot and its Return's wait, so a line
+        // reached later at the same depth isn't said to be a page's.
+        const leftOffer = offerHeld !== null && held.length !== offerHeld.depth;
+        if (leftOffer) {
+            offerHeld = null;
+            prompt.endWaits = false;
+        }
         // A row to land on was for the place it opened into (intoOn).
         landOn = null;
         const left = placeHeld;
@@ -4196,11 +4247,17 @@ Scope {
                 flash.stop();
                 flashing = {};
             }
-            lastPlace = { held: left, here: here() };
+            // The line a page offered keeps none of its words on the way back, so Ctrl+O and
+            // Ctrl+I never bring them back without their foot or Return's wait (council F60);
+            // jump and oneJump, which keep the place before held moves, ask placeLeft.
+            const kept = here();
+            if (leftOffer)
+                kept.typed = "";
+            lastPlace = { held: left, here: kept };
             // A place stepped to afresh goes on the way back, and leaves
             // nothing ahead, as Vim's jump list does.
             if (!jumping) {
-                jumpsBack = jumpsBack.concat([{ held: left, here: here() }]);
+                jumpsBack = jumpsBack.concat([{ held: left, here: kept }]);
                 jumpsAhead = [];
             }
         }
@@ -4285,7 +4342,7 @@ Scope {
             return;
         }
         const to = from[from.length - 1];
-        const left = { held: held, here: here() };
+        const left = { held: held, here: placeLeft() };
         if (by < 0) {
             jumpsBack = jumpsBack.slice(0, -1);
             jumpsAhead = jumpsAhead.concat([left]);
@@ -4307,7 +4364,7 @@ Scope {
     // does, is no jump at all. A walk that opens a collection afresh
     // (into) lets go what was on the way back, which is kept here.
     function oneJump(walk) {
-        const left = { held: held, here: here() };
+        const left = { held: held, here: placeLeft() };
         const was = { back: jumpsBack, ahead: jumpsAhead, tags: tagsBack, last: lastPlace };
         jumping = true;
         try {
@@ -4484,7 +4541,7 @@ Scope {
     // a step (oneJump). A row with none says so.
     function follow(row) {
         const live = row && !row.gone ? row : null;
-        const came = { held: held, here: here() };
+        const came = { held: held, here: placeLeft() };
         if (live && followed(live)) {
             traces.began("follow", { from: came.held.length, into: true });
             tagsBack = tagsBack.concat([came]);
@@ -5164,6 +5221,15 @@ Scope {
         commandAsked(entry, found, things.length, read.bang);
     }
 
+    // Where the launcher is now, kept on a way back: the line a page offered keeps none of its
+    // words, so no way back brings them back without their foot or Return's wait (F68).
+    function placeLeft() {
+        const kept = here();
+        if (offerHeld !== null && held.length === offerHeld.depth)
+            kept.typed = "";
+        return kept;
+    }
+
     // Where the launcher is now, for a step into something to keep.
     function here() {
         const row = selected;
@@ -5569,13 +5635,17 @@ Scope {
         onTriggered: root.asking.heard()
     }
 
-    // Asks for words in the field, with nothing to choose from below it.
-    function ask(row) {
+    // Asks for words in the field, with nothing to choose from below it,
+    // the field holding `offered` where a link offered words (newWork).
+    function ask(row, offered) {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
         // One that keeps its words, as a talk does, opens on what Joel was
         // typing to it, or sent and not yet delivered, a shell started
-        // again included (Drafts.qml).
-        const kept = row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
+        // again included (Drafts.qml). Words a link offered open with the
+        // caret at their start, where Joel reads them from, rather than
+        // past their end (Y2YBTS, 2026-11-20).
+        const kept = typeof offered === "string" ? { text: offered, caret: 0 }
+            : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
         restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.
         prompt.typing();
@@ -5603,6 +5673,9 @@ Scope {
         // alone, so a switch before then loses nothing.
         if (asking.draft)
             drafts.sent(asking.draft, words);
+        // Given, a page's words are his now, and what he types next is his own.
+        offerHeld = null;
+        prompt.endWaits = false;
         asking.given(words);
         prompt.text = "";
         searchNow();
@@ -6055,6 +6128,14 @@ Scope {
     function toldThat(what, why) {
         tellOnOpen(Becoming.told({ mark: Theme.glyph.failed, what, why },
             { what: Theme.alert, why: Theme.muted }), true);
+    }
+    // Says where words in the field came from, which nothing failed, and
+    // gives what it said.
+    function toldWhence(what) {
+        const told = Becoming.told({ mark: Theme.glyph.link, what, why: "" },
+            { what: Theme.text, why: Theme.muted });
+        tellOnOpen(told, true);
+        return told;
     }
 
     function letGo(keys) {
@@ -8596,6 +8677,13 @@ Scope {
         // as Switch on its row does (root's goTo).
         function goTo(address: string): string {
             return JSON.stringify(root.goToCell(address));
+        }
+
+        // Opens Start New Work's From a Link with a link's words in its
+        // field, "words:" before them, and "from:" before the session it
+        // came from, as a sprout link asks (root's newWork).
+        function newWork(words: string, from: string): string {
+            return JSON.stringify(root.newWork(words, from));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,
@@ -13879,6 +13967,9 @@ Scope {
                         }
                         // A held arrow's drawer comes as it's let go.
                         onLetGo: root.drawerLetGo()
+                        // A Return held short of the offered words' end says
+                        // why again, so it is never dropped unexplained.
+                        onEndWaited: root.sayOffer()
                         // A key with no meaning here says so, until the next.
                         // A key of the row's own acts does it first.
                         onIdled: key => {

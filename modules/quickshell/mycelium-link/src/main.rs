@@ -14,6 +14,11 @@
 //! and what in it is meant, `mycelium:cell/<ADDRESS>@<machine>#<anchor>`, as
 //! a notice's whole cell link does: the machine is checked and the anchor let
 //! go, since the address alone names the session across the realm.
+//! `mycelium:sprout?words=<words>&from=<ADDRESS>` opens Start New Work with
+//! those words in its field, as `qs ipc call launcher newWork` does, which
+//! the realm's map offers to start work from a cell: the words are decoded
+//! once and folded to one plain line, and the cell is kept only where it's
+//! an address. Nothing starts until Joel's own Return there.
 //!
 //! Any page can write such a link, so it's trusted with a name and one word
 //! more. Only the step after a cell's address is read, and only `go` means
@@ -38,6 +43,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use terminal_kit::{Exit, Failure, Help};
 
+mod plain;
+use plain::plain;
+
 /// How long after a link is followed another is let go: longer than a
 /// double click or a page's burst of them, shorter than Joel following a
 /// second one by hand.
@@ -61,25 +69,46 @@ const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
 /// What a link names: a cell to talk to or to go to, by its session's
 /// address, or a network or a machine, by its name, each as the mesh says
 /// it.
+/// Or new work to start: the words a page offers, and the cell it came
+/// from where it names one by its address.
 #[derive(Debug, PartialEq, Eq)]
 enum Link {
     Cell(String),
     GoTo(String),
     Network(String),
     Machine(String),
+    Sprout { words: String, from: Option<String> },
 }
 
 impl Link {
-    /// The launcher's ipc call opening what it names.
-    fn call(&self) -> [&str; 2] {
+    /// The launcher's ipc call opening what it names. New work's words and
+    /// cell each go after a fixed word, so neither is ever a flag to `qs`,
+    /// whatever the page wrote, and no cell is still an argument.
+    fn call(&self) -> Vec<String> {
+        let call = |function: &str, argument: &str| vec![function.to_owned(), argument.to_owned()];
         match self {
-            Self::Cell(address) => ["talkTo", address],
-            Self::GoTo(address) => ["goTo", address],
-            Self::Network(name) => ["network", name],
-            Self::Machine(name) => ["machine", name],
+            Self::Cell(address) => call("talkTo", address),
+            Self::GoTo(address) => call("goTo", address),
+            Self::Network(name) => call("network", name),
+            Self::Machine(name) => call("machine", name),
+            Self::Sprout { words, from } => vec![
+                "newWork".to_owned(),
+                format!("{WORDS_SAID}{words}"),
+                format!("{FROM_SAID}{}", from.as_deref().unwrap_or("")),
+            ],
         }
     }
 }
+
+/// The word before new work's words in the launcher's call.
+const WORDS_SAID: &str = "words:";
+
+/// The word before the cell new work came from in the launcher's call.
+const FROM_SAID: &str = "from:";
+
+/// The most characters new work's words run to: a few sentences, as Start
+/// New Work's field takes, so a page can't fill the launcher with a book.
+const MOST_WORDS: usize = 1000;
 
 /// Whether `name` is one a link may carry: letters, digits and the dot,
 /// hyphen and underscore network names join words with, no more than
@@ -133,8 +162,8 @@ fn read(link: &str) -> Result<Link, Failure> {
         .filter(|head| head.eq_ignore_ascii_case(scheme))
         .map(|_| &link[scheme.len()..])
         .ok_or_else(|| wrong("it doesn't start with mycelium:"))?;
-    let path = rest.trim_start_matches('/');
-    let path = path.split(['?', '#']).next().unwrap_or("");
+    let rest = rest.trim_start_matches('/');
+    let path = rest.split(['?', '#']).next().unwrap_or("");
     let mut steps = path.split('/');
     let kind = steps.next().unwrap_or("");
     let name = steps.next().unwrap_or("");
@@ -157,7 +186,80 @@ fn read(link: &str) -> Result<Link, Failure> {
         "machine" => Err(wrong(
             "it names no machine in letters, digits, dots, hyphens or underscores",
         )),
-        _ => Err(wrong("its kind is none of cell, network or machine")),
+        "sprout" => sprouted(query_of(rest)).map_err(|why| wrong(&why)),
+        _ => Err(wrong(
+            "its kind is none of cell, network, machine or sprout",
+        )),
+    }
+}
+
+/// What follows a link's `?`, up to its fragment, or nothing.
+fn query_of(rest: &str) -> &str {
+    let before_fragment = rest.split('#').next().unwrap_or("");
+    before_fragment
+        .split_once('?')
+        .map_or("", |(_, query)| query)
+}
+
+/// New work a sprout link's query offers: its `words`, said once, decoded
+/// and folded to one plain line, and its `from`, kept only where it's an
+/// address. Anything else the query holds is let go.
+fn sprouted(query: &str) -> Result<Link, String> {
+    let mut words = None;
+    let mut from = None;
+    for pair in query.split('&') {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        match key {
+            "words" if words.is_some() => {
+                return Err("it offers its words more than once".to_owned());
+            }
+            "words" => words = Some(decoded(value)?),
+            "from" if from.is_some() => {
+                return Err("it names its cell more than once".to_owned());
+            }
+            "from" => from = Some(decoded(value).unwrap_or_default()),
+            _ => {}
+        }
+    }
+    let words = plain(&words.ok_or("it offers no words")?);
+    if words.is_empty() {
+        return Err("its words are empty".to_owned());
+    }
+    if words.chars().count() > MOST_WORDS {
+        return Err(format!("its words run past {MOST_WORDS} characters"));
+    }
+    Ok(Link::Sprout {
+        words,
+        from: from.filter(|from| addressed(from)),
+    })
+}
+
+/// A query's value with its `+` as spaces and each `%XX` as its byte, or
+/// why it can't be read: a `%` without two hex digits after it, or bytes
+/// that aren't UTF-8.
+fn decoded(value: &str) -> Result<String, String> {
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut said = value.bytes();
+    while let Some(byte) = said.next() {
+        bytes.push(match byte {
+            b'+' => b' ',
+            b'%' => match (said.next().and_then(hex), said.next().and_then(hex)) {
+                (Some(high), Some(low)) => high * 16 + low,
+                _ => return Err("its words hold a misshaped escape".to_owned()),
+            },
+            other => other,
+        });
+    }
+    String::from_utf8(bytes).map_err(|_| "its words aren't text".to_owned())
+}
+
+/// What one hex digit counts, or nothing where `byte` is none.
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -222,12 +324,19 @@ fn help() -> Help {
         "mycelium-link mycelium:machine/osprey",
         "opens Machines on osprey",
     )
+    .example(
+        "mycelium-link 'mycelium:sprout?words=tidy%20the%20rows&from=DAHTNJ'",
+        "opens Start New Work with \"tidy the rows\" in its field, from DAHTNJ",
+    )
     .argument(
         "<link>",
-        "mycelium:cell/<ADDRESS>[@machine][/go][#anchor], mycelium:network/<name> \
-         or mycelium:machine/<name>",
+        "mycelium:cell/<ADDRESS>[@machine][/go][#anchor], mycelium:network/<name>, \
+         mycelium:machine/<name> or mycelium:sprout?words=<words>[&from=<ADDRESS>]",
     )
-    .exit(Exit::Usage, "the link names no cell, network or machine")
+    .exit(
+        Exit::Usage,
+        "the link names no cell, network or machine, or offers no plain words",
+    )
     .exit(Exit::Failed, "qs couldn't be run")
 }
 
@@ -441,6 +550,128 @@ mod tests {
             &format!("mycelium:network/{}", "a".repeat(LONGEST + 1)),
         ] {
             assert!(read(link).is_err(), "{link} was followed");
+        }
+    }
+
+    fn sprout(words: &str, from: Option<&str>) -> Link {
+        Link::Sprout {
+            words: words.to_owned(),
+            from: from.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_sprout_link_offers_its_words_and_the_cell_it_came_from() {
+        let link = "mycelium:sprout?words=tidy%20the%20rows%20%26%20more&from=TERN02";
+        assert_eq!(
+            named_by(link),
+            Ok(sprout("tidy the rows & more", Some("TERN02")))
+        );
+        assert_eq!(
+            sprout("tidy the rows & more", Some("TERN02")).call(),
+            ["newWork", "words:tidy the rows & more", "from:TERN02"]
+        );
+        for link in [
+            "mycelium:sprout?words=tidy+the+rows",
+            "MYCELIUM://sprout?words=tidy%20the%20rows#now",
+            "mycelium:sprout/start?words=tidy%20the%20rows&say=go",
+        ] {
+            assert_eq!(named_by(link), Ok(sprout("tidy the rows", None)), "{link}");
+        }
+        assert_eq!(
+            sprout("tidy the rows", None).call(),
+            ["newWork", "words:tidy the rows", "from:"]
+        );
+    }
+
+    #[test]
+    fn a_sprout_links_cell_is_kept_only_as_an_address() {
+        for from in ["tern02", "TERN02%3Brm", "-h", "QEST-20261116-42P0R4", ""] {
+            let link = format!("mycelium:sprout?words=tidy&from={from}");
+            assert_eq!(
+                named_by(&link),
+                Ok(sprout("tidy", None)),
+                "{link} kept its cell"
+            );
+        }
+        let longest = "A".repeat(LONGEST_ADDRESS);
+        assert_eq!(
+            named_by(&format!("mycelium:sprout?from={longest}&words=tidy")),
+            Ok(sprout("tidy", Some(&longest)))
+        );
+    }
+
+    #[test]
+    fn a_sprout_links_words_are_folded_to_one_plain_line() {
+        assert_eq!(
+            named_by("mycelium:sprout?words=%20%20tidy%09the%0A%0Drows%07%1B[2J%20%20"),
+            Ok(sprout("tidy the rows[2J", None))
+        );
+        // Its words are never a flag, nor its cell missing an argument.
+        assert_eq!(
+            sprout("-rf", None).call(),
+            ["newWork", "words:-rf", "from:"]
+        );
+        let longest = "\u{1F331}".repeat(MOST_WORDS);
+        let link = format!(
+            "mycelium:sprout?words={}",
+            "%F0%9F%8C%B1".repeat(MOST_WORDS)
+        );
+        assert_eq!(named_by(&link), Ok(sprout(&longest, None)));
+    }
+
+    #[test]
+    fn a_sprout_links_words_lose_what_turns_or_hides_text() {
+        // U+202E turns the text after it around, U+200B hides in it, DEL
+        // and U+009B (a terminal's escape) speak to a terminal.
+        assert_eq!(
+            named_by("mycelium:sprout?words=tidy%E2%80%AE%E2%80%8Bthe%7F%C2%9Brows"),
+            Ok(sprout("tidytherows", None))
+        );
+        assert_eq!(
+            named_by("mycelium:sprout?words=%EF%BB%BFtidy%EF%BB%BFthe%C2%85rows%F3%A0%80%81"),
+            Ok(sprout("tidythe rows", None))
+        );
+        assert!(
+            read("mycelium:sprout?words=%E2%80%AE%E2%80%8B").is_err(),
+            "words holding only format characters were followed"
+        );
+    }
+
+    #[test]
+    fn a_sprout_links_words_lose_what_draws_a_blank() {
+        // U+2800, U+3164, U+115F, U+FFA0 and U+FE0F draw a blank or
+        // nothing, so a run of them would hide words between the start
+        // Joel reads and the end.
+        let hidden = "%E2%A0%80%E3%85%A4%E1%85%9F%EF%BE%A0%EF%B8%8F".repeat(40);
+        assert_eq!(
+            named_by(&format!(
+                "mycelium:sprout?words=tidy{hidden}%20the{hidden}rows"
+            )),
+            Ok(sprout("tidy therows", None))
+        );
+        assert!(
+            read(&format!("mycelium:sprout?words={hidden}")).is_err(),
+            "words holding only blanks were followed"
+        );
+    }
+
+    #[test]
+    fn a_sprout_link_without_plain_words_is_refused() {
+        for link in [
+            "mycelium:sprout".to_owned(),
+            "mycelium:sprout?from=TERN02".to_owned(),
+            "mycelium:sprout?words=".to_owned(),
+            "mycelium:sprout?words=%20%09%0A".to_owned(),
+            "mycelium:sprout?words=tidy%zz".to_owned(),
+            "mycelium:sprout?words=tidy%4".to_owned(),
+            "mycelium:sprout?words=tidy%FF".to_owned(),
+            "mycelium:sprout?words=tidy&words=reboot".to_owned(),
+            "mycelium:sprout?words=tidy&from=TERN02&from=OWL01".to_owned(),
+            "mycelium:Sprout?words=tidy".to_owned(),
+            format!("mycelium:sprout?words={}", "a".repeat(MOST_WORDS + 1)),
+        ] {
+            assert!(read(&link).is_err(), "{link} was followed");
         }
     }
 

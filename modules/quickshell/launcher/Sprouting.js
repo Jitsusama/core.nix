@@ -39,6 +39,132 @@ function ask(text, folder) {
         where !== "" ? { folder: where } : {});
 }
 
+// The most characters new work a link offers runs to, as mycelium-link's
+// MOST_WORDS: a few sentences, so a page can't fill the field with a book.
+const OFFERED_MOST = 1000;
+
+// The control characters, which a line of words never needs: C0, then
+// DEL and C1, by their codes.
+const LAST_C0 = 0x1f;
+const FIRST_C1 = 0x7f;
+const LAST_C1 = 0x9f;
+
+// `word` with every control character left out.
+function uncontrolled(word) {
+    return Array.prototype.filter.call(word, unit => {
+        const code = unit.charCodeAt(0);
+        return code > LAST_C0 && (code < FIRST_C1 || code > LAST_C1);
+    }).join("");
+}
+
+// Unicode's format characters (general category Cf), as mycelium-link's
+// FORMATTING has them, first and last of each run: they draw nothing yet
+// can turn text around (U+202E), hide in it (U+200B) or join it.
+const FORMATTING = [
+    [0x00ad, 0x00ad], [0x0600, 0x0605], [0x061c, 0x061c], [0x06dd, 0x06dd],
+    [0x070f, 0x070f], [0x0890, 0x0891], [0x08e2, 0x08e2], [0x180e, 0x180e],
+    [0x200b, 0x200f], [0x202a, 0x202e], [0x2060, 0x2064], [0x2066, 0x206f],
+    [0xfeff, 0xfeff], [0xfff9, 0xfffb], [0x110bd, 0x110bd], [0x110cd, 0x110cd],
+    [0x13430, 0x1343f], [0x1bca0, 0x1bca3], [0x1d173, 0x1d17a],
+    [0xe0001, 0xe0001], [0xe0020, 0xe007f]
+];
+
+// What draws nothing or a blank yet isn't Cf, as mycelium-link's BLANK has
+// it: Unicode's other default ignorables (Hangul fillers, variation
+// selectors and the rest) and the braille blank, U+2800, which the shell
+// draws full width. Kept, a run of them pushes a page's words out of sight
+// between the start Joel reads and the end Return waits for.
+const BLANK = [
+    [0x034f, 0x034f], [0x115f, 0x1160], [0x17b4, 0x17b5], [0x180b, 0x180d],
+    [0x180f, 0x180f], [0x2065, 0x2065], [0x2800, 0x2800], [0x3164, 0x3164],
+    [0xfe00, 0xfe0f], [0xffa0, 0xffa0], [0xfff0, 0xfff8], [0xe0000, 0xe0000],
+    [0xe0002, 0xe001f], [0xe0080, 0xe0fff]
+];
+
+// Whether `code` is a format character or draws a blank.
+function unseen(code) {
+    return [FORMATTING, BLANK].some(runs =>
+        runs.some(([first, last]) => code >= first && code <= last));
+}
+
+// The first code point past the 16 bits one UTF-16 half holds.
+const FIRST_PAIRED = 0x10000;
+
+// `text` with every format or blank character left out, read by code point, so a
+// tag character (a pair of halves) goes whole: Qt's engine walks a string
+// by its halves, even in Array.from.
+function unformatted(text) {
+    let kept = "";
+    for (let at = 0; at < text.length;) {
+        const code = text.codePointAt(at);
+        const width = code >= FIRST_PAIRED ? 2 : 1;
+        if (!unseen(code)) {
+            kept += text.slice(at, at + width);
+        }
+        at += width;
+    }
+    return kept;
+}
+
+// The next line character, which Rust's is_whitespace counts a space and
+// JavaScript's \s doesn't, so both readers fold it the same.
+const NEXT_LINE = /\u0085/g;
+
+// The spaces between a line's words.
+const SPACES = /\s+/;
+
+// A character written as a pair of UTF-16 halves, as an emoji is.
+const PAIRED = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
+
+// The shape of a mesh address, as mycelium-link's `addressed` reads one.
+const ADDRESS = /^[A-Z0-9]{1,12}$/;
+
+// New work a mycelium: link offers (mycelium-link's sprout), as `qs ipc
+// call launcher newWork` hands it: its words after "words:" and the cell
+// it came from after "from:". Any program of Joel's can make that call,
+// so it's read again here: { words, from }, the words one plain line of
+// at most OFFERED_MOST characters, and from { address, name } only where
+// `nameOf` names a session here by that address, else null; or null
+// where no plain words are offered. It only fills the field: starting
+// still waits on his own Return (fromJoel).
+function offered(words, from, nameOf) {
+    const said = String(words ?? "");
+    if (!said.startsWith("words:")) {
+        return null;
+    }
+    // Format characters go first: \s counts U+FEFF a space, where
+    // mycelium-link drops it from inside a word.
+    const plain = unformatted(said.slice("words:".length).replace(NEXT_LINE, " "))
+        .split(SPACES)
+        .map(uncontrolled)
+        .filter(word => word !== "")
+        .join(" ");
+    // Counted by characters, as mycelium-link's chars() counts them: QML's
+    // engine counts a string's halves, so a pair of them is one here.
+    if (plain === "" || plain.replace(PAIRED, "_").length > OFFERED_MOST) {
+        return null;
+    }
+    const cell = String(from ?? "");
+    const address = cell.startsWith("from:") ? cell.slice("from:".length) : "";
+    const name = ADDRESS.test(address) && typeof nameOf === "function"
+        ? nameOf(address) : null;
+    return {
+        words: plain,
+        from: typeof name === "string" && name !== "" ? { address, name } : null
+    };
+}
+
+// What the foot says over new work a link offered, from the words
+// `said` (agents.json's Start New Work's): that a page offered it, and
+// which session it says it's from where it named one here, by its
+// quest's name, which any page may name, so it's never said as sure.
+// The name goes in as it is, a `$` in it included.
+function offeredSaid(offer, said) {
+    const words = said ?? {};
+    return offer.from === null ? String(words.offered ?? "")
+        : String(words.offeredFrom ?? "").replace("{cell}", () => offer.from.name);
+}
+
 // A token's digits, letters and digits alike, so it stays short.
 const TOKEN_BASE = 36;
 

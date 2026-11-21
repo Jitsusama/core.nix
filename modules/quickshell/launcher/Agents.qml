@@ -1608,22 +1608,9 @@ Provider {
         if (!readNow)
             return madeBefore("startNewWork", null);
         const words = Words.of("agents:start-new-work");
-        const act = (id, folder, name) => {
-            const key = folder === "" ? `verb:agents:start-new-work:${id}`
-                : `verb:agents:start-new-work:${id}:${folder}`;
-            return thing({
-                key: key,
-                verb: Words.verb(`verb:agents:start-new-work:${id}`),
-                name: name,
-                glyph: Words.glyph(`verb:agents:start-new-work:${id}`),
-                hue: "action",
-                ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
-                state: () => provider.sproutSaid[key] ?? "",
-                given: said => provider.sprout(key, said, folder)
-            });
-        };
-        const inside = () => [act("link", "", Words.name("verb:agents:start-new-work:link"))]
-            .concat((source("quests")?.folders() ?? []).map(one => act("in", one.folder,
+        const inside = () => [newWorkAct("link", "",
+            Words.name("verb:agents:start-new-work:link"))]
+            .concat((source("quests")?.folders() ?? []).map(one => newWorkAct("in", one.folder,
                 Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
@@ -1639,6 +1626,49 @@ Provider {
         }, inside), {
             folded: true
         });
+    }
+
+    // One of Start New Work's acts: `id` link or in, sprouting in `folder`
+    // where one is given, as `name`.
+    function newWorkAct(id, folder, name) {
+        const key = folder === "" ? `verb:agents:start-new-work:${id}`
+            : `verb:agents:start-new-work:${id}:${folder}`;
+        return thing({
+            key: key,
+            verb: Words.verb(`verb:agents:start-new-work:${id}`),
+            name: name,
+            glyph: Words.glyph(`verb:agents:start-new-work:${id}`),
+            hue: "action",
+            ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
+            state: () => provider.sproutSaid[key] ?? "",
+            given: said => provider.sprout(key, said, folder)
+        });
+    }
+
+    // New work a mycelium: link offers, as `qs ipc call launcher newWork`
+    // hands it (Launcher.qml's newWork): From a Link's act, the words to
+    // fill its field with and what the foot says over them, naming the
+    // session it came from by its quest's name where one here has that
+    // address (Sprouting.offered); or null where it offers no plain words.
+    // Its act starts nothing until Joel's own Return (sprout's fromJoel).
+    function newWorkFor(words, from) {
+        const offer = Sprouting.offered(words, from, address => {
+            const session = heldAt(address);
+            return session === null ? null : Sessions.named(session).title;
+        });
+        if (offer === null)
+            return null;
+        const act = newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"));
+        // Fresh words, so how the last start ended is no longer theirs to show,
+        // unless one is still starting.
+        if (sprouting !== act.key)
+            sproutSays(act.key, "");
+        return {
+            act: act,
+            words: offer.words,
+            from: offer.from,
+            said: Sprouting.offeredSaid(offer, Words.of("agents:start-new-work").said)
+        };
     }
 
     // How each Start New Work act stands, by its key, as that act says it:

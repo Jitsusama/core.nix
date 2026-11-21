@@ -17,7 +17,9 @@ QtObject {
         unanswered: "its node didn't answer",
         unread: "its node's answer couldn't be read",
         empty: "say what the work is",
-        unplaced: "that folder isn't a whole path"
+        unplaced: "that folder isn't a whole path",
+        offered: "a page offered this work; read it to its end, then Return starts it",
+        offeredFrom: "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"
     })
 
     function cases() {
@@ -44,6 +46,58 @@ QtObject {
         Expect.same("nothing said starts nothing", Sprouting.ask("   ", "/home/j/src/core"), null);
         Expect.same("a folder that isn't a whole path is never named",
             Sprouting.ask("tidy it", "src/core"), null);
+
+        // New work a mycelium: link offers, as mycelium-link hands it.
+        const sessionNamed = address => address === "TERN02" ? "Tidy the Rows" : null;
+        Expect.same("a link's words and its session here are offered",
+            Sprouting.offered("words:tidy the rows & more", "from:TERN02", sessionNamed),
+            { words: "tidy the rows & more", from: { address: "TERN02", name: "Tidy the Rows" } });
+        Expect.same("a link from no session offers its words alone",
+            Sprouting.offered("words:tidy the rows", "from:", sessionNamed),
+            { words: "tidy the rows", from: null });
+        for (const from of ["from:GONE42", "from:tern02", "TERN02", "from:TERN02;rm"])
+            Expect.same(`a session not here, or misshaped, is let go: ${from}`,
+                Sprouting.offered("words:tidy", from, sessionNamed),
+                { words: "tidy", from: null });
+        // Its own check, with a session here for every address: a misshaped cell names none.
+        const anyNamed = () => "Any Quest";
+        for (const from of ["from:tern02", "TERN02", "from:TERN02;rm", "from:ABCDEFGHIJKLM"])
+            Expect.same(`a misshaped cell names no session, whoever is here: ${from}`,
+                Sprouting.offered("words:tidy", from, anyNamed),
+                { words: "tidy", from: null });
+        Expect.same("words are read again as one plain line",
+            Sprouting.offered("words:  tidy\tthe\nrows\u0007\u001b[2J ", "from:", sessionNamed),
+            { words: "tidy the rows[2J", from: null });
+        Expect.same("words lose what turns, hides or joins text, as mycelium-link's do",
+            Sprouting.offered("words:tidy\u202e\u200bthe\u007f\u009brows", "from:", sessionNamed),
+            { words: "tidytherows", from: null });
+        Expect.same("a byte-order mark joins its words, a next line parts them",
+            Sprouting.offered("words:\ufefftidy\ufeffthe\u0085rows\u{e0001}", "from:", sessionNamed),
+            { words: "tidythe rows", from: null });
+        Expect.same("words holding only format characters offer nothing",
+            Sprouting.offered("words:\u202e\u200b", "from:", sessionNamed), null);
+        // A run of blanks would hide words between the start and the end.
+        const hidden = "\u2800\u3164\u115f\uffa0\ufe0f\u{e0100}".repeat(40);
+        Expect.same("words lose what draws a blank, as mycelium-link's do",
+            Sprouting.offered(`words:tidy${hidden} the${hidden}rows`, "from:", sessionNamed),
+            { words: "tidy therows", from: null });
+        Expect.same("words holding only blanks offer nothing",
+            Sprouting.offered(`words:${hidden}`, "from:", sessionNamed), null);
+        Expect.same("the longest words are offered whole",
+            Sprouting.offered(`words:${"\u{1F331}".repeat(1000)}`, "from:", sessionNamed)?.words,
+            "\u{1F331}".repeat(1000));
+        Expect.same("words past the longest offer nothing, counted by characters",
+            Sprouting.offered(`words:${"\u{1F331}".repeat(1001)}`, "from:", sessionNamed), null);
+        for (const words of ["tidy", "words:", "words: \t\n", `words:${"a".repeat(1001)}`])
+            Expect.same(`no plain words offer nothing: ${words.slice(0, 12)}`,
+                Sprouting.offered(words, "from:TERN02", sessionNamed), null);
+        Expect.same("the foot says a page offered it, from the session by its quest",
+            Sprouting.offeredSaid({ words: "tidy", from: { address: "TERN02",
+                name: "Tidy the Rows" } }, said),
+            "a page offered this work, saying it's from Tidy the Rows; read it to its end, then Return starts it");
+        Expect.same("and only that a page offered it, from no session here",
+            Sprouting.offeredSaid({ words: "tidy", from: null }, said),
+            "a page offered this work; read it to its end, then Return starts it");
 
         // Why it asks nothing, said where Joel pressed.
         Expect.same("nothing said asks for the work",

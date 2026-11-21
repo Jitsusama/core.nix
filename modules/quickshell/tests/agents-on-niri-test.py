@@ -2286,6 +2286,72 @@ def test_what_a_link_opens_drops_keys_at_first_and_takes_no_return_before_a_key(
             one.unlink()
 
 
+def test_a_links_new_work_says_whom_it_names_while_joel_checks_its_words(shell: Shell) -> None:
+    """New work a link offers opens From a Link, its foot saying whom the page names past a key.
+
+    Joel checks the offered words before his Return starts them, so the foot keeps saying a
+    page offered them, and which session it says they're from, while he types, rather than
+    giving way at his first key (Y2YBTS, 2026-11-20). The caret starts where he reads from.
+    """
+    offered = "tidy the rows"
+
+    def told(shown: Json) -> bool:
+        # The foot keeps each phrase whole with no-break spaces.
+        said = " ".join(shown["saying"]).replace("\xa0", " ")
+        return "saying it's from Listening Quest" in said
+
+    # The words and the cell come as mycelium-link hands them on, each after its own prefix.
+    asked = shell.ipc("newWork", shlex.quote(f"words:{offered}"), "from:LISTEN")
+    did = cast("Json", json.loads(shell.as_account(asked)))
+    assert did["done"], did
+    assert did["from"] == "LISTEN", did
+    time.sleep(LINK_QUIET)
+    shell.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["asking"]
+            and shown["typed"] == offered
+            and shown["caret"] == 0
+            and told(shown)
+        )
+    )
+    shell.send_chars("x")
+    shell.launcher_until(lambda shown: shown["typed"] == "x" + offered)
+    assert told(shell.showing()), shell.showing()
+    # Stray keys type in at the start, so their Return, the caret short of the words' end,
+    # starts nothing a page wrote (council F40).
+    shell.send_key("ret")
+    time.sleep(LINK_QUIET)
+    shown = shell.showing()
+    assert shown["asking"], shown
+    assert shown["typed"] == "x" + offered, shown
+    # Another word in the foot, as q's in normal, takes the offer's place; a Return held after
+    # it says the offer's foot again, so it is never dropped unexplained (council F51, F57).
+    shell.send_key("esc")
+    shell.send_chars("q")
+    shell.launcher_until(lambda shown: shown["open"] and not told(shown))
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"] and told(shown))
+    assert shell.showing()["typed"] == "x" + offered, shell.showing()
+    # Back and forward again, the line comes back with none of the page's words, since
+    # neither its foot nor Return's wait comes back with it (council F68).
+    shell.send_key("ctrl-o")
+    shell.launcher_until(lambda shown: shown["open"] and not shown["asking"])
+    shell.send_key("ctrl-i")
+    shell.launcher_until(lambda shown: shown["asking"])
+    back = shell.showing()
+    assert back["typed"] == "", back
+    assert not told(back), back
+    shell.close_launcher()
+    # A line reached later at the same depth is no page's, so its foot says nothing of one
+    # (council F37).
+    talked = followed(shell, "talkTo", "LISTEN")
+    assert talked["done"], talked
+    shell.launcher_until(lambda shown: shown["open"] and shown["asking"])
+    assert not told(shell.showing()), shell.showing()
+    shell.close_launcher()
+
+
 def typed_after_a_link(
     shell: Shell,
     said: str,
