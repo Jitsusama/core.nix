@@ -4,14 +4,18 @@
 # its store and its metadata cache inside it, and node-gyp its headers,
 # never in the account's store or ~/.cache, which fenced commands write.
 # pi loads every dependency from that store, so one a fenced command could
-# rewrite would run outside the fence. pnpm itself is asked where each
-# lies, so a name pnpm no longer reads fails here rather than passing.
+# rewrite would run outside the fence. pnpm itself is asked where its
+# store and cache lie, so a name pnpm no longer reads fails here rather
+# than passing; node-gyp's headers folder is checked by the value given.
 #
 # Usage: keeps-its-own-store.sh ROOT HELD EXECSTART
 #   ROOT       the root pi-packages is configured with
 #   HELD       the folder the fence holds read-only
 #   EXECSTART  the service's command, which names its config file
 set -euo pipefail
+# A failure inside a command substitution, such as asked's jq, stops
+# the check too, rather than passing an empty value along.
+shopt -s inherit_errexit
 
 root=$1
 held=$2

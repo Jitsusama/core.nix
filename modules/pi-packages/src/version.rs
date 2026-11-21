@@ -172,9 +172,12 @@ pub fn links_elsewhere(config: &Config, version: &Path) -> bool {
             links.push(path);
         }
     }
+    // A link that no longer resolves counts as elsewhere too: its target
+    // lay in a store a fenced command may write, which may have emptied it
+    // to keep the version from being rebuilt.
     links.iter().any(|link| {
         fs::symlink_metadata(link).is_ok_and(|found| found.file_type().is_symlink())
-            && fs::canonicalize(link).is_ok_and(|real| !real.starts_with(&root))
+            && fs::canonicalize(link).map_or(true, |real| !real.starts_with(&root))
     })
 }
 

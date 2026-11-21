@@ -251,9 +251,36 @@ fn a_current_version_linked_outside_the_root_is_built_again() {
         shared_of(&place.current()).starts_with(&root),
         "still linked outside the root"
     );
+    assert_ne!(
+        fs::canonicalize(place.current()).expect("the new version"),
+        old,
+        "built again in place, under a running pi"
+    );
     assert!(
         old.is_dir(),
         "the version a running pi may hold was removed"
+    );
+}
+
+#[test]
+fn a_current_version_whose_links_lead_nowhere_is_built_again() {
+    // A fenced command may empty the old store rather than write it, so
+    // a link that no longer resolves must not count as inside the root.
+    let fixture = Fixture::new();
+    fixture.update();
+    let place = fixture.place();
+    let old = fs::canonicalize(place.current()).expect("the first version");
+    fs::remove_dir_all(shared_of(&old)).expect("the old store's copy");
+    let config = fixture.with_store_under_root();
+
+    let outcome =
+        run::update_one(&config, &config.packages[0], SystemTime::now(), None).expect("an update");
+
+    assert_eq!(
+        outcome.done,
+        Done::Rebuilt {
+            commit: fixture.head()
+        }
     );
 }
 

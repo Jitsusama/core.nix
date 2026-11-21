@@ -2945,7 +2945,8 @@
   pi-packages-keeps-its-own-store = ''
     pi's packages install their dependencies into a pnpm store of their own, and keep pnpm's
     metadata cache and node-gyp's headers, under the folder the agent fence holds read-only,
-    never the account's one store or ~/.cache, which fenced commands write, as pnpm itself says
+    never the account's one store or ~/.cache, which fenced commands write, as pnpm itself says of
+    its store and cache
   '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
