@@ -164,7 +164,9 @@ pub fn realm_folder(realm: &str) -> String {
     let named: String = realm
         .chars()
         .map(|each| {
-            if each.is_ascii_alphanumeric() || matches!(each, '-' | '_') {
+            // Upper case is written as its code too, as a Mac's folders
+            // don't tell it from lower.
+            if each.is_ascii_lowercase() || each.is_ascii_digit() || matches!(each, '-' | '_') {
                 each.to_string()
             } else {
                 format!("+{:x}+", u32::from(each))
@@ -178,8 +180,12 @@ pub fn realm_folder(realm: &str) -> String {
 /// was read and why the newest read wasn't: a part and a machine after
 /// what it says and among what is worth a look, and a machine's cells,
 /// network and code under its ties' `kept`, each only on a tie that answer
-/// gave it. A part or machine so read is judged no better than watch, as
-/// its owner didn't answer.
+/// gave it. A part so read is judged no better than watch, as its owner
+/// didn't answer, but for code, which is good whenever its owner answers
+/// and so hides no fault: watched, it would tell each other machine of the
+/// realm that this one's code wants a look. Each machine keeps its own
+/// health and says the machines' note only in its words, as one slow read
+/// of the realm makes no machine worth a look; the part says it once.
 pub fn mark(system: &mut System, notes: &Notes) {
     let owners = [
         ("cells", &notes.health),
@@ -189,16 +195,16 @@ pub fn mark(system: &mut System, notes: &Notes) {
     for part in &mut system.parts {
         if let Some(note) = notes.of(part.name) {
             part.says = told(&part.says, note);
-            part.side.push(note.to_owned());
-            part.health = part.health.max(Health::Watch);
+            noted(&mut part.side, note);
+            if part.name != "code" {
+                part.health = part.health.max(Health::Watch);
+            }
         }
         for thing in &mut part.things {
             if part.name == "machines"
                 && let Some(note) = &notes.machines
             {
                 thing.says = told(&thing.says, note);
-                thing.side.push(note.clone());
-                thing.health = thing.health.max(Health::Watch);
             }
             let Some(ties) = thing.ties.as_object_mut() else {
                 continue;
@@ -213,6 +219,15 @@ pub fn mark(system: &mut System, notes: &Notes) {
             }
         }
     }
+}
+
+/// `side` with `note` among what is worth a look, ahead of the item saying
+/// how many more there were, which a side keeps last.
+fn noted(side: &mut Vec<String>, note: &str) {
+    let more = side
+        .last()
+        .is_some_and(|last| last.starts_with("and ") && last.ends_with(" more worth a look"));
+    side.insert(side.len() - usize::from(more), note.to_owned());
 }
 
 /// `says` with `note` after it: as a clause after one, or as a sentence
@@ -428,7 +443,13 @@ mod tests {
             machine: "kestrel".to_owned(),
             read_at: "2026-11-21T12:00:00Z".to_owned(),
             parts: vec![
-                parts::machines(&Ok(realm), &Ok(health.clone()), None, Some(&repos), None),
+                parts::machines(
+                    &Ok(realm),
+                    &Ok(health.clone()),
+                    Some(&json!({"devices": []})),
+                    Some(&repos),
+                    None,
+                ),
                 parts::mycelium(&Ok(health)),
                 parts::code(&Ok(repos)),
             ],
@@ -440,8 +461,10 @@ mod tests {
         let mut system = system("kestrel");
         let cells = "as read at 11:54; just now mycelium health gave no answer in 20 s";
         let code = "as read at 11:55; just now repos --json gave no answer in 20 s";
+        let network = "as read at 11:56; just now net --json gave no answer in 20 s";
         let notes = Notes {
             health: Some(cells.to_owned()),
+            net: Some(network.to_owned()),
             repos: Some(code.to_owned()),
             ..Notes::default()
         };
@@ -459,13 +482,13 @@ mod tests {
         let kestrel = &system.parts[0].things[0];
         assert_eq!(
             kestrel.ties["kept"],
-            json!({"cells": cells, "code": code}),
-            "this machine's cells and code, read from kept answers, say so"
+            json!({"cells": cells, "network": network, "code": code}),
+            "this machine's cells, network and code, read from kept answers, say so"
         );
         let osprey = &system.parts[0].things[1];
         assert_eq!(
             osprey.ties["kept"],
-            json!({"cells": cells}),
+            json!({"cells": cells, "network": network}),
             "another machine's code, never read from this machine's repos, says nothing of it"
         );
     }
@@ -479,13 +502,14 @@ mod tests {
             "the mycelium reads good"
         );
         let note = "as read at 11:54; just now mycelium health ended with 1";
-        mark(
-            &mut system,
-            &Notes {
-                health: Some(note.to_owned()),
-                ..Notes::default()
-            },
-        );
+        let code = "as read at 11:55; just now repos --json gave no answer in 20 s";
+        let notes = Notes {
+            health: Some(note.to_owned()),
+            repos: Some(code.to_owned()),
+            ..Notes::default()
+        };
+        let mut failing = system.clone();
+        mark(&mut system, &notes);
         assert_eq!(
             system.parts[1].health,
             Health::Watch,
@@ -495,6 +519,40 @@ mod tests {
             system.parts[1].side.last().map(String::as_str),
             Some(note),
             "what makes it worth a look is said among what is"
+        );
+        assert_eq!(
+            (system.parts[2].health, system.parts[2].side.clone()),
+            (Health::Good, vec![code.to_owned()]),
+            "code, good whenever its owner answers, isn't watched, but says why"
+        );
+        failing.parts[1].health = Health::Bad;
+        mark(&mut failing, &notes);
+        assert_eq!(
+            failing.parts[1].health,
+            Health::Bad,
+            "a part whose last answer said it was failing still says so"
+        );
+    }
+
+    #[test]
+    fn a_note_goes_ahead_of_how_many_more_there_were() {
+        let note = "as read at 11:54; just now net --json gave no answer in 20 s";
+        let mut side = vec![
+            "the hall point is weak".to_owned(),
+            "and 2 more worth a look".to_owned(),
+        ];
+        noted(&mut side, note);
+        assert_eq!(
+            side,
+            ["the hall point is weak", note, "and 2 more worth a look"],
+            "how many more stays last"
+        );
+        let mut short = vec!["the hall point is weak".to_owned()];
+        noted(&mut short, note);
+        assert_eq!(
+            short,
+            ["the hall point is weak", note],
+            "a side with no more takes it last"
         );
     }
 
@@ -539,10 +597,19 @@ mod tests {
             realm_folder(""),
             "a realm named like the unnamed one is apart from it"
         );
-        assert_ne!(
-            realm_folder("a.b"),
-            realm_folder("ab"),
+        let folders: std::collections::HashSet<String> = ["a.b", "ab", "a_b", "a-b", "a+2e+b"]
+            .into_iter()
+            .map(realm_folder)
+            .collect();
+        assert_eq!(
+            folders.len(),
+            5,
             "realms that differ only by a character a folder can't carry stay apart"
+        );
+        assert_ne!(
+            realm_folder("Home").to_lowercase(),
+            realm_folder("home"),
+            "realms that differ only in case stay apart where folders don't tell case"
         );
         assert!(
             !realm_folder("../up").contains('/') && !realm_folder("../up").contains(".."),
@@ -570,16 +637,16 @@ mod tests {
                 thing.says
             );
             assert_eq!(
-                (thing.health, thing.side.last().map(String::as_str)),
-                (Health::Watch, Some(note)),
-                "{} read from the kept machines is worth a look, saying why",
+                (thing.health, thing.side.is_empty()),
+                (Health::Good, true),
+                "{} isn't worth a look for one slow read of the realm",
                 thing.name
             );
         }
         assert_eq!(
-            system.parts[0].health,
-            Health::Watch,
-            "the machines part read from a kept answer is watched"
+            (system.parts[0].health, system.parts[0].side.clone()),
+            (Health::Watch, vec![note.to_owned()]),
+            "the machines part read from a kept answer is watched, saying why once"
         );
     }
 }
