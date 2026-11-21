@@ -1453,20 +1453,25 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # instead. It's banged where the asking still showed, and plain where the step back
         # came first, as on the builders' runs of 20 Nov. Only that one Return can write one,
         # so a second line fails the wait for the step back. Its line can open after the step
-        # back is seen too, so the screen is let stand still and read again before the shot;
-        # one opening later still goes unseen. The plain line is the launcher's fault, as a
-        # gone row should write none; once it writes none, this asserts that no line opens.
+        # back is seen too, so the screen is let stand still and read again before the shot,
+        # said where it never stood still; one opening later still goes unseen. The plain line
+        # is the launcher's fault, as a gone row should write none; once it writes none, this
+        # asserts that no line opens.
         shown = desktop.launcher_until(
             lambda shown: shown["command"] is not None or stepped_back(shown)
         )
+        seen = "before the step back was seen"
         if shown["command"] is None:
-            desktop.held_still()
+            if not desktop.held_still():
+                print("firmware: the screen never stood still after the step back")
             shown = desktop.showing()
             assert shown["command"] is not None or stepped_back(shown), shown
+            seen = "after the step back, once the screen was let stand still"
         if shown["command"] is not None:
-            assert shown["command"].get("line") in {"install", "install!"}, shown["command"]
-            # Said so the net's logs count how often the late line comes.
-            print("firmware: the third Return's line came first, let go with Escape")
+            line = shown["command"].get("line")
+            assert line in {"install", "install!"}, shown["command"]
+            # Said so the net's logs count which line comes, and when it's seen.
+            print(f"firmware: the third Return wrote {line!r}, seen {seen}, let go with Escape")
             machine.send_key("esc")
             desktop.launcher_until(stepped_back)
         desktop.shoot("launcher-firmware-install-waits")

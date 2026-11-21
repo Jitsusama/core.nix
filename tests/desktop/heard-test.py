@@ -43,9 +43,10 @@ def test_a_wait_that_hears_nothing_says_the_state_it_first_read() -> None:
     assert str(never.value) == wanted, f"the wait that heard nothing said: {never.value}"
 
 
-def test_a_wait_stops_at_the_change_that_passes_and_gives_it_back() -> None:
+def test_only_the_change_that_passes_is_said_to_pass_and_is_given_back() -> None:
     # What hears stops at the first change the wait says passed, as reported does, so this
-    # holds that the wait says so of the change that passes and of no other.
+    # holds that the wait says so of the change that passes and of no other; that the
+    # hearer stops is reported's to keep, on the VM.
     heard: list[str] = []
     said_in_turn = ('{"rows": ["Install"]}', '{"rows": ["Restart"]}', '{"rows": []}')
 
@@ -64,7 +65,7 @@ def test_a_wait_stops_at_the_change_that_passes_and_gives_it_back() -> None:
 
 
 def test_a_test_that_trips_keeps_its_error_and_says_the_last_state_heard() -> None:
-    # A state with no rows trips a test that reads the first, as stepped_back would.
+    # A state with no rows trips a test that reads its first row, as many launcher waits do.
     def hear(passes: Callable[[str], object]) -> None:
         passes('{"rows": []}')
 
@@ -83,6 +84,23 @@ def test_a_test_that_trips_on_the_first_read_keeps_its_error_and_says_that_read(
         until_heard({"rows": []}, lambda now: now["rows"][0] == "Restart", hear, "it")
     notes = getattr(tripped.value, "__notes__", [])
     assert notes == ['it, last heard: {"rows": []}'], f"the first read's trip noted: {notes}"
+
+
+def test_a_wait_that_stops_hearing_before_a_state_passes_fails() -> None:
+    # Only a hearer that stops at a pass, as reported does, may end the wait without an error,
+    # so one that stops early can't hand back a state its test refused as though it passed.
+    def hear(passes: Callable[[str], object]) -> None:
+        passes('{"rows": ["Install"]}')
+
+    with pytest.raises(AssertionError) as never:
+        until_heard(
+            {"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "the launcher showed"
+        )
+    wanted = (
+        "the launcher showed nothing that passed before the wait stopped hearing\n"
+        'the launcher showed, last heard: {"rows": ["Install"]}'
+    )
+    assert str(never.value) == wanted, f"the wait that stopped early said: {never.value}"
 
 
 def test_a_line_that_isnt_json_is_said_as_it_came() -> None:

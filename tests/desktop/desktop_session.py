@@ -537,7 +537,9 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
                 timeout=timedelta(seconds=left + 30),
             )
-            assert status == 0, never()
+            # Said apart from a wait that ran out, since a reader stopped hearing then, and what
+            # it last heard is no sign of where the shell settled.
+            assert status == 0, f"{never()}, since reports stopped with {status}"
             for line in said.splitlines():
                 kind, what = line.split("\t", 1)
                 if kind == "cursor":

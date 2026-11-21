@@ -33,7 +33,9 @@ def until_heard(
     own after whatever the error said, since a journal holds a line only for each change,
     and a state settled wrong before the wait began says none. It's kept as it's heard
     rather than asked for again, since asking a program that hung or went is what would
-    fail then, in place of the failure it's meant to explain.
+    fail then, in place of the failure it's meant to explain. A test's own AssertionError reads
+    the same way, as the wait failing, and a hear that returns before any change passed fails
+    too, so a state the test refused is never given back as though it passed.
 
     Anything else raised on the way, a test tripping on a state shaped other than it expects or
     a line the journal split, keeps its own kind, with a note saying what was last heard: the
@@ -42,12 +44,14 @@ def until_heard(
     """
     heard = [first]
     unread: list[str] = []
+    passed: list[object] = []
 
     def passes(said: str) -> object:
         unread[:] = [said]
         heard[0] = json.loads(said)
         unread.clear()
-        return test(heard[0])
+        passed[:] = [test(heard[0])]
+        return passed[0]
 
     def last() -> str:
         if unread:
@@ -64,4 +68,7 @@ def until_heard(
     except Exception as broke:
         broke.add_note(f"{who}, {last()}")
         raise
-    return heard[0]
+    if passed and passed[0]:
+        return heard[0]
+    message = f"{who} nothing that passed before the wait stopped hearing\n{who}, {last()}"
+    raise AssertionError(message)
