@@ -337,7 +337,7 @@ fn machine_name(picture: &Picture, piece: &Piece) -> String {
     } else if piece.session == crate::config::ELSEWHERE {
         crate::config::ELSEWHERE.into()
     } else if piece.tool != "pi" {
-        format!("{} (no machine)", piece.tool)
+        format!("{}{}", piece.tool, crate::config::NO_MACHINE)
     } else {
         picture.machine.clone()
     }
@@ -1524,6 +1524,27 @@ mod tests {
             "another tool's bill was put on a machine"
         );
         assert_eq!(Cut::parse("hosts"), Some(Cut::Machine));
+        // Through the cut, another tool's bill beside this machine's work
+        // in the same hour and session is still its own row.
+        let mut billed = picture.clone();
+        let mut bill = billed
+            .pieces
+            .iter()
+            .find(|piece| piece.session == "here")
+            .unwrap()
+            .clone();
+        "codex".clone_into(&mut bill.tool);
+        billed.pieces.push(bill);
+        let rows: Vec<String> = cut(&billed, Period::Today, Cut::Machine, 10)
+            .rows
+            .into_iter()
+            .map(|row| row.name)
+            .collect();
+        assert!(
+            rows.iter().any(|name| name == "codex (no machine)")
+                && rows.iter().any(|name| name == "slate"),
+            "another tool's bill was cut together with this machine's work: {rows:?}"
+        );
     }
 
     #[test]

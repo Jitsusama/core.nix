@@ -105,13 +105,19 @@ fn offered(picture: &Picture, fits: &str) -> Option<Action> {
         })
 }
 
-fn go_to(session: &str) -> Action {
-    Action {
+/// Going to a session, where it runs here: another machine's has no
+/// terminal on this one to go to, so its finding offers nothing.
+fn go_to(picture: &Picture, session: &str) -> Option<Action> {
+    let elsewhere = picture
+        .pieces
+        .iter()
+        .any(|piece| piece.session == session && !piece.machine.is_empty());
+    (!elsewhere).then(|| Action {
         name: "Go to the session".into(),
         run: ["spend-watch", "sessions", session, "go"]
             .map(String::from)
             .to_vec(),
-    }
+    })
 }
 
 pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<Finding>, String> {
@@ -979,7 +985,7 @@ fn burn_finding(
     f.surprise = -(rate.log10());
     f.session = Some(top.to_owned());
     f.quest = quest;
-    f.action = Some(go_to(top));
+    f.action = go_to(picture, top);
     f
 }
 
@@ -1039,7 +1045,7 @@ pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
             dollars(worst * ratio)
         );
         f.session = Some(session.clone());
-        f.action = Some(go_to(session));
+        f.action = go_to(picture, session);
     }
     f.detail = detail;
     f.dollars = rebuilt;
@@ -1123,7 +1129,7 @@ pub fn peers(picture: &Picture, config: &Config) -> Vec<Finding> {
                 .fold(0.0, f64::max);
             f.session = Some(worst.work.session.clone());
             f.quest = root.map(str::to_owned);
-            f.action = Some(go_to(&worst.work.session));
+            f.action = go_to(picture, &worst.work.session);
             Some(f)
         })
         .collect()
@@ -2648,6 +2654,43 @@ mod tests {
         let found = burns(&history);
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].severity, Severity::Note);
+    }
+
+    // A burn in a session here offers to go to it; one in another
+    // machine's has no terminal here to go to, so it offers nothing.
+    #[test]
+    fn a_burn_elsewhere_offers_no_session_to_go_to() {
+        let history = ordinary();
+        for minute in 0..60 {
+            turn(
+                &history,
+                "hot",
+                NOW - 3600.0 + f64::from(minute) * 60.0,
+                10.0,
+            );
+        }
+        let action = |history: &History| burns(history)[0].action.clone().map(|a| a.run);
+        assert_eq!(
+            action(&history),
+            Some(
+                ["spend-watch", "sessions", "hot", "go"]
+                    .map(String::from)
+                    .to_vec()
+            ),
+            "a burn here didn't offer its session"
+        );
+        history
+            .db
+            .execute(
+                "INSERT INTO sessions VALUES ('hot', '/x', '', 0, NULL, NULL, 'teal')",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            action(&history),
+            None,
+            "a burn on another machine offered to go to it"
+        );
     }
 
     // Agents left working overnight at a working hour's pace aren't a burn,

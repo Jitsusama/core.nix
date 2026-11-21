@@ -78,13 +78,22 @@ feed speaks.
   by its name, this one by the config's `machine` or else its host name,
   pi spend no log explains as elsewhere, and another tool's bill as its
   tool's, since a bill names no machine. It shows only for a period in
-  which another machine spent. Only another machine's logs are read: its
-  subagent runs and quest workspaces stay there, so its runs' spend
-  beyond their logs is elsewhere. A brought log's parent is looked for
-  among that machine's logs, and each machine's folder stands apart from
-  every other's, so nothing is counted twice. The logs are read as they
-  grow in place, and a new project folder is watched once it holds a
-  log, which whatever brings them has to keep to.
+  which another machine spent money, not just took turns on a plan. Only
+  another machine's logs are read: its subagent runs and quest
+  workspaces stay there, so its runs' spend beyond their logs is
+  elsewhere. A brought log's parent is looked for among that machine's
+  logs; a copy brought before its parent counts whole until the parent
+  lands, then is read again for its own turns. Each machine's folder
+  stands apart from every other's where it really is, links passed over
+  inside, so nothing is counted twice. Turns are kept by session, so a
+  second log naming a session another log still holds is left unread
+  and said in the journal, while a log whose path moved (a machine
+  renamed, or brought somewhere new) takes its session over from the
+  path that's gone. A finding on another machine's session offers no
+  terminal to go to. The logs are read as they grow in place, which
+  whatever brings them has to keep to: a log replaced on each copy is
+  read again whole every time. A brought folder is trusted as fully as
+  this machine's own: its refusals, budgets and workspaces count here.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each
   turn's budget is worked out: the budget claiming its provider, since

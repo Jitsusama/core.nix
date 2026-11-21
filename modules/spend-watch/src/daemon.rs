@@ -177,6 +177,18 @@ fn watch(config: Config, wake: Sender<Wake>) {
     use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
     std::thread::spawn(move || {
         let sessions = config.sessions.clone();
+        // Each machine's logs are watched as this machine's are, a new
+        // project folder at once, so its first log is read as it lands
+        // rather than on the next quiet pass. Its folder is made here so
+        // there is one to watch before anything is brought.
+        let roots: Vec<PathBuf> = std::iter::once(sessions.clone())
+            .chain(config.machines.iter().map(|machine| {
+                // Unmade, it's found by the passes as it appears, a little
+                // later than a watch would.
+                let _ = std::fs::create_dir_all(&machine.sessions);
+                machine.sessions.clone()
+            }))
+            .collect();
         let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
             return poll(&config, &wake);
         };
@@ -191,15 +203,18 @@ fn watch(config: Config, wake: Sender<Wake>) {
         // most once a pass, since pi's own logs change many times a minute.
         let add = |watched: &mut std::collections::HashSet<PathBuf>,
                    looked: &mut Option<Instant>| {
-            let mut paths: Vec<PathBuf> = std::iter::once(sessions.clone())
-                .chain(
-                    std::fs::read_dir(&sessions)
-                        .into_iter()
-                        .flatten()
-                        .flatten()
-                        .map(|entry| entry.path())
-                        .filter(|path| path.is_dir()),
-                )
+            let mut paths: Vec<PathBuf> = roots
+                .iter()
+                .flat_map(|root| {
+                    std::iter::once(root.clone()).chain(
+                        std::fs::read_dir(root)
+                            .into_iter()
+                            .flatten()
+                            .flatten()
+                            .map(|entry| entry.path())
+                            .filter(|path| path.is_dir()),
+                    )
+                })
                 .collect();
             if looked.is_none_or(|at| at.elapsed() >= BUSY) {
                 *looked = Some(Instant::now());

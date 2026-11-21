@@ -491,6 +491,19 @@ impl History {
             .and_then(|(offset, carry)| Some((u64::try_from(offset).ok()?, carry)))
     }
 
+    /// The log other than `path` whose turns a session's are, if one is.
+    pub fn held_by(&self, session: &str, path: &str) -> Option<String> {
+        self.db
+            .query_row(
+                "SELECT path FROM files WHERE session = ?1 AND path != ?2 LIMIT 1",
+                params![session, path],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
     /// Forgets a log's turns, for one replaced or read again from its start.
     pub fn forget_file(&self, path: &str) -> Result<(), String> {
         let session: Option<String> = self

@@ -1,6 +1,10 @@
 //! The configuration home.nix renders from `jitsusama.spend-watch`, read
 //! once at start. Every path is given whole, so nothing here guesses where
 //! the harness keeps its files.
+//!
+//! Long because every setting is read and refused here, in one place both
+//! the build and the daemon check, and a third of it is the tests pinning
+//! each refusal.
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -252,6 +256,10 @@ pub struct MachineLogs {
 /// it was, as a bill no log here explains.
 pub const ELSEWHERE: &str = "elsewhere";
 
+/// How another tool's spend is named in the machine cut, after the tool,
+/// since a bill names no machine.
+pub const NO_MACHINE: &str = " (no machine)";
+
 /// One place agents' logs are kept: a pattern of their paths, each `*`
 /// standing for any one name, and the kind of work their sessions are.
 #[derive(Debug, Clone, Deserialize)]
@@ -399,19 +407,34 @@ impl Config {
     }
 
     /// What machines can't mean: two of one name, one named as this
-    /// machine or as elsewhere, whose work it would be mistaken for, or
-    /// logs found by anything but a whole path.
+    /// machine, as elsewhere or as another tool's row, whose work it would
+    /// be mistaken for, or logs found by anything but a whole path.
     fn check_machines(&self) -> Result<(), String> {
         let here = self.machine();
+        if here == ELSEWHERE || here.ends_with(NO_MACHINE) {
+            return Err(format!(
+                "this machine's name is its own, not elsewhere or a tool's: {here:?}"
+            ));
+        }
         let mut names: Vec<&str> = vec![here.as_str(), ELSEWHERE];
         // A folder inside another's would have its logs found twice, under
-        // two machines, and so counted twice.
-        let mut folders: Vec<&Path> = vec![&self.sessions];
+        // two machines, and so counted twice. Folders are compared where
+        // they really are, so a link can't stand one inside another.
+        let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+        let mut folders: Vec<PathBuf> = vec![real(&self.sessions)];
         for machine in &self.machines {
-            if machine.name.trim().is_empty() {
+            let name = machine.name.trim();
+            if name.is_empty() {
                 return Err("a machine has no name".into());
             }
-            if names.contains(&machine.name.as_str()) {
+            // Shown as written, so "teal " would be a second teal.
+            if name != machine.name {
+                return Err(format!(
+                    "a machine's name has no spaces around it: {:?}",
+                    machine.name
+                ));
+            }
+            if names.contains(&name) || name.ends_with(NO_MACHINE) {
                 return Err(format!(
                     "a machine's name is its own, not this machine's, elsewhere or another's: \
                      {:?}",
@@ -424,17 +447,19 @@ impl Config {
                     machine.sessions.display()
                 ));
             }
-            if let Some(taken) = folders.iter().find(|folder| {
-                folder.starts_with(&machine.sessions) || machine.sessions.starts_with(folder)
-            }) {
+            let sessions = real(&machine.sessions);
+            if let Some(taken) = folders
+                .iter()
+                .find(|folder| folder.starts_with(&sessions) || sessions.starts_with(folder))
+            {
                 return Err(format!(
                     "a machine's logs are in a folder of their own, apart from {}: {}",
                     taken.display(),
                     machine.sessions.display()
                 ));
             }
-            names.push(&machine.name);
-            folders.push(&machine.sessions);
+            names.push(name);
+            folders.push(sessions);
         }
         Ok(())
     }
@@ -725,7 +750,14 @@ mod tests {
             Ok(()),
             "two machines of their own names were refused"
         );
-        for named in ["slate", "elsewhere", ""] {
+        for named in [
+            "slate",
+            "elsewhere",
+            "",
+            "teal ",
+            " slate",
+            "codex (no machine)",
+        ] {
             assert!(
                 with_machines(&serde_json::json!([machine(named)])).is_err(),
                 "a machine named {named:?} was taken"
@@ -735,6 +767,19 @@ mod tests {
             with_machines(&serde_json::json!([machine("teal"), machine("teal")])).is_err(),
             "two machines of one name were taken"
         );
+        for here in ["elsewhere", "codex (no machine)"] {
+            let config = serde_json::json!({
+                "sessions": "/s", "runs": "/r", "registry": "/g", "quests": "/q",
+                "state": "/t", "machine": here,
+            });
+            assert!(
+                serde_json::from_value::<Config>(config)
+                    .unwrap()
+                    .check()
+                    .is_err(),
+                "this machine was taken as {here:?}"
+            );
+        }
         let relative = serde_json::json!([{"name": "teal", "sessions": "m/s"}]);
         assert!(
             with_machines(&relative).is_err(),
@@ -777,6 +822,50 @@ mod tests {
             Ok(()),
             "folders sharing only a prefix were refused"
         );
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("a")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("a"), dir.path().join("b")).unwrap();
+        let linked = serde_json::json!([
+            at("teal", &dir.path().join("a").to_string_lossy()),
+            at("ochre", &dir.path().join("b").to_string_lossy()),
+        ]);
+        assert!(
+            with_machines(&linked).is_err(),
+            "a link to another machine's folder was taken as a folder of its own"
+        );
+    }
+
+    // Named nowhere, this machine is its host name, read as the daemon
+    // reads it, and no other machine may take that name.
+    #[test]
+    fn a_machine_named_nowhere_is_its_host() {
+        let host = rustix::system::uname()
+            .nodename()
+            .to_string_lossy()
+            .trim()
+            .to_owned();
+        let host = if host.is_empty() {
+            "this machine".to_owned()
+        } else {
+            host
+        };
+        for named in [serde_json::Value::Null, serde_json::json!("  ")] {
+            let config = serde_json::json!({
+                "sessions": "/s", "runs": "/r", "registry": "/g", "quests": "/q",
+                "state": "/t", "machine": named,
+                "machines": [{"name": host, "sessions": "/m/host"}],
+            });
+            let config: Config = serde_json::from_value(config).unwrap();
+            assert_eq!(
+                config.machine(),
+                host,
+                "a machine named {named} wasn't its host"
+            );
+            assert!(
+                config.check().is_err(),
+                "another machine took the host's name while this one was named {named}"
+            );
+        }
     }
 
     // A pattern is a whole path whose each star is one name, so finding
