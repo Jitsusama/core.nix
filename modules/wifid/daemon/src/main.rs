@@ -1858,10 +1858,14 @@ impl Wifid<'_> {
         // off, or its next look could move it (supplicant::holds_a_network).
         // wpa_supplicant adds a network off, so one newly saved is on.
         // A card in a move keeps them off until the move ends, whatever its
-        // step, as a Keep, Forget or Trust can come meanwhile.
+        // step, as a Keep, Forget or Trust can come meanwhile. One Joel left
+        // between tries keeps them as they are until its next try is taken
+        // off, and is marked alone so they come on then (`leaving`).
         let picked = self.picked.borrow().contains(&card.name);
         let alone = self.alone.borrow().contains(&card.name);
-        if !alone && !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
+        if !alone && self.leaving.borrow().contains_key(&card.name) {
+            self.alone.borrow_mut().insert(card.name.clone());
+        } else if !alone && !supplicant::keeps_the_others_off(picked, &interface.state().await?) {
             for (_, network) in &joinable {
                 self.joinable(network).await?.set_enabled(true).await?;
             }

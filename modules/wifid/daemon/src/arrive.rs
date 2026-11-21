@@ -782,6 +782,8 @@ mod tests {
     fn a_move_put_back_after_a_failed_ask_keeps_its_way_and_time() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
+        // Another card's move, due after this one's so `due` stays its.
+        arrivals.asked("wlan1", Some(HALL), DESK, now + ms(500));
         arrivals.asked("wlan0", Some(DESK), HALL, now);
         arrivals.step("wlan0", "authenticating", now + ms(20));
         let due = arrivals.due();
@@ -804,8 +806,8 @@ mod tests {
         assert_eq!(unbacked, Some(false), "the second, from no point, has none");
         assert_eq!(
             arrivals.saved("wlan1").map(|saved| saved.0.to),
-            None,
-            "none of another's"
+            Some(DESK.to_owned()),
+            "another card's move left as it was"
         );
         assert!(due.is_some(), "a move with a way back is due to take it");
         assert_eq!(resumed, due, "due when the first move was");
