@@ -168,7 +168,10 @@ import {
   let sproutKept = null;
   let sproutKeptFromOffered = false;
   let sproutOpener = null;
-  let sproutHeld = false;
+  // The keys down now, by code, and those down as the line last opened,
+  // closed or sent, whose repeats go nowhere until each comes up.
+  const keysDown = new Set();
+  let sproutHeld = new Set();
   const trail = document.getElementById("trail");
   const trailSteps = document.getElementById("trail-steps");
   // What the find line matched, in the order n steps through them, and
@@ -3660,9 +3663,11 @@ import {
         if (from === sproutFrom) sproutFromBox.checked = true;
         else offerFrom(from);
       }
+      holdKeysDown();
       sproutInput.focus();
       return;
     }
+    holdKeysDown();
     sproutOpener = document.activeElement;
     closeFind({ said: false });
     // Words kept to send again go from the cell they went from while it
@@ -3692,6 +3697,7 @@ import {
   // of keeps none.
   function closeSprout({ said = true, keep = false } = {}) {
     if (sproutLine.hidden) return;
+    holdKeysDown();
     const inLine = sproutLine.contains(document.activeElement);
     if (!keep) {
       sproutInput.value = "";
@@ -3720,10 +3726,6 @@ import {
       where.textContent = NO_WORDS;
       return;
     }
-    // The Return that sent is held from here, so its repeats, landing on
-    // what opened the line once it closes, neither reopen it nor open a
-    // cell over what was said.
-    sproutHeld = true;
     sproutGo.href = link;
     sproutGo.click();
     sproutKept = { words: sproutInput.value, from };
@@ -3752,27 +3754,38 @@ import {
       sproutFromBox.checked = ticked;
     }
   });
-  // A held s opens the line once and a held Return sends once: their
-  // repeats go nowhere, wherever focus lands, until any key comes up, a
-  // fresh key goes down, or the page loses the keys, where its key can
-  // come up unheard. A Return held on what opened the line repeats into
-  // it unsent, so the kept words never go again by themselves.
-  const sproutLetGo = () => {
-    sproutHeld = false;
-  };
-  document.addEventListener("keyup", sproutLetGo);
-  window.addEventListener("blur", sproutLetGo);
+  // A key that opens, closes or sends the line does so once, whatever
+  // opened it and wherever focus lands: the keys down as it does are
+  // held, so a held s types nothing, a held Return sends once and never
+  // reopens the line, and a held Escape lets go of nothing more. Each is
+  // held until it comes up, another key's rolling over leaving it held,
+  // or until the page loses the keys, where it can come up unheard.
+  function holdKeysDown() {
+    sproutHeld = new Set(keysDown);
+  }
   document.addEventListener(
     "keydown",
     (e) => {
-      if (!e.repeat) sproutLetGo();
-      else if (sproutHeld || (e.key === "Enter" && sproutLine.contains(e.target))) {
+      if (!e.repeat) keysDown.add(e.code);
+      else if (sproutHeld.has(e.code)) {
         e.preventDefault();
         e.stopPropagation();
       }
     },
     { capture: true },
   );
+  document.addEventListener(
+    "keyup",
+    (e) => {
+      keysDown.delete(e.code);
+      sproutHeld.delete(e.code);
+    },
+    { capture: true },
+  );
+  window.addEventListener("blur", () => {
+    keysDown.clear();
+    sproutHeld.clear();
+  });
   // Escape closes the line from anywhere in it, its tick and button too,
   // which the page's own keys leave alone as fields; it goes no further,
   // so the same press never lets go of the open cell or closes Now.
@@ -4971,10 +4984,7 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
-    sprout: () => {
-      sproutHeld = true;
-      openSprout(chosen?.kind === "cell" ? chosen.id : null);
-    },
+    sprout: () => openSprout(chosen?.kind === "cell" ? chosen.id : null),
     "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),

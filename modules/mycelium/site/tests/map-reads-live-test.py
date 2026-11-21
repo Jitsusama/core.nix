@@ -782,7 +782,10 @@ NOW_LEADS = """(() => {
 # test browser has nothing to open it with.
 TALK_HELD = """document.addEventListener("click", (event) => {
   const link = event.target.closest?.('a[href^="mycelium:"]');
-  if (link) { event.preventDefault(); window.talkedTo = link.getAttribute("href"); }
+  if (!link) return;
+  event.preventDefault();
+  window.talkedTo = link.getAttribute("href");
+  window.talks = (window.talks || 0) + 1;
 }, true)"""
 
 
@@ -895,11 +898,11 @@ FULL_WORDS = "The line holds 1000 letters; any past that were left off."
 # What the page says to Return with no words, and to Escape on the line.
 NO_WORDS = "Say what the new work is first; the Launcher needs its words."
 CLOSED_WORDS = "New work closed; nothing was handed on."
-# Whether a repeat of the key it's given, pressed now in new work's field,
-# is held off: a function, so evaluate hands it the key.
-REPEAT_HELD = """(key) => {
+# Whether a repeat of the key whose code it's given, pressed now in new
+# work's field, is held off: a function, so evaluate hands it the code.
+REPEAT_HELD = """(code) => {
   const e = new KeyboardEvent("keydown", {
-    key, repeat: true, bubbles: true, cancelable: true,
+    code, repeat: true, bubbles: true, cancelable: true,
   });
   document.getElementById("sprout").dispatchEvent(e);
   return e.defaultPrevented;
@@ -1153,18 +1156,22 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     for _ in range(3):
         page.keyboard.down("s")
     expect(field, "a held s typed into the line").to_have_value("")
-    assert page.evaluate(REPEAT_HELD, "x"), "a held s's repeat wasn't held off"
+    assert page.evaluate(REPEAT_HELD, "KeyS"), "a held s's repeat wasn't held off"
+    # Another key coming up leaves it held; its own, even off the line,
+    # lets it go.
+    page.keyboard.down("Shift")
+    page.keyboard.up("Shift")
+    assert page.evaluate(REPEAT_HELD, "KeyS"), "another key coming up let a held s go"
     page.locator("#map-view").focus()
     page.keyboard.up("s")
-    assert not page.evaluate(REPEAT_HELD, "x"), "s coming up off the line didn't let repeats go"
-    assert page.evaluate(REPEAT_HELD, "Enter"), "a held Return's repeat could send again"
+    assert not page.evaluate(REPEAT_HELD, "KeyS"), "s coming up off the line didn't let it go"
     # The page losing the keys lets a held s go too.
     page.locator("#map-view").focus()
     page.keyboard.press("Escape")
     for _ in range(2):
         page.keyboard.down("s")
     page.evaluate("window.dispatchEvent(new Event('blur'))")
-    assert not page.evaluate(REPEAT_HELD, "x"), "the page losing the keys didn't let s go"
+    assert not page.evaluate(REPEAT_HELD, "KeyS"), "the page losing the keys didn't let s go"
     page.keyboard.up("s")
     field.focus()
     page.keyboard.down("x")
@@ -1199,21 +1206,60 @@ def test_a_held_return_sends_new_work_once(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
     page.evaluate(TALK_HELD)
+    before = page.url
     # Its repeats land on the map once the line closes, and neither reopen
-    # the line nor open a cell over what was said.
+    # the line nor open anything over what was said, though the last
+    # letter, rolled over, comes up under it.
     page.locator("#map-view").focus()
     page.keyboard.press("s")
-    page.keyboard.type("once")
-    for _ in range(4):
+    page.keyboard.type("onc")
+    page.keyboard.down("e")
+    page.keyboard.down("Enter")
+    page.keyboard.up("e")
+    for _ in range(3):
         page.keyboard.down("Enter")
     page.keyboard.up("Enter")
+    assert page.evaluate("window.talks") == 1, "a held Return sent more than once"
     handed = page.evaluate("window.talkedTo")
     assert handed == "mycelium:sprout?words=once", f"a held Return sent {handed}"
     expect(page.locator("#sprout-line"), "a held Return reopened the line").to_be_hidden()
     expect(page.locator("#where"), "a held Return said over the send").to_have_text(
         re.compile(r"^Sent to the Launcher's Start New Work;")
     )
-    expect(page, "a held Return opened a cell").not_to_have_url(re.compile("#cell="))
+    expect(page, "a held Return opened what the map points at").to_have_url(before)
+    # On a drawer's button it opens the line, and sends nothing.
+    page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").focus()
+    for _ in range(3):
+        page.keyboard.down("Enter")
+    page.keyboard.up("Enter")
+    expect(page.locator("#sprout"), "a drawer's button didn't open the line").to_be_focused()
+    assert page.evaluate("window.talks") == 1, "a held Return on a drawer's button sent"
+
+
+def test_a_held_escape_or_new_work_closes_the_line_once(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    line, control = page.locator("#sprout-line"), page.locator("#sprout-control")
+    page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
+    opened = re.compile(rf"#cell={NEEDING[0]}$")
+    expect(page, "the cell didn't open").to_have_url(opened)
+    # A held Escape closes the line and lets go of nothing more.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    for _ in range(3):
+        page.keyboard.down("Escape")
+    page.keyboard.up("Escape")
+    expect(line, "a held Escape left the line open").to_be_hidden()
+    expect(page, "a held Escape let go of the open cell").to_have_url(opened)
+    # A held Return on New Work, which opened the line, closes it for good.
+    control.click()
+    expect(line, "New Work didn't open the line").to_be_visible()
+    control.focus()
+    for _ in range(3):
+        page.keyboard.down("Enter")
+    page.keyboard.up("Enter")
+    expect(line, "a held Return on New Work opened the line again").to_be_hidden()
 
 
 @pytest.mark.parametrize("width", [SIZES[0][0], 560, 700, 780, 900])
