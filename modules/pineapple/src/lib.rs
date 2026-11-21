@@ -19,8 +19,9 @@
 //!   [`reply`] says what one that goes says, from Joel's own account,
 //!   only in the thread that asked, in words he said yes to.
 //! - [`slack`] and [`github`] turn each platform's answers into sayings
-//!   to judge, [`gateway`] reads Slack's as a tool gateway words them, and [`record`] writes down what was decided, a stop's
-//!   record included.
+//!   to judge, [`gateway`] reads Slack's as a tool gateway words them,
+//!   asking it over [`mcp`], and [`record`] writes down what was decided,
+//!   a stop's record included.
 //! - [`resume`] lists the stops standing and marks those Joel resumes,
 //!   for his own command (src/bin/pineapple.rs), which refuses under pi.
 //! - [`tell`] makes the rows Joel is shown in the launcher's Needs You,
@@ -55,6 +56,7 @@ pub mod gateway;
 pub mod github;
 mod judge;
 pub mod judged;
+pub mod mcp;
 pub mod pause;
 pub mod peer;
 pub mod phone;
