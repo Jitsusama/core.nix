@@ -1271,6 +1271,30 @@
     open-with chooses a file in the shell when it answers, and chooses none when the shell can't be
     asked, never asking GTK's portal
   '';
+  firmware-errors-passes-clippy = ''
+    clippy finds nothing in firmware-errors or its tests
+  '';
+  firmware-errors-says-why = ''
+    firmware-errors reads the health table's reset source, reason and Intel's reset cause past
+    other records and other vendors' entries, weighing the cause on Panther Lake alone, and
+    gives nothing, never a panic, for a table cut short or lying about its lengths, saying such
+    a table and a missing watchdog as kept naming none, and one it can't read as unreadable,
+    never as lost, in its words and its JSON; takes no id shorter than four digits or opening
+    with a hyphen, as journalctl's index -1 does; names a
+    core's timeout from Intel's own sample Crash Log, padded or not, and says an empty region
+    holds no error, a cut one is cut, a Crash Log that won't decode is unreadable and one of
+    another kind holds no Crash Log; lets heat, lost power and the power button speak before
+    the rest of Intel's cause, whether the reason or the cause's bits say them, never lets the
+    cause or its bits mark a reboot the reason or software asked for, and lets a kept error
+    speak over an asked one; lists the boots kept beside a table by when they began, else when
+    their tables were first written, saying a table or a folder it can't read rather than
+    leaving it out or ending the list, and a decoder's panic as a region it couldn't read; runs
+    the keeping over stand-ins, which keeps nothing without a table, keeps each for its group
+    alone, never rewrites one kept whole, writes a short one again whole or not at all, follows
+    the clock's start on a later run, and fails on a table it can't copy once the rest are kept;
+    answers JSON of facts and names with every key in every record; and finds a boot by any way
+    its id is written, refusing what isn't an id
+  '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';
@@ -5446,8 +5470,13 @@
   '';
   vm-firmware-records-reach-an-account = ''
     a boot copies the firmware's platform health table, its boot error record table and the
-    error region that table points at under the boot's own folder, where an administrator
-    reads them and an account that isn't one reads none
+    error region that table points at, and the machine's serial number, under the boot's own
+    folder, where an administrator reads them and an account that isn't one reads none, with
+    when the boot began, which a later run of the unit puts right; firmware-errors lists the boot
+    as the one running now, begun when the kernel says, in text and in its JSON, says what the
+    kernel's own region holds without calling it a reset, gives the boot in full by the start of
+    its id, and refuses an account that isn't an administrator, naming the wheel group, never
+    root
   '';
   vm-firmware-asks-an-administrator = ''
     in an administrator's active, local session, writing firmware, changing a device's settings and
