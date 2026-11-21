@@ -372,7 +372,8 @@
       "noAgain": "no f or F to go again",
       "E73": "E73: Tag stack empty",
       "letGo": "let go, as the screen may be shared",
-      "closedUnder": "again acts here, as the step closed by itself"
+      "closedUnder": "again acts here, as the step closed by itself",
+      "closedBroken": "acts here after another key, as the step couldn't close"
     },
     "listed": {
       "eyebrow": "Keys",

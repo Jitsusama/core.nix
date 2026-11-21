@@ -1173,6 +1173,8 @@ Scope {
     // when - climbs back onto it. Listing Landed's 2,600 landings on the
     // way to one took about 40 of To Try's 84 ms Return (2026-11-14).
     function walkTo(spot) {
+        // Put somewhere from outside, it's no landing a leave guessed.
+        guessed = Held.unguessed();
         const came = placeLeft();
         const begun = stepBegun();
         held = [];
@@ -3098,10 +3100,14 @@ Scope {
     property var guessed: Held.unguessed()
 
     // A Return held under a guessed landing says so, and what another
-    // does, so it never reads as the key lost.
-    function heldUnder() {
-        console.info("launcher: Return held, as the step closed by itself under it");
-        say([["\u21b5", (Words.field.hints ?? {}).closedUnder ?? ""]]);
+    // does, so it never reads as the key lost; after a leave that threw,
+    // that another key comes first, as Returns hold until one.
+    function heldUnder(broken) {
+        console.info(broken
+            ? "launcher: Return held, as the step couldn't close by itself"
+            : "launcher: Return held, as the step closed by itself under it");
+        const hints = Words.field.hints ?? {};
+        say([["\u21b5", (broken ? hints.closedBroken : hints.closedUnder) ?? ""]]);
     }
 
     function land(choice) {
@@ -5917,6 +5923,7 @@ Scope {
         // changing beside one is left to the pacing, as Slack's answers
         // arriving while Joel types are.
         function onKeysTakenChanged() {
+            root.guessed = Held.passedOver(root.guessed, prompt.keyTaken);
             if (prompt.typingNow && prompt.keyTaken.length === 1)
                 return;
             const heard = KeyTimes.now();
@@ -6447,9 +6454,9 @@ Scope {
         const before = steps.length;
         // Guessed until the landing is known to be on its row, so a leave
         // that throws partway, its rows unsearched and the selection where
-        // it stood, holds the next Return too.
-        if (open)
-            guessed = { keys: prompt.keysTaken, at: 0 };
+        // it stood, holds Return until another key (Held.leaving).
+        const pending = guessed;
+        guessed = Held.leaving(prompt.keysTaken, open);
         try {
             held = steps;
             back(false, held.length - leaving.keep);
@@ -6469,10 +6476,11 @@ Scope {
             // Joel never chose: a Return pressed next, meant for the step
             // that left, waits rather than run it.
             const onRow = current >= 0 ? matches[current] ?? null : null;
-            const keys = Held.guessedAt(from, onRow ? steadyId(onRow) : "", prompt.keysTaken);
-            guessed = open && keys >= 0 ? { keys, at: 0 } : Held.unguessed();
+            guessed = Held.landedAfter(pending, from, onRow ? steadyId(onRow) : "",
+                { keys: prompt.keysTaken, open, depth: held.length });
         } else {
-            guessed = Held.unguessed();
+            guessed = Held.landedAfter(pending, from, null,
+                { keys: prompt.keysTaken, open, depth: held.length });
         }
         return "left";
     }
@@ -14007,13 +14015,19 @@ Scope {
                             // step: it does nothing to the row, whatever
                             // that row's Return would do, arming Power
                             // Off included. Words asked for are still
-                            // given. Only Return is held here; a click
-                            // chose its row.
-                            const under = Held.returnUnder(root.guessed, prompt.keysTaken,
-                                Date.now(), Options.keyTiming.wait);
+                            // given. Only Return is held here, as the
+                            // key that step's own act took: a click chose
+                            // its row, and another key, as r or an act's
+                            // chord, is one Joel pressed with the row
+                            // before him, so it acts on it.
+                            const under = Held.returnUnder(root.guessed, {
+                                keys: prompt.keysTaken, at: Date.now(),
+                                depth: root.held.length, asking: !!root.asking
+                            }, Options.keyTiming.wait);
+                            const broken = root.guessed.broken;
                             root.guessed = under.next;
-                            if (under.holds && !root.asking) {
-                                root.heldUnder();
+                            if (under.holds) {
+                                root.heldUnder(broken);
                                 root.returned = { act: "waited",
                                     pressed: pressed > 0 ? pressed : null, heard: heard,
                                     done: KeyTimes.now() };
@@ -15507,9 +15521,15 @@ Scope {
                                     // A miss is said as quietly as nothing found.
                                     quiet: !!entry.modelData.gone
                                         || !!entry.modelData.answered && !!entry.modelData.missed
-                                    onClicked: root.arms(entry.modelData)
-                                        ? root.pressArming(entry.modelData, 0)
-                                        : root.run(entry.modelData, false)
+                                    // A click chose its row, so no Return
+                                    // after it is one a leave guessed.
+                                    onClicked: {
+                                        root.guessed = Held.unguessed();
+                                        if (root.arms(entry.modelData))
+                                            root.pressArming(entry.modelData, 0);
+                                        else
+                                            root.run(entry.modelData, false);
+                                    }
                                 }
                             }
                         }
