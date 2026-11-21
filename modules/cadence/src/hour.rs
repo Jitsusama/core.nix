@@ -93,17 +93,8 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         now,
         checkouts,
         &mut kept.fetched,
-    )?;
-    // The work system's findings count against their owners, and one
-    // naming none is the orchestrator's to assign.
-    measures.push(measures::symbiosis(
-        &state_home.join("pi/agentic-harness.pi"),
-        &folder,
-        checkouts,
-        &fs::read_to_string(state_home.join("integration/switches.jsonl")).unwrap_or_default(),
-        now,
         to.unwrap_or_default(),
-    ));
+    )?;
     for m in measures
         .iter_mut()
         .filter(|m| !whole && m.class == Class::Miss)
@@ -224,6 +215,7 @@ fn gather(
     now: i64,
     checkouts: &[String],
     fetched: &mut Vec<i64>,
+    orchestrator: &str,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
@@ -241,13 +233,19 @@ fn gather(
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let asks = text(&mission.join("asks.jsonl"));
+    let switches = text(&state_home.join("integration/switches.jsonl"));
     let mut all = vec![
-        measures::checked(
-            misses,
+        measures::checked(misses, folder, checkouts, &switches)?,
+        // The work system's findings count against their owners, and one
+        // naming none is the orchestrator's to assign.
+        measures::symbiosis(
+            &state_home.join("pi/agentic-harness.pi"),
             folder,
             checkouts,
-            &text(&state_home.join("integration/switches.jsonl")),
-        )?,
+            &switches,
+            now,
+            orchestrator,
+        ),
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
