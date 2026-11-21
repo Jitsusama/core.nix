@@ -20,9 +20,11 @@
 //! it. A process's name is still its own to set, as it is for a camera's
 //! other holders, so the name says which program it says it is, and one
 //! that gives none counts as a reader that can't be named. Which nodes
-//! are `PipeWire`'s own is judged by the program their process runs, its
-//! `exe`, which no process can set, since one of those passes the camera
-//! on unnamed.
+//! are `PipeWire`'s own is judged by the file their process runs, its
+//! `exe`, which a running process can't rename itself to, since one of
+//! those passes the camera on unnamed. Whoever starts a program still
+//! picks its file's name, so a reader run from a copy named `pipewire`
+//! passes as one, as a process can call itself anything.
 //!
 //! Long because half of it is its tests, each a registry as pw-cli could
 //! list it, read through the rules above, which change with them.
@@ -59,7 +61,7 @@ pub(super) const LIST_WAIT: Duration = Duration::from_secs(1);
 /// How often the cameras are read again while `PipeWire` holds one, since
 /// a program can start or stop reading it there while the camera's file
 /// stays as it was.
-const THROUGH_EVERY: Duration = Duration::from_secs(2);
+pub(super) const THROUGH_EVERY: Duration = Duration::from_secs(2);
 
 /// How long a listing is kept through those that fail after it, so one
 /// slow to come on a busy machine doesn't flick the mark to `PipeWire`
@@ -74,9 +76,9 @@ const LONGEST: u64 = 4 << 20;
 /// Why a listing past `LONGEST` is refused, as it starts.
 const TOO_LONG: &str = "pw-cli listed more than";
 
-/// Why a listing that was written into is refused, with the id it went
-/// wrong at, so `pw-cli ls` finds the client, and said the same each time
-/// that client's property stays, so it's said once.
+/// Why a listing that was written into is refused, said the same each
+/// time, whatever a client writes, so it's said once: an id it names
+/// could be one the client wrote, pointing at another.
 const WRITTEN_INTO: &str = concat!(
     "pw-cli's listing was refused, as an id falls back or a key is said twice in it, ",
     "as a client's property holding a line break makes it, or a pw-cli listing otherwise"
@@ -126,7 +128,7 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
             if let Some(last) = globals.last()
                 && id <= last.id
             {
-                return Err(format!("{WRITTEN_INTO}, after id {}", last.id));
+                return Err(WRITTEN_INTO.to_owned());
             }
             let kind = kind.strip_prefix("PipeWire:Interface:").unwrap_or(kind);
             let kind = kind.split_once('/').map_or(kind, |(kind, _)| kind);
@@ -147,7 +149,7 @@ pub fn registry(text: &str) -> Result<Vec<Global>, String> {
                 .insert(key.to_owned(), value.to_owned())
                 .is_some()
             {
-                return Err(format!("{WRITTEN_INTO}, at id {}", global.id));
+                return Err(WRITTEN_INTO.to_owned());
             }
         }
     }
@@ -181,8 +183,8 @@ pub(super) struct State {
     /// of, said once until it shows them.
     pub(super) unfound: HashSet<String>,
     /// When each camera `PipeWire` holds was first listed without it, so
-    /// one only a listing old, as a camera WirePlumber is still taking in
-    /// is, isn't said.
+    /// one missed only briefly, as a camera `WirePlumber` is still taking
+    /// in is, isn't said.
     pub(super) missed: HashMap<String, Instant>,
 }
 
@@ -243,7 +245,7 @@ impl PipeWire {
                 state.failing = None;
             }
             Err(why) => {
-                let forced = why.starts_with(WRITTEN_INTO) || why.starts_with(TOO_LONG);
+                let forced = why == WRITTEN_INTO || why.starts_with(TOO_LONG);
                 let kept = !forced && state.listed_at.is_some_and(|at| at.elapsed() < KEPT_FOR);
                 if state.failing.as_deref() != Some(why.as_str()) {
                     let when = if kept {
@@ -500,7 +502,7 @@ pub(crate) mod tests {
     }
 
     /// A registry as `pw-cli ls` lists one: the camera's device and its
-    /// node, WirePlumber's as on a real machine, and for each program
+    /// node, `WirePlumber`'s as on a real machine, and for each program
     /// reading it, its client, its stream's
     /// node and the link between, with `PipeWire`'s own converter between
     /// the camera and Tuple; Chrome calls itself Firefox, which nothing
@@ -739,11 +741,13 @@ pub(crate) mod tests {
         let listed = root.path("/listed");
         fs::write(&listed, listing("Built-in Camera", "/dev/video32", 0)).unwrap();
         let (failing, written) = (root.path("/failing"), root.path("/written"));
+        let stuffed = root.path("/stuffed");
         let _alone = crate::acts::tests::alone();
         let cli = pw_cli(
             &root,
             &format!(
-                "[ -e '{}' ] && exit 1; [ -e '{}' ] && cat '{}'; cat '{}'",
+                "[ -e '{}' ] && exec yes; [ -e '{}' ] && exit 1; [ -e '{}' ] && cat '{}'; cat '{}'",
+                stuffed.display(),
                 failing.display(),
                 written.display(),
                 listed.display(),
@@ -800,13 +804,24 @@ pub(crate) mod tests {
             serde_json::json!(["pipewire"]),
             "kept through one a client wrote into"
         );
+        fs::remove_file(&written).unwrap();
+        listed_whole(&pipewire);
+        assert_eq!(programs(), readers, "listed once more");
+        // Past the longest, as a client's stuffed property can make it.
+        fs::write(&stuffed, "").unwrap();
+        fails_with("more than");
+        assert_eq!(
+            programs(),
+            serde_json::json!(["pipewire"]),
+            "kept through one a client stuffed"
+        );
     }
 
     #[test]
     fn a_camera_as_this_machine_offers_it_is_one_of_pipewires() {
         // The built-in camera's device, its node and the client that made
         // it, as this machine's pw-cli listed them, word for word.
-        let root = machine("offered");
+        let root = machine("as-offered");
         let graph = registry(include_str!("offered.txt")).expect("it rises by id");
         let readers_of = || readers(&graph, Some("/dev/video34"), "Built-in Camera", &root);
         process(&root, 2359, "wireplumber", "wireplumber");
