@@ -209,6 +209,13 @@ async fn run() -> Result<(), Box<dyn Error>> {
     served
 }
 
+/// The account holding wpa_supplicant's name, asked of the bus itself,
+/// which starts nothing; none while it isn't running.
+async fn supplicant_owner(owners: &DBusProxy<'_>) -> Option<String> {
+    let owner = owners.get_name_owner(SUPPLICANT.into()).await.ok()?;
+    Some(owner.to_string())
+}
+
 /// Joins the bus, gives wpa_supplicant the cards and follows them, and
 /// answers the shell, until there's nothing left to hear.
 async fn serve(
@@ -249,18 +256,18 @@ async fn serve(
     wifid.add_cards().await;
 
     // Followed before the access points are first read, so none heard
-    // meanwhile is missed. Any program on the bus may send a signal under
-    // wpa_supplicant's path, and they're taken all the same rather than
+    // meanwhile is missed. Any account on the laptop may send a signal
+    // under wpa_supplicant's path, as the system bus lets any broadcast
+    // one through, and a card's steps are taken all the same rather than
     // only from its name, since the VM test says a card is scanning so,
-    // no radio there ever hanging a look (2026-11-20). A program forging
-    // them would already be running on the laptop, and could: say a move
-    // reached a point of its choosing, so the move isn't sent back and
-    // that point's channel is kept; name the point a move goes back to;
-    // end a look early, so a move is sent back after its second; or say a
-    // card came off its network mid-move, so wifid itself sends it back.
-    // A card said gone is forgotten only when wpa_supplicant as it runs
-    // now says so, so a forger can't have wifid drop a hold it would lift
-    // later. It moves the card no further than its own networks.
+    // no radio there ever hanging a look (2026-11-20). Such an account
+    // could end a look early, so a move is sent back after its second, or
+    // say a card came off its network mid-move, so wifid itself sends it
+    // back to the point it left. It moves the card no further than its
+    // own networks. The access point a card is at, and a card gone, are
+    // taken only from wpa_supplicant as it runs now, so a forger can't
+    // say where a move landed, which channel is kept for the network, or
+    // have wifid drop a hold it would lift later.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -277,6 +284,8 @@ async fn serve(
         settled: Vec::new(),
         gone: Vec::new(),
         at: HashMap::new(),
+        owner: supplicant_owner(&owners).await,
+        departed: HashSet::new(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -735,6 +744,14 @@ struct Air<'a> {
     /// back said it reached a point it was still authenticating with
     /// (2026-11-20).
     at: HashMap<String, String>,
+    /// The account holding wpa_supplicant's name now, from the bus as
+    /// wifid started and from each change of hands since, so its own
+    /// signals are told from another's without asking the bus each time.
+    owner: Option<String>,
+    /// Every account that held wpa_supplicant's name and let it go, whose
+    /// signals still queued are passed over: they name paths a new
+    /// wpa_supplicant numbers again from nought.
+    departed: HashSet<String>,
 }
 
 impl Air<'_> {
@@ -778,6 +795,11 @@ impl Air<'_> {
         let (Some(path), Some(member)) = (header.path(), header.member()) else {
             return;
         };
+        let sender = header.sender().map(zbus::names::UniqueName::as_str);
+        if sender.is_some_and(|sender| self.departed.contains(sender)) {
+            return;
+        }
+        let own = said_by(sender, self.owner.as_deref());
         let body = message.body();
         match member.as_str() {
             "BSSAdded" => {
@@ -797,19 +819,11 @@ impl Air<'_> {
                 };
                 // Any account may send this signal, under any path, a
                 // parent's naming every card, so it's taken only from
-                // wpa_supplicant as it runs now, asked of the bus itself,
-                // which starts nothing. One from a wpa_supplicant since
-                // stopped is kept here, as its name going forgets every
-                // card (`owner_changed`).
-                let owner = match DBusProxy::new(bus).await {
-                    Ok(proxy) => proxy.get_name_owner(SUPPLICANT.into()).await.ok(),
-                    Err(_) => None,
-                };
-                let sender = header.sender().map(zbus::names::UniqueName::as_str);
-                let owner = owner.as_ref().map(|owner| owner.as_str());
-                if !said_by(sender, owner) {
+                // wpa_supplicant as it runs now. Its name going forgets
+                // every card anyway (`owner_changed`).
+                if !own {
                     let sender = sender.unwrap_or("nobody named");
-                    let owner = owner.unwrap_or("nobody");
+                    let owner = self.owner.as_deref().unwrap_or("nobody");
                     println!(
                         "<6>{card} was said gone by {sender}, where wpa_supplicant is {owner}, \
                          so kept"
@@ -869,7 +883,7 @@ impl Air<'_> {
                         change(&self.state, |state| state.heard(path.as_str(), heard));
                     }
                     "fi.w1.wpa_supplicant1.Interface" => {
-                        self.card_changed(bus, path, &changed).await;
+                        self.card_changed(bus, path, &changed, own).await;
                     }
                     _ => {}
                 }
@@ -880,13 +894,19 @@ impl Air<'_> {
 
     /// Takes in what wpa_supplicant says changed of the card at this path:
     /// how far it's got joining a network, the access point it's at, and
-    /// any status that ends its join.
+    /// any status that ends its join. The access point is taken only from
+    /// wpa_supplicant itself, `own`, and only one of the card's own.
     async fn card_changed(
         &mut self,
         bus: &Connection,
         path: &ObjectPath<'_>,
         changed: &HashMap<String, OwnedValue>,
+        own: bool,
     ) {
+        let point = changed
+            .get("CurrentBSS")
+            .map(|point| &**point)
+            .filter(|point| own && of_card(path.as_str(), point));
         // Taken as wifid reads the signal, before it asks the bus anything,
         // so the time a move took isn't the time wifid took to ask what it
         // reached. Anything wifid was busy with as the signal came still
@@ -911,10 +931,7 @@ impl Air<'_> {
                 }
                 if step == "completed" && before != "completed" {
                     landed = true;
-                    let said = credited(
-                        changed.get("CurrentBSS").map(|point| &**point),
-                        self.at.get(path.as_str()).map(String::as_str),
-                    );
+                    let said = credited(point, self.at.get(path.as_str()).map(String::as_str));
                     let on = self.joined(bus, path, said.as_deref()).await;
                     let arrived = self.arrivals.borrow_mut().joined(&card, on.as_deref(), now);
                     if let Some(arrived) = arrived {
@@ -937,7 +954,6 @@ impl Air<'_> {
                 self.cards.insert(path.to_string(), (card, step));
             }
         }
-        let point = changed.get("CurrentBSS").map(|point| &**point);
         if let Some(zvariant::Value::ObjectPath(said)) = point {
             // wpa_supplicant says only where a card's steps have got to when
             // it sends, so a move can come as a new point alone, the card
@@ -1087,6 +1103,17 @@ fn said_by(sender: Option<&str>, owner: Option<&str>) -> bool {
     sender
         .zip(owner)
         .is_some_and(|(sender, owner)| sender == owner)
+}
+
+/// Whether a point wpa_supplicant says a card is at is one of that card's,
+/// under its path, or none, the root.
+fn of_card(card: &str, point: &zvariant::Value<'_>) -> bool {
+    match point {
+        zvariant::Value::ObjectPath(point) => {
+            point.as_str() == "/" || point.as_str().starts_with(&format!("{card}/BSSs/"))
+        }
+        _ => false,
+    }
 }
 
 /// The path of the access point a card's completed join is credited to:
@@ -1533,7 +1560,12 @@ impl Wifid<'_> {
         let point = point.filter(|point| joined_to(point).is_some());
         let joined = point.as_ref().map(ToString::to_string);
         change(self.state, |state| state.at(&card.name, joined));
-        self.hold_where_it_is(&card.name, &interface, point).await;
+        // A card in a move, or on its way back, keeps the hold the move
+        // gave it, as networks saved meanwhile hand every card over again:
+        // held where it is mid-way, it could join any point of its network.
+        if !self.arrivals.borrow().moving(&card.name) {
+            self.hold_where_it_is(&card.name, &interface, point).await;
+        }
         // The driver makes up each address, so the card's own link stays up
         // as it looks, as it wouldn't were its address changed for a look.
         let masks = HashMap::from([("scan", LOOKING_MASK.to_vec())]);
@@ -1740,6 +1772,10 @@ impl Wifid<'_> {
             // had, whether or not it comes back; started again, it hears
             // nothing yet, and says each access point as it hears it.
             "fi.w1.wpa_supplicant1" => {
+                if let Some(old) = Option::as_ref(args.old_owner()) {
+                    air.departed.insert(old.to_string());
+                }
+                air.owner = Option::as_ref(args.new_owner()).map(ToString::to_string);
                 air.gone_under("");
                 // Forgotten now, not as the next signal comes, which would
                 // take the holds the cards handed over below have since.
@@ -2382,7 +2418,13 @@ impl Wifid<'_> {
             Short::Off => {
                 println!("<4>{card} came off its network short of {to}, so goes back to {from}");
             }
-            Short::Unstarted => return self.stays(&card, &from, &to, held, free).await,
+            Short::Unstarted => {
+                if self.waits_on_look(&card, &from).await {
+                    println!("<7>{card} hasn't left {from} for {to}, as it's looking, so waits");
+                    return true;
+                }
+                return self.stays(&card, &from, &to, held, free).await;
+            }
         }
         let gone_back = async {
             let interface =
@@ -2412,6 +2454,18 @@ impl Wifid<'_> {
         println!("<4>{card} couldn't go back to {from}: {error}");
         self.together(&card, free).await;
         false
+    }
+
+    /// Whether a card whose move hasn't left its point is looking, asked
+    /// of wpa_supplicant, and so has its move wait on the look, once: one
+    /// begun between the move's asking whether it looked and its ask has
+    /// the move queued behind it, which ending the move wouldn't stop.
+    async fn waits_on_look(&self, card: &str, from: &str) -> bool {
+        let looking = async {
+            let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
+            interface.scanning().await
+        };
+        looking.await.unwrap_or(false) && self.arrivals.borrow_mut().waits_on_look(card, from)
     }
 
     /// Holds a card whose move never left the point it's on to that point
@@ -2519,7 +2573,7 @@ impl Wifid<'_> {
         let unreached = self.arrivals.borrow_mut().unreached(now);
         for late in unreached {
             let card = late.card.clone();
-            if self.arrived(&card, &late.to, free(&card)).await {
+            if self.arrived(&card, &late.to, free(&card), None).await {
                 continue;
             }
             if !self.go_back(late, free(&card)).await {
@@ -2528,7 +2582,7 @@ impl Wifid<'_> {
         }
         let stranded = self.arrivals.borrow_mut().stranded(now);
         for (card, to, going) in stranded {
-            if !self.arrived(&card, &to, free(&card)).await {
+            if !self.arrived(&card, &to, free(&card), Some(going)).await {
                 self.stranded(&card, &to, going, free(&card)).await;
             }
         }
@@ -2538,8 +2592,10 @@ impl Wifid<'_> {
     /// moving to after all, asked of wpa_supplicant: its reply comes after
     /// every signal it sent before, so a join completed as the time ran
     /// out, its signal not yet read, is seen. One that is ends its move as
-    /// any arrival does. Where wpa_supplicant can't say, it isn't.
-    async fn arrived(&self, card: &str, to: &str, free: bool) -> bool {
+    /// any arrival does. Where wpa_supplicant can't say, it isn't. A way
+    /// back already handed back as stranded is said as reached so long
+    /// after it was sent, `going`, as any other arrival.
+    async fn arrived(&self, card: &str, to: &str, free: bool, going: Option<Duration>) -> bool {
         let there = async {
             let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
             if interface.state().await? != "completed" {
@@ -2556,9 +2612,13 @@ impl Wifid<'_> {
             .arrivals
             .borrow_mut()
             .joined(card, Some(to), Instant::now());
-        match arrived {
-            Some(arrived) => println!("{}", arrived.said(card)),
-            None => println!("<6>{card} reached {to} as its time ran out"),
+        match (arrived, going) {
+            (Some(arrived), _) => println!("{}", arrived.said(card)),
+            (None, Some(going)) => println!(
+                "<6>{card} reached {to} {} ms after it was asked",
+                going.as_millis()
+            ),
+            (None, None) => println!("<6>{card} reached {to} as its time ran out"),
         }
         self.settled(card, free).await;
         true
@@ -2888,6 +2948,33 @@ mod tests {
             credited(Some(&zvariant::Value::U32(4)), None),
             None,
             "with none said either, wpa_supplicant is asked"
+        );
+    }
+
+    #[test]
+    fn a_card_is_said_at_only_a_point_of_its_own_or_none() {
+        let card = "/fi/w1/wpa_supplicant1/Interfaces/1";
+        let at = |path: &'static str| {
+            let path = ObjectPath::try_from(path).expect("the path is one");
+            of_card(card, &zvariant::Value::ObjectPath(path))
+        };
+
+        assert!(
+            at("/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/4"),
+            "its own point"
+        );
+        assert!(at("/"), "or none");
+        assert!(
+            !at("/fi/w1/wpa_supplicant1/Interfaces/2/BSSs/4"),
+            "not another card's point"
+        );
+        assert!(
+            !at("/fi/w1/wpa_supplicant1/Interfaces/12/BSSs/4"),
+            "nor one whose card's number only starts as its own"
+        );
+        assert!(
+            !of_card(card, &zvariant::Value::U32(4)),
+            "nor anything but a path"
         );
     }
 
