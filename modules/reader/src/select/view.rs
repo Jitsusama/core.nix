@@ -38,8 +38,8 @@ impl Layout {
     }
 
     /// The word under a place, or the next on its line after it, as Vim's
-    /// * takes, with where it starts across the line: its letters, a soft
-    /// hyphen's break left out.
+    /// star takes, with where it starts across the line: its letters, a
+    /// soft hyphen's break left out.
     pub fn word_at(&self, at: Pos) -> Option<(String, f64)> {
         let chars = self.chars.get(at.line)?;
         let word = |ch: &usize| class(chars[*ch]) == Class::Word;
