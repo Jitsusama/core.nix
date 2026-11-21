@@ -49,6 +49,14 @@
 //! the model inside the VPN and a few straight to the builders, so a
 //! split by flows gave the builders' copies 8 kbit/s and they failed.
 //!
+//! While the VPN's flow waits past our queues beside what agents straight
+//! send (src/oneway.rs), and they wait, they're held to a share of what
+//! they'd get, never under their part of the quarter, and that is all
+//! their class may borrow. The VPN's own CAKE keeps it from taking what
+//! they give up, so only Joel straight may, who goes first; otherwise it
+//! goes unsent and the queue past us drains. It's the one class whose
+//! ceiling isn't the whole rate, and only while agents straight wait.
+//!
 //! A lane's agents wait while they hold a few packets, or for twenty
 //! seconds after its CAKE last dropped or marked one: a copy starved to a
 //! window of two packets holds too little to count, yet CAKE drops what
@@ -153,10 +161,19 @@ pub struct Seen {
     pub joel_vpn: f64,
     pub agents_straight: Agents,
     pub agents_vpn: Agents,
+    /// The share of their split agents straight are held to while the
+    /// VPN's flow waits beside what they send (src/tunnel.rs), or none.
+    pub agents_held: Option<f64>,
+}
+
+/// What the controller's hold on agents straight says to the lanes: the
+/// share they're held to, or none while it's whole.
+pub fn held_to(share: f64) -> Option<f64> {
+    (share < 1.0).then_some(share)
 }
 
 /// The connection's three classes' rates, in kbit/s, which add up to the
-/// controller's rate.
+/// controller's rate, or to less while agents straight are held.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Split {
     /// Joel straight on the connection.
@@ -165,14 +182,44 @@ pub struct Split {
     pub vpn: f64,
     /// Agents straight on the connection.
     pub agents: f64,
+    /// The most agents straight may borrow up to while they're held, in
+    /// kbit/s: their own rate, which their class takes as its ceiling.
+    /// None lets them borrow the whole rate.
+    pub agents_most: Option<f64>,
+    /// Whether a change of the classes to this split partly failed, so
+    /// what they hold may differ from it in any way, a ceiling included.
+    pub unsent: bool,
 }
 
 impl Split {
     /// Whether a class's rate moved by more than a hundredth of `rate`
-    /// from `was`'s, so the classes are worth changing.
+    /// from `was`'s, so the classes are worth changing; always, while
+    /// `was` may not be what they hold.
     pub fn moved_from(&self, was: &Self, rate: f64) -> bool {
         let past = |a: f64, b: f64| (a - b).abs() * 100.0 > rate;
-        past(self.joel, was.joel) || past(self.vpn, was.vpn) || past(self.agents, was.agents)
+        was.unsent
+            || past(self.joel, was.joel)
+            || past(self.vpn, was.vpn)
+            || past(self.agents, was.agents)
+            || self.agents_most.is_some() != was.agents_most.is_some()
+    }
+
+    /// What stands once `tried` was sent in place of this split: all of it
+    /// when every command took. Otherwise this split, marked unsent so the
+    /// next is sent whatever it holds, with any cap either held, since a
+    /// change that partly failed may have left one on agents' class, and
+    /// letting agents go must then send the classes too.
+    #[must_use]
+    pub fn after(self, tried: Self, took: bool) -> Self {
+        if took {
+            tried
+        } else {
+            Self {
+                agents_most: tried.agents_most.or(self.agents_most),
+                unsent: true,
+                ..self
+            }
+        }
     }
 }
 
@@ -244,6 +291,21 @@ impl Lanes {
     pub fn at(&mut self, rate: f64) -> Split {
         let seen = Seen { rate, ..self.last };
         self.split(&seen, 0.0)
+    }
+
+    /// Forget that agents straight were held, so the next split at a new
+    /// rate lets them borrow the whole rate again: a link the controller
+    /// no longer holds is split only so.
+    pub fn let_agents_go(&mut self) {
+        self.last.agents_held = None;
+    }
+
+    /// Whether agents straight on the connection wait, as the last split
+    /// judged it: what lets the controller hold them for the VPN's wait.
+    pub fn agents_wait_straight(&self) -> bool {
+        self.last
+            .agents_straight
+            .waiting(self.lately(self.pressed_at.0))
     }
 
     /// How the rate is split now, given what was seen `dt` seconds after
@@ -319,10 +381,24 @@ impl Lanes {
         let spare =
             (room - straight_now - joel_vpn).min(rate - straight_now - vpn - straight_floor);
         let joel = straight_now + extra.min(spare);
+        // Held for the VPN's wait while they wait, agents straight keep a
+        // share of their split, never under their part of the floor, and
+        // borrow nothing past it. The VPN's own CAKE holds it to V, so
+        // only Joel, who borrows first, may send what they give up; else
+        // it goes unsent, and the queue past us the VPN's flow waits in
+        // drains. A hold climbing back while they don't wait caps nothing,
+        // or an upload starting then would get the least a class has.
+        let agents = rate - joel - vpn;
+        let agents_most = seen
+            .agents_held
+            .filter(|_| beside)
+            .map(|share| (agents * share).max(straight_floor).min(agents));
         Split {
             joel,
             vpn,
-            agents: rate - joel - vpn,
+            agents: agents_most.unwrap_or(agents),
+            agents_most,
+            unsent: false,
         }
     }
 
@@ -370,18 +446,24 @@ fn cmd(words: &str) -> Vec<String> {
 /// The connection's rate on 1:2, and the three classes under it at
 /// `split`, as tc commands that `verb` each class: replace or change.
 fn classes(verb: &str, dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
-    let class = |parent: &str, id: &str, kbit: u64, prio: u8| {
+    let class = |parent: &str, id: &str, (kbit, ceil): (u64, u64), prio: u8| {
         cmd(&format!(
             "tc class {verb} dev {dev} parent {parent} classid {id} htb \
-             rate {kbit}kbit ceil {rate}kbit prio {prio} quantum {QUANTUM}"
+             rate {kbit}kbit ceil {ceil}kbit prio {prio} quantum {QUANTUM}"
         ))
     };
     let kbit = |share: f64| whole(share).max(LEAST_KBIT);
+    let agents = kbit(split.agents);
     vec![
-        class("1:", "1:2", rate, 0),
-        class("1:2", "1:3", kbit(split.joel), 0),
-        class("1:2", "1:4", kbit(split.vpn), 0),
-        class("1:2", "1:5", kbit(split.agents), 1),
+        class("1:", "1:2", (rate, rate), 0),
+        class("1:2", "1:3", (kbit(split.joel), rate), 0),
+        class("1:2", "1:4", (kbit(split.vpn), rate), 0),
+        class(
+            "1:2",
+            "1:5",
+            (agents, split.agents_most.map_or(rate, kbit)),
+            1,
+        ),
     ]
 }
 
@@ -553,6 +635,7 @@ mod tests {
             joel_vpn: joel.1,
             agents_straight: agents.0,
             agents_vpn: agents.1,
+            agents_held: None,
         }
     }
 
@@ -1404,6 +1487,8 @@ mod tests {
             joel: 1_000.0,
             vpn: 8_000.0,
             agents: 1_000.0,
+            agents_most: None,
+            unsent: false,
         };
         let little = Split {
             vpn: 8_050.0,
@@ -1420,6 +1505,195 @@ mod tests {
             "half a hundredth was a move"
         );
         assert!(more.moved_from(&was, RATE), "two hundredths weren't a move");
+        let held = Split {
+            agents_most: Some(1_000.0),
+            ..was
+        };
+        assert!(
+            held.moved_from(&was, RATE),
+            "holding agents at the same rate wasn't a move"
+        );
+    }
+
+    // A change that partly failed may have capped agents' class, or left
+    // its cap, so the cap is kept as standing, and both a split without
+    // one and letting agents go send the classes again.
+    #[test]
+    fn a_cap_a_failed_change_may_have_left_is_kept_as_standing() {
+        let free = Split {
+            joel: 1_000.0,
+            vpn: 8_000.0,
+            agents: 1_000.0,
+            agents_most: None,
+            unsent: false,
+        };
+        // Under their share, and at their floor, where the cap moves only
+        // the ceiling.
+        let under = Split {
+            agents: 500.0,
+            agents_most: Some(500.0),
+            ..free
+        };
+        let floor = Split {
+            agents_most: Some(1_000.0),
+            ..free
+        };
+        for held in [under, floor] {
+            assert_eq!(
+                free.after(held, true),
+                held,
+                "a change that took wasn't kept"
+            );
+            assert_eq!(held.after(free, true), free, "a cap taken off was kept");
+            let tried = free.after(held, false);
+            assert_eq!(
+                tried.agents_most, held.agents_most,
+                "a cap tried was forgotten"
+            );
+            assert!(
+                held.moved_from(&tried, RATE),
+                "a cap that failed isn't sent again"
+            );
+            assert!(free.moved_from(&tried, RATE), "no change would take it off");
+            let left = held.after(free, false);
+            assert_eq!(
+                left.agents_most, held.agents_most,
+                "a cap left was forgotten"
+            );
+            assert!(
+                free.moved_from(&left, RATE),
+                "a cap left isn't taken off again"
+            );
+        }
+        let again = free.after(free, false);
+        assert_eq!(again.agents_most, None, "nothing tried was a cap");
+        assert!(
+            free.moved_from(&again, RATE),
+            "a failed change isn't sent again"
+        );
+    }
+
+    // Held for the VPN's wait, agents straight waiting get less than they
+    // would, never under their part of the floor (half the quarter beside
+    // the VPN's agents, all of it alone), and borrow nothing past it. The
+    // other lanes keep what they had, so the three add up to less.
+    #[test]
+    fn a_held_share_caps_agents_straight_never_under_their_floor() {
+        for (agents, floor) in [
+            ((waiting(4), waiting(4)), RATE * AGENTS_FLOOR / 2.0),
+            ((waiting(4), Agents::default()), RATE * AGENTS_FLOOR),
+        ] {
+            let free = Lanes::default().split(&seen((1_000.0, 2_000.0), agents), 1.0);
+            assert_eq!(free.agents_most, None, "agents not held were capped");
+            for share in [0.5, 0.1] {
+                let held = Lanes::default().split(
+                    &Seen {
+                        agents_held: held_to(share),
+                        ..seen((1_000.0, 2_000.0), agents)
+                    },
+                    1.0,
+                );
+                assert!(
+                    held.agents < free.agents - 1.0 || held.agents <= floor + 1.0,
+                    "held to {share}, agents straight kept {} of {}",
+                    held.agents,
+                    free.agents
+                );
+                assert!(
+                    held.agents >= floor - 1.0,
+                    "held to {share}, agents straight got {} under their floor {floor}",
+                    held.agents
+                );
+                assert_eq!(
+                    held.agents_most,
+                    Some(held.agents),
+                    "held agents may borrow past their rate"
+                );
+                assert!(
+                    near(held.joel, free.joel) && near(held.vpn, free.vpn),
+                    "holding agents straight moved Joel {} or the VPN {}",
+                    held.joel,
+                    held.vpn
+                );
+                assert!(
+                    held.joel + held.vpn + held.agents <= RATE + 1.0,
+                    "held to {share}, the lanes promised more than the rate: {held:?}"
+                );
+            }
+        }
+    }
+
+    // Where their share of the split is over the floor, held agents keep
+    // just that share.
+    #[test]
+    fn a_held_share_over_the_floor_is_what_agents_keep() {
+        let agents = (waiting(4), waiting(4));
+        let free = Lanes::default().split(&seen((0.0, 0.0), agents), 1.0);
+        let held = Lanes::default().split(
+            &Seen {
+                agents_held: held_to(0.5),
+                ..seen((0.0, 0.0), agents)
+            },
+            1.0,
+        );
+        assert!(
+            free.agents * 0.5 > RATE * AGENTS_FLOOR / 2.0 + 1.0,
+            "the case lands on the floor: agents free had {}",
+            free.agents
+        );
+        assert!(
+            near(held.agents, free.agents * 0.5),
+            "held to half, agents straight had {} of {}",
+            held.agents,
+            free.agents
+        );
+    }
+
+    // A hold climbing back once agents straight stop waiting caps nothing:
+    // capped there, at the little the split leaves them, an upload starting
+    // then would get the least a class has until it queued.
+    #[test]
+    fn a_held_share_caps_nothing_while_agents_straight_don_t_wait() {
+        let agents = (Agents::default(), waiting(4));
+        let free = Lanes::default().split(&seen((1_000.0, 2_000.0), agents), 1.0);
+        let mut lanes = Lanes::default();
+        let held = lanes.split(
+            &Seen {
+                agents_held: held_to(0.5),
+                ..seen((1_000.0, 2_000.0), agents)
+            },
+            1.0,
+        );
+        assert_eq!(held, free, "agents not waiting were held");
+        assert!(!lanes.agents_wait_straight(), "idle agents read as waiting");
+        lanes.split(&seen((1_000.0, 2_000.0), (waiting(4), waiting(4))), 1.0);
+        assert!(lanes.agents_wait_straight(), "waiting agents read as idle");
+        assert_eq!(held_to(1.0), None, "a whole share held agents");
+    }
+
+    // A link the controller no longer holds keeps its last reading for each
+    // new rate, so a hold it carried is let go before one comes.
+    #[test]
+    fn agents_let_go_borrow_the_whole_rate_at_the_next_rate() {
+        let mut lanes = Lanes::default();
+        let seen = Seen {
+            agents_held: held_to(0.5),
+            ..seen((0.0, 0.0), (waiting(4), waiting(4)))
+        };
+        assert!(
+            lanes.split(&seen, 1.0).agents_most.is_some(),
+            "agents held weren't capped"
+        );
+        assert!(
+            lanes.at(9_000.0).agents_most.is_some(),
+            "a new rate let agents go"
+        );
+        lanes.let_agents_go();
+        assert_eq!(
+            lanes.at(9_000.0).agents_most,
+            None,
+            "agents let go stayed held"
+        );
     }
 
     fn words(commands: &[Vec<String>]) -> Vec<String> {
@@ -1432,6 +1706,8 @@ mod tests {
             joel: 1_240.4,
             vpn: 8_759.6,
             agents: 0.0,
+            agents_most: None,
+            unsent: false,
         };
         let all = words(&tree("wlan0", 10_000, &split));
         let has = |line: &str| all.iter().any(|c| c == line);
@@ -1451,6 +1727,21 @@ mod tests {
         ] {
             assert!(has(line), "no `{line}` in {all:#?}");
         }
+        let held = Split {
+            joel: 1_240.4,
+            vpn: 7_000.0,
+            agents: 1_759.6,
+            agents_most: Some(1_759.6),
+            unsent: false,
+        };
+        let line = "tc class change dev wlan0 parent 1:2 classid 1:5 htb \
+                    rate 1760kbit ceil 1760kbit prio 1 quantum 1514";
+        assert!(
+            words(&change("wlan0", 10_000, &held))
+                .iter()
+                .any(|c| c == line),
+            "agents held for the VPN's wait still borrow past their rate"
+        );
         let changed = words(&change("wlan0", 10_000, &split));
         assert!(
             changed.len() == 4 && changed.iter().all(|c| c.starts_with("tc class change")),

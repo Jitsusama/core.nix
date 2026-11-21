@@ -319,6 +319,9 @@ struct Shaped {
     /// The share of its lane the VPN riding the link is held to, while it
     /// waits inside its tunnel (src/tunnel.rs).
     vpn_share: f64,
+    /// The share of their split agents straight on the link are held to,
+    /// while the VPN's flow waits beside what they send.
+    agents_share: f64,
     /// The packets the upload's CAKE had dropped when last read, and what
     /// it and the VPNs riding the link dropped since the controller was
     /// last told, and when that was.
@@ -374,15 +377,29 @@ impl Shaped {
             joel_vpn: inside.0,
             agents_straight: bulk,
             agents_vpn: inside.1,
+            agents_held: lanes::held_to(self.agents_share),
         };
         let dt = self.split_at.replace(t).map_or(1.0, |at| t - at);
         let split = self.lanes.split(&seen, dt);
-        if split.moved_from(&self.split, rate)
-            && run_all(lanes::change(&self.uplink.name, self.applied.0, &split))
-        {
-            self.split = split;
+        if split.moved_from(&self.split, rate) {
+            let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
+            self.split = self.split.after(split, took);
         }
         self.split.vpn
+    }
+
+    /// Lets agents straight borrow the whole rate again once the
+    /// controller no longer holds them. Each link's lanes are split once a
+    /// second, which reads the share again, but a rate moved in the steps
+    /// between splits would put the cap back from the last one.
+    fn let_agents_go(&mut self) {
+        if self.split.agents_most.is_none() || self.applied.0 == 0 {
+            return;
+        }
+        self.lanes.let_agents_go();
+        let split = self.lanes.at(float(self.applied.0));
+        let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
+        self.split = self.split.after(split, took);
     }
 
     /// Reads the upload's CAKE: what it has sent, as CAKE counts it, since
@@ -422,8 +439,14 @@ impl Shaped {
         let dropped = seconds.map_or(0, |s| segments_kbit(dropped, s));
         let then = std::mem::replace(&mut self.sent_told, self.sent_read);
         let sent = sent_kbit(then, self.sent_read);
-        oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped))
-            .map(|ours| oneway::Ours { sent, ..ours })
+        let agents_straight = self.lanes.agents_wait_straight();
+        oneway::Ours::from_reads(link, vpn, wait, waiting, (resent, dropped)).map(|ours| {
+            oneway::Ours {
+                agents_straight,
+                sent,
+                ..ours
+            }
+        })
     }
 }
 
@@ -615,6 +638,7 @@ fn start(
         held_bytes: 0,
         vpn_reads: (0, 0),
         vpn_share: 1.0,
+        agents_share: 1.0,
         drops: None,
         dropped: 0,
         told_at: None,
@@ -1005,6 +1029,9 @@ fn crossing(seen: &mut BTreeMap<String, oneway::Ours>, follows: &BTreeMap<String
             ours.queued = true;
         }
         ours.vpn_queued |= theirs.vpn_queued;
+        // Agents straight on a follower aren't the leader's to hold: the
+        // hold lands on the leader's lanes alone, so only its own agents
+        // yield.
     }
 }
 
@@ -1373,22 +1400,42 @@ fn step_links(
     };
     let why = live.why(now);
     let share = live.vpn_share(now);
-    for (name, s) in shaped.iter_mut().filter(|(_, s)| s.follows.is_none()) {
+    let agents = live.agents_share(now);
+    for (name, s) in shaped.iter_mut() {
         let held = link.as_deref() == Some(name.as_str());
         // The VPN is held only while the upload is: a recorder gone
         // silent lets both go, unless a ceiling holds the upload, when
-        // the VPN has its whole share of it.
-        s.vpn_share = if held && rates.up.is_some() {
-            share
-        } else {
-            1.0
-        };
+        // the VPN has its whole share of it. A follower isn't held at
+        // all, so a link held when it led is let go once it follows.
+        let link_is = (held, rates.up.is_some(), s.follows.is_some());
+        (s.vpn_share, s.agents_share) = held_shares(link_is, (share, agents));
+        if s.agents_share >= 1.0 {
+            s.let_agents_go();
+        }
+        if s.follows.is_some() {
+            continue;
+        }
         let most = ceilings.get(&s.network).copied().map(rate::whole);
         if held {
             hold(s, led(rates, true, most), &why);
         } else {
             hold(s, led(rates, false, most), &why::Judged::Nothing);
         }
+    }
+}
+
+/// The shares of their lanes the VPN and agents straight are held to on a
+/// link, `(vpn, agents)` from the controller's holds: those while it holds
+/// the link's upload, which takes the link being the one it follows, its
+/// upload limited and the link not following another, and whole otherwise.
+fn held_shares(
+    (followed, limited, follows): (bool, bool, bool),
+    (vpn, agents): (f64, f64),
+) -> (f64, f64) {
+    if followed && limited && !follows {
+        (vpn, agents)
+    } else {
+        (1.0, 1.0)
     }
 }
 
@@ -1559,9 +1606,11 @@ fn apply(s: &mut Shaped, most: u64) {
         // The lanes move with the rate at once, so the classes never
         // promise more than it.
         let split = s.lanes.at(float(up));
-        if run_all(lanes::change(&s.uplink.name, up, &split)) {
-            (s.applied.0, s.split) = (up, split);
+        let took = run_all(lanes::change(&s.uplink.name, up, &split));
+        if took {
+            s.applied.0 = up;
         }
+        s.split = s.split.after(split, took);
     }
     // Apart from the classes, so a CAKE that refuses its rate never makes
     // them read as unmoved, and asked again each step until it takes.
@@ -1774,6 +1823,21 @@ fn sweep(kept: &BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The controller's holds land on a link only while it holds the
+    // link's upload, each on its own lane.
+    #[test]
+    fn a_link_s_lanes_are_held_only_while_its_upload_is() {
+        let shares = (0.6, 0.4);
+        assert_eq!(held_shares((true, true, false), shares), shares);
+        for (link_is, what) in [
+            ((false, true, false), "a link the controller doesn't follow"),
+            ((true, false, false), "an upload with no limit"),
+            ((true, true, true), "a follower"),
+        ] {
+            assert_eq!(held_shares(link_is, shares), (1.0, 1.0), "{what} was held");
+        }
+    }
 
     #[test]
     fn only_1_turns_every_download() {

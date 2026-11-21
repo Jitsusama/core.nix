@@ -452,6 +452,15 @@ impl Live {
         self.follow.controller.tunnel_share()
     }
 
+    /// The share of their split agents straight on the link are held to
+    /// (src/oneway.rs), judged as the VPN's share is.
+    pub fn agents_share(&self, now: SystemTime) -> f64 {
+        if self.follow.silent(ms(now)) {
+            return 1.0;
+        }
+        self.follow.controller.agents_share()
+    }
+
     /// Takes each whole line the file gained, keeping one half written.
     fn read_on(&mut self) {
         let Ok(mut file) = File::open(&self.file.0) else {
