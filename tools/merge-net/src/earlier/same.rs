@@ -17,14 +17,35 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// the same change that a clean rebase carried here (`same_patch`). The
 /// earlier commits are looked for among those the rounds read, so a
 /// reviewed commit with no pass of its own still counts. Why not, when not.
+///
+/// Only the rounds of `commit` and of the earlier commits that could be its
+/// change have their base asked after, one git each: on 21 November the
+/// rounds held about 2,300 bases, and asking after every one held each
+/// `ready` past 15 minutes while four ran at once.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    let read = in_full(
-        Path::new("."),
-        main,
-        seen::witnessed(&seen::rounds_folder())?,
-    );
-    read_among(commit, &read, |witnessed| {
-        same_change(commit, main, files, witnessed, read_patch_id)
+    let repo = Path::new(".");
+    let rounds = seen::witnessed(&seen::rounds_folder())?;
+    let full = |among: &[String]| {
+        let of_them = rounds
+            .iter()
+            .filter(|read| among.contains(&read.commit))
+            .cloned()
+            .collect();
+        in_full(repo, main, of_them)
+    };
+    let own = full(&[commit.to_owned()]);
+    read_among(commit, &own, |_| {
+        let mut witnessed: Vec<String> = rounds
+            .iter()
+            .map(|read| read.commit.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        witnessed.sort();
+        let could_be = candidates(commit, main, files, &witnessed).unwrap_or_default();
+        let mut read: Vec<String> = full(&could_be).into_iter().collect();
+        read.sort();
+        same_patch(repo, commit, main, read, read_patch_id)
     })
 }
 
