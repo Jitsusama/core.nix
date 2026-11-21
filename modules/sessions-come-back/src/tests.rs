@@ -1004,8 +1004,14 @@ fn a_macs_boot_read_that_answers_slowly_is_told_with_how_long_it_took() {
     );
     assert!(boot.is_ok(), "a slow read still reads the boot");
     let said = said.take();
+    let took = said.first().and_then(|line| {
+        line.strip_prefix("/usr/bin/who answered the boot read, but took ")?
+            .strip_suffix(" s")?
+            .parse::<f64>()
+            .ok()
+    });
     assert!(
-        said.len() == 1 && said[0].starts_with("/usr/bin/who answered the boot read, but took 1."),
+        said.len() == 1 && took.is_some_and(|took| took >= SLOW_READ.as_secs_f64()),
         "only the slow read is told, with its time: {said:?}"
     );
 }
@@ -1023,6 +1029,11 @@ fn a_read_still_running_and_one_whose_output_never_came_read_apart_in_the_log() 
         late(limit, Duration::from_millis(19_400)).to_string(),
         "no answer within 20 s, 19.4 s of which went on starting it",
         "a read whose start took most of its limit says so"
+    );
+    assert_eq!(
+        late(limit, Duration::from_secs(25)).to_string(),
+        "no answer, since starting it took 25.0 s, past its 20 s limit",
+        "a read whose start took longer than its limit says so"
     );
     assert_eq!(
         Unheard::Unread(limit).to_string(),

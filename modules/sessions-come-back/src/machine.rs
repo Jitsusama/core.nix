@@ -37,6 +37,14 @@ impl fmt::Display for Unheard {
         match self {
             Self::Failed(why) => f.write_str(why),
             Self::Late(limit) => write!(f, "no answer within {} s", limit.as_secs()),
+            // A start can take longer than the whole limit, when the read
+            // is stopped at its first look.
+            Self::LateToStart { limit, starting } if starting >= limit => write!(
+                f,
+                "no answer, since starting it took {:.1} s, past its {} s limit",
+                starting.as_secs_f64(),
+                limit.as_secs()
+            ),
             Self::LateToStart { limit, starting } => write!(
                 f,
                 "no answer within {} s, {:.1} s of which went on starting it",
