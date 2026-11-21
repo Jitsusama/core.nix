@@ -710,7 +710,7 @@ impl FilesystemStatus {
 
     /// The room it's told from at `now`: until Nix's floor while it has a
     /// time to reach it, and otherwise until full.
-    fn told(&self, now: f64) -> crate::words::Room<'_> {
+    pub fn told(&self, now: f64) -> crate::words::Room<'_> {
         match self.floor_at {
             Some(at) => self.ahead(Some(at - now), true),
             None => self.room(self.full_at.map(|at| at - now)),
