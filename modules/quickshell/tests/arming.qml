@@ -199,6 +199,8 @@ QtObject {
             Arming.returnAct(Object.assign({ gone: true, held: true }, every)), "ran");
         expect("though an answer being given is still given",
             Arming.returnAct(Object.assign({ gone: true, asking: true }, every)), "gave");
+        expect("and a Return doubling a landing still does nothing more",
+            Arming.returnAct(Object.assign({ gone: true, landed: true }, every)), "");
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

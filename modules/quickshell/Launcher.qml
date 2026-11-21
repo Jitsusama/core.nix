@@ -3049,7 +3049,8 @@ Scope {
     // Whether a row arms before it's done: Log Out, Reboot and Power Off,
     // each saying what a second press does (`arms`, "logs out").
     function arms(choice) {
-        return !!choice && typeof choice.arms === "string" && choice.arms !== "";
+        // A gone row arms nothing, by Return or a click, since a second press would do nothing.
+        return !!choice && !choice.gone && typeof choice.arms === "string" && choice.arms !== "";
     }
 
     // Whether a row stands armed, until the next key.
@@ -8189,9 +8190,12 @@ Scope {
             open = false;
             return;
         }
-        // Its thing has gone, so there's nothing left to do it to.
-        if (choice.gone)
+        // Its thing has gone, so there's nothing left to do it to. Journalled, so a Return that
+        // did nothing can be told from one that ran: the reason only, which names nothing.
+        if (choice.gone) {
+            console.info("launcher: Return on a gone row did nothing");
             return;
+        }
         // One held still, as a secret ask hidden while Joel shares, keeps
         // the launcher open and does nothing, so a second Return meant for
         // a yes never reaches the window behind; the foot says why, so no
