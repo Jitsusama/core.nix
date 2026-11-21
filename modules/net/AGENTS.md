@@ -31,9 +31,11 @@ TV are net's alone, and `eero` keeps only what's eero's.
   the epoch, so a reading's age is one subtraction.
 - `sources`: each source, whether it's answering, unreachable or signed
   out, and why. A source reads only the minute it's in, so the daemon
-  carries each over from the record before, the one an earlier daemon
-  wrote in the last five minutes included: one still not answering in the same way keeps when
-  that began, and one that didn't answer keeps when it last did.
+  carries each over from the last minute that named it in the last five,
+  the record an earlier daemon wrote included: one still not answering in
+  the same way keeps when that began, and one that didn't answer keeps
+  when it last did. So a minute eero doesn't answer, naming none of its
+  devices, loses nothing.
 - `devices`: each device's generic fields, its ports and radios, a
   role's own block (a modem's channels and log, a receiver's volume and
   what it's doing, a printer's ink and what it's doing, a television's

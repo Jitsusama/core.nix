@@ -31,7 +31,7 @@ use ureq::Agent;
 
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
-use crate::model::{self, Network, Source};
+use crate::model::{self, Kept, Network};
 use crate::room;
 use crate::serve as served;
 use crate::sources::{airplay, hp, modem, samsung, sony, switch};
@@ -44,12 +44,6 @@ const EVERY: Duration = Duration::from_secs(60);
 /// How long one modem page may take; a modem that answers at all answers
 /// in a fraction of this.
 const PAGE: Duration = Duration::from_secs(2);
-
-/// How old, in seconds, the record a daemon before this one wrote may be
-/// and still say how each source stood: a restart on a switch takes
-/// seconds, and five minutes missed is long enough for a source to have
-/// answered and failed again unseen.
-const LATELY: u64 = 5 * 60;
 
 pub fn run() -> Result<(), String> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
@@ -148,7 +142,7 @@ pub fn run() -> Result<(), String> {
         };
         let mut network = collect::network(said, time::now());
         model::carry_over(&mut network.sources, &before);
-        before.clone_from(&network.sources);
+        model::keep(&mut before, &network.sources, network.collected_at);
         let earlier = history::read(&day, network.collected_at);
         history::recall(&mut network, &earlier);
         room::work_out(&mut network);
@@ -166,15 +160,28 @@ pub fn run() -> Result<(), String> {
 }
 
 /// Each source as the record a daemon before this one wrote said it, so a
-/// restart doesn't make an outage begin again. A record older than a few
-/// minutes says nothing of what happened since it was written, so it
-/// carries nothing over, nor does one that can't be read.
-fn last_sources(record: &Path) -> Vec<Source> {
+/// restart doesn't make an outage begin again. A record older than
+/// `LATELY` says nothing of what happened since it was written, so it
+/// carries nothing over, nor does one dated ahead of the clock, one of
+/// another schema, or one that can't be read.
+fn last_sources(record: &Path) -> Vec<Kept> {
+    let now = time::now();
     fs::read_to_string(record)
         .ok()
         .and_then(|text| serde_json::from_str::<Network>(&text).ok())
-        .filter(|network| time::now().saturating_sub(network.collected_at) <= LATELY)
-        .map(|network| network.sources)
+        .filter(|network| network.schema == model::SCHEMA)
+        .filter(|network| {
+            now.checked_sub(network.collected_at)
+                .is_some_and(|age| age <= model::LATELY)
+        })
+        .map(|network| {
+            let at = network.collected_at;
+            network
+                .sources
+                .into_iter()
+                .map(|source| (at, source))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
