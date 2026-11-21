@@ -261,9 +261,10 @@ impl Arrivals {
     }
 
     /// Hands back each card whose way back hasn't reached its point
-    /// `BACK_FOR` after it was sent, with that point, and forgets it, so
-    /// the card can be let join whatever it hears.
-    pub fn stranded(&mut self, now: Instant) -> Vec<(String, String)> {
+    /// `BACK_FOR` after it was sent, with that point and how long it has
+    /// been going back, and forgets it, so the card can be let join
+    /// whatever it hears.
+    pub fn stranded(&mut self, now: Instant) -> Vec<(String, String, Duration)> {
         let stranded: Vec<String> = self
             .moves
             .iter()
@@ -274,7 +275,8 @@ impl Arrivals {
             .into_iter()
             .filter_map(|card| {
                 let moving = self.moves.remove(&card)?;
-                Some((card, moving.to))
+                let going = now.saturating_duration_since(moving.asked);
+                Some((card, moving.to, going))
             })
             .collect();
         stranded.sort();
@@ -1075,7 +1077,8 @@ mod tests {
         let going = arrivals.going_back("wlan0");
         // As long as the point bade it wait in a test, and the join after.
         let early = arrivals.stranded(now + ms(189) + ms(1250));
-        let stranded = arrivals.stranded(now + ms(189) + BACK_FOR);
+        // Judged as late as a busy loop might.
+        let stranded = arrivals.stranded(now + ms(189) + BACK_FOR + ms(40));
         let again = arrivals.stranded(now + ms(5000));
 
         assert_eq!(
@@ -1087,8 +1090,8 @@ mod tests {
         assert_eq!(early, [], "not while a point bids it wait its second");
         assert_eq!(
             stranded,
-            [("wlan0".to_owned(), DESK.to_owned())],
-            "stranded short of the point it was sent to"
+            [("wlan0".to_owned(), DESK.to_owned(), BACK_FOR + ms(40))],
+            "stranded short of the point it was sent to, as long as it went"
         );
         assert_eq!(again, [], "once");
         assert!(!arrivals.going_back("wlan0"), "and forgotten");
