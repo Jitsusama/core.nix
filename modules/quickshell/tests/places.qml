@@ -703,6 +703,22 @@ QtObject {
             Viewers.viewersDue(keptAsked(4), [hosted("held")], 10, gone(screens)).open
                 .map(one => [one.session.presence.session, one.into]),
             [["held", { workspace: 4, column: 2 }]]);
+        expect("its host back before Joel left, it opens by its session's words, him not away",
+            Viewers.viewersDue(keptAsked(4), [hosted("held")], 10,
+                gone(screens, { away: false })).open
+                .map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+        const napped = hosted("held");
+        napped.presence.parked = { since: "then" };
+        expect("parked in its host, it waits, since viewing it would wake it",
+            Viewers.viewersDue(keptAsked(4), [napped], 10, gone(screens)),
+            { open: [], kept: keptAsked(4) });
+        expect("asked past ASKED_FOR, it opens none and is let go",
+            Viewers.viewersDue(keptAsked(4), [], Viewers.ASKED_FOR + 1, gone(screens)),
+            { open: [], kept: {} });
+        expect("back as a plain pi, whose window it would never be, it's let go",
+            Viewers.viewersDue(keptAsked(4), [plain("held")], 10, gone(screens)),
+            { open: [], kept: {} });
 
         // A viewer never opens where Joel is, so it never takes his focus
         // or flashes beside him: on the workspace he's on it waits until he

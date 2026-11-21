@@ -11,7 +11,10 @@ pragma ComponentBehavior: Bound
 // kept for it before let go only once its window comes; one the boot kept
 // no place of opens none. One bound for the workspace Joel is on waits
 // until he leaves it, then opens there, by those words while its host is
-// still away. Asked to reopen as a plain pi
+// still away. One whose viewer was asked for moments ago and hasn't come
+// is asked for no second time, the walk going on, and its place, kept
+// with words, stays kept; one kept with words whose viewer is open opens
+// no second. Asked to reopen as a plain pi
 // one its host's own list names, it begins none; one whose hosted presence
 // outlived its host's list is begun; and one parked in its holder here is
 // woken, told to carry on, its place kept for its window to open there as it
@@ -134,12 +137,20 @@ ShellRoot {
                 adrift();
             else if (stage === "unserved")
                 unserved();
+            else if (stage === "settled")
+                settled();
             else if (stage === "refused")
                 refused();
+            else if (stage === "rested")
+                rested();
             else if (stage === "again")
                 again();
             else if (stage === "leaves")
                 leaves();
+            else if (stage === "asking")
+                asking();
+            else if (stage === "guarded")
+                guarded();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -425,25 +436,33 @@ ShellRoot {
         Expect.expect("its window come, the place kept before is let go",
             Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
         waitedOn = on;
-        // Asked again at once, before the windows daemon lists its window,
-        // the walk finds it asked for moments ago, and goes straight on to
-        // the next rather than waiting out its patience for it.
+        stage = "settled";
+    }
+    property int waitedOn: -1
+    property real walkedAt: 0
+
+    // Asked again once that walk is done, before the windows daemon lists
+    // its window, the walk finds it open by niri's own list, and goes
+    // straight on to the next rather than waiting out its patience for it.
+    // Each walk here begins once the one before is done, since a list
+    // handed over meanwhile passes over those it began.
+    function settled() {
+        if (Sessions.reopening !== null)
+            return;
         walkedAt = Date.now();
         stage = "refused";
         Sessions.reopenAll([waitingEntry("s-waiting"), waitingEntry("s-after")], root.never,
             kept({ "s-waiting": keptOn(3), "s-after": keptOn(3) }), "");
     }
-    property int waitedOn: -1
-    property real walkedAt: 0
 
     function refused() {
         if (viewerSpawns("s-after").length === 0)
             return;
-        Expect.expect("one asked for moments ago isn't asked for again",
+        Expect.expect("one open, waiting for its host, isn't asked for again",
             viewerSpawns("s-waiting").length === 1, Niri.spawns.join("\n"));
         Expect.expect("the next opens without waiting out the walk's patience",
             Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
-        Expect.expect("one asked for moments ago keeps no place",
+        Expect.expect("nor is a place kept for it, for a second to open later",
             Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
         const window = { id: 62, pid: 620, workspace_id: waitedOn, session: true,
             opened: "pi-hosted.s-after", layout: { pos_in_scrolling_layout: [2, 1] } };
@@ -451,7 +470,13 @@ ShellRoot {
         Niri.revision += 1;
         windowsTell({ changed: [windowRecord(61, "pi-hosted.s-waiting", waitedOn),
             windowRecord(62, "pi-hosted.s-after", waitedOn)] });
+        stage = "rested";
         Niri.windowOpenedOrChanged(window);
+    }
+
+    function rested() {
+        if (Sessions.reopening !== null)
+            return;
         // The daemon lists them, Joel goes to their workspace, and the
         // moments a viewer is waited for pass; asked again while the host
         // is still coming back, as its row is still offered, the walk finds
@@ -497,6 +522,43 @@ ShellRoot {
             && opensOn("s-watched")[0].reference.Id === waitedOn, JSON.stringify(Niri.acts));
         Expect.expect("its place done with", Sessions.keptPlaces["s-watched"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
+        // One whose viewer was asked for moments ago, by Go To or viewKept,
+        // and hasn't opened yet, is opening: the walk asks for no second
+        // and goes on.
+        Sessions.attaching = ({ "pi-hosted.s-asked": Date.now() });
+        stage = "asking";
+        Sessions.reopenAll([waitingEntry("s-asked"), waitingEntry("s-next")], root.never,
+            kept({ "s-asked": keptOn(3), "s-next": keptOn(3) }), "");
+    }
+
+    function asking() {
+        if (viewerSpawns("s-next").length === 0)
+            return;
+        Expect.expect("one asked for moments ago isn't asked for again, and the walk goes on",
+            viewerSpawns("s-asked").length === 0, Niri.spawns.join("\n"));
+        // Two kept with words to wait by on a workspace Joel isn't on: one
+        // whose viewer is open already, which viewKept leaves be, and one
+        // whose viewer was asked for moments ago, which stays kept, so a
+        // viewer that never opens still leaves its place to open by.
+        const place = id => ({ workspace: waitedOn, column: 1, at: Date.now(),
+            waiting: waitingView(id), named: `pi-hosted.${id}`, title: "\u03c0 - Reef" });
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { "pi-hosted.s-held": Date.now() });
+        stage = "guarded";
+        Sessions.keepPlaces(Object.assign({}, Sessions.keptPlaces,
+            { "s-waiting": place("s-waiting"), "s-held": place("s-held") }));
+        Niri.revision += 1;
+    }
+
+    function guarded() {
+        if (Sessions.keptPlaces["s-waiting"] !== undefined)
+            return;
+        Expect.expect("one kept whose viewer is open opens no second",
+            viewerSpawns("s-waiting").length === 1, Niri.spawns.join("\n"));
+        Expect.expect("one kept whose viewer was asked for moments ago stays kept, unopened",
+            Sessions.keptPlaces["s-held"]?.named === "pi-hosted.s-held"
+            && viewerSpawns("s-held").length === 0,
+            `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }
@@ -543,9 +605,10 @@ ShellRoot {
         }
     }
 
+    // Long enough for each walk to be done before the next begins.
     Timer {
         running: true
-        interval: 50000
+        interval: 90000
         onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }
