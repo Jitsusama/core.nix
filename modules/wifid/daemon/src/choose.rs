@@ -2587,7 +2587,8 @@ pub(crate) mod tests {
     #[test]
     fn a_move_sent_back_where_it_began_settles_from_the_move_before_it() {
         let mut chooser = after_a_bad_minute(DESK);
-        let start = Instant::now();
+        // A settle on, so taking one off can't fall before the host's boot.
+        let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let well = carried(15, 0.0);
         let hall_alone = [hall(-53, Some(20), None)];
@@ -2638,7 +2639,8 @@ pub(crate) mod tests {
     #[test]
     fn a_first_move_sent_back_where_it_began_waits_a_span_not_a_settle() {
         let mut chooser = after_a_bad_minute(DESK);
-        let start = Instant::now();
+        // A settle on, so taking one off can't fall before the host's boot.
+        let start = Instant::now() + SETTLE;
         let badly = carried(119, 0.5);
         let hall_alone = [hall(-53, Some(20), None)];
         let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
