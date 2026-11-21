@@ -22,6 +22,20 @@ pub struct Failing {
     pub panicked: Option<String>,
 }
 
+/// Each realm's other machines whose newest update failed, as the node
+/// keeping it says in `machines`, each realm's answer by its name; none
+/// from a realm whose node doesn't answer.
+#[must_use]
+pub fn failing_in(machines: &std::collections::BTreeMap<String, String>) -> Vec<Failing> {
+    // Read as the kit reads it, so it matches mycelium's names as the
+    // other tools' readings do.
+    let this = terminal_kit::environment::machine();
+    machines
+        .values()
+        .flat_map(|answer| failing_elsewhere(answer, &this))
+        .collect()
+}
+
 /// The machines in a `mycelium machines` answer, but `this`, whose newest
 /// update failed; none when the answer doesn't parse.
 #[must_use]
