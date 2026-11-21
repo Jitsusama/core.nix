@@ -70,22 +70,48 @@ pub fn kept_from(state: &Path, profile: &Path) -> PathBuf {
 }
 
 /// Keeps what an enrolled browser's profile was given, its `Policy`
-/// folder, adding `why` to the reasons the test stays off, so the evidence
-/// outlives the profile the call's end removes. The `why` goes first,
-/// since it alone keeps the test off. True only once both are written, so
-/// a caller removes the profile only when its evidence is safe.
-pub fn keep(state: &Path, why: &str, profile: &Path) -> bool {
+/// folder, so the evidence outlives the profile the call's end removes,
+/// and adds why to the reasons the test stays off. The reason is written
+/// once the copy is tried, so it says truly where the evidence is: kept
+/// beside it, or still in the profile. Ok only when the copy is whole and
+/// noted, so a caller removes the profile only then; a profile already
+/// kept whole is not copied or noted again.
+pub fn keep(state: &Path, profile: &Path) -> Result<String, String> {
     let into = kept_from(state, profile);
-    if fs::create_dir_all(&into).is_err() {
-        return false;
+    let kept_here = format!(
+        "a test browser enrolled with a management service; what it was given is kept in {}",
+        into.display()
+    );
+    if into.join(WHOLE).exists() {
+        return Ok(kept_here);
     }
-    let reasons = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(kept(state).join("why"));
+    let whole =
+        fs::create_dir_all(&into).is_ok() && copy(&profile.join("Policy"), &into.join("Policy"));
+    let why = if whole {
+        kept_here
+    } else {
+        format!(
+            "a test browser enrolled with a management service and it couldn't be kept, so \
+             its profile stays at {}",
+            profile.display()
+        )
+    };
+    let reasons = fs::create_dir_all(kept(state)).and_then(|()| {
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(kept(state).join("why"))
+    });
     let noted = reasons.is_ok_and(|mut file| writeln!(file, "{why}").is_ok());
-    noted && copy(&profile.join("Policy"), &into.join("Policy"))
+    if whole && noted && fs::write(into.join(WHOLE), "").is_ok() {
+        Ok(why)
+    } else {
+        Err(why)
+    }
 }
+
+/// Marks a profile's evidence as kept whole and noted, once.
+const WHOLE: &str = "whole";
 
 /// Copies the folder `from` to `to`, true only when every file was copied.
 fn copy(from: &Path, to: &Path) -> bool {
@@ -174,19 +200,20 @@ mod tests {
         let far = profile.join("far");
         fs::create_dir_all(far.join("Policy/Enrollment")).expect("the far folder is made");
         fs::write(far.join("Policy/Enrollment/token"), "f").expect("the far token is written");
-        let near_kept = keep(&state, "the near end enrolled", &profile);
-        let far_kept = keep(&state, "the far end enrolled", &far);
+        let near_kept = keep(&state, &profile).is_ok();
+        let far_kept = keep(&state, &far).is_ok();
+        let again = keep(&state, &profile).is_ok();
         let off = stays_off(&state);
         let token = |of: &Path| {
             fs::read_to_string(kept_from(&state, of).join("Policy/Enrollment/token")).ok()
         };
         let tokens = (token(&profile), token(&far));
         let _ = (fs::remove_dir_all(&state), fs::remove_dir_all(&profile));
-        assert!(near_kept && far_kept, "keeping said it failed");
+        assert!(near_kept && far_kept && again, "keeping said it failed");
+        let reasons = off.as_deref().unwrap_or_default().lines().count();
         assert_eq!(
-            off.as_deref(),
-            Some("the near end enrolled\nthe far end enrolled\n"),
-            "the test went on, or forgot one end's reason"
+            reasons, 2,
+            "each end's reason should be noted once: {off:?}"
         );
         assert_eq!(
             tokens,
@@ -202,10 +229,16 @@ mod tests {
         // A token that's a dangling link can't be copied.
         fs::create_dir_all(profile.join("Policy/Enrollment")).expect("the folder is made");
         std::os::unix::fs::symlink("/nonexistent/token", &token).expect("the link is made");
-        let kept_it = keep(&state, "the near end enrolled", &profile);
+        let kept_it = keep(&state, &profile);
         let off = stays_off(&state);
         let _ = (fs::remove_dir_all(&state), fs::remove_dir_all(&profile));
-        assert!(!kept_it, "a failed copy was said to be kept");
-        assert!(off.is_some(), "a failed copy let the test go on");
+        assert!(
+            kept_it.is_err_and(|why| why.contains("stays at")),
+            "a failed copy was said to be kept"
+        );
+        assert!(
+            off.is_some_and(|why| why.contains("stays at") && !why.contains("kept in")),
+            "a failed copy let the test go on, or said it was kept"
+        );
     }
 }

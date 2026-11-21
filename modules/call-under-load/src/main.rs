@@ -200,20 +200,20 @@ fn unmanaged() -> Result<(), Failure> {
     Ok(())
 }
 
-/// An enrolment this run found: refused, as the next hour would be
-/// (`unmanaged`), naming what was kept where it was, or saying where the
-/// profile was left when it couldn't be.
+/// An enrolment this run found: refused, as the next hour would be, in
+/// the run's own words, which say where the evidence is, kept or still in
+/// its profile.
 fn enrolled(why: String) -> Failure {
-    unmanaged().err().unwrap_or_else(|| {
-        Failure::new(Exit::Refused, "a test browser enrolled")
-            .because(why)
-            .try_this(format!(
-                "ls -R {}",
-                env_dir("XDG_CACHE_HOME", ".cache")
-                    .join("call-under-load")
-                    .display()
-            ))
-    })
+    let kept = managed::kept(&state());
+    let look = if why.contains("stays at") {
+        let cache = env_dir("XDG_CACHE_HOME", ".cache").join("call-under-load");
+        format!("ls -R {} {}", cache.display(), kept.display())
+    } else {
+        format!("ls -R {0}; rm -r {0}", kept.display())
+    };
+    Failure::new(Exit::Refused, "a test browser enrolled")
+        .because(why)
+        .try_this(look)
 }
 
 /// The hour's test call, and the figures written for cadence.

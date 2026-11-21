@@ -308,6 +308,28 @@ fn a_sweep_looks_in_both_of_a_killed_run_s_profiles_in_the_cache() {
 }
 
 #[test]
+fn one_end_kept_and_one_not_counts_as_not_kept() {
+    let folder = std::env::temp_dir().join(format!("cul-mixed-{}", std::process::id()));
+    let (near, far, state) = (
+        folder.join("near"),
+        folder.join("far"),
+        folder.join("state"),
+    );
+    for end in [&near, &far] {
+        fs::create_dir_all(end.join("Policy/Enrollment")).unwrap();
+    }
+    fs::write(near.join("Policy/Enrollment/token"), "t").unwrap();
+    // A dangling link can't be copied, so the far end's isn't kept.
+    std::os::unix::fs::symlink("/nonexistent/token", far.join("Policy/Enrollment/token")).unwrap();
+    let found = unenrolled(&[near.as_path(), far.as_path()], &state);
+    fs::remove_dir_all(&folder).unwrap();
+    assert!(
+        matches!(found, Err(Enrolled { ref why, kept: false }) if why.contains("stays at")),
+        "an end that couldn't be kept was let go with the one that was: {found:?}"
+    );
+}
+
+#[test]
 fn an_enrolment_that_can_t_be_kept_stays_where_it_is() {
     let folder = std::env::temp_dir().join(format!("cul-unkept-{}", std::process::id()));
     let profile = folder.join("profile-4294967294");

@@ -501,20 +501,9 @@ fn unenrolled(profiles: &[&Path], state: &Path) -> Result<(), Enrolled> {
         if !fs::read_dir(&enrolment).is_ok_and(|mut tokens| tokens.next().is_some()) {
             continue;
         }
-        let kept = managed::kept_from(state, profile);
-        let said = format!(
-            "a test browser enrolled with a management service; what it was given is kept in {}",
-            kept.display()
-        );
-        let kept = managed::keep(state, &said, profile);
-        let why = if kept {
-            said
-        } else {
-            format!(
-                "a test browser enrolled with a management service and it couldn't be kept, \
-                 so its profile stays at {}",
-                profile.display()
-            )
+        let (why, kept) = match managed::keep(state, profile) {
+            Ok(why) => (why, true),
+            Err(why) => (why, false),
         };
         found = Some(match found {
             None => Enrolled { why, kept },
