@@ -895,14 +895,15 @@ FULL_WORDS = "The line holds 1000 letters; any past that were left off."
 # What the page says to Return with no words, and to Escape on the line.
 NO_WORDS = "Say what the new work is first; the Launcher needs its words."
 CLOSED_WORDS = "New work closed; nothing was handed on."
-# Whether a key's repeat, pressed now in new work's field, is held off.
-REPEAT_HELD = """((key) => {
+# Whether a repeat of the key it's given, pressed now in new work's field,
+# is held off: a function, so evaluate hands it the key.
+REPEAT_HELD = """(key) => {
   const e = new KeyboardEvent("keydown", {
     key, repeat: true, bubbles: true, cancelable: true,
   });
   document.getElementById("sprout").dispatchEvent(e);
   return e.defaultPrevented;
-})()"""
+}"""
 # Where the field's chosen words start and end.
 CHOSEN = """(() => {
   const f = document.getElementById("sprout");
