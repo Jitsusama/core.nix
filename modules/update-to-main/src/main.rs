@@ -278,7 +278,8 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                         .iter()
                         .map(|(name, commit)| format!("{name}@{}", &commit[..commit.len().min(12)]))
                         .collect();
-                    println!("asking at {}", at.join(" "));
+                    // Stamped, since a Mac's log has no time of its own.
+                    println!("{} asking at {}", update_to_main::stamp(), at.join(" "));
                     // Said like an answer's own ending, since otherwise an
                     // ask that never reached the daemon leaves no trace;
                     // once until it changes, since it's asked every minute.

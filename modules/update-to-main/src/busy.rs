@@ -3,8 +3,8 @@
 //! `test` does, 0 busy and 1 not, and anything else, or no answer within
 //! 30 seconds, counts as busy, since it couldn't tell. An update asks at
 //! three moments, each reading only the commands meant for it: as an ask
-//! comes and before a switch (`now`), as the follower's ask comes, before
-//! anything is fetched (`at_the_ask`), and while a built switch the
+//! comes and before a switch (`now`), once the follower's ask has found
+//! something to build, before it builds (`at_the_ask`), and while a built switch the
 //! follower asked for waits for nobody at the machine (`quiet`).
 
 use crate::config::{Busy, Config};
@@ -53,8 +53,8 @@ pub fn now(config: &Config) -> Option<String> {
         .find_map(is_busy)
 }
 
-/// What the machine is busy with as an ask the follower alone made comes,
-/// before anything is fetched, when any of its commands that refuse the
+/// What the machine is busy with once an ask the follower alone made has
+/// found something to build, before it builds, when any of its commands that refuse the
 /// ask alone says so and hasn't refused asks for longer than it may. A
 /// person's ask builds anyway: such a check spares their work a build
 /// they didn't ask for, and one they ask for is theirs to make, as one to

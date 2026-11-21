@@ -5397,7 +5397,7 @@
     weight, a tracking or an axis of their own in the Typst they set
   '';
   update-to-main-asks-what-nix-offload-answers = ''
-    the question a Mac asks before it updates, whether it's over its room, is one the nix-offload
+    the question a Mac asks before it updates, whether it's over its load, is one the nix-offload
     it names answers as a question does, with 0, 1 or 69, not words it refuses as asked wrongly
   '';
   update-to-main-outlives-its-switch = ''
@@ -5408,7 +5408,7 @@
   update-to-main-follows-on-a-mac = ''
     a Mac's follower is its primary user's launchd agent, started again whenever follow ends and
     naming no store path; a Mac refuses an update during a call, refuses the follower's ask alone
-    while nix-offload says it's over its room, for two hours at most, and the follower's switch
+    while nix-offload says it's over its load, for two hours at most, and the follower's switch
     waits while someone is at the Mac, for 45 minutes at most
   '';
   update-to-main-opens-enough-files-on-a-mac = ''
