@@ -57,6 +57,14 @@ fn a_finding_counts_against_the_owner_its_opening_names() {
             "OSPHT4",
         ),
         ("IKQ63G finding for WCJQSG (mesh owner): a cell", "WCJQSG"),
+        (
+            "IKQ63G finding for A2VLJN/WCJQSG: the load is 167",
+            "A2VLJN",
+        ),
+        (
+            "IKQ63G, for WCJQSG. At 07:29, one push had waited",
+            "WCJQSG",
+        ),
         ("For KP0L6A: the node sleeps unsaid", "KP0L6A"),
         // None is named by "for the owner of", a word no cell sends as,
         // a "for" past the colon, or an opening with no colon at all.
@@ -156,7 +164,11 @@ fn only_its_sender_withdraws_a_finding_and_only_by_saying_so() {
     );
     let doubted = answer(8_800, "CIJMZQ", "CIJMZQ: withdrawn? it's back", &kept);
     let gone = finding(8_700, "IKQ63G", "IKQ63G: a slip");
-    let withdrawn = answer(8_600, "IKQ63G", "IKQ63G: withdrawn, it came back", &gone);
+    // Sent as a finding, as one was on 21 November.
+    let withdrawn = answering(
+        finding(8_600, "IKQ63G", "IKQ63G: withdrawn, it came back"),
+        &gone,
+    );
     let after = answering(finding(8_500, "CIJMZQ", "CIJMZQ: still seeing it"), &gone);
     let wrong = finding(8_400, "CIJMZQ", "CIJMZQ: wrong");
     let taken = Posted {
