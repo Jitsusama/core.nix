@@ -436,10 +436,12 @@ fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>,
 
 /// The width the first screen is set at: the window's when the reader last
 /// closed, which niri most likely opens it at again, so the first screen
-/// seldom sets twice. Measuring sets the whole page each time.
+/// seldom sets twice. Measuring sets the page each time for the 960 px a
+/// window takes when the compositor names no width (app/wayland.rs), as a
+/// headless one doesn't, so its first screen is set once there too.
 fn first_width(measuring: bool) -> page::Width {
     if measuring {
-        page::Width::whole()
+        page::Width::for_window(960.0 * theme::PT_A_PX)
     } else {
         place::window_pt().map_or_else(page::Width::whole, page::Width::for_window)
     }

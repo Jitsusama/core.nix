@@ -116,6 +116,18 @@ const DROPPED: f64 = 2.0;
 /// word of its own.
 const DROP_AIR_EM: f64 = 0.08;
 
+/// A character as the page reads it back: a space that doesn't break as
+/// a space, and a word joiner as nothing, since they only hold code's
+/// pieces together (page.rs's `code`), and a yank or a search wants what
+/// the file has.
+fn read_as(c: char) -> Option<char> {
+    match c {
+        '\u{a0}' => Some(' '),
+        '\u{2060}' => None,
+        c => Some(c),
+    }
+}
+
 /// Takes every run of text out of a page's frame, with where it sits.
 pub fn runs(frame: &Frame) -> Vec<Run> {
     let mut found = Vec::new();
@@ -141,9 +153,10 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Run>) {
                     let advance = glyph.x_advance.at(text.size).to_pt();
                     let range = usize::from(glyph.range.start)..usize::from(glyph.range.end);
                     let cluster = text.text.get(range).unwrap_or_default();
+                    let read: Vec<char> = cluster.chars().filter_map(read_as).collect();
                     // A ligature's characters share its advance evenly.
-                    let count = f64_of(cluster.chars().count().max(1));
-                    for (i, c) in cluster.chars().enumerate() {
+                    let count = f64_of(read.len().max(1));
+                    for (i, c) in read.into_iter().enumerate() {
                         let from = x + advance * f64_of(i) / count;
                         chars.push((c, from, from + advance / count));
                     }
