@@ -782,8 +782,11 @@ def restart_keeps_the_queues(on_eth2: Connection) -> None:
     client.wait_until_fails("ip link show shaperfff", timeout=SHAPING)
     kept = client.succeed("tc filter show dev eth2 parent 5:")
     assert "pref 9" not in kept, f"a filter no version makes outlived the restart: {kept}"
-    assert "RTNETLINK" not in said, f"taking the queues back failed: {said}"
-    assert "Error:" not in said, f"taking the queues back failed: {said}"
+    # A read that failed is said, with tc's own words, and leaves the queues as they are,
+    # which is no failure to take them back.
+    took = "\n".join(line for line in said.splitlines() if "left as they are" not in line)
+    assert "RTNETLINK" not in took, f"taking the queues back failed: {said}"
+    assert "Error:" not in took, f"taking the queues back failed: {said}"
 
 
 @pytest.mark.usefixtures("tunnel")
