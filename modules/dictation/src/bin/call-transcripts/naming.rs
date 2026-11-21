@@ -28,6 +28,7 @@
 
 use std::collections::HashMap;
 
+use dictation::pieces;
 use dictation::voices::{self, Heard, LEAST_SHARE, Voices};
 
 use crate::apart::{self, Cut};
@@ -149,7 +150,10 @@ fn name(heard: &[Heard], cuts: &[Cut]) -> (Names, String) {
         }));
     }
     let grouped = voices::group(&grouped_heard, Some(joins.len()));
-    let voice_of: Vec<Option<usize>> = at.iter().map(|at| at.and_then(|at| grouped[at])).collect();
+    let as_grouped: Vec<Option<usize>> =
+        at.iter().map(|at| at.and_then(|at| grouped[at])).collect();
+    let of: Vec<usize> = kept.iter().map(|cut| cut.take).collect();
+    let voice_of = pieces::within_takes(&of, &as_grouped);
     let spoke: Vec<Spoke> = kept
         .iter()
         .zip(&voice_of)
@@ -370,6 +374,7 @@ mod tests {
                 worded: true,
             });
             cuts.push(Cut {
+                take: cuts.len(),
                 start: at * MINUTE,
                 samples: 5 * SECOND,
                 heard: Some(heard.len() - 1),
