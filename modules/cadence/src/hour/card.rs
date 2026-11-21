@@ -104,6 +104,15 @@ pub fn compose(
                 }
             );
         }
+        // The queues never lead, so one past isn't the drag, but the card
+        // mustn't say everything is in while one is out.
+        None if super::measures::queues::worst(measures).is_some() => {
+            let _ = writeln!(
+                card,
+                "Drag: none, every judged measure but the queues is in; the worst queue's \
+                 owner is asked apart."
+            );
+        }
         None => {
             let _ = writeln!(card, "Drag: none, every judged measure is in.");
         }
@@ -393,6 +402,16 @@ mod tests {
         assert!(
             card.contains("Clean zones:\n  not read yet"),
             "unread is said: {card}"
+        );
+        let queue = measure("queue:sends", Class::Queues, 300.0, Some(120.0));
+        let (card, _) = compose("18:10", &[queue], &Kept::default(), &none(), "tomorrow");
+        assert!(
+            card.contains("Queues:\n  ✕ queue:sends said: 300, at most 120\n"),
+            "the queues weren't shown: {card}"
+        );
+        assert!(
+            card.contains("Drag: none, every judged measure but the queues is in"),
+            "a queue out was said to be in: {card}"
         );
         assert_eq!(
             next.drag.map(|d| d.unmoved),

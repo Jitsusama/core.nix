@@ -1,10 +1,11 @@
 //! What the hour owes: its drag filed in the loop's ledger with each of
-//! its owners, due a day on, and each drag filed before closed once it is
-//! back in.
+//! its owners, due a day on, or a week for a queue's change, and each drag
+//! filed before closed once it is back in.
 //!
 //! Long because each kind of drag, Joel's misses, a merge's rounds, the
-//! work system's findings and each measure's lines by owner, is filed and
-//! closed by rules of its own, and its tests sit beside them.
+//! work system's findings, the worst queue and each measure's lines by
+//! owner, is filed and closed by rules of its own, and its tests sit
+//! beside them.
 
 use std::collections::BTreeMap;
 
@@ -17,6 +18,10 @@ use super::measures::queues::{self, QUEUE};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_for_good, held_unseen, rounds,
 };
+
+/// How long a queue's ask has before it goes late: long enough for the
+/// dated change it asks for to land.
+const QUEUE_DUE: i64 = 7 * DAY;
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -224,7 +229,8 @@ fn queue_asked(m: &Measure, says: String) -> Filed {
              with what it protects, whether the work could go without it, and the change that \
              keeps the protection without the wait, weighed against at least two designs \
              beside the obvious one, with its date. It closes by itself once its p90 is back \
-             in."
+             in, or nothing passes through it for a day, and goes late to the orchestrator \
+             only after a week, as its change takes its time."
         ),
         says,
     }
@@ -345,7 +351,11 @@ pub fn file(
 ) -> Vec<(String, String)> {
     let closing: Vec<String> = ledger
         .iter()
-        .filter(|e| e.open && e.kind.as_deref() == Some("drag") && back_in(&e.key, measures))
+        .filter(|e| e.open && e.kind.as_deref() == Some("drag"))
+        .filter(|e| match e.key.strip_prefix("hour:") {
+            Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
+            _ => back_in(&e.key, measures),
+        })
         .map(|e| e.key.clone())
         .collect();
     for key in closing {
@@ -390,7 +400,14 @@ pub fn file(
                 key: one.key,
                 axis: m.class.name().to_owned(),
                 owner: one.owner.clone(),
-                due: now + DAY,
+                // A queue's ask is answered by a change weighed against
+                // others, which takes longer than a day to land.
+                due: now
+                    + if m.class == Class::Queues {
+                        QUEUE_DUE
+                    } else {
+                        DAY
+                    },
                 says: one.says,
                 kind: "drag".to_owned(),
             },
@@ -490,6 +507,44 @@ mod tests {
         let told = file(&mut ledger, &later, "2026-11-22", 90_000);
         let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
         assert_eq!(owners, ["SENDS"], "the next day's worst is asked");
+    }
+
+    #[test]
+    fn a_queue_never_leads_the_drag_and_one_quiet_or_gone_closes_its_ask() {
+        let queue = measure(
+            &format!("{QUEUE}world-walks"),
+            Class::Queues,
+            180.0,
+            Some(60.0),
+        );
+        assert!(drag(&[queue.clone()]).is_none(), "a queue led the drag");
+        let pains = measure("pains", Class::Pains, 2.0, Some(0.0));
+        assert_eq!(
+            drag(&[queue.clone(), pains]).map(|m| m.key.as_str()),
+            Some("pains"),
+            "a queue led ahead of Joel's pains"
+        );
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[queue.clone()], "2026-11-21", 1000);
+        assert_eq!(told.len(), 1, "only the queue's ask: {told:?}");
+        assert_eq!(ledger[0].due, 1000 + QUEUE_DUE, "due a week on");
+        let unread = Measure {
+            says: format!("x{}", queues::UNREAD),
+            target: None,
+            ..queue.clone()
+        };
+        file(&mut ledger, &[unread], "2026-11-22", 90_000);
+        assert!(ledger[0].open, "a record unread closed the ask");
+        let quiet = Measure {
+            says: format!("x{}", queues::QUIET),
+            target: None,
+            ..queue
+        };
+        file(&mut ledger, &[quiet], "2026-11-22", 93_600);
+        assert!(
+            !ledger[0].open,
+            "a queue nothing passed through kept its ask"
+        );
     }
 
     #[test]

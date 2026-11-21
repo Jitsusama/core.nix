@@ -299,29 +299,62 @@ fn gather(
     let keeper = measures::keeper(routes.as_deref());
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
+    let outcomes = tail(
+        &state_home.join("pi/agentic-harness.pi/priority-workflow/outcomes.jsonl"),
+        RECORD_READ,
+    );
+    let sends = tail(&state_home.join("nix-offload/there.jsonl"), RECORD_READ);
+    let train = state_home.join("net/train");
+    let landed = tail(&train.join("landed.jsonl"), RECORD_READ);
+    let aboard = aboard(&train.join("riders"));
     all.extend(measures::queues::queues(
-        &text(&state_home.join("pi/agentic-harness.pi/priority-workflow/outcomes.jsonl")),
-        &tail(&state_home.join("nix-offload/there.jsonl"), SENDS_READ),
-        &text(&state_home.join("net/train/landed.jsonl")),
+        &measures::queues::Records {
+            outcomes: outcomes.as_deref(),
+            sends: sends.as_deref(),
+            landed: landed.as_deref(),
+            aboard: aboard.as_deref(),
+        },
         now,
     ));
     Ok(all)
 }
 
-/// How much of nix-offload's record of sends the hour reads: it keeps every
-/// send it ever made (38 MB on 21 November), about 2.6 MB a day, so the end
-/// holds days of them.
-const SENDS_READ: u64 = 16 << 20;
+/// When each rider aboard the train boarded, from its file in `riders`:
+/// none aboard where the folder isn't there, and none read where it can't
+/// be listed.
+fn aboard(riders: &Path) -> Option<Vec<i64>> {
+    let listed = match fs::read_dir(riders) {
+        Ok(listed) => listed,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Some(Vec::new()),
+        Err(_) => return None,
+    };
+    Some(
+        listed
+            .flatten()
+            .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
+            .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+            .filter_map(|said| serde_json::from_str::<serde_json::Value>(&said).ok())
+            .filter_map(|said| said["at"].as_i64())
+            .collect(),
+    )
+}
 
-/// The last `bytes` of the file at `path`, from its first whole line, or
-/// nothing when it can't be read.
-fn tail(path: &Path, bytes: u64) -> String {
+/// How much of each queue's record the hour reads: nix-offload keeps every
+/// send it ever made (38 MB on 21 November), about 2.6 MB a day, so the end
+/// holds days of them, and the others are smaller.
+const RECORD_READ: u64 = 16 << 20;
+
+/// The last `bytes` of the file at `path`, from its first whole line:
+/// nothing where there is no file, and none where it can't be read.
+fn tail(path: &Path, bytes: u64) -> Option<String> {
     let read = || -> io::Result<String> {
         let mut file = fs::File::open(path)?;
         let from = file.metadata()?.len().saturating_sub(bytes);
         file.seek(SeekFrom::Start(from))?;
         let mut raw = Vec::new();
-        file.read_to_end(&mut raw)?;
+        // Taken to the bound, so a file that grew since, or isn't one,
+        // can't be read past it.
+        file.take(bytes).read_to_end(&mut raw)?;
         let text = String::from_utf8_lossy(&raw);
         // A cut line isn't one, so it starts after the first break.
         Ok(if from == 0 {
@@ -332,7 +365,11 @@ fn tail(path: &Path, bytes: u64) -> String {
                 .unwrap_or_default()
         })
     };
-    read().unwrap_or_default()
+    match read() {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Some(String::new()),
+        Err(_) => None,
+    }
 }
 
 /// The council rounds each change merged to core's and the harness's
@@ -340,9 +377,10 @@ fn tail(path: &Path, bytes: u64) -> String {
 /// fixes their findings led to, reading only the records written since
 /// the oldest round that could count, with who landed each change from
 /// the mesh's landing notes of the last day, read only when a merge is to
-/// be filed. Each note's sender is taken to the quest its presence works
-/// on, as the spend measure does, since a session can end before its
-/// drag is due while its quest's cell answers.
+/// be filed. A merge's rounds are owed to the session that merged it while
+/// it is there, running or parked, since a quest's short id reaches the
+/// quest's first session; once it has ended, to the quest its presence
+/// worked on, whose cell answers for it.
 fn rounds_per_merge(
     state_home: &Path,
     core_git: &Path,
@@ -385,7 +423,17 @@ fn rounds_per_merge(
             root: state_home.join("pi/agentic-harness.pi"),
         };
         let notes = mesh.sent_since((now - DAY) * 1000);
-        landed_by_session(notes.iter().map(|m| (m.from.as_str(), m.text.as_str())))
+        let presences = mesh.all();
+        let there = |address: &str| {
+            crate::mesh::alive(mesh.presence(address).as_ref(), |pid| {
+                Path::new(&format!("/proc/{pid}")).exists()
+            })
+        };
+        landed_by_session(
+            notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
+            there,
+            |address| measures::spent::quest_of(&presences, address),
+        )
     };
     let mains = [
         Main {
@@ -574,15 +622,24 @@ fn today(now: i64) -> String {
 }
 
 /// Each change the mesh's landing notes, given as sender and text, say
-/// landed, beside the session that merged it, which the mesh sends the
-/// note from. A merge's rounds are that session's rather than its quest's:
-/// a quest's short id reaches the quest's first session, not the one that
-/// ran them.
+/// landed, beside whom its rounds are owed: the session that merged it,
+/// which the mesh sends the note from, while it is `there`, since a
+/// quest's short id reaches the quest's first session, not the one that
+/// ran them; else the quest it worked on, by `quest_of`, which outlives it.
 fn landed_by_session<'a>(
     notes: impl IntoIterator<Item = (&'a str, &'a str)>,
+    there: impl Fn(&str) -> bool,
+    quest_of: impl Fn(&str) -> String,
 ) -> BTreeMap<String, String> {
+    let owed = |session: &str| {
+        if there(session) {
+            session.to_owned()
+        } else {
+            quest_of(session)
+        }
+    };
     let mut landed = BTreeMap::new();
-    for (session, changes) in measures::spent::landed_by(notes, str::to_owned) {
+    for (session, changes) in measures::spent::landed_by(notes, owed) {
         for change in changes {
             landed.insert(change, session.clone());
         }
@@ -631,28 +688,45 @@ mod tests {
         let root = tempfile::tempdir().expect("a scratch folder");
         let path = root.path().join("there.jsonl");
         fs::write(&path, "{\"at\":1}\n{\"at\":2}\n{\"at\":3}\n").expect("written");
-        assert_eq!(tail(&path, 12), "{\"at\":3}\n", "the cut line is left out");
+        assert_eq!(
+            tail(&path, 12).as_deref(),
+            Some("{\"at\":3}\n"),
+            "the cut line is left out"
+        );
         assert_eq!(
             tail(&path, 1 << 20),
-            fs::read_to_string(&path).expect("read"),
+            Some(fs::read_to_string(&path).expect("read")),
             "all of a short one"
         );
         assert_eq!(
-            tail(&root.path().join("none"), 12),
-            "",
-            "none read is nothing"
+            tail(&root.path().join("none"), 12).as_deref(),
+            Some(""),
+            "no file is nothing in it"
         );
+        assert_eq!(tail(root.path(), 12), None, "a folder can't be read");
     }
 
     #[test]
     fn a_merges_rounds_go_to_the_session_that_merged_it_not_its_quest() {
-        // 6EAC3DA6 works on a quest whose short id is another session's.
+        // 6EAC3DA6 works on ZINAWZ, whose short id reaches another session.
         let note = "6EAC3DA6 landed core.nix#6020, Keep the Shaper's Queues. \
                     Said by the mesh; feedback to 6EAC3DA6.";
+        let quest_of = |address: &str| {
+            if address == "6EAC3DA6" {
+                "ZINAWZ".to_owned()
+            } else {
+                address.to_owned()
+            }
+        };
         assert_eq!(
-            landed_by_session([("6EAC3DA6", note)]),
+            landed_by_session([("6EAC3DA6", note)], |_| true, quest_of),
             BTreeMap::from([("core.nix#6020".to_owned(), "6EAC3DA6".to_owned())]),
             "a merge's rounds went to someone other than the session that merged it"
+        );
+        assert_eq!(
+            landed_by_session([("6EAC3DA6", note)], |_| false, quest_of),
+            BTreeMap::from([("core.nix#6020".to_owned(), "ZINAWZ".to_owned())]),
+            "a merge's rounds went to a session that has ended rather than its quest"
         );
     }
 
