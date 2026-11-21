@@ -6,7 +6,11 @@
 
 import type { Point } from "./layout.ts";
 
-/** How far a waits ring grows, in map units, before the map is drawn again. */
+/**
+ * The steps a waits ring's growth is taken in, in map units: the map is
+ * drawn again each time the growth passes the middle of one, so once a
+ * step, the first at half a step.
+ */
 export const SWELL_STEP = 0.5;
 
 /** A network's hub, as far as its shape goes. */

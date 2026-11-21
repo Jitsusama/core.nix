@@ -153,15 +153,19 @@ export const seedAt = (i: number): Point => {
 const roomOf = (realm: Realm, seeds: Seeds): Map<string, number> =>
   new Map([...realm.hubs.keys()].map((key) => [key, roomFor(seeds.get(key)?.length ?? 0)]));
 
-/** What the layout of a reading depends on, which is the same while nothing would move. */
+/**
+ * What the layout of a reading depends on, which is the same while nothing
+ * would move. It is JSON, since the node names the networks, and a name
+ * holding a separator must not make two realms read as one.
+ */
 export const layoutKeyOf = (realm: Realm, seeds: Seeds): string => {
   const room = [...roomOf(realm, seeds)].map(([key, r]) => {
     const h = realm.hubs.get(key);
-    return `${key}:${r}:${h?.machine ?? ""}:${h?.within ?? ""}`;
+    return [key, r, h?.machine ?? "", h?.within ?? ""];
   });
-  const machines = realm.machines.map((x) => x.name).join(",");
-  const builders = realm.builders.map((b) => b.name).join(",");
-  return `${room.join("|")}|${machines}|${builders}`;
+  const machines = realm.machines.map((x) => x.name);
+  const builders = realm.builders.map((b) => b.name);
+  return JSON.stringify([room, machines, builders]);
 };
 
 /** A hub's family's width along the ring: its own disc, or its branches side by side. */

@@ -13,6 +13,7 @@ import {
   type Layout,
   layOut,
   layoutKeyOf,
+  MACHINE_ORBIT,
   type Point,
   placeCells,
   R,
@@ -41,6 +42,13 @@ const hubOf = (key: string, fields: Partial<Hub> = {}): Hub => ({
 
 /** A cell on `hub`, come at `since`. */
 const cellOn = (id: string, hub: string, since = ""): Seeded => ({ id, since, hub: { key: hub } });
+
+/** A cell working alone or a receptor, loose on `hub`, come at `since`. */
+const looseOn = (id: string, hub: string, since = ""): Seeded => ({
+  id,
+  since,
+  loose: { key: hub },
+});
 
 /** A realm of the hubs given, their cells, and the machines and builders named. */
 const realmOf = (hubs: readonly Hub[], machines: string[] = [], builders: string[] = []): Realm => {
@@ -77,6 +85,19 @@ it("keeps each cell's seed, giving a newcomer the seed an ended cell left", () =
   assert.deepEqual(seeds.get("h"), ["c", "b", "d"], "with no seed free, one past the last");
 });
 
+it("keeps a loose cell's seed, as a receptor's or a cell's working alone", () => {
+  const seeds: Seeds = new Map();
+  sow(seeds, realmOf([hubOf("h", { cells: [looseOn("a", "h", "1"), looseOn("b", "h", "2")] })]));
+  sow(seeds, realmOf([hubOf("h", { cells: [looseOn("b", "h", "2")] })]));
+  assert.deepEqual(seeds.get("h"), [null, "b"], "a loose cell should keep its seed");
+});
+
+it("sows cells come at once in the order of their ids", () => {
+  const seeds: Seeds = new Map();
+  sow(seeds, realmOf([hubOf("h", { cells: [cellOn("b", "h", "1"), cellOn("a", "h", "1")] })]));
+  assert.deepEqual(seeds.get("h"), ["a", "b"], "a tie should go by id, so a redraw keeps it");
+});
+
 it("frees a cell's seed in a hub it has left", () => {
   const seeds: Seeds = new Map();
   sow(seeds, realmOf([hubOf("h", { cells: [cellOn("a", "h")] }), hubOf("g")]));
@@ -97,6 +118,33 @@ it("keeps a disc's room in steps, so a cell arriving moves no hub", () => {
   sow(seeds, realmOf([hubOf("h", { cells: more })], ["kestrel"]));
   const after = layoutKeyOf(realmOf([hubOf("h", { cells: more })], ["kestrel"]), seeds);
   assert.equal(after, before, "a cell arriving within the room should leave the layout as it is");
+});
+
+it("lays out afresh when anything the layout reads changes", () => {
+  const keyOf = (hubs: Hub[], machines = ["kestrel"], builders: string[] = []): string => {
+    const realm = realmOf(hubs, machines, builders);
+    const seeds: Seeds = new Map();
+    sow(seeds, realm);
+    return layoutKeyOf(realm, seeds);
+  };
+  const base = keyOf([hubOf("h", { machine: "kestrel" })]);
+  const five = Array.from({ length: 5 }, (_, i) => cellOn(`c${i}`, "h"));
+  const changed: [string, string][] = [
+    ["a hub added", keyOf([hubOf("h", { machine: "kestrel" }), hubOf("g")])],
+    ["a hub's machine", keyOf([hubOf("h", { machine: "osprey" })])],
+    ["a hub's parent", keyOf([hubOf("h", { machine: "kestrel", within: "g" })])],
+    ["a room stepping up", keyOf([hubOf("h", { machine: "kestrel", cells: five })])],
+    ["a machine", keyOf([hubOf("h", { machine: "kestrel" })], ["kestrel", "osprey"])],
+    ["a builder", keyOf([hubOf("h", { machine: "kestrel" })], ["kestrel"], ["heron"])],
+  ];
+  for (const [what, key] of changed) {
+    assert.notEqual(key, base, `${what} should lay the map out afresh`);
+  }
+  const two = keyOf([hubOf("x"), hubOf("y")], []);
+  for (const name of ["x:8::|y", 'x",8,"",""],["y']) {
+    const one = keyOf([hubOf(name)], []);
+    assert.notEqual(one, two, `a hub named ${name} should not read as two hubs`);
+  }
 });
 
 it("packs seeds clear of the hub and of each other", () => {
@@ -159,6 +207,23 @@ it("puts the receptors above everything and the builders below", () => {
   assert.equal(kestrel?.[0], osprey?.[0], "machines should stand in a column");
 });
 
+it("turns the top machine's arc to the top, the next machines' after, and lone ones last", () => {
+  const hubs = [
+    hubOf("kestrel-net", { machine: "kestrel" }),
+    hubOf("alone", { machine: "kestrel", alone: true }),
+    hubOf("osprey-net", { machine: "osprey" }),
+  ];
+  const seeds: Seeds = new Map();
+  const realm = realmOf(hubs, ["kestrel", "osprey"]);
+  sow(seeds, realm);
+  const layout = layOut(realm, seeds);
+  const angle = (key: string): number => layout.angle.get(key) ?? Number.NaN;
+  const top = angle("kestrel-net");
+  assert.ok(Math.abs(top + Math.PI / 2) < 1e-9, `the top machine's arc sat at ${top}, not the top`);
+  assert.ok(angle("osprey-net") > top, "the next machine's arc should come round after");
+  assert.ok(angle("alone") > angle("osprey-net"), "a network working alone should come last");
+});
+
 it("moves each machine out to its own arc once its cords bundle", () => {
   const many = Array.from({ length: CORD_BUNDLE_OVER + 1 }, (_, i) =>
     hubOf(`net${String(i).padStart(2, "0")}`, { machine: "kestrel" }),
@@ -167,10 +232,14 @@ it("moves each machine out to its own arc once its cords bundle", () => {
   const realm = realmOf([...many, hubOf("lone", { machine: "osprey" })], ["kestrel", "osprey"]);
   sow(seeds, realm);
   const layout = layOut(realm, seeds);
+  // kestrel's arc is turned to the top, so osprey's lone network stands
+  // straight below, and each machine moves out toward its own.
   const [kestrel, osprey] = ["kestrel", "osprey"].map((x) => layout.machines.get(x) ?? [0, 0]);
-  const side = (layout.at.get("lone") ?? [0, 0])[0];
-  assert.ok(Math.sign(osprey?.[0] ?? 0) === Math.sign(side), "osprey should move toward its arc");
-  assert.notDeepEqual(kestrel, osprey, "two bundling machines should stand apart");
+  const out = layout.ring * MACHINE_ORBIT;
+  assert.ok((kestrel?.[1] ?? 0) < 0, `kestrel stood at ${kestrel}, not up toward its arc`);
+  assert.ok((osprey?.[1] ?? 0) > 0, `osprey stood at ${osprey}, not down toward its arc`);
+  const reached = distance(osprey ?? [0, 0], [0, 0]);
+  assert.ok(Math.abs(reached - out) < 1e-9, `osprey moved ${reached} out, not ${out}`);
 });
 
 it("places each cell at its hub's place plus its seed's, leaving ended seeds empty", () => {
@@ -186,6 +255,11 @@ it("places each cell at its hub's place plus its seed's, leaving ended seeds emp
     colonyRadius(seeds, "nobody"),
     HUB_R,
     "a hub with no cells should reach its own edge",
+  );
+  const last = distance(seedAt(1), [0, 0]) + R;
+  assert.ok(
+    Math.abs(colonyRadius(seeds, "h") - last) < 1e-9,
+    `a ground reached ${colonyRadius(seeds, "h")}, not its last seed's membrane at ${last}`,
   );
 });
 

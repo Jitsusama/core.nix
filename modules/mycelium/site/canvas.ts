@@ -11,6 +11,9 @@ export type Point = readonly [number, number];
 /** A box: its left, its top, its width and its height. */
 export type Box = readonly [number, number, number, number];
 
+/** What a shape spans, by two corners: its left, its top, its right and its bottom. */
+export type Span = readonly [number, number, number, number];
+
 /** A bowed line: where it starts, its control point and where it ends. */
 export type Line = readonly [Point, Point, Point];
 
@@ -54,7 +57,7 @@ export const onScreen = (line: Line, { k, tx, ty }: View): Line => {
 };
 
 /** Whether a shape spanning `x0, y0` to `x1, y1` lies wholly off a `w` by `h` canvas. */
-export const offCanvas = (span: Box, w: number, h: number): boolean => {
+export const offCanvas = (span: Span, w: number, h: number): boolean => {
   const [x0, y0, x1, y1] = span;
   return x1 < -GROUND_PAD || y1 < -GROUND_PAD || x0 > w + GROUND_PAD || y0 > h + GROUND_PAD;
 };
@@ -179,7 +182,12 @@ export const lineAt = <T extends Touchable>(
   point: Point,
   onGround: boolean,
 ): T | null => {
-  const [x, y] = point;
+  // A line's box is read before anything is built for it, since this runs
+  // on every move of the pointer over the map's ground and most lines lie
+  // nowhere near it.
+  const { k, tx, ty } = view;
+  const mx = (point[0] - tx) / k;
+  const my = (point[1] - ty) / k;
   for (const layer of layers) {
     let best: T | null = null;
     let nearest = TOUCH_PX;
@@ -187,15 +195,17 @@ export const lineAt = <T extends Touchable>(
       if (!touchable.opens || (onGround && touchable.within)) {
         continue;
       }
-      const line = onScreen(touchable, view);
-      const xs = line.map(([lx]) => lx);
-      const ys = line.map(([, ly]) => ly);
+      const [p, c, q] = touchable;
+      const reach = nearest / k;
       const far =
-        x < Math.min(...xs) - nearest ||
-        x > Math.max(...xs) + nearest ||
-        y < Math.min(...ys) - nearest ||
-        y > Math.max(...ys) + nearest;
-      const d = far ? Number.POSITIVE_INFINITY : distanceTo(line, point);
+        mx < Math.min(p[0], c[0], q[0]) - reach ||
+        mx > Math.max(p[0], c[0], q[0]) + reach ||
+        my < Math.min(p[1], c[1], q[1]) - reach ||
+        my > Math.max(p[1], c[1], q[1]) + reach;
+      if (far) {
+        continue;
+      }
+      const d = distanceTo(onScreen(touchable, view), point);
       if (d < nearest) {
         [best, nearest] = [touchable, d];
       }

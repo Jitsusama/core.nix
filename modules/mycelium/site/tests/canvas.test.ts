@@ -143,6 +143,29 @@ it("touches the nearest line within reach, from the uppermost set holding one", 
   assert.equal(lineAt([[inert]], OWN, [50, 10], false), null, "a line that opens nothing is not");
 });
 
+it("touches the nearest of a set's lines, wherever it is listed", () => {
+  const further = opening(across(10), "further");
+  const nearer = opening(across(13), "nearer");
+  for (const layer of [
+    [further, nearer],
+    [nearer, further],
+  ]) {
+    const touched = lineAt([layer], OWN, [50, 12], false);
+    assert.equal(touched, nearer, `of ${layer.map((l) => l.opens)}, the nearer should be touched`);
+  }
+});
+
+it("finds a line in map units under a point on screen, at any zoom", () => {
+  const view = { k: 2, tx: 100, ty: 40 };
+  const line = opening(across(10), "line");
+  const [x, y] = [100 + 50 * 2, 40 + 10 * 2 + 1];
+  assert.equal(lineAt([[line]], view, [x, y], false), line, "the line on screen should be touched");
+  const unzoomed = lineAt([[line]], view, [50, 11], false);
+  assert.equal(unzoomed, null, "the line's place in map units should not be, on screen");
+  const past = [100 + 50 * 2, 40 + 10 * 2 + TOUCH_PX + 1] as const;
+  assert.equal(lineAt([[line]], view, past, false), null, "reach should be px, at any zoom");
+});
+
 it("leaves a network's own lines to its ground", () => {
   const inside = opening(across(10), "inside", true);
   assert.equal(lineAt([[inside]], OWN, [50, 10], true), null, "on its ground the ground opens");

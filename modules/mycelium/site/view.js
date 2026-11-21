@@ -452,8 +452,11 @@ import {
     // it runs on, as its host.
     const machines = now.machines || [];
     const standOf = new Map(machines.flatMap((x) => (x.members || []).map((y) => [y.name, x.name])));
-    const known = new Set(now.networks.map((n) => n.name));
     const orchestrations = now.networks.filter((n) => n.shape === "orchestration");
+    // A hub hangs only from another hub: one the node puts within a quest
+    // or a repository would hang from nothing, and the ring would never
+    // place it.
+    const known = new Set(orchestrations.map((n) => n.name));
     const shapes = shapesFor(orchestrations.map((n) => n.name));
     const hubs = new Map();
     // An orchestration the node left untitled is named by its quest's
