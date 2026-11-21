@@ -2926,8 +2926,8 @@
     socket in the slot systemd names under the host's runtime folder, with the host's
     environment, proof, node, frame flag and SSH agent but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
-    agents.slice slowed past 12 GB, its core kept, failing its start when the program is
-    missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
+    agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
+    program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';

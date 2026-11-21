@@ -251,9 +251,13 @@ let
   # the host retries a child that dies at once only at its conversation's
   # next wake, and bounds no more than that yet. Each realm's
   # conversations stop together with `systemctl --user stop
-  # 'pi-conversation-KEY@*'`, which parks each one. jobs-sorter knows only
-  # `pi-host-*` units so far, so a conversation's busy commands stay in its
-  # own unit, held back by its memory throttle below.
+  # 'pi-conversation-KEY@*'`, which parks each one; stop the host first, or
+  # it takes them up again at their next wake, and run it before moving the
+  # harness back to one without children, whose host would take up what
+  # they hold. jobs-sorter and the shaper know only `pi-host-*` units so
+  # far, so a conversation's busy commands stay in its own unit, held back
+  # by its memory throttle below, and its uploads aren't yet raised while
+  # Joel types in it.
   conversationOf =
     realm: host: kind:
     let
@@ -264,8 +268,10 @@ let
       value = {
         Unit = {
           # No ConditionPathExists, unlike the host's: only a running host
-          # starts one, so a missing program fails the start, which the host
-          # sees, rather than passing with nothing run.
+          # starts one, so a missing program leaves the instance failed, with
+          # node's error in the journal, rather than skipped with nothing run
+          # or said. The start itself still succeeds, as Type=exec's does
+          # once node runs; the host sees the instance gone before it listens.
           Description = "Holds one of ${kinds.${kind}} in the ${realm} realm, in slot %i";
           # A restart would end the conversation's turn, so a switch leaves a
           # running one be; the next conversation it takes up runs the new pi.
