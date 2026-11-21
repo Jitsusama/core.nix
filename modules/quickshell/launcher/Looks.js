@@ -129,9 +129,15 @@ function cellOf(one, running, parked) {
         return left ?? null;
     }
     const own = quest.split("-").pop().toUpperCase();
-    const on = held.filter(session => session.presence?.quest === quest);
+    const on = held.filter(session => questOf(session) === quest);
     return on.find(session => String(session.address ?? "").toUpperCase() === own)
         ?? on[0] ?? null;
+}
+
+// The quest a session works on, as pi publishes it: its questInfo's, else
+// its `quest` (Holders.js and Sessions.qml read it so too).
+function questOf(session) {
+    return session.presence?.questInfo?.id ?? session.presence?.quest;
 }
 
 // The address the agents daemon says the cell a look names (`cell`) goes
@@ -155,8 +161,10 @@ function cellGoes(one, cells) {
 // look's quest alone: the daemon and the lists each read the node and
 // either can be a beat behind, and a record kept while the daemon is away
 // can be stale. A session on another quest that merely lists the cell's
-// address is never found, as cells.rs refuses it. The search for a look
-// naming no cell goes once every look names its cell, by Mon 23 Nov 2026.
+// address is never found by that search; the daemon names one only where
+// cells.rs finds it was the cell, its one lister while no session goes by
+// the name. The search for a look naming no cell goes once every look
+// names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
     const goes = cellGoes(one, cells);
     if (goes === "") {
@@ -165,7 +173,7 @@ function cellFor(one, cells, running, parked) {
     const held = (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
     const quest = typeof one.quest === "string" ? one.quest : "";
-    const ours = held.filter(session => quest !== "" && session.presence?.quest === quest);
+    const ours = held.filter(session => quest !== "" && questOf(session) === quest);
     return held.find(session => goes !== null && session.address === goes)
         ?? held.find(session => session.address === one.cell)
         ?? cellOf(one, ours, []);

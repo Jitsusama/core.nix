@@ -710,7 +710,7 @@ QtObject {
             Looks.cellFor(naming("GGGGGG"), cells, [stranger, heir], []).address, "BBBBBB");
         expect("a name contested, the one on the look's quest",
             Looks.cellFor(naming("OLDOLD"), { "agent-cell:agents:OLDOLD": { goes: null } },
-                [{ address: "TTTTTT", presence: { quest: "Q-2", addresses: ["OLDOLD"] } },
+                [{ address: "TTTTTT", presence: { quest: "Q-2", addresses: ["AAAAAA"] } },
                     heir], []).address, "BBBBBB");
         const lister = { address: "TTTTTT",
             presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "AAAAAA"] } };
@@ -724,8 +724,18 @@ QtObject {
         expect("null for one going nowhere", Looks.cellGoes(naming("GGGGGG"), cells), null);
         expect("none for one not served", Looks.cellGoes(naming("HHHHHH"), cells), "");
         expect("none for one naming no cell", Looks.cellGoes(naming(7), cells), "");
-        expect("going to a session not listed yet, cellOf's search",
+        expect("going to a session not listed yet, the cell itself",
             Looks.cellFor(naming("AAAAAA"), cells, [leaver], []).address, "AAAAAA");
+        expect("going to a session not listed yet, the quest's own before another on it",
+            Looks.cellFor({ cell: "OLDOLD", quest: "QEST-1-ABCDEF" },
+                { "agent-cell:agents:OLDOLD": { goes: "ZZZZZZ" } }, [helper], [own]).address,
+            "ABCDEF");
+        expect("said to go nowhere, one on its quest by the quest pi publishes",
+            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "QQQQQQ",
+                presence: { questInfo: { id: "Q-1" } } }], []).address, "QQQQQQ");
+        expect("not served yet, cellOf's search over every session, another quest's too",
+            Looks.cellFor({ session: "s-4", cell: "HHHHHH" }, cells, [stranger], []).address,
+            "DDDDDD");
         expect("going to a session not listed yet, the cell itself, on another quest too",
             Looks.cellFor({ cell: "AAAAAA", quest: "Q-9" }, cells, [stranger, leaver], [])
                 .address, "AAAAAA");
