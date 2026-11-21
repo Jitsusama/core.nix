@@ -192,6 +192,10 @@ LOOKED_AT = [
     ("Network", "The attic's radio is busy 53% of the time"),
     ("Network", "And 3 more worth a look"),
 ]
+# The rows' keys a steps through: whose each is, then its own words.
+KESTREL_LOOK = "look:machine:kestrel:booted 3 hours ago after a firmware error"
+OSPREY_LOOK = "look:machine:osprey:code wants a look"
+MYCELIUM_LOOK = "look:part:mycelium:4 sessions say they run with their processes gone"
 
 
 def focused_row(page: Page) -> str | None:
@@ -211,30 +215,30 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
         " <= document.querySelector('#bridge').getBoundingClientRect().top"
     )
     assert above is True, "the looks weren't over the machines"
-    network = system_page.locator("#looks a[data-row='look:part:network:0']")
+    network = system_page.locator("#looks a[data-row^='look:part:network:']").first
     expect(network, "a part's look didn't lead to its site").to_have_attribute(
         "href", "../network/"
     )
     keyboard = system_page.keyboard
     keyboard.press("a")
-    assert focused_row(system_page) == "look:machine:kestrel:0", "a didn't go to the first look"
+    assert focused_row(system_page) == KESTREL_LOOK, "a didn't go to the first look"
     keyboard.press("a")
-    assert focused_row(system_page) == "look:machine:osprey:0", "a didn't go to the next"
+    assert focused_row(system_page) == OSPREY_LOOK, "a didn't go to the next"
     keyboard.press("Enter")
     assert section_of_the_cursor(system_page) == "machine-2", "osprey's look didn't go to it"
     assert system_page.evaluate("location.hash") == "", "a look's way there was left in the URL"
     # Off the list, a starts again at the first; a press for each look then
     # passes the last and comes round to it.
     keyboard.press("a")
-    assert focused_row(system_page) == "look:machine:kestrel:0", "a off the list didn't start over"
+    assert focused_row(system_page) == KESTREL_LOOK, "a off the list didn't start over"
     for _ in LOOKED_AT:
         keyboard.press("a")
-    assert focused_row(system_page) == "look:machine:kestrel:0", "a didn't go round to the first"
+    assert focused_row(system_page) == KESTREL_LOOK, "a didn't go round to the first"
     # A look that clears under the cursor leaves it on the one now in its place.
     keyboard.press("a")
     system_daemon.tell("machine", changed=[{"key": "machine:osprey", "side": []}])
     system_page.wait_for_function(
-        "document.activeElement?.dataset?.row === 'look:part:mycelium:0'", timeout=PACE_MS
+        "row => document.activeElement?.dataset?.row === row", arg=MYCELIUM_LOOK, timeout=PACE_MS
     )
     # With nothing anywhere worth a look, the list says so in one line.
     quiet: list[dict[str, object]] = [
@@ -260,6 +264,9 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     system_daemon.tell("part", changed=coming)
     expect(system_page.locator("#looks"), "a machine to come was taken as nothing").to_have_text(
         "Still reading what is worth a look.", timeout=PACE_MS
+    )
+    expect(system_page.locator("#note"), "a's note outlived what the list said").not_to_have_text(
+        "Nothing is worth a look."
     )
     keyboard.press("a")
     expect(system_page.locator("#note"), "a claimed more than the list knew").to_have_text(

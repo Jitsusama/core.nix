@@ -73,24 +73,41 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
   assert.equal(network?.machine, false, "a part's name is the page's, to translate");
 });
 
-it("keys each row by whose it is and its place there, apart from any other", () => {
-  const read = system(
-    [machine("kestrel", "watch", ["one", "two"])],
-    [part("code", "watch", ["one"])],
+it("keys each row by whose it is and its own words, apart from any other", () => {
+  const rowsOf = (side: string[]): string[] =>
+    looksOf(
+      system([machine("kestrel", "watch", side)], [part("code", "watch", ["one"])]),
+      8,
+    ).looks.map((look) => look.row);
+  assert.deepEqual(
+    rowsOf(["one", "two", "one"]),
+    [
+      "look:machine:kestrel:one",
+      "look:machine:kestrel:two",
+      "look:machine:kestrel:one#1",
+      "look:part:code:one",
+    ],
+    "each row keyed apart, a repeat by how many came before it",
   );
-  const rows = looksOf(read, 8).looks.map((look) => look.row);
-  assert.deepEqual(rows, ["look:machine:kestrel:0", "look:machine:kestrel:1", "look:part:code:0"]);
+  assert.deepEqual(
+    rowsOf(["two"]),
+    ["look:machine:kestrel:two", "look:part:code:one"],
+    "a look keeps its key when one before it clears",
+  );
 });
 
 it("says a part that wasn't read as a look of its own, first, as the daemon ranks it", () => {
   const unread = part("code", "unread", [], "repos timed out.");
-  const read = system([], [unread, part("network", "watch", ["the attic's radio is busy"])]);
+  const bad = part("network", "bad", ["the modem is down"]);
+  const read = system([], [bad, unread, part("mycelium", "watch", ["a session is stuck"])]);
   assert.deepEqual(
     looksOf(read, 8).looks.map((look) => [look.health, look.whose, look.words]),
     [
       ["unread", "Code", "Couldn't be read: repos timed out."],
-      ["watch", "Network", "The attic's radio is busy"],
+      ["bad", "Network", "The modem is down"],
+      ["watch", "Mycelium", "A session is stuck"],
     ],
+    "an unread part ranks ahead of a bad one listed before it",
   );
   const machines: System = {
     ...read,
@@ -146,7 +163,10 @@ it("draws each look as a row of its own, every word escaped", () => {
   const read = system([machine("<b>kestrel</b>", "bad", ['"out" of reach'])]);
   const drawn = looksDrawn(looksOf(read, 8));
   const holds = (words: string, why: string): void => assert.ok(drawn.includes(words), why);
-  holds('data-row="look:machine:&lt;b&gt;kestrel&lt;/b&gt;:0"', "the row keyed");
+  holds(
+    'data-row="look:machine:&lt;b&gt;kestrel&lt;/b&gt;:&quot;out&quot; of reach"',
+    "the row keyed",
+  );
   holds('<span class="whose" translate="no">&lt;b&gt;kestrel', "the name kept, untranslated");
   holds('<span class="words">&quot;out&quot; of reach</span>', "the words escaped");
   holds('<span class="sr"> (bad)</span>', "its health said to a reader");
