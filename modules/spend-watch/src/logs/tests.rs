@@ -524,6 +524,23 @@ fn carrying_on_reads_the_same_as_reading_once() {
 }
 
 #[test]
+fn a_parent_is_known_by_the_id_pi_names_its_log_after() {
+    // A header and parent as pi writes them: the log is named for its
+    // start and its session's id, which carries no underscore.
+    let header = serde_json::json!({
+        "type": "session", "version": 3, "id": "01a1e497-a344-7999-bb4e-6521920669ee",
+        "timestamp": "2026-11-16T13:41:45.412Z", "cwd": "/home/a/src/thing",
+        "parentSession": "/home/a/.pi/agent/sessions/--home-a-src-thing--/\
+            2026-11-15T03-21-36-226Z_01a1dd39-82e2-73d9-9774-72b6e5dfbf25.jsonl",
+    });
+    assert_eq!(
+        copies::parent_id(&header).as_deref(),
+        Some("01a1dd39-82e2-73d9-9774-72b6e5dfbf25"),
+        "the parent's id is the tail of its log's name, as its own header has it"
+    );
+}
+
+#[test]
 fn a_repository_is_named_by_where_it_lives() {
     assert_eq!(
         repo_of("/home/a/src/github.com/me/thing/sub"),
