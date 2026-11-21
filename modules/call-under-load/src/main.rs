@@ -80,7 +80,11 @@ fn help() -> Help {
                 .exit(Exit::Done, "measured, or skipped for a call or a meeting")
                 .exit(
                     Exit::Unavailable,
-                    "Chrome, the calendar or the call check isn't there",
+                    "Chromium, the calendar or the call check isn't there",
+                )
+                .exit(
+                    Exit::Refused,
+                    "a test browser enrolled, or Chromium's policy could enrol one",
                 )
                 .exit(Exit::Failed, "the call couldn't be made"),
         )

@@ -17,10 +17,11 @@ pub const POLICIES: &str = "/etc/chromium/policies";
 
 /// The policies that enrol a browser or install into it, any of which in
 /// Chromium's machine policy keeps the call from starting.
-const ENROLLING: [&str; 3] = [
+const ENROLLING: [&str; 4] = [
     "CloudManagementEnrollmentToken",
     "ExtensionInstallForcelist",
     "ExtensionSettings",
+    "WebAppInstallForceList",
 ];
 
 /// Why Chromium's machine policy under `root` could enrol a test browser

@@ -72,10 +72,14 @@ pub enum Ended {
 
 /// The display and folders a call starts with, ended and removed as it
 /// drops, however the call ends. Each Chrome ends as its `Browser` drops,
-/// which is first, since each is made after this.
+/// which is first, since each is made after this. Each of its `profiles`
+/// is looked in for an enrolment before its folder goes, since every way
+/// a call ends comes through here, not only the beat that looks for one.
 struct Started {
     folders: Vec<PathBuf>,
     children: Vec<Child>,
+    profiles: Vec<PathBuf>,
+    state: PathBuf,
 }
 
 impl Drop for Started {
@@ -84,6 +88,8 @@ impl Drop for Started {
             let _ = child.kill();
             let _ = child.wait();
         }
+        let profiles: Vec<&Path> = self.profiles.iter().map(PathBuf::as_path).collect();
+        let _ = unenrolled(&profiles, &self.state);
         for folder in &self.folders {
             let _ = fs::remove_dir_all(folder);
         }
@@ -292,12 +298,14 @@ fn steps(
     // A Wayland socket's path must fit in 108 bytes, so it's kept short.
     let memory = folders.runtime.join(format!("call-under-load-{id}"));
     let profile = folders.cache.join(format!("profile-{id}"));
+    let far_profile = memory.join("far");
     let mut started = Started {
         folders: vec![memory.clone(), profile.clone()],
         children: Vec::new(),
+        profiles: vec![profile.clone(), far_profile.clone()],
+        state: folders.state.to_path_buf(),
     };
     let config = memory.join("config");
-    let far_profile = memory.join("far");
     lay_out(&memory, &profile, &config).map_err(|e| e.to_string())?;
 
     let mut weston = Command::new("weston");
@@ -713,6 +721,29 @@ mod tests {
         assert!(
             off.is_some_and(|why| why.contains("enrolled")),
             "the next hour's test would start again"
+        );
+    }
+
+    #[test]
+    fn an_enrolment_is_kept_however_the_call_ends() {
+        let temp = std::env::temp_dir();
+        let profile = temp.join(format!("cul-ended-{}", std::process::id()));
+        let state = temp.join(format!("cul-ended-state-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(profile.join("Policy/Enrollment")).expect("the folder is made");
+        fs::write(profile.join("Policy/Enrollment/token"), "t").expect("the token is written");
+        drop(Started {
+            folders: vec![profile.clone()],
+            children: Vec::new(),
+            profiles: vec![profile.clone()],
+            state: state.clone(),
+        });
+        let off = managed::stays_off(&state);
+        let _ = fs::remove_dir_all(&state);
+        assert!(!profile.exists(), "the call's profile was left behind");
+        assert!(
+            off.is_some_and(|why| why.contains("enrolled")),
+            "an enrolment found only as the call ended was lost with its profile"
         );
     }
 
