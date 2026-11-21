@@ -134,25 +134,27 @@ function cellOf(one, running, parked) {
         ?? on[0] ?? null;
 }
 
-// The cell a look leads to as the agents daemon names it, `cells` being
-// its `agent-cell` records by key (modules/agents/src/cells.rs): the live
-// session the cell the look names (`cell`) goes to now, found among
-// `running` and `parked`, or null where the daemon says it goes nowhere.
-// A look naming no cell, one the daemon hasn't served yet, or one going to
-// a session those lists don't hold yet (they run a beat behind the daemon)
-// falls back to cellOf's search; that fallback goes once every look names its cell,
-// by Mon 23 Nov 2026.
-function cellFor(one, cells, running, parked) {
+// The address the agents daemon says the cell a look names (`cell`) goes
+// to now, by its `agent-cell` records by key, `cells`
+// (modules/agents/src/cells.rs): "" where it names no cell, the daemon
+// holds no record of it, or the record says it goes nowhere.
+function cellGoes(one, cells) {
     const cell = typeof one.cell === "string" ? one.cell : "";
     const record = cell === "" ? undefined : cells?.[`agent-cell:agents:${cell}`];
-    if (record === undefined || record === null) {
-        return cellOf(one, running, parked);
-    }
-    const goes = typeof record.goes === "string" ? record.goes : "";
-    if (goes === "") {
-        return null;
-    }
-    const held = (Array.isArray(running) ? running : [])
+    return typeof record?.goes === "string" ? record.goes : "";
+}
+
+// The cell a look leads to as the agents daemon names it (cellGoes): the
+// live session found among `running` and `parked` by the address it goes
+// to. Where the daemon names none, or a session those lists don't hold
+// yet, cellOf's search decides: the daemon and the lists each read the
+// node and either can be a beat behind, so a look the daemon says goes
+// nowhere still reaches a session the lists hold on its quest. The
+// search for a look naming no cell goes once every look names its cell,
+// by Mon 23 Nov 2026.
+function cellFor(one, cells, running, parked) {
+    const goes = cellGoes(one, cells);
+    const held = goes === "" ? [] : (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
     return held.find(session => session.address === goes) ?? cellOf(one, running, parked);
 }
