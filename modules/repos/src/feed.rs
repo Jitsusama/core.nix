@@ -13,18 +13,34 @@
 //!   the change open at its branch where there is one.
 //! - `change:<repository's key>#<number>`, each open change, by the number
 //!   its source gives it, else `@<branch>`.
+//! - `using:<repository's key>`, what works in each repository and what it
+//!   takes, its checkouts' and trees' summed and each one's beside, from
+//!   the reading of the machine's processes (using.rs). It's a kind of its
+//!   own since it moves every reading, so a watch of a repository isn't
+//!   told it moved each minute.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use daemon_serve::asks::Domain;
 use serde_json::{Value, json};
 
 use repos::model::{Change, Record, Repository, TreeKind};
+use repos::using::Use;
 
 use crate::views::{answered, change_at};
 
 /// The daemon as its clients know it.
 pub const DOMAIN: Domain = Domain {
     name: "repos",
-    kinds: &["reading", "repository", "checkout", "tree", "change"],
+    kinds: &[
+        "reading",
+        "repository",
+        "checkout",
+        "tree",
+        "change",
+        "using",
+    ],
     sole: &["reading"],
     named_only: &[],
 };
@@ -80,6 +96,63 @@ pub fn records(record: &Record) -> Vec<Value> {
         }
     }
     said.into_iter().map(answered).collect()
+}
+
+/// What works in each repository of `record`, from `used`, each folder's;
+/// its processor time only where `measured`, two readings having been
+/// taken, and none otherwise rather than nothing.
+pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> Vec<Value> {
+    let cpu = |share: Option<f64>| measured.then(|| share.unwrap_or(0.0));
+    let mut said = Vec::new();
+    for repository in &record.repositories {
+        let paths = repository.checkouts.iter().flat_map(|checkout| {
+            std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
+        });
+        let mut whole = Use::default();
+        let mut folders = Vec::new();
+        for path in paths {
+            let Some(one) = used.get(Path::new(path)) else {
+                continue;
+            };
+            whole.processes += one.processes;
+            whole.memory += one.memory;
+            whole.cpu = Some(whole.cpu.unwrap_or(0.0) + one.cpu.unwrap_or(0.0));
+            folders.push(json!({
+                "path": path,
+                "processes": one.processes,
+                "memory": one.memory,
+                "cpu": cpu(one.cpu),
+            }));
+        }
+        said.push(json!({
+            "key": format!("using:{}", repository.key),
+            "kind": "using",
+            "repository": repository.key,
+            "processes": whole.processes,
+            "memory": whole.memory,
+            "cpu": cpu(whole.cpu),
+            "folders": folders,
+        }));
+    }
+    said
+}
+
+/// Each repository of `record` with what works in it unread, its figures
+/// null, where the reading of `/proc` has stopped answering: said as
+/// nothing working, it would read as a measurement of none.
+pub fn unread(record: &Record) -> Vec<Value> {
+    let each = record.repositories.iter().map(|repository| {
+        json!({
+            "key": format!("using:{}", repository.key),
+            "kind": "using",
+            "repository": repository.key,
+            "processes": null,
+            "memory": null,
+            "cpu": null,
+            "folders": [],
+        })
+    });
+    each.collect()
 }
 
 /// How the sources stand, as health says them: git always read, since a

@@ -10,6 +10,7 @@ note behind.
 | `site.ts`     | the page: its watches, its keys and what it says               |
 | `model.ts`    | the daemon's records and the mycelium's cells read as a grove  |
 | `draw.ts`     | the grove, the repositories as rows, and the one open          |
+| `using.ts`    | what works in each repository, and how its use is said         |
 | `head.ts`     | the headline, its lede and the line at the foot                |
 | `address.ts`  | where the address lands, and what it says as the cursor moves  |
 | `mycelium.ts` | the cells at work, live from the node, and their homes         |

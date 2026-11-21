@@ -34,8 +34,13 @@
 //! refusing every request it's given. Reset saying its stream was refused
 //! or a protocol error, it goes once more on another: one opened since,
 //! another already open, or one opened for it, shared by every request
-//! reset there with it, never the one that reset it. Reset saying anything
-//! else, it's a 502. Reset again the same way, lost some other way when
+//! reset there with it, never the one that reset it. So does one the
+//! origin's goodbye left out saying nothing was wrong, as a drain before a
+//! deploy or a connection's rotation does, or a protocol error, since that
+//! promises, as a refused stream does, the origin did nothing with it; the
+//! connection that goodbye ended is let go rather than retired. Reset
+//! saying anything else, it's a 502. Reset again the same way, left out
+//! again by such a goodbye, lost some other way when
 //! sent again, or with no other connection to go on, as when its slot
 //! retired one lately or none would open, it's the relay's own 421, so pi
 //! sends it direct at once, rather than retry a 502 a minute on down the
@@ -60,8 +65,8 @@
 //! connections and answers each request with its own 421, forwarding
 //! nothing, so pi sends it direct. After a minute, as many times longer as
 //! the stand-down has doubled, and every half minute after, it tries its
-//! path: it opens a trial connection, counted among those opened but never
-//! taking requests, and asks the origin three times in a row for the head
+//! path: it opens a trial connection, counted with its trials apart from
+//! those opened for requests, and asks the origin three times in a row for the head
 //! of its root. Answered each time with anything but a 5xx, the path
 //! carries requests again, and so does the relay, at once; a trial ends
 //! only the stand-down it was begun in. Otherwise it stands down at most ten minutes, or
@@ -87,8 +92,8 @@
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
-//! or the 421 that sends pi direct once a reset one couldn't be carried
-//! again, never by closing the socket, so pi decides what follows. A
+//! or the 421 that sends pi direct once one reset or left out couldn't be
+//! carried again, never by closing the socket, so pi decides what follows. A
 //! body over 64 MiB is a 413, one pi leaves unfinished a 400 and one
 //! still coming after a minute a 408, both counted as pi's cancel.
 //!
@@ -407,12 +412,18 @@ struct Counts {
     refused: AtomicU64,
     failed: AtomicU64,
     reset: AtomicU64,
-    /// Requests reset before their answers began, sent once more and
-    /// answered, so the resets a resend saved; those it didn't are with
-    /// the failed ones reset.
+    /// Requests reset or left out of a goodbye before their answers began,
+    /// sent once more and answered, so the ones a resend saved; those it
+    /// didn't are with the failed ones reset or left out.
     again: AtomicU64,
     cancelled: AtomicU64,
+    /// Connections opened for requests; trials' are counted apart, so a
+    /// relay trying its path as it stands down isn't read as one opening
+    /// connections for requests it should be sending direct.
     opened: AtomicU64,
+    /// Trials of its path as it stood down, each counted as it's begun,
+    /// so one whose connection wouldn't open is counted too.
+    tried: AtomicU64,
     open: AtomicUsize,
     /// Requests refused as it stood down, so each went direct, counted
     /// with the refused too.
@@ -422,13 +433,21 @@ struct Counts {
     broken: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 9]>,
+    said_as: Held<[u64; 10]>,
 }
 
 impl Counts {
     /// Says the counts, when any has moved since they were last said: a
     /// request asked before then may have ended since.
     fn say(&self) {
+        if let Some(line) = self.line() {
+            eprintln!("{line}");
+        }
+    }
+
+    /// The counts as said, or none when none has moved since they last
+    /// were.
+    fn line(&self) -> Option<String> {
         let now = [
             &self.asked,
             &self.refused,
@@ -437,6 +456,7 @@ impl Counts {
             &self.again,
             &self.cancelled,
             &self.opened,
+            &self.tried,
             &self.stood_down,
             &self.broken,
         ]
@@ -444,7 +464,7 @@ impl Counts {
         {
             let mut said_as = self.said_as.lock().unwrap_or_else(PoisonError::into_inner);
             if *said_as == now {
-                return;
+                return None;
             }
             *said_as = now;
         }
@@ -456,16 +476,18 @@ impl Counts {
             again,
             cancelled,
             opened,
+            tried,
             stood_down,
             broken,
         ] = now;
-        eprintln!(
+        Some(format!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
-             reset; {again} reset and sent again; pi cancelled {cancelled}; {opened} \
-             connections opened, {} taking requests; {stood_down} refused as it stood down; \
-             {broken} broken off midway",
+             reset or left out; {again} reset or left out and sent again; pi cancelled \
+             {cancelled}; {opened} \
+             connections opened, {} taking requests; {tried} trials of its path; \
+             {stood_down} refused as it stood down; {broken} broken off midway",
             self.open.load(Ordering::Relaxed),
-        );
+        ))
     }
 }
 
@@ -907,8 +929,9 @@ impl<S: Sender> Slot<S> {
     /// Takes no more requests down connection `number` for a reset, if
     /// it's still the one taking them and the slot hasn't retired one
     /// within `RETIRED_FOR_A_RESET_AT_MOST_EVERY`, and says what came of it.
-    /// Answers already on it carry on. One the origin said goodbye to is
-    /// gone already, so its reset spends none of the slot's allowance.
+    /// Answers already on it carry on. One closed already spends none of
+    /// the slot's allowance, nor does one a goodbye left a request out of,
+    /// which is let go instead.
     fn retire(&self, number: u64) -> Retiring {
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
         if open
@@ -925,18 +948,45 @@ impl<S: Sender> Slot<S> {
         *retired = Some(Instant::now());
         Retiring::Retired
     }
+
+    /// Takes no more requests down connection `number`, as the origin's
+    /// goodbye on it said, spending none of the slot's allowance for
+    /// resets: hyper may not read it as closed yet, while answers begun
+    /// before the goodbye finish on it.
+    fn let_go(&self, number: u64) -> Retiring {
+        let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
+        if open.as_ref().is_none_or(|kept| kept.number != number) {
+            return Retiring::Gone;
+        }
+        *open = None;
+        Retiring::LetGo
+    }
+
+    /// What a request's failure with `why` does to connection `number`:
+    /// one a goodbye left it out of is let go, a reset retires it.
+    fn end_for(&self, number: u64, why: &(dyn std::error::Error + 'static)) -> Retiring {
+        if goodbye_saying(why).is_some() {
+            self.let_go(number)
+        } else {
+            self.retire(number)
+        }
+    }
 }
 
-/// What a reset did to the connection it came on. Told apart in the log
-/// because a spell's later resets mostly come on requests still in flight
-/// on a connection already retired, and said as kept they read as the
-/// relay holding on to a bad connection.
+/// What a reset or a goodbye did to the connection it came on. Told apart
+/// in the log because a spell's later resets mostly come on requests still
+/// in flight on a connection already out of use, and said as kept they
+/// read as the relay holding on to a bad connection.
 #[derive(Debug, PartialEq, Eq)]
 enum Retiring {
     /// It takes no more requests.
     Retired,
-    /// It takes no more requests already: retired before, let go after a
-    /// sleep, or closed by the origin's goodbye.
+    /// It takes no more requests, as the origin's goodbye ended it, with
+    /// none of the slot's allowance for resets spent.
+    LetGo,
+    /// It takes no more requests already: retired or let go before, let go
+    /// after a sleep, or closed by the origin's goodbye. Said as out of use
+    /// rather than retired, as a goodbye's burst would read as resets.
     Gone,
     /// It's still taking requests, as the slot retired one lately.
     Kept,
@@ -947,7 +997,8 @@ impl Retiring {
     fn said(&self) -> &'static str {
         match self {
             Retiring::Retired => "so it's retired",
-            Retiring::Gone => "already retired",
+            Retiring::LetGo => "so it's let go",
+            Retiring::Gone => "already out of use",
             Retiring::Kept => "kept, as one was retired lately",
         }
     }
@@ -1328,18 +1379,29 @@ impl Relay {
     /// Tries its path each time it stands down, until the path answers or
     /// the stand-down ends, and takes requests again once it answers. Each
     /// stand-down is known by when it ends, so a trial begun in one never
-    /// ends the next; one begun meanwhile is told, and waits its own first
-    /// trial in turn.
+    /// ends the next; one begun while it waits is told, and waits its own
+    /// first trial from then, not from when a wait for the last would end.
+    /// One begun while a trial is under way waits from that trial's end.
     async fn tries_its_path(self: Arc<Relay>) {
         let every = self.clocks.tries_its_path_every;
+        let mut told = false;
         loop {
-            self.stood_down.notified().await;
+            if !told {
+                self.stood_down.notified().await;
+            }
+            told = false;
             let Some((until, lasting)) = self.standing.down(Instant::now()) else {
                 continue;
             };
             let mut wait = first_trial_after(every, lasting, self.clocks.stands_down_for);
             loop {
-                tokio::time::sleep(wait).await;
+                tokio::select! {
+                    () = tokio::time::sleep(wait) => {}
+                    () = self.stood_down.notified() => {
+                        told = true;
+                        break;
+                    }
+                }
                 wait = every;
                 if self.standing.down(Instant::now()).map(|(ends, _)| ends) != Some(until) {
                     break;
@@ -1368,6 +1430,7 @@ impl Relay {
     /// it, which a trial mustn't take for its path answering.
     async fn path_answers(&self) -> bool {
         let number = self.trials.fetch_add(1, Ordering::Relaxed);
+        self.counts.tried.fetch_add(1, Ordering::Relaxed);
         let Ok(mut sender) = self.connect(Named::Trial(number)).await else {
             eprintln!("model-relay: its path couldn't be tried, so it stands down still");
             return false;
@@ -1488,6 +1551,9 @@ impl Relay {
         // Sent again, it's answered or fails on that send, so a request
         // reset is one not yet sent again for as long as the loop goes.
         let mut reset_on: Option<(usize, u64)> = None;
+        // Whether that first failure was the path's, judged however its
+        // resend fails, and whether a goodbye's rather than a reset.
+        let (mut reset_judged, mut left_out) = (false, false);
         let mut down;
         let answered = loop {
             let (
@@ -1503,19 +1569,15 @@ impl Relay {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
                     // Never sent, it says nothing of the connections, as
                     // it would have failed direct too, so it isn't judged.
-                    let Some((was_at, was)) = reset_on else {
+                    let Some(was) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
-                    self.finished(went, true);
-                    // Reset, and then not sent again, so it's counted with
-                    // the requests reset that failed, and sent direct, as
-                    // `not_carried` says why.
-                    self.counts.reset.fetch_add(1, Ordering::Relaxed);
-                    eprintln!(
-                        "model-relay: a request reset on connection {was_at}.{was} couldn't be \
-                         sent again, as no other connection would take it; pi goes directly"
-                    );
-                    return Err(Box::new(goes_directly()));
+                    return Err(Box::new(self.not_sent_again(
+                        went,
+                        was,
+                        reset_judged,
+                        left_out,
+                    )));
                 }
             };
             // Dropped while it waits for the answer, as when pi hangs up, it's
@@ -1535,9 +1597,10 @@ impl Relay {
             if let Some((was_at, was)) = reset_on
                 && unread.is_none()
             {
+                let how = if left_out { "left out" } else { "reset" };
                 eprintln!(
-                    "model-relay: a request reset on connection {was_at}.{was} is sent again \
-                     on connection {at}.{number}"
+                    "model-relay: a request {how} on connection {was_at}.{was} is sent again on \
+                     connection {at}.{number}"
                 );
             }
             match failed {
@@ -1563,20 +1626,16 @@ impl Relay {
                             // connection that reset it, which `sender`
                             // could hand it.
                             taken = match reset_on {
-                                Some((at, number)) => {
-                                    let waiting = WaitingAgain::new(&self.counts);
-                                    let another = self.another(at, number).await;
-                                    waiting.over();
-                                    another
-                                }
+                                Some((at, number)) => self.another(at, number).await,
                                 None => self.sender().await,
                             };
                         }
                         // Reset before its answer began, saying the origin
-                        // may be asked again, so it goes once more, on
+                        // may be asked again, or left out of a goodbye
+                        // not saying to calm down, so it goes once more, on
                         // another connection, if there's one it may go on.
                         None if reset_on.is_none() && goes_once_more(failed.error()) => {
-                            let retiring = self.slots[at].retire(number);
+                            let retiring = self.slots[at].end_for(number, failed.error());
                             // Said before any wait for a connection, so a
                             // pi that hangs up meanwhile leaves it said.
                             Relay::said_reset(
@@ -1586,27 +1645,59 @@ impl Relay {
                                 "it goes once more, if another connection will take it",
                             );
                             reset_on = Some((at, number));
+                            reset_judged = fails_the_path(failed.error());
+                            left_out = goodbye_saying(failed.error()).is_some();
                             request = sendable(parts, whole);
-                            let waiting = WaitingAgain::new(&self.counts);
                             taken = self.another(at, number).await;
-                            waiting.over();
                         }
                         _ => break Err(failed.into_error()),
                     }
                 }
             }
         };
-        // Answered, it's judged once its answer ends, as it may break off.
-        if answered.as_ref().is_err_and(|why| fails_the_path(why)) {
+        // Answered, it's judged once its answer ends, as it may break off;
+        // failed, it's judged if its path failed, first try or again.
+        if answered
+            .as_ref()
+            .is_err_and(|why| reset_judged || fails_the_path(why))
+        {
             self.finished(went, true);
         }
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
 
+    /// What pi is answered for a request first failed on slot `was_at`'s
+    /// connection `was` that no other connection would take again: the 421
+    /// that sends pi direct. It's judged against the path, as of when it
+    /// `went`, only if `judged`, as a reset is and a goodbye saying nothing
+    /// was wrong isn't, since that says nothing of the path.
+    fn not_sent_again(
+        &self,
+        went: Instant,
+        (was_at, was): (usize, u64),
+        judged: bool,
+        left_out: bool,
+    ) -> Response<Body> {
+        if judged {
+            self.finished(went, true);
+        }
+        // Reset or left out, and then not sent again, so it's counted with
+        // the requests reset or left out that failed, and sent direct.
+        self.counts.reset.fetch_add(1, Ordering::Relaxed);
+        let how = if left_out { "left out" } else { "reset" };
+        eprintln!(
+            "model-relay: a request {how} on connection {was_at}.{was} couldn't be sent \
+             again, as no other connection would take it; pi goes directly"
+        );
+        goes_directly()
+    }
+
     /// A connection for a request reset on slot `at`'s `number` to go once
     /// more on, or why there's none: `fresh`'s, refused when it has none.
+    /// It's counted as waiting again until it has its answer.
     async fn another(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
-        self.fresh(at, number).await.unwrap_or_else(|| {
+        let waiting = WaitingAgain::new(&self.counts);
+        let another = self.fresh(at, number).await.unwrap_or_else(|| {
             // Said, so a journal of these isn't read as an origin refusing
             // connections, when the relay chose to open none.
             eprintln!(
@@ -1614,7 +1705,9 @@ impl Relay {
                  lately, and no other is open, so none is opened for a request it reset"
             );
             Err(Unreachable::Refused)
-        })
+        });
+        waiting.over();
+        another
     }
 
     /// What pi is answered for a request that went `down` a connection and
@@ -1634,38 +1727,40 @@ impl Relay {
         // would retry: pi sends a 502's request again whole, so going
         // direct asks the origin nothing more, and asks it now, on a path
         // that answers, where pi's own retry waited up to a minute on
-        // 19 November to fail on this one again. Reset again or said
-        // goodbye to saying to calm down, or with an error of the origin's
-        // own, is the origin's verdict rather than the path's, so it's a
-        // 502, for pi's retry to wait out: the path's failure is judged as
-        // the stand-down judges it.
-        let path_failed_again = fails_the_path(why);
-        let (answer, then) = if reset_on.is_some() && path_failed_again {
+        // 19 November to fail on this one again. So does one a goodbye
+        // left out again. Reset or left out again saying to calm down, or
+        // with an error of the origin's own, is the origin's verdict rather
+        // than the path's, so it's a 502, for pi's retry to wait out: the
+        // path's failure is judged as the stand-down judges it.
+        let (answer, then) = if goes_direct(why, reset_on.is_some()) {
             (goes_directly(), "pi goes directly")
         } else {
             (not_answered(), "pi is answered 502")
         };
-        if reset_by_the_origin(why) {
-            // Reset the first time with a reason not to send it again, it's
-            // a 502, since only a stream refused promises the origin acted
-            // on nothing; reset again, it's the 421 or the 502 chosen above.
+        if reset_by_the_origin(why) || goodbye_saying(why).is_some() {
+            // Reset or left out the first time with a reason not to send it
+            // again, it's a 502, since only a stream refused or a goodbye
+            // promises the origin acted on nothing; again, it's the 421 or
+            // the 502 chosen above. A goodbye's connection is let go, as on
+            // the first try, so no other request is handed it meanwhile.
             let (at, number, _) = down;
-            let retiring = self.slots[*at].retire(*number);
+            let retiring = self.slots[*at].end_for(*number, why);
             Relay::said_reset(why, down, &retiring, then);
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
         } else if let Some((was_at, was)) = reset_on {
-            // Reset, then lost some other way when it went again, so it's
-            // still counted with the requests reset that failed, and said
-            // as the 421 or the 502 chosen above.
+            // Reset or left out by a goodbye, then lost some other way, or
+            // left out again, when it went again, so it's still counted
+            // with the requests reset that failed, and said as the 421 or
+            // the 502 chosen above.
             self.counts.reset.fetch_add(1, Ordering::Relaxed);
             eprintln!(
-                "model-relay: a request reset on connection {was_at}.{was} couldn't be \
+                "model-relay: a request sent again from connection {was_at}.{was} couldn't be \
                  carried again, so {then}: {}",
                 with_causes(why)
             );
         } else {
             eprintln!(
-                "model-relay: a request couldn't be carried: {}",
+                "model-relay: a request couldn't be carried, so {then}: {}",
                 with_causes(why)
             );
         }
@@ -1684,8 +1779,13 @@ impl Relay {
         // the connections reset carried more of pi's cancels than those
         // left be.
         let done = retiring.said();
+        let what = if goodbye_saying(why).is_some() {
+            "left a request out of its goodbye"
+        } else {
+            "reset a request"
+        };
         eprintln!(
-            "model-relay: the origin reset a request on connection {at}.{number}, {done}, \
+            "model-relay: the origin {what} on connection {at}.{number}, {done}, \
              {}: {}; {then}",
             tally.said(),
             with_causes(why)
@@ -1864,7 +1964,7 @@ impl Relay {
 
     /// Opens a connection to the origin, saying so as it's `named`, and
     /// says when it's retired. A slot's takes requests, and is counted so;
-    /// a trial's is counted only among those opened.
+    /// a trial's isn't counted here, as its trial is counted as it begins.
     async fn connect(&self, named: Named) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
         let opening = async {
@@ -1935,7 +2035,6 @@ impl Relay {
                 return Err(Unreachable::Late);
             }
         };
-        self.counts.opened.fetch_add(1, Ordering::Relaxed);
         if let Named::Trial(_) = named {
             eprintln!("model-relay: {named} opened");
             tokio::spawn(async move {
@@ -1948,6 +2047,7 @@ impl Relay {
             });
             return Ok(sender);
         }
+        self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
         eprintln!("model-relay: {named} opened, {open} taking requests");
         let counts = Arc::clone(&self.counts);
@@ -1980,9 +2080,15 @@ fn reset_by_the_origin(why: &hyper::Error) -> bool {
     reset_saying(why).is_some()
 }
 
-/// Whether the origin reset a request saying it may be asked again.
+/// Whether the origin left a request undone saying it may be asked again:
+/// reset saying so, or left out of a goodbye, which promises, as a refused
+/// stream does, it did nothing with it, saying nothing was wrong or the
+/// path's failure. A goodbye saying to calm down, or with an error of the
+/// origin's own, is its verdict, so that request isn't sent again at once.
 fn goes_once_more(why: &hyper::Error) -> bool {
     reset_saying(why).is_some_and(goes_again)
+        || goodbye_saying(why)
+            .is_some_and(|reason| reason == h2::Reason::NO_ERROR || goes_again(reason))
 }
 
 /// Whether a reset giving `reason` is one to send again: its stream
@@ -2016,6 +2122,41 @@ fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
         beneath = cause.source();
     }
     true
+}
+
+/// Whether a request failing with `why`, and not sent again, goes direct
+/// with the relay's own 421 rather than a 502: it was `resent`, and its
+/// path failed again, or a goodbye saying nothing was wrong left it out
+/// again, as a drain before a deploy that ends every connection does. A
+/// request a goodbye left out was never begun, so direct is the safest
+/// place for it; the goodbye isn't judged, since it says nothing of the
+/// path, so an origin that drains every connection it's given costs each
+/// request a connection or two before its 421, and never stands it down.
+fn goes_direct(why: &(dyn std::error::Error + 'static), resent: bool) -> bool {
+    resent && (fails_the_path(why) || left_by_a_goodbye(why))
+}
+
+/// Whether the origin's goodbye, saying nothing was wrong, left the
+/// request out of what it would answer.
+fn left_by_a_goodbye(why: &(dyn std::error::Error + 'static)) -> bool {
+    goodbye_saying(why) == Some(h2::Reason::NO_ERROR)
+}
+
+/// The reason the origin's goodbye gave, when it left the request out of
+/// what it would answer, found in the h2 error beneath hyper's.
+fn goodbye_saying(why: &(dyn std::error::Error + 'static)) -> Option<h2::Reason> {
+    let mut beneath = Some(why);
+    while let Some(cause) = beneath {
+        if let Some(h2) = cause.downcast_ref::<h2::Error>() {
+            return if h2.is_go_away() && h2.is_remote() {
+                h2.reason()
+            } else {
+                None
+            };
+        }
+        beneath = cause.source();
+    }
+    None
 }
 
 /// The reason the origin gave for resetting the request's stream, when it
@@ -2227,8 +2368,9 @@ async fn say_counts(counts: Arc<Counts>) {
     }
 }
 
-/// What pi is answered for a request the origin reset, sent again, and
-/// still didn't answer: the relay's own 421, sending pi direct.
+/// What pi is answered for a request the origin reset or left out, sent
+/// again, and still didn't answer, or one with no other connection to go
+/// on: the relay's own 421, sending pi direct.
 fn goes_directly() -> Response<Body> {
     said(StatusCode::MISDIRECTED_REQUEST, CANT_CARRY)
 }
@@ -2253,10 +2395,178 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST,
-        Sender, Slot, Unread, fails_the_path, first_trial_after, goes_again, reach, reach_any,
-        read_whole, slept, with_causes,
+        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, first_trial_after, goes_again,
+        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, with_causes,
     };
+
+    /// How the origin ends a request it hasn't answered.
+    #[derive(Clone, Copy)]
+    enum Ending {
+        /// A goodbye to the connection, having begun no request.
+        Goodbye,
+        /// A goodbye having begun the request, then the connection closed
+        /// unanswered, as a drain that doesn't finish its streams does.
+        GoodbyeHavingBegun,
+        /// A reset of the request's own stream.
+        Reset,
+    }
+
+    /// What hyper raises for a request an origin left out with an
+    /// `ending` giving `reason`, over a real HTTP/2 connection. The origin
+    /// writes its frames by hand, as h2's own server counts a request it
+    /// has read as begun and won't leave it out: it reads the request's
+    /// headers, then ends it.
+    async fn left_out_by(ending: Ending, reason: h2::Reason) -> hyper::Error {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        /// The bytes a client opens HTTP/2 with, before its first frame.
+        const PREFACE: usize = 24;
+        /// A frame's head: its length, type, flags and stream.
+        const HEAD: usize = 9;
+        /// The type of a frame opening a request with its headers.
+        const HEADERS: u8 = 1;
+
+        let (near, mut far) = tokio::io::duplex(HELD_AHEAD_AT_MOST);
+        let origin = tokio::spawn(async move {
+            // Its own settings, none changed, then the client's taken.
+            far.write_all(&[0, 0, 0, 4, 0, 0, 0, 0, 0])
+                .await
+                .expect("the origin's settings");
+            let mut read = Vec::new();
+            let mut at = PREFACE;
+            loop {
+                while read.len() >= at + HEAD {
+                    let length = (usize::from(read[at]) << 16)
+                        | (usize::from(read[at + 1]) << 8)
+                        | usize::from(read[at + 2]);
+                    if read[at + 3] == HEADERS {
+                        // A goodbye names the last stream it began, none
+                        // or the request's, the client's first; a reset
+                        // names the request's.
+                        let mut end = match ending {
+                            Ending::Goodbye => vec![0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                            Ending::GoodbyeHavingBegun => {
+                                vec![0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+                            }
+                            Ending::Reset => vec![0, 0, 4, 3, 0, 0, 0, 0, 1],
+                        };
+                        end.extend_from_slice(&u32::from(reason).to_be_bytes());
+                        far.write_all(&end).await.expect("the origin's ending");
+                        if let Ending::GoodbyeHavingBegun = ending {
+                            // Closed with the request begun and unanswered.
+                            return;
+                        }
+                        // Held open, so the goodbye is read before the end.
+                        let mut rest = [0; 64];
+                        while far.read(&mut rest).await.is_ok_and(|got| got > 0) {}
+                        return;
+                    }
+                    at += HEAD + length;
+                }
+                let mut piece = [0; 1024];
+                let got = far.read(&mut piece).await.expect("the client's frames");
+                assert!(got > 0, "the client left before sending its request");
+                read.extend_from_slice(&piece[..got]);
+            }
+        });
+        let (mut sender, connection) = hyper::client::conn::http2::handshake::<_, _, Full<Bytes>>(
+            hyper_util::rt::TokioExecutor::new(),
+            hyper_util::rt::TokioIo::new(near),
+        )
+        .await
+        .expect("a connection");
+        tokio::spawn(connection);
+        // Bounded, so an h2 that came to wait on a request left out fails
+        // this rather than hanging it.
+        let why = tokio::time::timeout(
+            Duration::from_secs(10),
+            sender.send_request(
+                hyper::Request::get("https://origin/")
+                    .body(Full::new(Bytes::new()))
+                    .expect("a request"),
+            ),
+        )
+        .await
+        .expect("a request left out was neither answered nor failed within 10 s")
+        .expect_err("a request answered though the origin's goodbye left it out");
+        origin.abort();
+        why
+    }
+
+    /// A request that a goodbye saying nothing was wrong left out goes once
+    /// more, unjudged, as the goodbye promises the origin did nothing with
+    /// it, and direct only once left out again; one saying to calm down is
+    /// the origin's verdict, a 502; one saying a protocol error goes once
+    /// more too, but judged, as the path's, and direct once resent. A reset saying nothing was
+    /// wrong is no drain, and a request the goodbye had begun is lost with
+    /// its connection, judged and not sent again.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_request_a_drain_left_out_goes_once_more_then_direct_unlike_other_endings() {
+        let drained = left_out_by(Ending::Goodbye, h2::Reason::NO_ERROR).await;
+        assert!(
+            goes_once_more(&drained) && goes_direct(&drained, true) && !fails_the_path(&drained),
+            "a request a drain left out wasn't sent once more, then direct, unjudged: {}",
+            with_causes(&drained)
+        );
+        let calm = left_out_by(Ending::Goodbye, h2::Reason::ENHANCE_YOUR_CALM).await;
+        assert!(
+            !goes_once_more(&calm) && !goes_direct(&calm, true),
+            "a request told to calm down was sent again or direct: {}",
+            with_causes(&calm)
+        );
+        let broken = left_out_by(Ending::Goodbye, h2::Reason::PROTOCOL_ERROR).await;
+        assert!(
+            goes_once_more(&broken) && goes_direct(&broken, true) && fails_the_path(&broken),
+            "a protocol error's goodbye wasn't sent once more, judged, then direct: {}",
+            with_causes(&broken)
+        );
+        let reset = left_out_by(Ending::Reset, h2::Reason::NO_ERROR).await;
+        assert!(
+            !goes_once_more(&reset) && !goes_direct(&reset, true),
+            "a reset saying nothing was wrong was sent again or direct as a drain: {}",
+            with_causes(&reset)
+        );
+        let begun = left_out_by(Ending::GoodbyeHavingBegun, h2::Reason::NO_ERROR).await;
+        assert!(
+            !goes_once_more(&begun) && fails_the_path(&begun),
+            "a request a goodbye had begun was read as left out of it: {}",
+            with_causes(&begun)
+        );
+        // An error's goodbye is the one an origin closes after at once. h2
+        // hands its own error only to streams past its last and to those
+        // sent after it, none of them begun, so a begun one ends with the
+        // connection, as here, never with the goodbye's error.
+        let begun_broken =
+            left_out_by(Ending::GoodbyeHavingBegun, h2::Reason::PROTOCOL_ERROR).await;
+        assert!(
+            !goes_once_more(&begun_broken) && fails_the_path(&begun_broken),
+            "a request a protocol error's goodbye had begun was read as left out of it: {}",
+            with_causes(&begun_broken)
+        );
+    }
+
+    #[test]
+    fn the_counts_say_trials_apart_from_connections_for_requests() {
+        let counts = Counts::default();
+        counts.opened.store(2, Ordering::Relaxed);
+        counts.tried.store(3, Ordering::Relaxed);
+        let line = counts.line().expect("counts that moved went unsaid");
+        assert!(
+            line.contains("; 2 connections opened, 0 taking requests; 3 trials of its path; "),
+            "the counts didn't say trials apart: {line}"
+        );
+        assert_eq!(
+            counts.line(),
+            None,
+            "counts that hadn't moved were said again"
+        );
+        counts.tried.store(4, Ordering::Relaxed);
+        assert!(
+            counts.line().is_some(),
+            "a trial alone didn't move the counts"
+        );
+    }
 
     #[test]
     fn a_stand_down_doubled_waits_as_many_times_longer_for_its_first_trial() {
@@ -2392,6 +2702,82 @@ mod tests {
             slot.retire(fresh.number),
             Retiring::Retired,
             "a closed connection's reset spent the slot's allowance for a bad one"
+        );
+    }
+
+    #[test]
+    fn a_connection_a_goodbye_left_a_request_out_of_is_let_go_spending_no_allowance() {
+        let fresh_slot = Slot::new();
+        let ended = fresh_slot.keep(fresh_slot.next_number(), Line::default(), Arc::default());
+        assert_eq!(
+            fresh_slot.let_go(ended.number),
+            Retiring::LetGo,
+            "a connection a goodbye ended wasn't said as let go"
+        );
+        let next = fresh_slot.keep(fresh_slot.next_number(), Line::default(), Arc::default());
+        assert_eq!(
+            fresh_slot.retire(next.number),
+            Retiring::Retired,
+            "a goodbye's let-go spent the slot's allowance for resets"
+        );
+        let slot = Slot::new();
+        let first = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        assert_eq!(
+            slot.retire(first.number),
+            Retiring::Retired,
+            "a connection's first reset didn't retire it"
+        );
+        let drained = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        assert_eq!(
+            slot.let_go(drained.number),
+            Retiring::LetGo,
+            "a connection a goodbye left a request out of wasn't said as let go"
+        );
+        assert!(
+            slot.sender().is_none(),
+            "a connection whose goodbye hyper hadn't read yet was kept, though a reset lately"
+        );
+        let fresh = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        assert_eq!(
+            slot.let_go(drained.number),
+            Retiring::Gone,
+            "a late goodbye's let-go wasn't said as gone"
+        );
+        assert_eq!(
+            slot.sender().map(|kept| kept.number),
+            Some(fresh.number),
+            "a late goodbye let go the connection opened since it"
+        );
+    }
+
+    /// A goodbye's failure lets its connection go, though the slot retired
+    /// one lately, where a reset's keeps it, since hyper may still read a
+    /// connection its goodbye ended as open.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_goodbye_lets_its_connection_go_where_a_reset_lately_keeps_it() {
+        let slot = Slot::new();
+        let first = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        assert_eq!(
+            slot.retire(first.number),
+            Retiring::Retired,
+            "a connection's first reset didn't retire it"
+        );
+        let drained = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        let goodbye = left_out_by(Ending::Goodbye, h2::Reason::NO_ERROR).await;
+        assert_eq!(
+            (
+                slot.end_for(drained.number, &goodbye),
+                slot.sender().is_none()
+            ),
+            (Retiring::LetGo, true),
+            "a goodbye's failure didn't let its connection go, as a reset lately had"
+        );
+        let reset = slot.keep(slot.next_number(), Line::default(), Arc::default());
+        let broken = left_out_by(Ending::Reset, h2::Reason::PROTOCOL_ERROR).await;
+        assert_eq!(
+            slot.end_for(reset.number, &broken),
+            Retiring::Kept,
+            "a reset's failure retired a connection, though the slot retired one lately"
         );
     }
 

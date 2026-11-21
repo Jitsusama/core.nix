@@ -185,6 +185,7 @@ const heard: Heard = {
   machine: watch("machine"),
   message: watch("message"),
   balance: watchApart("balance").held,
+  builder: watchApart("builder").held,
   get unanswered() {
     return waits.answered() ? waits.held : undefined;
   },

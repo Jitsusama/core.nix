@@ -180,17 +180,62 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open)
-                provider.feltOpening(() => provider.opens());
-            else
+            if (!provider.launcher.open) {
+                // Shut before Now woke, when it opened never left infinity,
+                // so nothing else puts Desktop back where a shut launcher
+                // keeps it (replaceLately), and the next opening would
+                // start from where this one left it.
+                const neverOpened = provider.openedAt === Number.POSITIVE_INFINITY;
+                provider.openingAt = -1;
                 provider.openedAt = Number.POSITIVE_INFINITY;
+                if (neverOpened)
+                    provider.replaceLately();
+                return;
+            }
+            provider.openingAt = Date.now();
+            if (!provider.asleep)
+                provider.feltOpening(() => provider.opens());
+        }
+    }
+
+    // When the launcher opened while Now slept, kept till Now wakes in its
+    // turn (Launcher.qml's wakeNext), so its opening work runs in its own
+    // slice, not in the turn the launcher opened in: the bindings on when
+    // it opened, the notices over every one held, ran there inside the
+    // launcher's unnamed "opening", about 12 of its 100 ms over twelve of
+    // the keys lab's openings (its profile, 2026-11-20). -1 when shut, or
+    // once its opening work has run.
+    property real openingAt: -1
+    onAsleepChanged: {
+        if (!asleep)
+            opensIfWaiting();
+    }
+    // Its opening work run now, while it waits for Now to wake in an open
+    // launcher, as the notices' history is given again, which every change
+    // the daemon sends does. A notice come or read before then would be
+    // held still from no opening (latelyNotices), so a row read under the
+    // cursor would drop and come back as Now woke.
+    function opensIfWaiting() {
+        if (openingAt >= 0 && provider.launcher?.open)
+            provider.feltOpening(() => provider.opens());
+    }
+    Connections {
+        target: Notices
+
+        function onHistoryChanged() {
+            provider.opensIfWaiting();
         }
     }
 
     // Its work as the launcher opens, felt whole: the bindings on when it
-    // opened and the hour its looks are split by run as they're set.
+    // opened and the hour its looks are split by run as they're set. When
+    // it opened is when the launcher did, however late Now woke, so a
+    // notice read since still holds still.
     function opens() {
-        provider.openedAt = Date.now();
+        // Taken before it's set, so what setting it runs finds none waiting.
+        const kept = provider.openingAt;
+        provider.openingAt = -1;
+        provider.openedAt = kept >= 0 ? kept : Date.now();
         provider.looksHour = Math.floor(Date.now() / 3600000);
         provider.reweather();
         // Placing the time and the date makes Time's and Today's rows, so
@@ -1655,11 +1700,14 @@ Provider {
     // Super+N with notices on screen, is those notices alone (onScreenRow),
     // passing through where Desktop stands, so - climbs to the notices'
     // own place rather than a For You that may hold nothing of them.
+    leadsInto: ["forYou", "notices", "onScreen"]
     function leadsTo(name) {
+        // Only those it says, so the chords' places, which read the list
+        // alone, never disagree with where it leads.
+        if (!leadsInto.includes(name))
+            return null;
         if (name === "forYou")
             return [waiting];
-        if (name !== "notices" && name !== "onScreen")
-            return null;
         const { holding } = latelyBands(Date.now());
         const desktop = keptNoticesRow("desktop", Lately.members(holding.desktop, one => one.who),
             { kind: "notice", source: "desktop" });
@@ -2228,11 +2276,13 @@ Provider {
     }
 
     // For You's own rows, each as it's for (ForYou.js's bands), the
-    // heaviest first in each: what needs Joel now, under the cell behind
-    // each (cellRows), then To Look At, To Try and To Read, then Desktop
-    // while it holds a critical notice (latelyInForYou), Later and History
-    // (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read, which nothing
-    // counts).
+    // heaviest first in each: Desktop first while it holds a critical
+    // notice (latelyInForYou), since what's pressing leads, so Return,
+    // Return reaches a low battery before any question (42P0R4 and
+    // Y2YBTS, 2026-11-20); then what needs Joel now, under the cell behind
+    // each (cellRows), then To Look At, To Try and To Read, Later and
+    // History (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read, which
+    // nothing counts).
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
@@ -2246,10 +2296,10 @@ Provider {
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
         const asked = kindRow("agent", bandRows(bands.agent, now));
-        const rows = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0).concat(
+        const rows = latelyRows(now).filter(latelyComingIn).concat(
+            cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0),
             kindRow("look", bandRows(bands.look, now)),
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
-            latelyRows(now).filter(latelyComingIn),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
@@ -2266,11 +2316,11 @@ Provider {
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
-        return bandRows(bands.now.slice(0, bands.agentAt), now).concat(
+        return latelyRows(now).filter(latelyComingIn).concat(
+            bandRows(bands.now.slice(0, bands.agentAt), now),
             bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
             bandRows(bands.look, now),
-            bandRows(bands.try, now), bandRows(bands.read, now),
-            latelyRows(now).filter(latelyComingIn));
+            bandRows(bands.try, now), bandRows(bands.read, now));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
@@ -2303,12 +2353,20 @@ Provider {
     // Joel read here lifts nothing the tray no longer counts (round 5,
     // F66).
     readonly property var latelyCritical: {
+        const up = {};
+        for (const source of Lately.SOURCES)
+            up[source] = (latelyCriticalHeld[source] ?? []).length > 0;
+        return up;
+    }
+    // Each source's critical notices unread, as latelyCritical asks them,
+    // so home names the one leading the row For You leads with.
+    readonly property var latelyCriticalHeld: {
         const onScreen = Object.keys(Notices.live).filter(id => !(id in Notices.resting));
         const of = Lately.held(Notices.history, []);
         const up = {};
         for (const source of Lately.SOURCES)
             up[source] = Holding.held({ notices: of[source] ?? [], onScreen: onScreen })
-                .notices.length > 0;
+                .notices;
         return up;
     }
     // Where Lately's rows stand. While the launcher is open a row comes
@@ -2338,7 +2396,9 @@ Provider {
         const critical = latelyCritical;
         if (critical === undefined)
             return;
-        const shut = openedAt === Number.POSITIVE_INFINITY;
+        // Open once the launcher is, though Now's opening work waits for it
+        // to wake (openingAt), so Desktop keeps its place as it would.
+        const shut = openedAt === Number.POSITIVE_INFINITY && openingAt < 0;
         const { inside, underNow } = latelySteps();
         const placed = {};
         for (const source of Lately.SOURCES)
@@ -2987,19 +3047,31 @@ Provider {
             return ForYou.bandsRun({ look: toLookAtCount, try: toTryCount },
                 Words.of("on:waiting").said ?? {});
         }
-        const lead = sessions.length === 0 ? WaitingOnYou.now[0] ?? null : null;
+        // The row of Lately's that leads For You (waitingRows) leads home
+        // too, by the same test over the same bands, never making its rows,
+        // so home names what Return, Return reaches: its critical notice,
+        // or the row's own name once that's read or has no summary.
+        const leading = latelyBands(Date.now()).bands.map(band => band.source)
+            .find(source => latelyComingIn({ forYou: { source: source } })) ?? null;
+        const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
+        const critical = leading === null ? ""
+            : String(held[0]?.summary ?? "") || Words.name(`for-you:source:${leading}`);
+        const asked = sessions.length > 0 && critical === "";
+        const lead = sessions.length === 0 && critical === ""
+            ? WaitingOnYou.now[0] ?? null : null;
         // A look or a landing lifted into what needs him now, where no
         // session or to-do leads, says its own row's name.
         const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
-        const title = sessions.length > 0 ? first : lead ? lead.title
-            : lifted?.make(Date.now())?.name
-            ?? (criticalNotices.length > 0 ? String(criticalNotices[0].summary ?? "") : "");
+        const title = critical !== "" ? critical : asked ? first : lead ? lead.title
+            : lifted?.make(Date.now())?.name ?? "";
         if (title === "") {
             return [];
         }
         const minutes = typeof lead?.minutes === "number"
             ? waitingSaid("minutes", { minutes: lead.minutes }) : "";
-        const more = toDoCount - 1;
+        // What it names is one of what needs him now, but for a row whose
+        // notice is read while the launcher is open, which nothing counts.
+        const more = toDoCount - (critical !== "" && held.length === 0 ? 0 : 1);
         return [{ said: title, keep: 1, words: true, stays: true },
             { said: minutes, keep: 2, stays: true },
             { said: more > 0 ? waitingSaid("more", { count: more }) : "", keep: 3, stays: true }]

@@ -2,7 +2,8 @@
 
 > A live, read-only view of every repository on Joel's machine: which of
 > its trees are being written, which of its changes wait and on what, the
-> cells at work in each, and what's worth a look.
+> cells at work in each, the processor and memory each takes, and what's
+> worth a look.
 
 - [The page](index.html): the grove, the repositories as a list walked by
   keyboard or pointer, the one the cursor is on beside them, and under

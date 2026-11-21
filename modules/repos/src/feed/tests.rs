@@ -1,11 +1,15 @@
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
 use serde_json::{Value, json};
 
 use repos::model::{
     Change, Checkout, Checks, ChecksState, GitHubChange, Head, Record, Remote, Repository, Review,
     SCHEMA, Source, Tree, TreeKind, Weight,
 };
+use repos::using::Use;
 
-use super::{records, sources};
+use super::{records, sources, unread, using};
 
 /// 14 November 2026, 12:00 UTC.
 const NOON: u64 = 1_794_657_600;
@@ -243,5 +247,81 @@ fn github_answers_once_a_refresh_has_asked_it_saying_what_it_couldnt_see() {
     assert_eq!(
         sources(&read)["github"],
         json!({"state": "not answering", "reason": "github.json couldn't be read: denied"})
+    );
+}
+
+fn used(processes: usize, memory: u64, cpu: f64) -> Use {
+    Use {
+        processes,
+        memory,
+        cpu: Some(cpu),
+    }
+}
+
+#[test]
+fn what_works_in_a_repository_is_summed_over_its_checkouts_and_trees() {
+    let used = BTreeMap::from([
+        (
+            PathBuf::from("/home/joel/src/core.nix"),
+            used(2, 3_000, 0.25),
+        ),
+        (
+            PathBuf::from("/home/joel/trees/say-trees"),
+            used(1, 1_000, 1.5),
+        ),
+        // A folder no repository holds counts for none.
+        (PathBuf::from("/home/joel/elsewhere"), used(9, 9_000, 9.0)),
+    ]);
+    let said = using(&record(), &used, true);
+    assert_eq!(
+        said,
+        [json!({
+            "key": "using:github:Jitsusama/core.nix",
+            "kind": "using",
+            "repository": "github:Jitsusama/core.nix",
+            "processes": 3,
+            "memory": 4_000,
+            "cpu": 1.75,
+            "folders": [
+                {"path": "/home/joel/src/core.nix", "processes": 2, "memory": 3_000, "cpu": 0.25},
+                {"path": "/home/joel/trees/say-trees", "processes": 1, "memory": 1_000, "cpu": 1.5},
+            ],
+        })]
+    );
+}
+
+#[test]
+fn what_works_unread_is_said_unknown_rather_than_none() {
+    let unread = &unread(&record())[0];
+    assert_eq!(unread["key"], "using:github:Jitsusama/core.nix");
+    assert_eq!(
+        (
+            &unread["processes"],
+            &unread["memory"],
+            &unread["cpu"],
+            &unread["folders"]
+        ),
+        (&Value::Null, &Value::Null, &Value::Null, &json!([])),
+        "a reading stopped reads as nothing working"
+    );
+}
+
+#[test]
+fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_reading() {
+    let idle = &using(&record(), &BTreeMap::new(), true)[0];
+    assert_eq!(
+        (
+            &idle["processes"],
+            &idle["memory"],
+            &idle["cpu"],
+            &idle["folders"]
+        ),
+        (&json!(0), &json!(0), &json!(0.0), &json!([]))
+    );
+    let first = &using(&record(), &BTreeMap::new(), false)[0];
+    assert_eq!(
+        first["cpu"],
+        Value::Null,
+        "one reading can't say a share of time"
     );
 }

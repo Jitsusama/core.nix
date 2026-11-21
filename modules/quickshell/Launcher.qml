@@ -85,6 +85,7 @@ import "launcher/Joined.js" as Joined
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
+import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
 import "launcher/Wanted.js" as Wanted
@@ -3048,7 +3049,8 @@ Scope {
     // Whether a row arms before it's done: Log Out, Reboot and Power Off,
     // each saying what a second press does (`arms`, "logs out").
     function arms(choice) {
-        return !!choice && typeof choice.arms === "string" && choice.arms !== "";
+        // A gone row arms nothing, by Return or a click, since a second press would do nothing.
+        return !!choice && !choice.gone && typeof choice.arms === "string" && choice.arms !== "";
     }
 
     // Whether a row stands armed, until the next key.
@@ -5434,8 +5436,18 @@ Scope {
         // folder it came from, though it was stepped into without being
         // selected, as the file picker holds each folder on the way to
         // where it opens; Return steps into the selection, so it's the same.
-        held = held.concat([Object.assign(here(), walk?.stood ?? {}, { key: steadyId(row),
-            row: row, rows: into ?? [], learned: meant })]);
+        //
+        // A source no step held before becomes wanted as its step is held,
+        // and says its rows changed, which may be only the rows just read
+        // for the step (Wanted.readByStep, which refreshed() asks). Whether
+        // they were read as they stand is asked now, before it's wanted.
+        newlyHeld = Wanted.heldAnew(row.from ?? null, held);
+        try {
+            held = held.concat([Object.assign(here(), walk?.stood ?? {}, {
+                key: steadyId(row), row: row, rows: into ?? [], learned: meant })]);
+        } finally {
+            newlyHeld = null;
+        }
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -5620,6 +5632,9 @@ Scope {
     // before the rows read from them (choices, partsOfRows) have heard;
     // each source heard is made again once, in the order heard.
     property var refreshing: []
+    // The source `enter` steps into, only while it puts the step in
+    // `held`, when no step held that source before (Wanted.readByStep).
+    property var newlyHeld: null
     // A change told from a daemon's line is timed from it, on the
     // monotonic clock, to the frame niri presents with it (Hearing.js).
     // It's heard when the launcher takes the change its line is timed
@@ -5651,6 +5666,14 @@ Scope {
         // saying it changed marks it stale even when its things are the
         // same.
         choicesStale = true;
+        // Its rows are those the step just read, so none is made again;
+        // its note may have moved, so the choices are joined after the
+        // step's frame rather than in it.
+        if (Wanted.readByStep(source, newlyHeld, refreshedFor)) {
+            Report.say(`${source.settings.name} said only what its step read`);
+            afterFrame(freshen);
+            return;
+        }
         // Only a key that acted owns a change beside it, to a place on
         // screen (Pacing.keyed), timed from when its work was done
         // (Pacing.sinceKey). What's on screen is read only beside such a
@@ -8167,9 +8190,12 @@ Scope {
             open = false;
             return;
         }
-        // Its thing has gone, so there's nothing left to do it to.
-        if (choice.gone)
+        // Its thing has gone, so there's nothing left to do it to. Journalled, so a Return that
+        // did nothing can be told from one that ran: the reason only, which names nothing.
+        if (choice.gone) {
+            console.info("launcher: Return on a gone row did nothing");
             return;
+        }
         // One held still, as a secret ask hidden while Joel shares, keeps
         // the launcher open and does nothing, so a second Return meant for
         // a yes never reaches the window behind; the foot says why, so no
@@ -8848,7 +8874,12 @@ Scope {
             const ink = shows === null ? inked : Contained.shared(inked, shows);
             if (ink !== null) {
                 const id = drawn.length + 1;
+                // `cutDown` where a box it's in cut its letters' top or
+                // foot, as a list's box cuts a row it holds in part, so a
+                // check can say a row was drawn cut from what's drawn
+                // rather than from the rule that placed it.
                 drawn.push({ id, ink, room: own, within, from: here,
+                    cutDown: ink.height < inked.height - 0.5,
                     said: item.text.replace(/\s+/g, " ").slice(0, 60) });
                 holding = within.concat([id]);
             }
@@ -9446,16 +9477,21 @@ Scope {
         if (!open)
             return;
         // A place's own answers, as Network's Address, carry no key and
-        // a command row no source, so they're named by their name and the
-        // place held: each was said as `drawer for ""`, in home.
+        // a command row no source, so they're named by their name, or as
+        // an answer with reports off (Presented.rowShown), and the place
+        // held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
+        // What a source wrote, a window's title or a row's name, kept out
+        // of every line this says, as a key's is, unless reports are on;
+        // the report itself keeps the key whole.
+        const said = Presented.rowShown(drawerRow, Options.reports);
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested, drawerAfterLetter);
         drawerRested = 0;
         drawerAfterLetter = false;
         const split = drawerSplit;
         drawerSplit = null;
-        const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
+        const presenting = drawerKeyAt > 0 ? { key: said, from: drawerKeyAt, followed: began,
             place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
             came } : null;
         drawerKeyAt = 0;
@@ -9484,7 +9520,7 @@ Scope {
                 key, took, making, waiting, drawing, came,
                 count: root.drawerTimedLast.count + 1
             };
-            trials.drawerTimed(key, took, { making, split, waiting, drawing, came });
+            trials.drawerTimed(said, took, { making, split, waiting, drawing, came });
         });
     }
     property bool drawerOut: false
@@ -9917,6 +9953,11 @@ Scope {
             cut: list.cut(),
             restsOnARow: list.restsOnARow(),
             drawnRows: list.drawnRows(),
+            // Whether the selected row's ground is cut by the view's edge,
+            // read from where it's laid rather than the rule's extent, and
+            // whether the wheel or a flick still moves the view.
+            groundCut: list.groundCut(),
+            moving: list.moving,
             // How wide its caret is drawn, and whether it's drawn: not in
             // normal. How lit it is as it blinks isn't said, since this is
             // said on every change.
@@ -10047,7 +10088,7 @@ Scope {
             hints: foot.kept.map(key => `${key[0]} ${key[1]}`),
             // And the keys it would say with room for all, before any give way.
             wanted: foot.toldNow.map(key => `${key[0]} ${key[1]}`),
-            // How far the list is scrolled, which only a key changes.
+            // How far the list is scrolled, by a key, the wheel or a flick.
             scrolled: Math.round(list.contentY),
             // The drawer: whether it's out, what it's titled and says, the
             // title it draws itself, whether it holds more than fits, and
@@ -11076,6 +11117,12 @@ Scope {
     // meets after each switch (Y2YBTS, 2026-11-10: the start is slow), so
     // it says so, and the keeps-pace check times it under load.
     property real openAsked: -1
+    // Where the heap stood against the collector as the opening was asked,
+    // once its room was left, so an opening the collector stalled says how
+    // much room each limit had then (Collector.standingSaid). Read without
+    // walking the heap, and kept for its own opening as it's felt
+    // (Pacing.feltBegun's `asked`), since the next ask reads it again.
+    property var openAskedHeap: null
     property var openParts: ({})
     property real openWorked: 0
     property var openingsTimed: []
@@ -11084,6 +11131,7 @@ Scope {
         toldFromOutside += 1;
         if (!open && !opening) {
             Heap.leaveRoom(openingRoom);
+            openAskedHeap = Heap.standing();
             openAsked = KeyTimes.now();
             openSettled = -1;
             openBegun = -1;
@@ -11544,7 +11592,8 @@ Scope {
     // leads deeper as it opens (`leading`), so what it opens into is known
     // before it's asked: a chord's place is kept, and listed now, by it.
     function plainPlace(source, name) {
-        return !!source && typeof source.leading !== "function" && leadingTo(name) === null;
+        return !!source && typeof source.leading !== "function"
+            && !sources.some(one => one.leadsInto?.includes(name));
     }
 
     // The places a source leads to that Super+N opens (Notifications.qml's
@@ -11900,8 +11949,9 @@ Scope {
     }
 
     // Those home's rows read, in home's order, so the rows shown fill
-    // first, then the rest; none that says what it holds itself, whose rows
-    // home never wants.
+    // first, then the rest, each that waits its turn (Wanted.js's
+    // wakesInTurn): Agents, reading Sessions to Reopen and Budgets, made
+    // them in the turn the launcher opened in while it was never asleep.
     function wakingOrder() {
         const named = Wanted.sourceNamed(sources, one => one.settings.name,
             id => Words.of(id).provider ?? id);
@@ -11910,8 +11960,7 @@ Scope {
             return category ? { stands: category.stands ?? null, holds: holdings(category) }
                 : null;
         };
-        return Wanted.wakingOrder(Words.home, place, named, sources)
-            .filter(one => !one.saysAtHome);
+        return Wanted.wakingOrder(Words.home, place, named, sources);
     }
 
     // Wakes the next of a filling opening's sources, as many as fit in the
@@ -12705,22 +12754,31 @@ Scope {
     // waited on the rest of Emoji's run being laid, a few hundred ms, and
     // nothing timed it. A key a program typed has no press, so it's timed
     // from when it was heard, which a key queued behind that lay is only
-    // after it; the time from going in says it whole (Presented.keyInSaid).
+    // after it; the time from going in says it whole (Presented.keyInSaid),
+    // where it came soon after or reports are on (Presented.intoKept):
+    // soon after from its press, as going in is timed, so a key queued
+    // behind the lay keeps it.
     function keyInComing() {
         const pressed = KeyTimes.pressed();
-        return { from: pressed > 0 ? pressed : KeyTimes.now(), into: intoFrom };
+        const from = pressed > 0 ? pressed : KeyTimes.now();
+        return { from, into: Presented.intoKept(from, intoFrom, Options.reports) };
     }
     function keyInTimed(one, act) {
         if (!open || !drawerCard.keys)
             return;
         one.act = act;
-        one.key = drawerRow?.key || drawerRow?.name || "";
+        // A window's row is keyed by its title, which may be a mail's
+        // subject or a document's name: unless reports are on, only its
+        // app is said, as a slow key may be said for each one typed.
+        one.key = Presented.rowShown(drawerRow, Options.reports);
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
             Object.assign(one, { at, swapped: root.swappedOf(frame),
                 screen: root.screenHere?.name ?? "", refresh: root.refreshOf(answered) });
-            // Only one slow enough to feel, as a key in home is, but every
-            // one while reports are on, as the drawer lab times them.
+            // Only one slow enough to feel from its press, so a key queued
+            // behind the drawer's lay, which is what this line catches, is
+            // said; but every one while reports are on, as the drawer lab
+            // times them.
             if (Options.reports || at - one.from >= 50)
                 console.info(Presented.keyInSaid(one));
         });
@@ -12732,7 +12790,13 @@ Scope {
         intoGoing = null;
         if (!open || !one)
             return;
-        one.key = drawerRow?.key || drawerRow?.name || "";
+        // A window's title kept out, as a key's is (keyInTimed), since
+        // going in is said each time.
+        one.key = Presented.rowShown(drawerRow, Options.reports);
+        // The page shown, so going back from the key list reads apart from
+        // going into the row's own page, under the same row: only while
+        // reports are on, since a window's page is titled by the window.
+        one.page = Options.reports ? drawerCard.title : "";
         // The frame presentedAwait waits on, whose swap says the shell's part.
         const frame = surface.FramePresentation.framesBegun + 1;
         presentedAwait(one.from, (at, answered) => {
@@ -12830,7 +12894,8 @@ Scope {
         const listening = spansHeard;
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now(), feltClocks());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(),
+            Object.assign(feltClocks(), { asked: openAskedHeap }));
         feltCollectedFrom = feltTicks.collected;
         feltFrom = from;
         feltFromChord = fromChord;
@@ -12922,8 +12987,9 @@ Scope {
             ? `, ${Math.round(stallAt - feltFrom)} ms in: `
                 + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
             : "";
-        const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
+        const collecting = Collector.collectorSaid(feltTicks.stallCollected,
             Heap.collected() - feltCollectedFrom)
+            + Collector.standingSaid(feltTicks.stallCollected, feltTicks.asked)
             + Thread.said(feltTicks.stall, feltTicks.stallThread, "the stall");
         feltSpans = [];
         console.info(usable >= 0
@@ -13728,6 +13794,7 @@ Scope {
                             const chosen = Arming.returnAct({
                                 asking: !!root.asking,
                                 landed: root.landedJustNow(),
+                                gone: !!one?.gone,
                                 held: root.heldWhyOf([one], one?.returns) !== null,
                                 arming: !!root.arms(one),
                                 steps: root.stepsThing(one),
@@ -14518,8 +14585,9 @@ Scope {
                                 // Whose rows it spends on is said too, since
                                 // Joel's "aq" took 8 rows back in 112 ms, 14
                                 // a row, where the keys lab's take 0.9
-                                // (2026-11-18), and the lab holds none of his
-                                // agents, runs or people.
+                                // (2026-11-18), and the lab holds his agents
+                                // only given LAB_AGENTS, and none of his runs
+                                // or people.
                                 const laidBy = RowsKept.begunLaying(asideFrom);
                                 list.laidBy = laidBy;
                                 let aside = 0;
@@ -14767,6 +14835,13 @@ Scope {
                                 list.pickY = list.fillAt(root.current);
                             }
 
+                            // The selection onto its row, from where Qt has
+                            // just laid it and how tall it's drawn, as its
+                            // words sit on its foot.
+                            function pickOn(entry) {
+                                list.pickY = entry.y + entry.height - root.rowTall;
+                            }
+
                             // Where a row's own place starts and ends in the
                             // list, its gap above it included.
                             function rowTop(at) {
@@ -14933,6 +15008,21 @@ Scope {
                                 return drawn;
                             }
 
+                            // Whether the selection's ground, as drawn
+                            // (picked, which follows no row's opacity), is
+                            // partly outside the list's box, so a check
+                            // sees it cut whatever the rule took its row
+                            // for. One wholly out of view is hidden, not
+                            // cut.
+                            function groundCut() {
+                                if (!picked.visible)
+                                    return false;
+                                const top = picked.mapToItem(listBox, 0, 0).y;
+                                const bottom = top + picked.height;
+                                return bottom > 0.5 && top < listBox.height - 0.5
+                                    && (top < -0.5 || bottom > listBox.height + 0.5);
+                            }
+
                             // Whether the view starts where a row does, with
                             // none cut above it.
                             function restsOnARow() {
@@ -15033,11 +15123,33 @@ Scope {
                                     entry.aside = false;
                                     root.rowsDrawn += 1;
                                     entry.laid(taken, root.feltRow(taken));
+                                    entry.placed();
                                 }
                                 Component.onCompleted: {
                                     root.rowsDrawn += 1;
                                     root.rowsBuilt += 1;
                                     entry.laid(entry.feltBegun, root.feltRow(entry.feltBegun));
+                                    entry.placed();
+                                }
+                                // Where it's laid, told to the selection when
+                                // it's the selected row, since Qt lays a row
+                                // it hadn't drawn only after the key that
+                                // selected it, and pick reads where an undrawn
+                                // row stands from those drawn: gg from the
+                                // Home Network's foot left the selection's
+                                // ground off its row, cut at the list's top
+                                // (2026-11-20).
+                                // A row whose place in the list changes while
+                                // it stays put, as rows come above a scrolled
+                                // list, or which gains a gap above it, is laid
+                                // anew too.
+                                onYChanged: entry.placed()
+                                onHeightChanged: entry.placed()
+                                onIndexChanged: entry.placed()
+                                function placed() {
+                                    if (!entry.aside && entry.index >= 0
+                                        && entry.index === root.current)
+                                        list.pickOn(entry);
                                 }
                                 // What it took, from `from` to `to`, added to
                                 // its kind's while a laying listens, so a
@@ -15806,12 +15918,13 @@ Scope {
             keys: QueryKeys.paged(prompt.mode)
             onKeysComing: root.intoComing()
             onKeysIn: root.intoTimed()
-            // Its whole run is laid once the frame the keys came in is
-            // drawn, not merely at the next turn, which comes before it;
-            // and once that frame's swap is heard, at the turn after, since
-            // laid in the swap's own handler it held the others and the
-            // swap's stamp behind it: the drawer lab read its swap some
-            // 390 ms after niri presented it (2026-11-19).
+            // The rest of its run is laid a part a turn from once the frame
+            // the keys came in is drawn, not merely at the next turn, which
+            // comes before it, and shown whole with its last part; and from
+            // once that frame's swap is heard, at the turn after, since laid
+            // in the swap's own handler it held the others and the swap's
+            // stamp behind it: the drawer lab read its swap some 390 ms
+            // after niri presented it (2026-11-19).
             // The going-in it's for, if any, is the one the keys coming made.
             afterFrame: then => {
                 const going = root.intoGoing;

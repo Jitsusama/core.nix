@@ -14,6 +14,7 @@
   noFonts,
   pkgs,
   qs,
+  self,
   shellFolderLint,
   singleton,
   timedQml,
@@ -33,14 +34,14 @@ in
   # account's whole shell on niri, in seconds rather than
   # a machine's minutes (modules/quickshell/tests/launcher-on-niri-test.py). Its
   # meanings come from the meaning daemon's stand-in, which loads no model
-  # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli answering
+  # (tests/desktop/stand-ins/stand-in-meaning.py). WARP stands in as warp-cli answering
   # from the files a test writes, the real warp reading them
   # (tests/stand-ins/warp-cli-stand-in.sh), and warp holds its link on the
   # socket the account's systemd would, as WARP, the shaper's status what a test
   # writes in ~/shaper, and the clipboard's history serves Copies' rows and
   # Emoji's. The home network is the eero daemon's stand-in, holding the
   # contract's network and the rows the daemon serves of it
-  # (tests/desktop/stand-in-eero.py), as EERO.
+  # (tests/desktop/stand-ins/stand-in-eero.py), as EERO.
   the-launcher-answers-whats-typed-on-niri =
     let
       warpCli = pkgs.writeShellScript "warp-cli" ''
@@ -68,12 +69,12 @@ in
         "MEANING=${
           pkgs.writers.writePython3 "stand-in-meaning" {
             doCheck = false;
-          } (builtins.readFile ../../../tests/desktop/stand-in-meaning.py)
+          } (builtins.readFile ../../../tests/desktop/stand-ins/stand-in-meaning.py)
         }"
         "EERO=${
           pkgs.writers.writePython3 "stand-in-eero" {
             doCheck = false;
-          } (builtins.readFile ../../../tests/desktop/stand-in-eero.py)
+          } (builtins.readFile ../../../tests/desktop/stand-ins/stand-in-eero.py)
         }"
         "EERO_NETWORK=${../../eero/home-network.json}"
         "EERO_ROWS=${../../eero/tests/rows.json}"
@@ -139,10 +140,17 @@ in
           keys-lab = launcherOnNiri {
             name = "the-launcher-keys-lab-on-niri";
             tests = ../tests/launcher-keys-lab-on-niri.py;
+            helpers = [ ../tests/agents_served.py ];
             # The profiler of the Qt the shell runs on, beside what the lab
             # is given, without which Emoji and Copies have no rows.
+            # And the realm's node and the agents daemon, which serve
+            # Agents' rows from the sessions LAB_AGENTS lays, as the
+            # account's units do.
             given = given ++ [
               "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
+              "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
+              "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
+              "WORDS=${(import ../launcher/words.nix).file}"
             ];
             # Joel's caret rather than the checks' steady one, since what
             # it draws while he types is part of what a key waits for
@@ -560,9 +568,11 @@ in
   # and a daemon's changes are said presented by place, and they and keys
   # with where their time went, and a closing makes again only the spots of
   # things whose stamp moved, and only the newest yank's frame starts its
-  # flash, as modules/quickshell/tests/pacing.qml holds launcher/Flash.js,
-  # launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
-  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
+  # flash, and an opening the collector stalled says where the heap stood
+  # as it was asked, as modules/quickshell/tests/pacing.qml holds
+  # launcher/Collector.js, launcher/Flash.js, launcher/Pacing.js,
+  # launcher/Presented.js, launcher/Spots.js, launcher/Thread.js and
+  # launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -571,6 +581,7 @@ in
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../tests/pacing.qml} pacing.qml
+      cp ${../launcher/Collector.js} Collector.js
       cp ${../launcher/Flash.js} Flash.js
       cp ${../launcher/Makings.js} Makings.js
       cp ${../launcher/Order.js} Order.js

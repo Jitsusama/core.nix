@@ -71,8 +71,9 @@ pub struct Watch {
 }
 
 /// How long a follow lasts unless the shell says it again: a little over
-/// the minute it says it in while the launcher is open, so a shell that
-/// went away, or restarted, leaves no call asked about all call long.
+/// the minute it says it in while it follows any (Following.js's RENEW),
+/// so a shell that went away, or restarted, leaves no call asked about all
+/// call long.
 const FOLLOW_LASTS: i64 = 90_000;
 
 /// How long the documents are kept before Drive is asked again: what Joel

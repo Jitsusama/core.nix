@@ -16,9 +16,20 @@ in
     Unit = {
       Description = "Samples what a key typed into pi waits on";
       After = [ "graphical-session.target" ];
+      # A sample is a oneshot that waits up to an hour for a pi window and
+      # then samples ten minutes at one, so it can run well past an hour.
+      # A switch that restarted one waited on its start until sd-switch
+      # gave up and the whole switch went back, as one at 19:02 on 20
+      # November did at 19:11, after the 19:00 sample began. The sample
+      # running finishes on the old program, and the timer's next starts
+      # the new.
+      X-SwitchMethod = "keep-old";
     };
     Service = {
       Type = "oneshot";
+      # A switch no longer ends a hung sample, so this does, before the
+      # timer's next, three hours on, would find it still running.
+      TimeoutStartSec = "2h30min";
       # A sample stops the moment a call starts, so it never reads a
       # thread while Joel is on one.
       ExecStart = "${lib.getExe package} sample --call-check ${lib.getExe calls}";

@@ -40,14 +40,15 @@ from desktop_session import (
     neovims_quit,
     retry,
 )
-from keeps_pace import LOOPED, PROCESSORS, Gauge, Ledger, holdable, looped
+from keeps_pace import LOOPED, PROCESSORS, Gauge, Ledger, holdable, looped, stretched_bar
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from desktop_session import Desktop, Json
 
-# Where the stand-in keyboard is told what to press, and says when it did (desktop/keyboard.py).
+# Where the stand-in keyboard is told what to press, and says when it did
+# (desktop/stand-ins/keyboard.py).
 KEYBOARD = "/run/keyboard"
 SAID = "/run/keyboard.log"
 # Arrows up and down through Programs, gliding the highlight and scrolling the list, then words
@@ -95,6 +96,9 @@ PHASE = 20
 # 58 ms more, 78 against 20. Twice the frozen wait and 10 ms more failed 5 of those 48 runs with
 # the weights as they should be, four where the frozen wait came in at 17 to 20 ms; and it failed
 # #2724 on 9 November at 21.8 to 26.1 against 3.9 to 6.9, 18 to 19 ms more.
+# The keys bar's share of the frozen key is stretched for a slow builder (keeps_pace.py's
+# stretched_bar), but the wait isn't: the slow builders that failed keys at 9ca37a94 and
+# b508ac2e on 20 November waited 29 and 26.8 ms more under load, within it.
 WAITED = 45
 SLOWER_MOST = 2
 MIDDLE_MORE = 50
@@ -376,6 +380,10 @@ class Timing:
         finally:
             print(self.ledger.said())
             print(self.gauge.said())
+            print(
+                f"so the builder ran {self.gauge.slowed():.2f} times as slow as a normal one,"
+                " which stretches the keys bar alone"
+            )
             # Let run as main always tried, the last count failed or not: nothing reads the
             # ledger now, so the thaw counts nothing first, which could fail as the last did.
             if not self.loading or self.ledger.between:
@@ -384,9 +392,9 @@ class Timing:
     def last_loop(self) -> None:
         """Time the last turn's loop, after its ticks are counted, as every other turn's is.
 
-        A load left between turns has no turn to keep it with, so it gets none. The loop is
-        judged by nothing, so one that fails is said rather than raised, and can't take the
-        place of a failure the subtest met first.
+        A load left between turns has no turn to keep it with, so it gets none. A loop that
+        fails only leaves the keys bar unstretched, so it's said rather than raised, and can't
+        take the place of a failure the subtest met first.
         """
         if self.ledger.between:
             return
@@ -552,10 +560,13 @@ class Timing:
             f"against {unswapped[False]:.0f} ms frozen, and less its wait for its frame to begin "
             f"too, {judged[True]:.0f} ms against {judged[False]:.0f} ms"
         )
-        assert judged[True] <= SLOWER_MOST * judged[False] + MIDDLE_MORE, (
+        slowed = self.gauge.slowed()
+        bar = stretched_bar(judged[False], SLOWER_MOST, MIDDLE_MORE, slowed)
+        assert judged[True] <= bar, (
             f"half the keys under load took {judged[True]:.0f} ms to their frames less their "
             f"swaps and their waits for them to begin, against {judged[False]:.0f} ms with the "
-            f"load frozen; "
+            f"load frozen, past {bar:.0f}, its frozen share stretched {slowed:.2f} times for the "
+            "builder; "
             f"as written, {middle:.0f} ms against {middle_free:.0f}"
         )
         assert wait <= wait_free + WAITED, (
@@ -922,8 +933,11 @@ def storm(desktop: Desktop) -> Iterator[None]:
         yield
     finally:
         # Bracketed, so the pattern never matches the shell running it. Its windows are given as
-        # long to go as to come, under the same load.
-        desktop.as_account("pkill -f 'window-stor[m]'")
+        # long to go as to come, under the same load. A storm already gone, as when
+        # xwayland-satellite fell over beneath it at b508ac2e, leaves pkill nothing to stop, its
+        # exit 1, which mustn't fail here and hide why the subtest failed; the subtest itself
+        # checks the storm outlasted its openings. Its exits past 1 are pkill's own errors.
+        desktop.as_account("pkill -f 'window-stor[m]'; test $? -le 1")
         gone = '! niri msg --json windows | grep -q \'"title":"storm \''
         machine.wait_until_succeeds(desktop.in_session(gone), timeout=STORM_PATIENCE)
 
@@ -975,6 +989,13 @@ def test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing(
                     f" an opening ready to draw in {ready(opening)} ms: {opening}"
                 )
                 each[loaded].append(opening)
+        # A storm that fell over partway, as xwayland-satellite's windows do when it does,
+        # would leave the openings after it timed against a calm desktop.
+        stormy = 'niri msg --json windows | grep -o \'"title":"storm \' | wc -l'
+        listed = int(desktop.as_account(stormy))
+        assert listed == STORMING, (
+            f"the storm's windows fell to {listed} of {STORMING} before its openings were timed"
+        )
     finally:
         timing.finish()
         desktop.launcher_left_closed()

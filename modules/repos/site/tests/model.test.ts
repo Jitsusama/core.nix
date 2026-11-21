@@ -28,6 +28,7 @@ function told(these: readonly { readonly key: string; readonly kind: string }[])
     checkout: kept("checkout"),
     tree: kept("tree"),
     change: kept("change"),
+    using: kept("using"),
   };
 }
 
@@ -264,6 +265,34 @@ it("joins nothing by a spelling two repositories share, or by none", () => {
     assert.deepEqual(coreJoined("world", [], [alike], last), [], "core was joined to its namesake");
   }
   assert.deepEqual(coreJoined("...", ["repo."]), [], "a name the mesh spells as nothing joined");
+});
+
+it("says what works in a repository whole, and in each checkout and tree apart", () => {
+  const using = {
+    key: "using:github:owl/core",
+    kind: "using",
+    repository: "github:owl/core",
+    processes: 3,
+    memory: 4000,
+    cpu: 1.75,
+    folders: [
+      { path: "/home/ada/src/core", processes: 2, memory: 3000, cpu: 0.25 },
+      { path: "/home/ada/trees/fresh", processes: 1, memory: 1000, cpu: 1.5 },
+    ],
+  };
+  const grove = groveOf(told([...records, using]), [], NOW);
+  const [measured, unmeasured] = grove?.repositories ?? [];
+  assert.deepEqual(measured?.using, { processes: 3, memory: 4000, cpu: 1.75 });
+  assert.deepEqual(measured?.checkouts[0]?.using, { processes: 2, memory: 3000, cpu: 0.25 });
+  const fresh = measured?.trees.find((each) => each.path === "/home/ada/trees/fresh");
+  assert.deepEqual(fresh?.using, { processes: 1, memory: 1000, cpu: 1.5 });
+  const old = measured?.trees.find((each) => each.path === "/home/ada/trees/old");
+  assert.equal(old?.using, undefined, "a tree nothing works in says nothing");
+  assert.equal(
+    unmeasured?.using,
+    undefined,
+    "a repository the daemon hasn't measured says nothing",
+  );
 });
 
 it("hangs each change on its repository and on the tree that names it", () => {

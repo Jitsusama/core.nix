@@ -88,7 +88,12 @@
     finished, in neither, each turn keeps every tick it counted, idle with the busy, so its busy
     ones weigh against the guest's own clock, a thread whose flags carry PF_NO_SETAFFINITY, read
     past a name holding parentheses, reads as one the kernel won't let be held, and what a
-    subtest says names each turn's ticks and the share, or no share when a turn had no busy ticks
+    subtest says names each turn's ticks and the share, or no share when a turn had no busy ticks;
+    and a builder whose frozen loops ran slower than the slowest normal one's stretches the keys
+    bar's share of the frozen time, not its fixed ms, by their middle, the lower of two, over that
+    normal builder's, never under one nor past one and a half, where loops under load and a
+    subtest with no frozen loop stretch none, so b508ac2e's keys fail the bar unstretched and pass
+    it stretched, and keys six times as slow as its frozen key fail however slow the builder
   '';
   a-long-name-reads-at-one-pace = ''
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
@@ -393,6 +398,10 @@
   asker-says-passes-clippy = ''
     clippy finds nothing in asker-says, which says what a process asking for a password says of
     itself, or its tests
+  '';
+  background-work-keeps-to-eight-processors = ''
+    background.slice declares a quota of eight processors' time, so the account's daemons are held
+    to it from every boot
   '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
@@ -1561,6 +1570,10 @@
     and pis are ended lowest tier first, every tier's work before any pi, and a pi Joel was at
     within half an hour or that orchestrates is spared as the account's
   '';
+  joels-programs-ask-short-slices = ''
+    the sorter is told that Chrome and Slack, and no other programs, ask for a short slice, and
+    only in his programs' slice
+  '';
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
@@ -1894,21 +1907,25 @@
     model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
     headers and body as they came, a body of many pieces whole, refuses any other host, carries many
     requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, sends
-    a request the origin reset before its answer once more on another connection, one already
-    open, even beside one kept, or one opened for a burst of them together, whose failure to open
-    each hears at once, and sends pi direct with its own 421 when reset again or lost, when its
-    connection was kept with none other open or when none would open, but says a 502 when a
+    a request the origin reset before its answer, or left out of a goodbye saying nothing was
+    wrong or a protocol error, once more on another connection, one already open, even beside one kept, or one opened
+    for a burst of them together, whose failure to open each hears at once, and sends pi direct
+    with its own 421 when reset or left out again or lost, when its connection was kept with none
+    other open or when none would open, but says a 502 when a
     reset, first or again, said to calm down, retiring its connection, sends on no body too large
     or left unfinished, stands down past its share failed with the 421 that sends pi direct,
     staying through its idle time, trying its path as it stands down, kept down by a trial failing
     partway or answered with a 5xx, taking requests again once the path answers three in a row,
-    then trying it no more, or after, on connections opened afresh, over one
-    opened while it stood down, for answers broken off midway as their connection falls or requests
-    sent again once it takes requests again, though never for requests no connection would take,
+    then trying it no more, or after, on connections opened afresh, over one opened while it stood
+    down, standing down doubled soon after, waiting twice as long for its first trial, even one
+    begun while a trial was awaited, for answers broken off midway as their connection falls or
+    requests sent again once it takes requests again, though never for requests no connection
+    would take,
     resets saying to calm down, answers pi gives up on or answers sent before it took requests
     again, says another origin's 421 and the stand-down's once the body is read, even a body too
     large, counts a body pi left as its cancel, never a 421, tells a body past its deadline as
-    late, passes a TE of trailers as h2 sends it, says its counts as it leaves, answers
+    late, passes a TE of trailers as h2 sends it, says its counts as it leaves, its trials apart
+    from its connections, answers
     broken off among them, counts on each connection the requests pi gave up on and no
     answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
@@ -1975,7 +1992,8 @@
     a workstation in a realm runs mycelium's node there, dialling each machine it names, over SSH
     or through a provider's program, and asking each provider's program it names what it could
     make, as a user service on Linux signing in with the agents' key,
-    or the key its realm names, and an agent on a Mac whose sessions sign commits with that key,
+    or the key its realm names, through that key's agent rather than one the account's SSH config
+    names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the home realm's node writes how it
     would ease the machine, and a further realm's doesn't; one naming none runs it dialling
     nothing, and one in no realm has neither a realm nor a node
@@ -1993,7 +2011,8 @@
   mycelium-signs-a-macs-links-with-the-enclave = ''
     a Mac's node signs its links in with the agents' key from the Secure Enclave, through that
     key's own library and no agent, so the login session's agent never asks for an approval;
-    a Mac without that key's module and Linux's node are given no such options
+    a Mac without that key's module, and Linux's node even when its signer names such options,
+    are given none
   '';
   mycelium-keeps-each-realm-apart = ''
     a machine joining a further realm runs a node of its own for it, with its own state, mesh and
@@ -2037,8 +2056,10 @@
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
     reading's order at the top, their cells worst first, the rows only open branches show and
-    where each tree key goes from a row, edges included, what each cell, network and machine is
-    in words, counts, sums and labels included, each time said against the reading's own with
+    where each tree key goes from a row, edges included, the builders the node reads kept as
+    builders, never cells, and rooted after the machines, what each cell, network, machine and
+    builder is in words, counts, sums and labels included, each time said against the reading's
+    own with
     its day only off the reading's and a lease's time left, and how each set of cells and each
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
@@ -2058,7 +2079,9 @@
     feeding of a cell drawn with both drawers saying it and leaving once its ten minutes end or the
     node drops it, a network grown out of another as its branch once a forage says a cell of the
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
-    the branch going with the forage, a key of each
+    the branch going with the forage, the builders standing under the machines in rounded boxes,
+    dashed while taking no builds, their words read unopened, opened by link and let go by m,
+    a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
     and out about its middle, panned a step across and down and fitted whole again, -
@@ -2762,6 +2785,10 @@
     versions a pi runs, keeping nothing else of its environment, and models the keys again by the
     install each window's pi loaded, so installs compare under one load
   '';
+  pi-keys-outlasts-a-switch = ''
+    a switch leaves a running pi-keys sample be rather than restarting it and waiting on its start,
+    which outlasts home-manager's wait and sends the whole switch back
+  '';
   pi-keys-passes-clippy = ''
     clippy finds nothing in pi-keys or its tests
   '';
@@ -2910,6 +2937,17 @@
     binds nothing after quitting during startup, sends no more of its first words once it
     quits, builds nothing an extension asks of it once stopped and tells every screen of a
     theme change, while ordinary pi keeps its process exits
+  '';
+  pi-conversations-run-apart = ''
+    each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
+    own processes start from, run by the host's program with --child for the host's key, its
+    socket in the slot systemd names under the host's runtime folder, with the host's
+    environment, proof, node, frame flag and SSH agent but a plain pi's pools, its realm's
+    conversation heap, its inspector shut and the variables that load code cleared, in
+    agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
+    program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
+    and told so, left running through a switch, its host's restart and the kernel killing one
+    of its commands for memory, and a Mac gets none
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
@@ -4827,6 +4865,11 @@
     the power profile daemon's unit, the XPS 14's patched one too, waits for neither the network nor
     the boot's end, and keeps upstream's settings
   '';
+  the-processor-starts-with-its-fixed-microcode = ''
+    the XPS 14's initrd is set to start with Intel microcode giving its processor, 06-cc-02 on
+    platform 0x80, revision 0x11d or newer, which fixes functional issues close to the hang behind
+    two of its resets
+  '';
   the-profile-saves-power-on-a-low-battery = ''
     the power profile follows the charger, goes to power saver below 20% on battery, and holds a
     profile picked by hand
@@ -4859,6 +4902,12 @@
   the-queue-is-heard-from-the-node = ''
     the machine queue is the harness's file as the node's record holds it, none of a version it
     doesn't read, and a write of only when it was written says nothing new
+  '';
+  the-rest-residency-adds-every-core = ''
+    the XPS 14's journal line on rest adds each rest state over every core with rest states in its
+    number's place, past state9 and cpu9, with each state's exit latency and the count of cores
+    added, says plainly when the kernel has no cpuidle driver, and fails when the driver or its
+    states can't be read or a core's states differ from the first core's in name or number
   '';
   the-sandboxes-door-trusts-no-one = ''
     the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and
@@ -4951,6 +5000,14 @@
     only the rows it changed, and a watch never answered is drawn from what's held while still
     reading
   '';
+  the-deep-rest-hold-starts-unless-turned-off = ''
+    the XPS 14's hold keeping the cores from their deepest rest starts with the machine, and with
+    its one setting turned off nothing wants, requires or upholds it
+  '';
+  the-deep-rest-hold-stops-short-of-c6 = ''
+    the XPS 14's hold bounds the cores' exit latency below every rest state from the first C6 on
+    and above every shallower one, by the laptop's cpuidle table as it read on 20 November
+  '';
   the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
   '';
@@ -4977,6 +5034,13 @@
     a picture the shell reads uncached from a file, as the wallpaper's, lets the file's pixels
     go once it's a texture, rather than keeping them beside it, and is read again from its
     file for a window it moves to
+  '';
+  still-windows-draw-nothing-as-animations-start-on-niri = ''
+    a window the shell shows standing still draws no frame while two other windows' squares
+    start moving ten times, one by a NumberAnimation and one by an XAnimator, through Qt's
+    threaded render loop, Qt logging its timer starting over all three windows within at least
+    half of those starts; each moving window draws at least two frames a start, and the still
+    one draws when its colour changes
   '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,
@@ -5162,6 +5226,12 @@
   the-surface-touchscreen-keeps-off-a-removed-workqueue = ''
     the Surface Laptop 4's touchscreen driver, as its source stands once patched, names system_wq
     nowhere, the queue Linux 7.3 says it will remove and warns of once a boot
+  '';
+  hang-panic-sleeps-whole = ''
+    hang-panic's sleep hook, run with an empty PATH against a stand-in of busctl, stops systemd's
+    runtime watchdog for each step that hibernates and hands it back to systemd's own setting
+    after, leaves it running through a suspend, suspend-then-hibernate's first step included,
+    and touches nothing when it isn't running
   '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run with an
@@ -5356,6 +5426,12 @@
     fields; a stop's rate left out for a moment's stretch, and a count unread at a line not
     carried into the next; and a camera that goes as its unit is stopped said to have gone
   '';
+  usb-camera-holders-forget-a-killed-run = ''
+    each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
+    writes as it stops, so a run killed before removing its files leaves no camera said there
+    unless a loopback has the node by then, and starts again when its run crashes, backing off to a
+    minute, with no start limit to refuse a camera plugged in again
+  '';
   usb-camera-holders-may-open-the-camera = ''
     the USB camera watch's unit lets it open a camera to read, under its ProtectClock, with no
     private devices hiding the camera, and no device it names given write or mknod, an entry
@@ -5463,8 +5539,10 @@
     behind a router sharing 90 Mbit/s down and 15 up flow by flow under fq_codel, with the jobs
     downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
     the video tin and one to 443 as best effort, lose at most a hundredth of their datagrams
-    coming down, as they do without the shaper; and while a call is on, an app's call to 443
-    goes in the video tin and is seen as real-time traffic
+    coming down, as they do without the shaper; with the upload held at 6 Mbit/s and an app
+    uploading beside its video call, the shaper drops at most a hundredth of the call going up;
+    and while a call is on, an app's call to 443 goes in the video tin and is seen as real-time
+    traffic
   '';
   vm-a-hidden-queue-is-taken-back = ''
     behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the
@@ -5593,6 +5671,10 @@
     frame within 50 ms of the ask, its own work, the settling after it and the wait for the
     frame, drawn from what the closed launcher kept and filled in without moving a row or the
     cursor, and its drawing takes within twice its time with the load frozen and 50 ms more;
+    the keys bar's share of the frozen time stretched by as many times slower than the slowest
+    normal builder's as the keys subtest's frozen loops ran, at most one and a half, and none on
+    a normal builder, while the storm subtest fails if its storm's windows fell before its
+    openings were timed;
     each printing, passed or failed, what the guest counted its builder stole in each turn,
     which no bar reads; and
     with every thread of the VM held to two of the builder's processors under load, the guest
@@ -5987,6 +6069,22 @@
     stage, and Plymouth hears which; an account's units that ignore SIGTERM hold its manager under
     ten seconds, alone or in a reboot
   '';
+  vm-a-hang-leaves-a-record = ''
+    hang-panic arms the watchdog at a minute, stops it for a hibernation and has it armed again at
+    once after, turns the NMI watchdog on over perf's off for a hard lockup to panic, not a soft
+    one, and holds a panic's 10 s over the command line's; netconsole sends the kernel's lines to
+    the listener's own hardware address, where the Mac's listener command keeps them and drops a
+    line from outside its network, each line numbered and timed, refuses an address nothing
+    answers for now though the machine remembers one, follows the listener to another card
+    past the one remembered, makes a missing or turned-off target again at the next asking, keeps
+    it while nothing has changed or the listener sleeps, its name unanswered too, lets it go while
+    the card is off the listener's network or on another numbered the same, or another machine
+    holds the address sent to while the name goes unanswered, starts with the system as a switch
+    would start it, loading its module itself, stays up through a start the listener missed,
+    which fails no switch, and sends once the following finds it, stops when its card is
+    unplugged and sends again once it's back and renamed, and a panic's words and its 10 s
+    arrive before the kernel restarts, sooner than the watchdog could
+  '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the
     lender's account leaves them, and give root the lent builder's line the cloud vouches for and
@@ -6028,6 +6126,13 @@
     the shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it
     sends; the shaper follows the connection down to 4 Mbit/s and back, and down again when the
     uploads ride a second link to the same router
+  '';
+  vm-the-cores-stay-out-of-deep-rest = ''
+    a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit
+    latency at 20 us; stopped, the bound goes at once; started by hand, it holds by the time its
+    start returns; a hold killed by TERM or KILL comes back; and the journal's line on how long
+    each rest state ran, written in its confinement over haltpoll's rest states, names the states
+    root sees
   '';
   vm-the-desk-lights-come-back = ''
     a Litra plugged back in while a camera streams is told to light again, and the camera stopping
@@ -6101,7 +6206,8 @@
   '';
   vm-wifi-moves = ''
     the card moves between the access points of one network: on at once from one that doesn't
-    answer, to another when an account asks, keeping its neighbours, and back within wifid's
+    answer, to another when an account asks, keeping its neighbours, to the one its point names
+    when the point warns it drops the card, saying a plain ask and staying, and back within wifid's
     2 s for a way back past any wait the point bids, its other networks off, from one gone
     since it was heard, or free to join any network when it can't get back either; another
     network forgets them

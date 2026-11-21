@@ -73,7 +73,8 @@ Scope {
     // Applications, Capture, Displays, Networks, Now (its whole opening,
     // its writes included), Orchestrators, Quests and Traffic come
     // through here; Agents feels its wraps a frame on, through felt,
-    // below.
+    // below. Asleep in a kept opening, Now's comes in its wake's slice,
+    // or in the turn a notice is told before then, not the open's.
     function feltOpening(work) {
         return provider.felt(provider.launcher?.open ? "opening" : "shutting", work);
     }
@@ -357,6 +358,17 @@ Scope {
     // of everything it holds. Such a source names what it holds without
     // making its rows, by a memberNames of its own given nothing.
     property bool saysAtHome: false
+    // The names it leads deeper into, by rows it walks through from home
+    // (Launcher.qml's leadingTo, a function `leadsTo(name)` of its own),
+    // said once, so asking whether it leads to a name reads none of its
+    // rows: asked through leadsTo, the chords' places read Now's notices
+    // whole each time they changed as the launcher opened, about 10 of its
+    // 100 ms over twelve of the keys lab's openings (2026-11-20).
+    property var leadsInto: []
+    // Whether, saying what it holds at home, it still reads rows home shows
+    // of its own, and so waits its turn to wake as a kept opening fills in
+    // (Wanted.js's wakesInTurn).
+    property bool readsHome: false
 
     // Whether it waits its turn to wake as a kept opening fills in, a few
     // sources a frame (Launcher.qml's wakeNext). Its own, so waking it
@@ -374,6 +386,14 @@ Scope {
     // launcher to ask, as a check's, always is.
     readonly property bool wanted: typeof launcher?.wants !== "function"
         || launcher.wants(provider)
+    // Whether its rows, asked now while it isn't wanted, are laid out as
+    // they stand, as Agents' are while its own rows are read, rather than
+    // kept from when it was last wanted, as whileWanted keeps them and
+    // Windows keeps its own until it's wanted. Only then is what it says
+    // changed as a step into it is held what the step just read, asked
+    // before the step is held (Wanted.js's heldAnew); a source that keeps
+    // them says the rows it made at last, which the step must show.
+    property bool readsAfreshUnwanted: false
 
     // Rows a binding makes, by name: made by `make` while wanted, and while not, what it made
     // last, so it reads `wanted` alone and a change nobody sees wakes nothing. One that has made

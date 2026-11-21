@@ -3,6 +3,7 @@
 //! ```text
 //! loopback-holders [--card NAME] [--ignore-unit UNIT]... SOURCE OUTPUT
 //! loopback-holders --usb [--ignore-unit UNIT]... NODE FOLDER
+//! loopback-holders --usb --forget NODE FOLDER
 //! ```
 //!
 //! SOURCE is the camera's V4L2 node, or a file naming it, as the relay
@@ -31,6 +32,15 @@
 //! how: the format and frame rate asked for, the frames the camera gave,
 //! the packets it sent in error, and its controls (src/record.rs says
 //! how).
+//!
+//! With --forget, it removes the files in FOLDER that say NODE, and ends:
+//! a USB camera's unit runs it as it stops, so a run killed before it
+//! could remove its own leaves nothing to say the camera is still there.
+//! A loopback that has NODE by then keeps its files, which say it rightly.
+//!
+//! A file is written beside the one it replaces under a dotted name,
+//! `.<its name>.<pid>`, which every reader of the folder passes over, so
+//! no camera's name, as `Webcam 2.0`, is ever taken for one half-written.
 //!
 //! Beside the file, `.devices/<its name>` says which node the camera is,
 //! as its real path, for as long as there's one: a reader that sees
@@ -66,6 +76,7 @@ struct Options {
     card: Option<String>,
     units: Vec<String>,
     usb: bool,
+    forget: bool,
     sysfs: PathBuf,
     debugfs: PathBuf,
     source: PathBuf,
@@ -90,6 +101,10 @@ fn help() -> Help {
         .option("--card NAME", "only a loopback of this name counts")
         .option("--ignore-unit UNIT", "leaves out this unit's processes")
         .option("--usb", "SOURCE is a USB camera's node")
+        .option(
+            "--forget",
+            "with --usb, removes what says the node, and ends",
+        )
         .exit(Exit::Failed, "its camera or file couldn't be watched")
 }
 
@@ -102,6 +117,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
     let mut card = None;
     let mut units = Vec::new();
     let mut usb = false;
+    let mut forget = false;
     // Where sysfs and debugfs are, for the tests.
     let mut sysfs = PathBuf::from("/sys");
     let mut debugfs = PathBuf::from("/sys/kernel/debug");
@@ -118,11 +134,20 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
             "--sysfs" => sysfs = PathBuf::from(value()?),
             "--debugfs" => debugfs = PathBuf::from(value()?),
             "--usb" => usb = true,
+            "--forget" => forget = true,
             option if option.starts_with('-') => {
                 return Err(wrongly(format!("{option} isn't a flag it takes")));
             }
             _ => places.push(PathBuf::from(argument)),
         }
+    }
+    if forget && !usb {
+        return Err(wrongly("--forget goes with --usb".to_owned()));
+    }
+    if forget && (card.is_some() || !units.is_empty()) {
+        return Err(wrongly(
+            "--forget takes no --card or --ignore-unit".to_owned(),
+        ));
     }
     let [source, output] = <[PathBuf; 2]>::try_from(places).map_err(|places| {
         wrongly("loopback-holders takes a SOURCE and an OUTPUT".to_owned())
@@ -132,6 +157,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
         card,
         units,
         usb,
+        forget,
         sysfs,
         debugfs,
         source,
@@ -177,9 +203,10 @@ fn say_device(output: &Path, node: Option<&Path>) {
         Some(node) => {
             let node = fs::canonicalize(node).unwrap_or_else(|_| node.to_owned());
             let folder = file.parent().unwrap_or_else(|| Path::new(""));
+            let said = format!("{}\n", node.display());
             fs::create_dir_all(folder)
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
-                .and_then(|()| replace(&file, &format!("{}\n", node.display())))
+                .and_then(|()| replace(&file, &said))
         }
         None => match fs::remove_file(&file) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
@@ -191,10 +218,73 @@ fn say_device(output: &Path, node: Option<&Path>) {
     }
 }
 
+/// Removes each file in the folder but this run's own that says this node,
+/// and the holders file beside the folder that it's named for, as that
+/// camera is gone, saying so in the log. One being written, under a dotted
+/// name, is left to its writer, or for a killed writer's, to its camera's
+/// next run to tidy: no reader takes it for a camera, so it says nothing.
+fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let being_written = entry.file_name().as_encoded_bytes().starts_with(b".");
+        if Some(path.as_path()) == own
+            || being_written
+            || !entry.file_type().is_ok_and(|kind| kind.is_file())
+        {
+            continue;
+        }
+        if !fs::read_to_string(&path).is_ok_and(|text| text == said) {
+            continue;
+        }
+        // Its holders file first, so a camera is never left said held with
+        // no node file to say who reads it. Read and removed apart, so a
+        // camera whose own run rewrites them between, as two cameras
+        // swapping nodes as a hub comes back might, reads unplugged until
+        // it streams: a run killed and a swap at once, which is accepted.
+        let holders = folder.parent().map(|above| above.join(entry.file_name()));
+        // A holders file that can't go keeps its node file too, so a later
+        // forget can still find it.
+        let mut removed = true;
+        for gone in holders.iter().chain([&path]) {
+            if fs::symlink_metadata(gone).is_ok_and(|kind| kind.is_file())
+                && let Err(error) = fs::remove_file(gone)
+                && error.kind() != io::ErrorKind::NotFound
+            {
+                complain(format_args!("{}: {error}", gone.display()));
+                removed = false;
+                break;
+            }
+        }
+        // Quoted, as the record quotes a holder, since a USB camera names
+        // itself.
+        if removed {
+            say(&format!(
+                "forgot {:?}, whose node file said {}",
+                entry.file_name().to_string_lossy(),
+                said.trim_end()
+            ));
+        }
+    }
+}
+
+/// Where the file is written before it replaces the output: beside it,
+/// under a dotted name with this run's pid, which no reader takes for a
+/// camera's.
+fn temporary(output: &Path) -> Option<PathBuf> {
+    let mut name = std::ffi::OsString::from(".");
+    name.push(output.file_name()?);
+    name.push(format!(".{}", std::process::id()));
+    Some(output.with_file_name(name))
+}
+
 /// Replaces the file whole with the body, readable by all.
 fn replace(output: &Path, body: &str) -> io::Result<()> {
-    let mut temporary = output.as_os_str().to_owned();
-    temporary.push(format!(".{}", std::process::id()));
+    let temporary = temporary(output).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "a file to write has no name")
+    })?;
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -219,7 +309,7 @@ fn tidy(output: &Path) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
     };
-    let prefix = format!("{}.", base.to_string_lossy());
+    let prefix = format!(".{}.", base.to_string_lossy());
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -342,6 +432,14 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     tidy(&output);
     if let Some(file) = device_file(&output) {
         tidy(&file);
+        // A USB camera's unit is the one that watches its node, so another
+        // camera's files saying it were left by a run killed before it
+        // could remove them. A loopback's unit removes its own as it stops,
+        // and one with no card may say a node another camera has since been
+        // given.
+        if let Some(folder) = file.parent() {
+            forget_node(folder, Some(&file), &said_as(&node));
+        }
     }
     say_device(&output, Some(&node));
     let mut record = Record::new(&options.sysfs, &options.debugfs);
@@ -358,15 +456,60 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
     if let Some(line) = record.ended(then(&ended, node.exists())) {
         say(&line);
     }
-    say_device(&output, None);
+    // Its holders file first, as forget_node removes them, so a run killed
+    // between the two, or one that can't remove it, leaves the node file
+    // that finds the holders file.
     match fs::remove_file(&output) {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(Failure::new(
             Exit::Failed,
             "loopback-holders can't remove the camera's file",
         )
         .because(format!("{}: {error}", output.display()))),
-        _ => Ok(()),
+        _ => {
+            say_device(&output, None);
+            // A watch that ended with the camera still there, as one that
+            // couldn't be made does, fails, so the unit starts it again
+            // rather than leaving the camera unwatched.
+            if matches!(ended, Ended::Gone) && node.exists() {
+                Err(Failure::new(
+                    Exit::Failed,
+                    "loopback-holders stopped watching a camera that's still there",
+                )
+                .because(node.display().to_string()))
+            } else {
+                Ok(())
+            }
+        }
     }
+}
+
+/// How a node file says its node.
+fn said_as(node: &Path) -> String {
+    format!("{}\n", node.display())
+}
+
+/// Removes what says a USB camera's node, as its unit stops: its own run
+/// removes its files as it ends, so any left were a killed run's. A node a
+/// loopback has by then is left alone, since a loopback added as a hub
+/// comes back takes the lowest free number, and its files say it rightly;
+/// the gone camera's own come back right when it does. A USB camera there
+/// is this one, its run crashed while it stayed plugged in, as the unit's
+/// next run at the node waits for this; with no run left to rewrite its
+/// files they're forgotten, so it reads unplugged rather than held for
+/// good. A loopback taking the number between the look and the removal
+/// loses its files until its holders change, which is accepted. A
+/// pre-dotted file of the old `<name>.<pid>` shape isn't sought: a run's
+/// stop is read from a signalfd between writes, so only a run killed
+/// mid-write left one.
+fn forget(options: &Options) {
+    if camera::loopback_at(&options.sysfs, &options.source) {
+        return;
+    }
+    forget_node(
+        &options.output.join(".devices"),
+        None,
+        &said_as(&options.source),
+    );
 }
 
 /// Says who holds a loopback, following the source to each node it names.
@@ -414,6 +557,12 @@ fn loopback(events: &mut Events, options: &Options) {
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         let options = options(context.args.iter().cloned())?;
+        // Forgetting watches nothing, so a watch it can't have mustn't
+        // leave what it's there to remove.
+        if options.forget {
+            forget(&options);
+            return Ok(());
+        }
         let mut events = Events::new().map_err(|error| {
             Failure::new(Exit::Failed, "loopback-holders can't watch for its camera")
                 .because(format!("inotify: {error}"))
@@ -509,8 +658,16 @@ mod tests {
         // A folder left narrower, as a umask might make it, is widened.
         fs::create_dir(root.join(".devices")).unwrap();
         fs::set_permissions(root.join(".devices"), fs::Permissions::from_mode(0o700)).unwrap();
-        say_device(&output, Some(&link));
         let real = fs::canonicalize(&node).unwrap();
+        // Only a USB camera's run forgets another's file saying its node.
+        let another = root.join(".devices/Another");
+        fs::write(&another, format!("{}\n", real.display())).unwrap();
+        say_device(&output, Some(&link));
+        assert!(
+            another.exists(),
+            "another camera's file, said by a loopback"
+        );
+        fs::remove_file(&another).unwrap();
         assert_eq!(
             fs::read_to_string(&file).unwrap(),
             format!("{}\n", real.display())
@@ -537,11 +694,14 @@ mod tests {
         let root = scratch("tidy");
         for name in [
             "camera",
-            "camera.123",
-            "camera.",
-            "camera.1a",
-            "cameras.4",
-            "other.5",
+            ".camera.123",
+            ".camera.",
+            ".camera.1a",
+            ".cameras.4",
+            ".other.5",
+            // A camera named for a version, beside one that isn't.
+            "camera.0",
+            ".camera.0.7",
         ] {
             fs::write(root.join(name), "").unwrap();
         }
@@ -553,7 +713,27 @@ mod tests {
         left.sort();
         assert_eq!(
             left,
-            ["camera", "camera.", "camera.1a", "cameras.4", "other.5"]
+            [
+                ".camera.",
+                ".camera.0.7",
+                ".camera.1a",
+                ".cameras.4",
+                ".other.5",
+                "camera",
+                "camera.0"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_file_is_written_under_a_dotted_name_beside_it() {
+        let written = temporary(Path::new("/run/camera-holders/Webcam 2.0")).unwrap();
+        assert_eq!(
+            written,
+            Path::new(&format!(
+                "/run/camera-holders/.Webcam 2.0.{}",
+                std::process::id()
+            ))
         );
     }
 
@@ -573,6 +753,11 @@ mod tests {
             (Path::new("/run/d"), Path::new("/run/o"))
         );
         assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
+        let forgetting = given("--usb --forget /dev/video0 /run/camera-holders").unwrap();
+        assert!(
+            forgetting.usb && forgetting.forget,
+            "--usb --forget wasn't read as both"
+        );
     }
 
     #[test]
@@ -583,6 +768,9 @@ mod tests {
             "--what /a /b",
             "-x /a /b",
             "/a /b /c",
+            "--forget /a /b",
+            "--usb --forget --card Camera /a /b",
+            "--usb --forget --ignore-unit a.service /a /b",
         ] {
             let ending = terminal_kit::run(
                 &help(),

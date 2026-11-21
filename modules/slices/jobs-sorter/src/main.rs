@@ -42,6 +42,11 @@
 //! `src/real_time.rs` says why and how, and goes first when memory runs
 //! out, as `src/oom.rs` says.
 //!
+//! The threads of each `--quick-name` program under a `--quick` cgroup,
+//! Joel's Chrome and Slack in his programs' slice, ask for a short slice, so a
+//! woken drawing thread runs sooner under load, as `src/quick.rs` says why
+//! and how.
+//!
 //! Work split into a `--by-quest` slice goes in its quest's slice there,
 //! weighted as the `--quests` file says, which `src/quests.rs` says why and
 //! how. With `--tiers` and `--parents`, each quest's slice sits inside its
@@ -106,6 +111,7 @@ mod low;
 mod oom;
 mod probe;
 mod quests;
+mod quick;
 mod real_time;
 mod revive;
 mod sessions;
@@ -138,6 +144,9 @@ struct Settings {
     every: Duration,
     split: Vec<String>,
     no_real_time: Vec<String>,
+    /// Cgroups whose `quick_names` programs ask for a short slice.
+    quick: Vec<String>,
+    quick_names: Vec<String>,
     by_quest: Vec<String>,
     quests: Option<PathBuf>,
     tiers: Option<PathBuf>,
@@ -1798,6 +1807,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         every: Duration::from_millis(1000),
         split: Vec::new(),
         no_real_time: Vec::new(),
+        quick: Vec::new(),
+        quick_names: Vec::new(),
         by_quest: Vec::new(),
         quests: None,
         tiers: None,
@@ -1836,6 +1847,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--jobs" => settings.jobs = value()?,
             "--split" => settings.split.push(value()?),
             "--no-real-time" => settings.no_real_time.push(value()?),
+            "--quick" => settings.quick.push(value()?),
+            "--quick-name" => settings.quick_names.push(value()?),
             "--by-quest" => settings.by_quest.push(value()?),
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
             "--tiers" => settings.tiers = Some(PathBuf::from(value()?)),
@@ -1848,13 +1861,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
-            "--calls-elsewhere" => {
-                let given = value()?;
-                let (sockets, mycelium) = given.split_once('=').ok_or_else(|| {
-                    wrongly("--calls-elsewhere is the sockets' folder, =, then mycelium")
-                })?;
-                settings.calls_elsewhere = Some((PathBuf::from(sockets), PathBuf::from(mycelium)));
-            }
+            "--calls-elsewhere" => settings.calls_elsewhere = Some(elsewhere_from(&value()?)?),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
             "--hosts" => settings.hosts = Some(value()?),
             "--sessions" => settings.sessions = Some(value()?),
@@ -1879,12 +1886,42 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
     if settings.homes.is_empty() {
         settings.homes.push("kitty-".into());
     }
+    paired(settings)
+}
+
+/// The settings, refused when a flag is given without the one it needs.
+fn paired(settings: Settings) -> Result<Settings, Failure> {
+    let wrongly = |why: &str| cli::wrongly("jobs-sorter", why);
+    if settings.quick.is_empty() != settings.quick_names.is_empty() {
+        return Err(wrongly(
+            "--quick names where programs ask for a short slice, and --quick-name which",
+        ));
+    }
+    // The kernel keeps a process's name to 15 bytes, so a longer one could
+    // never be matched and would leave that program unasked unseen.
+    if settings.quick_names.iter().any(|name| name.len() > 15) {
+        return Err(wrongly(
+            "--quick-name is a program's name as the kernel keeps it, at most 15 bytes",
+        ));
+    }
     if settings.sessions.is_some() && settings.weigh.is_empty() {
         return Err(wrongly(
             "--sessions names a session's scope by a --weigh prefix, and none is given",
         ));
     }
     Ok(settings)
+}
+
+/// `--calls-elsewhere`'s value, the nodes' sockets' folder and the
+/// mycelium to ask them, or the refusal saying what it is.
+fn elsewhere_from(given: &str) -> Result<(PathBuf, PathBuf), Failure> {
+    let (sockets, mycelium) = given.split_once('=').ok_or_else(|| {
+        cli::wrongly(
+            "jobs-sorter",
+            "--calls-elsewhere is the sockets' folder, =, then mycelium",
+        )
+    })?;
+    Ok((PathBuf::from(sockets), PathBuf::from(mycelium)))
 }
 
 /// A flag's value read as a number, or the refusal saying what it is.
@@ -1914,6 +1951,33 @@ mod settings_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn quick_takes_its_cgroups_and_names_and_neither_alone() {
+        let got = settings(
+            "--quick app.slice --quick-name chrome --quick-name slack"
+                .split_whitespace()
+                .map(str::to_owned),
+        )
+        .expect("both are given");
+        assert_eq!(got.quick, ["app.slice"], "where they ask");
+        assert_eq!(got.quick_names, ["chrome", "slack"], "who asks");
+        for alone in ["--quick app.slice", "--quick-name chrome"] {
+            assert!(
+                settings(alone.split_whitespace().map(str::to_owned)).is_err(),
+                "{alone} alone is refused"
+            );
+        }
+        assert!(
+            settings(
+                "--quick app.slice --quick-name google-chrome-st"
+                    .split_whitespace()
+                    .map(str::to_owned)
+            )
+            .is_err(),
+            "a name longer than the kernel keeps, which nothing could match, is refused"
+        );
     }
 
     #[test]
@@ -2167,6 +2231,41 @@ struct Looking<'a> {
     weights: &'a quests::Weights,
 }
 
+/// Whether the kernel holds the slices asked, and whether a failure to
+/// ask was said, apart from the sorter's other failures so one can't hide
+/// another.
+struct Quick {
+    heard: bool,
+    warned: bool,
+}
+
+/// Has Joel's `--quick-name` programs ask for a short slice, until the
+/// kernel is found to hold none.
+fn ask_quick(
+    settings: &Settings,
+    root: &Path,
+    manager: &str,
+    windows: &[String],
+    quick: &mut Quick,
+) {
+    if !quick.heard {
+        return;
+    }
+    for cgroup in &settings.quick {
+        let asking = quick::Asking {
+            quick: cgroup,
+            dir: &root.join(cgroup),
+            manager,
+            names: &settings.quick_names,
+            windows,
+        };
+        quick.heard &= quick::ask(&asking, &mut quick.warned);
+    }
+    if !quick.heard {
+        eprintln!("This kernel holds no slice a thread asks for, so none is asked again.");
+    }
+}
+
 /// Puts each pi and each piece of work where it goes for the kernel's
 /// OOM killer, by tier, keeping orchestrators' windows, and takes real
 /// time from work.
@@ -2234,6 +2333,10 @@ fn run(settings: &Settings) -> Result<(), String> {
         ..Sorter::default()
     };
     let mut warned = false;
+    let mut quick = Quick {
+        heard: true,
+        warned: false,
+    };
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
     let mut weights = weights_from(settings);
     let mut pass: u32 = 0;
@@ -2296,6 +2399,9 @@ fn run(settings: &Settings) -> Result<(), String> {
                 weights: &weights,
             };
             rank_for_memory(&looking, &mut ranks, &mut warned);
+        }
+        if pass.is_multiple_of(quick::EVERY) {
+            ask_quick(settings, &root, &manager, &windows, &mut quick);
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         brake_for_calls(&mut doorway, &root);
@@ -2513,6 +2619,8 @@ mod tests {
             every: Duration::from_millis(1000),
             split: vec!["jobs.slice/jobs.service".into()],
             no_real_time: vec!["jobs.slice/jobs-work.slice".into()],
+            quick: Vec::new(),
+            quick_names: Vec::new(),
             by_quest: vec!["jobs-work.slice".into()],
             quests: None,
             tiers: None,

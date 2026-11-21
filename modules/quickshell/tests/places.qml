@@ -4,7 +4,10 @@
 // Reopening.js and Viewers.js beside this file and runs
 // `qml -platform offscreen places.qml`. Each case is one a boot or a
 // dock can make: the same monitor on another connector, a screen gone, and
-// a place kept before screens were named by what they are.
+// a place kept before screens were named by what they are. Long because
+// every case runs in the one engine the check starts, so splitting it
+// would start that engine again for each part, and its cases share the
+// screens and places they're built from.
 import QtQuick
 import "Places.js" as Places
 import "Reopening.js" as Reopening
@@ -480,6 +483,34 @@ QtObject {
             Reopening.leadersFirst([queued("a", false), queued("b", true), queued("c"),
                 queued("d", true), queued("e", false)]).map(entry => entry.one.id),
             ["b", "d", "a", "c", "e"]);
+
+        // After the machine reset on 2026-11-20, Reopen Them All gave four
+        // sessions kept nowhere, which ran with no window, windows on their
+        // orchestrator's workspace, and sent one kept on the second
+        // workspace to its orchestrator's third.
+        const keptHere = Object.assign({ leads: false }, here);
+        expect("kept somewhere, it opens there, not at its orchestrator's",
+            Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
+        expect("kept nowhere, it comes back held without a window",
+            Reopening.broughtBack(true, null, true, true), { window: false, home: true });
+        expect("with no places known, none is taken for windowless",
+            Reopening.broughtBack(true, null, false, true), { window: true, home: true });
+        expect("carried or given back, never kept here, it opens as it did",
+            Reopening.broughtBack(true, null, true, false), { window: true, home: true });
+        expect("handed over or started alone, it opens as it did, going home",
+            [Reopening.broughtBack(false, null, true, true),
+                Reopening.broughtBack(false, keptHere, true, true)],
+            [{ window: true, home: true }, { window: true, home: true }]);
+        // Nothing on screen says one started without a window, so it isn't
+        // begun again until its pi has had time to say it runs.
+        const startedAt = { "held-1": 1000 };
+        expect("started without a window moments ago, it isn't begun again",
+            Reopening.startedHeldLately(startedAt, "held-1", 1000 + 60 * 1000), true);
+        expect("long since, or never, it may be",
+            [Reopening.startedHeldLately(startedAt, "held-1", 1000 + 5 * 60 * 1000),
+                Reopening.startedHeldLately(startedAt, "held-2", 2000),
+                Reopening.startedHeldLately(undefined, "held-1", 2000)],
+            [false, false, false]);
 
         // Reopen Them All begins the next session only while the machine has
         // room for it, as the machine queue judges it, so eighty sessions

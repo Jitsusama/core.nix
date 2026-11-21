@@ -64,11 +64,12 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 25 files since the balance, who started each cell, the tree beside the map,
+# 27 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
-# each is doing, what each spent and what waits were read in modules of their
-# own, and one spare; about 708 KB, with room above.
-BUDGET = Budget(files=26, kilobytes=745, elements=590)
+# each is doing, what each spent, what waits, how wide each line is drawn and
+# how a cell is named were read in modules of their own; about 708 KB, with
+# room above.
+BUDGET = Budget(files=27, kilobytes=745, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -475,6 +476,80 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
+# The builders node.json's machine sends its builds to, by name as the map
+# draws them under the map, and the one of them that takes none.
+BUILDERS = ("b:gull", "b:heron", "b:tern")
+IDLE_BUILDER = "gull"
+IDLE_SAYS = "Nobody has heard how it stands: it is reached through another, which isn't dialled."
+# What the lent builder's mark says under its name, from the fields the feed passes.
+LENT_WORDS = "lent · running · 16 builds at once"
+# Each mark among the machines, by its key, with its class and its box's corners.
+MARKS_DRAWN = """[...document.querySelectorAll('.labels .t-mark')].map((g) => [
+  g.dataset.mark, g.getAttribute('class'), getComputedStyle(g.querySelector('.t-box')).rx])"""
+# Where each builder's mark stands against the view and against the
+# lowest of everything else drawn: every other word on the map, the
+# machines' marks and the networks' names among them, each network's
+# hub, and each cell.
+FOOT_SEEN = """(() => {
+  const view = document.querySelector('#map-view').getBoundingClientRect();
+  const box = (el) => el.getBoundingClientRect();
+  const drawn = '.labels .tag:not(.t-builder), #world g.hub, #world circle.cell';
+  const lowest = Math.max(...[...document.querySelectorAll(drawn)].map((g) => box(g).bottom));
+  return [...document.querySelectorAll('.labels .t-builder')].map((g) => [
+    g.dataset.mark, box(g).top >= lowest, box(g).top >= view.top && box(g).bottom <= view.bottom]);
+})()"""
+
+
+def test_the_builders_stand_under_the_machines_in_a_shape_of_their_own(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    builders = page.locator(".labels .t-builder")
+    expect(builders, "builders were drawn with the machines hidden").to_have_count(0)
+    page.locator("#map-view").focus()
+    page.keyboard.press("m")
+    expect(builders, "m didn't draw the builders").to_have_count(len(BUILDERS))
+    marks = page.evaluate(MARKS_DRAWN)
+    keys = [key for key, _, _ in marks]
+    assert keys[-len(BUILDERS) :] == list(BUILDERS), f"builders not after the machines: {keys}"
+    # Under everything the ring draws, and still in view with the whole map.
+    page.keyboard.press("0")
+    settled(page, "the whole map never stood still")
+    for key, under, seen in page.evaluate(FOOT_SEEN):
+        assert under, f"{key} stood among the machines or the networks"
+        assert seen, f"{key} fell out of the whole map's view"
+    for key, look, corner in marks:
+        if key in BUILDERS:
+            assert corner == "7px", f"{key} isn't a box with rounded corners: {corner}"
+            idle = key == f"b:{IDLE_BUILDER}"
+            assert ("off" in look.split()) == idle, f"{key} drawn {look}, idle {idle}"
+        else:
+            assert corner != "7px", f"the machine {key} took a builder's corners"
+    # With nothing open, each builder's mark says how it stands under its name.
+    expect(
+        page.locator('.labels .t-builder[data-mark="b:tern"]'), "a builder's mark misread it"
+    ).to_contain_text(LENT_WORDS)
+    page.evaluate(f"location.hash = '#builder={IDLE_BUILDER}'")
+    expect(page.locator("#panel-title"), "#builder= didn't open its drawer").to_have_text(
+        IDLE_BUILDER
+    )
+    expect(
+        page.locator("#panel-body [data-builder-says]"), "the drawer misread the builder"
+    ).to_have_text(IDLE_SAYS)
+    # Hiding the machines lets go of a builder's drawer, and a builder's
+    # link shows them again.
+    page.locator("#map-view").focus()
+    page.keyboard.press("m")
+    expect(builders, "m didn't hide the builders").to_have_count(0)
+    expect(page.locator("#panel-title"), "m kept a hidden builder open").not_to_have_text(
+        IDLE_BUILDER
+    )
+    page.evaluate("location.hash = '#builder=heron'")
+    expect(page.locator("#panel-title"), "#builder= didn't open heron").to_have_text("heron")
+    expect(builders, "#builder= didn't show the builders").to_have_count(len(BUILDERS))
+
+
 def test_the_keys_dialog_and_find_answer_their_keys(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     title, find_line = page.locator("#panel-title"), page.locator("#find-line")
@@ -690,6 +765,8 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
 # something, then the one stuck. Node.json lists them in that order too, so
 # waits.test.ts is what proves the order; this proves the page follows it.
 NEEDING = ("TERN02", "HERON1")
+# The machine the last of them runs on, in node.json, which its link names.
+NEEDING_ON = "osprey"
 NEEDING_SAID = ("One needs you:", "One is stuck:")
 # The first line after Now's heading, and the next line over a list.
 NOW_LEADS = """(() => {
@@ -728,7 +805,9 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     page.evaluate(TALK_HELD)
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
-    assert talked == f"mycelium:cell/{NEEDING[-1]}", f"t talked to {talked}, not the open cell"
+    assert talked == f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}", (
+        f"t talked to {talked}, not the open cell on its machine"
+    )
     page.keyboard.press("a")
     expect(page, "a didn't go round to the first").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
     # A receptor is a cell the Launcher can't talk to, and t says so.
@@ -747,6 +826,37 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     expect(page.locator("#where"), "t with no cell open didn't say so").to_have_text(
         "No cell is open to talk to; a opens the next that needs you."
     )
+
+
+# A cell named the ways another page or a notice names it, each with what
+# may follow its address: its whole link, its address on its machine, and
+# its link as a page escapes it into the hash.
+NAMED = (
+    f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}#notice:4",
+    f"{NEEDING[-1]}@{NEEDING_ON}",
+    f"mycelium%3Acell%2F{NEEDING[-1]}%40{NEEDING_ON}%2Fgo",
+)
+
+
+def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    talk = page.locator('#panel-body a[href^="mycelium:cell/"]')
+    for named in NAMED:
+        page.evaluate("location.hash = ''")
+        expect(talk, "the last cell's drawer stayed open").to_have_count(0)
+        page.evaluate(f"location.hash = '#cell={named}'")
+        expect(talk, f"#cell={named} didn't open its cell's drawer").to_have_attribute(
+            "href", f"mycelium:cell/{NEEDING[-1]}@{NEEDING_ON}"
+        )
+        expect(page, f"#cell={named} wasn't said as its address").to_have_url(
+            re.compile(f"#cell={NEEDING[-1]}$")
+        )
+    # A stray % typed by hand names nothing, and the map still answers after it.
+    page.evaluate("location.hash = '#cell=%E0%A4%A'")
+    expect(talk, "a stray % opened a cell").to_have_count(0)
+    page.evaluate(f"location.hash = '#cell={NAMED[1]}'")
+    expect(talk, "the map stopped answering after a stray %").to_have_count(1)
 
 
 def test_the_map_reaches_every_cell(browser: Browser, mycelium_served: Served) -> None:
@@ -826,6 +936,10 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Its link to the Launcher names that machine too, never the basin.
+        expect(
+            body.locator('a[href^="mycelium:cell/"]'), "the cell's link lost its machine"
+        ).to_have_attribute("href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}")
         # Now counts every machine, a basin's each its own, not each mark.
         page.locator("#now-control").click()
         expect(title, "Now never opened").to_have_text("Now")
@@ -1015,6 +1129,80 @@ def test_a_records_words_are_drawn_as_words(
     page.wait_for_timeout(REDRAWN_MS)
     drawn = page.locator('b:has-text("Hull"), img[src="x"], [onmouseover]')
     expect(drawn, "a cell's title was drawn as markup somewhere on the map").to_have_count(0)
+
+
+# Marks the map's marks and the drawer's first element as drawn now, and
+# counts the readings drawn after it, so a later look can say whether a
+# reading built them again.
+MARK_DRAWN = """() => {
+  document.querySelector('#world g.nodes').dataset.kept = 'yes';
+  document.querySelector('#panel-body').firstElementChild.dataset.kept = 'yes';
+  const legend = document.querySelector('#panel-body details[data-keep="legend"]');
+  legend.open = true;
+  legend.querySelector('summary').focus();
+  document.addEventListener('mycelium:modelled', (e) => {
+    window.tern = e.detail.model.cells.find((s) => s.address === 'TERN03') || null;
+  });
+}"""
+# Whether the marks and the drawer marked by MARK_DRAWN are still the ones drawn,
+# and whether the legend it opened is open and its summary focused.
+STILL_DRAWN = """() => {
+  const legend = document.querySelector('#panel-body details[data-keep="legend"]');
+  return [
+    document.querySelector('#world g.nodes').dataset.kept === 'yes',
+    document.querySelector('#panel-body').firstElementChild.dataset.kept === 'yes',
+    !!legend?.open,
+    document.activeElement === legend?.querySelector('summary')];
+}"""
+# What TERN03 was in the reading last drawn, for a wait on the one told.
+TERN_USED = "window.tern?.usage?.context?.used === 12000"
+TERN_MOVING = "window.tern?.standing === 'moving'"
+TERN_GONE = "window.tern === null"
+
+
+def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    # The builders are watched apart, and their first answer lays the map
+    # out again, so the case marks the map only once they stand on it.
+    page.locator("#map-view").focus()
+    page.keyboard.press("m")
+    builders = page.locator(".labels .t-builder")
+    expect(builders, "the builders never stood on the map").to_have_count(len(BUILDERS))
+    # Now open, so its legend can be opened and focused as he would.
+    page.keyboard.press(".")
+    legend = page.locator('#panel-body details[data-keep="legend"] > summary')
+    expect(legend, ". never opened Now with its legend").to_be_visible()
+    page.evaluate(MARK_DRAWN)
+    *_, focused = page.evaluate(STILL_DRAWN)
+    assert focused, "the legend's summary took no focus"
+    # A turn's worth of context, which moves no cell and no network.
+    used = {"limit": 1000000, "used": 12000}
+    last = "2026-11-16T10:00:00Z"
+    turned = {"cost_today": 0.1, "context": used, "turns_today": 2, "last_turn": last}
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "usage": turned}])
+    page.wait_for_function(TERN_USED, timeout=PACE_MS)
+    kept_marks, kept_drawer, kept_fold, kept_focus = page.evaluate(STILL_DRAWN)
+    assert kept_marks, "a reading that moved no shape built the map's marks again"
+    assert kept_drawer, "a reading that left the drawer's words built the drawer again"
+    assert kept_fold, "a reading that left the drawer's words shut the fold left open"
+    assert kept_focus, "a reading that left the drawer's words took the focus off the fold"
+    # TERN03 set moving beside TERN01, which already moves, keeps the shape
+    # but not the inks: its nucleus is painted over the marks as drawn.
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
+    page.wait_for_function(TERN_MOVING, timeout=PACE_MS)
+    kept_marks, *_ = page.evaluate(STILL_DRAWN)
+    assert kept_marks, "a cell set moving in a moving network built the map's marks again"
+    painted = [mark["cls"] for mark in page.evaluate(MARKS.format("c:TERN03"))]
+    assert "m-nucleus" in painted, f"a restyle left TERN03 unpainted as moving: {painted}"
+    # A cell gone changes the shape, so the map is drawn again.
+    mycelium_node.tell("cell", gone=["cell:TERN03"])
+    page.wait_for_function(TERN_GONE, timeout=PACE_MS)
+    kept_marks, *_ = page.evaluate(STILL_DRAWN)
+    assert not kept_marks, "a cell gone left the map as it was drawn"
 
 
 # What node.json's cells spent today, as the Spent Today fold lists it under

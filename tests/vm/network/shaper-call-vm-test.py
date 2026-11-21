@@ -13,6 +13,7 @@ from __future__ import annotations
 import bisect
 import datetime as dt
 import json
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +40,14 @@ TINS = ["bulk", "best effort", "video", "voice"]
 JOBS_DOWNLOADS = 8
 JOBS_UPLOADS = 4
 APP_DOWNLOADS = 2
+# An app's own uploads beside its call, a file's over TCP, which go best effort in Joel's lane
+# rather than the agents'.
+APP_UPLOADS = 2
+# The upload a call goes ahead of its app's uploads under, held there by a trial's ceiling:
+# with agents' quarter taken it leaves Joel's lane 4.5 Mbit/s, and a third of that, what
+# turns by weight give video, is under the call's 2.5.
+HELD_KBIT = 6_000
+TRIAL = "/run/shaper-trial/upload.json"
 # A call's video each way: datagrams of 1,200 bytes at 2.5 Mbit/s, as a Meet call sends at
 # its sharpest, for long enough that a drop every few seconds would show.
 CALL_RATE = "2500K"
@@ -49,11 +58,29 @@ CALL_SECONDS = 20
 CALL_LEAST = 2_500_000 * CALL_SECONDS // (CALL_LENGTH * 8) * 9 // 10
 # The most a call may lose coming down, of that least, shaped or not: a CAKE that limits the
 # download drops a few as it takes the queue home, and on 13 November the router alone lost
-# 4, then 6, on a busy builder, and none on a rerun. Going up is only printed: the router VM
-# dropped from 94 to 1,296 of an unshaped call's datagrams from run to run, and dropped a
-# shaped one's while the client sent 10 Mbit/s into its 15, which is the builder's CPU and
-# no queue of the shaper's.
+# 4, then 6, on a busy builder, and none on a rerun. What it loses going up is only printed:
+# the router VM dropped from 94 to 1,296 of an unshaped call's datagrams from run to run,
+# and dropped a shaped one's while the client sent 10 Mbit/s into its 15, which is the
+# builder's CPU and no queue of the shaper's.
 DOWN_MOST = CALL_LEAST // 100
+# The most of a call the shaper's own CAKE may drop going up, the same hundredth: unlike the
+# router VM's, those drops are the shaper's queue alone.
+UP_DROPPED_MOST = DOWN_MOST
+# How many times the calls are made in all when a call's handshake goes unanswered. iperf3
+# sends a stream's connect datagram once and gives up after 30 s with no reply, where a call
+# asks again, so one datagram lost fails the whole call: on 19 November the page call did,
+# after 31 s, with nothing limited down. A connect the server never heard was lost going up,
+# where the router VM drops some of a call's datagrams and the shaper's upload queue may too.
+# Only test_a_call_goes_ahead_of_its_own_uploads judges the shaper's, in the video tin, and its
+# counts span every time the calls are made, so a connect the shaper dropped still counts
+# there. Any other may have been lost in the shaper's IFB, so it's excused only when the IFB
+# dropped nothing meanwhile.
+HANDSHAKES = 2
+# What iperf3 says when a stream's handshake timed out unanswered. A reply that came back as
+# something else ends with whatever errno an earlier call left, so it's taken for unanswered
+# only when that was this one; the counters read it as lost going up when it was 4 bytes, and
+# coming down otherwise.
+UNANSWERED = "unable to read from stream socket: Resource temporarily unavailable"
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
@@ -91,6 +118,41 @@ class Rig:
     def counts(self, dev: str, what: str) -> list[int]:
         """Give one of CAKE's counts on a device, a value per tin."""
         return [int(tin[what]) for tin in self.cake(dev)["tins"]]
+
+    def upload_rates(self) -> tuple[int, int | None]:
+        """Give the rate the upload's classes are held to, and Joel's CAKE's, in kbit/s.
+
+        tc gives both in bytes a second, and a CAKE with no rate of its own as unlimited,
+        which reads here as none.
+        """
+        classes = json.loads(self.client.succeed("tc -j class show dev eth1"))
+        qdiscs = json.loads(self.client.succeed("tc -j qdisc show dev eth1"))
+        held = next(c["rate"] for c in classes if c["handle"] == "1:2")
+        joel = next(q["options"]["bandwidth"] for q in qdiscs if q["handle"] == "2:")
+        kbit = int(joel) * 8 // 1000 if isinstance(joel, int) else None
+        return int(held) * 8 // 1000, kbit
+
+    def least_up(self, since: int) -> int | None:
+        """Give the least the controller asked eth1's upload be held to from a second on.
+
+        From its trace, in kbit/s, so a cut that climbed back before it's read shows too; none
+        if it asked no limit then.
+        """
+        _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl 2>/dev/null")
+        asks: list[int] = []
+        for line in text.splitlines():
+            try:
+                step: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (
+                isinstance(step, dict)
+                and step.get("link") == "eth1"
+                and step.get("at", 0) >= since
+                and isinstance(step.get("up"), int)
+            ):
+                asks.append(step["up"])
+        return min(asks, default=None)
 
     def ifb(self) -> str:
         """Give the name of the IFB that carries eth1's downloads."""
@@ -135,8 +197,68 @@ class Rig:
         return stuck
 
     def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
-        """Hold calls at once from an app, both unless named, and give what iperf3 made of each."""
+        """Hold calls at once from an app, both unless named, and give what iperf3 made of each.
+
+        When a call's handshake goes unanswered and its loss is excused (lost going up, or
+        anywhere while the IFB dropped nothing), and no call failed any other way, every call
+        is made again, so the calls that count ran together, up to HANDSHAKES times in all. A
+        call whose handshake is never answered still fails, saying how many times it was made
+        and what was heard.
+        """
         held = names or list(CALLS)
+        for made in range(1, HANDSHAKES + 1):
+            before = self.downs()
+            connects, replies = self.handshakes(self.server), self.handshakes(self.client)
+            results = self.hold(held, seconds)
+            dropped = sum(self.downs()) - sum(before)
+            heard = {name: n - connects[name] for name, n in self.handshakes(self.server).items()}
+            came = {name: n - replies[name] for name, n in self.handshakes(self.client).items()}
+            lost = [name for name in held if unanswered(results[name])]
+            failed = [name for name in held if "error" in results[name] and name not in lost]
+            # iperf3 connects a call's streams one after another and stops at the first left
+            # unanswered, so a reply came for every connect heard only when the failing one
+            # never reached the server: lost going up, judged only where a subtest counts the
+            # shaper's upload drops over every try.
+            down = [name for name in lost if heard[name] > came[name]]
+            # A call that ran in a try made again would go unjudged, so one past the bar keeps it.
+            over = over_the_bar(results, [name for name in held if name not in lost])
+            if not lost or failed or over or (down and dropped) or made == HANDSHAKES:
+                break
+            print(
+                f"the {', '.join(lost)} call's handshake went unanswered, its server hearing"
+                f" {[heard[name] for name in lost]} connects and the client getting"
+                f" {[came[name] for name in lost]} replies, with the IFB dropping {dropped},"
+                " so the calls are made again"
+            )
+        for name in lost:
+            results[name]["error"] += (
+                f" (made {made} of {HANDSHAKES} times, its server hearing {heard[name]} connects"
+                f" and the client getting {came[name]} replies, with the IFB dropping {dropped},"
+                f" {stopped(made, failed, over, down)})"
+            )
+        return results
+
+    def handshakes(self, machine: BaseMachine) -> dict[str, int]:
+        """Give how many call handshake datagrams a machine has received, by call."""
+        counted = {}
+        for name in CALLS:
+            listed: Json = json.loads(
+                machine.succeed(f"nft -j list counter inet handshakes {name}")
+            )
+            counted[name] = next(
+                int(item["counter"]["packets"]) for item in listed["nftables"] if "counter" in item
+            )
+        return counted
+
+    def downs(self) -> list[int]:
+        """Give the IFB's CAKE drops by tin, or none while it has no CAKE, as with no shaper."""
+        status, text = self.client.execute(f"tc -s -j qdisc show dev {self.ifb()}")
+        queues: list[Json] = json.loads(text) if status == 0 and text.strip() else []
+        cake = next((q for q in queues if q["kind"] == "cake" and q["handle"] == "2:"), None)
+        return [int(tin["drops"]) for tin in cake["tins"]] if cake else []
+
+    def hold(self, held: list[str], seconds: int) -> dict[str, Json]:
+        """Hold the named calls at once from an app, and give what iperf3 made of each."""
         each = " ".join(
             f"{BIN}/iperf3 --client {FAR} --port {CALLS[name]} --udp --bidir --bitrate {CALL_RATE}"
             f" --length {CALL_LENGTH} --time {seconds} --json > /tmp/call-{name}.json &"
@@ -326,8 +448,13 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
     return now
 
 
-def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
-    """Hold both calls while the jobs and an app fill the connection, and give what each lost.
+def under_load(
+    rig: Rig, *, shaped: bool, app_uploads: int = 0, names: list[str] | None = None
+) -> dict[str, dict[str, int]]:
+    """Hold the calls named, both unless named, while the jobs and an app fill the connection.
+
+    Each call's losses are given. With app_uploads, the app uploads too, filling Joel's lane
+    rather than the agents'.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
@@ -346,6 +473,8 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
         ("jobs-uploads", "jobs.slice", JOBS_UPLOADS, upload),
         ("app-downloads", "app.slice", APP_DOWNLOADS, download),
     ]
+    if app_uploads:
+        loads.append(("app-uploads", "app.slice", app_uploads, upload))
     try:
         for unit, slice_name, flows, script in loads:
             rig.start(unit, slice_name, flows, script)
@@ -368,7 +497,7 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
                 ),
                 timeout=FILLING,
             )
-        results = rig.calls()
+        results = rig.calls(names)
     finally:
         # Every load, started or not: a start can fail after making its unit.
         stuck = rig.stop(*(unit for unit, _, _, _ in loads))
@@ -388,6 +517,38 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
     # Last, so a load that wouldn't stop never takes the place of what the calls met.
     assert not stuck, f"the loads in {stuck} wouldn't stop"
     return lost
+
+
+def unanswered(result: Json) -> bool:
+    """Give whether iperf3 gave up on a call's handshake, before it sent a second of it."""
+    return not result.get("intervals") and str(result.get("error", "")).startswith(UNANSWERED)
+
+
+def over_the_bar(results: dict[str, Json], ran: list[str]) -> dict[str, int]:
+    """Give what each call that ran lost coming down, of those that lost more than the bar."""
+    lost = {
+        name: int(received(results[name], "down").get("lost_packets", 0))
+        for name in ran
+        if "error" not in results[name]
+    }
+    return {name: n for name, n in lost.items() if n > DOWN_MOST}
+
+
+def stopped(made: int, failed: list[str], over: dict[str, int], down: list[str]) -> str:
+    """Give why a lost handshake's calls stopped, so a count short of the most reads right."""
+    if made == HANDSHAKES:
+        return "on the last"
+    if failed:
+        return f"not made again, as the {', '.join(failed)} call failed otherwise"
+    if over:
+        losses = ", ".join(f"the {name} call's {n}" for name, n in over.items())
+        return (
+            f"not made again, so that {losses} datagrams lost coming down, over {DOWN_MOST}, count"
+        )
+    return (
+        f"not made again, as the {', '.join(down)} call's reply was lost coming down"
+        " while the IFB dropped some of what came down"
+    )
 
 
 def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
@@ -447,6 +608,67 @@ def test_a_call_loses_little(rig: Rig) -> None:
                 f"the {name} call lost {ways['down']} datagrams down, over {DOWN_MOST};"
                 f" dropped by tin: {dropped}\n{trace}"
             )
+
+
+def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
+    """While an app uploads beside its call, the shaper's upload drops at most a hundredth of it.
+
+    The app's uploads, over TCP, go best effort in Joel's own CAKE, beside the call's video. A
+    CAKE with no rate of its own takes turns by weight, best effort's twice video's, so with the
+    lane full it dropped about a third of the call going up. A trial holds the upload where the
+    lane is full whatever the controller finds. Only the media call is made, since the page call
+    goes best effort, where the app's uploads would crowd its handshake out too. The bar is on the
+    shaper's own drops in the video tin, which only the media call fills, since what the
+    router VM drops going up is the builder's.
+    """
+    try:
+        rig.client.succeed(f"echo '{{\"most_kbit\": {HELD_KBIT}}}' > {TRIAL}")
+        before = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
+        since = int(rig.client.succeed("date +%s"))
+        under_load(rig, shaped=True, app_uploads=APP_UPLOADS, names=["media"])
+        least = rig.least_up(since)
+        after = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
+        # The step that moves the classes' rate tells Joel's CAKE a moment after, so a read
+        # between the two is taken again; one that never agrees is a CAKE left behind.
+        for _ in range(5):
+            held, joel = rig.upload_rates()
+            if joel == held:
+                break
+            time.sleep(1)
+    finally:
+        # A ceiling left on would hold the next tests' upload under it for ten minutes, and
+        # the rate climbs back gently even once it's gone: test_unshaped, next, stops the
+        # shaper, so no shaped test is to follow this one.
+        rig.client.succeed(f"rm -f {TRIAL}")
+    meanwhile = {
+        what: dict(
+            zip(TINS, (a - b for a, b in zip(after[what], before[what], strict=True)), strict=True)
+        )
+        for what in after
+    }
+    dropped, sent = meanwhile["drops"], meanwhile["sent_packets"]
+    print(f"the upload dropped by tin meanwhile: {dropped}, and sent {sent}")
+    print(
+        f"the upload's classes held to {held} kbit/s, and Joel's CAKE to {joel},"
+        f" the controller asking at least {least}"
+    )
+    # Without the hold, with the call in another tin, or with the app's uploads elsewhere
+    # than beside it, the video tin would drop nothing whatever CAKE did; and counts that
+    # started again would go back.
+    assert held <= HELD_KBIT, f"the trial never held the upload: its classes at {held} kbit/s"
+    # Held much under it at any moment, the call would outgrow the half that CAKE serves video
+    # first, so the least it asked through the loads and the call is what's judged.
+    assert least is not None, "the controller asked the upload no limit under the trial"
+    assert least >= HELD_KBIT * 9 // 10, f"the controller cut under the trial, to {least} kbit/s"
+    assert joel is not None, f"Joel's CAKE has no rate, with the classes at {held} kbit/s"
+    assert joel == held, f"Joel's CAKE at {joel} kbit/s doesn't follow the classes' {held}"
+    assert sent["video"] >= CALL_LEAST, f"the call didn't go in the video tin: {sent}"
+    assert min(dropped.values()) >= 0, f"Joel's CAKE started its counts again: {dropped}"
+    assert dropped["best effort"] > 0, f"the app's uploads never filled Joel's lane: {dropped}"
+    assert dropped["video"] <= UP_DROPPED_MOST, (
+        f"the shaper's upload dropped {dropped['video']} of the video call's datagrams, over"
+        f" {UP_DROPPED_MOST}; by tin: {dropped}\n{rig.trace()}"
+    )
 
 
 def test_unshaped(rig: Rig) -> None:

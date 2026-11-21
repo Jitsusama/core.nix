@@ -391,6 +391,11 @@ Provider {
     // (Launcher.qml's relive), and read as the function, every new step
     // made Landed, Recent and Start again (LR3WMN, 2026-11-12).
     readonly property bool readNow: readable()
+    // Asleep in a kept opening's waking until its turn, like any source
+    // home's rows read (Launcher.qml's wakingOrder), so its own are read
+    // as it wakes, after the open's turn: in a slice of its own when Now's
+    // takes up the slice's budget, in Now's when Now's is short.
+    readsHome: true
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
     // and budgets), as each was last made while anything could read it
@@ -2877,7 +2882,11 @@ Provider {
         .filter(row => row !== null)
 
     // Asked while they aren't wanted, as a step into Agents asks before it's
-    // held, its rows are laid out as asked, from the daemon's rows held.
+    // held, its sessions' rows are laid out as asked, from the daemon's rows
+    // held; its own after them only while they're read (readNow), and
+    // otherwise as last made, so a step from a place that doesn't read
+    // them, as a category Agents is in, shows them made again once held.
+    readsAfreshUnwanted: readNow
     function everything() {
         // Its search looks through the tree's rows, so their texts are
         // made ready from those (Provider.qml's looksThrough).

@@ -1087,7 +1087,55 @@ ShellRoot {
             now.borrowed({ place: "power", key: "power:energy" })?.eyebrow
                 === "held \u00b7 battery", "it wasn't drawn");
         expect("a drawer's clock rests while the launcher is closed", !now.drawing, "it ran");
+        // Opened while Now waits its turn to wake, its opening work waits
+        // too, and once it wakes it says it opened when the launcher did.
+        // A notice told before it wakes runs that work then, so the notice
+        // read holds still from the opening; shut before it wakes, it never
+        // opened, whichever of Now and the launcher's queue hears the shut
+        // first. Each case comes before those its breaking would also fail.
+        const shutBefore = Date.now();
+        now.asleep = true;
         theLauncher.open = true;
+        const keptOpening = now.openingAt;
+        expect("opened asleep, Now keeps when it opened and does nothing yet",
+            keptOpening >= shutBefore && now.openedAt === Number.POSITIVE_INFINITY,
+            JSON.stringify([keptOpening, now.openedAt]));
+        // Said a minute back, so the moment kept tells from the wake's.
+        now.openingAt = keptOpening - 60000;
+        now.asleep = false;
+        expect("and woken, it opened when the launcher did",
+            now.openedAt === keptOpening - 60000 && now.openingAt === -1,
+            JSON.stringify([now.openedAt, keptOpening, now.openingAt]));
+        theLauncher.open = false;
+        now.asleep = true;
+        theLauncher.open = true;
+        const toldOpening = now.openingAt - 60000;
+        now.openingAt = toldOpening;
+        Notices.history = Notices.history.slice();
+        expect("a notice told while Now sleeps in an open launcher opens it then",
+            now.openedAt === toldOpening && now.openingAt === -1,
+            JSON.stringify([now.openedAt, toldOpening, now.openingAt]));
+        theLauncher.open = false;
+        now.asleep = true;
+        theLauncher.open = true;
+        theLauncher.open = false;
+        now.asleep = false;
+        expect("shut before Now woke, it never opened",
+            now.openedAt === Number.POSITIVE_INFINITY && now.openingAt === -1,
+            JSON.stringify([now.openedAt, now.openingAt]));
+        // The launcher's queue wakes its sleepers as it shuts, which may come
+        // before Now hears the shut, while it still keeps when it opened.
+        now.asleep = true;
+        theLauncher.open = true;
+        theLauncher.open = false;
+        now.openingAt = Date.now();
+        now.asleep = false;
+        expect("woken as the launcher shuts, before Now hears it, it never opened",
+            now.openedAt === Number.POSITIVE_INFINITY,
+            JSON.stringify([now.openedAt, now.openingAt]));
+        now.openingAt = -1;
+        theLauncher.open = true;
+        now.openedAt = keptOpening;
         expect("and turns while it's open", now.drawing, "it rested");
         expect("opening reads the weather, before the meeting",
             JSON.stringify(names())
@@ -1131,6 +1179,92 @@ ShellRoot {
             now.waiting.side === "1 to do" && ForYouHolds.count === 1,
             JSON.stringify([now.waiting.side, ForYouHolds.count]));
         expect("and home's row names it", now.homeSays() === "Battery at 5%", now.homeSays());
+        // What's pressing leads For You, so Return, Return reaches it: a
+        // critical notice comes before a look waiting, never under it
+        // (42P0R4, 2026-11-20; Y2YBTS's ruling).
+        const beforeLook = now.lookTexts;
+        now.lookTexts = { "p.json": JSON.stringify({ v: 1, id: "p", kind: "page",
+            at: root.lookedAt, target: "https://example.com", title: "Read P",
+            why: "Because.", state: "waiting", session: "" }) };
+        const pressing = now.waitingRows();
+        expect("a critical notice unread leads For You, ahead of a look waiting",
+            pressing[0]?.forYou?.source === "desktop" && pressing.findIndex(row => row.key
+                === "on:waitingOnYou:kind:look") > 0,
+            JSON.stringify(pressing.map(row => [row.key, row.forYou?.source ?? ""])));
+        const filtered = now.filterable();
+        expect("and leads what :filter narrows, as the list does",
+            filtered[0]?.forYou?.source === "desktop",
+            JSON.stringify(filtered.map(row => [row.key, row.forYou?.source ?? ""])));
+        now.lookTexts = beforeLook;
+        // Ahead of a session's question too, in For You and home alike.
+        Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
+            session: "s-c", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        const askFirst = now.waitingRows().map(row => row.forYou?.source ?? row.key);
+        const homeAsked = now.homeSays();
+        Sessions.wanting = [];
+        expect("a critical notice leads For You and home's row before a session's question",
+            askFirst[0] === "desktop" && homeAsked.startsWith("Battery at 5%")
+                && homeAsked.includes("1 more"),
+            JSON.stringify([askFirst, homeAsked]));
+        // Home's row names For You's first, so it names the notice before a
+        // thing to do too, its minutes not said beside the notice's name.
+        const toSign = { title: "Sign in to the bank", minutes: 2 };
+        WaitingOnYou.now = [toSign];
+        WaitingOnYou.foremost = toSign;
+        const signFirst = now.waitingRows().map(row => row.forYou?.source ?? row.key);
+        const homeFirst = now.homeSays();
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
+        expect("a critical notice leads For You and home's row before a thing to do",
+            signFirst[0] === "desktop" && homeFirst.startsWith("Battery at 5%")
+                && !homeFirst.includes("Sign in") && !homeFirst.includes("2 min")
+                && homeFirst.includes("1 more"),
+            JSON.stringify([signFirst, homeFirst]));
+        // One saying nothing still leads both, home naming the row it
+        // leads For You with, never the session or to-do under it.
+        Notices.history = [Object.assign({}, Notices.history[0], { summary: "" })];
+        WaitingOnYou.now = [toSign];
+        WaitingOnYou.foremost = toSign;
+        const blankRows = now.waitingRows();
+        const homeBlank = now.homeSays();
+        WaitingOnYou.now = [];
+        WaitingOnYou.foremost = null;
+        expect("a critical notice saying nothing leads home by its row's name",
+            blankRows[0]?.forYou?.source === "desktop" && homeBlank !== ""
+                && homeBlank.startsWith(blankRows[0].name) && !homeBlank.includes("Sign in"),
+            JSON.stringify([blankRows[0]?.name ?? null, homeBlank]));
+        Notices.history = [Object.assign({}, Notices.history[0], { summary: "Battery at 5%" })];
+        // Read while the launcher is open, its row stays leading For You
+        // while it holds another to read, so home names the row, and a
+        // session's question is still one more. With none left, the row goes.
+        const openedBefore = now.openedAt;
+        now.openedAt = Date.now() - 1000;
+        Sessions.wanting = [{ address: "WANTR", title: "Session R", presence: {
+            session: "s-r", addresses: [], wants: { kind: "question", said: "Which?" } } }];
+        Notices.history = [Notices.history[0], { id: 12, at: Date.now(), app: "power",
+            summary: "Charging", urgency: "normal", read: false }];
+        Notices.history = [Object.assign({}, Notices.history[0], { read: true }),
+            Notices.history[1]];
+        const readRows = now.waitingRows();
+        const homeRead = now.homeSays();
+        Notices.history = [Object.assign({}, Notices.history[0], { read: false })];
+        Sessions.wanting = [];
+        now.openedAt = openedBefore;
+        expect("its notice read while open, home names the row and counts the question",
+            readRows[0]?.forYou?.source === "desktop" && homeRead.startsWith(readRows[0].name)
+                && homeRead.includes("1 more") && !homeRead.includes("Battery"),
+            JSON.stringify([readRows[0]?.name ?? null, homeRead]));
+        // With Slack's critical too, home names the notice of whichever row leads.
+        Notices.history = [Notices.history[0], { id: 11, at: Date.now(), app: "Slack",
+            summary: "Pager", urgency: "critical", read: false }];
+        const twoRows = now.waitingRows();
+        const homeTwo = now.homeSays();
+        const twoLead = twoRows[0]?.forYou?.source;
+        Notices.history = [Notices.history[0]];
+        expect("of two sources' critical notices, home names the leading row's",
+            (twoLead === "slack" || twoLead === "desktop")
+                && homeTwo.startsWith(twoLead === "slack" ? "Pager" : "Battery at 5%"),
+            JSON.stringify([twoLead ?? null, homeTwo]));
         Notices.live = { "7": {} };
         expect("its card up, neither counts it",
             now.waitsNow === 0 && ForYouHolds.count === 0 && now.homeSays() === "",
@@ -2117,9 +2251,31 @@ ShellRoot {
             !keysOf(inForYou()).includes("on:waiting:desktop")
                 && keysOf(now.everything()).includes("on:waiting:desktop"),
             JSON.stringify(keysOf(inForYou())));
-        now.openedAt = Date.now();
         const wasHeld = theLauncher.held;
         const nowStep = { row: { from: now, key: "on" } };
+        // Opened while Now waits its turn to wake, it isn't shut, though it
+        // hasn't opened yet, so a card put away then leaves Desktop where
+        // Joel stands inside it.
+        now.openingAt = Date.now();
+        theLauncher.held = [nowStep,
+            { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
+        Notices.live = {};
+        expect("before Now wakes, a critical card put away inside Desktop leaves it there",
+            !keysOf(inForYou()).includes("on:waiting:desktop")
+                && keysOf(now.everything()).includes("on:waiting:desktop"),
+            JSON.stringify(keysOf(inForYou())));
+        // Shut before Now wakes, it never opened, so Now itself puts Desktop
+        // back where a shut launcher keeps it, for the next opening.
+        now.asleep = true;
+        theLauncher.open = false;
+        expect("shut before Now wakes, Desktop goes back where a shut launcher keeps it",
+            now.latelyPlaced.desktop === true, JSON.stringify(now.latelyPlaced));
+        theLauncher.held = wasHeld;
+        Notices.live = { "1": {} };
+        now.asleep = false;
+        theLauncher.open = true;
+        now.openedAt = Number.POSITIVE_INFINITY;
+        now.openedAt = Date.now();
         theLauncher.held = [nowStep,
             { row: { key: "on:waiting:desktop", forYou: { source: "desktop" } } }];
         Notices.live = {};
@@ -2214,6 +2370,13 @@ ShellRoot {
             now.leadsTo("onScreen").length === 1
                 && now.leadsTo("onScreen")[0].key === "on:waiting:screen",
             JSON.stringify(now.leadsTo("onScreen").map(row => row.key)));
+        // The names it leads into, which the chords' places read without
+        // making a row, are For You, the notices and what's on screen, and
+        // a name it doesn't list leads nowhere.
+        expect("Now leads into For You, the notices and what's on screen, and nothing else",
+            JSON.stringify(now.leadsInto) === JSON.stringify(["forYou", "notices", "onScreen"])
+                && now.leadsTo("weather") === null,
+            JSON.stringify([now.leadsInto, now.leadsTo("weather")]));
         now.openedAt = wasOpenedAt;
         const first = byKey(forYou());
         const mail = first["on:mail"];

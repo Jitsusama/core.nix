@@ -1,0 +1,30 @@
+# Counts the stream handshakes each call's datagrams take part in, as they
+# arrive: on the server, the connects it hears; on the client, the replies
+# that reached it, through its IFB while the shaper limits the download.
+# iperf3 opens each UDP stream with one connect
+# datagram of 4 bytes, a UDP length of 12, and its reply is the same size,
+# where a call's own datagrams are 1,200 bytes. Neither machine receives the
+# other's direction, so one counter per call serves both. iperf3 connects a
+# call's streams one after another and stops at the first left unanswered,
+# so a server that heard no more connects than the client got replies never
+# heard the failing one: it was lost going up, in the shaper's upload queue
+# or the router. Only the uploads subtest judges that loss, the shaper's
+# video drops, on counts that span every time the calls are made, so a
+# connect it drops still counts there. One it heard and no reply
+# came for was lost at the server or on the way down, in the router or the
+# shaper's IFB.
+
+counter media { }
+counter page { }
+
+chain heard {
+	# Ahead of the input hook's filters, so a count says the datagram
+	# arrived. On the client the firewall's prerouting check comes first, and
+	# a reply it dropped reads as lost coming down, which is excused, as any
+	# loss coming down is, only while the IFB dropped nothing.
+	type filter hook input priority raw; policy accept;
+	udp dport 5301 udp length 12 counter name "media"
+	udp dport 443 udp length 12 counter name "page"
+	udp sport 5301 udp length 12 counter name "media"
+	udp sport 443 udp length 12 counter name "page"
+}

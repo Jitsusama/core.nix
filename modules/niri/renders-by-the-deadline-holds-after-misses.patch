@@ -1,0 +1,219 @@
+Holds the render deadline's budget through misses that come close
+together at different budgets. A miss within one more hold's length
+after the hold ended now doubles the hold, as one at the same budget
+always did, so a need that wanders as the GPU's other work comes and
+goes no longer resets the hold to a second at each miss and lets the
+budget decay into the next. Within the hold, a miss at its floor doubles
+it as before, and the climb that follows is held for about a minute,
+longer for one that levels off just above the floor its last miss
+left, so a burst that meets a hold at its floor doesn't keep its
+budget for the ten minutes a steady need's hold grows to. A burst soon
+after a hold ended can't be told from a need that came back, so it
+keeps the doubled hold: up to ten minutes of a larger budget, a few
+milliseconds of the deadline's gain but no misses. On Joel's own GPU,
+on a 60 Hz screen, the deadline missed 3,832 vblanks in its first 2.5
+hours after a boot (20 November), one in at most 51 deferred frames,
+each shown a refresh late. In the tests' model, a need of 3 ms and
+6 ms by turns every 7 s missed 1364 vblanks in half an hour and now
+misses 52; one jittering from 2.5 to 5.5 ms missed 338 in ten minutes
+and now misses 27, each with a mean budget under 0.1 ms over the
+larger need. A half-second burst once the hold has grown costs a mean
+budget of 3.15 ms over the half hour, where keeping the hold it came
+in cost 3.54 with five minutes of that hold still to run. A steady
+need, one slow frame within it, or a GPU too slow for the deadline,
+misses as many as before. Ours, made on the rest.
+
+diff --git a/src/render_deadline.rs b/src/render_deadline.rs
+index 4b884dc..1da5848 100644
+--- a/src/render_deadline.rs
++++ b/src/render_deadline.rs
+@@ -20,6 +20,12 @@ const MAX_IDLE_TIME: Duration = Duration::from_millis(35);
+ const COOLDOWN_MIN: Duration = Duration::from_secs(1);
+ const COOLDOWN_MAX: Duration = Duration::from_secs(600);
+ const MISS_HEADROOM: Duration = Duration::from_micros(50);
++/// The longest a miss above a hold's floor, in a climb that began at it, holds the budget, so one
++/// burst of the GPU's other work inside a long hold gives up the deadline's gain for about a
++/// minute. A miss at the floor its last miss left still doubles the hold, so a burst that levels
++/// off just above that floor, at whatever level, can hold for two minutes, or more if it levels
++/// off more than once.
++const RISE_HOLD_MAX: Duration = Duration::from_secs(60);
+ 
+ #[derive(Debug, Clone, Copy)]
+ enum Deadline {
+@@ -39,6 +45,9 @@ pub struct RenderDeadline {
+     /// (budget, presentation_time)
+     last_presentation_miss: Option<(Duration, Duration)>,
+     cooldown: Duration,
++    /// True from a miss at a hold's floor until a miss outside the hold: while it is, a miss
++    /// within the hold above its floor holds for RISE_HOLD_MAX at most.
++    rise_in_hold: bool,
+ }
+ 
+ impl Default for RenderDeadline {
+@@ -50,6 +59,7 @@ impl Default for RenderDeadline {
+             next_presentation_time: None,
+             last_presentation_miss: None,
+             cooldown: COOLDOWN_MIN,
++            rise_in_hold: false,
+         }
+     }
+ }
+@@ -127,14 +137,33 @@ impl RenderDeadline {
+         self.budget = match self.next_presentation_time {
+             // Rendered with deferral but missed the vblank, raise the budget.
+             Some(target) if presentation_time > target + refresh / 2 => {
+-                // Exponential backoff when repeated tries to lower the budget miss vblank.
+-                let miss_repeated = self
++                // Exponential backoff when repeated tries to lower the budget miss vblank. What a
++                // frame needs wanders as the GPU's other work comes and goes, so a try can miss
++                // at another budget: a miss within one more hold's length after the hold ended
++                // counts too, where resetting the hold let the budget saw back down into misses
++                // every few seconds. Within the hold, a miss at its floor doubles it as before,
++                // and each later miss within that hold above its floor holds for at most
++                // RISE_HOLD_MAX. A long hold's budget sits at its floor nearly all the time, so a
++                // burst within one doesn't keep the budget it climbs to for the ten minutes a
++                // steady need's hold grows to; after the burst's hold, the steady need's hold
++                // grows back from a shorter one. A burst whose first miss comes soon after a hold
++                // ended, or while the budget is still above the floor of a hold begun that way,
++                // keeps the hold, as a need that came back must: a few milliseconds of the
++                // deadline's gain for up to COOLDOWN_MAX, but no misses.
++                let since_miss = self
++                    .last_presentation_miss
++                    .map(|(_, time)| presentation_time.saturating_sub(time));
++                let same_budget = self
+                     .last_presentation_miss
+                     .is_some_and(|(budget, _)| self.budget.abs_diff(budget) <= MISS_HEADROOM);
+-                self.cooldown = if miss_repeated {
+-                    (self.cooldown * 2).min(COOLDOWN_MAX)
+-                } else {
+-                    COOLDOWN_MIN
++                let in_hold = since_miss.is_some_and(|since| since < self.cooldown);
++                let doubled = (self.cooldown * 2).min(COOLDOWN_MAX);
++                (self.cooldown, self.rise_in_hold) = match since_miss {
++                    _ if in_hold && same_budget => (doubled, true),
++                    _ if in_hold && self.rise_in_hold => (self.cooldown.min(RISE_HOLD_MAX), true),
++                    _ if in_hold => (self.cooldown, false),
++                    Some(since) if same_budget || since < self.cooldown * 2 => (doubled, false),
++                    _ => (COOLDOWN_MIN, false),
+                 };
+ 
+                 self.last_presentation_miss = Some((self.budget, presentation_time));
+@@ -303,26 +332,40 @@ mod tests {
+         need: Duration,
+         secs: u64,
+     ) -> u32 {
++        simulate_wandering(rd, refresh, |_| need, secs).0
++    }
++
++    /// Renders for `secs`, each frame needing `need(frame)` to make its vblank: the misses, and
++    /// the mean budget the deferred frames rendered by.
++    fn simulate_wandering(
++        rd: &mut RenderDeadline,
++        refresh: Duration,
++        need: impl Fn(u32) -> Duration,
++        secs: u64,
++    ) -> (u32, Duration) {
+         let mut now = ms(100);
+         immediately_presented_at(rd, now, refresh);
+         let end = now + Duration::from_secs(secs);
+-        let mut misses = 0;
++        let (mut misses, mut frame, mut deferrals, mut budgets) = (0, 0, 0, Duration::ZERO);
+         while now < end {
+             let target = now + refresh;
+             let deferred = rd.deadline(now, target, refresh).is_some();
+             if deferred {
+                 rd.timer_fired(Some(target));
++                deferrals += 1;
++                budgets += rd.budget;
+             }
+             rd.redraw_started();
+-            now = if deferred && rd.budget < need {
++            now = if deferred && rd.budget < need(frame) {
+                 misses += 1;
+                 target + refresh
+             } else {
+                 target
+             };
++            frame += 1;
+             rd.presented(now, refresh);
+         }
+-        misses
++        (misses, budgets / deferrals.max(1))
+     }
+ 
+     #[test]
+@@ -417,4 +460,74 @@ mod tests {
+         let mut rd = RenderDeadline::default();
+         assert_eq!(simulate_renders(&mut rd, REFRESH_60, ms(14), 600), 52);
+     }
++
++    #[test]
++    fn a_need_that_comes_and_goes_still_backs_off() {
++        // 3 ms for 7 s, then 6 ms for 7 s, at 60 Hz, for half an hour, well past the longest
++        // hold, on a cycle no hold is a whole number of: a hold reset by each miss at another
++        // budget missed 1364 vblanks.
++        let need = |frame: u32| if frame / 420 % 2 == 0 { ms(3) } else { ms(6) };
++        let mut rd = RenderDeadline::default();
++        let (misses, budget) = simulate_wandering(&mut rd, REFRESH_60, need, 1800);
++        assert_eq!(misses, 52);
++        // On average, never much over the larger need.
++        assert!(budget < Duration::from_micros(6_100), "{budget:?}");
++    }
++
++    #[test]
++    fn a_half_second_burst_holds_about_a_minute() {
++        // 3 ms, but 6 ms for half a second 25 minutes in, once the steady need's hold has grown
++        // to ten minutes: kept at that hold, the budget would stay at 6 ms past the run's end,
++        // five minutes on, for a mean of 3.54 ms over the half hour.
++        let need = |frame: u32| {
++            if (90_000..90_030).contains(&frame) {
++                ms(6)
++            } else {
++                ms(3)
++            }
++        };
++        let mut rd = RenderDeadline::default();
++        let (misses, budget) = simulate_wandering(&mut rd, REFRESH_60, need, 1800);
++        assert_eq!(misses, 30);
++        assert!(budget < Duration::from_micros(3_200), "{budget:?}");
++
++        // 75 s after the burst began, the budget is back at the steady need's: held for 90 s, it
++        // would still be at 6 ms.
++        let mut rd = RenderDeadline::default();
++        simulate_wandering(&mut rd, REFRESH_60, need, 1575);
++        assert!(rd.budget < Duration::from_micros(3_100), "{:?}", rd.budget);
++    }
++
++    #[test]
++    fn a_lone_slow_frame_keeps_the_hold() {
++        // 3 ms, but 3.4 ms for one frame 25 minutes in, inside a ten-minute hold: a miss at the
++        // hold's floor doubles it as before, where cutting it to a minute missed 18 vblanks as it
++        // grew back.
++        let need = |frame: u32| {
++            if frame == 90_000 {
++                Duration::from_micros(3_400)
++            } else {
++                ms(3)
++            }
++        };
++        let mut rd = RenderDeadline::default();
++        let (misses, _) = simulate_wandering(&mut rd, REFRESH_60, need, 1800);
++        assert_eq!(misses, 16);
++    }
++
++    #[test]
++    fn a_need_that_jitters_still_backs_off() {
++        // 2.5 to 5.5 ms, stepped through the range each frame by a fixed rotation, so spread
++        // evenly rather than at random: a hold reset by each miss missed 338 vblanks in 10
++        // minutes.
++        let need = |frame: u32| {
++            let hash = u64::from(frame).wrapping_mul(2_654_435_761) >> 7;
++            Duration::from_micros(2_500 + hash % 3_000)
++        };
++        let mut rd = RenderDeadline::default();
++        let (misses, budget) = simulate_wandering(&mut rd, REFRESH_60, need, 600);
++        assert_eq!(misses, 27);
++        // On average.
++        assert!(budget < Duration::from_micros(5_600), "{budget:?}");
++    }
+ }

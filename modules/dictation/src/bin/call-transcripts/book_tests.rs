@@ -73,6 +73,92 @@ fn a_call_is_read_back_from_its_folder_and_one_cut_short_has_ended() {
 }
 
 #[test]
+fn the_call_recorded_now_is_served_as_recording_and_only_while_it_is() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut book = Book::default();
+    book.put(call(folder.path(), "call:e1", 10));
+    book.put(call(folder.path(), "call:e2", 20));
+    let (told, heard) = mpsc::channel();
+    book.answer(r#"{"id": 4, "ask": "watch", "kind": "call"}"#, 1, &told);
+    let changed = || -> Value { serde_json::from_str(&heard.try_recv().unwrap()).unwrap() };
+    let recording = |book: &mut Book| -> Vec<Value> {
+        let (listed, _) = ask(book, r#"{"id": 5, "ask": "list"}"#);
+        listed["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["recording"].clone())
+            .collect()
+    };
+    assert_eq!(recording(&mut book), [false, false], "nothing recorded yet");
+
+    book.recording(Some("call:e1"));
+    let said = changed();
+    assert_eq!(said["changed"][0]["key"], "call:e1");
+    assert_eq!(
+        said["changed"][0]["recording"], true,
+        "its watch isn't told"
+    );
+    assert_eq!(recording(&mut book), [false, true], "e2 is listed first");
+    book.recording(Some("call:e1"));
+    assert!(heard.try_recv().is_err(), "said again, a watch is told");
+    book.put(call(folder.path(), "call:e1", 10));
+    assert_eq!(
+        changed()["changed"][0]["recording"],
+        true,
+        "a call's record kept again while it's recorded says it isn't"
+    );
+
+    book.recording(Some("call:e2"));
+    let (was, now) = (changed(), changed());
+    assert_eq!(
+        (&was["changed"][0]["key"], &was["changed"][0]["recording"]),
+        (&json!("call:e1"), &json!(false)),
+        "the call it was isn't told it's no longer recorded"
+    );
+    assert_eq!(now["changed"][0]["key"], "call:e2");
+    assert_eq!(now["changed"][0]["recording"], true);
+
+    book.recording(None);
+    assert_eq!(
+        changed()["changed"][0]["recording"],
+        false,
+        "its end isn't told"
+    );
+    assert_eq!(
+        recording(&mut book),
+        [false, false],
+        "a call ended still records"
+    );
+}
+
+#[test]
+fn a_call_read_back_after_the_daemon_stopped_mid_call_is_not_recording() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut book = Book::default();
+    let record = call(folder.path(), "call:e1", 10);
+    book.put(record.clone());
+    book.recording(Some("call:e1"));
+    // Kept again while recorded, as hear keeps it with each line.
+    book.put(record.clone());
+    let meta = std::fs::read_to_string(record.folder.join(META)).unwrap();
+    let meta: Value = serde_json::from_str(&meta).unwrap();
+    assert!(
+        meta.get("recording").is_none(),
+        "being recorded was written beside the call: {meta}"
+    );
+
+    // Stopped mid-call, it starts again from the folder alone.
+    let mut read = Book::read(folder.path());
+    let (listed, _) = ask(&mut read, r#"{"id": 6, "ask": "list"}"#);
+    assert_eq!(listed["records"][0]["key"], "call:e1");
+    assert_eq!(
+        listed["records"][0]["recording"], false,
+        "a call read back says it's still being recorded"
+    );
+}
+
+#[test]
 fn a_calls_summary_is_read_from_its_one_file_or_from_the_summary_md_it_had_before() {
     let folder = tempfile::tempdir().unwrap();
     let mut book = Book::default();
@@ -146,7 +232,23 @@ fn the_one_other_person_names_their_side_and_the_note_says_how_they_re_known() {
         tuple.note("Joel").as_deref(),
         Some("Their side is Ada Lovelace, the one other person on the Tuple call.")
     );
+    let meet = Record {
+        known: Some(Known::Meet),
+        ..invited.clone()
+    };
+    assert_eq!(
+        meet.note("Joel").as_deref(),
+        Some("Their side is Ada Lovelace, the one other person in the Meet."),
+        "a Meet's one other person wasn't said to be from the Meet"
+    );
     let mut book = Book::default();
+    book.put(meet.clone());
+    let back = Book::read(folder.path());
+    assert_eq!(
+        back.record("call:e1").and_then(|back| back.known),
+        Some(Known::Meet),
+        "a Meet's people weren't read back as the Meet's"
+    );
     book.put(invited.clone());
     let back = Book::read(folder.path());
     let back = back.record("call:e1").unwrap();
@@ -173,6 +275,15 @@ fn several_others_name_no_side_and_the_note_lists_them() {
     assert_eq!(
         many.note("Joel").as_deref(),
         Some("On the Tuple call: P1, P2, P3, P4, P5, P6, P7, P8 and 3 more.")
+    );
+    let meet = Record {
+        known: Some(Known::Meet),
+        ..two.clone()
+    };
+    assert_eq!(
+        meet.note("Joel").as_deref(),
+        Some("In the Meet: Ada and Bo."),
+        "a Meet's people weren't listed as in it"
     );
     let namesake = Record {
         people: vec!["Joel".to_owned()],
@@ -230,7 +341,7 @@ fn a_call_s_account_is_kept_beside_it_and_never_served() {
         "the account kept with the call wasn't read back"
     );
     assert!(
-        !record.json().to_string().contains("jsama"),
+        !book.served(&record).to_string().contains("jsama"),
         "the shell was served the call's account"
     );
     book.put(call(folder.path(), "call:e2", 20));

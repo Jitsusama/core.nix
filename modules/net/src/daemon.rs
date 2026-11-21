@@ -33,7 +33,7 @@ use crate::collect::{self, Said};
 use crate::history::{self, Moment};
 use crate::room;
 use crate::serve as served;
-use crate::sources::{airplay, hp, modem, sony, switch};
+use crate::sources::{airplay, hp, modem, samsung, sony, switch};
 use crate::time;
 
 /// How often the sources are read: the eero daemon's own pace, so each
@@ -84,13 +84,15 @@ pub fn run() -> Result<(), String> {
     // A receiver's answers name where it's asked next; sony.rs keeps only
     // those on the receiver itself, and this agent never follows a
     // redirect, so no answer can send a request elsewhere. A printer's
-    // pages and an Apple TV's answer are asked with it too, so a redirect
-    // can't lead one away.
+    // pages and an Apple TV's and a TV's answers are asked with it too, so
+    // a redirect can't lead one away.
     let at_home: Agent = Agent::config_builder()
         .timeout_global(Some(PAGE))
         .max_redirects(0)
         .build()
         .into();
+    // Each TV's last answer, so a minute it's silent keeps its name.
+    let mut tvs = samsung::Heard::new();
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -114,6 +116,18 @@ pub fn run() -> Result<(), String> {
             .into_iter()
             .map(|(mac, address)| (mac, read_apple_tv(&at_home, &address)))
             .collect();
+        let listed = heard.as_ref().map(samsung::listed);
+        // Only a minute eero answered says which TVs have left.
+        if let Ok(listed) = &listed {
+            samsung::forget_unlisted(&mut tvs, listed);
+        }
+        let televisions = listed
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(mac, address)| {
+                samsung::remember(&mut tvs, mac, read_television(&at_home, &address))
+            })
+            .collect();
         let said = Said {
             eero: heard,
             modem: read_modem(&agent),
@@ -121,6 +135,7 @@ pub fn run() -> Result<(), String> {
             receivers,
             printers,
             apple_tvs,
+            televisions,
         };
         let mut network = collect::network(said, time::now());
         let earlier = history::read(&day, network.collected_at);
@@ -225,6 +240,36 @@ fn read_apple_tv(agent: &Agent, address: &str) -> Result<airplay::Answer, String
         .call()
         .and_then(|mut answer| answer.body_mut().read_to_vec())
         .map_err(|error| format!("it didn't answer: {error}"))
+}
+
+/// What a Samsung TV says of itself, as its text, which samsung.rs reads,
+/// no longer than a TV's answer could be. An error status, a redirect or
+/// a page past that is the box answering with something else, so a TV
+/// that starts refusing isn't taken for one asleep.
+fn read_television(agent: &Agent, address: &str) -> samsung::Reply {
+    let read = agent
+        .get(&samsung::url(address))
+        .call()
+        .and_then(|mut answer| {
+            answer
+                .body_mut()
+                .with_config()
+                .limit(samsung::LONGEST)
+                .read_to_string()
+        });
+    match read {
+        Ok(page) => samsung::Reply::Page(page),
+        Err(ureq::Error::StatusCode(status)) => {
+            samsung::Reply::Refused(format!("it says {status}"))
+        }
+        Err(ureq::Error::TooManyRedirects) => {
+            samsung::Reply::Refused("it sends it elsewhere".into())
+        }
+        Err(ureq::Error::BodyExceedsLimit(_)) => {
+            samsung::Reply::Refused("it says more than a TV does".into())
+        }
+        Err(error) => samsung::Reply::Silent(format!("it didn't answer: {error}")),
+    }
 }
 
 /// What a receiver answers: its description first, since it names where

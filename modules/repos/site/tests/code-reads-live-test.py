@@ -64,12 +64,13 @@ DRAWS_A_SECOND = 2
 # The server watches a gone daemon again every 2 seconds, so its return shows inside this.
 BACK_MS = 15000
 # The kinds the repos daemon serves, each told whole, as home.nix declares them.
-KINDS = ["reading", "repository", "checkout", "tree", "change"]
+KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # What a first visit to Code may cost, drawn from the stand-in's repositories: two of the files
-# are the map of ties, its view and its logic, and the kilobytes and elements count its section,
-# its keys' lines in the list of keys and the tying cell's link too, and two of the kilobytes
-# lead each tree's cells on to the other repositories they work across.
-BUDGET = Budget(files=33, kilobytes=572, elements=275)
+# are the map of ties, its view and its logic, one says what works in each repository, and the
+# kilobytes and elements count its section, its keys' lines in the list of keys and the tying
+# cell's link too, two of the kilobytes lead each tree's cells on to the other repositories
+# they work across, and two say what works unread where the daemon's reading stopped.
+BUDGET = Budget(files=34, kilobytes=577, elements=275)
 CELLS_SITE = "cells/"
 
 
@@ -316,6 +317,19 @@ def test_a_repositorys_weight_and_due_upkeep_are_said(code_page: Page) -> None:
     )
     expect(code_page.locator("#open"), "the drawer didn't say why").to_contain_text(
         "about 2.5 GB in git: 7,168 loose, 11 packs; git's upkeep is due"
+    )
+
+
+def test_what_works_in_a_repository_is_said(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    # Three of Ada's processes work in core, one in its checkout and two in the grove, whose
+    # season folds it shut, and nothing works in notes, whose row stays quiet.
+    expect(row(code_page, "github:owl/core"), "what works in core wasn't said").to_contain_text(
+        "40% of a core, 1.3\u00a0GB of memory"
+    )
+    expect(row(code_page, "local:~/src/notes"), "notes said a use").not_to_contain_text("memory")
+    expect(code_page.locator("#open"), "the checkout's use wasn't said").to_contain_text(
+        "1\u00a0process: 10% of a core, 300\u00a0MB of memory"
     )
 
 

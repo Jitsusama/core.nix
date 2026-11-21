@@ -7,6 +7,7 @@ test's opening comment says what stands in for the device a VM lacks.
 
 | File                                     | Holds                                                       |
 | ---------------------------------------- | ----------------------------------------------------------- |
+| `deep-rest.nix`, `-vm-test.py`           | the XPS 14's cores kept from deep rest, and let go at once   |
 | `desk-facts.nix`, `-vm-test.py`          | desk-facts following a USB sound card through a replug      |
 | `desk-lights.nix`, `-vm-test.py`         | the desk's lights told what to do again once plugged back   |
 | `idle-sleep.nix`, `-vm-test.py`          | a machine left idle, sleeping only on battery               |

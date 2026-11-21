@@ -330,6 +330,7 @@
         linux-builder = ./modules/linux-builder/darwin.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         macos-defaults = ./modules/macos-defaults/darwin.nix;
+        netconsole = ./modules/netconsole/darwin.nix;
         nix-daemon = ./modules/nix-daemon/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         openssh = ./modules/openssh/darwin.nix;
@@ -383,6 +384,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         guide = ./modules/guide/nixos.nix;
+        hang-panic = ./modules/hang-panic/nixos.nix;
         hardening = ./modules/hardening/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
@@ -410,6 +412,7 @@
         name-service = ./modules/name-service/nixos.nix;
         sd-switch = ./modules/sd-switch/nixos.nix;
         net = ./modules/net/nixos.nix;
+        netconsole = ./modules/netconsole/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;
         niri = ./modules/niri/nixos.nix;

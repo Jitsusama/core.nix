@@ -41,7 +41,7 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
         ]);
     }
     for link in all {
-        blocks.push(said(&link));
+        blocks.push(said(&link, context.room));
         for (way, dev) in [("sent", &link.name), ("received", &link.ifb)] {
             let json = sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).unwrap_or_default();
             blocks.push(tins_table(
@@ -57,17 +57,26 @@ pub fn status(runtime: &Path, context: &Context) -> Result<(), Failure> {
     if let Some(left) = Duration::from_secs(1).checked_sub(first.at.elapsed()) {
         std::thread::sleep(left);
     }
-    blocks.push(first.said(&Spent::now()));
+    blocks.push(first.said(&Spent::now(), context.room));
     // Written whole at the end, so a reader that stops early, as
     // `grep -q` or `head` does, ends the report rather than panicking it.
     let _ = std::io::stdout().write_all(layout::joined(blocks).as_bytes());
     Ok(())
 }
 
-/// A link's name, its network, and what the shaper holds it to and why.
-fn said(link: &LinkStatus) -> Vec<String> {
-    let mut lines = vec![format!("{}  on {}", link.name, link.network)];
-    let mut say = |line: String| lines.push(format!("{INSET}{line}"));
+/// A link's name, its network, and what the shaper holds it to and why,
+/// set in `room` at the measure prose keeps to.
+fn said(link: &LinkStatus, room: Room) -> Vec<String> {
+    let room = room.for_prose();
+    // The names are the kernel's and iproute2's text, which the shaper
+    // doesn't control, so they're drawn through the kit's filter, which
+    // keeps a control from reaching the terminal.
+    let mut lines = vec![format!(
+        "{}  on {}",
+        layout::one_line(&link.name),
+        layout::one_line(&link.network)
+    )];
+    let mut say = |line: String| lines.extend(set(&line, INSET.len(), room));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
     for line in link.lanes.as_ref().map(lanes_said).unwrap_or_default() {
         say(line);
@@ -93,8 +102,32 @@ fn said(link: &LinkStatus) -> Vec<String> {
         .iter()
         .map(|(host, ms)| format!("{host} {ms:.0} ms"))
         .collect();
-    say(format!("quiet round trips: {}", pings.join(", ")));
+    // Parted by the kit's item mark, so a wrap gives way between round
+    // trips and never leaves a host on one line and its time on the next.
+    say(format!("quiet round trips: {}", pings.join(layout::ITEMS)));
     lines
+}
+
+/// A line of status set `inset` cells in, wrapped at whole words to the
+/// room and hung two cells further under its first words, so where one
+/// line ends and the next begins reads at a glance, as disk-guard's
+/// holders do. A line that fits, and any line into a pipe, stays whole.
+fn set(line: &str, inset: usize, room: Room) -> Vec<String> {
+    let whole = layout::one_line(line);
+    if room
+        .cells()
+        .is_none_or(|cells| inset + layout::width(&whole) <= cells)
+    {
+        return vec![format!("{}{whole}", " ".repeat(inset))];
+    }
+    layout::hung(line, inset + layout::GAP, room)
+        .split('\n')
+        .enumerate()
+        .map(|(at, part)| {
+            let lead = if at == 0 { inset } else { 0 };
+            format!("{}{part}", " ".repeat(lead))
+        })
+        .collect()
 }
 
 /// How the upload is shared between its lanes, Joel's first, and the
@@ -211,8 +244,9 @@ impl Spent {
         }
     }
 
-    /// What was spent between this and `later`, as lines of status.
-    fn said(&self, later: &Self) -> Vec<String> {
+    /// What was spent between this and `later`, as lines of status set
+    /// in `room`.
+    fn said(&self, later: &Self, room: Room) -> Vec<String> {
         #[expect(
             clippy::cast_possible_truncation,
             reason = "a second or two, far under u64's microseconds"
@@ -241,6 +275,9 @@ impl Spent {
             ));
         }
         lines
+            .iter()
+            .flat_map(|line| set(line, 0, room.for_prose()))
+            .collect()
     }
 }
 
@@ -398,6 +435,294 @@ mod tests {
             lanes_said(&shared(0, 0)).len(),
             1,
             "a line said that no agent waits"
+        );
+    }
+
+    /// A link as it reads on a busy afternoon, its upload held for the
+    /// VPN's tunnel: a why of 120 cells, longer than the 103 that ran
+    /// off an 80-column terminal on 19 November.
+    fn held() -> LinkStatus {
+        LinkStatus {
+            name: "wlp0s20f3".to_owned(),
+            ifb: "ifb4wlp0s20f3".to_owned(),
+            network: "6c:ae:f6:c2:d6:b2".to_owned(),
+            up: 10_800,
+            down: 2_000_000,
+            state: "steady".to_owned(),
+            baselines: vec![
+                ("1.0.0.1".to_owned(), 17.0),
+                ("1.1.1.1".to_owned(), 16.0),
+                ("8.8.8.8".to_owned(), 16.0),
+                ("9.9.9.9".to_owned(), 58.0),
+            ],
+            follows: Some("enp0s13f0u1u4".to_owned()),
+            live: true,
+            straight: false,
+            heard: Some(crate::live::Heard {
+                why: Some(
+                    "Upload 10.8 Mb/s: the VPN waited 89 ms inside its tunnel, so its own \
+                     queue is held to 38% of its lane; held so for 36 s."
+                        .to_owned(),
+                ),
+                plateau: Some(9_900.0),
+                ..crate::live::Heard::default()
+            }),
+            lanes: Some(shared(12, 3)),
+        }
+    }
+
+    #[test]
+    fn a_link_s_lines_fit_the_room_from_sixty_columns_up() {
+        for cells in [60, 80, 100, 200] {
+            let text = said(&held(), Room::Cells(cells)).join("\n");
+            assert_eq!(
+                layout::overrun(&text, Room::Cells(cells)),
+                None,
+                "at {cells} columns a link's line runs past the edge"
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_too_long_for_the_room_hangs_under_its_first_words() {
+        let lines = said(&held(), Room::Cells(80));
+        let at = lines
+            .iter()
+            .position(|line| line.starts_with("  Upload"))
+            .expect("the why is said");
+        let next = &lines[at + 1];
+        assert!(
+            next.starts_with("    ") && !next.starts_with("     "),
+            "{next:?} doesn't hang two cells in from {:?}",
+            lines[at]
+        );
+        let why = held().heard.and_then(|heard| heard.why).expect("a why");
+        let hung: Vec<&str> = lines[at..]
+            .iter()
+            .take_while(|line| *line == &lines[at] || line.starts_with("    "))
+            .flat_map(|line| line.split_whitespace())
+            .collect();
+        assert_eq!(
+            hung,
+            why.split_whitespace().collect::<Vec<_>>(),
+            "the why lost or gained words in its wrap: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_figure_stays_beside_its_unit() {
+        // As the router's queue said it on 19 November, when at 70
+        // columns its rate's figure ended one line and its unit began
+        // the next: the shaper's own words, not a copy of them.
+        let why = crate::why::say(
+            crate::why::Why::Router { plateau: 10_300.0 },
+            Some(9_800),
+            None,
+            4.0,
+        );
+        let mut link = held();
+        if let Some(heard) = link.heard.as_mut() {
+            heard.why = Some(why.clone());
+        }
+        for cells in 40..=80 {
+            let lines = said(&link, Room::Cells(cells));
+            // The why's own lines, so a figure said elsewhere can't stand
+            // in for one the why parted.
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  Upload"))
+                .expect("the why is said");
+            let own: Vec<&String> = lines[at..]
+                .iter()
+                .take_while(|line| *line == &lines[at] || line.starts_with("    "))
+                .collect();
+            for figure in ["9.8 Mb/s", "10.3 Mb/s", "4 s."] {
+                assert!(
+                    why.contains(figure) && own.iter().any(|line| line.contains(figure)),
+                    "at {cells} columns {figure:?} was parted: {own:#?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_round_trip_s_host_stays_beside_its_time() {
+        for cells in [50, 60, 70] {
+            let lines = said(&held(), Room::Cells(cells));
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  quiet round trips"))
+                .expect("the round trips are said");
+            let own: Vec<&String> = lines[at..]
+                .iter()
+                .take_while(|line| line.starts_with("  quiet") || line.starts_with("    "))
+                .collect();
+            assert!(
+                own.len() > 1,
+                "at {cells} columns the round trips didn't wrap: {lines:#?}"
+            );
+            for (host, ms) in held().baselines {
+                let trip = format!("{host} {ms:.0} ms");
+                assert!(
+                    own.iter().any(|line| line.contains(&trip)),
+                    "at {cells} columns {trip:?} was parted: {lines:#?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn into_a_pipe_each_of_a_link_s_lines_stays_whole() {
+        let why = held().heard.and_then(|heard| heard.why).expect("a why");
+        let lines = said(&held(), Room::Unbounded);
+        assert!(
+            lines.contains(&format!("{INSET}{why}")),
+            "the why was parted into a pipe: {lines:#?}"
+        );
+        // The VM test greps these two, so each must stay on one line.
+        for start in [
+            "  quiet round trips: 1.0.0.1 17 ms",
+            "  real-time traffic flows",
+        ] {
+            assert!(
+                lines.iter().any(|line| line.starts_with(start)),
+                "no line starts {start:?}: {lines:#?}"
+            );
+        }
+        assert!(
+            lines.iter().all(|line| !line.starts_with("    ")),
+            "a line was hung into a pipe: {lines:#?}"
+        );
+        // The VM test looks for the link's name and the shaper's own
+        // processor line too.
+        assert!(
+            lines[0].starts_with("wlp0s20f3  on "),
+            "the heading was parted into a pipe: {lines:#?}"
+        );
+        let (first, later) = spent();
+        let spent = first.said(&later, Room::Unbounded);
+        assert!(
+            spent
+                .iter()
+                .any(|line| line.starts_with("cpu: the shaper ") && line.ends_with("of a core")),
+            "the shaper's processor line was parted into a pipe: {spent:#?}"
+        );
+    }
+
+    #[test]
+    fn a_line_that_fits_the_room_stays_on_one_line() {
+        let line = "  at enp0s13f0u1u4's rate: both reach the same router";
+        let lines = said(&held(), Room::Cells(layout::width(line)));
+        assert!(
+            lines.iter().any(|each| each == line),
+            "a line that fit its room was folded: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn however_wide_the_terminal_a_link_s_lines_are_set_at_eighty() {
+        let lines = said(&held(), Room::Cells(200));
+        assert!(
+            lines
+                .iter()
+                .all(|line| layout::width(line) <= layout::MEASURE),
+            "a line ran past the measure at 200 columns: {lines:#?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.starts_with("    ")),
+            "the why wasn't wrapped at the measure: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn names_and_a_why_from_outside_draw_no_escape() {
+        // The leader's name sits on a line that fits, so it reads the
+        // path a line set whole takes, as every line into a pipe does.
+        let mut link = LinkStatus {
+            name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
+            network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
+            follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
+            ..held()
+        };
+        // A why long enough to wrap at 60, so the hang's path is read.
+        if let Some(heard) = link.heard.as_mut() {
+            heard.why = heard
+                .why
+                .take()
+                .map(|why| format!("{why} \u{1b}[2J\u{7}cleared"));
+        }
+        for room in [Room::Cells(60), Room::Cells(200), Room::Unbounded] {
+            let lines = said(&link, room);
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.starts_with("  at enp0") && line.contains("'s rate: both")),
+                "the leader wasn't said into {room:?}: {lines:#?}"
+            );
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
+                "into {room:?} a control was drawn: {lines:#?}"
+            );
+        }
+    }
+
+    /// A second of the shaper's spending, as two readings of the
+    /// processor and its services.
+    fn spent() -> (Spent, Spent) {
+        let at = Instant::now();
+        let reading = |softirq: u64, total: u64, shaper: u64| Spent {
+            at,
+            cores: cpu::ticks(&format!(
+                "cpu  {total} 0 0 0 0 0 {softirq} 0\ncpu0 {total} 0 0 0 0 0 {softirq} 0"
+            )),
+            services: vec![Some(shaper), Some(shaper / 10)],
+        };
+        let mut later = reading(30, 1_100, 62_000);
+        later.at = at + Duration::from_secs(1);
+        (reading(10, 100, 0), later)
+    }
+
+    #[test]
+    fn the_processor_s_lines_fit_the_room() {
+        let (first, later) = spent();
+        let whole = first.said(&later, Room::Unbounded);
+        let words = |lines: &[String]| {
+            lines
+                .join(" ")
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        for cells in [40, 60] {
+            let lines = first.said(&later, Room::Cells(cells));
+            assert!(
+                lines.iter().any(|line| line.starts_with("softirq")),
+                "no softirq line: {lines:#?}"
+            );
+            assert!(
+                lines.iter().all(|line| layout::width(line) <= cells),
+                "at {cells} columns a processor line ran past the edge: {lines:#?}"
+            );
+            assert_eq!(
+                words(&lines),
+                words(&whole),
+                "at {cells} columns a processor line lost words"
+            );
+            // Each line begins one as said whole or hangs two cells under
+            // its first words.
+            assert!(
+                lines.iter().all(
+                    |line| whole.iter().any(|said| said.starts_with(line.as_str()))
+                        || (line.starts_with("  ") && !line.starts_with("   "))
+                ),
+                "at {cells} columns a wrapped line didn't hang: {lines:#?}"
+            );
+        }
+        assert!(
+            first.said(&later, Room::Cells(40)).len() > whole.len(),
+            "at 40 columns no processor line wrapped"
         );
     }
 

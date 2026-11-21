@@ -183,6 +183,8 @@ def call(joel: Joel) -> dict[str, Any]:
         )
         joel.wait_for(f"{joel.listing()} | grep -qF '\"transcribing\":true'", ANSWERS_WITHIN)
         joel.wait_for("pw-link -l | grep -qF call-transcripts-mine", ANSWERS_WITHIN)
+        # Served as recorded while it is, so the shell keeps its Meet followed.
+        joel.wait_for(f"{joel.listing()} | grep -qF '\"recording\":true'", ANSWERS_WITHIN)
         # Both sides from the call's time 0, and another program on the speakers meanwhile,
         # as a notice or music would be; each player ends at its clip's end.
         joel.run(
@@ -288,6 +290,11 @@ def test_a_call_is_kept_under_its_meeting(call: dict[str, Any]) -> None:
     assert call["title"] == MEETING
     assert call["ended"] is not None
     assert MEETING in call["folder"]
+
+
+def test_a_call_ended_is_no_longer_served_as_recorded(call: dict[str, Any]) -> None:
+    """Served as recorded while it went on, the call no longer is once it ended."""
+    assert call["recording"] is False, f"an ended call is still recorded: {call}"
 
 
 def test_both_sides_are_written_in_the_order_they_spoke(joel: Joel, call: dict[str, Any]) -> None:
@@ -406,8 +413,9 @@ def test_stop_transcribing_stops_at_once_with_the_call_still_on(
     joel: Joel, stopped: dict[str, Any]
 ) -> None:
     """Stopping from the notice lets both recorders go, though the call program still runs."""
-    assert stopped["transcribing"] is False
-    assert stopped["ended"] is None
+    assert stopped["transcribing"] is False, f"a call stopped is still transcribed: {stopped}"
+    assert stopped["ended"] is None, f"a call stopped is taken as ended: {stopped}"
+    assert stopped["recording"] is False, f"a call stopped is still served as recorded: {stopped}"
     joel.run("systemctl --user is-active call")
     joel.wait_for("! pw-cli ls Node | grep -qF call-transcripts-", ANSWERS_WITHIN)
 
@@ -441,6 +449,10 @@ def test_a_call_stopped_isnt_transcribed_again_once_rejoined(
             ANSWERS_WITHIN,
         )
         joel.run("! pw-cli ls Node | grep -qF call-transcripts-")
+        rejoined = joel.record(key)
+        assert rejoined["recording"] is False, (
+            f"a call rejoined unrecorded is served as recorded: {rejoined}"
+        )
         assert len([n for n in joel.told() if n[1] == f"{STANDUP} Is Being Transcribed"]) == 1
     except Exception:
         joel.explain()

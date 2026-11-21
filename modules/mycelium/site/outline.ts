@@ -1,12 +1,15 @@
 // The network as a tree, for keys and screen readers, decided apart from
 // the drawing (view.js) that writes it into the page. Machines hold the
 // networks their cords carry, networks hold their branches and then their
-// cells, worst first. Only open branches are shown, so the tree stays small
-// however large the network grows. Every thing goes by its key: `m:` and a
-// machine's name, `h:` and a network's, `c:` and a cell's address.
+// cells, worst first; the builders follow the machines, holding nothing.
+// Only open branches are shown, so the tree stays small however large the
+// network grows. Every thing goes by its key: `m:` and a machine's name,
+// `b:` and a builder's, `h:` and a network's, `c:` and a cell's address.
 
 import type { TreeAct } from "./keys.ts";
 import {
+  type Builder,
+  builderWords,
   type Cell,
   cellWords,
   hubWords,
@@ -89,14 +92,30 @@ export const upOf = (reading: Reading, key: string, machinesShown: boolean): str
   return null;
 };
 
-/** The tree's top: the machines while they're shown, else every network that is no branch. */
+/**
+ * The tree's top: the machines and then the builders while they're shown,
+ * else every network that is no branch.
+ */
 export const rootsOf = (
-  reading: { readonly hubs: ReadonlyMap<string, Network>; readonly machines: readonly Machine[] },
+  reading: {
+    readonly hubs: ReadonlyMap<string, Network>;
+    readonly machines: readonly Machine[];
+    readonly builders?: readonly Builder[] | undefined;
+  },
   machinesShown: boolean,
 ): readonly string[] =>
   machinesShown && reading.machines.length > 0
-    ? reading.machines.map((x) => `m:${x.name}`)
-    : [...reading.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
+    ? [...reading.machines.map((x) => `m:${x.name}`), ...buildersShown(reading, machinesShown)]
+    : [
+        ...[...reading.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`),
+        ...buildersShown(reading, machinesShown),
+      ];
+
+/** The builders' keys while the machines are shown, which the map draws then whatever else. */
+const buildersShown = (
+  reading: { readonly builders?: readonly Builder[] | undefined },
+  machinesShown: boolean,
+): readonly string[] => (machinesShown ? (reading.builders ?? []).map((b) => `b:${b.name}`) : []);
 
 /** The words a tree row shows: its name, in mono for a machine's, and what it does under it. */
 export interface RowWords {
@@ -119,6 +138,10 @@ export const rowWords = (reading: Reading, key: string): RowWords => {
     return h
       ? { name: h.name, fact: hubWords(h), mono: false }
       : { name: id, fact: "", mono: false };
+  }
+  if (key[0] === "b") {
+    const b = reading.builders?.find((y) => y.name === id);
+    return { name: id, fact: b ? builderWords(b) : "", mono: true };
   }
   return { name: id, fact: machineWords(reading, id), mono: true };
 };

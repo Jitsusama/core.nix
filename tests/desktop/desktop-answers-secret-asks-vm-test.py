@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from desktop_session import Desktop
 
 # The one reference the machine lists (tests/desktop.nix's released), and the stand-in value op
-# gives for it (desktop/op-stand-in.sh).
+# gives for it (desktop/stand-ins/op-stand-in.sh).
 RELEASED = "op://Keeping/Lighthouse Console/password"
 STAND_IN = "stand-in-password"
 # Where agents put their asks up, and the daemon its answers.

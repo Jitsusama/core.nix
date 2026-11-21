@@ -8,10 +8,13 @@
 //! memory and the disk; what their memory lost to swap; how long niri's
 //! main thread and PipeWire's data loops waited for a CPU each time they
 //! were ready, and in a call the worst of Tuple's and of Chrome's call
-//! threads, each apart; and, every two seconds, how long niri takes to answer on
-//! its socket, which it does from the same loop that reads input and
-//! draws. Each window is tagged with the system generation and how hard
-//! the work behind Joel was working, so like is compared with like.
+//! threads, each apart; how long Chrome's and Slack's drawing threads
+//! waited, at all times, leaving out tabs the app lowered as hidden, for
+//! the hourly measure cadence judges to read; and, every two seconds,
+//! how long niri takes to answer on its socket, which it does from the
+//! same loop that reads input and draws. Each window is tagged with the
+//! system generation and how hard the work behind Joel was working, so
+//! like is compared with like.
 //!
 //! The latest window goes to $XDG_RUNTIME_DIR/lag-watch/status.json, for
 //! the shell to show: its `trouble` in sentences; `worst`, one word for
@@ -26,11 +29,13 @@
 //! `--format` asks for, as every command of ours does (docs/commands.md).
 //! `lag-watch run` is the watch itself, as its service runs it.
 
+mod apps;
 mod kernel;
 mod now;
 mod report;
 mod window;
 
+use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -166,19 +171,29 @@ fn answer_report(context: &Context, hours: u64) -> Result<(), Failure> {
     .map_err(|error| unwritten(&error))
 }
 
-/// The account's manager this runs under, from its own cgroup: the
-/// slices it watches are this account's.
-fn account(cgroups: &Path) -> Option<PathBuf> {
-    let own = fs::read_to_string("/proc/self/cgroup").ok()?;
-    let path = own.lines().find_map(|l| l.strip_prefix("0::"))?;
-    let end = path.find(".service").filter(|_| path.contains("/user@"))?;
-    let manager = &path[..end + ".service".len()];
-    Some(cgroups.join(manager.trim_start_matches('/')))
+/// The cgroup folder of the account's manager this runs under, as
+/// [`manager`] names it: the slices it watches are this account's.
+fn account(cgroups: &Path, manager: &str) -> PathBuf {
+    cgroups.join(manager.trim_start_matches('/'))
 }
 
-fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snapshot {
+/// The account's manager in a process's cgroup, as `/proc/<pid>/cgroup`
+/// names it, such as `/user.slice/user-1000.slice/user@1000.service`.
+fn manager(cgroup: &str) -> Option<&str> {
+    let path = cgroup.lines().find_map(|l| l.strip_prefix("0::"))?;
+    let end = path.find(".service").filter(|_| path.contains("/user@"))?;
+    Some(&path[..end + ".service".len()])
+}
+
+fn snapshot(
+    cgroups: &Path,
+    account: &Path,
+    threads: &[kernel::Thread],
+    unwatched: BTreeMap<String, usize>,
+) -> Snapshot {
     let mut s = Snapshot {
         at: started().elapsed().as_secs_f64(),
+        unwatched,
         ..Snapshot::default()
     };
     for (name, dir) in [
@@ -205,11 +220,40 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[kernel::Thread]) -> Snaps
                 .insert(entry.file_name().to_string_lossy().to_string(), g);
         }
     }
+    // A process its app lowered, a hidden tab, is nobody's wait: counted,
+    // not read. The app lowers only the tab's main thread, so that one's
+    // nice, in the process's own stat, leaves out its compositor with it.
+    // It's read each window, since a tab shown again is raised again, and
+    // its threads' schedstat is kept as where the next window starts, so a
+    // tab shown in a window is counted for all of it. One hidden in a
+    // window is left out of all of it, as its nice at the end says.
+    let mut lowered: BTreeMap<&Path, Option<&str>> = BTreeMap::new();
     for thread in threads {
+        let mut hidden = false;
+        if apps::is_app(thread)
+            && let Some(process) = apps::process(thread)
+        {
+            hidden = lowered
+                .entry(process)
+                .or_insert_with(|| {
+                    let stat = fs::read_to_string(process.join("stat")).unwrap_or_default();
+                    kernel::nice(&stat)
+                        .is_some_and(|n| n > 0)
+                        .then_some(thread.label)
+                })
+                .is_some();
+        }
         let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
-            s.threads.insert(thread.clone(), sched);
+            if hidden {
+                s.resting.insert(thread.clone(), sched);
+            } else {
+                s.threads.insert(thread.clone(), sched);
+            }
         }
+    }
+    for label in lowered.into_values().flatten() {
+        *s.lowered.entry(label.to_string()).or_default() += 1;
     }
     kernel::while_in_a_call(&mut s.threads);
     s
@@ -396,7 +440,10 @@ fn now(context: &Context) -> Result<(), Failure> {
 /// The watch, a window every ten seconds until it's stopped.
 fn run() -> Result<(), Failure> {
     let cgroups = PathBuf::from("/sys/fs/cgroup");
-    let Some(account) = account(&cgroups) else {
+    // One read of its own cgroup gives both the slices and the apps, so
+    // they can't disagree about whose they are.
+    let own = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let Some(manager) = manager(&own) else {
         return Err(
             Failure::new(Exit::Unavailable, "there are no slices to watch")
                 .because("it isn't running under an account's manager")
@@ -404,9 +451,13 @@ fn run() -> Result<(), Failure> {
         );
     };
     let proc = PathBuf::from("/proc");
+    let account = account(&cgroups, manager);
     started();
-    let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account));
-    let mut then = snapshot(&cgroups, &account, &threads);
+    let mut apps = apps::Apps::of_account(manager).reading_transient_units_from(
+        env_dir("XDG_RUNTIME_DIR", ".cache").join("systemd/transient"),
+    );
+    let mut threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
+    let mut then = snapshot(&cgroups, &account, &threads, apps.unwatched());
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
     let mut tick = 0u32;
@@ -423,7 +474,7 @@ fn run() -> Result<(), Failure> {
             continue;
         }
         tick = 0;
-        let now = snapshot(&cgroups, &account, &threads);
+        let now = snapshot(&cgroups, &account, &threads, apps.unwatched());
         let mut w = window::between(
             &then,
             &now,
@@ -440,8 +491,8 @@ fn run() -> Result<(), Failure> {
         // Threads come and go with their programs: looked for again each
         // minute, with the snapshot taken again so no window spans two.
         if windows.is_multiple_of(6) {
-            threads = kernel::threads(&proc, compositor(), &tuple_unit(&account));
-            then = snapshot(&cgroups, &account, &threads);
+            threads = kernel::threads(&proc, compositor(), &tuple_unit(&account), &mut apps);
+            then = snapshot(&cgroups, &account, &threads, apps.unwatched());
         } else {
             then = now;
         }
@@ -484,6 +535,128 @@ mod tests {
             "{\"a\":1}"
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_tab_its_app_lowered_is_counted_and_kept_only_as_where_the_next_window_starts() {
+        let dir = std::env::temp_dir().join(format!("lag-watch-lowered-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let thread = |label: &'static str, pid: &str, tid: &str, nice: i64| {
+            let at = dir.join(format!("{pid}/task/{tid}"));
+            fs::create_dir_all(&at).unwrap();
+            fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
+            let stat = format!("{tid} (chrome) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 {nice} 30 0\n");
+            fs::write(at.join("stat"), &stat).unwrap();
+            if pid == tid {
+                fs::write(dir.join(pid).join("stat"), &stat).unwrap();
+            }
+            kernel::Thread {
+                label,
+                name: "chrome".into(),
+                schedstat: at.join("schedstat"),
+                call: false,
+            }
+        };
+        // A hidden tab: its main thread lowered, its compositor raised to
+        // draw, as Chromium leaves them. A tab shown, its main thread at
+        // Chromium's own nice. A tab whose stat is gone, ending. And niri,
+        // whose nice is never asked.
+        let hidden = thread("chrome-ui", "72", "72", 5);
+        let hidden_drawing = thread("chrome-ui", "72", "73", -8);
+        let shown = thread("chrome-ui", "75", "75", 0);
+        let shown_drawing = thread("chrome-ui", "75", "76", -8);
+        let ending = thread("slack-ui", "78", "79", -8);
+        let niri = thread("niri", "74", "74", 5);
+        let s = snapshot(
+            &dir,
+            &dir,
+            // The compositor first, so its own nice is never what's asked.
+            &[
+                hidden_drawing.clone(),
+                hidden.clone(),
+                shown.clone(),
+                shown_drawing.clone(),
+                ending.clone(),
+                niri.clone(),
+            ],
+            BTreeMap::new(),
+        );
+        let read: Vec<&kernel::Thread> = s.threads.keys().collect();
+        assert_eq!(read, [&shown, &shown_drawing, &niri, &ending]);
+        let resting: Vec<&kernel::Thread> = s.resting.keys().collect();
+        assert_eq!(resting, [&hidden, &hidden_drawing], "the hidden tab rests");
+        assert_eq!(
+            s.lowered,
+            BTreeMap::from([("chrome-ui".to_string(), 1)]),
+            "one hidden tab, counted once"
+        );
+        // Shown again, the app raises the tab, and the next window reads it.
+        let stat = "72 (chrome) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 0 30 0\n";
+        fs::write(dir.join("72/stat"), stat).unwrap();
+        let s = snapshot(
+            &dir,
+            &dir,
+            std::slice::from_ref(&hidden_drawing),
+            BTreeMap::new(),
+        );
+        assert_eq!(s.threads.keys().collect::<Vec<_>>(), [&hidden_drawing]);
+        assert!(s.lowered.is_empty(), "{:?}", s.lowered);
+        assert!(s.resting.is_empty(), "{:?}", s.resting);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_hidden_tab_is_left_out_on_the_paths_the_watch_finds_its_threads_by() {
+        use kernel::tests::{ACCOUNT, opened, write};
+        let proc = std::env::temp_dir().join(format!("lag-watch-found-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&proc);
+        // A renderer whose main thread Chrome lowered, as it does a hidden
+        // tab's, found as the watch finds it, not as a test builds it.
+        opened(&proc, "72", "chrome");
+        write(
+            &proc.join("72/stat"),
+            "72 (chrome) S 1 1 1 0 -1 0 1 0 0 0 5 6 0 0 25 5 30 0 99\n",
+        );
+        for (tid, comm) in [("72", "chrome"), ("73", "Compositor")] {
+            write(
+                &proc.join(format!("72/task/{tid}/comm")),
+                &format!("{comm}\n"),
+            );
+            write(&proc.join(format!("72/task/{tid}/schedstat")), "10 20 3\n");
+        }
+        let mut apps = apps::Apps::of_account(ACCOUNT);
+        let threads = kernel::threads(&proc, None, &proc.join("tuple.service"), &mut apps);
+        assert_eq!(threads.len(), 2, "the renderer's two threads: {threads:?}");
+        let s = snapshot(&proc, &proc, &threads, apps.unwatched());
+        assert!(
+            s.threads.is_empty(),
+            "a hidden tab was read: {:?}",
+            s.threads
+        );
+        assert_eq!(s.lowered, BTreeMap::from([("chrome-ui".to_string(), 1)]));
+        fs::remove_dir_all(&proc).unwrap();
+    }
+
+    #[test]
+    fn the_account_is_the_manager_in_the_watch_s_own_cgroup() {
+        let own =
+            "0::/user.slice/user-1000.slice/user@1000.service/session.slice/lag-watch.service\n";
+        assert_eq!(
+            manager(own),
+            Some("/user.slice/user-1000.slice/user@1000.service")
+        );
+        // As the apps take it, a process of Joel's is found by it.
+        let apps = apps::Apps::of_account(manager(own).unwrap());
+        let scope = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-a.scope\n";
+        assert!(
+            apps.launched_by_joel(scope),
+            "Joel's app isn't found by the account"
+        );
+        assert_eq!(manager("0::/system.slice/lag-watch.service\n"), None);
+        assert_eq!(
+            account(Path::new("/sys/fs/cgroup"), manager(own).unwrap()),
+            Path::new("/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service")
+        );
     }
 
     #[test]

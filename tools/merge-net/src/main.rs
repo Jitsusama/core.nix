@@ -22,7 +22,7 @@
 //! what can leave a machine unable to boot, unlock or sign in, which a
 //! revert after the fact comes too late for (`must-run.txt`). It names
 //! too each VM test that owns a file the change touches, whose subtests
-//! that reach it run first with `run-subtests --there` (`owners.rs`).
+//! that reach it run first with `run-subtests --there` (`owners/`).
 //! Which moved it reads from a run that passed at a clean head, and asks
 //! changed-checks only where none did (`gated.rs`, `needs.rs`).
 //!

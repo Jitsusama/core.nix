@@ -466,7 +466,23 @@ in
       MemoryHigh = "26%";
       IOWeight = 1;
     };
-    systemd.user.slices.background.sliceConfig.IOWeight = 1;
+    # The account's own daemons, 33 of them on 20 November (indexers, cadence,
+    # transcripts, models reading the screen), share eight processors' time
+    # at most, half the laptop's 16 and under a whole machine anywhere with
+    # more than eight. systemd's own weight for the slice, 30, only ranks them
+    # once every core is taken, so with cores idle a burst of theirs, a model
+    # loading say, could take all of them and leave each app thread that
+    # wakes waiting beside it. The quota bounds their time, not how many
+    # cores they run on: a burst wider than eight still spreads, and is
+    # stopped for the rest of its tenth of a second once it has spent eight
+    # processors' worth. That pause holds the launcher's daemons too, which
+    # is why it's no lower. It rarely bites: from 13:35 to 14:00 on 20
+    # November they had work in 14,952 tenths of a second and were held back
+    # in one. Set only at runtime before, a reset lost it.
+    systemd.user.slices.background.sliceConfig = {
+      IOWeight = 1;
+      CPUQuota = "800%";
+    };
 
     # Work other sessions wait on, beside jobs rather than in it, so it runs
     # ahead of jobs, which is idle on the processor. On 5 November, while the
@@ -799,6 +815,16 @@ in
             "jobs.slice/jobs-work.slice"
             "--no-real-time"
             "jobs.slice/jobs-timed.slice"
+            # Joel's Chrome and Slack ask for a half-millisecond slice, so a
+            # woken drawing thread runs sooner under load. An agent's Chrome
+            # that moves itself into his programs' slice is judged by what
+            # started it, so it isn't asked while its launcher lives.
+            "--quick"
+            "app.slice"
+            "--quick-name"
+            "chrome"
+            "--quick-name"
+            "slack"
             # An agent's command for a quest goes in that quest's slice under
             # jobs-work.slice, at the weight pi's sessions give the quest by
             # its priority, so a quest Joel drives gets more of what agents'

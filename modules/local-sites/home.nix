@@ -328,6 +328,16 @@ in
           "from the networks it has joined, moving the moment one changes."
         ];
         asks = "Keep it open a while; say what you'd want to see that it doesn't show.";
+        # Each cell's address on the map, which every other site links a
+        # cell to: opened there, its drawer is open. The map reads a cell's
+        # whole link there too, mycelium:cell/<ADDRESS>@<machine>, as its
+        # address alone.
+        homes = [
+          {
+            kind = "cell";
+            address = "#cell={name}";
+          }
+        ];
       };
       web = {
         name = "What your sessions murmur";
@@ -399,7 +409,10 @@ in
       # the node keeps under `source`, never the change itself; `source`
       # passes whole, holding today only that word. Of each murmur the
       # murmurs page reads only what it draws, not the machine it was
-      # said on.
+      # said on. Of each builder the machine sends its builds to, the map
+      # reads how it stands and what it builds, never its host: its `said`
+      # is the node's reason, which names the way it's reached (a jump
+      # host, a proxy) but never an address.
       node = {
         socket = "mycelium/${realm}.sock";
         kinds = {
@@ -448,6 +461,14 @@ in
             "settled"
           ];
           balance = { };
+          builder.fields = [
+            "name"
+            "state"
+            "systems"
+            "jobs"
+            "lent"
+            "said"
+          ];
           unanswered.fields = [
             "id"
             "from"
@@ -478,6 +499,8 @@ in
       # The repos daemon's reading, repositories, checkouts, trees and
       # changes (modules/repos/src/feed.rs), each told whole: Code draws all
       # of each, and none holds more than git's heads and GitHub's checks.
+      # Its using records say how many processes work in each folder and
+      # what they take, never which.
       repos = {
         socket = "daemons/repos.sock";
         kinds = {
@@ -486,6 +509,7 @@ in
           checkout = { };
           tree = { };
           change = { };
+          using = { };
         };
       };
     };

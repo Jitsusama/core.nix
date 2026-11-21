@@ -5,5 +5,6 @@ pub mod airplay;
 pub mod eero;
 pub mod hp;
 pub mod modem;
+pub mod samsung;
 pub mod sony;
 pub mod switch;

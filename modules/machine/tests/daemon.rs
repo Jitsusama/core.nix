@@ -1269,11 +1269,11 @@ fn the_links_are_said_from_the_kernel_with_what_their_folders_say() {
 fn who_has_each_camera_is_told_as_its_file_is_written() {
     let running = Running::new("camera");
     let folder = running.root().join("run/camera-holders");
-    // Each written beside it under the writer's pid, then renamed, as the
-    // holders programs write them.
+    // Each written beside it under a dotted name with the writer's pid,
+    // then renamed, as the holders programs write them.
     let write = |name: &str, text: &str| {
         std::fs::create_dir_all(&folder).unwrap();
-        let writing = folder.join(format!("{name}.4120"));
+        let writing = folder.join(format!(".{name}.4120"));
         std::fs::write(&writing, text).unwrap();
         std::fs::rename(writing, folder.join(name)).unwrap();
     };
@@ -1294,27 +1294,50 @@ fn who_has_each_camera_is_told_as_its_file_is_written() {
 fn who_reads_a_camera_through_pipewire_is_told_as_it_changes_with_no_file_written() {
     use std::fmt::Write as _;
     use std::os::unix::fs::PermissionsExt;
-    // Its own folder, apart from the daemon's, which is cleared as it starts.
-    let folder = std::env::temp_dir().join(format!("machine-pw-cli-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&folder);
-    std::fs::create_dir_all(&folder).unwrap();
+    /// Its own folder, apart from the daemon's, which is cleared as it
+    /// starts, and taken away with the test.
+    struct Folder(std::path::PathBuf);
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let folder =
+        Folder(std::env::temp_dir().join(format!("machine-pw-cli-{}", std::process::id())));
+    let folder = &folder.0;
+    let _ = std::fs::remove_dir_all(folder);
+    std::fs::create_dir_all(folder).unwrap();
     let listed = folder.join("listed");
-    // The camera, PipeWire's node of it, and each reader's client, node
-    // and link, as pw-cli lists them; written whole, then put in place.
+    // PipeWire's client, the camera and PipeWire's node of it, then each
+    // reader's client, node and link, by id as pw-cli lists them; written
+    // whole, then put in place.
     let list = |readers: &[(u64, u64)]| {
-        let mut text = "\tid 10, type PipeWire:Interface:Device/3\n \t\tdevice.description = \
-                        \"camera\"\n\tid 11, type PipeWire:Interface:Node/3\n \t\tclient.id = \
-                        \"1\"\n \t\tdevice.id = \"10\"\n\tid 1, type PipeWire:Interface:Client/3\n \
-                        \t\tpipewire.sec.pid = \"100\"\n"
+        let mut text = "\tid 1, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \
+                        \"100\"\n\tid 10, type PipeWire:Interface:Device/3\n \
+                        \t\tdevice.description = \"camera\"\n\tid 11, type \
+                        PipeWire:Interface:Node/3\n \t\tclient.id = \"1\"\n \
+                        \t\tdevice.id = \"10\"\n"
             .to_owned();
         for (id, pid) in readers {
             write!(
                 text,
-                "\tid {id}, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \
-                 \"{pid}\"\n\tid {}, type PipeWire:Interface:Node/3\n \t\tclient.id = \
-                 \"{id}\"\n\tid {}, type PipeWire:Interface:Link/3\n \t\tlink.output.node = \
-                 \"11\"\n \t\tlink.input.node = \"{}\"\n",
-                id + 20,
+                "\tid {id}, type PipeWire:Interface:Client/3\n \t\tpipewire.sec.pid = \"{pid}\"\n"
+            )
+            .unwrap();
+        }
+        for (id, _) in readers {
+            write!(
+                text,
+                "\tid {}, type PipeWire:Interface:Node/3\n \t\tclient.id = \"{id}\"\n",
+                id + 20
+            )
+            .unwrap();
+        }
+        for (id, _) in readers {
+            write!(
+                text,
+                "\tid {}, type PipeWire:Interface:Link/3\n \t\tlink.output.node = \"11\"\n \
+                 \t\tlink.input.node = \"{}\"\n",
                 id + 40,
                 id + 20
             )
@@ -1324,7 +1347,7 @@ fn who_reads_a_camera_through_pipewire_is_told_as_it_changes_with_no_file_writte
         std::fs::write(&writing, text).unwrap();
         std::fs::rename(&writing, &listed).unwrap();
     };
-    list(&[(2, 102)]);
+    list(&[(12, 102)]);
     let pw_cli = folder.join("pw-cli");
     std::fs::write(
         &pw_cli,
@@ -1337,6 +1360,9 @@ fn who_reads_a_camera_through_pipewire_is_told_as_it_changes_with_no_file_writte
     for (pid, name) in [(100, "pipewire"), (102, "tuple"), (103, "chrome")] {
         std::fs::create_dir_all(root.join(format!("proc/{pid}"))).unwrap();
         std::fs::write(root.join(format!("proc/{pid}/comm")), format!("{name}\n")).unwrap();
+        // The program it runs, by which PipeWire's own are known.
+        std::os::unix::fs::symlink(format!("/bin/{name}"), root.join(format!("proc/{pid}/exe")))
+            .unwrap();
     }
     let mut client = running.client();
     let said = client.ask(&json!({"id": "all", "ask": "watch", "kind": "camera"}));
@@ -1362,7 +1388,7 @@ fn who_reads_a_camera_through_pipewire_is_told_as_it_changes_with_no_file_writte
         "named in PipeWire's place as its file says PipeWire holds it",
     );
     // Chrome joins through PipeWire, and nothing writes the camera's file.
-    list(&[(2, 102), (3, 103)]);
+    list(&[(12, 102), (13, 103)]);
     told(
         json!(["chrome", "tuple"]),
         "read again on the clock while PipeWire holds it",

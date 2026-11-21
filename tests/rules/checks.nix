@@ -239,6 +239,7 @@
         mypy = pkgs.callPackage ../../modules/treefmt/mypy.nix {
           python = pkgs.python3.withPackages (python: [ python.mypy ]);
         };
+        netconsole = script "netconsole" ../../modules/netconsole/netconsole.sh { };
         niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
         niri-off-cpu = script "niri-off-cpu" ../../modules/niri-off-cpu/niri-off-cpu.sh { };
         niri-off-cpu-as-root =
@@ -254,6 +255,7 @@
         quickshell-starts-warm =
           script "quickshell-starts-warm" ../../modules/quickshell/starts-warm.sh
             { };
+        recording-sound = script "recording-sound" ../../modules/quickshell/recording-sound.sh { };
         saves-while-open = script "saves-while-open" ../../modules/backlight/saves-while-open.sh { };
         screen-kept = script "screen-kept" ../../modules/swayidle/screen-kept.sh { };
         se-keys = script "se-keys" ../../modules/secure-enclave-signing/se-keys.sh { };
@@ -283,6 +285,7 @@
         tpm-follows-a-firmware-update =
           script "tpm-follows-a-firmware-update" ../../modules/lanzaboote/firmware-update.sh
             { };
+        watchdog-sleeps = script "watchdog-sleeps" ../../modules/hang-panic/watchdog-sleeps.sh { };
         watchdog-wakes-again =
           script "watchdog-wakes-again" ../../hardware/microsoft-surface-laptop-4-1958/watchdog-wakes-again.sh
             { };

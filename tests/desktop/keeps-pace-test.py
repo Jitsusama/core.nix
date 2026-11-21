@@ -10,14 +10,17 @@ from __future__ import annotations
 import math
 
 from keeps_pace import (
+    BUILDER_LOOP,
     LOOPED,
     PROCESSORS,
+    SLOWEST_BUILDER,
     Gauge,
     Ledger,
     builders_share,
     every_tick,
     holdable,
     looped,
+    stretched_bar,
     ticks,
 )
 
@@ -48,6 +51,22 @@ TICKED_FROZEN = 5 + 40
 # The guest's clock as the loop began and ended, in seconds, and the time between in ms.
 LOOP_STAMPS = "1795163661.100000 1795163661.325500"
 LOOP_TOOK = 225.5
+# The keys subtest's frozen loops, in ms, as the slowest normal builder ran them at 9c79f541 on
+# 20 November, whose middle was 103, and as the slow one did at b508ac2e, whose middle was 145.
+NORMAL_LOOPS = (145.0, 174.0, 96.0, 95.0, 201.0, 103.0, 100.0)
+SLOW_LOOPS = (156.0, 122.0, 145.0, 109.0, 240.0, 171.0, 127.0)
+SLOWED = 145 / BUILDER_LOOP
+# The keys bar as the VM test sets it, SLOWER_MOST times the frozen key and MIDDLE_MORE ms, and
+# b508ac2e's keys: frozen 24 ms, and 102 under load against an unstretched bar of 98.
+KEYS_SLOWER = 2
+KEYS_MORE = 50
+B508_FROZEN = 24.0
+B508_KEYS = 102.0
+B508_BAR = 98.0
+# At the most a builder stretches it, the keys bar for b508ac2e's frozen key, which stretching
+# KEYS_MORE as well would raise to 147, and keys six times as slow as that frozen key.
+CAPPED_BAR = 122.0
+SIX_TIMES = 6
 
 
 def stat(stolen: int, busy: int) -> str:
@@ -201,6 +220,79 @@ def test_the_gauge_says_none_for_a_turn_it_never_timed() -> None:
         f"a fixed loop of {LOOPED} rounds took a middle 300 ms under load against none frozen,"
         " each in the order run under load [300] and frozen []"
     ), f"the gauge said {said!r}"
+
+
+def gauged(*, under: tuple[float, ...] = (), frozen: tuple[float, ...] = ()) -> Gauge:
+    """Give a gauge that timed these loops under load and these frozen."""
+    gauge = Gauge()
+    for took in under:
+        gauge.add(turn=True, took=took)
+    for took in frozen:
+        gauge.add(turn=False, took=took)
+    return gauge
+
+
+def test_a_normal_builder_leaves_each_bar_as_it_was() -> None:
+    """A builder running the frozen loop no slower than BUILDER_LOOP stretches nothing."""
+    slowed = gauged(frozen=NORMAL_LOOPS).slowed()
+    assert slowed == 1.0, f"a normal builder stretched each bar {slowed} times"
+
+
+def test_a_slow_builder_stretches_each_bar_by_its_middle_frozen_loop() -> None:
+    """The slow builder b508ac2e failed on stretches each bar by its middle frozen loop."""
+    slowed = gauged(frozen=SLOW_LOOPS).slowed()
+    assert math.isclose(slowed, SLOWED), f"b508ac2e's builder stretched each bar {slowed} times"
+
+
+def test_the_middle_of_two_frozen_loops_is_the_lower() -> None:
+    """One slow loop of two stretches nothing, as the gauge's said middle is the lower."""
+    slowed = gauged(frozen=(BUILDER_LOOP, BUILDER_LOOP * 2)).slowed()
+    assert slowed == 1.0, f"one slow loop of two stretched each bar {slowed} times"
+
+
+def test_a_builder_past_the_slowest_stretches_a_bar_no_further() -> None:
+    """A builder slower than SLOWEST_BUILDER times a normal one stretches no bar past that."""
+    slowed = gauged(frozen=(BUILDER_LOOP * SLOWEST_BUILDER * 2,)).slowed()
+    assert slowed == SLOWEST_BUILDER, f"a builder three times slow stretched each bar {slowed}"
+
+
+def test_loops_under_load_stretch_no_bar() -> None:
+    """Only the frozen loops weigh, since under load the guest's own load may slow them."""
+    slowed = gauged(under=(BUILDER_LOOP * 3,) * len(NORMAL_LOOPS), frozen=NORMAL_LOOPS).slowed()
+    assert slowed == 1.0, f"slow loops under load stretched each bar {slowed} times"
+
+
+def test_a_subtest_with_no_frozen_loop_stretches_no_bar() -> None:
+    """A failure before the first freeze leaves nothing to weigh, so the bar stays as written."""
+    slowed = gauged(under=(BUILDER_LOOP * 3,)).slowed()
+    assert slowed == 1.0, f"no frozen loop stretched each bar {slowed} times"
+
+
+def test_b508ac2es_keys_fail_the_bar_unstretched() -> None:
+    """On a normal builder the keys b508ac2e took on its slow one still fail."""
+    bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, 1.0)
+    assert bar == B508_BAR, f"b508ac2e's keys bar read {bar}, unstretched"
+    assert bar < B508_KEYS, f"b508ac2e's keys passed {bar} unstretched"
+
+
+def test_b508ac2es_keys_pass_the_bar_its_slow_builder_stretched() -> None:
+    """The keys b508ac2e failed on its slow builder pass the bar its frozen loops stretched."""
+    slowed = gauged(frozen=SLOW_LOOPS).slowed()
+    bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, slowed)
+    assert bar >= B508_KEYS, f"b508ac2e's keys failed {bar}, stretched {slowed} times"
+
+
+def test_only_the_frozen_share_of_a_bar_is_stretched() -> None:
+    """The fixed ms beside the frozen share stay as written, so a slow builder adds no more."""
+    bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, SLOWEST_BUILDER)
+    assert math.isclose(bar, CAPPED_BAR), f"the keys bar read {bar} at the most stretch"
+
+
+def test_keys_six_times_as_slow_fail_on_the_slowest_builder() -> None:
+    """At b508ac2e's frozen key, keys six times as slow fail however slow the builder."""
+    slowed = gauged(frozen=(BUILDER_LOOP * SLOWEST_BUILDER * 2,)).slowed()
+    bar = stretched_bar(B508_FROZEN, KEYS_SLOWER, KEYS_MORE, slowed)
+    assert bar < SIX_TIMES * B508_FROZEN, f"keys six times as slow passed {bar}"
 
 
 def test_the_ledger_says_no_share_for_a_turn_it_never_counted() -> None:

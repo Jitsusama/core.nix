@@ -1,6 +1,6 @@
 // Drives what was taken lately (modules/quickshell/Taken.qml) finding
 // screenshots by their words, against a stand-in for the screen-text
-// daemon (tests/desktop/stand-in-screen-text.py), through Quickshell
+// daemon (tests/desktop/stand-ins/stand-in-screen-text.py), through Quickshell
 // itself. Its folders read, it holds no connection until a search is
 // asked; a search gives none at first and says once its answer comes,
 // whose screenshots, with the line that matched, it then gives at once; a

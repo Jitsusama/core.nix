@@ -3,8 +3,9 @@
 //! while nobody streams, goes when the camera's node does or the program
 //! is stopped, and while the camera streams, its log says how.
 
+use std::fs::Permissions;
 use std::fs::{self, File};
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread::sleep;
@@ -37,16 +38,22 @@ impl Watch {
     /// The same, with a real device's node for the camera's, which a
     /// program holding it is seen holding, as only a node under /dev is.
     fn on(name: &str, device: Option<&Path>) -> Self {
-        Self::saying(name, device, false)
+        Self::saying(name, device, false, false)
+    }
+
+    /// The same, its node one the watch may not read, so inotify refuses
+    /// to watch it, as it does when it has no watches left to give.
+    fn blind(name: &str) -> Self {
+        Self::saying(name, None, false, true)
     }
 
     /// The same, its log and complaints going to /dev/full, which takes no
     /// write, as a journal stream that has gone takes none.
     fn unheard(name: &str, device: &Path) -> Self {
-        Self::saying(name, Some(device), true)
+        Self::saying(name, Some(device), true, false)
     }
 
-    fn saying(name: &str, device: Option<&Path>, unheard: bool) -> Self {
+    fn saying(name: &str, device: Option<&Path>, unheard: bool, blind: bool) -> Self {
         let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let sysfs = root.join("sys");
@@ -78,7 +85,23 @@ impl Watch {
         let folder = root.join("camera-holders");
         fs::create_dir_all(&folder).unwrap();
         // What a run killed mid-write would have left.
-        fs::write(folder.join("MX Brio 705 for Business.99"), "").unwrap();
+        fs::write(folder.join(".MX Brio 705 for Business.99"), "").unwrap();
+        // What a killed run of a camera since unplugged left, saying the
+        // node this one is now, and another camera's, saying its own.
+        let devices = folder.join(".devices");
+        fs::create_dir_all(&devices).unwrap();
+        let real = fs::canonicalize(&node).unwrap();
+        fs::write(devices.join("Unplugged"), format!("{}\n", real.display())).unwrap();
+        fs::write(folder.join("Unplugged"), "pipewire\n").unwrap();
+        fs::write(devices.join("Another"), "/dev/video9\n").unwrap();
+        fs::write(folder.join("Another"), "obs\n").unwrap();
+        // And one another camera's run is writing, saying this node too,
+        // and a camera named for a version, which isn't being written,
+        // killed the same way.
+        let plugged = format!(".Plugged.{}", std::process::id());
+        fs::write(devices.join(plugged), format!("{}\n", real.display())).unwrap();
+        // Named for init's pid, 1, which always runs.
+        fs::write(devices.join("Webcam 2.1"), format!("{}\n", real.display())).unwrap();
         let debugfs = root.join("debug");
         let stats = debugfs.join("usb/uvcvideo/2-7-1/stats");
         fs::create_dir_all(stats.parent().unwrap()).unwrap();
@@ -97,6 +120,9 @@ impl Watch {
             command.stdout(full()).stderr(full());
         } else {
             command.stdout(File::create(&log).unwrap());
+        }
+        if blind {
+            fs::set_permissions(&node, Permissions::from_mode(0o000)).unwrap();
         }
         let program = command.spawn().unwrap();
         Self {
@@ -177,8 +203,44 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
     let watch = Watch::start("there");
     watch.until_there(true, "no file while the camera's there");
     assert_eq!(fs::read_to_string(&watch.file).unwrap(), "");
-    let left = watch.file.with_file_name("MX Brio 705 for Business.99");
+    let left = watch.file.with_file_name(".MX Brio 705 for Business.99");
     assert!(!left.exists(), "a killed run's file was left");
+    let device = watch.device();
+    let devices = device.parent().unwrap();
+    assert!(
+        !devices.join("Unplugged").exists(),
+        "a killed run's file saying this camera's node was left"
+    );
+    let folder = devices.parent().unwrap();
+    assert!(
+        !folder.join("Unplugged").exists(),
+        "the camera that killed run watched is still said held"
+    );
+    assert_eq!(
+        fs::read_to_string(folder.join("Another")).unwrap(),
+        "obs\n",
+        "another camera's holders were touched"
+    );
+    assert_eq!(
+        fs::read_to_string(devices.join("Another")).unwrap(),
+        "/dev/video9\n",
+        "another camera's node file was touched"
+    );
+    assert!(
+        devices
+            .join(format!(".Plugged.{}", std::process::id()))
+            .exists(),
+        "a file being written was taken from its writer"
+    );
+    assert!(
+        !devices.join("Webcam 2.1").exists(),
+        "a camera named for a version was taken for a file being written"
+    );
+    let log = fs::read_to_string(&watch.log).unwrap();
+    assert!(
+        log.contains("forgot \"Unplugged\", whose node file said "),
+        "what a killed run left went unsaid: {log}"
+    );
 }
 
 #[test]
@@ -192,13 +254,16 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
     let _held = File::open(&watch.node).unwrap();
     fs::write(&watch.streaming, " 1\n").unwrap();
     watch.until_named(true, "the test isn't named");
+    // Time for the watch to read the count at nothing, so the 300 frames
+    // that follow are counted as the stream's.
     sleep(Duration::from_secs(2));
     watch.count(300);
     // The first line comes ten seconds after the stream was first seen, so
     // it has counted 300 frames over ten to eleven seconds.
     for _ in 0..600 {
         let log = fs::read_to_string(&watch.log).unwrap();
-        if let Some(line) = log.lines().next() {
+        // After what it forgot as it started.
+        if let Some(line) = log.lines().find(|line| !line.starts_with("forgot ")) {
             assert!(line.starts_with("streams to \""), "{line}");
             let rate: f64 = line
                 .split_once("gave ")
@@ -255,6 +320,125 @@ fn the_file_goes_with_the_node() {
     assert_eq!(watch.ended(), Some(0));
 }
 
+/// What is at the node as its unit stops.
+enum Then {
+    Gone,
+    Loopback,
+    Camera,
+}
+
+/// Runs `--usb --forget` on a folder holding these files, each with its
+/// holders file, with sysfs showing what is at the node, and gives what
+/// it said and what it left, sorted.
+fn forgetting(name: &str, then: &Then, files: &[(&str, &str)]) -> (Vec<String>, Vec<String>) {
+    let root = std::env::temp_dir().join(format!("holders-usb-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let folder = root.join("camera-holders");
+    let devices = folder.join(".devices");
+    fs::create_dir_all(&devices).unwrap();
+    let node = root.join("dev/video0");
+    let sysfs = root.join("sys");
+    let video = sysfs.join("class/video4linux/video0");
+    if !matches!(then, Then::Gone) {
+        fs::create_dir_all(&node).unwrap();
+        fs::create_dir_all(&video).unwrap();
+        fs::write(video.join("name"), "Camera\n").unwrap();
+    }
+    if matches!(then, Then::Camera) {
+        fs::create_dir_all(video.join("device")).unwrap();
+    }
+    let said = format!("{}\n", node.display());
+    for (file, says) in files {
+        let says = says.replace("NODE", &said);
+        fs::write(devices.join(file), says).unwrap();
+        fs::write(folder.join(file), "zoom\n").unwrap();
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .args(["--usb", "--forget", "--sysfs"])
+        .arg(&sysfs)
+        .arg(&node)
+        .arg(&folder)
+        .output()
+        .unwrap();
+    let mut left: Vec<_> = fs::read_dir(&devices)
+        .unwrap()
+        .chain(fs::read_dir(&folder).unwrap())
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    left.sort();
+    let _ = fs::remove_dir_all(&root);
+    assert!(
+        output.status.success(),
+        "forgetting ended {}",
+        output.status
+    );
+    let mut said: Vec<_> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| line.replace(&node.display().to_string(), "NODE"))
+        .collect();
+    said.sort();
+    (said, left)
+}
+
+#[test]
+fn forgetting_a_node_takes_only_what_says_it() {
+    let (said, left) = forgetting(
+        "forget",
+        &Then::Gone,
+        &[
+            ("Killed", "NODE"),
+            ("Webcam 2.0", "NODE"),
+            // Named for init's pid, 1, which always runs.
+            ("Webcam 2.1", "NODE"),
+            (".Written.7", "NODE"),
+            ("Another", "/dev/video9\n"),
+        ],
+    );
+    assert_eq!(
+        left,
+        [".Written.7", ".Written.7", ".devices", "Another", "Another"],
+        "what says the node, and only it, goes, as a file being written is left"
+    );
+    assert_eq!(
+        said,
+        [
+            "forgot \"Killed\", whose node file said NODE",
+            "forgot \"Webcam 2.0\", whose node file said NODE",
+            "forgot \"Webcam 2.1\", whose node file said NODE",
+        ],
+        "what it forgot, and only that, is said"
+    );
+}
+
+#[test]
+fn a_node_a_loopback_has_is_left_to_it() {
+    // A loopback took the number as the camera went.
+    let (said, left) = forgetting("loopback", &Then::Loopback, &[("Loopback", "NODE")]);
+    assert_eq!(
+        left,
+        [".devices", "Loopback", "Loopback"],
+        "the files of the loopback that has the node now were forgotten"
+    );
+    assert!(said.is_empty(), "it said it forgot what it left: {said:?}");
+}
+
+#[test]
+fn a_camera_whose_run_crashed_reads_unplugged_rather_than_held() {
+    // The camera stayed plugged in, and no run is left to rewrite its files.
+    let (said, left) = forgetting("crashed", &Then::Camera, &[("Crashed", "NODE")]);
+    assert_eq!(
+        said,
+        ["forgot \"Crashed\", whose node file said NODE"],
+        "what it forgot went unsaid"
+    );
+    assert_eq!(
+        left,
+        [".devices"],
+        "a camera with no run was left said held"
+    );
+}
+
 #[test]
 fn the_file_goes_when_it_is_stopped() {
     let mut watch = Watch::start("stopped");
@@ -263,4 +447,56 @@ fn the_file_goes_when_it_is_stopped() {
     assert_eq!(watch.ended(), Some(0));
     assert!(!watch.file.exists());
     assert!(!watch.device().exists(), "its node was still said");
+}
+
+#[test]
+fn a_file_that_cant_go_keeps_what_finds_it() {
+    let mut watch = Watch::start("stuck");
+    watch.until_there(true, "no file while the camera's there");
+    // A folder nothing may be removed from, though its node files may.
+    let folder = watch.file.parent().unwrap().to_owned();
+    fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(folder.join("probe")).is_err(),
+        "a privileged run may remove from any folder, so no file here is stuck"
+    );
+    watch.stop();
+    let ended = watch.ended();
+    // Then the unit's stop step, as it runs after a failed run.
+    let forget = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
+        .args(["--usb", "--forget", "--sysfs"])
+        .arg(watch.root.join("sys"))
+        .arg(&watch.node)
+        .arg(&folder)
+        .output()
+        .unwrap();
+    let kept = watch.device().exists();
+    fs::set_permissions(&folder, Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(ended, Some(1), "a file it couldn't remove went unsaid");
+    assert!(
+        forget.status.success(),
+        "forgetting ended {}",
+        forget.status
+    );
+    assert!(
+        kept,
+        "the node file went, so nothing can find what was left"
+    );
+}
+
+#[test]
+fn a_watch_that_cant_be_made_fails_so_it_starts_again() {
+    let mut watch = Watch::blind("blind");
+    assert!(
+        fs::read_dir(&watch.node).is_err(),
+        "a privileged run may watch any node, so no watch here is refused"
+    );
+    // It waits five seconds before giving up on the watch.
+    let ended = (0..3).find_map(|_| watch.ended());
+    fs::set_permissions(&watch.node, Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        ended,
+        Some(1),
+        "a watch that left a camera still there unwatched ended cleanly"
+    );
 }

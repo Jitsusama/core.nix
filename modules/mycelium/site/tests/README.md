@@ -1,6 +1,7 @@
 # The Mycelium Map's Tests
 
-`model.test.ts` proves the map is made right from the node's records, `basins.test.ts`
+`model.test.ts` proves the map is made right from the node's records, `builders.test.ts`
+that the builders are read from their own records and never as cells, `basins.test.ts`
 that a basin's machines are drawn as one stand, `fed.test.ts` what the map keeps of
 a receptor feeding a cell something, and for how long, `lineage.test.ts` who started
 each cell, `reach.test.ts` how the map judges whether it reaches every cell, and

@@ -7,6 +7,9 @@ tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytes
 opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it: unlocked, the shell running, nothing of its
 own still open, so any test runs alone.
+
+Long because every capture shares one set of helpers for judging pictures, videos and their
+sound, and a split would copy them into each half.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
     from desktop_session import Desktop, Json
+    from test_driver.machine import BaseMachine
 
 # The camera's window, which the viewfinder is.
 CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
@@ -44,6 +48,28 @@ CARD_LEAST = 0.02
 MARGIN_HIGH = 48
 # A part of a picture: its left, top, right and bottom.
 type Box = tuple[int, int, int, int]
+# The loudest a recording's sound may peak and still count as silence, in dB: the
+# microphone's test tone peaks near 0, and silence at minus infinity.
+SILENT = -60.0
+# The quietest a tone held for seconds may be on average over a whole recording and still
+# count as heard, in dB: the speakers' tone, at -6 dB for 3 s of a minute, averages near
+# -24, while a click or the start of a wave, a few samples long, averages under -70.
+HEARD = -40.0
+# The speakers' tone, in Hz, and the cuts that keep only one tone: four high-pass filters at
+# 3 kHz take the microphone's 440 Hz down past 130 dB, and four low-pass filters at 1.5 kHz
+# take this one down past 90.
+SPEAKERS_TONE = 6000
+ABOVE_THE_MICROPHONE = ",".join(["highpass=f=3000"] * 4)
+BELOW_THE_SPEAKERS = ",".join(["lowpass=f=1500"] * 4)
+# What records from a microphone without being a call, as the calls crate's NOT_CALLS has
+# it: the recording's own mix, and pw-record, which stands in for a call here.
+NO_CALL = frozenset({"recording-sound", "pw-record"})
+# How many of a recording's mixes PipeWire holds, failing where pw-dump does rather than
+# counting none.
+MIXES = (
+    "pw-dump > /run/user/1000/dump.json"
+    " && { grep -c 'recording-[0-9]' /run/user/1000/dump.json || true; }"
+)
 # Now's row for a recording, and how long it says it has run.
 RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
@@ -108,6 +134,10 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     machine = desktop.machine
     mark = "/run/user/1000/before-recording"
     desktop.as_account(f"mkdir -p ~/Videos/Recordings && touch {mark}")
+    # A mix left by a recording killed outright, which no trap saw, for this one to sweep.
+    desktop.as_account("recording-sound sh -c 'kill -KILL $PPID' || true")
+    left = desktop.as_account(MIXES)
+    assert int(left) > 0, "a recording-sound killed outright left no mix to sweep"
     bare, seen, shown = the_launcher_on_a_row(desktop)
     # The margin wears recording's mark from the start, as niri says it records.
     with desktop.told("holds margin recording", timeout=WAKING):
@@ -119,6 +149,30 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     # only once the encoder has a buffer's worth, which over a still screen took up to a
     # minute (2026-11-09), so it isn't waited for.
     marked = the_mark_drawn(desktop, seen)
+    # While it records, a call still has the microphone, and sound still plays where it did.
+    call = "/run/user/1000/call.wav"
+    desktop.as_account(
+        f"timeout -s INT 2 pw-record --target stand-in-microphone {call} || [ -s {call} ]"
+    )
+    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
+    assert loudest(machine, ffmpeg, call) > SILENT, "a call lost the microphone to the recording"
+    for default, node in (("SINK", "stand-in-speakers"), ("SOURCE", "stand-in-microphone")):
+        held = desktop.as_account(f"wpctl inspect @DEFAULT_AUDIO_{default}@ | grep -F node.name")
+        assert node in held, f"the recording moved the default {default.lower()}: {held}"
+    # Nothing it records from reads as a call to a-call-is-on, which would hold uploads back.
+    dump = json.loads(desktop.as_account("pw-dump"))
+    recording = callers(dump)
+    assert "recording-sound" in recording, f"the mix's loops aren't seen: {sorted(recording)}"
+    assert not recording - NO_CALL, f"the recording reads as a call from {sorted(recording)}"
+    # Its mix says it's a recording's, which Sound reads to list it as no output.
+    marks = mixes_marked(dump)
+    assert marks == [True], f"whether each mix says it's a recording's: {marks}"
+    # What the desktop plays goes in too: a tone the microphone has nothing near.
+    tone = "/run/user/1000/tone.wav"
+    machine.succeed(
+        f"{ffmpeg} -f lavfi -i sine=frequency={SPEAKERS_TONE}:duration=3,volume=4 -y {tone}"
+    )
+    desktop.as_account(f"pw-play --target stand-in-speakers {tone}")
     videos = f"-newer {mark} -type f -name '*.mp4'"
     # Its notice comes once the file is finished, which its process outlives, waiting on
     # the notice's Play It. The screen is still as it stops, so this is the stop heard at
@@ -131,13 +185,81 @@ def test_ctrl_print_over_the_launcher_records_it_in(desktop: Desktop) -> None:
     recorded = desktop.as_account(f"find ~/Videos/Recordings {videos}").splitlines()
     assert len(recorded) == 1, recorded
     video = shlex.quote(recorded[0])
-    ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin/ffmpeg -v error"
     for name, where in (("recorded-first.png", ""), ("recorded-last.png", "-sseof -1")):
         frame = f"/run/user/1000/{name}"
         machine.succeed(f"{ffmpeg} {where} -i {video} -frames:v 1 -update 1 -y {frame}")
         taken = kept(desktop, frame)
         box = the_card_in(taken, seen, bare)
         the_mark_in(taken, marked.crop(box), seen.crop(box))
+    # It carries the sound, the microphone's tone mixed with what the speakers play, which
+    # no recording did (Joel, 2026-11-20: "why does a screen recording not record audio?").
+    peak = loudest(machine, ffmpeg, video)
+    assert peak > SILENT, f"the recording's sound peaks at {peak} dB, silence"
+    # Each half alone, by its average, which a click can't lift as it can a peak.
+    played = loudest(machine, ffmpeg, video, ABOVE_THE_MICROPHONE, "mean_volume")
+    assert played > HEARD, f"what the speakers played averages {played} dB, unheard"
+    spoken = loudest(machine, ffmpeg, video, BELOW_THE_SPEAKERS, "mean_volume")
+    assert spoken > HEARD, f"the microphone averages {spoken} dB, unheard"
+    # The mix it was made from goes with it, its sink and both loops, and so does the one left
+    # before it.
+    mixes = desktop.as_account(MIXES)
+    assert mixes.strip() == "0", f"{mixes.strip()} of the recording's mix left behind"
+
+
+def mixes_marked(dump: list[Json]) -> list[bool]:
+    """Say of each recording's mix in pw-dump's objects whether it says it's a recording's."""
+    marked = []
+    for thing in dump:
+        props = (thing.get("info") or {}).get("props", {})
+        if thing.get("type") == "PipeWire:Interface:Node" and re.fullmatch(
+            r"recording-[0-9]+", str(props.get("node.name", ""))
+        ):
+            # pw-dump gives a value that reads as JSON typed; the daemon reads it as said.
+            marked.append(props.get("recording-sound.mix") in {True, "true"})
+    return marked
+
+
+def callers(dump: list[Json]) -> set[str]:
+    """Name each program recording from a microphone in pw-dump's objects, as calls does.
+
+    A stream is named by its own program, or its client's where it names none.
+    """
+    clients = {
+        thing["id"]: (thing.get("info") or {}).get("props", {})
+        for thing in dump
+        if thing.get("type") == "PipeWire:Interface:Client"
+    }
+    named = set()
+    for thing in dump:
+        info = thing.get("info") or {}
+        props = info.get("props", {})
+        if (
+            thing.get("type") == "PipeWire:Interface:Node"
+            and props.get("media.class") == "Stream/Input/Audio"
+            and info.get("state") == "running"
+            and props.get("stream.capture.sink") is not True
+        ):
+            client = clients.get(props.get("client.id"), {})
+            binary = props.get("application.process.binary") or client.get(
+                "application.process.binary", ""
+            )
+            named.add(binary.removesuffix("-wrapped").removeprefix("."))
+    return named
+
+
+def loudest(
+    machine: BaseMachine, ffmpeg: str, recorded: str, cut: str = "", measure: str = "max_volume"
+) -> float:
+    """Give the peak of a recording's first sound in dB, or the measure named, past a cut.
+
+    It fails where the recording has no sound.
+    """
+    filters = f"{cut},volumedetect" if cut else "volumedetect"
+    heard = machine.succeed(
+        f"{ffmpeg} -v info -i {recorded} -map 0:a:0 -af {filters} -f null - 2>&1"
+        f" | grep -o '{measure}: [-0-9.]*'"
+    )
+    return float(heard.split()[-1])
 
 
 def the_mark_drawn(desktop: Desktop, unmarked: Image.Image) -> Image.Image:
@@ -728,7 +850,8 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     holders = "/run/camera-holders/camera"
     # Written whole, as a loopback's holders are, so the stand-in is the machine's own camera,
     # held by a program.
-    machine.succeed(f"echo chrome > {holders}.1 && mv {holders}.1 {holders}")
+    written = "/run/camera-holders/.camera.1"
+    machine.succeed(f"echo chrome > {written} && mv {written} {holders}")
     # The answer leads to the camera, rather than saying its parts again.
     desktop.answer("camera")
     desktop.launcher_until(

@@ -5,6 +5,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::apps::{APPS, Apps};
+
 /// A pressure file's running totals, in microseconds: some task stalled
 /// (some), or every task did (full).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -44,6 +46,32 @@ pub struct Sched {
     pub slices: u64,
 }
 
+/// A thread's nice, from its `stat`: field 19. A process's `stat` holds
+/// its main thread's.
+pub fn nice(text: &str) -> Option<i64> {
+    stat_field(text, 19)?.parse().ok()
+}
+
+/// When a process started, in clock ticks since boot, from its `stat`:
+/// field 22. A pid used again is another process with another start.
+pub fn started(text: &str) -> Option<u64> {
+    stat_field(text, 22)?.parse().ok()
+}
+
+/// A process's parent's pid, from its `stat`: field 4.
+pub fn parent(text: &str) -> Option<&str> {
+    stat_field(text, 4)
+}
+
+/// Field `n` of a `stat`, counted from 1, past the name, which is in
+/// brackets and may hold spaces and brackets of its own.
+fn stat_field(text: &str, n: usize) -> Option<&str> {
+    text.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(n.checked_sub(3)?)
+}
+
 pub fn sched(text: &str) -> Option<Sched> {
     let mut n = text.split_whitespace().map(|w| w.parse::<u64>().ok());
     Some(Sched {
@@ -69,7 +97,7 @@ pub struct Group {
     pub killed: u64,
 }
 
-fn text(path: &Path) -> String {
+pub fn text(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
 }
 
@@ -172,7 +200,7 @@ pub const CHROME_CALL_THREADS: [&str; 6] = [
 const CHROME_IN_A_CALL: &str = "AudioInputDevic";
 
 /// A process's threads, by name and schedstat path.
-fn tasks(process: &Path) -> Vec<(String, PathBuf)> {
+pub fn tasks(process: &Path) -> Vec<(String, PathBuf)> {
     fs::read_dir(process.join("task"))
         .into_iter()
         .flatten()
@@ -225,19 +253,43 @@ pub const CALLERS: [&str; 2] = ["tuple", "chrome"];
 /// other niri counts: a nested one previewing a shell runs with the jobs
 /// and waits as they do, and a `niri msg` client draws nothing, so either
 /// would be read as the desktop waiting.
-pub fn threads(proc: &Path, compositor: Option<u32>, tuple_unit: &Path) -> Vec<Thread> {
+///
+/// The apps' drawing threads (`apps::APPS`) are found in the same pass,
+/// each process looked into once, as `Apps` keeps them.
+pub fn threads(
+    proc: &Path,
+    compositor: Option<u32>,
+    tuple_unit: &Path,
+    apps: &mut Apps,
+) -> Vec<Thread> {
     let mut found = tuple(proc, tuple_unit);
     let mut chrome = Vec::new();
     let Ok(entries) = fs::read_dir(proc) else {
         return found;
     };
+    // The apps' processes looked into this pass: one whose pid now names
+    // another program is let go at once.
+    let mut looked = std::collections::BTreeSet::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if !name.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
         let comm = text(&entry.path().join("comm"));
+        let mut joels = false;
+        if let Some((_, label)) = APPS.iter().find(|(app, _)| *app == comm.trim()) {
+            looked.insert(name.clone());
+            if let Some(drawing) = apps.of(&name, &entry.path(), label) {
+                joels = true;
+                found.extend(drawing);
+            }
+        }
         if comm.trim() == "chrome" {
+            // A Chrome Joel didn't start, an agent's or a test's with a fake
+            // microphone, carries no call of his.
+            if !joels && !apps.may_call(&text(&entry.path().join("cgroup")), proc) {
+                continue;
+            }
             chrome.extend(
                 tasks(&entry.path())
                     .into_iter()
@@ -280,12 +332,13 @@ pub fn threads(proc: &Path, compositor: Option<u32>, tuple_unit: &Path) -> Vec<T
     if chrome.iter().any(|t| t.call) {
         found.extend(chrome);
     }
+    apps.keep_only(&looked);
     found.sort();
     found
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
@@ -327,7 +380,8 @@ mod tests {
         assert_eq!(sched(""), None);
     }
 
-    fn write(path: &Path, text: &str) {
+    /// Writes `text` to a stand-in kernel file, making its folders.
+    pub fn write(path: &Path, text: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
     }
@@ -343,7 +397,7 @@ mod tests {
         write(&root.join("20/task/21/comm"), "data-loop.0\n");
         write(&root.join("30/comm"), "chrome\n");
         write(&root.join("self/comm"), "niri\n");
-        let found = threads(&root, None, &root.join("tuple.service"));
+        let found = seen(&root, None, &root.join("tuple.service"));
         assert_eq!(
             found,
             [
@@ -367,10 +421,39 @@ mod tests {
         write(&root.join("50/comm"), "niri\n");
         let tuple = root.join("tuple.service");
         assert_eq!(
-            threads(&root, Some(40), &tuple),
+            seen(&root, Some(40), &tuple),
             [found("niri", "niri", root.join("40/schedstat"), false)]
         );
-        assert_eq!(threads(&root, None, &tuple).len(), 3);
+        assert_eq!(seen(&root, None, &tuple).len(), 3);
+    }
+
+    /// The account the tests' processes are Joel's in.
+    pub const ACCOUNT: &str = "/user.slice/user-1000.slice/user@1000.service";
+
+    /// A process named `comm`, in the scope of an app Joel opened.
+    pub fn opened(proc: &Path, pid: &str, comm: &str) {
+        write(&proc.join(pid).join("comm"), &format!("{comm}\n"));
+        let scope = format!("{ACCOUNT}/app.slice/app-niri-a-70.scope");
+        write(&proc.join(pid).join("cgroup"), &format!("0::{scope}\n"));
+    }
+
+    /// The threads found in a first look, with no app's process known yet.
+    fn seen(proc: &Path, compositor: Option<u32>, unit: &Path) -> Vec<Thread> {
+        threads(proc, compositor, unit, &mut Apps::of_account(ACCOUNT))
+    }
+
+    #[test]
+    fn a_thread_s_nice_and_start_are_read_past_a_name_holding_spaces_and_brackets() {
+        let stat = "72 (chrome (a) b) S 70 1 1 0 -1 4194560 1 0 0 0 5 6 0 0 25 5 30 0 99\n";
+        assert_eq!(nice(stat), Some(5));
+        assert_eq!(started(stat), Some(99));
+        assert_eq!(
+            nice("72 (chrome) S 70 1 1 0 -1 4194560 1 0 0 0 5 6 0 0 12 -8"),
+            Some(-8)
+        );
+        assert_eq!(nice("72 (chrome) S 70"), None);
+        assert_eq!(started("72 (chrome) S 70"), None);
+        assert_eq!(nice(""), None);
     }
 
     fn found(label: &'static str, name: &str, schedstat: PathBuf, call: bool) -> Thread {
@@ -392,30 +475,55 @@ mod tests {
         write(&proc.join("60/task/60/comm"), ".tuple-wrapped\n");
         write(&proc.join("60/task/61/comm"), "Signaling\n");
         write(&proc.join("60/task/62/comm"), "AudioEncoder\n");
-        write(&proc.join("30/comm"), "chrome\n");
+        opened(&proc, "30", "chrome");
         write(&proc.join("30/task/31/comm"), "WebRTC_Network\n");
         write(&proc.join("30/task/32/comm"), "ThreadPoolAudio\n");
         write(&proc.join("30/task/33/comm"), "AudioOutputDevi\n");
-        write(&proc.join("30/task/34/comm"), "Compositor\n");
+        write(&proc.join("30/task/34/comm"), "ThreadPoolForeg\n");
         let task = |pid: &str, tid: &str| proc.join(format!("{pid}/task/{tid}/schedstat"));
         // A tab with a peer connection playing sound is no call of
         // Chrome's until a page records the microphone, in any of its
         // processes.
         let chrome = |proc: &Path| -> Vec<Thread> {
-            threads(proc, None, &root.join("tuple.service"))
+            seen(proc, None, &root.join("tuple.service"))
                 .into_iter()
                 .filter(|t| t.label == "chrome")
                 .collect()
         };
         assert_eq!(chrome(&proc), []);
-        write(&proc.join("40/comm"), "chrome\n");
+        // Nor while only a Chrome Joel didn't open records one, a test's.
+        write(&proc.join("50/comm"), "chrome\n");
+        write(
+            &proc.join("50/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/call-under-load.service\n"),
+        );
+        write(&proc.join("50/task/51/comm"), "AudioInputDevic\n");
+        assert_eq!(chrome(&proc), []);
+        // Nor an agent's, in the jobs slice.
+        write(&proc.join("55/comm"), "chrome\n");
+        write(
+            &proc.join("55/cgroup"),
+            &format!("0::{ACCOUNT}/jobs.slice/jobs-work.slice/work-1-2.scope\n"),
+        );
+        write(&proc.join("55/task/56/comm"), "AudioInputDevic\n");
+        assert_eq!(chrome(&proc), []);
+        // A Chrome Joel started from a terminal carries his call, though
+        // its drawing isn't read.
+        write(&proc.join("45/comm"), "chrome\n");
+        write(
+            &proc.join("45/cgroup"),
+            &format!("0::{ACCOUNT}/app.slice/kitty-70-0.scope\n"),
+        );
+        write(&proc.join("45/task/46/comm"), "WebRTC_Network\n");
+        opened(&proc, "40", "chrome");
         write(&proc.join("40/task/41/comm"), "AudioInputDevic\n");
         assert_eq!(
-            threads(&proc, None, &root.join("tuple.service")),
+            seen(&proc, None, &root.join("tuple.service")),
             [
                 found("chrome", "AudioInputDevic", task("40", "41"), true),
                 found("chrome", "AudioOutputDevi", task("30", "33"), false),
                 found("chrome", "WebRTC_Network", task("30", "31"), false),
+                found("chrome", "WebRTC_Network", task("45", "46"), false),
                 found("tuple", ".tuple-wrapped", task("60", "60"), false),
                 found("tuple", "AudioEncoder", task("60", "62"), true),
                 found("tuple", "Signaling", task("60", "61"), false),
@@ -424,9 +532,9 @@ mod tests {
         // Out of a call, neither has a thread worth reading.
         fs::remove_file(proc.join("60/task/62/comm")).unwrap();
         fs::remove_file(proc.join("40/task/41/comm")).unwrap();
-        assert_eq!(threads(&proc, None, &root.join("tuple.service")), []);
+        assert_eq!(seen(&proc, None, &root.join("tuple.service")), []);
         // Nor without Tuple at all.
-        assert_eq!(threads(&proc, None, &root.join("gone.service")), []);
+        assert_eq!(seen(&proc, None, &root.join("gone.service")), []);
     }
 
     #[test]
@@ -468,7 +576,7 @@ mod tests {
             })
             .unwrap();
         go.recv().unwrap();
-        let found = threads(Path::new("/proc"), None, &root.join("tuple.service"));
+        let found = seen(Path::new("/proc"), None, &root.join("tuple.service"));
         let carrying = found
             .iter()
             .find(|t| t.label == "tuple" && t.name == "AudioEncoder")

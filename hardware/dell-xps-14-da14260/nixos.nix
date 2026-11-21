@@ -31,6 +31,28 @@ let
 
   npuCompiler = pkgs.callPackage ./programs/npu-compiler.nix { };
 
+  # Intel's microcode release of 10 November takes this chip (06-cc-02) from
+  # 0x11c to 0x11d "for functional issues". Its errata (Core Ultra Series 3
+  # Specification Update, PTL039) name a hang when several P-cores leave a
+  # low-power state at once under heavy ring traffic, a fatal internal-timer
+  # machine check, which is close to what the firmware recorded at two of
+  # the laptop's resets (docs/hardware.md). nixpkgs has only the release of
+  # 25 September, so this takes the newer one until nixpkgs catches up, and
+  # then gives way to it by itself.
+  microcode =
+    if lib.versionOlder pkgs.microcode-intel.version "20261110" then
+      pkgs.microcode-intel.overrideAttrs {
+        version = "20261110";
+        src = pkgs.fetchFromGitHub {
+          owner = "intel";
+          repo = "Intel-Linux-Processor-Microcode-Data-Files";
+          tag = "microcode-20261110";
+          hash = "sha256-mEf3UwOX1JSb2ELgacj7Wmnm3HYEpFzAlCdgSmsnC7Y=";
+        };
+      }
+    else
+      pkgs.microcode-intel;
+
   # turbostat's Makefile calls the compiler gcc, and the kernel's packages
   # build with clang, which has no gcc, so nixpkgs's turbostat fails to
   # build. cc is whichever compiler the set uses. Take the flag out once
@@ -78,6 +100,7 @@ in
     ../../modules/slices/cores.nix
     ../../modules/touchpad/nixos.nix
     ./camera/camera.nix
+    ./deep-rest.nix
     ./kernel/local.nix
     ./kernel/next.nix
     ./sound/microphones.nix
@@ -184,6 +207,7 @@ in
   # Microcode, and the firmware for Wi-Fi, Bluetooth, the GPU and the audio
   # DSP, which Sound Open Firmware runs.
   hardware.cpu.intel.updateMicrocode = true;
+  hardware.cpu.intel.microcodePackage = microcode;
   hardware.enableRedistributableFirmware = true;
 
   # The Bluetooth chip's firmware and settings from linux-firmware's own

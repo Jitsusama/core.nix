@@ -18,10 +18,13 @@
 // (launcher/Presented.js). A closing makes again only the spots of the
 // things whose stamp moved (launcher/Spots.js). y's flash starts its
 // time a turn after the frame that draws it, only for the newest yank
-// (launcher/Flash.js). Long because its cases
+// (launcher/Flash.js). An opening the collector stalled says where the
+// heap stood at the ask its felt record began with (launcher/Collector.js).
+// Long because its cases
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
+import "Collector.js" as Collector
 import "Flash.js" as Flash
 import "Makings.js" as Makings
 import "Pacing.js" as Pacing
@@ -232,10 +235,35 @@ QtObject {
         check(failures, "a shorter gap's collecting isn't the stall's",
             Pacing.feltTicked(felt, 160, pace, { collected: 60 }).stallCollected, 30);
         check(failures, "it's said after the stall's parts, with the opening's",
-            Pacing.collectorSaid(felt.stallCollected, 38.4),
+            Collector.collectorSaid(felt.stallCollected, 38.4),
             "; the collector 30 ms of the stall, 38 of the opening");
         check(failures, "an opening the collector didn't reach says nothing of it",
-            Pacing.collectorSaid(0, 0.4), "");
+            Collector.collectorSaid(0, 0.4), "");
+        // Read once the room is left, so outside has the room or more and
+        // the chunks the room, or more under Qt's own limit, or, as here,
+        // less, their cap holding them nearer.
+        const stoodAtAsk = { chunks: 300.4, collectsAt: 321.6, outside: 27.2,
+            collectsOutsideAt: 59.2, collecting: false };
+        check(failures, "a stall the collector ran in says where the heap stood at the ask",
+            Collector.standingSaid(30, stoodAtAsk),
+            "; at the ask, chunks 300 of 322 MB and outside 27 of 59 MB");
+        check(failures, "and says a collection was under way as it was asked",
+            Collector.standingSaid(30, Object.assign({}, stoodAtAsk, { collecting: true })),
+            "; at the ask, chunks 300 of 322 MB and outside 27 of 59 MB, a collection under way");
+        const stoodLater = Object.assign({}, stoodAtAsk, { chunks: 12 });
+        const carried = Pacing.feltTicked(Pacing.feltBegun(0, { asked: stoodAtAsk }), 16, pace,
+            { asked: stoodLater, collected: 0 });
+        // The launcher hands its ticks no reading today; this keeps a
+        // tick from taking one in place of the opening's.
+        check(failures, "an opening's ticks keep the heap read as it began, not one handed later",
+            Collector.standingSaid(30, carried.asked),
+            Collector.standingSaid(30, stoodAtAsk));
+        check(failures, "and one begun with none read says nothing of the heap",
+            Collector.standingSaid(30, Pacing.feltBegun(0).asked), "");
+        check(failures, "a stall the collector didn't run in says nothing of the heap",
+            Collector.standingSaid(0.4, stoodAtAsk), "");
+        check(failures, "nor does one with no standing read",
+            Collector.standingSaid(30, null) + Collector.standingSaid(30, {}), "");
         check(failures, "a tick without a count keeps the last",
             Pacing.feltTicked(Pacing.feltBegun(0, { collected: 5 }), 16, pace).collected, 5);
     }
@@ -378,10 +406,57 @@ QtObject {
             read({ held: [{ row: { from: people } }] }), false);
         check(failures, "though in a place that reads them they are",
             read({ held: [{ row: { from: now } }] }), true);
+        // A source a step holds anew, laying its rows out afresh while
+        // unwanted, says as it's held only what the step read of it a moment
+        // before, so it isn't made again: Joel's steps into Agents waited 16
+        // to 25 ms for it (his journal, 2026-11-19 and 20).
+        const afresh = { readsAfreshUnwanted: true };
+        const alsoAfresh = { readsAfreshUnwanted: true };
+        const keeps = { readsAfreshUnwanted: false };
+        check(failures, "a step holds anew a source that laid its rows out afresh",
+            Wanted.heldAnew(afresh, []), afresh);
+        check(failures, "but not one that kept them unwanted, which says those made at last",
+            Wanted.heldAnew(keeps, []), null);
+        check(failures, "nor one a step already holds",
+            Wanted.heldAnew(afresh, [{ row: { from: afresh } }]), null);
+        check(failures, "nor a row from no source", Wanted.heldAnew(undefined, []), null);
+        check(failures, "the source a step holds anew said only what the step read",
+            Wanted.readByStep(afresh, afresh, undefined), true);
+        check(failures, "another source's change as it's held is its own",
+            Wanted.readByStep(alsoAfresh, afresh, undefined), false);
+        check(failures, "as is the held source's refresh the launcher asks for",
+            Wanted.readByStep(afresh, afresh, "a row agreed"), false);
+        check(failures, "and any change with no step holding a source anew",
+            Wanted.readByStep(afresh, null, undefined), false);
         check(failures, "nor opening into another place before its step is held",
             read({ entering: people }), false);
         check(failures, "though opening into one that reads them they are",
             read({ entering: now }), true);
+        // As a kept opening fills in, the reader waits its turn to wake, and
+        // reads them then, not in the turn the launcher opened in, nor in
+        // the turn another reader wakes in.
+        const dozing = { saysAtHome: true, asleep: true };
+        const woken = { saysAtHome: true, asleep: false };
+        const nowDozing = { saysAtHome: false, asleep: true };
+        const readDozing = (fields, readers) => Wanted.readAt(at(fields), readers);
+        check(failures, "at home, a reader not yet woken reads none",
+            readDozing({}, [dozing, nowDozing]), false);
+        check(failures, "not even once another reader home names has woken",
+            readDozing({}, [dozing, now]), false);
+        check(failures, "but once woken itself it does",
+            readDozing({}, [woken, nowDozing]), true);
+        check(failures, "as it does when something's typed",
+            readDozing({ typing: true }, [dozing, nowDozing]), true);
+        check(failures, "and held in it, it reads them though not woken",
+            readDozing({ held: [{ row: { from: dozing } }] }, [dozing, nowDozing]), true);
+        // Which sources wait their turn: any home reads, and of those that
+        // say what they hold at home, only one reading rows of its own.
+        check(failures, "a source home reads waits its turn to wake",
+            Wanted.wakesInTurn({ saysAtHome: false }), true);
+        check(failures, "one that says what it holds at home doesn't",
+            Wanted.wakesInTurn({ saysAtHome: true, readsHome: false }), false);
+        check(failures, "unless it reads rows home shows of its own",
+            Wanted.wakesInTurn({ saysAtHome: true, readsHome: true }), true);
         const warming = { saysAtHome: false, warming: true };
         check(failures, "shut, one warming for home is", wanted({ open: false }, warming), true);
         check(failures, "and no other", wanted({ open: false }, people), false);
@@ -412,7 +487,9 @@ QtObject {
         const on = { name: "on" };
         const people = { name: "people" };
         const quests = { name: "quests" };
-        const sources = { power, disk, on, people, quests };
+        const clock = { name: "clock", saysAtHome: true };
+        const agents = { name: "agents", saysAtHome: true, readsHome: true };
+        const sources = { power, disk, on, people, quests, clock, agents };
         const places = {
             machine: { stands: "power", holds: ["disk", "battery"] },
             battery: { stands: "power", holds: [] }
@@ -422,6 +499,10 @@ QtObject {
             [quests, people, on, power, disk]);
         check(failures, "home's own come first, each once, then the rest",
             order.map(one => one.name).join(" "), "on power disk people quests");
+        const inTurn = Wanted.wakingOrder(["clock", "agents"], () => null,
+            id => sources[id] ?? null, [clock, agents]);
+        check(failures, "one saying what it holds waits its turn only reading home's rows",
+            inTurn.map(one => one.name).join(" "), "agents");
 
         // Home found again after the fill is a slice of its own, so its
         // time is a slice's, never the sources' first wait.
@@ -778,6 +859,14 @@ QtObject {
         check(failures, "and says when it came in its key's own frame",
             Presented.drawerSaid(Object.assign({ came: Pacing.drawerCame(true) }, drawer))
                 .endsWith("frame's start, in the key's frame"), true);
+        // A slow drawer's own line, which reports off or on names its row
+        // by a key a title may be in, so it stays one line, its key quoted
+        // as the lab's ' took ' reads it.
+        const slow = { making: 200, waiting: 40, drawing: 60, came: "the frame after" };
+        check(failures, "a slow drawer's line says where its time went, its key quoted",
+            Presented.drawerTook("window:a \"b\"\nlauncher: x", 300, slow, " (split)"),
+            'launcher: drawer for "window:a \\"b\\"\\nlauncher: x" took 300 ms to its frame, '
+            + "200 ms making (split), 40 waiting for its frame, 60 drawing it, the frame after");
         const drawers = Presented.drawersSaid([drawer,
             { key: "program:kitty", place: "programs", from: 0, followed: 5, begun: 15, at: 40 },
             { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,
@@ -822,6 +911,109 @@ QtObject {
             Presented.intoSaid({ key: "win:a\u2028b\u2029c\u0085d", from: 0, at: 20, laid: 1 }),
             'launcher: into the drawer for "win:a\\u2028b\\u2029c\\u0085d" presented 20 ms '
             + "from the key, 1 line laid first");
+        // Going back from the drawer's list of keys is a going-in under the
+        // same row, which read as a second of Emoji's with another count.
+        check(failures, "going in names the page it went into",
+            Presented.intoSaid({ key: "place:emoji", page: "The Drawer's Keys", from: 0,
+                at: 20, laid: 12 }),
+            'launcher: into the drawer for "place:emoji" on "The Drawer\'s Keys" presented '
+            + "20 ms from the key, 12 lines laid first");
+        check(failures, "and quotes the page, as a window's title may name it",
+            Presented.intoSaid({ key: "place:x", page: 'a "b"\nlauncher: x', from: 0, at: 20,
+                laid: 1 }),
+            'launcher: into the drawer for "place:x" on "a \\"b\\"\\nlauncher: x" presented '
+            + "20 ms from the key, 1 line laid first");
+        check(failures, "a drawer quotes its key too, so a title can't forge a line",
+            Presented.drawerSaid(Object.assign({}, drawer, { key: 'win:a "b"\nlauncher: x' }))
+                .startsWith('launcher: drawer for "win:a \\"b\\"\\nlauncher: x" presented 90 ms'),
+            true);
+        // j typed 0 to 480 ms after Ctrl+W l waited on the rest of Emoji's
+        // run being laid (2026-11-19), so a key in a drawer says its time
+        // from going in when it came soon after, which the drawer lab reads.
+        check(failures, "a key in a drawer says its time from the key and from going in",
+            Presented.keyInSaid({ act: "next", key: "place:emoji", from: 1040, into: 1000,
+                at: 1131, screen: "DP-4", refresh: 1000 / 59.997 }),
+            'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
+            + "131 from going in; on DP-4 at 60 Hz");
+        check(failures, "and the shell's share to its frame's swap",
+            Presented.keyInSaid({ act: "next", key: "place:emoji", from: 1040, into: 1000,
+                at: 1131, swapped: 1058.4 }),
+            'launcher: next in the drawer for "place:emoji" presented 91 ms from the key, '
+            + "18 to the shell's swap, 131 from going in");
+        // Two minutes into a drawer, its time from going in would read as
+        // a fault, so a key long after says none; but while reports are on
+        // every key says it, as the drawer lab reads it however long the
+        // lay held the key.
+        check(failures, "a key just inside a second of going in keeps its time from it",
+            Presented.intoKept(1999, 1000, false), 1000);
+        check(failures, "and one a second after keeps none",
+            Presented.intoKept(2000, 1000, false), undefined);
+        check(failures, "but one long after keeps it while reports are on",
+            Presented.intoKept(121000, 1000, true), 1000);
+        check(failures, "and a key that keeps none says none from going in",
+            Presented.keyInSaid({ act: "previous", key: "place:emoji", from: 0, at: 60 }),
+            'launcher: previous in the drawer for "place:emoji" presented 60 ms from the key');
+        check(failures, "a key in a drawer quotes its key so a title can't forge a line",
+            Presented.keyInSaid({ act: "next", key: 'x "y"\nlauncher: z', from: 0, at: 60 }),
+            'launcher: next in the drawer for "x \\"y\\"\\nlauncher: z" presented 60 ms '
+            + "from the key");
+        // A window's row is keyed by its title, a mail's subject or a
+        // document's name, which a slow key would write once per key.
+        check(failures, "a window's key is said without its title unless reports are on",
+            Presented.keyShown("window:org.gnome.Evolution:Re: my offer", false),
+            "window:org.gnome.Evolution");
+        check(failures, "as is one with an empty title",
+            Presented.keyShown("window:kitty:", false), "window:kitty");
+        check(failures, "a window key of one part, which may be a title, is said as window",
+            Presented.keyShown("window:Inbox", false), "window");
+        check(failures, "as is one that names no app, as niri's records leave it",
+            Presented.keyShown("window::Inbox", false), "window");
+        check(failures, "or one whose app was read as null",
+            Presented.keyShown("window:null:Inbox", false), "window");
+        check(failures, "or as undefined",
+            Presented.keyShown("window:undefined:Inbox", false), "window");
+        check(failures, "but an app whose id starts with a digit is said",
+            Presented.keyShown("window:1Password:Vault", false), "window:1Password");
+        check(failures, "as is one whose app holds a page's address, as a browser's may",
+            Presented.keyShown("window:chrome-docs.google.com__document_d_1x_edit-Default:Plan",
+                false), "window");
+        check(failures, "and whole while they are",
+            Presented.keyShown("window:kitty:~/src", true), "window:kitty:~/src");
+        check(failures, "and the launcher's own ids are said whole",
+            Presented.keyShown("place:emoji", false), "place:emoji");
+        check(failures, "a category's too",
+            Presented.keyShown("category:power", false), "category:power");
+        check(failures, "and a collection's, as Emoji's row has",
+            Presented.keyShown("collection:emoji", false), "collection:emoji");
+        check(failures, "but any other key only by its kind, as a network's name is",
+            Presented.keyShown("wifi:Harbour House", false), "wifi");
+        check(failures, "a row named but with no key is said only as an answer with reports off",
+            Presented.rowShown({ name: "Re: my offer" }, false), "answer");
+        check(failures, "and its name while they're on",
+            Presented.rowShown({ name: "Address" }, true), "Address");
+        check(failures, "a key of no kind is said as nothing",
+            Presented.keyShown("github.com", false), "");
+        check(failures, "as is a name with a colon in it, which no kind is",
+            Presented.keyShown("Call: Dr Smith", false), "");
+        check(failures, "or one in lower case with a space",
+            Presented.keyShown("dr smith: call", false), "");
+        check(failures, "or a device's name, as a sound's trail has",
+            Presented.keyShown("alsa_output.pci-0000_00_1f.3:by-ear", false), "");
+        check(failures, "and a key that came as a number is read as text",
+            Presented.keyShown(42, false), "");
+        check(failures, "and said as text with reports on, so the line quotes it",
+            Presented.rowShown({ key: 42 }, true), "42");
+        check(failures, "a row with neither key nor name is said as a row",
+            Presented.rowShown({}, false), "row");
+        check(failures, "as is one missing, whether reports are on or off",
+            Presented.rowShown(null, true), "row");
+        check(failures, "so its row is said only as a row with reports off",
+            Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, false), "row");
+        check(failures, "and whole while they're on",
+            Presented.rowShown({ key: "stopwatch", name: "Stopwatch" }, true), "stopwatch");
+        check(failures, "a row's key is what's said of a row that has one",
+            Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
+            "window:kitty");
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

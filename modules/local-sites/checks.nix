@@ -498,7 +498,8 @@ in
   # what each spent today, what waits on a cell and what holds stand as the
   # drawer says them, every cell drawn until too small to read, every line
   # thinned as the map steps out past its own size, the talk between two
-  # networks one line until it or a cell it touches opens, the
+  # networks one line until it or a cell it touches opens, the builders
+  # standing under the machines in a shape of their own, the
   # web-design skill's page checks and the map's own (site-checks.js)
   # passing at two widths in both looks, nothing logged but what a test
   # causes, and every cell reached (reach.ts) there and on a twin of 10,000.

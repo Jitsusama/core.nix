@@ -172,6 +172,8 @@ LANDINGS += [
 ]
 # How many rows' keys a step into Landed may weigh: one of each run alike, not each of them.
 WEIGHED_INTO_LANDED = 3
+# How many of the rows it made last the launcher names by key (Provider.qml's tallyKept).
+LATELY_KEPT = 16
 
 
 def landed_today() -> str:
@@ -187,7 +189,8 @@ def landed_today() -> str:
 
 
 # How full a session's context is, and its turns today, as the harness's usage keeps them by
-# gen_ai's names, counted on the day the sandbox's clock says.
+# gen_ai's names, counted on the day the sandbox's clock says as the file loads, which a case
+# reading its figures lays again once the day has turned (usage_dated_today).
 FULL = {
     "day": datetime.now().astimezone().date().isoformat(),
     "gen_ai.response.model": "claude-opus-5-5",
@@ -237,9 +240,42 @@ def lay(address: str, title: str, said: Json, *, closed: bool = False) -> None:
         "at": datetime.now(UTC).isoformat(),
         **said,
     }  # fmt: skip
+    laid_whole(address, record)
+
+
+def laid_whole(address: str, record: Json) -> None:
+    """Write a session's presence record whole, by rename, as pi does."""
     laid = PRESENCE / f"{address.lower()}.json.tmp"
     laid.write_text(json.dumps(record))
     laid.rename(PRESENCE / f"{address.lower()}.json")
+
+
+def laid_record(address: str) -> Json:
+    """Give a session's presence record as it was last laid."""
+    return cast("Json", json.loads((PRESENCE / f"{address.lower()}.json").read_text()))
+
+
+def usage_dated_today(address: str) -> None:
+    """Lay a session's usage again on today's date, once the day has turned since it was laid.
+
+    The daemon says a day's figures only on their day (modules/agents/src/figures.rs), and the
+    builders run on UTC, so a run begun before midnight would find none in a case after it, as
+    one at 00:02Z did (XY9H5C, 1b5eff6c). A session's next turn lays its usage on the new day,
+    as this does.
+    """
+    record = laid_record(address)
+    usage = cast("Json", record["usage"])
+    today = datetime.now().astimezone().date().isoformat()
+    if usage["day"] != today:
+        dated = {**usage, "day": today}
+        laid_whole(address, {**record, "usage": dated, "at": datetime.now(UTC).isoformat()})
+
+
+def closed_side(address: str) -> str:
+    """Say when a closed session ended as Recent's row does: its time today, else its day too."""
+    ended = datetime.fromisoformat(str(laid_record(address)["at"])).astimezone()
+    today = ended.date() == datetime.now().astimezone().date()
+    return f"closed {ended:%H:%M}" if today else f"closed {ended:%a %H:%M}"
 
 
 def held_by_node() -> list[str]:
@@ -769,6 +805,7 @@ def test_a_session_past_80_percent_full_says_so_first_and_its_drawer_its_figures
     shell: Shell,
 ) -> None:
     """Past 80% of its context, a row says how full before how it stands, in the warning's hue."""
+    usage_dated_today("LISTEN")
     row = found(shell, "listening quest", "Listening Quest")
     # Found by typing, whom it's under leads, before what's its own.
     assert row["side"].endswith(" \u00b7 84% full \u00b7 listening"), row
@@ -826,10 +863,16 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
     VKCF3Z's order (2b03e43c); the rest, its quest and machine among them, is folded under
     z a after its figures, so none is lost.
     """
+    usage_dated_today("LISTEN")
     found(shell, "listening quest", "Listening Quest")
     glance = ["Last Turn", "Context"]
+    # Its figures folded too, so a drawer from before its usage was laid again isn't read.
     shell.launcher_until(
-        lambda shown: shown["drawer"]["shown"] and shown["drawer"]["facts"] == glance
+        lambda shown: (
+            shown["drawer"]["shown"]
+            and shown["drawer"]["facts"] == glance
+            and "Cache" in shown["drawer"]["nerd"]
+        )
     )
     drawer = shell.showing()["drawer"]
     assert shown_first(drawer) == glance, f"its first screen hides some: {drawer}"
@@ -1236,16 +1279,17 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.close_launcher()
     opened(shell)
     boss = {"busy": True, "state": "busy"}
-    at_top = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
+    made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    # The same row changing back costs no more held in Landed than it did at Agents' top.
+    # A session changing while Landed is held remakes none of its landings. Counted against
+    # Agents' top, a change measured as one pass there and two here failed 1 run in 4, since
+    # the top is laid out once for each source that hears it; so the landings are named by key
+    # (Provider.qml's tally keeps the last rows made). Remaking them made 26 rows to the top's 9.
     inside = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss))
-    # Agents' top is laid out once for each source that hears a change, Sessions and the agents
-    # daemon, and the two land in one pass or two as they fall, so a change costs up to twice
-    # what one pass did; remaking Landed's landings cost 26 to the top's 9.
-    assert inside <= 2 * at_top, f"a change made {inside} rows in Landed, {at_top} at Agents' top"
+    remade = landings_made_last(shell, inside)
+    assert not remade, f"a change remade {len(remade)} of Landed's landings: {remade}"
 
 
 def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shell) -> None:
@@ -1407,6 +1451,13 @@ def picks_kept() -> dict[str, Json]:
         if path.read_text().strip():
             said.update(cast("dict[str, Json]", json.loads(path.read_text())))
     return said
+
+
+def landings_made_last(shell: Shell, made: int) -> list[str]:
+    """Give the keys of the landings among the last `made` rows Agents made."""
+    assert made <= LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
+    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
+    return [key for key in (lately[-made:] if made else []) if key.startswith("agents:landed:")]
 
 
 def made_through(shell: Shell, change: Callable[[], None]) -> int:
@@ -2288,6 +2339,9 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     shell: Shell,
 ) -> None:
     """Recent holds a session closed this boot, never one to reopen; Return reopens it."""
+    # When it closed, as its row would say it before any of Recent is made, since a run begun
+    # before midnight reads it after, saying its day too (XY9H5C, 1b5eff6c).
+    before = closed_side("CLOSED")
     opened(shell)
     shell.launcher_until(lambda shown: "Recent" in shown["rows"])
     rows = shell.showing()["rows"]
@@ -2306,8 +2360,10 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     # Only the one closed: the last boot's are Sessions to Reopen's, and the closed
     # orchestrators stand at the tree's end.
     shell.launcher_until(lambda shown: shown["rows"] == ["Closed Quest"])
+    # By its time alone only on the day it closed: as before the row was made, or as now,
+    # should the day turn in between.
     row = shell.showing()["selected"]
-    assert re.fullmatch(r"closed \d\d:\d\d", row["side"]), row
+    assert row["side"] in {before, closed_side("CLOSED")}, row
     # Its note never says its name again, but where it ran.
     assert row["note"].endswith("\u00b7 tidepool"), row
     assert (row["verb"], row["told"][:1]) == ("reopen", ["\u21b5 reopen"]), row
@@ -2627,6 +2683,38 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: "Arrived" in shown["rows"])
+
+
+def test_a_step_into_agents_from_home_makes_its_rows_once(shell: Shell) -> None:
+    """A step into Agents by arrow, a session moved since it was last shown, makes its rows once.
+
+    Home makes none of Agents' rows with nothing typed, since Agents says what it holds itself,
+    so the step makes them before it's held. Held, Agents found them moved from what it said
+    when last wanted, and the launcher made them again before the step's frame: each of Joel's
+    steps into Agents by \u2193 and Return waited 16 to 25 ms for its frame, where other steps
+    as long waited a median 2 (his journal, 2026-11-19 and 20).
+    """
+    shell.launcher_closed()
+    arrived_shut(shell, lambda: lay("STEPIN", "Stepped Into Quest", {"state": "listening"}))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.down_to("Agents")
+    # Return comes once the arrow's frames are drawn, as Joel's hand comes after his arrow.
+    assert shell.held_still(), "the launcher never held still after the arrow"
+    since = shell.mark()
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Stepped Into Quest" in shown["rows"])
+    # The step's frame and any made after it are drawn before what they said is read.
+    assert shell.held_still(), "the launcher never held still after the step"
+    said, _ = shell.said_since(since)
+    again = [line for line in said if line.startswith("act moved in agents")]
+    assert not again, f"the step into Agents made its rows again: {again}"
+    # A precondition, not the claim: Agents did say its rows moved as the step was held, so
+    # the case stands where Joel's steps did rather than passing on a change never said.
+    assert "agents said only what its step read" in said, f"Agents said no change: {said}"
+    # Only the step's own change is let by: one Agents says once it's held still shows.
+    lay("AFTERSTEP", "After the Step Quest", {"state": "listening"})
+    shell.launcher_until(lambda shown: "After the Step Quest" in shown["rows"])
 
 
 def arrived_shut(shell: Shell, arrive: Callable[[], None]) -> None:
@@ -3765,13 +3853,10 @@ def touched(address: str) -> None:
     The node reads its carries again only as a session it holds changes, and a presence's
     `at` alone is none of a session's, so its `since` moves.
     """
-    path = PRESENCE / f"{address.lower()}.json"
-    record = json.loads(path.read_text())
+    record = laid_record(address)
     record["at"] = datetime.now(UTC).isoformat()
     record["since"] = record["at"]
-    laid = path.with_suffix(".tmp")
-    laid.write_text(json.dumps(record))
-    laid.rename(path)
+    laid_whole(address, record)
 
 
 def kept(*carries: Json) -> None:

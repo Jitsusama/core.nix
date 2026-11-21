@@ -89,7 +89,8 @@
   overflow-wrap: anywhere;
 }
 
-.checkout .meta {
+.checkout .meta,
+.tree .meta {
   font-size: var(--step-small);
   color: var(--muted);
 }

@@ -19,25 +19,16 @@
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-11-22",
-    "due_why": "Its owner, the call shaper's, by 2026-11-22 23:59 UTC fixes what a failure's trace names and takes it off once three net runs after the fix exit 0, or, with none failing, once ten in a row do, counted by exit code, since a failure only here is recorded as passed: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after the trace, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s",
+    "due_why": "Its owner, the call shaper's, by 2026-11-22 23:59 UTC fixes what a failure's trace names and takes it off once three net runs after the fix exit 0, or, with none failing, once ten in a row do, counted by exit code, since a failure only here is recorded as passed: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after the trace, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s. test_a_call_goes_ahead_of_its_own_uploads joined it on 20 Nov for sharing that holding wait and the call's bars, not for a failure of its own, and while it is listed a failure in it alone is said and blocks nothing, before a merge or after, so until it comes off nothing catches a change that stops telling Joel's CAKE its rate: the unit tests cover only the rate chosen and the command's form",
     "owner_pr": 4228,
     "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
+      "test_a_call_goes_ahead_of_its_own_uploads",
       "test_a_call_loses_little",
       "test_unshaped"
     ],
     "test": "vm-a-call-keeps-its-packets"
-  },
-  {
-    "at": 1794838970,
-    "commit": "467f7109b3c34c6195996ce4f98c020a3064fe53",
-    "due": "2026-11-21",
-    "due_why": "Its owner, the launcher's, by 2026-11-21 23:59 UTC makes its timing cases hold on a loaded builder, or takes it off once ten runs in a row hold: all 11 failures from 18 Nov to 19 Nov 01:00 UTC were its load cases, 6 of them the launcher's keys under load at four to six times their time with the load frozen",
-    "owner_pr": 4953,
-    "owner_session": "Y2YBTS",
-    "reason": "failed, then passed, at 467f7109b3c3",
-    "test": "vm-desktop-keeps-pace"
   },
   {
     "at": 1795057672,
@@ -49,6 +40,19 @@
     "reason": "failed on main at 89dc01f5ad2a twice, 3c36b575e846, 38063460e6a0, e3932cb77356 twice and 7030d16c46ae twice, passing between; #5615, the Mycelium lock where the net last met it, didn't cause it",
     "subtests": [
       "test_finds_the_connection"
+    ],
+    "test": "vm-the-connection-stays-quick"
+  },
+  {
+    "at": 1795244109,
+    "commit": "b18b11bc945b6bb13b41ae946fa3b170454acbee",
+    "due": "2026-11-23",
+    "owner_pr": 5953,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at b18b11bc945b",
+    "subtests": [
+      "test_climbs_back",
+      "test_second_link"
     ],
     "test": "vm-the-connection-stays-quick"
   }

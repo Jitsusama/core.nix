@@ -493,7 +493,7 @@ def warp_error_drawn(shown: Json) -> bool:
 def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
     """Have the stand-in warp-cli answer as the contract's files say, each (file, question).
 
-    It answers from what's written in ~/warp-cli (tests/warp-cli-stand-in.sh); a question
+    It answers from what's written in ~/warp-cli (tests/stand-ins/warp-cli-stand-in.sh); a question
     named with .error is said as warp-cli says an error. Each lands whole, by a rename, so
     warp never reads half of one, and writable, since mv and rm on a terminal ask before
     replacing a file that isn't, as the store's are.
@@ -1738,8 +1738,8 @@ def a_thing_found_by_its_meaning(desktop: Desktop, at_each_scale: list[str]) -> 
     """Find things by their meaning, below what typing found, and shoot them.
 
     The launcher tells the meaning daemon its things as it opens and asks it what's typed, on
-    a stand-in that loads no model (tests/desktop/stand-in-meaning.py): at most three of what
-    it finds are added below every row typing found, none of them twice, each saying it was
+    a stand-in that loads no model (tests/desktop/stand-ins/stand-in-meaning.py): at most three
+    of what it finds are added below every row typing found, none of them twice, each saying it was
     found by its meaning (VKCF3Z, 2026-11-07). Which it adds, and that nothing moves when they
     arrive late, is modules/meaning/tests/meaning.qml's to prove; this is the wiring, and the look
     at Joel's scales.
@@ -1791,8 +1791,8 @@ def a_screenshot_found_by_what_it_shows(desktop: Desktop, at_each_scale: list[st
 
     Typing in Recent finds the screenshot named for the words, then the one whose words hold
     them, its line below it, then the one the meaning daemon says looks like them, on a stand-in
-    that loads no model (tests/desktop/stand-in-meaning.py), saying in the foot that it was
-    found by its meaning and nothing under it (VKCF3Z, 2026-11-07). Which it adds is
+    that loads no model (tests/desktop/stand-ins/stand-in-meaning.py), saying in the foot that it
+    was found by its meaning and nothing under it (VKCF3Z, 2026-11-07). Which it adds is
     modules/meaning/tests/meaning.qml's to prove; this is the wiring, and the look at Joel's scales.
     """
     shots = desktop.pictures
@@ -2170,8 +2170,8 @@ def recent_drawer(desktop: Desktop, shot: str) -> None:
 # (tests/desktop.nix), with the password its access point is given.
 WIFID = "/run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
 LANTERN = '{"name":"Lantern","password":"glowing in the dark"}'
-# Signing in at Lantern's front desk, which signs in whatever is posted to it (front-desk.py),
-# over bash's own connection, since the machine has no curl.
+# Signing in at Lantern's front desk, which signs in whatever is posted to it
+# (desktop/stand-ins/front-desk.py), over bash's own connection, since the machine has no curl.
 SIGN_IN = (
     "bash -c 'exec 3<>/dev/tcp/10.42.0.1/80"
     ' && printf "POST /sign-in HTTP/1.0\\r\\nContent-Length: 0\\r\\n\\r\\n" >&3'

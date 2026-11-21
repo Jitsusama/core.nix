@@ -171,6 +171,13 @@ let
   # another: one opening ran two whole collections 16 s apart, each inside
   # a key (qtdeclarative-room-after-every-sweep.patch). The heap module
   # leaves the room through it, so dropping it means changing the module.
+  # An animation starting asks only the windows it changes for a frame
+  # while Qt's system timer advances animations, as it does unless one
+  # window alone is shown on a vsync Qt trusts, since every window drew a
+  # frame showing nothing new:
+  # about 230 of 347 of the launcher's first frames since a boot came
+  # with four or five other windows' within 0.2 ms
+  # (qtdeclarative-animations-wake-only-their-windows.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -206,6 +213,7 @@ let
             ./qtdeclarative-large-runs-by-size.patch
             ./qtdeclarative-small-runs-split-first.patch
             ./qtdeclarative-room-after-every-sweep.patch
+            ./qtdeclarative-animations-wake-only-their-windows.patch
           ];
         });
       }

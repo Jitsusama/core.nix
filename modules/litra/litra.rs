@@ -604,19 +604,15 @@ fn status(as_json: bool) -> ExitCode {
 }
 
 /// Whether any camera's file in the folder names a program. A file being
-/// replaced is written beside it first, under its name and a number, and
-/// a file starting with a dot is someone's half-written one.
+/// replaced is written beside it first under a dotted name, so one
+/// starting with a dot is someone's half-written one, or hidden; a camera
+/// named for a version, as `Webcam 2.0`, is a camera's.
 fn streaming(folder: &Path) -> bool {
     let Ok(entries) = fs::read_dir(folder) else {
         return false;
     };
     entries.flatten().any(|entry| {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        let temporary = name.starts_with('.')
-            || name.rsplit_once('.').is_some_and(|(_, after)| {
-                !after.is_empty() && after.bytes().all(|b| b.is_ascii_digit())
-            });
+        let temporary = entry.file_name().as_encoded_bytes().starts_with(b".");
         !temporary && fs::read_to_string(entry.path()).is_ok_and(|text| !text.trim().is_empty())
     })
 }
@@ -1340,11 +1336,14 @@ mod tests {
         fs::write(root.join("camera"), "").unwrap();
         fs::write(root.join("MX Brio 705 for Business"), "\n").unwrap();
         assert!(!streaming(&root));
-        fs::write(root.join("camera.4123"), "zoom\n").unwrap();
+        fs::write(root.join(".camera.4123"), "zoom\n").unwrap();
         fs::write(root.join(".camera"), "zoom\n").unwrap();
         assert!(!streaming(&root), "a file being replaced is no camera");
         fs::write(root.join("MX Brio 705 for Business"), "zoom\n").unwrap();
         assert!(streaming(&root));
+        fs::remove_file(root.join("MX Brio 705 for Business")).unwrap();
+        fs::write(root.join("Webcam 2.0"), "zoom\n").unwrap();
+        assert!(streaming(&root), "a camera named for a version is a camera");
         assert!(!streaming(&root.join("nothing")));
     }
 

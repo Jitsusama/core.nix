@@ -293,8 +293,11 @@ fn set(words: &str, inset: usize, room: Room) -> Vec<String> {
 /// Words wrapped to `measure` cells: a run gives way at its items first,
 /// the dot going with the break, so no line ends or starts on one, and
 /// only an item too long for a line of its own breaks between its words,
-/// never parting what `held` keeps together. A piece longer than the
-/// measure is shortened in its middle, never broken across two: to the
+/// never parting what `held` keeps together. A held piece wider than
+/// the measure gives way at its words before any is shortened, since a
+/// figure cut to fit its unit loses the digits it's read for. A word
+/// longer than the measure is shortened in its middle, never broken
+/// across two: to the
 /// room left on its line where that's at least `SHARES` cells, so it
 /// doesn't leave the word before it alone, and otherwise on a line of
 /// its own.
@@ -312,7 +315,14 @@ pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
             // An item's first piece is still parted from the line by its
             // dot; the rest of its pieces by spaces.
             let mut between = ITEMS;
-            for piece in held(item) {
+            let pieces = held(item).into_iter().flat_map(|piece| {
+                if width(&piece) > measure && piece.contains(' ') {
+                    piece.split(' ').map(str::to_owned).collect()
+                } else {
+                    vec![piece]
+                }
+            });
+            for piece in pieces {
                 let left = measure.saturating_sub(width(&line) + width(between));
                 let piece = if width(&piece) > measure && !line.is_empty() && left >= SHARES {
                     shortened(&piece, left)
@@ -387,10 +397,10 @@ const JOINING: [&str; 22] = [
     "on", "or", "so", "the", "to", "was", "yet",
 ];
 
-/// What a break mustn't part: a figure and its unit (`412 GB`), and
-/// `\u{d7}` and what it joins (`1272 \u{d7} 768`), each as one piece. A
-/// bracket before a figure or a stop after its unit (`(16 KiB).`) doesn't
-/// hide either.
+/// What a break mustn't part: a figure and its unit (`412 GB`) or its
+/// rate (`10.3 Mb/s`), and `\u{d7}` and what it joins (`1272 \u{d7} 768`),
+/// each as one piece. A bracket before a figure or a stop after its unit
+/// (`(16 KiB).`) doesn't hide either.
 fn held(words: &str) -> Vec<String> {
     let figure = |word: &str| {
         word.trim_start_matches(['(', '[', '~', '\u{2212}', '-', '+'])
@@ -398,7 +408,13 @@ fn held(words: &str) -> Vec<String> {
     };
     let unit = |word: &str| {
         let bare = word.trim_end_matches(|last: char| last.is_ascii_punctuation());
-        !figure(word) && width(bare) <= UNIT && !JOINING.contains(&bare)
+        // A rate is a unit a second, however long its name (`Mb/s`,
+        // `requests/s`), and as much the figure's. A bare `/s` is short
+        // enough to be a unit.
+        let rate = bare
+            .strip_suffix("/s")
+            .is_some_and(|per| per.chars().all(char::is_alphabetic));
+        !figure(word) && (width(bare) <= UNIT || rate) && !JOINING.contains(&bare)
     };
     let mut pieces: Vec<String> = Vec::new();
     let mut was: Option<&str> = None;
@@ -552,6 +568,55 @@ mod tests {
         assert_eq!(
             wrapped("a screen 1272 \u{d7} 768 wide", 12),
             ["a screen", "1272 \u{d7} 768", "wide"]
+        );
+    }
+
+    #[test]
+    fn a_rate_is_held_to_its_figure_as_a_unit_is() {
+        // A rate's unit is longer than a unit's, but a line that ends on
+        // "10.3" and begins the next on "Mb/s" reads as a bare number.
+        assert_eq!(
+            wrapped("which let 10.3 Mb/s through", 14),
+            ["which let", "10.3 Mb/s", "through"]
+        );
+        assert_eq!(
+            wrapped("read 12 KiB/s here", 8),
+            ["read", "12 KiB/s", "here"]
+        );
+        // As load-proof says a line's rate.
+        assert_eq!(
+            wrapped("up 9.8 Mbit/s down", 11),
+            ["up", "9.8 Mbit/s", "down"]
+        );
+        // A rate says what it counts, however long its name, as a disk
+        // row's requests do.
+        assert_eq!(
+            wrapped("took 5 requests/s now", 12),
+            ["took", "5 requests/s", "now"]
+        );
+        // A stop after it doesn't hide it.
+        assert_eq!(
+            wrapped("it let 10.3 Mb/s. Then", 11),
+            ["it let", "10.3 Mb/s.", "Then"]
+        );
+        // Nor does a lone last word take it from its figure.
+        assert_eq!(
+            wrapped("it let 10.3 Mb/s through", 16),
+            ["it let 10.3 Mb/s", "through"]
+        );
+        // A word as long that isn't a rate still parts from a figure,
+        // as does one with anything but letters before its "/s".
+        assert_eq!(wrapped("took 5 with it", 7), ["took 5", "with it"]);
+        assert_eq!(wrapped("took 5 a.b/s now", 7), ["took 5", "a.b/s", "now"]);
+    }
+
+    #[test]
+    fn a_figure_held_too_wide_for_its_line_parts_rather_than_shortens() {
+        // Shortened to fit, the figure would lose its digits, which are
+        // what the line is read for.
+        assert_eq!(
+            wrapped("up 9.8 Mbit/s down", 6),
+            ["up 9.8", "Mbit/s", "down"]
         );
     }
 

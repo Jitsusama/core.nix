@@ -6,8 +6,10 @@
 # shaper puts in the video tin, and one to 443, which it takes for a page's
 # QUIC and sends best effort. While a call is on, the call to 443 goes in
 # the video tin too. Each call loses at most a hundredth of its datagrams
-# coming down, a bar the router meets alone with the shaper stopped. The
-# tests are shaper-call-vm-test.py, run through pytest.
+# coming down, a bar the router meets alone with the shaper stopped. With
+# the upload held low and the app uploading beside its video call, the
+# shaper drops at most a hundredth of the call going up. The tests are
+# shaper-call-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -32,6 +34,12 @@ let
   # Stands in for a-call-is-on, which reads PipeWire, which the client
   # hasn't got: a call is on while /run/call-is-on is there.
   callIsOn = pkgs.writeShellScriptBin "a-call-is-on" "test -e /run/call-is-on";
+  # Each machine counts the call handshakes it receives, so a lost one is
+  # placed going up or coming down.
+  handshakes = {
+    family = "inet";
+    content = builtins.readFile ./shaper-call-handshakes.nft;
+  };
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-call";
@@ -60,6 +68,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       linger = true;
     };
     environment.systemPackages = [ pkgs.iperf3 ];
+    # The handshake replies that reached the client, beside the server's
+    # count of the connects it heard.
+    networking.nftables.tables.handshakes = handshakes;
   };
 
   nodes.router = {
@@ -118,6 +129,10 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     '';
     systemd.services.media-call = call 5301;
     systemd.services.page-call = call 443;
+    # Whether a call's handshake reached the server, so a lost one going up
+    # is told from one lost coming down.
+    networking.nftables.enable = true;
+    networking.nftables.tables.handshakes = handshakes;
   };
 
   tests = ./shaper-call-vm-test.py;
