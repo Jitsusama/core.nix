@@ -525,11 +525,12 @@ fn first_switched(switches: &str, carries: impl Fn(&str) -> bool) -> Option<i64>
 }
 
 /// The harness's commit installed, as the name of the version pi-packages'
-/// `current` points at.
+/// `current` points at, less the `+<seconds>` a rebuild of the same commit
+/// adds.
 fn installed() -> Option<String> {
     let mirror = crate::axes::landings::harness_mirror();
     let current = std::fs::read_link(mirror.parent()?.join("current")).ok()?;
-    let name = current.file_name()?.to_string_lossy().into_owned();
+    let name = program::commit_of(&current.file_name()?.to_string_lossy()).to_owned();
     is_rev(&name).then_some(name)
 }
 

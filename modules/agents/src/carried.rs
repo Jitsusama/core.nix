@@ -308,9 +308,11 @@ fn git(folder: &Path, args: &[&str]) -> Option<String> {
 }
 
 /// The commit pi-packages installed, from where its `current` link
-/// points, `versions/<commit>`.
+/// points, `versions/<commit>`, or `versions/<commit>+<seconds>` where
+/// pi-packages built the same commit again.
 fn installed(points: &Path) -> Option<String> {
-    let commit = points.file_name()?.to_str()?;
+    let folder = points.file_name()?.to_str()?;
+    let commit = folder.split_once('+').map_or(folder, |(commit, _)| commit);
     whole(commit).then(|| commit.to_owned())
 }
 
@@ -452,6 +454,11 @@ mod tests {
             installed(Path::new(&format!("versions/{commit}"))).as_deref(),
             Some(commit),
             "the version's folder is named by its commit"
+        );
+        assert_eq!(
+            installed(Path::new(&format!("versions/{commit}+1795300000"))).as_deref(),
+            Some(commit),
+            "a rebuild's folder is named by its commit too"
         );
         assert_eq!(
             installed(Path::new("versions/next")),
