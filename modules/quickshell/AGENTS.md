@@ -101,8 +101,10 @@ into kinds at a quiet moment its owner chooses, not alongside other work.
   `linked` and `lands`; a name no node lists opens Machines with its
   foot saying so in Machines' own words. `code` and a repository's key
   opens Code on its row, selected, by `launcher/CodeLinks.js`'s `linked`
-  and `lands`, running nothing; a key no row has, once they're read,
-  opens Code with its foot saying so. A link while the launcher is
+  and `lands`, running nothing; a key no row read whole in the watch
+  now running has opens Code with its foot saying so, and judged by rows
+  held from an earlier watch it lands on the row as it comes. A link
+  while the launcher is
   open, opening or under the talk line opens nothing.
 - [`mycelium-link/`][mycelium-link]: the Rust program a `mycelium:` link
   runs, through the desktop entry home.nix declares: `mycelium:cell/<ADDRESS>`

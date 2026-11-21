@@ -79,10 +79,11 @@ Provider {
     }
 
     // The row a mycelium:repository/ link lands on, by the key its
-    // repository's row is served by, or none for a key no row has once
-    // they're read (CodeLinks.js's linked).
+    // repository's row is served by, or none for a key no row read whole
+    // in this watch has (CodeLinks.js's linked).
     function linked(said) {
-        return Links.linked(ready.rows().map(row => row?.servedKey ?? ""), said);
+        const served = ready.rows().map(row => row?.servedKey ?? "");
+        return Links.linked(served, said, ready.link?.answeredThisWatch === true);
     }
 
     // Whether a row is the one that link lands on (CodeLinks.js's lands).

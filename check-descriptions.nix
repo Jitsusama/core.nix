@@ -187,8 +187,9 @@
     battery without repeating it, and said once it takes
   '';
   a-repository-link-lands-on-its-row = ''
-    a mycelium:repository/ link opens Code on the row its whole key names and no other, waits for
-    that row before Code has read its rows, and lands on none for a key no row has, saying so
+    a mycelium:repository/ link's key picks the row whose served key is that whole key and no
+    other, picks none for a key missing from rows read whole in the watch now running, and
+    judged by rows held from an earlier watch, or by none, picks the row to land on as it comes
   '';
   a-row-made-again-keeps-every-field = ''
     a collection's row made again from a row made, as For You makes a session's from Agents', keeps

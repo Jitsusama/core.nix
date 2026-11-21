@@ -349,10 +349,11 @@
       touch $out
     '';
 
-  # A mycelium:repository/ link opens Code on the row its whole key names,
-  # the programs daemon's, and on none for a key no row has once they're
-  # read, as modules/quickshell/tests/code-links.qml holds
-  # launcher/CodeLinks.js to it in Qt's own engine.
+  # A mycelium:repository/ link picks the row its whole key names, the
+  # programs daemon's, and none for a key missing from rows read whole in
+  # the watch now running, as modules/quickshell/tests/code-links.qml holds
+  # launcher/CodeLinks.js to it in Qt's own engine. Launcher.qml's showCode,
+  # its landing and its foot aren't run here.
   a-repository-link-lands-on-its-row =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -360,6 +361,7 @@
     pkgs.runCommandLocal "a-repository-link-lands-on-its-row" { } ''
       cp ${../tests/code-links.qml} code-links.qml
       cp ${../launcher/CodeLinks.js} CodeLinks.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

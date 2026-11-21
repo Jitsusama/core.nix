@@ -674,9 +674,18 @@ mod tests {
         // machine's link and then a repository's over Joel's work.
         let stamp = stamp_in("repository");
         let first = UNIX_EPOCH + Duration::from_hours(500_000);
-        assert!(named_by("mycelium:machine/osprey").is_ok());
-        assert!(goes_ahead(&stamp, first).expect("the stamp should be kept"));
-        assert!(named_by("mycelium:repository/github:someone/thing").is_ok());
+        assert!(
+            named_by("mycelium:machine/osprey").is_ok(),
+            "a machine's link was refused"
+        );
+        assert!(
+            goes_ahead(&stamp, first).expect("the stamp should be kept"),
+            "the first link was let go"
+        );
+        assert!(
+            named_by("mycelium:repository/github:someone/thing").is_ok(),
+            "a repository's link was refused"
+        );
         assert!(
             !goes_ahead(&stamp, first + Duration::from_secs(1)).expect("the stamp should be kept"),
             "a repository's link within the gap went ahead"

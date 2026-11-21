@@ -16,17 +16,18 @@ function rowKey(key) {
 
 // The row a link lands on, from the keys Code's rows are served by: the
 // repository whose key is the whole of what's said, trimmed, and whole keys
-// only, so it never guesses. Before Code has read any row, which it does
-// once it's first watched, the row is landed on as it comes; a key no row
-// has once they're read lands on none, `unlisted`, which the foot says.
-function linked(served, said) {
+// only, so it never guesses. A key no row has lands on none, `unlisted`,
+// which the foot says, but only judged by rows read whole in the watch
+// now running (`fresh`, Daemon.qml's answeredThisWatch). Rows held from an
+// earlier watch may be from before a clone the page already shows, so a
+// link judged by them is landed on as its row comes instead.
+function linked(served, said, fresh) {
     const key = String(said ?? "").trim();
     if (key === "") {
         return { key, row: null, unlisted: true };
     }
     const row = rowKey(key);
-    const read = served.some(one => one.startsWith(PREFIX));
-    const unlisted = read && !served.includes(row);
+    const unlisted = fresh === true && !served.includes(row);
     return { key, row: unlisted ? null : row, unlisted };
 }
 
