@@ -387,8 +387,15 @@ mod tests {
 
     #[test]
     fn a_line_one_voice_holds_keeps_its_text_and_gets_that_voice() {
-        // Its text is kept as it was, never spelled again from its words.
-        let mut lines = vec![theirs(0, 6, "Fine (laughs)."), theirs(7, 9, "Okay.")];
+        // Its text is kept as it was, never spelled again from its words;
+        // a line read back from the file has no pieces and keeps what it
+        // was called.
+        let read_back = Line {
+            voice: Some(4),
+            name: Some("Cy".to_owned()),
+            ..theirs(7, 9, "Okay.")
+        };
+        let mut lines = vec![theirs(0, 6, "Fine (laughs)."), read_back];
         let mut pieces = pieces_of(0, 0, &[0, 3]);
         let mut words = HashMap::from([(0, vec![word("Fine", 1), word("(laughs).", 2)])]);
         let mut heard = Heard {
@@ -399,8 +406,13 @@ mod tests {
         by_voice(&mut heard, &[Some(1), Some(1)]);
         assert_eq!(
             said(&lines),
-            [("Fine (laughs).", Some(1), 0, 6), ("Okay.", None, 7, 9)],
-            "a line in one voice was rewritten, or one with no pieces was given a voice"
+            [("Fine (laughs).", Some(1), 0, 6), ("Okay.", Some(4), 7, 9)],
+            "a line in one voice was rewritten, or one with no pieces lost its voice"
+        );
+        assert_eq!(
+            lines[1].name.as_deref(),
+            Some("Cy"),
+            "a line with no pieces lost its name"
         );
     }
 

@@ -716,6 +716,25 @@ mod tests {
     }
 
     #[test]
+    fn a_bare_word_start_opens_the_word_its_next_piece_spells() {
+        let vocab = Vocab::parse(r#"{"0": "▁", "1": "ld", "2": "▁hello"}"#).unwrap();
+        let tokens = [(0, 0), (1, FRAME), (2, 2 * FRAME)];
+        let words = vocab.words(&tokens);
+        let spelled: Vec<(&str, usize)> = words.iter().map(|w| (w.text.as_str(), w.at)).collect();
+        assert_eq!(
+            spelled,
+            [("ld", 0), ("hello", 2 * FRAME)],
+            "a bare word start didn't open the word after it"
+        );
+        let joined: Vec<&str> = spelled.iter().map(|(text, _)| *text).collect();
+        assert_eq!(
+            joined.join(" "),
+            vocab.text(&[0, 1, 2]),
+            "the words spell other than the text"
+        );
+    }
+
+    #[test]
     fn a_blank_naming_no_move_moves_on_one() {
         let mut model = Scripted::new(&[(0, 8, 0), (1, 8, 0), (2, 8, 0)]);
         assert_eq!(

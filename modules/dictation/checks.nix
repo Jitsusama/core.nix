@@ -282,7 +282,9 @@
   # a point more of the words and names the voices worse. Each sits half
   # a point under what was measured on 2026-11-21, 85.6% and 97.1%;
   # whole takes gave 82.7% and 96.9%, and 2 s pieces 37.3% and 43.8%,
-  # TitaNet hearing one talker as several in pieces that short.
+  # TitaNet hearing one talker as several in pieces that short. Each
+  # piece is scored under its own voice: the lines the daemon splits from
+  # them where the voice changes are proved by split.rs's cases instead.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
@@ -306,7 +308,8 @@
   # better raises the floors to what it reaches; each sits half a point
   # under what the last measurement on 2026-11-21 gave, 84.5% and 30.6%,
   # with takes embedded in pieces as the voices check's are; whole takes
-  # gave 83.5% and 27.9%.
+  # gave 83.5% and 27.9%. Each piece is named on its own, not the lines
+  # the daemon splits from them (split.rs).
   # Waiting a second before cutting a take lowered `right` from 93.4%:
   # a take that runs through a short pause holds more of a second voice.
   # TS3003a names none, since one talker holds nearly all of its far end.

@@ -39,10 +39,11 @@ pub const APART: f32 = 0.6;
 pub const LEAST_SHARE: f64 = 0.1;
 /// The most takes a call groups, its longest: grouping holds every take's
 /// distance from every other, 36 MB at this many, and a far end with
-/// chatter on it can cut a take a second for hours. The shortest are left
-/// out, saying least of how a voice sounds, and of the same length the
-/// latest. Cut in 3 s pieces, about 2.5 hours of their speech fills it,
-/// and past that a take whose pieces are all left out stays under Others.
+/// chatter on it can cut a take a second for hours. The shortest, saying
+/// least of how a voice sounds, are left out first, from anywhere in the
+/// call: short takes and the last pieces of long ones, then of the 3 s
+/// pieces the latest. About 2.5 hours of their speech in pieces fills it,
+/// and a take whose pieces are all left out stays under Others.
 pub const MOST_TAKES: usize = 3000;
 
 /// A window's samples, 25 ms, and how far each is from the last, 10 ms.

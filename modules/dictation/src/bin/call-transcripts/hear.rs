@@ -502,6 +502,13 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
     {
         return false;
     }
+    if writing.heard.len() > voices::MOST_TAKES {
+        // Past the cap the shortest pieces go ungrouped, so a transcript
+        // whose end falls under Others says why here.
+        let over = writing.heard.len() - voices::MOST_TAKES;
+        let of = writing.heard.len();
+        eprintln!("call-transcripts: {over} of {of} pieces left out of telling voices apart");
+    }
     let grouped = voices::group(&writing.heard, people);
     let takes: Vec<usize> = writing.pieces.iter().map(|piece| piece.take).collect();
     let voiced = pieces::within_takes(&takes, &grouped);
