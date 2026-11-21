@@ -3400,6 +3400,12 @@ Scope {
     // in Return's place, so its last stands at its own width: held there,
     // the why stood a Return's room away from what it was the why of.
     property bool sayingLoose: false
+    // Says again where the offered words came from and that Return waits for their end, after
+    // another word took the foot's place (Prompt's endWaited).
+    function sayOffer() {
+        if (offerHeld !== null && held.length === offerHeld.depth)
+            say(JSON.parse(offerHeld.told), true);
+    }
     function say(keys, loose) {
         saying = keys;
         sayingLoose = loose === true;
@@ -13943,6 +13949,9 @@ Scope {
                         }
                         // A held arrow's drawer comes as it's let go.
                         onLetGo: root.drawerLetGo()
+                        // A Return held short of the offered words' end says
+                        // why again, so it is never dropped unexplained.
+                        onEndWaited: root.sayOffer()
                         // A key with no meaning here says so, until the next.
                         // A key of the row's own acts does it first.
                         onIdled: key => {

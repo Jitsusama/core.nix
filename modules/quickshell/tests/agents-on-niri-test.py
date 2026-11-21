@@ -2325,6 +2325,14 @@ def test_a_links_new_work_says_whom_it_names_while_joel_checks_its_words(shell: 
     shown = shell.showing()
     assert shown["asking"], shown
     assert shown["typed"] == "x" + offered, shown
+    # Another word in the foot, as q's in normal, takes the offer's place; a Return held after
+    # it says the offer's foot again, so it is never dropped unexplained (council F51, F57).
+    shell.send_key("esc")
+    shell.send_chars("q")
+    shell.launcher_until(lambda shown: shown["open"] and not told(shown))
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"] and told(shown))
+    assert shell.showing()["typed"] == "x" + offered, shell.showing()
     shell.close_launcher()
     # A line reached later at the same depth is no page's, so its foot says nothing of one
     # (council F37).

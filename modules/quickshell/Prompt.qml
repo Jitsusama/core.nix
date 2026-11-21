@@ -258,6 +258,9 @@ Item {
     // type in at its start, leaving the caret there (council F40 and F41, 2026-11-20). Normal
     // mode's caret rests on the last letter, so that counts as the end.
     property bool endWaits: false
+    // A Return endWaits held, so the launcher says why again, its foot
+    // having maybe given way to another word since.
+    signal endWaited
     function linked(offered) {
         quietUntil = Date.now() + linkQuiet;
         quietDropped = 0;
@@ -278,8 +281,10 @@ Item {
             return true;
         }
         const returning = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
-        if (endWaits && returning && input.cursorPosition < input.text.length - 1)
+        if (endWaits && returning && input.cursorPosition < input.text.length - 1) {
+            endWaited();
             return true;
+        }
         if (!returnWaits)
             return false;
         if (returning)
