@@ -375,7 +375,10 @@ Provider {
     // Whether its own rows after its sessions' are read now: at home, which
     // shows them, walked from outside, or held in Agents or Now, which reads
     // Sessions to Reopen. A stopgap until the agents daemon makes them
-    // ready (Fri 13 Nov), so a chord into another place makes none.
+    // ready (Fri 13 Nov), so a chord into another place makes none. Now is
+    // the source named "on" (home.nix): asked for as "now", it was never
+    // found, so held in Now none were read, and each step out to home
+    // made all of them again, 47 to 72 ms of Joel's (2026-11-21, 13:13).
     function readable() {
         const launcher = provider.launcher;
         if (!launcher || typeof launcher.wants !== "function")
@@ -384,7 +387,7 @@ Provider {
             held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
             typing: launcher.typing, entering: launcher.entering ?? null,
             viewing: launcher.viewing ?? false },
-            [provider, source("now")]);
+            [provider, source("on")]);
     }
     // Held as a bool, so a step made again while it stays readable remakes
     // none of them: each change to Agents remakes the steps held

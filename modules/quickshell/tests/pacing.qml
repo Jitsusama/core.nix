@@ -449,6 +449,12 @@ QtObject {
             readDozing({ typing: true }, [dozing, nowDozing]), true);
         check(failures, "and held in it, it reads them though not woken",
             readDozing({ held: [{ row: { from: dozing } }] }, [dozing, nowDozing]), true);
+        check(failures, "in another place that reads them, it waits to wake as at home",
+            readDozing({ held: [{ row: { from: now } }] }, [dozing, now]), false);
+        check(failures, "and reads them there once woken",
+            readDozing({ held: [{ row: { from: now } }] }, [woken, now]), true);
+        check(failures, "or once something's typed there",
+            readDozing({ held: [{ row: { from: now } }], typing: true }, [dozing, now]), true);
         // Which sources wait their turn: any home reads, and of those that
         // say what they hold at home, only one reading rows of its own.
         check(failures, "a source home reads waits its turn to wake",

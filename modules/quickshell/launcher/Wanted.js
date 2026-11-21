@@ -76,10 +76,18 @@ function readAt(stands, readers) {
     }
     // Opening into a place, nothing is held yet but home isn't shown either.
     const home = stands.held.length === 0 && !stands.entering;
-    if (home && !stands.typing && readers[0]?.asleep === true) {
-        return false;
+    const dozing = !stands.typing && readers[0]?.asleep === true;
+    if (home) {
+        return !dozing;
     }
-    return home || readers.some(one => one !== null && wanted(stands, one));
+    // Held in the first reader, its rows are shown, so they're read at once.
+    if (readers[0] && wanted(stands, readers[0])) {
+        return true;
+    }
+    // In another place that reads them, as Now reads Sessions to Reopen,
+    // they wait for the first reader to wake as at home, so a kept opening
+    // into Now makes them in that reader's turn, never in its fill.
+    return !dozing && readers.slice(1).some(one => one !== null && wanted(stands, one));
 }
 
 // Whether a source waits its turn to wake as a kept opening fills in: any
