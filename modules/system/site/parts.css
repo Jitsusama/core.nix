@@ -1,7 +1,8 @@
-/* Each machine under the bridge, then the parts across them: a name large
-   in the serif, its kind and how it stands, its four ties in a grid that
-   wraps to fit, and what can be done from here. Hairlines between the
-   machines, no boxes (site.css holds the head and the bridge). */
+/* What is worth a look, under the headline; then each machine under the
+   bridge, then the parts across them: a name large in the serif, its kind
+   and how it stands, its four ties in a grid that wraps to fit, and what
+   can be done from here. Hairlines between the machines, no boxes
+   (site.css holds the head and the bridge). */
 
 .parts {
   margin-block: var(--frames) var(--groups);
@@ -193,6 +194,74 @@ span.mark {
   background: var(--selection);
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ---- What is worth a look, in the reading voice: a row each, its mark,
+   then whose it is, then what. Where the rows can share one grid, the
+   names stand in a column and the words start together. ---- */
+
+.looking {
+  max-inline-size: var(--measure);
+  margin: 0 0 var(--items);
+  color: var(--text);
+  font: var(--voice-weight) var(--step-large) / 1.4 var(--serif);
+}
+
+.looks {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: var(--tie) var(--mark);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.looks li {
+  grid-column: 1 / -1;
+}
+
+.look {
+  display: flex;
+  gap: var(--mark);
+  align-items: baseline;
+  color: var(--text);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .looks li,
+  .look {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+}
+
+/* On the first line's middle, so a row the words wrap keeps its mark by
+   the name rather than between the lines. */
+.look .mark {
+  align-self: start;
+  margin-block-start: calc((1lh - 0.7em) / 2);
+}
+
+/* Further from the words than from the mark, so whose and what read apart. */
+.look .whose {
+  padding-inline-end: var(--mark);
+  color: var(--strong);
+  font-weight: var(--title-weight);
+  overflow-wrap: anywhere;
+}
+
+.look:hover .words {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.looking .more,
+.looking .clear {
+  margin: var(--tie) 0 0;
+  color: var(--text);
+  font-style: italic;
 }
 
 /* ---- What can be done from here: the launcher, and each command. ---- */

@@ -2,9 +2,10 @@
 
 How Joel's machines stand, and what each carries: the mycelium's cells
 on it, where it meets the home network, the code it holds and its own
-figures. A machine is the bridge between the mycelium, the network and
-the code, so the page leads with them, and says each of those three
-parts across them after. It watches the system daemon's records live
+figures. It opens with everything worth a look, across every machine
+and part. A machine is the bridge between the mycelium, the network and
+the code, so the machines come next, and each of those three parts
+across them after. It watches the system daemon's records live
 over the sites' server, and redraws the moment an owner's answer moves.
 Nothing on it changes anything; what can be done goes through the
 launcher or a command.
@@ -17,9 +18,12 @@ Every health is good, watch, bad or not read, each with its own mark.
   stand, as "Two machines, one in trouble and one worth a look", in the
   worst one's colour. With every machine fine, it says all ready.
   While it reads, it says it is reading your machines.
-- **A lede under it:** what each machine worth a look has, its name
-  leading, at most three of them; then the worst thing in another part,
-  or else why a part couldn't be read.
+- **What is worth a look, under it:** a row for each thing a machine or
+  a part has worth a look, the worst first: its mark, whose it is, and
+  what. A machine's row goes to its section below, and a part's to its
+  own site. A part that couldn't be read has a row saying why. It lists
+  eight at most, then how many more; with nothing worth a look, it says
+  so.
 - **A standing line:** the machine it was read on, when, and whether
   what it shows is live. When the daemon or the sites' server can't be
   reached, it says since when and why, and keeps showing how things
@@ -73,7 +77,8 @@ Every health is good, watch, bad or not read, each with its own mark.
 
 | Key    | Does                                                                |
 | ------ | ------------------------------------------------------------------- |
-| j, k   | Step down or up through every machine and what it carries           |
+| a      | Go to the next thing worth a look, the first again after the last   |
+| j, k   | Step through what is worth a look, then each machine and its ties   |
 | 1 to 8 | Go to a machine, in the order they're drawn                         |
 | 0      | Go to the mycelium, the network and the code across them            |
 | g, G   | Go to the first or the last                                         |

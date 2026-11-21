@@ -19,6 +19,7 @@ import {
   type Said,
   standing,
 } from "./machine.ts";
+import type { Look, Looks } from "./looks.ts";
 import {
   capital,
   type Health,
@@ -279,6 +280,34 @@ function partsOf(system: System, when: (at: string) => string): string {
 </section>`;
 }
 
+/** One look, drawn as a row: its mark, whose it is, then what it is. */
+function lookRow(look: Look): string {
+  const whose = `<span class="whose"${look.machine ? ' translate="no"' : ""}>${escaped(look.whose)}</span>`;
+  return `<li><a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a></li>`;
+}
+
+/**
+ * What is worth a look, the page's first list: a row each, those past it
+ * counted, or a line saying nothing is once every part has told. Its
+ * heading, in the page's markup, is for a screen reader, since the
+ * headline above says it already.
+ */
+function looksDrawn(list: Looks): string {
+  if (list.looks.length === 0) {
+    return list.settled
+      ? `<p class="clear health good">${mark("good")}Nothing is worth a look.</p>`
+      : "";
+  }
+  const more =
+    list.more === 0
+      ? ""
+      : `<p class="more">${escaped(`And ${list.more.toLocaleString("en-CA")} more below.`)}</p>`;
+  // A list role said outright, since Safari drops an unbulleted list's,
+  // and with it the count a screen reader says first.
+  const rows = `<ul class="looks" role="list">${list.looks.map(lookRow).join("")}</ul>`;
+  return `${rows}${more}`;
+}
+
 /**
  * The legend: each health's mark beside its word, said once, an item each
  * so a screen reader hears the words apart, the marks being hidden from it.
@@ -296,6 +325,7 @@ export {
   escaped,
   headlineOf,
   legend,
+  looksDrawn,
   MACHINES_DRAWN,
   MORE_ROW,
   machineRow,

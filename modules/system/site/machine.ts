@@ -3,16 +3,7 @@
 // each one. A machine is the bridge between the others (Joel, 2026-11-17),
 // so the page leads with them. Nothing here touches the page.
 
-import {
-  capital,
-  type Health,
-  named,
-  numbered,
-  type Part,
-  type System,
-  type Thing,
-  WORDS,
-} from "./model.ts";
+import { capital, type Health, numbered, type System, type Thing, WORDS } from "./model.ts";
 import type { Figures, Place, Ties } from "./ties.ts";
 
 /** A gigabyte and a terabyte, as a node counts bytes. */
@@ -34,23 +25,6 @@ const SYSTEMS: { readonly [system: string]: string } = {
   linux: "Linux",
   macos: "macOS",
 };
-
-/** How the lede places what another part says, after "And". */
-const WHERE: { readonly [part: string]: string } = {
-  mycelium: "in the mycelium",
-  network: "on the network",
-  code: "in your code",
-};
-
-/** How the lede names another part as what couldn't be read. */
-const WHAT: { readonly [part: string]: string } = {
-  mycelium: "the mycelium",
-  network: "the network",
-  code: "your code",
-};
-
-/** How many machines the lede names, so thousands keep it a sentence or two. */
-const LEDE_MACHINES = 3;
 
 /** How a machine's health is said in the headline, worst first. */
 const STANDS: readonly (readonly [Health, string])[] = [
@@ -117,44 +91,6 @@ function machineHeadline(system: System): MachineHeadline {
 /** `words` ended as a sentence, once. */
 function stopped(words: string): string {
   return ENDED.test(words) ? words : `${words}.`;
-}
-
-/**
- * The lede: what each machine worth a look has, the worst first and its
- * name leading, since a name keeps its case; then the worst of the other
- * parts' first look, or else why one wasn't read. None when nothing
- * anywhere wants a look.
- */
-function machineLede(system: System): string | undefined {
-  const part = system.parts.find((each) => each.part === "machines");
-  if (part?.health === "unread") {
-    return stopped(`The machines couldn't be read: ${part.says}`);
-  }
-  const things = part?.things ?? [];
-  const machines = things
-    .filter((thing) => thing.side.length > 0)
-    .slice(0, LEDE_MACHINES)
-    .map((thing) => stopped(`${thing.name}: ${thing.side.join("; ")}`));
-  const rest = restOf(system.parts.filter((other) => other.part !== "machines"));
-  const said = [...machines, ...(rest === undefined ? [] : [rest])];
-  return said.length === 0 ? undefined : said.join(" ");
-}
-
-/** The worst of the other parts' first look, or else why one wasn't read. */
-function restOf(others: readonly Part[]): string | undefined {
-  const other = ["bad", "watch"]
-    .map((health) => others.find((part) => part.health === health && part.side.length > 0))
-    .find((part) => part !== undefined);
-  if (other !== undefined) {
-    const where = Object.hasOwn(WHERE, other.part) ? WHERE[other.part] : `in ${named(other.part)}`;
-    return stopped(`And ${where}: ${other.side[0] ?? ""}`);
-  }
-  const unread = others.find((part) => part.health === "unread");
-  return unread === undefined
-    ? undefined
-    : stopped(
-        `And ${Object.hasOwn(WHAT, unread.part) ? WHAT[unread.part] : named(unread.part)} couldn't be read: ${unread.says}`,
-      );
 }
 
 /** How a node's system is said, its own word for one the page doesn't know. */
@@ -440,7 +376,6 @@ export {
   itselfSaid,
   kindOf,
   machineHeadline,
-  machineLede,
   networkSaid,
   placeWords,
   standing,
