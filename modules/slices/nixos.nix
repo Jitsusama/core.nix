@@ -194,8 +194,8 @@ let
   # floors of the windows Joel is at (jobs-sorter's focus.rs), which a
   # child keeps only as far as its slice has one.
   # Every slice above claims both kinds of floor, since the kernel protects a
-  # slice only as far as each slice above it is protected. Hard, 26% covers
-  # app.slice's 8.1 GiB, session.slice's 4.5 and agents.slice's 3.5 on a
+  # slice only as far as each slice above it is protected. Hard, 24% covers
+  # app.slice's 8.1 GiB, session.slice's 4.5 and agents.slice's 2 on a
   # 62 GiB machine, and no more: with memory_recursiveprot a floor its
   # children don't claim is
   # shared among them by use, which would hand it to agents' sessions, and
@@ -207,13 +207,13 @@ let
   apps = "13%";
   agents = "10%";
   # agents.slice's hard floor backs the kitty drawing every session's window
-  # (512M, below) and the hard floor jobs-sorter gives each window Joel is
-  # at and the conversation it shows, what each holds up to 512M
-  # (src/holds.rs), at most three of each (src/focus.rs): 3 GiB more. A soft
-  # floor alone gave way where it mattered: on 21 November one pi's window
-  # had the kernel reclaim below its floor 3,610,883 times. While fewer are
-  # held, what they leave goes to the sessions by use.
-  agentsHeld = "3584M";
+  # (512M, below) and the 512M hard floor jobs-sorter gives the pi or the
+  # conversation of each window Joel is at (src/holds.rs), at most three
+  # (src/focus.rs): 1.5 GiB more. A soft floor alone gave way where it
+  # mattered: on 21 November one pi's window had the kernel reclaim below
+  # its floor 3,610,883 times. While fewer are held, what they leave goes
+  # to the sessions by use.
+  agentsHeld = "2048M";
   session = "4608M";
 
   # Past a ceiling, the sessions reclaim their own memory rather than the
@@ -241,10 +241,12 @@ let
   # 7.1, each slice under its own ceiling, while 2 GiB was free and 26 in
   # swap. kswapd gave up, and every program that needed a page reclaimed
   # one itself, the shell among them, which froze. The sessions' 42%, 26
-  # GiB, jobs' 26% and shared's 10% sum with Joel's floors to just under all
-  # of memory, so a burst in any of them reclaims its own pages first.
+  # GiB, jobs' 26% and shared's 10% sum with Joel's floors, app.slice's 13%
+  # and session.slice's 7%, to 98% of memory, agents.slice's own 2 GiB hard
+  # floor inside its 42%, so a burst in any of them reclaims its own pages
+  # first.
   agentsHigh = "42%";
-  account = "26%";
+  account = "24%";
   above = "31%";
 
   # The system's own services a call or the desktop waits on keep a soft
@@ -512,11 +514,11 @@ in
     # their terminal names this slice, and kitty puts each window's scope
     # in its own. Its floor is soft but for two parts, hard: the floor the
     # kitty drawing every session's window keeps for itself (Quickshell's
-    # sessions-kitty), and the sorter's on the windows Joel is at and their
-    # conversations, which a child has only as far as its slice has one.
+    # sessions-kitty), and the sorter's on the pi or conversation of each
+    # window Joel is at, which a child has only as far as its slice has one.
     # Soft alone, the kernel took kitty's back 285,154 times in 40 minutes
     # of the account swapping on 2026-11-10, and Joel's typing stalled each
-    # time a session opened. Inside the account's 26% it sits beside
+    # time a session opened. Inside the account's 24% it sits beside
     # session.slice's 4.5 GiB and app.slice's 8.1.
     systemd.user.slices.agents.sliceConfig = {
       MemoryLow = agents;

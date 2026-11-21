@@ -21,11 +21,16 @@ const O_NONBLOCK: i32 = 0o4000;
 
 /// Linux's flag to refuse a link at the path's end, which differs by
 /// architecture: 1 << 15 in arm64's own fcntl.h, 1 << 17 in the generic one
-/// `x86_64` takes.
+/// `x86_64` takes, and another bit again on others, which aren't built for.
 #[cfg(target_arch = "aarch64")]
 const O_NOFOLLOW: i32 = 0o100_000;
 #[cfg(not(target_arch = "aarch64"))]
 const O_NOFOLLOW: i32 = 0o400_000;
+#[cfg(all(
+    target_os = "linux",
+    not(any(target_arch = "x86_64", target_arch = "aarch64"))
+))]
+compile_error!("O_NOFOLLOW's bit is known for x86_64 and aarch64 alone");
 
 /// Linux's flag that keeps a terminal opened from becoming the sorter's
 /// own, 0o400 on both.
@@ -410,6 +415,8 @@ mod tests {
     #[test]
     fn a_slot_is_opened_only_as_a_file_of_its_own() {
         let dir = std::env::temp_dir().join(format!("joins-open-{}", std::process::id()));
+        // A run that failed midway left its pipe, which mkfifo would refuse.
+        let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let slot = dir.join("0193-ab.json");
         fs::write(&slot, "{}").unwrap();

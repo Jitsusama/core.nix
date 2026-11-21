@@ -979,7 +979,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
         .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
     ranks.spared = spared;
-    set_holds(&held, &kept, ranks);
+    set_holds(&held, &kept, windows.pis, ranks);
     set_in_memory(&kept, ranks);
     read_back(following.at(), ranks);
     held.iter()
@@ -1053,7 +1053,7 @@ fn children(pid: u32) -> Vec<u32> {
 
 /// Holds each of `held` not held yet and gives back each held no longer,
 /// keeping writeback off on one given back that's among `kept`.
-fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
+fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
     for (scope, hold) in ranks.holding.changes(held) {
         let unit = scope
@@ -1061,13 +1061,16 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        let hard = hold.then(|| holds::hard_floor(holds::current(&scope)));
+        let hard = hold.then(|| holds::hard_for(&unit, pis));
         let result = Command::new("busctl")
             .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
             .stdout(Stdio::null())
             .output();
         match result {
             Ok(output) if output.status.success() => {
+                // A failure after this one is said again, so a give-back that keeps failing, as
+                // it would leave a hard floor behind, isn't silent.
+                ranks.holding.failed = false;
                 ranks.holding.done(&scope, hold);
                 // An orchestrator's window gave its floor up to this one,
                 // so it's kept again from nothing once given back.
@@ -1364,9 +1367,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             shown: shown.iter().filter(|viewed| *viewed == unit).count(),
             orchestrators,
             marked,
-            current: fs::read_to_string(path.join("memory.current"))
-                .ok()
-                .and_then(|text| text.trim().parse().ok()),
+            current: holds::current(&path),
             keeps_its_work: joins::keeps_its_work(
                 unit,
                 windows

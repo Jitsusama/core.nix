@@ -23,8 +23,8 @@
 //!   for each orchestrator among them, as each would have in a window.
 //!   With neither, a window that only shows one adds [`keep::PI_FLOOR`],
 //!   once, as a window running a pi of its own keeps.
-//! - While any hold it, it keeps what it holds hard, up to
-//!   [`holds::HARD`] for each window holding it, beside the unit's own.
+//! - While any hold it, it keeps a hard floor of [`holds::HARD`] for each
+//!   window holding it, at most [`focus::MOST`], beside the unit's own.
 //! - While any but the last hold it, nothing of it is written to the
 //!   disk's swap and systemd-oomd ends it last, as a held window's.
 //!
@@ -128,12 +128,9 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     // would hold every conversation in memory, which #3070 kept windows from by holding at
     // most three. Unread, it might not fit, so writeback stays.
     let fits = signs.current.is_some_and(|current| current <= floor);
-    // A window held keeps a hard floor too, what the unit holds up to a held window's hard floor
-    // each, read as the hold is taken ([`Hosts::changed`]).
-    let held = signs
-        .current
-        .filter(|_| signs.viewed > 0)
-        .map_or(0, |current| current.min(viewed.saturating_mul(holds::HARD)));
+    // A window held keeps a hard floor too, whole whatever the unit holds now, so a unit just
+    // started or reclaimed grows into it; no more are counted than are ever held.
+    let held = viewed.min(focus::MOST as u64).saturating_mul(holds::HARD);
     Rank {
         weight,
         floor,
@@ -310,20 +307,9 @@ impl Hosts {
     }
 
     /// Whether `unit` should be set to `rank`: it changed, or this sorter
-    /// never set it, as one before it may have left it held. A hard floor
-    /// that moves only with what a unit still held holds isn't a change, so
-    /// it's read once as the hold is taken, not set again every pass.
+    /// never set it, as one before it may have left it held.
     pub fn changed(&self, unit: &str, rank: &Rank) -> bool {
-        self.set.get(unit).is_none_or(|set| {
-            if set.floor == rank.floor && set.hard > 0 && rank.hard > 0 {
-                *set != Rank {
-                    hard: set.hard,
-                    ..rank.clone()
-                }
-            } else {
-                set != rank
-            }
-        })
+        self.set.get(unit).is_none_or(|set| set != rank)
     }
 
     /// Notes a unit as set to `rank`.
@@ -423,7 +409,7 @@ mod tests {
     }
 
     #[test]
-    fn each_window_joel_is_at_holds_what_its_unit_holds_hard_up_to_a_cap() {
+    fn each_window_joel_is_at_holds_its_unit_hard_whatever_it_holds_now() {
         let own = Own {
             hard: 64 << 20,
             ..Own::default()
@@ -441,33 +427,36 @@ mod tests {
             .hard
         };
         assert_eq!(
-            held(1, Some(300 << 20)),
-            (64 << 20) + (300 << 20),
-            "one window held keeps what its unit holds, beside the unit's own"
+            held(1, Some(30 << 20)),
+            (64 << 20) + holds::HARD,
+            "a unit just started or reclaimed keeps a whole held window's hard floor, to grow into"
         );
         assert_eq!(
-            held(2, Some(3 * GIB)),
-            (64 << 20) + 2 * holds::HARD,
-            "two windows held keep at most a held window's hard floor each"
+            held(1, None),
+            (64 << 20) + holds::HARD,
+            "so does one whose memory can't be read"
+        );
+        assert_eq!(
+            held(5, Some(3 * GIB)),
+            (64 << 20) + 3 * holds::HARD,
+            "no more windows are counted than are ever held"
         );
         assert_eq!(
             held(0, Some(GIB)),
             64 << 20,
             "none held keeps the unit's own"
         );
-        assert_eq!(
-            held(1, None),
-            64 << 20,
-            "what can't be read claims nothing more"
-        );
     }
 
     #[test]
-    fn a_held_units_hard_floor_is_read_once_while_it_stays_held() {
+    fn a_held_unit_is_set_again_only_as_its_rank_changes() {
         let mut hosts = Hosts::default();
-        let viewed = |current| {
+        let viewed = |hard, current| {
             wanted(
-                &Own::default(),
+                &Own {
+                    hard,
+                    ..Own::default()
+                },
                 Signs {
                     viewed: 1,
                     current: Some(current),
@@ -476,10 +465,14 @@ mod tests {
                 10,
             )
         };
-        hosts.done("u", viewed(300 << 20));
+        hosts.done("u", viewed(0, 300 << 20));
         assert!(
-            !hosts.changed("u", &viewed(310 << 20)),
+            !hosts.changed("u", &viewed(0, 310 << 20)),
             "what a held unit holds moving isn't asked for again"
+        );
+        assert!(
+            hosts.changed("u", &viewed(64 << 20, 300 << 20)),
+            "a switch changing the unit's own hard floor reaches it"
         );
         assert!(
             hosts.changed("u", &wanted(&Own::default(), Signs::default(), 10)),

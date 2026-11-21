@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::focus::FLOOR;
 
 /// What busctl is given to hold a window's unit with [`FLOOR`], a `hard`
-/// floor ([`hard_floor`]), no zswap writeback and systemd-oomd's avoid
+/// floor ([`hard_for`]), no zswap writeback and systemd-oomd's avoid
 /// preference, or, with no `hard`, to give all four back, as runtime
 /// properties gone at the next boot. One given back while it's `kept`
 /// keeps writeback off ([`crate::focus::KEEP`]).
@@ -49,18 +49,33 @@ pub fn hold_call(unit: &str, hard: Option<u64>, kept: bool) -> Vec<String> {
     .collect()
 }
 
-/// The most a held window keeps hard, a floor the kernel never reclaims
-/// below, where [`FLOOR`] gives way under the pressure that matters: on
-/// 21 November a pi's window with a soft floor and no hard one had the
-/// kernel reclaim below its floor 3,610,883 times. Small, so the at most
-/// [`crate::focus::MOST`] held windows and their conversations claim at
-/// most 3 GiB of memory that can't be taken back.
+/// What a held window keeps hard, once, where its conversation's memory
+/// is: a floor the kernel never reclaims below, where [`FLOOR`] gives way
+/// under the pressure that matters. On 21 November a pi's window with a
+/// soft floor and no hard one had the kernel reclaim below its floor
+/// 3,610,883 times. Set whole, not to what the unit holds as it's held,
+/// so a window just opened or come back to grows into it; the kernel
+/// counts a floor past what a unit holds only as far as it holds.
 pub const HARD: u64 = 512 << 20;
 
-/// A held window's hard floor: what it holds now, up to [`HARD`], so it
-/// claims nothing it doesn't use. Nothing for what can't be read.
-pub fn hard_floor(current: Option<u64>) -> u64 {
-    current.map_or(0, |current| current.min(HARD))
+// The at most `MOST` held windows' hard floors fit inside agents.slice's own beside the sessions'
+// kitty's 512M (agentsHeld in modules/slices/nixos.nix), or the kernel shares it among them all.
+const _: () = assert!(
+    crate::focus::MOST as u64 * HARD + (512 << 20) <= 2048 << 20,
+    "the held windows' hard floors outgrow agents.slice's"
+);
+
+/// The hard floor a window Joel is at keeps on `unit`: [`HARD`] on its
+/// pi's scope, where its conversation's memory is, and none on its own
+/// scope, which holds a shell or a viewer and may sit in app.slice, whose
+/// floor is Joel's programs'. A viewer's conversation is held hard on its
+/// own unit instead (`src/hosts.rs`).
+pub fn hard_for(unit: &str, pis: &[String]) -> u64 {
+    if crate::focus::runs_a_pi(unit, pis) {
+        HARD
+    } else {
+        0
+    }
 }
 
 /// What the cgroup at `path` holds now, from its memory.current.
@@ -221,17 +236,17 @@ mod tests {
     }
 
     #[test]
-    fn a_held_windows_hard_floor_is_what_it_holds_up_to_a_cap() {
+    fn a_held_window_keeps_its_hard_floor_on_its_pi_alone() {
+        let pis = ["mycelium-pi-".to_owned()];
         assert_eq!(
-            hard_floor(Some(300 << 20)),
-            300 << 20,
-            "what it holds, under the cap"
+            hard_for("mycelium-pi-0193.scope", &pis),
+            HARD,
+            "its pi's scope, holding the conversation, keeps it"
         );
-        assert_eq!(hard_floor(Some(3 << 30)), HARD, "the cap, past it");
         assert_eq!(
-            hard_floor(None),
+            hard_for("app-kitty-2684.scope", &pis),
             0,
-            "nothing claimed for what can't be read"
+            "its own scope, a shell or a viewer, keeps none"
         );
     }
 
