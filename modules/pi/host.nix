@@ -120,6 +120,29 @@ let
     background = "the pi conversations that run in the background";
   };
 
+  # Where a kind's host and conversations run. Background's slice sits
+  # inside agents.slice, by systemd's naming, so agents' ceiling and the TPM
+  # agent's refusal cover it as they cover the rest; it holds a ceiling of
+  # its own (backgroundSlice below says why).
+  sliceOf = kind: if kind == "background" then "agents-background.slice" else "agents.slice";
+
+  # Background's ceiling, which its own pages are reclaimed under before
+  # Joel's windows' are. At 07:08 on 21 November agents.slice held 25 GB of
+  # its 26.8 GB ceiling, 20 GB of it in 71 background conversations, and
+  # each of the 19 windows Joel types in, holding about 220 MB, had been
+  # reclaimed from 700,000 to 3.6 million times while under the 768 MB to
+  # 1 GB floor jobs-sorter gives it: the account's soft floors add up past
+  # what is free, and then the kernel reclaims from every cgroup alike, a
+  # window's pages as soon as a resting conversation's. Another floor
+  # would change nothing, so background gets a ceiling instead. It leaves
+  # agents' last 12% to the windows and attended conversations, which held
+  # about 5 GB. Past it background's own allocations reclaim background's
+  # pages, slowing its turns rather than his windows. A default, so a
+  # machine may move it.
+  backgroundSlice = {
+    MemoryHigh = lib.mkDefault "30%";
+  };
+
   # How long systemd gives a conversation's own process to stop, in seconds.
   # It parks one conversation, not many, and is told the same number, so its
   # own limit, three quarters of it, comes first.
@@ -327,7 +350,7 @@ let
           # (LimitCORE on the host says why), which runs here once a
           # conversation does.
           LimitCORE = "infinity";
-          Slice = "agents.slice";
+          Slice = sliceOf kind;
         };
       };
     };
@@ -467,8 +490,9 @@ let
         # may give its hosts longer.
         TimeoutStartSec = lib.mkDefault "20min";
         # Its conversations are agents' sessions, so they run among the
-        # sessions rather than among Joel's programs (modules/slices).
-        Slice = "agents.slice";
+        # sessions rather than among Joel's programs (modules/slices), and
+        # background's under its own ceiling.
+        Slice = sliceOf kind;
       };
       Install.WantedBy = [ "default.target" ];
     };
@@ -660,6 +684,13 @@ in
         } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
+
+  config.systemd.user.slices = lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && cfg != { }) {
+    agents-background = {
+      Unit.Description = "Holds background pi conversations under a ceiling of their own";
+      Slice = backgroundSlice;
+    };
+  };
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (
