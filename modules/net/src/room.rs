@@ -8,7 +8,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::figures;
 use crate::model::{
-    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
+    self, Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
 };
 use crate::sources::modem;
 
@@ -288,15 +288,11 @@ fn lost(network: &Network) -> Option<Concern> {
     // so its frequency is what tells the provider which.
     let which = match (channel.channel, channel.frequency_hz) {
         (Some(number), _) => format!("downstream channel {number}"),
-        (None, Some(hz)) => {
-            let tenths = (hz + 50_000) / 100_000;
-            format!(
-                "downstream {} channel at {}.{} MHz",
-                channel.kind,
-                tenths / 10,
-                tenths % 10
-            )
-        }
+        (None, Some(hertz)) => format!(
+            "downstream {} channel at {} MHz",
+            channel.kind,
+            model::megahertz(hertz)
+        ),
         (None, None) => format!("downstream {} channel", channel.kind),
     };
     let provider = network
