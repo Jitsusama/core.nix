@@ -11,7 +11,7 @@ colours=$2
 home=$(mktemp -d)
 trap 'rm -rf "$home"' EXIT
 
-mkdir "$home/clean" "$home/kept" "$home/linked" "$home/silent" "$home/erring" "$home/cased"
+mkdir "$home/clean" "$home/kept" "$home/linked" "$home/silent" "$home/erring"
 echo '{"color":"#100F0F"}' > "$home/clean/style.json"
 ln -s /nowhere/left "$home/clean/gone"
 first=$(head -n 1 "$colours")
@@ -25,10 +25,25 @@ ln -s "$home/store/style.json" "$home/kept/style.json"
 ln -s "$home/store/style.json" "$home/linked/.config/style.json"
 ln -s /nowhere/left "$home/linked/gone"
 # A file may write a colour in either case, so one written in the other
-# case from the theme's is kept all the same.
-lettered=$(grep -m 1 '[A-Fa-f]' "$colours")
-flipped=$(printf '%s' "$lettered" | tr 'A-Fa-f' 'a-fA-F')
-echo "{\"color\":\"$flipped\"}" > "$home/cased/style.json"
+# case from the theme's is kept all the same: a theme's colour in capitals
+# written small, and one written small in capitals, since --smart-case
+# would find only the second.
+cased() {
+  local lettered flipped
+  if ! lettered=$(grep -m 1 "$2" "$colours"); then
+    echo "No colour in $colours holds a letter in $2 to write in the other case."
+    exit 1
+  fi
+  flipped=$(printf '%s' "$lettered" | tr 'A-Fa-f' 'a-fA-F')
+  if grep -q -x -F "$flipped" "$colours"; then
+    echo "$flipped is a colour of its own in $colours, so it can't show case is let go."
+    exit 1
+  fi
+  mkdir "$home/$1"
+  echo "{\"color\":\"$flipped\"}" > "$home/$1/style.json"
+}
+cased small '[A-F]'
+cased capitals '[a-f]'
 : > "$home/none"
 # An rg that ends in error without a word.
 printf '#!%s\nexit 2\n' "$BASH" > "$home/silent/rg"
@@ -58,7 +73,16 @@ fails() {
 passes "$colours" "$home/clean/"
 fails "$colours" "$home/kept/"
 fails "$colours" "$home/linked/"
-fails "$colours" "$home/cased/"
+# Each home in the other case fails for the colour it keeps, not for some
+# other reason.
+for written in small capitals; do
+  fails "$colours" "$home/$written/"
+  if ! grep -q "kept Osaka Jade's colours" "$home/said"; then
+    cat "$home/said"
+    echo "A colour written in $written wasn't what failed it: is rg reading with --ignore-case?"
+    exit 1
+  fi
+done
 fails "$colours" "$home/clean/" "$home/kept/style.json"
 fails "$home/none" "$home/kept/"
 fails "$colours" "$home/clean/" "$home/nowhere"
