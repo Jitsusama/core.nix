@@ -1428,7 +1428,9 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.line("install!")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         machine.send_key("ret")
-        desktop.launcher_until(lambda shown: shown["footer"] == "installing")
+        desktop.launcher_until(
+            lambda shown: shown["footer"] == "installing" and shown["command"] is None
+        )
         machine.send_key("ret")
 
         # Once in, Install offers nothing more, so the launcher leaves the asking by itself, as
@@ -1451,15 +1453,16 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # instead. It's banged where the asking still showed, and plain where the step back
         # came first, as on the builders' runs of 20 Nov. Only that one Return can write one,
         # so a second line fails the wait for the step back. Its line can open after the step
-        # back is seen too, so the screen is let stand still and read again before the shot.
-        # The plain line is the launcher's fault, as a gone row should write none; once it
-        # writes none, this asserts that no line opens.
+        # back is seen too, so the screen is let stand still and read again before the shot;
+        # one opening later still goes unseen. The plain line is the launcher's fault, as a
+        # gone row should write none; once it writes none, this asserts that no line opens.
         shown = desktop.launcher_until(
             lambda shown: shown["command"] is not None or stepped_back(shown)
         )
         if shown["command"] is None:
             desktop.held_still()
             shown = desktop.showing()
+            assert shown["command"] is not None or stepped_back(shown), shown
         if shown["command"] is not None:
             assert shown["command"].get("line") in {"install", "install!"}, shown["command"]
             # Said so the net's logs count how often the late line comes.

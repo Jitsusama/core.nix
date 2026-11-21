@@ -27,7 +27,7 @@ def test_a_wait_never_passed_says_the_last_state_it_heard() -> None:
     with pytest.raises(AssertionError) as never:
         until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
     wanted = (
-        'never heard rows of Restart; it, last heard: {"rows": ["Install 1.13.0 \u00b7 ready"]}'
+        'never heard rows of Restart\nit, last heard: {"rows": ["Install 1.13.0 \u00b7 ready"]}'
     )
     assert str(never.value) == wanted, f"the wait that never passed said: {never.value}"
 
@@ -39,7 +39,7 @@ def test_a_wait_that_hears_nothing_says_the_state_it_first_read() -> None:
 
     with pytest.raises(AssertionError) as never:
         until_heard({"rows": ["Install"]}, lambda now: now["rows"] == ["Restart"], hear, "it")
-    wanted = 'never heard rows of Restart; it, last heard: {"rows": ["Install"]}'
+    wanted = 'never heard rows of Restart\nit, last heard: {"rows": ["Install"]}'
     assert str(never.value) == wanted, f"the wait that heard nothing said: {never.value}"
 
 
@@ -74,7 +74,7 @@ def test_a_test_that_trips_keeps_its_error_and_says_the_last_state_heard() -> No
     assert notes == ['it, last heard: {"rows": []}'], f"the tripped wait noted: {notes}"
 
 
-def test_a_test_that_trips_on_the_first_read_says_it() -> None:
+def test_a_test_that_trips_on_the_first_read_keeps_its_error_and_says_that_read() -> None:
     def hear(_passes: Callable[[str], object]) -> None:
         message = "heard though the first read tripped"
         raise AssertionError(message)

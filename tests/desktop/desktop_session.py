@@ -514,7 +514,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Wait until something said after a point starts with the prefix and passes the test.
 
         The point is one mark gave, or "" for the boot. What the shell did say is printed when
-        it never says what's wanted.
+        it never says what's wanted. It fails by AssertionError, which a wait on what's heard
+        (heard.py) reads as never hearing it.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         deadline = time.monotonic() + timeout.total_seconds() * pace
