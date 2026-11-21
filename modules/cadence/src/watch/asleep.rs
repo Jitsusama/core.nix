@@ -16,7 +16,7 @@ pub struct Asleep {
     pub boot: String,
     /// Milliseconds asleep in that boot.
     pub millis: i64,
-    /// Milliseconds awake in that boot, as CLOCK_MONOTONIC reads them.
+    /// Milliseconds awake in that boot, as `CLOCK_MONOTONIC` reads them.
     pub awake: i64,
 }
 
