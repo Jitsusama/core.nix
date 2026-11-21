@@ -285,6 +285,15 @@ ShellRoot {
     // together: each taken alone parsed every look and banded For You
     // afresh, 166 times in each of Joel's openings (2026-11-10).
     function afterwards() {
+        // Now's tell is one function queued once a turn, so a later ask for
+        // it, as the notices' daemon answering late, moves it behind this:
+        // a loaded builder found nothing told yet (21 November). So this
+        // waits up to 20 turns for a tell, and heldHears still wants one.
+        if (root.nowSaid.every(why => why === "") && root.turnsForATell < 20) {
+            root.turnsForATell += 1;
+            Qt.callLater(root.afterwards);
+            return;
+        }
         if (tried(() => {
             heldHears();
             bandedAtReads = now.bandsKept.times;
@@ -298,6 +307,7 @@ ShellRoot {
             Qt.callLater(root.readsTaken);
     }
     property int bandedAtReads: 0
+    property int turnsForATell: 0
 
     // The to-do daemon's records of looks whose texts are `texts`, by file,
     // as its stream tells them.
