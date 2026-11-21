@@ -295,8 +295,10 @@ body {
 
 /* ---- The line over the map: where the keys are, read from the machine
    down, in quiet italic place words, and the map's own words at its end.
-   Find takes the trail's place while it's open, so the line never grows
-   a second row of controls. Its rule is the map's top edge. ---- */
+   Find and new work each take the trail's place while open, so the line
+   never grows a second row of controls. The trail keeps its room unseen
+   under them, so opening either moves nothing round it. Its rule is the
+   map's top edge. ---- */
 
 .headline {
   display: flex;
@@ -308,9 +310,23 @@ body {
   background: var(--background);
 }
 
-.trail {
+.lines {
+  position: relative;
   flex: 1 1 auto;
+  align-self: stretch;
   min-inline-size: 0;
+  container-type: inline-size;
+  display: grid;
+  align-items: center;
+}
+
+.lines > * {
+  grid-area: 1 / 1;
+  min-inline-size: 0;
+}
+
+.trail[inert] {
+  visibility: hidden;
 }
 
 .trail ol {
@@ -434,14 +450,16 @@ body {
   text-underline-offset: 0.25em;
 }
 
-@media (max-width: 30rem) {
+/* The lines take a row of their own under the map's words until beside
+   them they'd have room for new work's line in one row, as said short
+   (below): the words take about 22rem, the short line about 20rem. */
+@media (max-width: 48rem) {
   .headline {
     flex-wrap: wrap;
     row-gap: 0;
   }
 
-  .trail,
-  .find {
+  .lines {
     flex-basis: 100%;
     order: 2;
   }
@@ -1205,8 +1223,6 @@ body {
 }
 
 .find {
-  flex: 1 1 auto;
-  min-inline-size: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -1214,8 +1230,107 @@ body {
 }
 
 .find[hidden],
-.trail[hidden] {
+.sprout[hidden],
+.sprout-from[hidden] {
   display: none;
+}
+
+/* New work's line stands where find's does, its words the widest part,
+   then the cell it starts from, then the hand-off in full ink, so the
+   one act on the line reads as the one to press. Laid over the trail's
+   room from its top. Where the room is narrow, as on a phone, the line
+   says less so it still holds one row (below), since a second row can
+   go nowhere that neither covers the drawer nor moves it. Only a screen
+   too narrow even for that, under about 22rem, hangs a row over what's
+   under it, as a sheet would, rather than pushing the map down; its
+   rule lies on the line's own while it holds one row, and under the
+   sheet when it hangs. */
+.sprout {
+  position: absolute;
+  z-index: 3;
+  inset-block-start: 0;
+  inset-inline: 0;
+  min-block-size: calc(100% + 1px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--mark);
+  border-block-end: 1px solid var(--rule);
+  background: var(--background);
+}
+
+.sprout svg {
+  flex: none;
+  inline-size: 18px;
+  block-size: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sprout input[type="text"] {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+  min-block-size: 44px;
+}
+
+.sprout-from {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tie);
+  min-block-size: 44px;
+  color: var(--text);
+  font: italic 400 var(--step-small) / 1 var(--serif);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* An agent names its cell, at any length, so the name is cut to fit. */
+.sprout-from span {
+  max-inline-size: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sprout-go {
+  flex: none;
+  min-block-size: 44px;
+  padding: 0 var(--mark);
+  background: none;
+  border: 0;
+  color: var(--strong);
+  font: italic 400 var(--step-small) / 1 var(--serif);
+  text-decoration: underline 1px;
+  text-underline-offset: 0.25em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.go-short {
+  display: none;
+}
+
+/* Narrow, the line keeps its field and the cell it starts from, cut
+   shorter, and its button says only Start, its whole name still said.
+   Said in full, the line takes about 38rem. */
+@container (max-width: 40rem) {
+  .sprout input[type="text"] {
+    flex-basis: 6rem;
+  }
+
+  .sprout-from span {
+    max-inline-size: 7rem;
+  }
+
+  .go-long {
+    display: none;
+  }
+
+  .go-short {
+    display: inline;
+  }
 }
 
 .find-count {

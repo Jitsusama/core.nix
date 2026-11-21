@@ -44,6 +44,7 @@ import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, parts
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
+import { FULL_WORDS, handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -128,6 +129,21 @@ import {
   const find = document.getElementById("find");
   const findLine = document.getElementById("find-line");
   const findCount = document.getElementById("find-count");
+  const sproutLine = document.getElementById("sprout-line");
+  const sproutInput = document.getElementById("sprout");
+  const sproutFromLine = document.getElementById("sprout-from-line");
+  const sproutFromBox = document.getElementById("sprout-from");
+  const sproutFromWords = document.getElementById("sprout-from-words");
+  const sproutGo = document.getElementById("sprout-link");
+  const sproutControl = document.getElementById("sprout-control");
+  // The cell new work would start from, the one open as its line opened.
+  let sproutFrom = null;
+  // The words last handed on and the cell they went from, kept to send
+  // again, and whether the line offers that cell now.
+  let sproutKept = null;
+  let sproutKeptFromOffered = false;
+  let sproutOpener = null;
+  let sproutHeld = false;
   const trail = document.getElementById("trail");
   const trailSteps = document.getElementById("trail-steps");
   // What the find line matched, in the order n steps through them, and
@@ -2684,6 +2700,7 @@ import {
     if (b.dataset.zoom === "in") zoomBy(1.25);
     else if (b.dataset.zoom === "out") zoomBy(0.8);
     else if (b.dataset.zoom === "now") toggleNow();
+    else if (b.dataset.zoom === "sprout") toggleSprout();
     else fit();
   });
 
@@ -3426,6 +3443,8 @@ import {
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
       (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.host)) +
+      // Only an address the link carries can be started from.
+      (receptor || !isAddress(s.address) ? "" : `<p class="led"><button type="button" class="inline" data-sprout-from="${esc(s.address)}">Start New Work From It</button></p>`) +
       // The forage page lists only cells with a forage, so only those link there.
       (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
       factList(facts) +
@@ -3645,21 +3664,166 @@ import {
   };
   const openFind = () => {
     findVisited = false;
-    trail.hidden = true;
+    closeSprout({ said: false });
+    trail.inert = true;
     findLine.hidden = false;
     find.focus();
     find.select();
   };
-  const closeFind = () => {
+  const closeFind = ({ said = true } = {}) => {
     if (findLine.hidden) return;
     const inFind = findLine.contains(document.activeElement);
     find.value = "";
     findLine.hidden = true;
-    trail.hidden = false;
+    trail.inert = false;
     refind();
     if (inFind) view.focus({ preventScroll: true });
-    if (view.contains(document.activeElement)) where.textContent = "Find closed; the whole map is back in its full ink.";
+    if (said && view.contains(document.activeElement)) where.textContent = "Find closed; the whole map is back in its full ink.";
   };
+  // ---- New work: words handed to the Launcher's Start New Work. ----
+
+  // The line takes the trail's place as find's does, and the two never
+  // stand together; the trail keeps its room, unseen, so nothing round it
+  // moves. It hands the words on as a link the desktop gives the Launcher
+  // (sprout.ts says why), from the cell open as it opened, which a tick
+  // lets go of; a receptor is never one, as it is never talked to, and an
+  // address the link would leave out is never offered.
+  sproutInput.maxLength = LONGEST_WORDS;
+  const sproutableFrom = (address) =>
+    isAddress(address) && !!panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`);
+  // A cell kept with handed words was offered when they went, so it
+  // stands whatever drawer is open now.
+  const offerFrom = (from, { kept = false } = {}) => {
+    sproutFrom = kept || sproutableFrom(from) ? from : null;
+    sproutFromLine.hidden = sproutFrom === null;
+    sproutFromBox.checked = true;
+    const short = sproutFrom ? current?.byAddress.get(sproutFrom)?.short || sproutFrom : "";
+    sproutFromWords.textContent = sproutFrom ? `From ${short}` : "";
+    // A name an agent wrote, and cut short on a phone, so its address
+    // is there to see too.
+    sproutFromLine.title = sproutFrom ? `${short} (${sproutFrom})` : "";
+  };
+  // `named` is a drawer's button, which names its own cell.
+  const openSprout = (from, { named = false } = {}) => {
+    // Asked again while open, it only takes the keys back, so a cleared
+    // tick stays cleared, unless a drawer's button names another cell,
+    // which it then offers, the keys going back to it on close.
+    if (!sproutLine.hidden) {
+      if (named) {
+        sproutOpener = document.activeElement;
+        sproutKeptFromOffered = false;
+        if (from === sproutFrom) sproutFromBox.checked = true;
+        else offerFrom(from);
+      }
+      sproutInput.focus();
+      return;
+    }
+    sproutOpener = document.activeElement;
+    closeFind({ said: false });
+    // Words kept to send again go from the cell they went from while it
+    // is still on the map, unless a drawer's button names its own.
+    const kept = sproutKept?.from;
+    sproutKeptFromOffered =
+      sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
+    offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
+    trail.inert = true;
+    sproutLine.hidden = false;
+    sproutControl.setAttribute("aria-expanded", "true");
+    sproutInput.focus();
+    // Words last handed on come back chosen, so if the Launcher didn't
+    // open, Return hands them again, and typing replaces them.
+    sproutInput.select();
+  };
+  // Focus goes back to what opened the line, the drawer's button or the
+  // control, while it still stands, or the button the drawer drew again in
+  // its place; else to the map.
+  const sproutBack = () => {
+    const address = sproutOpener?.dataset?.sproutFrom;
+    const again = address ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`) : null;
+    const stands = sproutOpener?.isConnected && sproutOpener !== document.body && sproutOpener.checkVisibility();
+    (stands ? sproutOpener : again || view).focus({ preventScroll: true });
+  };
+  // Words handed on are kept for the line's next opening; a line let go
+  // of keeps none.
+  function closeSprout({ said = true, keep = false } = {}) {
+    if (sproutLine.hidden) return;
+    const inLine = sproutLine.contains(document.activeElement);
+    if (!keep) {
+      sproutInput.value = "";
+      sproutKept = null;
+    }
+    sproutKeptFromOffered = false;
+    sproutInput.setCustomValidity("");
+    sproutLine.hidden = true;
+    trail.inert = false;
+    sproutFrom = null;
+    sproutControl.setAttribute("aria-expanded", "false");
+    if (inLine) sproutBack();
+    sproutOpener = null;
+    if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
+  }
+  const toggleSprout = () => (sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null) : closeSprout());
+  sproutLine.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
+    const link = sproutLink(sproutInput.value, from);
+    // No words is said where they go, in the field's own bubble, and once
+    // to a screen reader, until a word is typed.
+    if (!link) {
+      sproutInput.setCustomValidity(NO_WORDS);
+      sproutInput.reportValidity();
+      where.textContent = NO_WORDS;
+      return;
+    }
+    sproutGo.href = link;
+    sproutGo.click();
+    sproutKept = { words: sproutInput.value, from };
+    const short = from === null ? null : current?.byAddress.get(from)?.short || from;
+    closeSprout({ said: false, keep: true });
+    where.textContent = handedWords(short);
+  });
+  // The field leaves off what would take it past the cap by itself, so
+  // that is said, only when something was left off.
+  // A paste into a field carries its words in `data` in Chromium; a
+  // composition carries all of itself, so it is left to its end.
+  sproutInput.addEventListener("beforeinput", (e) => {
+    if (e.inputType === "insertCompositionText") return;
+    const adds = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+    const replaced = (sproutInput.selectionEnd ?? 0) - (sproutInput.selectionStart ?? 0);
+    if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
+  });
+  // New words over kept ones are new work, so they go from the cell open
+  // now, as a fresh line's would.
+  sproutInput.addEventListener("input", () => {
+    sproutInput.setCustomValidity("");
+    if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
+      sproutKeptFromOffered = false;
+      offerFrom(chosen?.kind === "cell" ? chosen.id : null);
+    }
+  });
+  // A held s opens the line once; its repeats don't type into the field,
+  // until any key comes up wherever it lands, a fresh key goes down, or
+  // the page loses the keys, where its key can come up unheard.
+  const sproutLetGo = () => {
+    sproutHeld = false;
+  };
+  document.addEventListener("keyup", sproutLetGo);
+  window.addEventListener("blur", sproutLetGo);
+  // Escape closes the line from anywhere in it, its tick and button too,
+  // which the page's own keys leave alone as fields; it goes no further,
+  // so the same press never lets go of the open cell or closes Now.
+  sproutLine.addEventListener("keydown", (e) => {
+    if (sproutHeld && e.repeat) {
+      e.preventDefault();
+      return;
+    }
+    sproutLetGo();
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeSprout();
+  });
+
   find.addEventListener("input", () => refind());
   find.addEventListener("keydown", (e) => {
     const asked = findKey(e.key);
@@ -3849,6 +4013,11 @@ import {
       where.textContent = `Opened ${openedWords({ kind, id })}; its details are in the drawer.`;
       requestAnimationFrame(() => panelBody.querySelector("h2")?.setAttribute("tabindex", "-1"));
       requestAnimationFrame(() => panelBody.querySelector("[data-back]")?.focus({ preventScroll: true }));
+      return;
+    }
+    const sprout = e.target.closest("[data-sprout-from]");
+    if (sprout) {
+      openSprout(sprout.dataset.sproutFrom, { named: true });
       return;
     }
     // The way back to the whole map is the way to Now, as it says.
@@ -4673,6 +4842,11 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
+    sprout: () => {
+      sproutHeld = true;
+      openSprout(chosen?.kind === "cell" ? chosen.id : null);
+    },
+    "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),
     "let-go": () => letGo(),
@@ -4692,6 +4866,7 @@ import {
       keysOpen: keys.open,
       onMap: !!e.target.closest?.("#main"),
       findOpen: !findLine.hidden,
+      sproutOpen: !sproutLine.hidden,
       finding: finding(),
       chosen: !!chosen,
       nowOpen: !!nowOpen,
@@ -4719,13 +4894,13 @@ import {
     e.preventDefault();
     view.focus();
   });
-  const taps = { "/": openFind, ".": toggleNow, "?": toggleKeys };
+  const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
   for (const kbd of document.querySelectorAll(".head .keys kbd")) {
     const act = taps[kbd.textContent];
     if (!act) continue;
     kbd.setAttribute("role", "button");
     kbd.tabIndex = 0;
-    kbd.setAttribute("aria-label", { "/": "Find a cell", ".": "Now", "?": "Keys" }[kbd.textContent]);
+    kbd.setAttribute("aria-label", { "/": "Find a cell", s: "Start new work", ".": "Now", "?": "Keys" }[kbd.textContent]);
     kbd.addEventListener("click", act);
     kbd.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {

@@ -37,6 +37,8 @@ export const EVERY_PAGE_ACT = [
   "keys",
   "find",
   "close-find",
+  "sprout",
+  "close-sprout",
   "next-found",
   "found-before",
   "let-go",
@@ -62,6 +64,8 @@ export interface Standing {
   /** Whether focus is on the map or its panel, where its letters answer. */
   readonly onMap: boolean;
   readonly findOpen: boolean;
+  /** Whether the line that starts new work is open. */
+  readonly sproutOpen: boolean;
   /** Whether the find line is open with something asked of it. */
   readonly finding: boolean;
   /** Whether a cell, network, machine or talk is open. */
@@ -107,6 +111,7 @@ const LETTERS: Readonly<Record<string, PageAct>> = {
   ".": "now",
   a: "needs-you",
   t: "talk",
+  s: "sprout",
   m: "machines",
   "0": "fit",
   "+": "zoom-in",
@@ -163,10 +168,10 @@ export const treeKey = (pressed: Pressed): TreeAct | null => {
 
 /**
  * What one of the page's letters asks, from where the page stands. The
- * keys dialog and find answer anywhere but a field; the rest answer only
- * on the map or its panel, so no stray key acts from elsewhere (WCAG
- * 2.1.4). Escape closes what a mode opened, the find line first, then
- * what's chosen, then the now.
+ * keys dialog and find answer anywhere but a field; the rest, new work
+ * among them, answer only on the map or its panel, so no stray key acts
+ * from elsewhere (WCAG 2.1.4). Escape closes what a mode opened, the find or new work's
+ * line first, then what's chosen, then the now.
  */
 export const pageKey = (pressed: Pressed, at: Standing): PageAct | null => {
   if (chorded(pressed) || at.typing) {
@@ -188,6 +193,9 @@ export const pageKey = (pressed: Pressed, at: Standing): PageAct | null => {
   if (key === "Escape") {
     if (at.findOpen) {
       return "close-find";
+    }
+    if (at.sproutOpen) {
+      return "close-sprout";
     }
     if (at.chosen) {
       return "let-go";
