@@ -10,8 +10,12 @@ use std::iter::Peekable;
 /// caller to read. Until 20 November it ran on unbounded, so a test built
 /// without an import took the next test's and dropped it. Each `let` is
 /// closed by its own `in`, so one nested in another's bindings leaves the
-/// outer one open.
-pub fn called<'a>(lines: &mut Peekable<impl Iterator<Item = &'a str>>) -> Option<&'a str> {
+/// outer one open. Each line it steps over goes into `seen`, since what a
+/// `let` imports is part of the test too.
+pub fn called<'a>(
+    lines: &mut Peekable<impl Iterator<Item = &'a str>>,
+    seen: &mut String,
+) -> Option<&'a str> {
     let mut depth = 0;
     let mut lets = 0_usize;
     while let Some(&line) = lines.peek() {
@@ -23,6 +27,8 @@ pub fn called<'a>(lines: &mut Peekable<impl Iterator<Item = &'a str>>) -> Option
             return None;
         }
         lines.next();
+        seen.push_str(line);
+        seen.push('\n');
         lets += words(line, "let");
         lets = lets.saturating_sub(words(line, "in"));
         depth += nesting(line);
@@ -104,16 +110,39 @@ pub fn nesting(text: &str) -> isize {
     count("{") + count("[") + count("(") - count("}") - count("]") - count(")")
 }
 
+/// Whether `text`, read from `depth`, closes the value it is in and opens
+/// another after it, as `} {` does, which leaves the depth as it was.
+fn reopens(mut depth: isize, text: &str) -> bool {
+    let mut opened = depth > 0;
+    let mut closed = false;
+    for c in code(text).chars() {
+        match c {
+            '{' | '[' | '(' => depth += 1,
+            '}' | ']' | ')' => depth -= 1,
+            _ => continue,
+        }
+        if depth > 0 && closed {
+            return true;
+        }
+        opened |= depth > 0;
+        closed |= opened && depth <= 0;
+    }
+    false
+}
+
 /// The strings a call, opening on `call` and running on through `lines`,
 /// gives by name, read only at its own depth: a nested set's `area` is not
 /// the call's, nor one inside a list. A line opening a set or a list
 /// besides the call's own gives nothing, so a value built from it owns
 /// each file it could name. A call holding a `let` or an indented string,
 /// whose lines may read as bindings, or one whose set another is merged
-/// onto with `//`, gives nothing at all.
+/// onto with `//` or given after it, `} {`, gives nothing at all. Each line
+/// it reads goes into `seen`, since what the call passes is part of the
+/// test too.
 pub fn given_by<'a>(
     call: &str,
     lines: &mut Peekable<impl Iterator<Item = &'a str>>,
+    seen: &mut String,
 ) -> BTreeMap<String, String> {
     // A `${` opens a value, not a set, and its own `}` closes it.
     let opens = |text: &str| {
@@ -123,7 +152,7 @@ pub fn given_by<'a>(
     };
     let unsure = |text: &str| words(text, "let") > 0 || text.contains("''");
     let mut given = BTreeMap::new();
-    let mut whole = !unsure(call);
+    let mut whole = !unsure(call) && !reopens(0, call);
     if opens(call) <= 1 {
         strings_given(call, &mut given);
     }
@@ -131,7 +160,11 @@ pub fn given_by<'a>(
     let mut last = call;
     while at > 0 {
         let Some(line) = lines.next() else { break };
+        seen.push_str(line);
+        seen.push('\n');
         whole &= !unsure(line);
+        // A line that closes the call and opens another set after it.
+        whole &= !reopens(at, line);
         if at == 1 && opens(line) == 0 {
             strings_given(line, &mut given);
         }

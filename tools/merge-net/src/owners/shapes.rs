@@ -404,7 +404,8 @@ fn a_value_checks_gives_reaches_what_the_tree_names() {
     tree.file("flake.nix", "checks = import ./checks.nix;");
     tree.file(
         "checks.nix",
-        "vm-desktop-looks = import ./tests/desktop.nix { area = \"looks\"; };\n\
+        "vmHostPkgs = pkgs;\n\
+         vm-desktop-looks = import ./tests/desktop.nix { area = \"looks\"; };\n\
          ++ map (file: import file given) [\n  ./tests/vm/keys/checks.nix\n]",
     );
     tree.file(
@@ -438,6 +439,63 @@ fn a_value_checks_gives_reaches_what_the_tree_names() {
 }
 
 #[test]
+fn what_builds_the_host_or_the_call_names_owns_the_test() {
+    let tree = Tree::new("host");
+    tree.file("flake.nix", "checks = import ./checks.nix;");
+    tree.file(
+        "checks.nix",
+        "{\n  vmHostPkgs = pkgs // {\n    qemu = qemuAfterItsSockets;\n  };\n  \
+         qemuAfterItsSockets = callPackage ./tests/lib/qemu-after.nix { };\n  \
+         vm-desktop-looks = import ./tests/desktop.nix { area = \"looks\"; };\n}\n\
+         ++ map (file: import file given) [\n  ./tests/vm/admin/checks.nix\n]",
+    );
+    tree.file("tests/lib/qemu-after.nix", "{ }: ./qemu-after.sh");
+    tree.file(
+        "tests/vm/admin/checks.nix",
+        "vm-pi =\n  let\n    hosted = import ../../../modules/pi/hosted-pi.nix { };\n  in\n\
+         import ./pi.nix {\n    inherit hosted;\n    screens = ./screens.nix;\n  };",
+    );
+    tree.file(
+        "modules/pi/hosted-pi.nix",
+        "{ }: { patches = \"${./host-patches}\"; }",
+    );
+    tree.file(
+        "tests/desktop.nix",
+        "{ area, ... }: { tests = ./desktop/desktop-${area}-vm-test.py; }",
+    );
+    let tests = |files: &str| in_tree(&tree.0, &words(files)).map(|owning| owning.tests);
+    assert_eq!(
+        tests("modules/pi/hosted-pi.nix modules/pi/host-patches/a.patch"),
+        Some(words("vm-pi")),
+        "what a test's let imports named no test until 21 November"
+    );
+    assert_eq!(
+        tests("tests/vm/admin/screens.nix"),
+        Some(words("vm-pi")),
+        "a path the call passes is part of the test"
+    );
+    assert_eq!(
+        tests("tests/lib/qemu-after.sh"),
+        Some(words("vm-desktop-looks vm-pi")),
+        "what builds every test's host named none until 21 November"
+    );
+    assert_eq!(
+        tests("tests/desktop/desktop-captures-vm-test.py"),
+        Some(Vec::new()),
+        "the call's own import is read with its values, never again without"
+    );
+    tree.file(
+        "checks.nix",
+        "vm-desktop-looks = import ./tests/desktop.nix { area = \"looks\"; };",
+    );
+    assert_eq!(
+        tests("modules/zsh/home.nix"),
+        Some(words("vm-desktop-looks")),
+        "a host it can't find to read owns everything"
+    );
+}
+
+#[test]
 fn a_wide_character_before_a_path_ends_the_word_before_it() {
     assert_eq!(
         beside("é./a.py «./b.py", &BTreeMap::new()),
@@ -452,7 +510,8 @@ fn a_vm_test_the_reading_cant_find_is_named_for_any_change() {
     tree.file("flake.nix", "checks = import ./checks.nix;");
     tree.file(
         "checks.nix",
-        "vm-a = import ./tests/a.nix { };\n\
+        "vmHostPkgs = pkgs;\n\
+         vm-a = import ./tests/a.nix { };\n\
          vm-odd =\n  builtins.seq x (import ./tests/odd.nix { });\n\
          vm-built = pkgs.callPackage ./built.nix { };\n\
          ++ map (file: import file given) [\n  ./tests/vm/x/checks.nix\n]",
@@ -523,6 +582,8 @@ fn a_call_holding_a_let_or_an_indented_string_or_merged_onto_gives_nothing() {
         "vm-a = import ./a.nix {\n  script = ''\n    area = \"left\";\n  '';\n};",
         "vm-a = import ./a.nix {\n  area = \"left\";\n} // { area = \"right\"; };",
         "vm-a = import ./a.nix {\n  area = \"left\";\n}\n// { area = \"right\"; };",
+        "vm-a = import ./a.nix {\n  area = \"left\";\n} {\n  area = \"right\";\n};",
+        "vm-a = import ./a.nix { area = \"left\"; } { area = \"right\"; };",
     ] {
         assert_eq!(
             vm_tests(checks).first().map(|test| test.given.len()),
