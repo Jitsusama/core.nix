@@ -5388,6 +5388,10 @@
     fields; a stop's rate left out for a moment's stretch, and a count unread at a line not
     carried into the next; and a camera that goes as its unit is stopped said to have gone
   '';
+  usb-camera-holders-forget-a-killed-run = ''
+    each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
+    writes as it stops, so a run killed before removing its files leaves no camera said there
+  '';
   usb-camera-holders-may-open-the-camera = ''
     the USB camera watch's unit lets it open a camera to read, under its ProtectClock, with no
     private devices hiding the camera, and no device it names given write or mknod, an entry

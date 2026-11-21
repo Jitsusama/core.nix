@@ -29,4 +29,27 @@ onLinux {
     holds "usb-camera-holders-may-open-the-camera"
       "The USB camera watch's sandbox keeps it from opening the camera to read, or lets it write."
       (lib.elem "char-video4linux r" allowed && !lib.any writes allowed && !hidden);
+
+  # A run killed before it removes its files leaves its camera said there;
+  # each watch forgets its node as its unit stops, in the folder it writes,
+  # so the relayed camera's watch forgets in its own and not the shared one.
+  usb-camera-holders-forget-a-killed-run =
+    let
+      services = graphical.config.systemd.services;
+      forgets =
+        unit: folder:
+        let
+          config = services.${unit}.serviceConfig;
+        in
+        lib.hasSuffix " --usb /dev/%I ${folder}" config.ExecStart
+        && lib.any (line: lib.hasSuffix " --usb --forget /dev/%I ${folder}" line) (
+          lib.toList (config.ExecStopPost or [ ])
+        );
+    in
+    holds "usb-camera-holders-forget-a-killed-run"
+      "A USB camera's watch doesn't forget its node, in the folder it writes, as its unit stops."
+      (
+        forgets "usb-camera-holders@" "/run/camera-holders"
+        && forgets "usb-camera-holders-relayed@" "/run/camera-holders/.relayed"
+      );
 }

@@ -3,6 +3,7 @@
 //! ```text
 //! loopback-holders [--card NAME] [--ignore-unit UNIT]... SOURCE OUTPUT
 //! loopback-holders --usb [--ignore-unit UNIT]... NODE FOLDER
+//! loopback-holders --usb --forget NODE FOLDER
 //! ```
 //!
 //! SOURCE is the camera's V4L2 node, or a file naming it, as the relay
@@ -31,6 +32,14 @@
 //! how: the format and frame rate asked for, the frames the camera gave,
 //! the packets it sent in error, and its controls (src/record.rs says
 //! how).
+//!
+//! With --forget, it removes the files in FOLDER that say NODE, and ends:
+//! a USB camera's unit runs it as it stops, so a run killed before it
+//! could remove its own leaves nothing to say the camera is still there.
+//!
+//! A file is written beside the one it replaces under a dotted name,
+//! `.<its name>.<pid>`, which every reader of the folder passes over, so
+//! no camera's name, as `Webcam 2.0`, is ever taken for one half-written.
 //!
 //! Beside the file, `.devices/<its name>` says which node the camera is,
 //! as its real path, for as long as there's one: a reader that sees
@@ -66,6 +75,7 @@ struct Options {
     card: Option<String>,
     units: Vec<String>,
     usb: bool,
+    forget: bool,
     sysfs: PathBuf,
     debugfs: PathBuf,
     source: PathBuf,
@@ -90,6 +100,10 @@ fn help() -> Help {
         .option("--card NAME", "only a loopback of this name counts")
         .option("--ignore-unit UNIT", "leaves out this unit's processes")
         .option("--usb", "SOURCE is a USB camera's node")
+        .option(
+            "--forget",
+            "with --usb, removes what says the node, and ends",
+        )
         .exit(Exit::Failed, "its camera or file couldn't be watched")
 }
 
@@ -102,6 +116,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
     let mut card = None;
     let mut units = Vec::new();
     let mut usb = false;
+    let mut forget = false;
     // Where sysfs and debugfs are, for the tests.
     let mut sysfs = PathBuf::from("/sys");
     let mut debugfs = PathBuf::from("/sys/kernel/debug");
@@ -118,11 +133,15 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
             "--sysfs" => sysfs = PathBuf::from(value()?),
             "--debugfs" => debugfs = PathBuf::from(value()?),
             "--usb" => usb = true,
+            "--forget" => forget = true,
             option if option.starts_with('-') => {
                 return Err(wrongly(format!("{option} isn't a flag it takes")));
             }
             _ => places.push(PathBuf::from(argument)),
         }
+    }
+    if forget && !usb {
+        return Err(wrongly("--forget goes with --usb".to_owned()));
     }
     let [source, output] = <[PathBuf; 2]>::try_from(places).map_err(|places| {
         wrongly("loopback-holders takes a SOURCE and an OUTPUT".to_owned())
@@ -132,6 +151,7 @@ fn options(mut arguments: impl Iterator<Item = String>) -> Result<Options, Failu
         card,
         units,
         usb,
+        forget,
         sysfs,
         debugfs,
         source,
@@ -192,26 +212,21 @@ fn say_device(output: &Path, node: Option<&Path>) {
     }
 }
 
-/// Removes each file in the folder but this one that says this node, and
-/// the holders file beside the folder that it's named for, as that camera
-/// is gone; one being written, its name ending in a dot and the pid of a
-/// process still running, is left to its writer, where a camera named for
-/// a version, as `Webcam 2.0`, is not.
-fn forget_node(folder: &Path, own: &Path, said: &str) {
+/// Removes each file in the folder but this run's own that says this node,
+/// and the holders file beside the folder that it's named for, as that
+/// camera is gone; one being written, under a dotted name, is left to its
+/// writer.
+fn forget_node(folder: &Path, own: Option<&Path>, said: &str) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
     };
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
-        let being_written = path
-            .extension()
-            .and_then(|end| end.to_str())
-            .is_some_and(|end| {
-                !end.is_empty()
-                    && end.bytes().all(|byte| byte.is_ascii_digit())
-                    && Path::new("/proc").join(end).exists()
-            });
-        if path == own || being_written || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+        let being_written = entry.file_name().as_encoded_bytes().starts_with(b".");
+        if Some(path.as_path()) == own
+            || being_written
+            || !entry.file_type().is_ok_and(|kind| kind.is_file())
+        {
             continue;
         }
         if !fs::read_to_string(&path).is_ok_and(|text| text == said) {
@@ -234,10 +249,21 @@ fn forget_node(folder: &Path, own: &Path, said: &str) {
     }
 }
 
+/// Where the file is written before it replaces the output: beside it,
+/// under a dotted name with this run's pid, which no reader takes for a
+/// camera's.
+fn temporary(output: &Path) -> Option<PathBuf> {
+    let mut name = std::ffi::OsString::from(".");
+    name.push(output.file_name()?);
+    name.push(format!(".{}", std::process::id()));
+    Some(output.with_file_name(name))
+}
+
 /// Replaces the file whole with the body, readable by all.
 fn replace(output: &Path, body: &str) -> io::Result<()> {
-    let mut temporary = output.as_os_str().to_owned();
-    temporary.push(format!(".{}", std::process::id()));
+    let temporary = temporary(output).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "a file to write has no name")
+    })?;
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -262,7 +288,7 @@ fn tidy(output: &Path) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
     };
-    let prefix = format!("{}.", base.to_string_lossy());
+    let prefix = format!(".{}.", base.to_string_lossy());
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -391,7 +417,7 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         // and one with no card may say a node another camera has since been
         // given.
         if let Some(folder) = file.parent() {
-            forget_node(folder, &file, &format!("{}\n", node.display()));
+            forget_node(folder, Some(&file), &said_as(&node));
         }
     }
     say_device(&output, Some(&node));
@@ -418,6 +444,19 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         .because(format!("{}: {error}", output.display()))),
         _ => Ok(()),
     }
+}
+
+/// How a node file says its node.
+fn said_as(node: &Path) -> String {
+    format!("{}\n", node.display())
+}
+
+/// Removes what says a USB camera's node, as its unit stops: its own run
+/// removes its files as it ends, so any left were a killed run's. The node
+/// may be gone by then, so it's taken as given where it can't be followed.
+fn forget(options: &Options) {
+    let node = fs::canonicalize(&options.source).unwrap_or_else(|_| options.source.clone());
+    forget_node(&options.output.join(".devices"), None, &said_as(&node));
 }
 
 /// Says who holds a loopback, following the source to each node it names.
@@ -469,7 +508,10 @@ fn main() -> ExitCode {
             Failure::new(Exit::Failed, "loopback-holders can't watch for its camera")
                 .because(format!("inotify: {error}"))
         })?;
-        if options.usb {
+        if options.forget {
+            forget(&options);
+            Ok(())
+        } else if options.usb {
             usb(&mut events, &options)
         } else {
             loopback(&mut events, &options);
@@ -596,11 +638,14 @@ mod tests {
         let root = scratch("tidy");
         for name in [
             "camera",
-            "camera.123",
-            "camera.",
-            "camera.1a",
-            "cameras.4",
-            "other.5",
+            ".camera.123",
+            ".camera.",
+            ".camera.1a",
+            ".cameras.4",
+            ".other.5",
+            // A camera named for a version, beside one that isn't.
+            "camera.0",
+            ".camera.0.7",
         ] {
             fs::write(root.join(name), "").unwrap();
         }
@@ -612,7 +657,27 @@ mod tests {
         left.sort();
         assert_eq!(
             left,
-            ["camera", "camera.", "camera.1a", "cameras.4", "other.5"]
+            [
+                ".camera.",
+                ".camera.0.7",
+                ".camera.1a",
+                ".cameras.4",
+                ".other.5",
+                "camera",
+                "camera.0"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_file_is_written_under_a_dotted_name_beside_it() {
+        let written = temporary(Path::new("/run/camera-holders/Webcam 2.0")).unwrap();
+        assert_eq!(
+            written,
+            Path::new(&format!(
+                "/run/camera-holders/.Webcam 2.0.{}",
+                std::process::id()
+            ))
         );
     }
 
@@ -632,6 +697,8 @@ mod tests {
             (Path::new("/run/d"), Path::new("/run/o"))
         );
         assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
+        let forgetting = given("--usb --forget /dev/video0 /run/camera-holders").unwrap();
+        assert!(forgetting.usb && forgetting.forget);
     }
 
     #[test]
@@ -642,6 +709,7 @@ mod tests {
             "--what /a /b",
             "-x /a /b",
             "/a /b /c",
+            "--forget /a /b",
         ] {
             let ending = terminal_kit::run(
                 &help(),

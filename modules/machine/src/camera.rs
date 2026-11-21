@@ -30,14 +30,10 @@ use pipewire::{PIPEWIRE, State, THROUGH_EVERY, through_pipewire};
 pub const FOLDER: &str = "/run/camera-holders";
 
 /// Whether a file of this name in the folder is a camera's, rather than
-/// one being written or hidden.
+/// one being written or hidden, which are dotted: a camera named for a
+/// version, as `Webcam 2.0`, is a camera's.
 pub fn names(name: &str) -> bool {
-    if name.is_empty() || name.starts_with('.') {
-        return false;
-    }
-    !name
-        .rsplit_once('.')
-        .is_some_and(|(_, end)| !end.is_empty() && end.bytes().all(|byte| byte.is_ascii_digit()))
+    !name.is_empty() && !name.starts_with('.')
 }
 
 /// Each camera with a file, by its name, with the programs holding it in
@@ -178,10 +174,10 @@ mod tests {
 
     #[test]
     fn a_file_being_written_or_hidden_is_no_camera() {
-        for name in ["obs", "Logitech BRIO", "cam.v2", "cam.", "2"] {
+        for name in ["obs", "Logitech BRIO", "cam.v2", "cam.", "2", "Webcam 2.0"] {
             assert!(names(name), "{name} is a camera's");
         }
-        for name in ["", "obs.4120", "Logitech BRIO.7", ".obs", ".devices"] {
+        for name in ["", ".obs.4120", ".Webcam 2.0.7", ".obs", ".devices"] {
             assert!(!names(name), "{name:?} is no camera's");
         }
     }
@@ -197,7 +193,7 @@ mod tests {
         );
         write(&root, "obs", "");
         write(&root, "Logitech BRIO", "zoom\n  firefox \n\nzoom\n");
-        write(&root, "Logitech BRIO.4120", "zoom\n");
+        write(&root, ".Logitech BRIO.4120", "zoom\n");
         fs::create_dir_all(root.path(FOLDER).join("folder")).unwrap();
         assert_eq!(
             cameras(&root, &pipewire),

@@ -1269,11 +1269,11 @@ fn the_links_are_said_from_the_kernel_with_what_their_folders_say() {
 fn who_has_each_camera_is_told_as_its_file_is_written() {
     let running = Running::new("camera");
     let folder = running.root().join("run/camera-holders");
-    // Each written beside it under the writer's pid, then renamed, as the
-    // holders programs write them.
+    // Each written beside it under a dotted name with the writer's pid,
+    // then renamed, as the holders programs write them.
     let write = |name: &str, text: &str| {
         std::fs::create_dir_all(&folder).unwrap();
-        let writing = folder.join(format!("{name}.4120"));
+        let writing = folder.join(format!(".{name}.4120"));
         std::fs::write(&writing, text).unwrap();
         std::fs::rename(writing, folder.join(name)).unwrap();
     };

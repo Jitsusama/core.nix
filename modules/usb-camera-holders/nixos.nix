@@ -46,6 +46,10 @@ let
     ];
     serviceConfig = {
       ExecStart = "${lib.getExe holders} --usb /dev/%I ${folder}";
+      # A run killed before it could remove its files would leave the
+      # camera said there, and its readers said, until another camera came
+      # at this node; as the unit stops, what says the node goes too.
+      ExecStopPost = "${lib.getExe holders} --usb --forget /dev/%I ${folder}";
       # The same reach as a loopback's watch, every process's open files,
       # and the camera's own node, opened to read its format and controls.
       # ProtectClock allows only the clock's device unless others are named.
