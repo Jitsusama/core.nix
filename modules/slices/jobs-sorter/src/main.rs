@@ -42,6 +42,11 @@
 //! `src/real_time.rs` says why and how, and goes first when memory runs
 //! out, as `src/oom.rs` says.
 //!
+//! The threads of each `--quick-name` program under a `--quick` cgroup,
+//! Joel's Chrome and Slack in his apps' slice, ask for a short slice, so a
+//! woken drawing thread runs sooner under load, as `src/quick.rs` says why
+//! and how.
+//!
 //! Work split into a `--by-quest` slice goes in its quest's slice there,
 //! weighted as the `--quests` file says, which `src/quests.rs` says why and
 //! how. With `--tiers` and `--parents`, each quest's slice sits inside its
@@ -106,6 +111,7 @@ mod low;
 mod oom;
 mod probe;
 mod quests;
+mod quick;
 mod real_time;
 mod revive;
 mod sessions;
@@ -138,6 +144,9 @@ struct Settings {
     every: Duration,
     split: Vec<String>,
     no_real_time: Vec<String>,
+    /// Cgroups whose `quick_names` programs ask for a short slice.
+    quick: Vec<String>,
+    quick_names: Vec<String>,
     by_quest: Vec<String>,
     quests: Option<PathBuf>,
     tiers: Option<PathBuf>,
@@ -1798,6 +1807,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         every: Duration::from_millis(1000),
         split: Vec::new(),
         no_real_time: Vec::new(),
+        quick: Vec::new(),
+        quick_names: Vec::new(),
         by_quest: Vec::new(),
         quests: None,
         tiers: None,
@@ -1836,6 +1847,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--jobs" => settings.jobs = value()?,
             "--split" => settings.split.push(value()?),
             "--no-real-time" => settings.no_real_time.push(value()?),
+            "--quick" => settings.quick.push(value()?),
+            "--quick-name" => settings.quick_names.push(value()?),
             "--by-quest" => settings.by_quest.push(value()?),
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
             "--tiers" => settings.tiers = Some(PathBuf::from(value()?)),
@@ -1848,13 +1861,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
-            "--calls-elsewhere" => {
-                let given = value()?;
-                let (sockets, mycelium) = given.split_once('=').ok_or_else(|| {
-                    wrongly("--calls-elsewhere is the sockets' folder, =, then mycelium")
-                })?;
-                settings.calls_elsewhere = Some((PathBuf::from(sockets), PathBuf::from(mycelium)));
-            }
+            "--calls-elsewhere" => settings.calls_elsewhere = Some(elsewhere_from(&value()?)?),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
             "--hosts" => settings.hosts = Some(value()?),
             "--sessions" => settings.sessions = Some(value()?),
@@ -1885,6 +1892,18 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         ));
     }
     Ok(settings)
+}
+
+/// `--calls-elsewhere`'s value, the nodes' sockets' folder and the
+/// mycelium to ask them, or the refusal saying what it is.
+fn elsewhere_from(given: &str) -> Result<(PathBuf, PathBuf), Failure> {
+    let (sockets, mycelium) = given.split_once('=').ok_or_else(|| {
+        cli::wrongly(
+            "jobs-sorter",
+            "--calls-elsewhere is the sockets' folder, =, then mycelium",
+        )
+    })?;
+    Ok((PathBuf::from(sockets), PathBuf::from(mycelium)))
 }
 
 /// A flag's value read as a number, or the refusal saying what it is.
@@ -2297,6 +2316,11 @@ fn run(settings: &Settings) -> Result<(), String> {
             };
             rank_for_memory(&looking, &mut ranks, &mut warned);
         }
+        if pass.is_multiple_of(quick::EVERY) {
+            for cgroup in &settings.quick {
+                quick::ask(&root.join(cgroup), &settings.quick_names, &mut warned);
+            }
+        }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         brake_for_calls(&mut doorway, &root);
         pass = pass.wrapping_add(1);
@@ -2513,6 +2537,8 @@ mod tests {
             every: Duration::from_millis(1000),
             split: vec!["jobs.slice/jobs.service".into()],
             no_real_time: vec!["jobs.slice/jobs-work.slice".into()],
+            quick: Vec::new(),
+            quick_names: Vec::new(),
             by_quest: vec!["jobs-work.slice".into()],
             quests: None,
             tiers: None,

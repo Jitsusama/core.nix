@@ -5,7 +5,7 @@
 use terminal_kit::{Exit, Failure, Help};
 
 /// Every flag the sorter takes, each with a value, as its units give it.
-const FLAGS: [(&str, &str); 25] = [
+const FLAGS: [(&str, &str); 27] = [
     (
         "--under SLICE[=CGROUP]",
         "a slice of terminals it watches, and where their busy work goes; app.slice",
@@ -29,6 +29,14 @@ const FLAGS: [(&str, &str); 25] = [
     (
         "--no-real-time CGROUP",
         "a cgroup whose work runs without real time, and goes first when memory runs out",
+    ),
+    (
+        "--quick CGROUP",
+        "a cgroup whose --quick-name programs' threads ask for a short slice",
+    ),
+    (
+        "--quick-name NAME",
+        "a program, by its name, whose threads under --quick ask for a short slice",
     ),
     (
         "--by-quest SLICE",
