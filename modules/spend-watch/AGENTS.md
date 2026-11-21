@@ -68,6 +68,36 @@ feed speaks.
   name, and serves the quest whose workspace it works in until a quest
   entry says otherwise. `src/ingest.rs` finds them; `src/series.rs` maps
   them.
+- **Machines.** Another machine is counted as this one is, the only
+  difference being where its credentials live: the config names where its
+  session logs and its agents' logs are brought, and each is read the
+  same way, so its budgets come from its own logs' entries. Each session
+  is its machine's, kept on the session rather than each turn, since a
+  run's agents run where their session does; a session read before
+  machines were is this machine's. The by-machine cut shows each machine
+  by its name, this one by the config's `machine` or else its host name,
+  pi spend no log explains as elsewhere, and another tool's bill as its
+  tool's, since a bill names no machine. It shows only for a period in
+  which another machine spent money, not just took turns on a plan. Only
+  another machine's logs are read: its subagent runs and quest
+  workspaces stay there, so its runs' spend beyond their logs is
+  elsewhere. A brought log's parent is looked for among that machine's
+  logs; a copy brought before its parent counts whole until the parent
+  lands, then is read again for its own turns. Each machine's folder
+  stands apart from every other's where it really is, links passed over
+  inside, so nothing is counted twice. A session copied to another
+  machine and gone on there keeps its id, so its logs share the turns
+  from before the copy: each turn, refusal and unresolved budget is kept
+  once by its session, time and model, whichever log said it. Such a
+  session is this machine's if a log of it is here, else the machine's
+  whose log was last read from its start, so a machine renamed, or its
+  logs brought somewhere new, takes its sessions along. Forgetting one
+  log forgets its session whole and reads its other logs again. A
+  finding on another machine's session offers no terminal to go to.
+  The logs are read as they grow in place, which whatever brings them
+  has to keep to: a log replaced on each copy is
+  read again whole every time. A brought folder is trusted as fully as
+  this machine's own: its refusals, budgets and workspaces count here.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each
   turn's budget is worked out: the budget claiming its provider, since

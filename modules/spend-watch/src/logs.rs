@@ -45,6 +45,14 @@ pub struct Carry {
     /// Where quests' workspaces are, given afresh each read.
     #[serde(skip)]
     pub workspaces: Option<String>,
+    /// The machine a log was written on, by where it was found; none for
+    /// this one's. Given afresh each read, so never kept.
+    #[serde(skip)]
+    pub machine: Option<String>,
+    /// Where that machine's sessions are brought, so a parent its log
+    /// names is found there. Given afresh each read, so never kept.
+    #[serde(skip)]
+    pub brought: Option<String>,
     pub session: Option<String>,
     pub cwd: Option<String>,
     pub quest: Option<String>,
@@ -282,6 +290,8 @@ pub enum Event {
         cwd: String,
         at: f64,
         kind: Option<String>,
+        /// The machine it ran on, where that's another than this one.
+        machine: Option<String>,
     },
     Named {
         session: String,
@@ -367,16 +377,6 @@ pub fn read_after(
         }
     }
     (events, used)
-}
-
-/// Whether a header is that of a log pi carried a session into, from a
-/// parent whose log is still there to count what was copied.
-pub fn carried(header: &Value) -> bool {
-    header.get("type").and_then(Value::as_str) == Some("session")
-        && header
-            .get("parentSession")
-            .and_then(Value::as_str)
-            .is_some_and(|parent| std::path::Path::new(parent).is_file())
 }
 
 /// The quest whose workspace `cwd` is in: the directory under `workspaces`
@@ -543,8 +543,9 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
         .to_owned();
     carry.session = Some(id.clone());
     carry.cwd = Some(cwd.clone());
-    carry.copies_known = true;
-    if carried(entry) {
+    let brought = carry.brought.as_deref().map(std::path::Path::new);
+    carry.copies_known = !copies::awaits_parent(entry, brought);
+    if copies::carried(entry, brought) {
         carry.copied_until = at;
     }
     if carry.quest.is_none() {
@@ -558,6 +559,7 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
         cwd,
         at: at.unwrap_or(0.0),
         kind: carry.kind.clone(),
+        machine: carry.machine.clone(),
     });
 }
 
@@ -767,6 +769,7 @@ pub fn repo_of(cwd: &str) -> String {
         .to_owned()
 }
 
+pub mod copies;
+
 #[cfg(test)]
-#[path = "logs_tests.rs"]
 mod tests;

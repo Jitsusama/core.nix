@@ -4,7 +4,12 @@
 //!
 //! The logs are a person's own sessions, and the agents' that the config
 //! finds by pattern: a swarm's, a review council's. Where an agent's log
-//! was found says what kind of work it is.
+//! was found says what kind of work it is. Another machine's, brought
+//! here, are read the same way and are that machine's.
+//!
+//! Long because more than half of it is the tests beside it, each of which
+//! writes logs to a folder and reads them through the same passes the
+//! daemon runs.
 
 use crate::config::Config;
 use crate::history::History;
@@ -24,11 +29,16 @@ pub struct Pass {
     pub behind: bool,
 }
 
-/// A log to read, and the kind of work it is where an agent's it is.
-#[derive(Debug, Clone, PartialEq)]
+/// A log to read, the kind of work it is where an agent's it is, and the
+/// machine it was written on where that's another.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Found {
     pub path: PathBuf,
     pub kind: Option<String>,
+    pub machine: Option<String>,
+    /// Where another machine's sessions are brought, so a log carried
+    /// from a parent there finds it there; none for this machine's.
+    pub brought: Option<PathBuf>,
 }
 
 /// What every log is read with.
@@ -48,30 +58,84 @@ impl<'a> Reading<'a> {
 }
 
 /// Every log the config names: the person's own, then each agents'
-/// pattern's in turn. A log two patterns find is read once, as the first.
+/// pattern's in turn, then each other machine's the same way. A log two
+/// patterns find is read once, as the first.
 pub fn found(config: &Config) -> Vec<Found> {
     let mut seen = std::collections::HashSet::new();
-    let own = logs(&config.sessions)
-        .into_iter()
-        .map(|path| Found { path, kind: None });
-    let agents = config.agents.iter().flat_map(|agents| {
-        matching(&agents.pattern).into_iter().map(|path| Found {
-            path,
-            kind: Some(agents.kind.clone()),
-        })
-    });
-    own.chain(agents)
+    let here = machine_logs(&config.sessions, &config.agents, None);
+    let elsewhere = config
+        .machines
+        .iter()
+        .flat_map(|machine| machine_logs(&machine.sessions, &machine.agents, Some(&machine.name)));
+    here.chain(elsewhere)
         .filter(|found| seen.insert(found.path.clone()))
         .collect()
 }
 
-/// The directories agents' logs are in, to watch.
-pub fn agents_directories(config: &Config) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = config
+/// One machine's logs: its own sessions', then each agents' pattern's.
+fn machine_logs<'a>(
+    sessions: &Path,
+    agents: &'a [crate::config::AgentLogs],
+    machine: Option<&'a String>,
+) -> impl Iterator<Item = Found> + 'a {
+    let brought = machine.map(|_| sessions.to_path_buf());
+    let own_brought = brought.clone();
+    let own = logs(sessions)
+        .into_iter()
+        .filter(move |path| machine.is_none() || !linked(path))
+        .map(move |path| Found {
+            path,
+            kind: None,
+            machine: machine.cloned(),
+            brought: own_brought.clone(),
+        });
+    let agents = agents.iter().flat_map(move |agents| {
+        let brought = brought.clone();
+        matching(&agents.pattern)
+            .into_iter()
+            .filter(move |path| machine.is_none() || !linked(path))
+            .map(move |path| Found {
+                path,
+                kind: Some(agents.kind.clone()),
+                machine: machine.cloned(),
+                brought: brought.clone(),
+            })
+    });
+    own.chain(agents)
+}
+
+/// Whether a log, or the project folder it's in, is a link. Another
+/// machine's logs are brought as files of their own, so a link there would
+/// only find a log already counted, this machine's or another's, and count
+/// it again under that machine's name.
+fn linked(path: &Path) -> bool {
+    let link = |path: &Path| {
+        std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+    };
+    link(path) || path.parent().is_some_and(link)
+}
+
+/// The directories logs are in beyond this machine's own sessions, to
+/// watch: its agents', and every other machine's sessions' and agents'.
+pub fn followed_directories(config: &Config) -> Vec<PathBuf> {
+    let patterns = config
         .agents
         .iter()
+        .chain(config.machines.iter().flat_map(|machine| &machine.agents));
+    let machines = config
+        .machines
+        .iter()
+        .flat_map(|machine| logs(&machine.sessions));
+    let mut dirs: Vec<PathBuf> = patterns
         .flat_map(|agents| matching(&agents.pattern))
+        .chain(machines)
         .filter_map(|path| path.parent().map(Path::to_path_buf))
+        .chain(
+            config
+                .machines
+                .iter()
+                .map(|machine| machine.sessions.clone()),
+        )
         .collect();
     dirs.sort();
     dirs.dedup();
@@ -256,13 +320,23 @@ fn scan_slice(
         carry = Carry::default();
     }
     if offset > 0 && !carry.copies_known {
-        // Held from before copies were told apart: a carried log is read
-        // again for its own turns, and any other is marked as checked.
-        if header(path).is_some_and(|header| crate::logs::carried(&header)) {
+        // Held from before copies were told apart, or brought before its
+        // parent: a carried log is read again for its own turns, one still
+        // waiting on its parent is left to be checked again, and any other
+        // is marked as checked.
+        let header = header(path);
+        let brought = found.brought.as_deref();
+        if header
+            .as_ref()
+            .is_some_and(|header| crate::logs::copies::carried(header, brought))
+        {
             history.forget_file(&name)?;
             offset = 0;
             carry = Carry::default();
-        } else {
+        } else if !header
+            .as_ref()
+            .is_some_and(|header| crate::logs::copies::awaits_parent(header, brought))
+        {
             carry.copies_known = true;
             let carried = serde_json::to_string(&carry).map_err(|error| error.to_string())?;
             history.set_file(&name, &identity, offset, &carried, carry.session.as_deref())?;
@@ -282,6 +356,11 @@ fn scan_slice(
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     carry.kind.clone_from(&found.kind);
+    carry.machine.clone_from(&found.machine);
+    carry.brought = found
+        .brought
+        .as_ref()
+        .map(|brought| brought.to_string_lossy().into_owned());
     carry.workspaces = reading
         .workspaces
         .map(|workspaces| workspaces.to_string_lossy().into_owned());
@@ -362,7 +441,7 @@ mod tests {
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 1);
-        writeln!(file, "{TURN}").unwrap();
+        writeln!(file, "{}", turn_at(2)).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 2);
     }
@@ -372,7 +451,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("project")).unwrap();
         let path = dir.path().join("project/2026_s1.jsonl");
-        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{TURN}\n")).unwrap();
+        let later = turn_at(2);
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{later}\n")).unwrap();
         let history = History::memory();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 2);
@@ -423,6 +503,77 @@ mod tests {
         assert_eq!(unresolved(&history), ["ochre"]);
     }
 
+    // A log carried from a parent on another machine names that parent by
+    // the other machine's path; brought here, the parent is found in the
+    // same project folder, so what was copied is counted once.
+    #[test]
+    fn a_brought_copy_finds_its_parent_among_the_brought() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("teal/project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let header = serde_json::json!({
+            "type": "session", "id": "s2", "timestamp": "2026-10-14T10:30:00Z",
+            "cwd": "/y", "parentSession": "/home/elsewhere/sessions/project/2026_s1.jsonl",
+        });
+        let later = TURN.replace("10:01:00", "10:31:00");
+        std::fs::write(
+            project.join("2026_s2.jsonl"),
+            format!("{header}\n{TURN}\n{later}\n"),
+        )
+        .unwrap();
+        let history = History::memory();
+        let teal = "teal".to_owned();
+        let logs: Vec<Found> = machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a brought copy's copied turn was counted beside its parent's"
+        );
+    }
+
+    // Logs are brought in whatever order the transport keeps, so a copy can
+    // land before its parent. It counts whole until then, its parent is
+    // never taken from this machine's path, and once the parent lands the
+    // copy is read again for its own turns alone.
+    #[test]
+    fn a_brought_copy_counts_once_when_its_parent_lands_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("here/project");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::write(local.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let project = dir.path().join("teal/project");
+        std::fs::create_dir_all(&project).unwrap();
+        let header = serde_json::json!({
+            "type": "session", "id": "s2", "timestamp": "2026-10-14T10:30:00Z",
+            "cwd": "/y", "parentSession": local.join("2026_s1.jsonl"),
+        });
+        let later = TURN.replace("10:01:00", "10:31:00");
+        std::fs::write(
+            project.join("2026_s2.jsonl"),
+            format!("{header}\n{TURN}\n{later}\n"),
+        )
+        .unwrap();
+        let history = History::memory();
+        let teal = "teal".to_owned();
+        let logs =
+            || -> Vec<Found> { machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect() };
+        scan(&history, &logs(), Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a brought copy without its parent lost turns, or took this machine's log as it"
+        );
+        std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        scan(&history, &logs(), Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a brought copy's copied turn was counted again once its parent landed"
+        );
+    }
+
     // A history from before copies were told apart holds a carried log's
     // copied turns beside its parent's; the log is read again once.
     #[test]
@@ -467,10 +618,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("2026_s1.jsonl");
         let long = format!(r#"{{"type":"custom","data":"{}"}}"#, "x".repeat(2000));
-        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{long}\n{TURN}\n{long}")).unwrap();
+        let later = turn_at(2);
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{long}\n{later}\n{long}")).unwrap();
         let history = History::memory();
         let slice = 512;
-        let found = Found { path, kind: None };
+        let found = Found {
+            path,
+            ..Found::default()
+        };
         for _ in 0..20 {
             scan_slice(&history, &found, Reading::default(), slice).unwrap();
         }
@@ -484,7 +639,10 @@ mod tests {
     fn own(dir: &Path) -> Vec<Found> {
         logs(dir)
             .into_iter()
-            .map(|path| Found { path, kind: None })
+            .map(|path| Found {
+                path,
+                ..Found::default()
+            })
             .collect()
     }
 
@@ -597,6 +755,8 @@ mod tests {
         let logs = [Found {
             path: session.join("2026_s1.jsonl"),
             kind: Some("swarm".into()),
+            machine: None,
+            brought: None,
         }];
         let reading = Reading {
             refusals: &[],
@@ -615,5 +775,268 @@ mod tests {
             .query_row("SELECT quest FROM turns", [], |row| row.get(0))
             .unwrap();
         assert_eq!(quest, "QEST-2");
+    }
+
+    // Another machine's logs, brought here, are found as this one's are,
+    // its agents' as their kind, and each session is kept as that
+    // machine's; this machine's own are kept as nobody else's.
+    #[test]
+    fn another_machine_s_logs_are_that_machine_s() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |at: &str, id: &str| {
+            let path = dir.path().join(at);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let header = HEADER.replace("\"s1\"", &format!("{id:?}"));
+            std::fs::write(&path, format!("{header}\n{TURN}\n")).unwrap();
+        };
+        write("here/project/2026_a.jsonl", "here");
+        write("teal/sessions/project/2026_b.jsonl", "there");
+        write("teal/runs/r1/session/2026_c.jsonl", "its-reviewer");
+        let root = dir.path().display();
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": format!("{root}/here"), "runs": "/r", "registry": "/g",
+            "quests": "/q", "state": "/t", "machine": "slate",
+            "machines": [{"name": "teal", "sessions": format!("{root}/teal/sessions"),
+                "agents": [{"pattern": format!("{root}/teal/runs/*/session/*.jsonl"),
+                    "kind": "review"}]}],
+        }))
+        .unwrap();
+        let history = History::memory();
+        scan(&history, &found(&config), Reading::default()).unwrap();
+        let sessions: Vec<(String, Option<String>, Option<String>)> = history
+            .db
+            .prepare("SELECT id, kind, machine FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            sessions,
+            [
+                ("here".into(), None, None),
+                (
+                    "its-reviewer".into(),
+                    Some("review".into()),
+                    Some("teal".into())
+                ),
+                ("there".into(), None, Some("teal".into())),
+            ],
+            "a machine's logs weren't found, or weren't kept as its own"
+        );
+        assert_eq!(turns(&history), 3);
+        let watched = followed_directories(&config);
+        for folder in [
+            "teal/sessions",
+            "teal/sessions/project",
+            "teal/runs/r1/session",
+        ] {
+            assert!(
+                watched.contains(&dir.path().join(folder)),
+                "{folder} wasn't watched: {watched:?}"
+            );
+        }
+    }
+
+    // A link among another machine's logs, its sessions' or its agents',
+    // finds a log already counted, so it's passed over rather than counted
+    // again under that machine.
+    #[test]
+    fn a_link_among_another_machine_s_logs_is_passed_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("here/project");
+        std::fs::create_dir_all(&here).unwrap();
+        std::fs::write(here.join("2026_a.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let teal = dir.path().join("teal");
+        std::fs::create_dir_all(teal.join("files")).unwrap();
+        std::os::unix::fs::symlink(&here, teal.join("project")).unwrap();
+        std::os::unix::fs::symlink(here.join("2026_a.jsonl"), teal.join("files/2026_b.jsonl"))
+            .unwrap();
+        let runs = dir.path().join("teal-runs/run/session");
+        std::fs::create_dir_all(&runs).unwrap();
+        std::os::unix::fs::symlink(here.join("2026_a.jsonl"), runs.join("2026_c.jsonl")).unwrap();
+        let agents = [crate::config::AgentLogs {
+            pattern: format!("{}/teal-runs/*/session/*.jsonl", dir.path().display()),
+            kind: "review".into(),
+        }];
+        let name = "teal".to_owned();
+        let brought: Vec<Found> = machine_logs(&teal, &agents, Some(&name)).collect();
+        assert!(
+            brought.is_empty(),
+            "a link among another machine's logs was read: {brought:?}"
+        );
+    }
+
+    /// The machine a session is kept under, `None` for this one.
+    fn machine_of(history: &History, session: &str) -> Option<String> {
+        history
+            .db
+            .query_row(
+                "SELECT machine FROM sessions WHERE id = ?1",
+                [session],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    /// A turn at `minute` past ten, as `TURN` is at one past.
+    fn turn_at(minute: u32) -> String {
+        TURN.replace("10:01:00", &format!("10:{minute:02}:00"))
+    }
+
+    // A session copied to another machine and gone on there keeps its id,
+    // so both logs hold the turns from before the copy and each its own
+    // after. Read together, each turn counts once, whichever log was read
+    // first, and the session stays this machine's.
+    #[test]
+    fn a_session_gone_on_elsewhere_counts_each_turn_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |folder: &str, lines: &[String]| {
+            let project = dir.path().join(folder).join("project");
+            std::fs::create_dir_all(&project).unwrap();
+            let body = lines.join("\n");
+            std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{body}\n")).unwrap();
+        };
+        for teal_first in [false, true] {
+            write("here", &[turn_at(1), turn_at(2)]);
+            write("teal", &[turn_at(1), turn_at(3)]);
+            let history = History::memory();
+            let teal = "teal".to_owned();
+            let here = own(&dir.path().join("here"));
+            let there: Vec<Found> =
+                machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect();
+            let logs: Vec<Found> = if teal_first {
+                there.into_iter().chain(here).collect()
+            } else {
+                here.into_iter().chain(there).collect()
+            };
+            scan(&history, &logs, Reading::default()).unwrap();
+            scan(&history, &logs, Reading::default()).unwrap();
+            assert_eq!(
+                turns(&history),
+                3,
+                "a session two logs hold didn't count each turn once (teal first: {teal_first})"
+            );
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(dir.path().join("teal/project/2026_s1.jsonl"))
+                .unwrap();
+            writeln!(file, "{}", turn_at(4)).unwrap();
+            scan(&history, &logs, Reading::default()).unwrap();
+            assert_eq!(
+                turns(&history),
+                4,
+                "a turn the copy took after was lost (teal first: {teal_first})"
+            );
+            assert_eq!(
+                machine_of(&history, "s1"),
+                None,
+                "a session with a log here wasn't this machine's (teal first: {teal_first})"
+            );
+        }
+    }
+
+    // A session's turns are forgotten whole when one of its logs is
+    // replaced, so its other logs are read again to put back what only
+    // they hold.
+    #[test]
+    fn a_log_replaced_keeps_the_turns_its_session_s_other_logs_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |folder: &str, lines: &[String]| {
+            let project = dir.path().join(folder).join("project");
+            std::fs::create_dir_all(&project).unwrap();
+            let path = project.join("2026_s1.jsonl");
+            let _ = std::fs::remove_file(&path);
+            let body = lines.join("\n");
+            std::fs::write(path, format!("{HEADER}\n{body}\n")).unwrap();
+        };
+        write("here", &[turn_at(1), turn_at(2)]);
+        write("teal", &[turn_at(1), turn_at(3)]);
+        let history = History::memory();
+        let teal = "teal".to_owned();
+        let mut logs = own(&dir.path().join("here"));
+        logs.extend(machine_logs(&dir.path().join("teal"), &[], Some(&teal)));
+        scan(&history, &logs, Reading::default()).unwrap();
+        // Written anew, as a rewrite of the session would.
+        write("here", &[turn_at(1), turn_at(5)]);
+        scan(&history, &logs, Reading::default()).unwrap();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            3,
+            "a log replaced lost the turns only its session's other log holds"
+        );
+    }
+
+    // A log first seen before its header is whole still counts each of its
+    // session's turns once, once the rest of it lands.
+    #[test]
+    fn a_copy_seen_half_written_counts_each_turn_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("here/project");
+        std::fs::create_dir_all(&here).unwrap();
+        std::fs::write(here.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let teal = dir.path().join("teal/project");
+        std::fs::create_dir_all(&teal).unwrap();
+        let (start, end) = HEADER.split_at(HEADER.len() / 2);
+        std::fs::write(teal.join("2026_s1.jsonl"), start).unwrap();
+        let history = History::memory();
+        let name = "teal".to_owned();
+        let mut logs = own(&dir.path().join("here"));
+        logs.extend(machine_logs(&dir.path().join("teal"), &[], Some(&name)));
+        scan(&history, &logs, Reading::default()).unwrap();
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(teal.join("2026_s1.jsonl"))
+            .unwrap();
+        writeln!(file, "{end}\n{TURN}").unwrap();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            1,
+            "a copy seen half written counted its session's turn twice"
+        );
+    }
+
+    // A machine renamed, or its logs brought somewhere new, finds every log
+    // again under a new path while the old ones stay on disk. Each turn
+    // counts once, the session goes to the new name, and what the session
+    // takes on after is counted.
+    #[test]
+    fn logs_brought_somewhere_new_are_counted_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("teal/project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("2026_s1.jsonl"), format!("{HEADER}\n{TURN}\n")).unwrap();
+        let history = History::memory();
+        let (teal, ochre) = ("teal".to_owned(), "ochre".to_owned());
+        let logs: Vec<Found> = machine_logs(&dir.path().join("teal"), &[], Some(&teal)).collect();
+        scan(&history, &logs, Reading::default()).unwrap();
+        let moved = dir.path().join("ochre/project");
+        std::fs::create_dir_all(&moved).unwrap();
+        std::fs::copy(project.join("2026_s1.jsonl"), moved.join("2026_s1.jsonl")).unwrap();
+        let logs: Vec<Found> = machine_logs(&dir.path().join("ochre"), &[], Some(&ochre)).collect();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            1,
+            "a log brought somewhere new was counted again"
+        );
+        assert_eq!(
+            machine_of(&history, "s1").as_deref(),
+            Some("ochre"),
+            "a session brought somewhere new kept the old machine's name"
+        );
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(moved.join("2026_s1.jsonl"))
+            .unwrap();
+        writeln!(file, "{}", turn_at(2)).unwrap();
+        scan(&history, &logs, Reading::default()).unwrap();
+        assert_eq!(
+            turns(&history),
+            2,
+            "a turn taken after the logs were brought somewhere new was lost"
+        );
     }
 }
