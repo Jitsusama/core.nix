@@ -13,11 +13,11 @@
 //! other clients; it connects again and is given a fresh listing.
 
 use std::collections::{BTreeMap, HashMap};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -36,6 +36,9 @@ pub const BACKSTOP: Duration = Duration::from_secs(30);
 /// How long a folder's thread waits before watching again a folder it
 /// couldn't watch: one not made yet, or moved away and not back.
 const AGAIN: Duration = Duration::from_secs(1);
+
+/// How often a client's thread, with nothing to tell it, looks whether it went.
+const CLIENT_LOOK: Duration = Duration::from_secs(1);
 
 /// One client of a folder: its queue, and whether it is still there.
 struct Client {
@@ -335,11 +338,22 @@ pub fn serve(reader: &Arc<Reader>, stream: &UnixStream) {
                 let _ = gone.shutdown(std::net::Shutdown::Both);
             }
         });
-    let sent = following.lines.iter().try_for_each(|line| {
-        writer.write_all(line.text().as_bytes())?;
-        writer.write_all(b"\n")
-    });
+    // Woken each second to see whether the client went, so a client that
+    // leaves a quiet folder doesn't hold its thread until the next change.
+    loop {
+        match following.lines.recv_timeout(CLIENT_LOOK) {
+            Ok(line) => {
+                let sent = writer
+                    .write_all(line.text().as_bytes())
+                    .and_then(|()| writer.write_all(b"\n"));
+                if sent.is_err() {
+                    break;
+                }
+            }
+            Err(RecvTimeoutError::Timeout) if following.here.load(Ordering::SeqCst) => {}
+            Err(_) => break,
+        }
+    }
     following.here.store(false, Ordering::SeqCst);
-    let _: io::Result<()> = sent;
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }

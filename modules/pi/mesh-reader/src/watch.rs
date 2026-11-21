@@ -244,7 +244,11 @@ mod tests {
         fs::write(dir.join("a.json.tmp"), "half").unwrap();
         fs::write(dir.join("b.txt"), "no").unwrap();
         fs::create_dir(dir.join("c.json")).unwrap();
-        fs::write(dir.join("big.json"), vec![b'x'; usize::try_from(LARGEST_FILE).unwrap() + 1]).unwrap();
+        fs::write(
+            dir.join("big.json"),
+            vec![b'x'; usize::try_from(LARGEST_FILE).unwrap() + 1],
+        )
+        .unwrap();
         fs::write(dir.join("bytes.json"), [0xff, 0xfe]).unwrap();
         let listed = list(&dir, ".json").unwrap();
         assert_eq!(listed.keys().collect::<Vec<_>>(), vec!["a.json"]);

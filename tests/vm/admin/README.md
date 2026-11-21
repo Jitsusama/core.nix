@@ -21,6 +21,8 @@ a folder.
 | `firmware-asks.nix`, `-vm-test.py`               | writing firmware asking an administrator, even at the seat       |
 | `libvirt.nix`, `-vm-test.py`                     | libvirt's daemon stopping at once while its udev thread waits    |
 | `memory-tune.nix`, `-vm-test.py`                 | eight memory settings an administrator sets with no password     |
+| `mesh-reader-seventy.nix`, `-vm-test.py`         | one mesh reader reading each change once for seventy clients     |
+| `mesh-reader-clients.py`                         | that test's seventy clients, timing how soon each is told        |
 | `niri-off-cpu.nix`, `-vm-test.py`                | an account in wheel tracing its own niri, and nobody else        |
 | `offload-lines.nix`, `-vm-test.py`               | root's Nix given only the builders nix-offload's lines trust     |
 | `offload-lines-gcloud.sh`                        | that test's stand-in gcloud, saying what it lent                 |
