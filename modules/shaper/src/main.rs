@@ -259,6 +259,9 @@ fn queues_of(device: &str) -> Option<String> {
     let read = sh(&words(&format!("tc -j qdisc show dev {device}")));
     let seen = seen_queues(read.clone());
     if let (None, Err(e)) = (&seen, &read) {
+        // On one line, since the journal splits at each newline, and a
+        // line of tc's own apart from this one reads as a failure of its own.
+        let e = e.replace('\n', " ");
         eprintln!("{e}: {device}'s queues are left as they are");
     }
     seen
@@ -746,17 +749,29 @@ fn run_all(commands: Vec<Vec<String>>) -> bool {
     fine
 }
 
-/// The uplinks the default routes name, or nothing when a read of them
-/// failed, which says nothing of them, and is said.
-fn uplinks() -> Option<Vec<links::Uplink>> {
-    let routes = |family: &str| {
-        let read = sh(&words(&format!("ip {family} -j route show default")));
-        if let Err(e) = &read {
-            eprintln!("{e}: the links are left as they are until a read answers");
-        }
-        read.ok()
-    };
-    Some(links::uplinks(&routes("-4")?, &routes("-6")?))
+/// The uplinks the default routes name, or what failed when a read of
+/// them did.
+fn uplinks() -> Result<Vec<links::Uplink>, String> {
+    let routes = |family: &str| sh(&words(&format!("ip {family} -j route show default")));
+    routes_seen(routes("-4"), routes("-6"))
+}
+
+/// The uplinks two reads of the default routes name, IPv4's and IPv6's. A
+/// read that failed says nothing of the links: taken for no routes, it let
+/// every link go, and a restart's sweep took their queues.
+fn routes_seen(
+    v4: Result<String, String>,
+    v6: Result<String, String>,
+) -> Result<Vec<links::Uplink>, String> {
+    Ok(links::uplinks(&v4?, &v6?))
+}
+
+/// Whether a restart's sweep of the old shaper's queues may run: once the
+/// routes were read, `order`, every VPN there was taken up, `read`, and so
+/// was every link the routes name. Anything not taken up yet would go with
+/// the rest, as would every link while none is.
+fn may_sweep<V>(read: bool, order: Option<&[String]>, shaped: &BTreeMap<String, V>) -> bool {
+    read && !shaped.is_empty() && order.is_some_and(|o| o.iter().all(|n| shaped.contains_key(n)))
 }
 
 /// The links the shaper holds and what each reaches without the router.
@@ -952,10 +967,8 @@ fn run(options: &Options) -> Result<(), Failure> {
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
             let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
             // A restart left the old shaper's queues; once this one has
-            // taken up the links and VPNs it shapes, the rest go. A VPN
-            // whose read failed isn't taken up yet, and would go with them,
-            // as would every link while none is.
-            if !swept && read && order.is_some() && !shaped.is_empty() {
+            // taken up the links and VPNs it shapes, the rest go.
+            if !swept && may_sweep(read, order.as_deref(), &shaped) {
                 swept = true;
                 sweep(&held(&shaped, &vpns.0));
             }
@@ -1246,8 +1259,9 @@ fn follow_vpns(
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
         let (Some((up, down, straight)), Some(index)) = (base, index) else {
-            // A VPN that is there with no link to ride isn't taken up.
-            every_read &= index.is_none();
+            // A VPN that is there isn't taken up, with no link to ride or
+            // its index unread.
+            every_read &= !dir.exists();
             let_vpn_go(applied, name, &dir);
             continue;
         };
@@ -1313,7 +1327,13 @@ fn look(
     options: &Options,
     send: &std::sync::mpsc::Sender<Echo>,
 ) -> Option<Vec<String>> {
-    let now: Vec<links::Uplink> = uplinks()?;
+    let now = match uplinks() {
+        Ok(now) => now,
+        Err(e) => {
+            eprintln!("{e}: the links are left as they are until a read answers");
+            return None;
+        }
+    };
     let order: Vec<String> = now.iter().map(|u| u.name.clone()).collect();
     let gone: Vec<String> = shaped
         .keys()
@@ -2312,6 +2332,53 @@ mod tests {
             seen_queues(Err("tc: Cannot allocate memory (os error 12)".to_string())),
             None,
             "a tc that couldn't start"
+        );
+    }
+
+    // A read of the routes that failed says nothing of the links, where an
+    // empty one says there are none, and a restart's sweep waits for the
+    // one and for every link the routes name.
+    #[test]
+    fn a_failed_read_of_the_routes_names_no_links() {
+        let killed = || Err::<String, _>("ip -6 -j route show default: ".to_string());
+        assert!(
+            routes_seen(Ok("[]".into()), killed()).is_err(),
+            "IPv6's failed"
+        );
+        assert!(
+            routes_seen(killed(), Ok("[]".into())).is_err(),
+            "IPv4's failed"
+        );
+        assert_eq!(
+            routes_seen(Ok("[]".into()), Ok("[]".into())).map(|u| u.len()),
+            Ok(0),
+            "none routed"
+        );
+    }
+
+    #[test]
+    fn a_sweep_waits_for_every_link_the_routes_name() {
+        let order = ["eth0".to_string(), "wlan0".to_string()];
+        let shaped = |names: &[&str]| -> BTreeMap<String, u8> {
+            names.iter().map(|n| ((*n).to_string(), 0)).collect()
+        };
+        let both = shaped(&["eth0", "wlan0"]);
+        assert!(
+            may_sweep(true, Some(&order[..]), &both),
+            "every link taken up"
+        );
+        assert!(
+            !may_sweep(true, Some(&order[..]), &shaped(&["eth0"])),
+            "a link whose read failed"
+        );
+        assert!(
+            !may_sweep(false, Some(&order[..]), &both),
+            "a VPN not taken up"
+        );
+        assert!(!may_sweep(true, None, &both), "the routes unread");
+        assert!(
+            !may_sweep(true, Some(&[][..]), &shaped(&[])),
+            "no link taken up"
         );
     }
 }
