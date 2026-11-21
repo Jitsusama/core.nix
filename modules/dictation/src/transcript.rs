@@ -549,6 +549,21 @@ mod tests {
     }
 
     #[test]
+    fn joels_long_line_taking_up_their_words_is_his_own() {
+        // Four of his words are all of theirs, but under half of his.
+        let mine = "Thursday morning works for me, but not for my team at all.";
+        let lines = [
+            line(Side::Theirs, 4, "Thursday morning works for everyone?"),
+            line(Side::Mine, 5, mine),
+        ];
+        assert_eq!(
+            kept(&lines),
+            [mine],
+            "Joel's long line was taken for their echo"
+        );
+    }
+
+    #[test]
     fn an_echo_of_a_short_line_of_theirs_is_still_left_out() {
         let lines = [
             line(Side::Theirs, 4, "Sounds good."),
