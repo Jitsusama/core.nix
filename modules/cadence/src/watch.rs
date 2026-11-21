@@ -71,9 +71,9 @@ pub struct Snapshot {
     /// Why spend-watch's standing couldn't be read, or wasn't fresh, so no
     /// budget is watched.
     pub budgets_unwatched: Option<String>,
-    /// Seconds the machine has slept since it booted, or None where the
-    /// kernel's clocks can't be read.
-    pub asleep: Option<i64>,
+    /// The machine's sleep in this boot, or None where the kernel's boot or
+    /// clocks can't be read.
+    pub asleep: Option<asleep::Asleep>,
     pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,

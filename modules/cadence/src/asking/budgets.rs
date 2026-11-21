@@ -19,14 +19,15 @@ const BUDGET_REST: i64 = 6 * 3600;
 /// sleeps, so after a wake it may take five minutes to write again.
 const UNWATCHED_FOR: i64 = 10 * 60;
 /// Sleep between ticks past this, read from the kernel's clocks, starts
-/// again how long no budget was watched: a wake too brief for spend-watch
-/// to write isn't counted into the next, and a nap is never counted as
-/// watched time. A tick skipped or failed while awake slept none, so it
-/// never restarts the count, and slow ticks only delay a stop.
+/// again how long no budget was watched, as a boot does: a wake too brief
+/// for spend-watch to write isn't counted into the next, and a nap is never
+/// counted as watched time. A tick skipped or failed while awake slept
+/// none, so it never restarts the count, and slow ticks only delay a stop.
 const SLEPT: i64 = 60;
-/// Where the machine's sleep can't be read, a gap between ticks past this
-/// is taken as a sleep: one tick missed is absorbed, so a slow tick doesn't
-/// hide a stop, though a nap under it is counted as watched time.
+/// A gap between ticks past this starts the count again whatever the
+/// clocks read, as a stretch cadence didn't run, logged out or off. One
+/// tick missed is absorbed, so a slow tick doesn't hide a stop. Where the
+/// clocks can't be read, a nap under it is counted as watched time.
 const MISSED: i64 = 15 * 60;
 
 /// Whether an alarm's key says a budget passed a share of an allowance,
@@ -58,13 +59,14 @@ pub(super) fn remember(state: &mut State, key: &str, now: i64) {
 /// for `UNWATCHED_FOR` of waking time, so a machine just woken isn't told
 /// of it.
 pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
-    // Sleep since boot reading less than before means the machine booted.
-    let slept = match (state.asleep, s.asleep) {
-        (Some(before), Some(asleep)) => asleep < before || asleep - before > SLEPT,
-        _ => state.ticked.is_some_and(|at| s.now - at > MISSED),
-    };
+    let slept = state.ticked.is_some_and(|at| s.now - at > MISSED)
+        || matches!(
+            (&state.asleep, &s.asleep),
+            (Some(before), Some(now))
+                if before.boot != now.boot || now.millis - before.millis > SLEPT * 1000
+        );
     state.ticked = Some(s.now);
-    state.asleep = s.asleep;
+    state.asleep.clone_from(&s.asleep);
     let unwatched_for = if s.budgets_unwatched.is_some() {
         if slept {
             state.unwatched_since = None;
@@ -85,7 +87,16 @@ mod tests {
     use super::*;
     use crate::asking::tests::told_whom;
     use crate::asking::{Question, REMEMBER, To, tick};
+    use crate::watch::asleep::Asleep;
     use crate::watch::tests::calm;
+
+    /// The machine's sleep in `boot`, `seconds` of it.
+    fn slept(boot: &str, seconds: i64) -> Asleep {
+        Asleep {
+            boot: boot.into(),
+            millis: seconds * 1000,
+        }
+    }
 
     /// The proxy token's week at `share`, standing as `standing`.
     fn week(share: f64, standing: &str) -> crate::watch::budgets::Allowance {
@@ -210,20 +221,20 @@ mod tests {
     #[test]
     fn a_wake_too_brief_for_spend_watch_to_write_isnt_counted_into_the_next() {
         let mut s = calm(100_000);
-        s.asleep = Some(0);
+        s.asleep = Some(slept("one", 0));
         let mut state = State::default();
         assert!(tick(&s, &mut state).is_empty(), "nothing stands");
         // A dark wake three hours on reads the file from before the sleep,
         // and the machine sleeps again before spend-watch writes.
         s.now += 3 * 3600;
-        s.asleep = Some(3 * 3600 - 300);
+        s.asleep = Some(slept("one", 3 * 3600 - 300));
         s.budgets_unwatched = Some("was last written 180 min ago".into());
         assert!(
             tick(&s, &mut state).is_empty(),
             "a stale file on a brief wake was told at once"
         );
         s.now += 8 * 3600;
-        s.asleep = Some(11 * 3600 - 300);
+        s.asleep = Some(slept("one", 11 * 3600 - 300));
         s.budgets_unwatched = Some("was last written 660 min ago".into());
         assert!(
             tick(&s, &mut state).is_empty(),
@@ -231,7 +242,7 @@ mod tests {
         );
         // A wake, a nap of nine minutes, and a wake again.
         s.now += 10 * 60;
-        s.asleep = Some(11 * 3600 - 300 + 9 * 60);
+        s.asleep = Some(slept("one", 11 * 3600 - 300 + 9 * 60));
         assert!(
             tick(&s, &mut state).is_empty(),
             "a nap was counted as unwatched time"
@@ -250,7 +261,7 @@ mod tests {
     fn ticks_skipped_while_awake_never_hide_a_stop() {
         // Ticks run late every other mark, awake throughout.
         let mut s = calm(100_000);
-        s.asleep = Some(600);
+        s.asleep = Some(slept("one", 0));
         s.budgets_unwatched = Some("is missing".into());
         let mut state = State::default();
         assert!(tick(&s, &mut state).is_empty(), "a stop told at once");
@@ -260,7 +271,7 @@ mod tests {
             [(To::Orchestrator, false)],
             "a tick skipped while awake restarted the stop's count"
         );
-        // A boot reads less sleep than before, and starts the count again.
+        // A boot starts the count again, though neither boot slept.
         s.budgets_unwatched = None;
         s.now += 5 * 60;
         assert!(tick(&s, &mut state).is_empty(), "spend-watch writes");
@@ -268,10 +279,18 @@ mod tests {
         s.now += 5 * 60;
         assert!(tick(&s, &mut state).is_empty(), "a stop told at once");
         s.now += 5 * 60;
-        s.asleep = Some(0);
+        s.asleep = Some(slept("two", 0));
         assert!(
             tick(&s, &mut state).is_empty(),
             "time before a boot was counted into a stop"
+        );
+        // A stretch cadence didn't run, as logged out, starts it again too.
+        s.now += 5 * 60;
+        assert!(tick(&s, &mut state).is_empty(), "five minutes awake");
+        s.now += 20 * 60;
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "time cadence didn't run was counted into a stop"
         );
         // Where sleep can't be read, one tick missed is absorbed.
         s.asleep = None;
