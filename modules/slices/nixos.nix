@@ -302,15 +302,16 @@ let
 
   # A VPN's service, which Joel's own traffic passes through, never swaps,
   # keeps a hard floor, and comes ahead of the other system services for the
-  # disk. From 13 to 21 November WARP's daemon stalled its main loop 343 times, and more often the more memory
-  # stalled: 0.75 times an hour under half a percent, 3.0 over ten. Five of
-  # its 13 lost connections came within a minute of the journal flushing under
-  # memory pressure, against 4% of moments at random, while the VPN's own
-  # loss told nothing. On 21 November it held 122 of its 156 MB in
-  # swap, and in four hours had read 24,551 pages back from the disk and
-  # stalled 15.5 s on it. CPU didn't follow the stalls, so it keeps its
-  # weight. The floor covers its working set, about 180 MB, file pages too,
-  # which swap alone wouldn't keep: about one fault in eight was a file's.
+  # disk. From 13 to 21 November WARP's daemon stalled its main loop 343
+  # times, and more often the more memory stalled: 0.75 times an hour under
+  # half a percent, 3.0 over ten. Five of its 13 lost connections came
+  # within a minute of the journal flushing under memory pressure, against
+  # 4% of moments at random, while the VPN's own loss told nothing. On 21
+  # November it held 122 of its 156 MB in swap, and in four hours had read
+  # 24,551 pages back from the disk and stalled 15.5 s on it. CPU didn't
+  # follow the stalls, so it keeps its weight. The floor covers its working
+  # set, about 180 MB, file pages too, which swap alone wouldn't keep: about
+  # one fault in eight was a file's.
   # Each once, so one named twice isn't claimed twice in system.slice.
   vpnServices = lib.unique config.jitsusama.slices.vpnServices;
   vpnFloor = 256;
@@ -439,21 +440,29 @@ in
       # The floor below makes the service whatever it's named, so a name no
       # service runs would make an empty unit and protect nothing.
       ++ map (name: {
+        assertion = !lib.hasSuffix ".service" name;
+        message = "jitsusama.slices.vpnServices names ${name}; name it without .service.";
+      }) vpnServices
+      ++ map (name: {
         # A packaged service, as nixpkgs' tailscaled is, has its command in
-        # its package's unit and only what starts it here.
+        # its package's unit and only what starts it here, which may be its
+        # own socket or timer. A name with .service is told so above alone.
         assertion =
           let
             service = config.systemd.services.${name};
           in
-          service.serviceConfig ? ExecStart
+          lib.hasSuffix ".service" name
+          || service.serviceConfig ? ExecStart
           || service.script != ""
           || service.wantedBy != [ ]
-          || service.requiredBy != [ ];
+          || service.requiredBy != [ ]
+          || config.systemd.sockets ? ${name}
+          || config.systemd.timers ? ${name};
         message = "jitsusama.slices.vpnServices names ${name}, which no system service runs.";
       }) vpnServices
       ++ map (name: {
         assertion = !lib.elem name ownServices;
-        message = "jitsusama.slices.vpnServices names ${name}, which the slices module sets itself.";
+        message = "jitsusama.slices.vpnServices names ${name}, " + "which the slices module sets itself.";
       }) vpnServices;
 
     # A unit an agent starts with systemd-run stays in the agent's slice,

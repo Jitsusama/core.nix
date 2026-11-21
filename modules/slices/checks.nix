@@ -469,12 +469,17 @@
         );
       # Its command in its package's unit, as nixpkgs' tailscaled has it,
       # started by a target that wants it or one that requires it; and one
-      # whose command is a script.
+      # whose command is a script; and ones its socket or its timer starts.
       packaged = {
         systemd.services.packaged.wantedBy = [ "multi-user.target" ];
         systemd.services.required.requiredBy = [ "multi-user.target" ];
         systemd.services.scripted.script = "true";
+        systemd.sockets.socketed.listenStreams = [ "/run/socketed.sock" ];
+        systemd.timers.timed.timerConfig.OnCalendar = "hourly";
       };
+      ownRefusal =
+        unit: "jitsusama.slices.vpnServices names ${unit}, which the slices module sets itself.";
+      twice = (machine [ "vpn" "vpn" ] both).systemd.slices.system.sliceConfig;
       both = {
         imports = [
           packaged
@@ -494,17 +499,14 @@
           (two.systemd.slices.system.sliceConfig.MemoryMin or null) == "512M";
         "system.slice claims a floor with no VPN named" = !(none ? MemoryMin);
         "a running or packaged service was refused" =
-          refusals [ "vpn" "packaged" "required" "scripted" ] both == [ ];
-        "one named twice is claimed twice" =
-          ((machine [ "vpn" "vpn" ] both).systemd.slices.system.sliceConfig.MemoryMin or null) == "256M";
+          refusals [ "vpn" "packaged" "required" "scripted" "socketed" "timed" ] both == [ ];
+        "one named twice is claimed twice" = (twice.MemoryMin or null) == "256M";
+        "a name given with .service wasn't told so" =
+          refusals [ "vpn.service" ] both == [
+            "jitsusama.slices.vpnServices names vpn.service; name it without .service."
+          ];
         "a unit the module defines in its own folder was taken" =
-          lib.all
-            (
-              unit:
-              lib.elem "jitsusama.slices.vpnServices names ${unit}, which the slices module sets itself." (
-                refusals [ unit ] { }
-              )
-            )
+          lib.all (unit: lib.elem (ownRefusal unit) (refusals [ unit ] { }))
             [
               "user@"
               "memory-swap-in@"
@@ -516,9 +518,9 @@
           ];
         # journald's command is in systemd's own unit, so it's refused as
         # unrun too; this asks only that it's refused as the module's own.
-        "the slices module's own service was taken" =
-          lib.elem "jitsusama.slices.vpnServices names systemd-journald, which the slices module sets itself."
-            (refusals [ "systemd-journald" ] { });
+        "the slices module's own service was taken" = lib.elem (ownRefusal "systemd-journald") (
+          refusals [ "systemd-journald" ] { }
+        );
       };
       broken = lib.attrNames (lib.filterAttrs (_: held: !held) claims);
     in

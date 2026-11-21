@@ -1838,9 +1838,10 @@
   '';
   a-vpn-service-keeps-its-memory = ''
     a VPN's service named for it never swaps, keeps a hard memory floor that system.slice
-    claims for each, and comes ahead of the other system services for the disk; with none named
-    system.slice claims no floor; a packaged service is taken, and a name no service has or one
-    the slices module sets itself is refused
+    claims once for each, and carries the weight that puts it ahead of the other system services
+    where the disk shares by weight; with none named system.slice claims no floor; a packaged,
+    scripted, required, socket-started or timer-started service is taken, and a name with
+    .service, one no service has or one the slices module sets itself is refused
   '';
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
