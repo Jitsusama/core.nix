@@ -296,7 +296,8 @@ let
   jumping = key "jumping";
   links = key "links";
   searching = key "searching";
-  line = key "line";
+  # Vim's own name for them, its left-right motions.
+  leftRight = key "left-right";
   selecting = key "selecting";
   objects = key "objects";
   copying = key "copying";
@@ -357,17 +358,17 @@ let
     (searching "search-backward" "?" "Search up the page")
     (searching "next" "n" "On to the next match")
     (searching "previous" "N" "Back to the match before")
-    (line "left" "h" "A character left")
-    (line "right" "l" "A character right")
-    (line "word-on" "w" "On to the next word")
-    (line "word-back" "b" "Back to a word's start")
-    (line "word-end" "e" "On to a word's end")
-    (line "line-start" "0" "To the line's start")
-    (line "line-end" "$" "To the line's end")
-    (line "to-letter" "f" "On to the character typed")
-    (line "to-letter-backward" "F" "Back to the character typed")
-    (line "letter-again" ";" "To that character again")
-    (line "letter-again-backward" "," "Back to that character again")
+    (leftRight "left" "h" "A character left")
+    (leftRight "right" "l" "A character right")
+    (leftRight "word-on" "w" "On to the next word")
+    (leftRight "word-back" "b" "Back to a word's start")
+    (leftRight "word-end" "e" "On to a word's end")
+    (leftRight "line-start" "0" "To the line's start")
+    (leftRight "line-end" "$" "To the line's end")
+    (leftRight "to-letter" "f" "On to the character typed")
+    (leftRight "to-letter-backward" "F" "Back to the character typed")
+    (leftRight "letter-again" ";" "To that character again")
+    (leftRight "letter-again-backward" "," "Back to that character again")
     (selecting "select" "v" "Select from the cursor")
     (selecting "select-lines" "V" "Select whole paragraphs, items and lines")
     (selecting "other-end" "o" "To the selection's other end")
