@@ -114,6 +114,9 @@ ANSWERING = timedelta(seconds=120)
 # What reports (tests/desktop.nix) ends with when its time runs out, kept apart from the 1
 # a failed read gives.
 TIMED_OUT = 3
+# What the driver's own limit on a command ends it with (desktop-starts-clean pins it). One
+# past reports' own end is the wait running out on a starved guest, not a reader stopping.
+CUT_SHORT = 124
 # How far apart typed keys go. QEMU's virtio keyboard holds about 64 events, four a key,
 # and drops what comes while it's full; at the driver's 10 ms a key, a guest starved
 # for 180 ms on a loaded builder lost the middle of "quarterly numbers", leaving "qs",
@@ -543,9 +546,10 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
                 timeout=timedelta(seconds=left + 30),
             )
-            # reports stops with 3 once its time runs out, the wait's own end; any other status
-            # means a reader stopped, so it's raised as no wait's failure.
-            assert status != TIMED_OUT, never()
+            # reports stops with 3 once its time runs out, the wait's own end, and the driver
+            # with 124 when its limit past that runs out first; any other status means a reader
+            # stopped, so it's raised as no wait's failure.
+            assert status not in {TIMED_OUT, CUT_SHORT}, never()
             if status != 0:
                 stopped = f"{never()}, since reports stopped with {status}"
                 raise RuntimeError(stopped)
@@ -706,15 +710,19 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         return cast("Json", json.loads(self.as_account("qs ipc call launcher showing")))
 
     def launcher_until(
-        self, test: Callable[[Json], object], timeout: timedelta = timedelta(seconds=30)
+        self,
+        test: Callable[[Json], object],
+        timeout: timedelta = timedelta(seconds=30),
+        since: str | None = None,
     ) -> Json:
         """Wait until what the launcher shows passes the test, and give back what passed.
 
         The launcher reports its state each time it changes, so a wait reads it once and then
         hears every change. One that never passes says what it last heard the launcher show
-        (heard.py).
+        (heard.py). Since is a mark taken before the key that brings the state, for a state
+        that may come and go before the wait marks the journal itself.
         """
-        since = self.mark()
+        since = self.mark() if since is None else since
         passed: Json = until_heard(
             self.showing(),
             test,

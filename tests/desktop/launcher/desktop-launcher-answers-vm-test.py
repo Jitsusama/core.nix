@@ -1425,9 +1425,13 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # Return there installs, keeping the launcher and saying so.
         desktop.line("install!")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
+        # Installing shows only while the stand-in's three seconds run, which a busy builder's
+        # mark after the key can miss, so the journal is marked before it.
+        pressed = desktop.mark()
         machine.send_key("ret")
         desktop.launcher_until(
-            lambda shown: shown["footer"] == "installing" and shown["command"] is None
+            lambda shown: shown["footer"] == "installing" and shown["command"] is None,
+            since=pressed,
         )
 
         # Once in, Install offers nothing more, so the launcher leaves the asking by itself, as
@@ -1464,9 +1468,14 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
                 timeout=dt.timedelta(seconds=30),
             )
         except Exception as unheard:
-            # The driver's wait says only that it ran out, so this says where the Return went.
+            # The driver's wait says only that it ran out, so this says what the launcher shows
+            # and what the stand-in ran, telling a lost key from a second install.
             shown = desktop.showing()
-            failed = f"the gone row's Return went unjournalled, the launcher showing {shown}"
+            ran = desktop.as_account(f"cat {said}/installed").splitlines()
+            failed = (
+                "the journal never said the gone row's Return was taken,"
+                f" the launcher showing {shown} and the stand-in run as {ran}"
+            )
             raise AssertionError(failed) from unheard
         shown = desktop.showing()
         assert stepped_back(shown), shown

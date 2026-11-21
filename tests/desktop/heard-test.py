@@ -152,8 +152,8 @@ def test_only_the_last_change_heard_counts() -> None:
 
 
 def test_a_line_that_isnt_json_is_said_as_it_came() -> None:
-    # A journal can split a long line, and the half heard is what explains the failure, not
-    # the state before it.
+    # A line heard that isn't JSON, as when a journal splits a long line just after a "]" and
+    # the reader passes its first half on, explains the failure, not the state before it.
     def hear(passes: Callable[[str], object]) -> None:
         passes('{"rows": ["Inst')
 
