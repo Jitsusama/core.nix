@@ -179,3 +179,38 @@ function unwaited(made) {
         hue: made?.markHue ?? made?.hue
     };
 }
+
+// What the foot names a session by when it says what became of an act on
+// it: the agents daemon's name for its row, else its quest's title as its
+// record says it, and its address only when neither is known, since an
+// address means nothing to someone who never saw the session (WCJQSG, 19
+// November: no ids on what reaches Joel).
+function footName(served, title, address) {
+    return [served, title, address].map(one => String(one ?? "").trim())
+        .find(one => one !== "") ?? "";
+}
+
+// The node's reason for refusing an act on a session, without the address
+// it opens with (mycelium's steer_here says "<ADDRESS> isn't parked ..."),
+// since the row or the name beside it already stands for the session.
+function reasonOf(why, address) {
+    const upper = String(address ?? "").toUpperCase();
+    const given = String(why ?? "");
+    return upper !== "" && given.toUpperCase().startsWith(`${upper} `)
+        ? given.slice(upper.length + 1) : given;
+}
+
+// What the foot says of an act a session's node refused or never answered,
+// as `[name, words]`. The act is named by its own name ("Wake", "Pause"),
+// or none for words talked to it, and the node's reason by reasonOf.
+// `said` is the vocabulary's agents:machine words; `refused` holds the
+// act's name, the node's `why`, the session's `address` and its `name`.
+function refusal(said, refused) {
+    const { act, why, address, name } = refused;
+    const upper = String(address ?? "").toUpperCase();
+    const own = reasonOf(why, upper);
+    const reason = own === "" ? String(said.unanswered ?? "") : own;
+    const words = act === "" ? String(said.untold ?? "")
+        : String(said.refused ?? "").replace("{act}", act);
+    return [footName(name, "", upper), words.replace("{why}", reason)];
+}

@@ -315,7 +315,9 @@
         "hosted": "not opened \u00b7 its host gave no way to view it",
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
-        "unanswered": "not told, the node didn't answer"
+        "refused": "{act} refused, {why}",
+        "unanswered": "the node didn't answer",
+        "unfenced": "not woken, it might come back outside its sandbox"
       }
     },
     {
