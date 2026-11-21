@@ -305,6 +305,11 @@ mod tests {
             "a kitty drawing two windows says neither; a hosted one is its viewer"
         );
         assert_eq!(
+            (made[0].get("untold"), made[1].get("untold")),
+            (Some(&json!(true)), None),
+            "and says it couldn't tell, so its window isn't taken as closed (arrangement.rs)"
+        );
+        assert_eq!(
             made[1]["kitty"],
             json!(null),
             "a hosted session runs in no kitty"

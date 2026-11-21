@@ -371,6 +371,13 @@ fn closed_for() -> u64 {
     u64::try_from(CLOSED_FOR.as_millis()).unwrap_or(u64::MAX)
 }
 
+/// How long from `now` until the places are kept again for the first
+/// closed to be let go at `let_go`, both in ms since the epoch.
+#[must_use]
+pub fn again_in(let_go: u64, now: u64) -> Duration {
+    Duration::from_millis(let_go.saturating_sub(now))
+}
+
 /// When the windows were last seen to move, so their places are kept only
 /// once they've been still [`STILL`], and when a place closed is to be let
 /// go, so it's kept again then though nothing moves.
@@ -580,18 +587,59 @@ mod tests {
             session("LAPSED", "s-lapsed", "running", ""),
             session("PARKED", "s-parked", "parked", ""),
             session("ENDED", "s-ended", "closed", ""),
+            session("UNTOLD", "s-untold", "running", ""),
             away,
         ];
         let paired = [
             json!({"address": "SHOWN", "window": "window:7"}),
             json!({"address": "SHUT", "window": null}),
             json!({"address": "LAPSED", "window": "window:44"}),
+            json!({"address": "UNTOLD", "window": null, "untold": true}),
         ];
         assert_eq!(
             unwindowed(records.iter().map(Session), &paired, &desk),
             HashSet::from(["s-shut".to_owned(), "s-lapsed".to_owned()]),
             "one with no window paired, or one niri no longer lists; never one shown, parked, \
-             ended or elsewhere"
+             ended or elsewhere, nor one whose window can't be told from another's"
+        );
+    }
+
+    #[test]
+    fn with_no_session_window_left_none_is_taken_as_closed() {
+        let (windows, workspaces, screens) = desk_parts();
+        let desk = Desk {
+            windows: &windows,
+            workspaces: &workspaces,
+            screens: &screens,
+        };
+        let records = [
+            session("SHUT", "s-shut", "running", ""),
+            session("LAPSED", "s-lapsed", "running", ""),
+        ];
+        let paired = [
+            json!({"address": "SHUT", "window": null}),
+            json!({"address": "LAPSED", "window": "window:44"}),
+        ];
+        assert_eq!(
+            unwindowed(records.iter().map(Session), &paired, &desk),
+            HashSet::new(),
+            "every session's window gone at once is their kitty or niri gone, as a crash \
+             takes them, never windows closed by hand"
+        );
+    }
+
+    #[test]
+    fn a_let_go_already_past_is_looked_at_no_sooner_than_still() {
+        assert_eq!(
+            again_in(10_000, 4_000),
+            Duration::from_secs(6),
+            "one still to come is looked at when it comes"
+        );
+        assert_eq!(
+            again_in(4_000, 10_000),
+            STILL,
+            "one gone by waits as long as the windows' stillness, never waking the daemon at \
+             once over and over"
         );
     }
 
@@ -639,6 +687,14 @@ mod tests {
             json!({"column": 2}),
             "a window opened again is kept afresh, unmarked"
         );
+        let parked = first.kept("this", "", Map::new(), Vec::new(), &HashSet::new(), at + 1);
+        assert_eq!(
+            parked.boots["this"]["s-shut"],
+            json!({"column": 4}),
+            "one no longer running here without a window, parked or ended, is kept unmarked, \
+             as before it was marked"
+        );
+        assert_eq!(parked.let_go_at("this"), None, "so nothing waits on it");
     }
 
     #[test]
