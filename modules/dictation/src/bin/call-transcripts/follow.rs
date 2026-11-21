@@ -229,6 +229,10 @@ pub fn follow(
         if let (Some(recording), Some(app)) = (&mut recording, graph.call()) {
             link(&graph, recording, app);
         }
+        // Said from what's recorded here, after every way one starts or
+        // stops, so the shell keeps its Meet followed only while it is.
+        book.lock()
+            .recording(recording.as_ref().map(|now| now.key.as_str()));
         look_again(book, &runtime, recording.as_ref(), &mut looked, me);
     }
     let _ = dump.wait();

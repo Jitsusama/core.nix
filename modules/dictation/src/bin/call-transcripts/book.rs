@@ -9,7 +9,9 @@
 //! the event or person, its folder, its transcript's path once there's one, how the
 //! transcript opens (its first few paragraphs, so the launcher can show
 //! them without reading the folder), its summary once written, and
-//! whether it's being transcribed. Each call's folder holds its one
+//! whether it's being transcribed, and whether it's the call being
+//! recorded now, which the shell keeps its Meet followed for (the
+//! google module's Following.js). Each call's folder holds its one
 //! file, its summary over its transcript (filed.rs), and a meta.json
 //! saying what isn't in it, so the calls are read back as the daemon
 //! starts, and only then: the shell never reads the folder. A folder
@@ -128,12 +130,15 @@ impl Record {
         }
     }
 
-    fn json(&self) -> Value {
+    /// The record as the shell is served it, `recording` while it's the
+    /// call being recorded now.
+    fn json(&self, recording: bool) -> Value {
         json!({
             "key": self.key, "kind": KIND, "title": self.title, "started": self.started,
             "ended": self.ended, "event": self.event, "person": self.person,
             "folder": self.folder, "transcript": self.transcript, "opening": self.opening,
             "summary": self.summary, "transcribing": self.transcribing,
+            "recording": recording,
         })
     }
 
@@ -307,6 +312,11 @@ pub struct Book {
     unlisted: bool,
     /// How many calls' folders held a meta.json that couldn't be read.
     unreadable: usize,
+    /// The call being recorded now, by its key. It's held here, not in
+    /// its record, so it's never written beside the call: a daemon
+    /// stopped mid-call starts again recording nothing, and no call it
+    /// reads back says it's being recorded.
+    recording: Option<String>,
 }
 
 impl Book {
@@ -334,7 +344,29 @@ impl Book {
             since: now(),
             unlisted,
             unreadable,
+            recording: None,
         }
+    }
+
+    /// Says the call `key` is the one being recorded now, or none is,
+    /// telling the watches of the call it was and the call it is. Said
+    /// again unchanged, it tells nobody.
+    pub fn recording(&mut self, key: Option<&str>) {
+        if self.recording.as_deref() == key {
+            return;
+        }
+        let was = std::mem::replace(&mut self.recording, key.map(str::to_owned));
+        for changed in [was.as_deref(), key].into_iter().flatten() {
+            if let Some(record) = self.record(changed) {
+                let served = self.served(record);
+                self.watches.tell(changed, &served);
+            }
+        }
+    }
+
+    /// `record` as the shell is served it.
+    fn served(&self, record: &Record) -> Value {
+        record.json(self.recording.as_deref() == Some(record.key.as_str()))
     }
 
     pub fn record(&self, key: &str) -> Option<&Record> {
@@ -386,7 +418,8 @@ impl Book {
                 record.folder.display()
             );
         }
-        self.watches.tell(&record.key, &record.json());
+        let served = self.served(&record);
+        self.watches.tell(&record.key, &served);
         self.records.retain(|held| held.key != record.key);
         let at = self
             .records
@@ -415,7 +448,7 @@ impl Answers for Book {
             self.records
                 .iter()
                 .filter(|record| keys.is_none_or(|keys| keys.contains(&record.key)))
-                .map(Record::json)
+                .map(|record| self.served(record))
                 .collect()
         };
         match asked {

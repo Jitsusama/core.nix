@@ -15,11 +15,12 @@ pragma ComponentBehavior: Bound
 // `lately` are the meetings held lately and `called` their Meet calls,
 // which Calendar's Recent and Meet's list. `calls` are the Meet calls open
 // in windows of their own, each with its meeting, which Call.qml says
-// while one is.
+// while one is, and which the google program follows (Following.js).
 import qs
 import Quickshell
 import QtQuick
 import "Calendar.js" as Said
+import "Following.js" as Following
 import "Google.js" as Account
 import "Meet.js" as Calls
 
@@ -197,20 +198,37 @@ Singleton {
             .map(call => Object.assign(call, { meeting: Calls.calledBy(meetings, call.code) }));
     }
     // Their codes, which the google program follows, asking Meet who's in
-    // each, only while the launcher is open to say it (Meetings.qml's
-    // callsWatched), and asked again within each minute it is, since the
-    // program lets a follow go a little after that, so a shell that went
-    // away leaves none behind (Google.qml's follow).
+    // each, while the launcher is open to say it (Meetings.qml's
+    // callsWatched) or call-transcripts records a call, and said again
+    // each minute it does, since the program lets a follow go a little
+    // after that, so a shell that went away leaves none behind
+    // (Following.js, Google.qml's follow).
     property int watchingCalls: 0
-    readonly property string followed: watchingCalls > 0
-        ? calls.map(call => call.code).join(" ") : ""
-    onFollowedChanged: Google.follow(followed === "" ? [] : followed.split(" "))
+
+    // The calls call-transcripts serves, only to hear whether it records
+    // one now. Where it isn't, its socket isn't there, and the daemon
+    // waits on it silently, holding none; one that goes away mid-call
+    // has what it held let go, so a call it no longer records isn't
+    // followed as though it were.
+    Daemon {
+        id: transcripts
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/calls.sock`
+        kind: "call"
+        keptThroughGap: false
+    }
+
+    readonly property var following: transcripts.revision >= 0
+        ? Following.follows(calls, watchingCalls > 0, transcripts.held) : []
+    // Said as the codes change, not each time niri's windows do.
+    readonly property string followed: following.join(" ")
+    onFollowedChanged: Google.follow(following)
 
     Timer {
-        interval: 60_000
+        interval: Following.RENEW
         repeat: true
-        running: root.followed !== ""
-        onTriggered: Google.follow(root.followed.split(" "))
+        running: Following.renews(root.following)
+        onTriggered: Google.follow(root.following)
     }
 
     // The meeting's own page in Google Calendar.

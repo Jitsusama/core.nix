@@ -2,16 +2,18 @@
 // start, said as a notice or told already by another, and joined by
 // Return, its day in full, how Joel answered it, its details for the
 // drawer, and which Meet call a window is and
-// whose, from meetings like the google program's, run in Qt's own
+// whose, and which calls the google program follows and for how long,
+// from meetings like the google program's, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-desktop-tells-the-next-meeting` check copies Calendar.js,
-// Repeats.js and Meet.js beside this file and runs `qml -platform
+// Repeats.js, Meet.js and Following.js beside this file and runs `qml -platform
 // offscreen calendar.qml`. Times are made on the local clock, so the
 // cases hold in whatever zone the check runs in.
 import QtQuick
 import "Calendar.js" as Calendar
 import "Repeats.js" as Repeats
 import "Meet.js" as Meet
+import "Following.js" as Following
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -429,11 +431,43 @@ QtObject {
                 .map(fact => fact.label), ["Started", "Code"]);
 
         heldCases(check, at, now, meeting);
+        followingCases(check);
 
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);
         Qt.exit(failures.length > 0 ? 1 : 0);
+    }
+
+    // Which Meet calls are followed, from whether the launcher is open and
+    // the calls call-transcripts serves, and whether the follow is said
+    // again each minute, as Calendar.qml asks.
+    function followingCases(check) {
+        const calls = [{ code: "abc-defg-hij" }, { code: "xyz-abcd-efg" }];
+        const codes = ["abc-defg-hij", "xyz-abcd-efg"];
+        const served = (recording) => ({
+            "call:e1": { key: "call:e1", recording: false },
+            "call:e2": { key: "call:e2", recording: recording }
+        });
+
+        check("the launcher open alone follows every call",
+            Following.follows(calls, true, served(false)), codes);
+        check("a call recorded alone follows every call",
+            Following.follows(calls, false, served(true)), codes);
+        check("a follow held is said again each minute", Following.renews(codes), true);
+        check("neither follows nothing", Following.follows(calls, false, served(false)), []);
+        check("following nothing says nothing again", Following.renews([]), false);
+        check("a call served with no word of recording isn't followed for it",
+            Following.follows(calls, false, { "call:e1": { key: "call:e1" } }), []);
+        check("a call recorded with no Meet call open follows none",
+            Following.follows([], false, served(true)), []);
+
+        // Where calls.sock isn't, or call-transcripts went away and what it
+        // held was let go, none is held, so the launcher alone decides.
+        check("with no calls held, the launcher open follows as before",
+            Following.follows(calls, true, {}), codes);
+        check("with no calls held, the launcher shut follows nothing, as before",
+            Following.follows(calls, false, {}), []);
     }
 
     // The meetings over, as Calendar's Recent and Meet's say them: when each
