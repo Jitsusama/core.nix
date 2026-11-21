@@ -613,30 +613,12 @@ pub fn run(
                 _ => lost,
             };
             outage = Some(since);
-            eprintln!(
-                "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
-                 to {} minutes from {}",
-                lent.host,
-                waiting.longest.as_secs().div_ceil(60),
-                if since == lost {
-                    "now"
-                } else {
-                    "its last loss"
-                }
+            say_lost(
+                &lent,
+                waiting,
+                since == lost,
+                building.then(|| asked.alone.lasts()),
             );
-            // A builder that stayed up goes on with what it was building for
-            // `far`'s grace period, and the build sent again waits on that, so
-            // it says how it ends but shows none of its log: a VM test cut off
-            // mid-test on 2 November passed there, and only its exit said so.
-            // One lost while copying up had nothing building.
-            if building {
-                eprintln!(
-                    "nix-offload: if it stands again within {} minutes, what it was building \
-                     goes on there, and this shows only how it ends; `nix log` on the builder \
-                     has the rest",
-                    asked.alone.lasts() / 60
-                );
-            }
             match again(since).and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) if !sent_again_to(&stood, &lent, refused) => {
                     eprintln!(
@@ -669,6 +651,31 @@ pub fn run(
         Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
         Err(Untaken::Waits(why)) => unsent(asked, nix, &why),
         Err(Untaken::Stays(why)) => stays(asked, nix, &why),
+    }
+}
+
+/// Says `lent` was lost and how long this waits for a builder, from now
+/// when `fresh` or from the last loss. A builder that stayed up goes on
+/// with what it was building for `far`'s grace period, `building` seconds,
+/// and the build sent again waits on that, so it says how it ends but shows
+/// none of its log: a VM test cut off mid-test on 2 November passed there,
+/// and only its exit said so. One lost while copying up had nothing
+/// building.
+fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u64>) {
+    eprintln!(
+        "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
+         to {} minutes from {}",
+        lent.host,
+        waiting.longest.as_secs().div_ceil(60),
+        if fresh { "now" } else { "its last loss" }
+    );
+    if let Some(lasts) = building {
+        eprintln!(
+            "nix-offload: if it stands again within {} minutes, what it was building \
+             goes on there, and this shows only how it ends; `nix log` on the builder \
+             has the rest",
+            lasts / 60
+        );
     }
 }
 
