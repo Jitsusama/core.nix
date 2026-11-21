@@ -81,8 +81,8 @@ pub enum Refused {
     /// What git's records of its gone trees hold couldn't all be read, as
     /// a reftable keeps them where no file says, so none is taken on trust.
     Records,
-    /// No gone tree's record could be set aside or deleted, as one only
-    /// root may move can't be, where git never ran to fail.
+    /// No gone tree's record could be set aside, as one only root may
+    /// move can't be, where git never ran to fail.
     Unmoved,
 }
 
@@ -454,8 +454,10 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
 /// it still names the same `.git`, that's still gone, and it's unlocked:
 /// set aside first, out of git's sight, and looked at again there, so a
 /// tree put back at its folder meanwhile, as `worktree add -f` puts one,
-/// keeps its record. No tree's folder is touched,
-/// as `git worktree remove` would delete one come back. Whether it went.
+/// keeps its record. No tree's folder is touched, as `git worktree
+/// remove` would delete one come back. Whether it went, as git reads it:
+/// set aside is gone from git's sight, so a record that can't then all be
+/// deleted went, its rest left aside; an error says it never moved.
 fn let_go(common: &Path, record: &Record) -> std::io::Result<bool> {
     let standing = |folder: &Path| {
         let said = std::fs::read_to_string(folder.join("gitdir")).unwrap_or_default();
@@ -472,11 +474,14 @@ fn let_go(common: &Path, record: &Record) -> std::io::Result<bool> {
     let aside = forgetting.join(id);
     std::fs::rename(&record.folder, &aside)?;
     let went = standing(&aside);
-    if went {
-        std::fs::remove_dir_all(&aside)?;
+    // Past the move, a failure changes nothing git reads: what can't be
+    // deleted stays aside, and one that can't go back was made afresh,
+    // as `worktree add -f` makes it, where it stood.
+    let _ = if went {
+        std::fs::remove_dir_all(&aside)
     } else {
-        std::fs::rename(&aside, &record.folder)?;
-    }
+        std::fs::rename(&aside, &record.folder)
+    };
     // Left only while another forgets beside it, which lets it go then.
     let _ = std::fs::remove_dir(&forgetting);
     Ok(went)
@@ -641,6 +646,8 @@ mod tests {
 
     #[test]
     fn a_gone_trees_record_goes_only_while_it_still_names_a_tree_still_gone() {
+        use std::os::unix::fs::PermissionsExt;
+
         let common = std::env::temp_dir().join(format!("tend-let-go-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&common);
         let tree = common.join("tree/.git");
@@ -696,6 +703,20 @@ mod tests {
         assert!(
             !common.join("forgetting").exists(),
             "a record was left aside"
+        );
+        // One set aside whose rest can't be deleted went, as git reads it.
+        let stuck = record("stuck");
+        let logs = stuck.folder.join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("HEAD"), "").unwrap();
+        std::fs::set_permissions(&logs, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let went = let_go(&common, &stuck).ok();
+        let left = common.join("forgetting/stuck/logs");
+        let _ = std::fs::set_permissions(&left, std::fs::Permissions::from_mode(0o700));
+        assert_eq!(went, Some(true), "a record set aside was said unmoved");
+        assert!(
+            !stuck.folder.exists(),
+            "a record set aside stayed in git's sight"
         );
         let _ = std::fs::remove_dir_all(&common);
     }

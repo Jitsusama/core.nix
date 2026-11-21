@@ -70,7 +70,7 @@
         "busy": "not forgotten: git is already at work in it",
         "stranded": "not forgotten: a gone tree holds commits no branch has",
         "records": "not forgotten: git's records of its gone trees couldn't all be read",
-        "unmoved": "not forgotten: no gone tree's record could be moved or deleted",
+        "unmoved": "not forgotten: no gone tree's record could be moved aside",
         "unread": "not forgotten: git's folder couldn't be read",
         "failed": "not forgotten: git failed or ran too long"
       }

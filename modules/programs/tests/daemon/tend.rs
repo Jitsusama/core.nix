@@ -470,7 +470,7 @@ fn forget_gone_trees_says_a_record_it_couldnt_move_as_its_own() {
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
     assert_eq!(
-        said["error"]["said"], "not forgotten: no gone tree's record could be moved or deleted",
+        said["error"]["said"], "not forgotten: no gone tree's record could be moved aside",
         "Forget Gone Trees blamed git for a record it couldn't move itself: {said}"
     );
     assert!(
