@@ -252,6 +252,24 @@ fn sh(words: &[String]) -> Result<String, String> {
     }
 }
 
+/// A device's queues, as `tc -j qdisc show` gives them, or nothing when
+/// the read says nothing of them.
+fn queues_of(device: &str) -> Option<String> {
+    seen_queues(sh(&words(&format!("tc -j qdisc show dev {device}"))))
+}
+
+/// A device that isn't there has no queues, which reads as none. Any other
+/// failure, a `tc` killed partway or one that couldn't start, says nothing
+/// of them: taken for none, it put the VPN's turn on again over the one
+/// there, and matchall refused it.
+fn seen_queues(read: Result<String, String>) -> Option<String> {
+    match read {
+        Ok(json) => Some(json),
+        Err(e) if e.contains("Cannot find device") => Some(String::new()),
+        Err(_) => None,
+    }
+}
+
 fn words(text: &str) -> Vec<String> {
     text.split_whitespace().map(str::to_string).collect()
 }
@@ -1199,8 +1217,11 @@ fn follow_vpns(
         }
         let same_ifb = was.is_some_and(|v| v.ifb == ifb);
         let (was_up, was_down) = (was.map(|v| v.up), was.map(|v| v.down).filter(|_| same_ifb));
-        let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
-        let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
+        // A read that failed leaves the VPN's queues as they are until one
+        // answers.
+        let (Some(json), Some(back)) = (queues_of(name), queues_of(&ifb)) else {
+            continue;
+        };
         let mut kept = Vpn {
             up: was_up.unwrap_or(0),
             down: was_down.unwrap_or(0),
@@ -1273,12 +1294,15 @@ fn look(
                 }
             }
             Some(s) => {
-                let json = sh(&words(&format!("tc -j qdisc show dev {}", s.uplink.name)))
-                    .unwrap_or_default();
-                let ifb =
-                    sh(&words(&format!("tc -j qdisc show dev {}", s.ifb))).unwrap_or_default();
-                let turned = s.download.straight() || qdisc::turned(&json);
-                if !lanes::laned(&json) || !turned || !qdisc::ours(&ifb) {
+                // A read that failed leaves the link's queues as they are
+                // until one answers, rather than taking them down to put
+                // them back.
+                let seen = queues_of(&s.uplink.name).zip(queues_of(&s.ifb));
+                if let Some((json, ifb)) = seen
+                    && (!lanes::laned(&json)
+                        || !(s.download.straight() || qdisc::turned(&json))
+                        || !qdisc::ours(&ifb))
+                {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
                     s.split = s.lanes.at(float(s.up.rate));
@@ -1770,8 +1794,9 @@ fn heed_stopping() {
 /// before this shaper gives it one. A restart keeps the queues for the
 /// next shaper to take back, and one that never tells the CAKE a rate, as
 /// before this, would keep the last one held for as long as it ran. Every
-/// link is told, whatever `joel_told` says: the stop's SIGTERM reaches a
-/// `tc` running then too, which may have set a rate before it was killed.
+/// link is told, whatever `joel_told` says, since telling a CAKE with no
+/// rate costs nothing, and a rate set by a `tc` whose answer was lost
+/// would otherwise stay.
 fn unshape_joel(shaped: &BTreeMap<String, Shaped>) {
     for s in shaped.values() {
         if let Err(why) = sh(&lanes::joel_rate(&s.uplink.name, lanes::Cake::Unlimited)) {
@@ -2207,5 +2232,34 @@ mod tests {
         let floor = asked(Some(10), Some(10));
         let spell = spell("eth0", (true, false), floor, MOST, &holds(10));
         assert_eq!(spell.held, FLOOR);
+    }
+
+    // Only a device that isn't there reads as having no queues; a tc that
+    // failed any other way, as one killed partway answers, reads as
+    // nothing known, so its queues are left as they are.
+    #[test]
+    fn only_a_missing_device_reads_as_no_queues() {
+        let json = r#"[{"kind":"cake","handle":"2:"}]"#;
+        assert_eq!(
+            seen_queues(Ok(json.to_string())).as_deref(),
+            Some(json),
+            "a read that went"
+        );
+        let missing = r#"tc -j qdisc show dev shaper4: Cannot find device "shaper4""#;
+        assert_eq!(
+            seen_queues(Err(missing.to_string())).as_deref(),
+            Some(""),
+            "a device that isn't there"
+        );
+        assert_eq!(
+            seen_queues(Err("tc -j qdisc show dev CloudflareWARP: ".to_string())),
+            None,
+            "a tc killed partway"
+        );
+        assert_eq!(
+            seen_queues(Err("tc: Cannot allocate memory (os error 12)".to_string())),
+            None,
+            "a tc that couldn't start"
+        );
     }
 }

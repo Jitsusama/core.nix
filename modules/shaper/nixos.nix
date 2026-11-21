@@ -286,12 +286,20 @@ in
         + lib.optionalString (networks != { }) " --networks ${networksFile}";
       ExecStopPost = "${shaper}/bin/shaper stop --unless-restarting shaper.service";
       # The stop's SIGTERM goes to the shaper alone, which ends its loop
-      # itself. Sent to the whole unit, it also kills a tc the loop is
-      # reading, whose empty answer reads as a queue gone, so the loop puts
-      # the VPN's turn on again and matchall refuses it: "File exists" in
-      # the restart test, twice on 21 November. What is left once the
-      # shaper exits is still killed.
+      # itself. Sent to the whole unit, it also killed a tc the loop was
+      # reading, whose empty answer read as a queue gone, so the loop put
+      # the VPN's turn on again and matchall refused it: "File exists" in
+      # the restart test, twice on 21 November. A failed read no longer
+      # reads as one (src/main.rs), and a command let finish still beats
+      # one cut partway. What is left once the shaper exits is still
+      # killed.
       KillMode = "mixed";
+      # A stop waits on whatever command the loop is in, and a stuck one
+      # would hold a switch for systemd's 90 s. Stops took 0.04 to 3.6 s on
+      # 21 November, the slowest under a load of 160. Past this the shaper
+      # is killed, and the stop's sweep, or the next shaper taking the
+      # queues back, still sets every queue right.
+      TimeoutStopSec = 15;
       Restart = "always";
       RestartSec = 2;
       StateDirectory = "shaper";
