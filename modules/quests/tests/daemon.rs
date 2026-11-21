@@ -280,6 +280,91 @@ fn give_looked(daemon: &Daemon, seen: &Value) -> Value {
     asker.ask(&json!({"id": 2, "ask": "looked", "seen": seen}))
 }
 
+/// Waits for a first start to keep the asks there as shown, which says
+/// they've been read.
+fn kept_at_start(looked: &Path) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !looked.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "a first start never kept the asks there as shown in {}",
+            looked.display()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// The moment `seconds` from now, as the asks' keeper writes one, in UTC
+/// (Howard Hinnant's civil date from days).
+fn moment_in(seconds: i64) -> String {
+    let since = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock past 1970")
+        .as_secs();
+    let at = i64::try_from(since).expect("seconds in range") + seconds;
+    let (days, of_day) = (at.div_euclid(86_400) + 719_468, at.rem_euclid(86_400));
+    let era = days.div_euclid(146_097);
+    let of_era = days - era * 146_097;
+    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted = (5 * of_year + 2) / 153;
+    let day = of_year - (153 * shifted + 2) / 5 + 1;
+    let month = if shifted < 10 {
+        shifted + 3
+    } else {
+        shifted - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        of_day / 3600,
+        of_day % 3600 / 60,
+        of_day % 60
+    )
+}
+
+/// A date What Moved says is next goes once it passes, though nothing
+/// else moves, rather than standing as one still owed.
+#[test]
+fn a_next_date_once_passed_is_no_longer_said() {
+    let folder = std::env::temp_dir().join(format!("quests-due-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("a folder");
+    let node_socket = folder.join("node.sock");
+    let (_tell, later) = mpsc::channel();
+    node(&node_socket, later);
+    let asks = folder.join("asks.jsonl");
+    let looked = folder.join("state/looked");
+    let at = "2026-11-20T10:00:00-05:00";
+    let old = json!({"at": at, "owner": "QEST-A", "words": "the old"});
+    write_asks(&asks, std::slice::from_ref(&old));
+    let daemon = moved_daemon(&node_socket, &asks, &looked, &folder.join("run"));
+    let (mut client, mut held) = moved_watch(&daemon);
+    kept_at_start(&looked);
+    let soon = json!({"at": at, "owner": "QEST-A", "words": "the soon",
+        "expected": moment_in(4)});
+    write_asks(&asks, &[old, soon]);
+    let record = moved_named(&mut client, &mut held);
+    assert_eq!(
+        record["moved"][0]["side"][0]["said"], "next due {time}",
+        "what it took on is owed soon: {record}"
+    );
+    heard_until(&mut client, &mut held, |held| {
+        held["moved:quests"]["moved"][0]["side"] == json!([])
+    });
+    drop((client, daemon));
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// Whether what moved shows the ask of these words.
+fn said_of(held: &BTreeMap<String, Value>, words: &str) -> bool {
+    held.get("moved:quests")
+        .and_then(|record| record["seen"].as_array())
+        .is_some_and(|seen| {
+            seen.iter()
+                .any(|one| one["key"].as_str().is_some_and(|key| key.ends_with(words)))
+        })
+}
+
 /// Waits for what moved to name something, then gives its record.
 fn moved_named(client: &mut daemon_client::Client, held: &mut BTreeMap<String, Value>) -> Value {
     heard_until(client, held, |held| entries(held).is_some_and(|n| n > 0));
@@ -290,8 +375,8 @@ fn moved_named(client: &mut daemon_client::Client, held: &mut BTreeMap<String, V
 /// shown landing, written while the daemon runs, is served as what moved
 /// for its quest in the launcher's words; given back as looked at it goes,
 /// and what he looked at is kept, so a restart says only what moved while
-/// it was down. A file it can't read keeps the asks told last, and a look
-/// it can't keep is refused.
+/// it was down. While the asks' keeper holds their lock the asks told last
+/// stand, and a look it can't keep is refused.
 #[test]
 fn what_moved_since_he_looked_is_served_until_he_looks() {
     let folder = std::env::temp_dir().join(format!("quests-moved-{}", std::process::id()));
@@ -311,10 +396,7 @@ fn what_moved_since_he_looked_is_served_until_he_looks() {
     write_asks(&asks, &[fix.clone(), next.clone()]);
     let daemon = moved_daemon(&node_socket, &asks, &looked, &folder.join("run"));
     let (mut client, mut held) = moved_watch(&daemon);
-    // The first asks taken as shown are kept, so they've been read.
-    while !looked.exists() {
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    kept_at_start(&looked);
 
     // The one he was shown owed lands, stamped before he could have looked.
     let mut landed = next;
@@ -354,31 +436,31 @@ fn what_moved_since_he_looked_is_served_until_he_looks() {
     assert_eq!(answer["done"], true, "{answer}");
     heard_until(&mut client, &mut held, |held| entries(held) == Some(0));
 
-    // A file it can't read keeps the asks told last.
+    // While its keeper holds the file's lock, mid-write, the asks told
+    // last stand; once it lets go, what it wrote is read.
     let third = json!({"at": at, "owner": "QEST-A", "words": "the third",
         "landed": "2026-11-20T12:00:00-05:00"});
-    write_asks(&asks, &[fix, landed.clone(), third.clone()]);
+    write_asks(&asks, &[fix.clone(), landed.clone(), third.clone()]);
     let record = moved_named(&mut client, &mut held);
-    std::fs::remove_file(&asks).expect("the asks gone");
-    std::fs::create_dir(&asks).expect("a folder in its place");
-    // Three looks at it unread, the most it waits before saying so.
+    let lock = std::fs::File::create(folder.join("asks.jsonl.lock")).expect("the keeper's lock");
+    lock.lock().expect("the keeper holding it");
+    let mid = json!({"at": at, "owner": "QEST-A", "words": "mid-write"});
+    write_asks(&asks, &[fix, landed.clone(), third.clone(), mid]);
+    // Three looks at it locked, the most it waits before saying so.
     std::thread::sleep(Duration::from_secs(7));
     let (_, now) = moved_watch(&daemon);
     assert_eq!(
         now["moved:quests"], record,
-        "what it read last still stands: {now:?}"
+        "what it read last stands while the lock's held: {now:?}"
     );
-    std::fs::remove_dir(&asks).expect("the folder gone");
+    drop(lock);
+    heard_until(&mut client, &mut held, |held| said_of(held, "mid-write"));
 
     // Put down by its keeper, the fix is let go of what's kept once he
     // looks; a fifth taken on says the file was read again.
     let fifth = json!({"at": at, "owner": "QEST-A", "words": "the fifth"});
     write_asks(&asks, &[landed.clone(), third.clone(), fifth.clone()]);
-    heard_until(&mut client, &mut held, |held| {
-        held["moved:quests"]["seen"]
-            .as_array()
-            .is_some_and(|seen| seen.len() == 2)
-    });
+    heard_until(&mut client, &mut held, |held| said_of(held, "the fifth"));
     let answer = give_looked(&daemon, &held["moved:quests"]["seen"]);
     assert_eq!(answer["done"], true, "{answer}");
     heard_until(&mut client, &mut held, |held| entries(held) == Some(0));

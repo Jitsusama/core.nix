@@ -955,6 +955,15 @@ ShellRoot {
         quests.movedRevision += 1;
         expect("stepped into, it stays while the launcher's open", moved() !== null,
             JSON.stringify(keys()));
+        // Looked at from elsewhere meanwhile, so nothing moved: the row
+        // stays under him while he's in, rather than going from beneath.
+        const moving = quests.movedRows;
+        quests.movedRows = [];
+        quests.movedRevision += 1;
+        expect("nothing left moved while he's in, it stays till shut", moved() !== null,
+            JSON.stringify(keys()));
+        quests.movedRows = moving;
+        quests.movedRevision += 1;
         theLauncher.open = false;
         expect("shut, what it showed as he stepped in is looked at, once",
             asked() === JSON.stringify([[fix]]), asked());
