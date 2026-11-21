@@ -2026,7 +2026,12 @@ def test_a_networks_drawer_glances_in_its_order_and_y_copies_its_short_name(
     shell.close_launcher()
 
 
-def scaled(shell: Shell, scales: Mapping[str, object]) -> None:
+# How near niri's scale must come to the one asked for, as niri rounds a fractional scale to the
+# nearest it can draw at.
+SCALE_NEAR = 0.01
+
+
+def scaled(shell: Shell, scales: Mapping[str, float | str]) -> None:
     """Set each output named to its scale, and wait until the shell has heard its new height.
 
     niri answers once it has taken a scale, before the shell hears the screen's new size, and
@@ -2042,7 +2047,7 @@ def scaled(shell: Shell, scales: Mapping[str, object]) -> None:
     while True:
         focused = json.loads(shell.as_account("niri msg --json focused-output"))
         wanted = scales.get(focused["name"])
-        if wanted is None or float(focused["logical"]["scale"]) == float(str(wanted)):
+        if wanted is None or abs(float(focused["logical"]["scale"]) - float(wanted)) < SCALE_NEAR:
             break
         assert time.monotonic() < deadline, f"niri never took the scale {wanted}: {focused}"
         time.sleep(launcher_on_niri.POLL)
