@@ -102,6 +102,9 @@ pub struct Took {
     pub failed: Vec<String>,
     /// Whether the stop's record stands there, so its sessions park.
     pub recorded: bool,
+    /// Whether what was asked reached the machine, or may have: false only
+    /// when it never ran there, so nothing of it is there to undo.
+    pub reached: bool,
 }
 
 /// What [`tend`] did: the work it froze, and how each machine took a
@@ -184,7 +187,16 @@ pub fn stop(
     let machines = reach::others(plan, host, runs, &mut failed);
     paused["timers"] = json!(timers);
     paused["froze"] = json!(work);
-    paused["machines"] = json!(machines.iter().map(Reached::kept).collect::<Vec<_>>());
+    // Kept as asked before each is asked, so a stop cut off part way
+    // still has each resumed that it may have reached.
+    let asked: Vec<Reached> = machines
+        .iter()
+        .map(|machine| Reached {
+            asked: true,
+            ..machine.clone()
+        })
+        .collect();
+    paused["machines"] = json!(asked.iter().map(Reached::kept).collect::<Vec<_>>());
     write_paused(state, id, &paused)?;
     paused["starts"] = json!(reach::stop_starts(plan, runs, &mut failed));
     write_paused(state, id, &paused)?;
@@ -206,10 +218,20 @@ pub fn stop(
         machine: host.to_owned(),
         failed,
         recorded: true,
+        reached: true,
     }];
-    for machine in &machines {
-        took.push(reach::elsewhere(plan, runs, machine, &said, "stop"));
+    let mut reached = Vec::new();
+    for machine in &asked {
+        let one = reach::elsewhere(plan, runs, machine, &said, "stop");
+        // A machine the stop never ran on is said so once, here, and left
+        // out of the resume, which would only fail there each minute.
+        if one.reached {
+            reached.push(machine.kept());
+        }
+        took.push(one);
     }
+    paused["machines"] = json!(reached);
+    write_paused(state, id, &paused)?;
     Ok(took)
 }
 
@@ -255,6 +277,7 @@ fn undo(
         machine: host.to_owned(),
         failed,
         recorded: true,
+        reached: true,
     }];
     let said = fs::read_to_string(state.join("stops").join(format!("{}.json", file_of(&id))))
         .ok()
@@ -267,12 +290,18 @@ fn undo(
                 machine: machine.machine.clone(),
                 failed: vec!["its stop's record here can't be read".to_owned()],
                 recorded: false,
+                reached: true,
             },
         };
-        if !one.failed.is_empty() {
+        if one.failed.is_empty() {
+            took.push(one);
+        } else if one.reached || machine.asked {
             machines_left.push(machine.kept());
+            took.push(one);
         }
-        took.push(one);
+        // Otherwise the resume never ran there, and nothing says the stop
+        // did, as a stop kept before it was asked can't: there is nothing
+        // to undo, so it isn't tried again.
     }
     if took.iter().all(|one| one.failed.is_empty()) {
         paused["undone"] = json!(at);
@@ -480,6 +509,8 @@ pub fn said(act: &str, took: &[Took], sessions: Option<usize>) -> String {
     for one in took.iter().filter(|one| !one.failed.is_empty()) {
         let so = if one.recorded || act == "resuming" {
             after
+        } else if !one.reached {
+            ", so its agents run on, and nothing there is resumed"
         } else {
             ", so its agents may run on"
         };
