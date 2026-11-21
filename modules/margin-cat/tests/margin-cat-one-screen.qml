@@ -299,8 +299,9 @@ QtObject {
         const risen = Stacked.moves({ x: 400, y: 850 }, { x: 900, y: 7 }, halves);
         const seated = Paths.frame(risen, risen.ends);
         expect("up from under the screen, the walk brings it up to its seat",
-            [risen.stacked === undefined, seated.x, seated.y, seated.beat],
-            [true, 900, 7, "sits"]);
+            [risen.stacked === undefined, Paths.frame(risen, 0).y > 800, seated.x, seated.y,
+                seated.beat],
+            [true, true, 900, 7, "sits"]);
 
         const narrow = [{ left: 100, top: 16, width: 200, height: 768, column: 0, id: 9 }];
         const apart = [

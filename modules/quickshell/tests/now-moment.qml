@@ -327,7 +327,8 @@ ShellRoot {
     // enough for a second to be counted, which heldHears refuses, or 5 s
     // with none. A turn of the clock told after the case's change carries
     // it, since Now reads For You's rows as it tells its own, so the wait
-    // ends on a turn as on For You's ask, and heldHears tells them apart.
+    // ends on a turn as on For You's ask, and heldHears sets a turn aside
+    // as such.
     Timer {
         id: tellWaited
 
@@ -1062,8 +1063,8 @@ ShellRoot {
     // of For You's however late it's heard.
     property var heldTimeRow: null
     // What the row held and what it holds read as heldHears' change was
-    // made (Provider.qml's lastHeldRow), so a turn is seen to carry the
-    // change to what's held or not.
+    // made (Provider.qml's lastHeldRow), so a turn is seen to move what's
+    // held or not.
     property string heldRowWas: ""
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
@@ -2637,10 +2638,12 @@ ShellRoot {
         // You's rows then, so a turn told before For You's ask carries For
         // You's change and leaves the ask nothing to say (Provider.qml's
         // changedTo): a turn told alone stands for For You's tell when the
-        // row held read otherwise as it was told, which shows the change
-        // reached what's held, though not that For You asked. A For You
-        // that never asks is caught on every run the clock doesn't turn
-        // in; on one it does, the turn draws the change, as Joel would see.
+        // row held read otherwise as it was told. That shows what's held
+        // moved, by the change or by the minute, since some of For You's
+        // rows read by the clock, though not that For You asked. A For You
+        // that never asks, or a change that never reached what's held, is
+        // caught on every run the clock doesn't turn in; on one it does,
+        // the turn draws what's held anew, as Joel would see.
         const moved = root.nowSaid;
         const told = moved.filter(said => said.why !== "");
         const turnedAt = told.findIndex(said => said.why === "its own rows" && said.retimed);

@@ -3895,7 +3895,11 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             lay("NUDGER", "Nudging Quest", ask)
             shell.launcher_until(partial(moved, was))
             way = time.monotonic() - laid
-            lead = max(way + ahead, 0.0)
+            # No lead is laid after Return, so AHEAD goes no further back than the way: below
+            # it, steps would move AHEAD but not the lead, spending turns climbing back.
+            ahead = max(ahead, -way)
+            lead = way + ahead
+            key = f"turn {turn}, {lead:.3f} s before ({way:.3f} s way, {ahead:+.3f} s ahead)"
             shell.down_to("For You")
             step = {
                 "kind": "tool",
@@ -3918,10 +3922,8 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             # with it, so a failure says what was drawn: the one on 16 November said only that
             # something was. The launcher's whole state is left out.
             heard = [report for report in said if report.startswith(("act ", "heard "))]
-            assert not shown, f"a turn {lead} s before Return was drawn as its act: {heard}"
-            told[f"turn {turn}, {lead:.3f} s before ({way:.3f} s way, {ahead:+.3f} s ahead)"] = (
-                heard
-            )
+            assert not shown, f"{key} was drawn as Return's act: {heard}"
+            told[key] = heard
             after = [int(found[1]) for report in said if (found := HEARD_AFTER.match(report))]
             if any(ago < KEYED_WITHIN for ago in after):
                 beside.append(lead)
