@@ -291,6 +291,19 @@ const BUILDER_STATE_WORD: Readonly<Record<string, string>> = { unknown: "unheard
 export const builds = (b: Builder): boolean => b.state === "answering" || b.state === "running";
 
 /**
+ * How much a builder asks of the reader, as the peek grades it: nothing while
+ * it takes builds or rests (a lent builder its lender doesn't run, which is
+ * how it waits for work), most when it didn't answer, and between for one
+ * nobody heard or in a state the map doesn't know.
+ */
+export const builderTone = (b: Builder): 0 | 1 | 2 => {
+  if (builds(b) || b.state === "not running") {
+    return 0;
+  }
+  return b.state === "not answering" ? 2 : 1;
+};
+
+/**
  * What a builder's mark and row say under its name: lent or not, how it
  * stands, how much at once.
  */
@@ -322,8 +335,10 @@ export const builderSays = (b: Builder): string => {
       return `It didn't answer when last reached${why}.`;
     case "not running":
       return `Its lender doesn't run it now${why}.`;
-    default:
+    case "unknown":
       return `Nobody has heard how it stands${why}.`;
+    default:
+      return `The node says it is ${b.state}${why}.`;
   }
 };
 

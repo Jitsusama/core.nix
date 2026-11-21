@@ -49,6 +49,7 @@ import {
   allCells,
   builderParts,
   builderSays,
+  builderTone,
   builderWords,
   builds,
   countsOf,
@@ -104,7 +105,6 @@ import {
   const RING_MIN = 190; // the least distance from the machines to a hub
   const MACHINE_STEP = 96;
   const MACHINE_SPREAD = 0.4; // the least distance between machines, as a share of the ring
-  const COLUMN_REACH = 0.8; // the most the machines' column reaches from the middle, as a share of the ring
   const GOLDEN = Math.PI * (3 - Math.sqrt(5));
   // Zoom, as screen pixels per unit.
   const K_MIN = 0.15;
@@ -695,8 +695,7 @@ import {
     // Machines stand in a column, apart in proportion to the ring, since a
     // machine's mark is its name, wide and short: a row of them would
     // need several times the room to keep their boxes apart.
-    // A long column closes up rather than reach the ring's hubs.
-    const step = Math.max(MACHINE_STEP, Math.min(ring * MACHINE_SPREAD, (2 * ring * COLUMN_REACH) / Math.max(1, column - 1)));
+    const step = Math.max(MACHINE_STEP, ring * MACHINE_SPREAD);
     const inColumn = (i) => [0, (i - (column - 1) / 2) * step];
     const machines = new Map(m.machines.map((x, i) => [x.name, inColumn(i)]));
     // A builder carries no cord, and inside the ring a mark of words
@@ -1996,11 +1995,12 @@ import {
       moved += top - one.top;
       placed.push({ left, w: bw, bottom: top + bh });
     }
-    // Centred on the machines alone, since their cords leave from where
-    // they stand: the builders under them only move down.
+    // The machines are centred on where their cords leave; the builders
+    // under them keep their own shift, so they only ever move down, away
+    // from the ring, and the machines rising leaves them more room.
     const rooted = marks.filter((one) => one.l.kind !== "builder");
     const mean = rooted.reduce((sum, one) => sum + shifts.get(one.l.key), 0) / Math.max(1, rooted.length);
-    if (moved) for (const [key, s] of shifts) shifts.set(key, s - mean);
+    if (moved) for (const one of rooted) shifts.set(one.l.key, shifts.get(one.l.key) - mean);
     return shifts;
   };
 
@@ -2498,8 +2498,13 @@ import {
   // Zoomed out to the whole map, the builders' marks stack under the
   // ring, each taking its own height on screen whatever the zoom, so the
   // whole map keeps room under it for them: a mark and its line, in px.
+  // It takes at most half the view's height, so many builders on a short
+  // view leave the ring room to be seen, the last of them past the edge.
   const FOOT_MARK = 60;
-  const footRoom = () => Math.max(0, shownBuilders().length - 1) * FOOT_MARK;
+  const footRoom = () => {
+    const room = Math.max(0, seen()[1] - 2 * (FIT_PAD + 44));
+    return Math.min(room / 2, Math.max(0, shownBuilders().length - 1) * FOOT_MARK);
+  };
   const fit = (animate = true) => {
     auto = true;
     if (!current) return;
@@ -2572,7 +2577,7 @@ import {
     if (c.kind === "builder") {
       const b = m.builders.find((y) => y.name === c.id);
       // Taking builds is well, unheard is worth watching, refusing them is to tend.
-      return b ? [b.name, "A builder this machine sends Nix builds to.", builds(b) ? 0 : b.state === "unknown" ? 1 : 2, builderWords(b)] : null;
+      return b ? [b.name, "A builder this machine sends Nix builds to.", builderTone(b), builderWords(b)] : null;
     }
     if (c.kind !== "net") return null;
     const h = m.hubs.get(c.id);

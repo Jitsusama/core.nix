@@ -481,17 +481,20 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
 BUILDERS = ("b:gull", "b:heron", "b:tern")
 IDLE_BUILDER = "gull"
 IDLE_SAYS = "Nobody has heard how it stands: it is reached through another, which isn't dialled."
+# What the lent builder's mark says under its name, from the fields the feed passes.
+LENT_WORDS = "lent · running · 16 builds at once"
 # Each mark among the machines, by its key, with its class and its box's corners.
 MARKS_DRAWN = """[...document.querySelectorAll('.labels .t-mark')].map((g) => [
   g.dataset.mark, g.getAttribute('class'), getComputedStyle(g.querySelector('.t-box')).rx])"""
 # Where each builder's mark stands against the view and against the
-# lowest of everything else drawn: the machines' marks and the networks.
+# lowest of everything else drawn: every other word on the map, the
+# machines' marks and the networks' names among them, each network's
+# hub, and each cell.
 FOOT_SEEN = """(() => {
   const view = document.querySelector('#map-view').getBoundingClientRect();
   const box = (el) => el.getBoundingClientRect();
-  const lowest = Math.max(
-    ...[...document.querySelectorAll('.labels .t-mark:not(.t-builder)')].map((g) => box(g).bottom),
-    ...[...document.querySelectorAll('#world g.hub')].map((g) => box(g).bottom));
+  const drawn = '.labels .tag:not(.t-builder), #world g.hub, #world circle.cell';
+  const lowest = Math.max(...[...document.querySelectorAll(drawn)].map((g) => box(g).bottom));
   return [...document.querySelectorAll('.labels .t-builder')].map((g) => [
     g.dataset.mark, box(g).top >= lowest, box(g).top >= view.top && box(g).bottom <= view.bottom]);
 })()"""
@@ -530,6 +533,20 @@ def test_the_builders_stand_under_the_machines_in_a_shape_of_their_own(
     expect(
         page.locator("#panel-body [data-builder-says]"), "the drawer misread the builder"
     ).to_have_text(IDLE_SAYS)
+    expect(
+        page.locator('.labels .t-builder[data-mark="b:tern"]'), "a builder's mark misread it"
+    ).to_contain_text(LENT_WORDS)
+    # Hiding the machines lets go of a builder's drawer, and a builder's
+    # link shows them again.
+    page.locator("#map-view").focus()
+    page.keyboard.press("m")
+    expect(builders, "m didn't hide the builders").to_have_count(0)
+    expect(page.locator("#panel-title"), "m kept a hidden builder open").not_to_have_text(
+        IDLE_BUILDER
+    )
+    page.evaluate("location.hash = '#builder=heron'")
+    expect(page.locator("#panel-title"), "#builder= didn't open heron").to_have_text("heron")
+    expect(builders, "#builder= didn't show the builders").to_have_count(len(BUILDERS))
 
 
 def test_the_keys_dialog_and_find_answer_their_keys(mycelium_opened: Opened) -> None:

@@ -105,11 +105,17 @@ export const rootsOf = (
   machinesShown: boolean,
 ): readonly string[] =>
   machinesShown && reading.machines.length > 0
-    ? [
-        ...reading.machines.map((x) => `m:${x.name}`),
-        ...(reading.builders ?? []).map((b) => `b:${b.name}`),
-      ]
-    : [...reading.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`);
+    ? [...reading.machines.map((x) => `m:${x.name}`), ...buildersShown(reading, machinesShown)]
+    : [
+        ...[...reading.hubs.values()].filter((h) => !h.within).map((h) => `h:${h.key}`),
+        ...buildersShown(reading, machinesShown),
+      ];
+
+/** The builders' keys while the machines are shown, which the map draws then whatever else. */
+const buildersShown = (
+  reading: { readonly builders?: readonly Builder[] | undefined },
+  machinesShown: boolean,
+): readonly string[] => (machinesShown ? (reading.builders ?? []).map((b) => `b:${b.name}`) : []);
 
 /** The words a tree row shows: its name, in mono for a machine's, and what it does under it. */
 export interface RowWords {

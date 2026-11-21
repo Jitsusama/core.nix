@@ -50,8 +50,15 @@ it("the builders are read from their own records, by name, and never drawn as ce
     said: "passing",
   };
   const standing = { systems: ["x86_64-linux", "aarch64-linux"], jobs: 4, lines: ["standing"] };
+  // The node's cells list tells a builder as a cell too, of its own type.
+  const asCell = { key: "cell:tern", kind: "cell", heard: AT, name: "tern", type: "builder" };
   const now = nowOf(
-    told([builder("tern", "running", lent), builder("heron", "answering", standing), osprey]),
+    told([
+      builder("tern", "running", lent),
+      builder("heron", "answering", standing),
+      osprey,
+      asCell,
+    ]),
     AT,
   );
   assert.deepEqual(
@@ -85,10 +92,17 @@ it("the builders are read from their own records, by name, and never drawn as ce
 
 it("a builder that says nothing reads as unheard, and one with no name is none", () => {
   const { key, kind, heard, name } = builder("gull", "", {});
-  const now = nowOf(told([{ key, kind, heard, name }, builder("", "answering", {})]), AT);
+  const now = nowOf(
+    told([{ key, kind, heard, name }, builder("skua", "", {}), builder("", "answering", {})]),
+    AT,
+  );
+  const unheard = { state: "unknown", systems: [], jobs: 0, lent: false, said: null };
   assert.deepEqual(
     now.builders,
-    [{ name: "gull", state: "unknown", systems: [], jobs: 0, lent: false, said: null }],
-    "a builder whose builds the node left out builds nothing known",
+    [
+      { name: "gull", ...unheard },
+      { name: "skua", ...unheard },
+    ],
+    "a builder whose state is missing or empty, and whose builds the node left out, is unheard",
   );
 });

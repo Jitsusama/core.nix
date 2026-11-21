@@ -435,12 +435,12 @@ function drawn(cell: Fields): boolean {
 
 /**
  * A builder record as the map draws it: what is missing reads as nothing
- * said, and a state the node didn't give as unknown.
+ * said, and a state the node didn't give, or gave empty, as unknown.
  */
 function builderOf(record: Fields): Builder {
   return {
     name: text(record, "name") ?? "",
-    state: text(record, "state") ?? "unknown",
+    state: text(record, "state") || "unknown",
     systems: texts(record, "systems") ?? [],
     jobs: number(record, "jobs") ?? 0,
     lent: record["lent"] === true,

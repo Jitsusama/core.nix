@@ -202,6 +202,11 @@ it("tops the tree with the machines while shown, else every network that is no b
     ["h:quest.harbour", "h:quest.weir", "h:#loose"],
     "and hidden with them",
   );
+  assert.deepEqual(
+    rootsOf({ ...now, machines: [], builders: [heron] }, true),
+    ["h:quest.harbour", "h:quest.weir", "h:#loose", "b:heron"],
+    "the builders after the networks where no machine is known, as the map still draws them",
+  );
 });
 
 it("shows only the rows of open branches, each with its level and place", () => {
