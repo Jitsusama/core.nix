@@ -627,6 +627,8 @@ mod tests {
             b"node\0/h/agentic-harness.pi/scripts/host-join.ts\0--session\0s\0".as_slice(),
             b"/nix/store/x-mycelium/bin/mycelium\0attach\0s\0",
             b"/nix/store/x-mycelium/bin/mycelium\0holds\0s\0attach\0",
+            // As the launcher titles every viewer's window first.
+            b"sh\0-c\0printf t; exec \"$@\"\0Reef\0mycelium\0--realm\0h\0attach\0--session\0s\0",
         ] {
             assert!(
                 views(viewer),
