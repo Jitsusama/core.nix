@@ -286,6 +286,11 @@ function lookRow(look: Look): string {
   return `<li><a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a></li>`;
 }
 
+/** What the list, and a, say once nothing is worth a look. */
+const NOTHING = "Nothing is worth a look.";
+/** What a says while a part or machine is still to come, and so may hold a look. */
+const NOT_KNOWN = "What is worth a look isn't known yet.";
+
 /**
  * What is worth a look, the page's first list: a row each, those past it
  * counted, or a line saying nothing is once every part has told. Its
@@ -296,7 +301,7 @@ function looksDrawn(list: Looks): string {
   if (list.looks.length === 0) {
     // Until every part and machine has told, one of them may hold the look.
     return list.settled
-      ? `<p class="clear health good">${mark("good")}Nothing is worth a look.</p>`
+      ? `<p class="clear health good">${mark("good")}${NOTHING}</p>`
       : '<p class="more">Still reading what is worth a look.</p>';
   }
   const more =
@@ -333,6 +338,8 @@ export {
   MORE_ROW,
   machineRow,
   machinesOf,
+  NOT_KNOWN,
+  NOTHING,
   partsOf,
   placesOf,
 };

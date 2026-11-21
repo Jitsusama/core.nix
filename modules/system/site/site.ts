@@ -24,6 +24,8 @@ import {
   looksDrawn,
   MACHINES_DRAWN,
   machinesOf,
+  NOT_KNOWN,
+  NOTHING,
   partsOf,
   placesOf,
 } from "./draw.ts";
@@ -115,12 +117,6 @@ const MINUTE = 60_000;
 
 /** A look's link to a machine drawn on this page, its section's id caught. */
 const MACHINE_HERE = /^#(machine-\d+)$/u;
-/** What a says while a part or machine is still to come, and so may hold a look. */
-const NOT_KNOWN = "What is worth a look isn't known yet.";
-/** What a says once the list itself says nothing is worth a look. */
-const NOTHING = "Nothing is worth a look.";
-/** The note a last left, which says only what the list said when it was pressed. */
-let lookNote: string | undefined;
 
 /** A time as the ties say it, from now. */
 function when(at: string): string {
@@ -175,8 +171,7 @@ function drawLooks(read: System): void {
   cursor.across(() => {
     looks.innerHTML = drawn;
   });
-  if (lookNote !== undefined && note.textContent === lookNote) {
-    lookNote = undefined;
+  if (note.textContent === NOT_KNOWN || note.textContent === NOTHING) {
     noteSaid = undefined;
     sayWhen();
   }
@@ -379,8 +374,7 @@ function nextLook(): void {
   if (cursor.next(looks)) {
     return;
   }
-  lookNote = looks.querySelector(".clear") === null ? NOT_KNOWN : NOTHING;
-  note.textContent = lookNote;
+  note.textContent = looks.querySelector(".clear") === null ? NOT_KNOWN : NOTHING;
 }
 
 /** Copies `command`, and says whether it could. */

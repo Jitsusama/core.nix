@@ -35,22 +35,24 @@ interface Looks {
   /** How many looks past those listed. */
   readonly more: number;
   /**
-   * Whether every part has told, so an empty list says nothing wants a
-   * look; one still to come may be the one with a look in it.
+   * Whether every part has told and every record could be read, so an
+   * empty list says nothing wants a look; one still to come, or one that
+   * couldn't be read, may be the one with a look in it.
    */
   readonly settled: boolean;
 }
 
 /**
- * Each of `side`'s looks with its key: its own words, and how many the same
- * came before it, so a look keeps its key while those before it come and go.
+ * Each of `side`'s looks with its key: how many the same came before it, then
+ * its own words, so a look keeps its key while those before it come and go.
+ * The count leads, since no count holds the colon after it and words may.
  */
 function keyed(side: readonly string[]): readonly { words: string; key: string }[] {
   const seen = new Map<string, number>();
   return side.map((words) => {
     const before = seen.get(words) ?? 0;
     seen.set(words, before + 1);
-    return { words, key: before === 0 ? words : `${words}#${before}` };
+    return { words, key: `${before}:${words}` };
   });
 }
 
@@ -121,9 +123,12 @@ function looksOf(system: System, drawn: number): Looks {
   return {
     looks: all.slice(0, LOOKS_LISTED),
     more: Math.max(0, all.length - LOOKS_LISTED),
-    // A part still to come, or a machine named before its record, may hold
-    // the one look there is.
-    settled: system.untold.length === 0 && system.parts.every((part) => part.untold === 0),
+    // A part still to come, a machine named before its record, or a record
+    // that couldn't be read may hold the one look there is.
+    settled:
+      system.untold.length === 0 &&
+      system.unread.length === 0 &&
+      system.parts.every((part) => part.untold === 0),
   };
 }
 
