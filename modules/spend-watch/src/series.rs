@@ -893,10 +893,16 @@ impl Inputs {
 /// What each session a run names spent by its own log, all of it, asked
 /// once: asked of each session apart, 12,784 of them on 16 November, it
 /// was most of what reading the inputs took on every pass.
+///
+/// It's summed from the turns' hours, which their triggers keep exact,
+/// rather than from the turns: on 21 November the 28,016 sessions runs
+/// named took 399 seconds and 412 MB of scattered reads from 41 million
+/// turns once the history fell out of memory, and the pass behind each
+/// figure took half an hour.
 fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
     let mut statement = db
         .prepare(
-            "SELECT session, SUM(cost) FROM turns WHERE session IN
+            "SELECT session, SUM(cost) FROM turn_hours WHERE session IN
              (SELECT ids.value FROM runs, json_each(CASE WHEN json_valid(runs.sessions)
               THEN runs.sessions ELSE '[]' END) ids) GROUP BY session",
         )
