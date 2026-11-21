@@ -145,6 +145,11 @@ function crosses(from, to, at) {
     // stay on the glass as its ground slides away, so it keeps off them.
     const old = Object.assign({}, at, { cols: was, hurried: true, marks: null, floats: [] });
     const start = Falls.settle(Ways.begun(old, from), was, old);
+    // Out of sight under the screen it has no ground to leave and no place
+    // to leap from, so it comes up as MarginCatPaths.js's walk brings it.
+    if (start.kind === "below") {
+        return null;
+    }
     const feet = start.kind === "floor" ? (up ? [] : [{ stops: [start], ms: 0 }])
         : start.kind === "ledge" || start.kind === "side" ? Routes.feet(start, was, old, up)
         : [];
