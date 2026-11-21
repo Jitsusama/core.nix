@@ -57,6 +57,7 @@ mod state;
 mod store;
 mod supplicant;
 mod syntax;
+mod transition;
 mod vault;
 mod words;
 
@@ -100,6 +101,7 @@ use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
+use transition::{Heed, Request};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
@@ -502,6 +504,10 @@ async fn take_signal(
     for card in std::mem::take(&mut air.gone) {
         wifid.gone(&card);
     }
+    let joining = joining.map(|joining| joining.card.as_str());
+    for (card, request) in std::mem::take(&mut air.asked) {
+        wifid.asked(&card, &request, joining).await;
+    }
 }
 
 /// Answers on the sockets systemd holds, for as long as wifid runs: varlink
@@ -750,6 +756,9 @@ struct Air<'a> {
     /// The cards wpa_supplicant has just let go of, by name, for what a
     /// move kept of them to be forgotten.
     gone: Vec<String>,
+    /// The cards their access point has just asked to move, by name, with
+    /// what it asked.
+    asked: Vec<(String, Request)>,
     /// The access point each card was last said to be at, by the card's
     /// path and the point's, as wpa_supplicant said them in turn. A join
     /// is credited to the point it was said at, since by the time wifid
@@ -792,6 +801,7 @@ impl<'a> Air<'a> {
             settled: Vec::new(),
             tried: Vec::new(),
             gone: Vec::new(),
+            asked: Vec::new(),
             at: HashMap::new(),
             owner,
             departed: VecDeque::new(),
@@ -832,8 +842,8 @@ impl<'a> Air<'a> {
     }
 
     /// Takes in a signal of wpa_supplicant's: an access point heard, heard
-    /// differently or no longer heard, a card going, or a card's join going
-    /// wrong.
+    /// differently or no longer heard, a card going, a card's join going
+    /// wrong, or its access point asking it to move.
     async fn take_in(&mut self, bus: &Connection, message: &zbus::Message) {
         let header = message.header();
         let (Some(path), Some(member)) = (header.path(), header.member()) else {
@@ -864,6 +874,13 @@ impl<'a> Air<'a> {
                     return;
                 };
                 self.gone_under(&format!("{}/", card.as_str()));
+            }
+            // Said by core.nix's patch alone (say-transition-requests.patch),
+            // and taken, like every signal here, from wpa_supplicant alone.
+            "BSSTransitionRequested" => {
+                if let Ok(args) = body.deserialize::<HashMap<String, OwnedValue>>() {
+                    self.asked_to_move(bus, path, &args).await;
+                }
             }
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
             // What a card heard is said before it says it's done looking.
@@ -986,6 +1003,22 @@ impl<'a> Air<'a> {
             self.owner = Some(owner);
         }
         said_by(sender, self.owner.as_deref())
+    }
+
+    /// Takes in what the card at this path was asked by its access point.
+    async fn asked_to_move(
+        &mut self,
+        bus: &Connection,
+        path: &ObjectPath<'_>,
+        args: &HashMap<String, OwnedValue>,
+    ) {
+        let Some(card) = self.named(bus, path).await else {
+            return;
+        };
+        match Request::from_args(args) {
+            Some(request) => self.asked.push((card, request)),
+            None => println!("<4>{card} was asked to move in a shape wifid can't read"),
+        }
     }
 
     /// Takes in what wpa_supplicant says changed of the card at this path:
@@ -3249,6 +3282,50 @@ impl Wifid<'_> {
         if free && self.elsewhere(card, &network, true).await {
             println!("<7>{card} took another network while held, and looks again once on it");
             self.astray.borrow_mut().insert(card.to_owned(), network);
+        }
+    }
+
+    /// Says what the card's access point asked of it, and follows an ask
+    /// that warns the point drops the card (transition.rs).
+    ///
+    /// Only a card held to its point is moved: wpa_supplicant follows an
+    /// ask for one that isn't itself, and keeps a held one where it is,
+    /// since only that point matches. Held, it goes to the point the ask
+    /// would rather of those it hears, or is let go when it hears none,
+    /// so wpa_supplicant can follow the ask or join again once dropped.
+    /// A card in the join the shell asked for, `joining`, has its
+    /// networks turned on by the join as it ends.
+    async fn asked(&self, card: &str, request: &Request, joining: Option<&str>) {
+        let (from, heard) = {
+            let state = self.state.borrow();
+            let heard: Vec<(String, i16)> = state
+                .around(card)
+                .into_iter()
+                .map(|heard| (heard.bssid, heard.signal))
+                .collect();
+            (state.point_of(card), heard)
+        };
+        println!("<6>{}", request.said(card, from.as_deref()));
+        if !request.warns {
+            return;
+        }
+        if !self.held.borrow().contains_key(card) {
+            return println!("<6>{card} isn't held to its point, so wpa_supplicant follows it");
+        }
+        let free = joining != Some(card);
+        match request.heed(from.as_deref(), &heard) {
+            Heed::Stay => {}
+            Heed::Move(bssid) => match self.roam(&bssid, joining).await {
+                Ok(()) => println!("<6>{card} moves to {bssid} before it's dropped"),
+                Err(refused) => {
+                    println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
+                    self.let_go(card, free).await;
+                }
+            },
+            Heed::LetGo => {
+                println!("<6>{card} hears none of the points asked, so may join any again");
+                self.let_go(card, free).await;
+            }
         }
     }
 

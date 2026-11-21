@@ -1,9 +1,9 @@
 """The Wi-Fi test's moves area.
 
 Here the card moves between the access points of one network: on from one that doesn't answer, to
-another when an account asks, keeping its neighbours, back to the one it left when the one it was
-asked to has gone, and free to join any network when it can't get back either; a network of
-another name forgets those neighbours.
+another when an account asks, keeping its neighbours, to another when its point warns it drops the
+card, back to the one it left when the one it was asked to has gone, and free to join any network
+when it can't get back either; a network of another name forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The tests run in the order written, each taking the
 machine on from where the one before left it, so one run alone with -k starts from Lantern joined
@@ -35,6 +35,19 @@ NEIGHBOUR_ADDRESS = "02:00:00:00:42:99"
 
 # How long the line letting a stranded card go says it went back, in milliseconds.
 WENT_BACK = re.compile(r"within ([0-9]+) ms, so may join any network")
+
+
+# Lantern's access points, the first as loud as the second is quiet.
+FIRST = "02:00:00:00:00:00"
+SECOND = "02:00:00:00:05:00"
+# When Lantern's second warns it drops a card, in milliseconds: its 50 beacons of 102.4 ms.
+DROPS_IN_MS = 5120
+
+
+def hears(machine: BaseMachine, wifid: Wifid, bssid: str) -> bool:
+    """Have the cards look, and say whether they heard the access point."""
+    wifid.ask("Scan")
+    return bssid in machine.succeed("wpa_cli -i wlan2 scan_results")
 
 
 def first_line(said: list[str], words: str, after: int = -1) -> int:
@@ -266,6 +279,56 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
         ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
         timeout=timedelta(seconds=60),
     )
+
+
+# The eero asked the laptop to move 27 times from 15 to 20 Nov 2026, and wpa_supplicant said what
+# it asked only in its debug log. None warned it would drop the card, which wpa_supplicant can't
+# follow for a card wifid holds to a point. Lantern's second asks here, through its own socket.
+def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A held card says its point's asks to move, and moves when one warns it drops the card."""
+    machine.succeed("systemctl start lantern-two")
+    retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
+    answer = wifid.acting({"act": "roam", "bssid": SECOND})
+    assert answer.get("done") is True, answer
+    machine.wait_until_succeeds(
+        f's=$(wpa_cli -i wlan2 status) && echo "$s" | grep -qx wpa_state=COMPLETED'
+        f' && echo "$s" | grep -qx bssid={SECOND}',
+        timeout=timedelta(seconds=30),
+    )
+    station = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^address=//p'").strip()
+    ask = (
+        f"hostapd_cli -p /run/hostapd-lantern-two -i wlan5 bss_tm_req {station}"
+        f" pref=1 valid_int=200 neighbor={FIRST},0x0000,81,6,7,0301ff"
+    )
+    since = wifid.journal_now()
+    machine.succeed(f"{ask} | grep -qx OK")
+    asked = f"wlan2 was asked by {SECOND} to move to {FIRST} at 255, for 20480 ms"
+    plain = f"{asked}, warning nothing"
+    machine.wait_until_succeeds(
+        f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF '{plain}'",
+        timeout=timedelta(seconds=10),
+    )
+    # Held, wpa_supplicant keeps the card where it is, and wifid moves it for no plain ask.
+    time.sleep(2)
+    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
+    since = wifid.journal_now()
+    machine.succeed(f"{ask} disassoc_imminent=1 disassoc_timer=50 | grep -qx OK")
+    warned = f"{asked}, warning it drops the card in {DROPS_IN_MS} ms"
+    machine.wait_until_succeeds(
+        f"journalctl -o cat -u wifid --after-cursor='{since}'"
+        f" | grep -qxF '{warned}'"
+        f" && journalctl -o cat -u wifid --after-cursor='{since}'"
+        f" | grep -qE '^wlan2 reached {FIRST} [0-9]+ ms after it was asked'",
+        timeout=timedelta(seconds=10),
+    )
+    # Past the time it warned of, the point never dropped the card.
+    time.sleep(DROPS_IN_MS / 1000 + 1)
+    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
+    kernel = machine.succeed(f"journalctl -k -o cat --after-cursor='{since}'")
+    assert f"disassociated from {SECOND}" not in kernel, f"the point dropped the card:\n{kernel}"
+    machine.succeed("systemctl stop lantern-two")
 
 
 # On 16 Nov 2026 a move found its access point gone, and the card scanned

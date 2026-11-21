@@ -84,11 +84,15 @@ let
     ${lanternKey}
   '';
 
-  # Lantern's second access point, heard only when a test starts it.
+  # Lantern's second access point, heard only when a test starts it. It
+  # can ask a card to move, as a mesh router's points do, through its
+  # control socket.
   lanternTwo = accessPoint "lantern-two" ''
     interface=wlan5
     bridge=lantern
     channel=9
+    bss_transition=1
+    ctrl_interface=/run/hostapd-lantern-two
     ${lanternKey}
   '';
 
@@ -392,6 +396,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         pkgs.nftables
         # For asking acts on the launcher's rows socket as the launcher does.
         pkgs.socat
+        # For an access point's ask to move a card, by hostapd_cli.
+        pkgs.hostapd
       ];
     };
 

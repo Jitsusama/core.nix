@@ -7240,7 +7240,8 @@
   '';
   vm-wifi-moves = ''
     the card moves between the access points of one network: on at once from one that doesn't
-    answer, to another when an account asks, keeping its neighbours, and back within wifid's
+    answer, to another when an account asks, keeping its neighbours, to the one its point names
+    when the point warns it drops the card, saying a plain ask and staying, and back within wifid's
     2 s for a way back past any wait the point bids, its other networks off, from one gone
     since it was heard, or free to join any network when it can't get back either; another
     network forgets them
