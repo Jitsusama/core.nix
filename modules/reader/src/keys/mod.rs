@@ -341,13 +341,32 @@ const SLOTS: &[(&str, Slot)] = &[
     ("to-letter-backward", Act::ToLetterBack),
 ];
 
-/// Whether a slot takes a character typed after its key: a mark's name is
-/// a letter, as Vim's a to z and A to Z, and f and F go to any character
-/// a line can show, a space or a stop as much as a letter.
-fn takes(slot: Slot, typed: char) -> bool {
-    match slot(typed) {
-        Act::ToLetter(_) | Act::ToLetterBack(_) => !typed.is_control(),
-        _ => typed.is_ascii_alphabetic(),
+/// What a slot takes after its key, as the language's `takes` says: a
+/// mark's name is a letter, as Vim's a to z and A to Z, and f and F go to
+/// any character a line can show, a space or a stop as much as a letter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Takes {
+    Letter,
+    Character,
+}
+
+impl Takes {
+    /// What the language's `takes` names, which no act may leave out or
+    /// name otherwise when the reader gives it a slot.
+    fn of(name: &str, said: Option<&str>) -> Self {
+        match said {
+            Some("letter") => Self::Letter,
+            Some("character") => Self::Character,
+            _ => panic!("{name} takes neither a letter nor a character"),
+        }
+    }
+
+    /// Whether a character typed after the key is one this takes.
+    fn takes(self, typed: char) -> bool {
+        match self {
+            Self::Letter => typed.is_ascii_alphabetic(),
+            Self::Character => !typed.is_control(),
+        }
     }
 }
 
@@ -446,7 +465,7 @@ pub type Sequence = (Vec<Key>, Act, In);
 /// letter after it, with where each works.
 pub struct Table {
     pub sequences: Vec<Sequence>,
-    slots: Vec<(Key, Slot, In)>,
+    slots: Vec<(Key, Slot, In, Takes)>,
     operators: Vec<(Key, Act, In)>,
     lines: Vec<LineSlot>,
 }
@@ -532,8 +551,12 @@ fn read(language: &str) -> Table {
         .iter()
         .flat_map(|&(name, slot)| {
             let (keys, held) = keys(name);
+            let takes = Takes::of(
+                name,
+                language["acts"][name].get("takes").and_then(|t| t.as_str()),
+            );
             keys.into_iter().map(move |keys| match keys[..] {
-                [key] => (key, slot, held),
+                [key] => (key, slot, held, takes),
                 _ => panic!("{name} takes its letter after one key"),
             })
         })
@@ -720,7 +743,10 @@ fn operators() -> impl Iterator<Item = (Act, Key)> {
 /// The letter slots as the key list and the key map show them: the act it
 /// starts, and the key.
 fn slots() -> impl Iterator<Item = (Act, Key)> {
-    table().slots.iter().map(|&(key, slot, _)| (slot('a'), key))
+    table()
+        .slots
+        .iter()
+        .map(|&(key, slot, _, _)| (slot('a'), key))
 }
 
 #[cfg(test)]

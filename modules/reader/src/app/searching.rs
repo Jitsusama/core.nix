@@ -121,6 +121,9 @@ impl App {
             self.current = Some(i);
             self.show_match(i, true);
             self.aim = Some(search::top_pt(&self.found[i]));
+            // The cursor is on the match now, even on the line it was on,
+            // as v then starts from.
+            self.character = None;
         }
         self.ask_prompt();
     }
@@ -148,6 +151,7 @@ impl App {
                     if let Some(i) = self.current {
                         self.show_match(i, false);
                         self.aim = Some(search::top_pt(&self.found[i]));
+                        self.character = None;
                     }
                 } else {
                     self.prompt_shown = false;

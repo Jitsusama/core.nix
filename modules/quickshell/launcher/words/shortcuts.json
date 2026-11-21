@@ -746,6 +746,11 @@
       "name": "Searching"
     },
     {
+      "id": "shortcuts:reader:line",
+      "in": "shortcuts",
+      "name": "Along a Line"
+    },
+    {
       "id": "shortcuts:reader:selecting",
       "in": "shortcuts",
       "name": "Selecting"

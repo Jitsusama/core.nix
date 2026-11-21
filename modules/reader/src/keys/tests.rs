@@ -55,7 +55,7 @@ fn the_list_gives_each_thing_one_row_with_every_way_to_type_it() {
 }
 
 #[test]
-fn the_list_says_selecting_text_objects_and_copying_by_letters() {
+fn the_list_says_along_a_line_selecting_text_objects_and_copying_by_letters() {
     let along = rows_of("Along a Line");
     for way in [
         "h",
@@ -431,7 +431,53 @@ fn f_takes_any_character_after_it_and_a_mark_only_a_letter() {
 }
 
 #[test]
-fn text_objects_and_motions_work_only_while_selecting() {
+fn no_group_lists_more_rows_than_the_launchers_thirteen() {
+    // The groups are split so each fits the launcher's Shortcuts, whose
+    // longest, Neovim's, is thirteen rows; a mark's two keys join Jumping
+    // there, so the two are counted as one.
+    let listed = listing();
+    let rows = |group: &str| {
+        listed
+            .iter()
+            .find(|(g, _)| *g == group)
+            .map_or(0, |(_, rows)| rows.len())
+    };
+    for (group, shown) in &listed {
+        let count = match *group {
+            "Jumping" => shown.len() + rows("Marks"),
+            _ => shown.len(),
+        };
+        assert!(count <= 13, "{group} lists {count} rows");
+    }
+}
+
+#[test]
+fn what_a_key_takes_after_it_is_the_languages_to_say() {
+    let taken = |language: &str, key: char| {
+        read(language)
+            .slots
+            .iter()
+            .find(|slot| slot.0 == Key::Char(key))
+            .map(|slot| slot.3)
+    };
+    assert_eq!(taken(LANGUAGE, 'f'), Some(Takes::Character));
+    assert_eq!(taken(LANGUAGE, 'm'), Some(Takes::Letter));
+    let letters = LANGUAGE.replace(
+        "keys = [\"f\"]\ntakes = \"character\"",
+        "keys = [\"f\"]\ntakes = \"letter\"",
+    );
+    assert_ne!(letters, LANGUAGE, "the language says f takes a character");
+    assert_eq!(
+        taken(&letters, 'f'),
+        Some(Takes::Letter),
+        "f takes what the language says, not what the reader thinks"
+    );
+    assert!(Takes::Character.takes('.') && !Takes::Letter.takes('.'));
+    assert!(!Takes::Character.takes('\n'));
+}
+
+#[test]
+fn text_objects_work_only_while_selecting_and_motions_along_a_line_at_rest_too() {
     let mut machine = Machine::default();
     assert_eq!(
         typed_in(&mut machine, "iwapi`a`o$e{}", true),

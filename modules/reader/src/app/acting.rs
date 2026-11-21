@@ -248,7 +248,7 @@ impl App {
     /// the tests.
     fn acted(&mut self, act: keys::Act, count: Option<u32>, from: (f64, f64), screen_pt: f64) {
         use keys::Act;
-        self.keep_character(act);
+        self.keep_character();
         let (from_pt, from_aim) = from;
         // A move longer than a screen is a jump, as vi's are, however it
         // was made; going through the jumps never adds to them.

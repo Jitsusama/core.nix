@@ -255,6 +255,8 @@ impl App {
         self.take_kept_marks();
         self.last_jump = None;
         self.selected = None;
+        // The cursor's character was on the other file's line.
+        self.character = None;
         if !self.measuring
             && let Err(error) = showing::keep(&file)
         {

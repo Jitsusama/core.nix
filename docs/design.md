@@ -2986,13 +2986,16 @@ fits whole on the laptop's plate.
   them bare. That is so he can choose the character a selection starts
   on (Joel, 2026-11-21: "a cursor mode when visually selecting text
   before i start so that I can choose what character i start at"). v
-  and V start from the character, or the line's first word. j and k move
-  the cursor by the line as shown, a character keeping across as Vim's
-  curswant does, the view following at his `scrolloff=4`; Ctrl+E and
-  Ctrl+Y scroll the view alone. /, n N, ]] [[, { }, gO, marks, jumps and
-  :{n} put the cursor where they land, its line alone, so / and then yip
-  copies the paragraph found. Escape at rest puts a character back to
-  the line, and otherwise does nothing; q does nothing.
+  and V start from the character, or the line's first word, and ending
+  a selection leaves the cursor on its cursor's character, or after y
+  on its start, as Vim's does. j and k move the cursor by the line as
+  shown, a table's row as one, a character keeping across as Vim's
+  curswant does, to each line's end after $; the view follows at his
+  `scrolloff=4`, and Ctrl+E and Ctrl+Y scroll the view alone. /, n N,
+  ]] [[, { }, gO, marks, jumps and :{n} put the cursor where they land,
+  its line alone or a search's match, so / and then yip copies the
+  paragraph found. Escape at rest puts a character back to the line,
+  and otherwise does nothing; q does nothing.
 - **The drawer** is the preview window: Ctrl+W l goes in and the reader's
   keys work there, and Ctrl+W h or :q comes back, Ctrl+W w either way, as
   Vim goes between windows, with his Neovim's Space and an arrow over

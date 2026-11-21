@@ -154,16 +154,23 @@ until grim v.png && [ "$(changed_to "$cursor")" -gt 100 ] \
 done
 act 1 -k Escape
 shows 'nothing'
+# Ending it leaves the cursor on the selection's cursor, as Vim's does.
+stands '"E"'
 act 3 'v}w'
 act 1 iw
 shows '"bold"'
 act 1 y
 copied '"**bold**"'
 shows 'nothing'
-# Ending a selection leaves the cursor on its line, as Neovim's does, so
-# v starts there again, and each selection after starts from gg.
+# y leaves the cursor on the start of what it took, as Vim's does, and
+# Escape at rest then puts the cursor back to being its line, so v starts
+# on its first word again; each selection after starts from gg.
+stands '"b"'
+act 1 -k Escape
+stands 'nothing'
 act 1 v
 shows '"A"'
+act 1 -k Escape
 act 1 -k Escape
 # At rest, the keys along a line put the cursor on a character, from the
 # first word on its line, drawn as v's block is, and v starts there: w to
@@ -193,6 +200,8 @@ act 1 ';'
 act 2 ve
 shows '"cond"'
 act 1 -k Escape
+stands '"d"'
+act 1 -k Escape
 # j and k carry the character, its line with it, keeping across, so it
 # comes back to bold's b; Escape puts the cursor back to its line, so v
 # starts on its first word.
@@ -206,9 +215,45 @@ stands '"b"'
 near "$(cursor)" "$before" || fail "k put the cursor at $(cursor) pt, not $before"
 act 1 -k Escape
 stands 'nothing'
+# And its block goes with it: nothing on the page is in the cursor's
+# colour that wasn't at rest.
+deadline=$((SECONDS + 30))
+until grim gone.png && [ "$(changed_to "$cursor" gone.png)" -lt 20 ]; do
+  ((SECONDS < deadline)) \
+    || fail "Escape left $(changed_to "$cursor" gone.png) pixels of the cursor's block"
+  inotifywait -q -q -t 1 -e modify said || true
+done
 act 1 v
 shows '"A"'
 act 1 -k Escape
+stands '"A"'
+# A search let go leaves the cursor where it stood, so l goes on from
+# there; F goes back to a character and , on to the next of it, the
+# other way, as Vim's do, so v e takes the second sentence's start.
+cancels=$(how_many '^search Cancelled ')
+act 1 /zzz
+press -k Escape
+logged '^search Cancelled ' $((cancels + 1))
+act 1 l
+stands '" "'
+act 1 FA
+stands '"A"'
+act 1 ,
+act 2 ve
+shows '"A second"'
+act 1 -k Escape
+act 1 -k Escape
+stands 'nothing'
+# A jump from the command line takes the cursor off the character's
+# line, and with it the character, so w goes on from the line it's on.
+press ':1'
+press -k Return
+logged '^command: "1" is Go' 1
+keys=$(how_many '^key ')
+act 1 w
+stands '"K"'
+act 1 -k Escape
+stands 'nothing'
 # m while selecting marks the cursor's line and keeps the selection, as
 # his Neovim's does, so ' and its letter at rest put the cursor back on
 # that line, and the view stays, since the line shows.
@@ -570,7 +615,7 @@ done
 # :1 rather than gg, so the First keys counted on below stay as many.
 press ':1'
 press -k Return
-logged '^command: "1" is Go\(Lines\(1, 1\)\)' 1
+logged '^command: "1" is Go\(Lines\(1, 1\)\)' 2
 lines=$(how_many '^key SelectPieces None')
 press V
 logged '^key SelectPieces None' $((lines + 1))

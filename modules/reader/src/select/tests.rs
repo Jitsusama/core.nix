@@ -200,7 +200,22 @@ fn the_letters_and_arrows_move_by_characters_and_lines_keeping_across() {
     page.moved(&mut s, Motion::LineEnd, 1);
     assert_eq!(s.cursor, at(4, 15));
     page.moved(&mut s, Motion::Up, 3);
-    assert_eq!(s.cursor, at(1, 17));
+    assert_eq!(
+        s.cursor,
+        at(1, 20),
+        "after $, k keeps to the line's end, as Vim's does"
+    );
+    let mut s = Selection::new(Kind::Chars, at(3, 0));
+    page.moved(&mut s, Motion::LineEnd, 1);
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(
+        s.cursor,
+        at(4, 15),
+        "the longer line's end, not across from the short one's"
+    );
+    page.moved(&mut s, Motion::Left, 1);
+    page.moved(&mut s, Motion::Up, 1);
+    assert_eq!(s.cursor, at(3, 9), "h lets the end go, and k goes across");
 }
 
 #[test]
@@ -217,6 +232,35 @@ fn w_b_and_e_go_by_words_as_vi_does() {
     assert_eq!(s.cursor, at(2, 9), "punctuation is a word of its own");
     page.moved(&mut s, Motion::WordBack, 3);
     assert_eq!(s.cursor, at(1, 20));
+}
+
+#[test]
+fn j_and_k_in_a_table_go_to_the_cell_under_never_the_one_beside() {
+    let lines = vec![
+        line(20.0, "Name"),
+        indented(20.0, 100.0, "Size"),
+        line(41.0, "one"),
+        indented(41.0, 100.0, "1 KB"),
+        line(62.0, "two"),
+        indented(62.0, 100.0, "2 KB"),
+    ];
+    let page = Layout::new(lines, Vec::new(), &[], String::new());
+    let mut s = Selection::new(Kind::Chars, at(1, 1));
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(s.cursor, at(3, 1), "the size under, not the name beside");
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(s.cursor, at(5, 1));
+    page.moved(&mut s, Motion::Up, 2);
+    assert_eq!(s.cursor, at(1, 1), "a count goes up by rows");
+    let mut s = Selection::new(Kind::Chars, at(0, 2));
+    page.moved(&mut s, Motion::Down, 1);
+    assert_eq!(
+        s.cursor,
+        at(2, 2),
+        "the name under, the first cell of its row"
+    );
+    page.moved(&mut s, Motion::Up, 1);
+    assert_eq!(s.cursor, at(0, 2));
 }
 
 #[test]

@@ -11,7 +11,8 @@
 #
 # An act's keys are pressed in normal mode unless its modes say otherwise.
 # One whose takes is "letter" takes the next letter typed as a name, as m
-# and ' take a mark's. In one mode a key belongs to one act, whatever kind
+# and ' take a mark's; one whose takes is "character" takes any character
+# typed, a stop or a space as much as a letter, as f does. In one mode a key belongs to one act, whatever kind
 # of surface it's pressed on: Vim's l moves right on a page and means
 # nothing on a list, and steps into nothing on either.
 #
@@ -315,13 +316,13 @@ kinds = ["list", "page"]
 # page they go to the character typed after on the cursor's line, as Vim's.
 [acts.to-letter]
 keys = ["f"]
-takes = "letter"
+takes = "character"
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 
 [acts.to-letter-backward]
 keys = ["F"]
-takes = "letter"
+takes = "character"
 modes = ["normal", "visual"]
 kinds = ["list", "page"]
 

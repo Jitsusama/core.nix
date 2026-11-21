@@ -88,8 +88,8 @@ impl App {
         self.layout = Some(Arc::new(layout));
     }
 
-    /// Ends the selection, leaving the cursor on the line its cursor was
-    /// on, as Neovim's stays where visual mode left it.
+    /// Ends the selection, leaving the cursor on the character its cursor
+    /// was on, as Neovim's stays where visual mode left it.
     fn end_selection(&mut self) {
         let Some(selection) = self.selection.take() else {
             return;
@@ -97,6 +97,7 @@ impl App {
         if let Some(layout) = self.layout.as_ref() {
             self.aim = Some(layout.line_extent(selection.cursor.line).0);
             self.selected = layout.file_lines_of(&selection);
+            self.character = Some(Selection::new(Kind::Chars, selection.cursor));
         }
         if keys_logged() {
             eprintln!("selected: nothing");
@@ -106,6 +107,8 @@ impl App {
     /// Does what a key asks of a selection, or starts one or copies at
     /// rest; false for a key that does what it does at rest.
     pub(crate) fn select_act(&mut self, act: Act, count: Option<u32>) -> bool {
+        // A jump since the last key may have taken the cursor off it.
+        self.keep_character();
         let times = count.map_or(1, |n| usize::try_from(n).unwrap_or(usize::MAX));
         let Some(layout) = self.layout.clone() else {
             return matches!(
@@ -178,6 +181,7 @@ impl App {
                 self.end_selection();
                 let (top, foot) = layout.line_extent(taken.ends().0.line);
                 self.aim = Some(top);
+                self.character = Some(Selection::new(Kind::Chars, taken.ends().0));
                 self.follow_line(top, foot, None);
                 self.copy(&layout, taken);
                 return true;
@@ -283,26 +287,20 @@ impl App {
         true
     }
 
-    /// The cursor's character holds while the cursor is on its line, so a
-    /// key that took the cursor off it, as } or H does, leaves the cursor
-    /// its line again, as v then starts from; a search puts it on its
-    /// match's line, where v starts at the match.
-    pub(crate) fn keep_character(&mut self, act: Act) {
-        let (Some(layout), Some(character)) = (self.layout.as_ref(), self.character.as_ref())
-        else {
-            return;
-        };
+    /// The cursor's character, while the cursor is on its line. Whatever
+    /// took the cursor off it, a key as } or H, a jump as :12 or gO, or a
+    /// click on the outline, leaves the cursor its line again, as v then
+    /// starts from, so what moved it never has to say so.
+    pub(crate) fn standing(&self) -> Option<&Selection> {
+        let (layout, character) = (self.layout.as_ref()?, self.character.as_ref()?);
         let (top, _) = layout.line_extent(character.cursor.line);
-        let searched = matches!(
-            act,
-            Act::SearchForward
-                | Act::SearchBackward
-                | Act::Next
-                | Act::Previous
-                | Act::SameWordOn
-                | Act::SameWordBack
-        );
-        if searched || (top - self.cursor_pt()).abs() > 0.5 {
+        ((top - self.cursor_pt()).abs() <= 0.5).then_some(character)
+    }
+
+    /// Lets the character go once the cursor has left its line, so it
+    /// never comes back when the cursor does.
+    pub(crate) fn keep_character(&mut self) {
+        if self.standing().is_none() {
             self.character = None;
         }
     }
@@ -456,7 +454,7 @@ impl App {
     /// The cursor's line, its cell's top and foot in points: the
     /// selection's cursor's while selecting, and else the page's.
     pub(crate) fn cursor_line(&self) -> Option<(f64, f64)> {
-        let standing = self.selection.as_ref().or(self.character.as_ref());
+        let standing = self.selection.as_ref().or(self.standing());
         if let (Some(layout), Some(selection)) = (self.layout.as_ref(), standing) {
             return layout.lines.get(selection.cursor.line).map(moves::rule_of);
         }
@@ -539,7 +537,7 @@ impl App {
         if let (Some(layout), None, Some(character)) = (
             self.layout.as_ref(),
             self.selection.as_ref(),
-            self.character.as_ref(),
+            self.standing(),
         ) && let Some(at) = layout.cursor(character)
         {
             let (top, foot) = select::line_cell(at.baseline_pt, at.cap_pt, at.size_pt);
@@ -559,7 +557,7 @@ impl App {
             );
         }
         if let (true, Some(layout)) = (keys_logged(), self.layout.as_ref()) {
-            match self.character.as_ref() {
+            match self.standing() {
                 Some(character) => eprintln!("character: {:?}", layout.shown(character)),
                 None => eprintln!("character: nothing"),
             }
