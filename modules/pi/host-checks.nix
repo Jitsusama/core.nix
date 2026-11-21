@@ -330,7 +330,9 @@ in
         && service.Slice or null == "agents.slice"
         && service.Restart or null == "no"
         && !(service ? WatchdogSec)
-        && service.CollectMode or null == "inactive-or-failed"
+        # Read only from [Unit], where systemd looks for it.
+        && unit.Unit.CollectMode or null == "inactive-or-failed"
+        && !(service ? CollectMode)
         && service.OOMPolicy or null == "continue"
         && service.KillMode or null == "mixed"
         && service.TimeoutStopSec or null == "60s"
@@ -343,6 +345,8 @@ in
         && !(unit ? Install)
         && !(unit.Unit ? PartOf)
         && !(unit.Unit ? BindsTo)
+        && !(unit.Unit ? Requires)
+        && !(unit.Unit ? Requisite)
         && lib.hasPrefix "${node} --disable-sigusr1 --experimental-async-context-frame " execStart
         && !(lib.hasInfix "--inspect" (lib.replaceStrings [ "_" ] [ "-" ] execStart))
         && lib.hasInfix " '--max-old-space-size=3072' /" execStart
