@@ -35,6 +35,10 @@ let
   # and a realm may not give: written out rather than read from host.nix's
   # list, and the unit must clear just these beside the TPM agent's
   # variable, so a change to either list alone fails here.
+  # Where a kind's host and conversations run, written out rather than read
+  # from host.nix: background's own slice inside agents.slice, attended in
+  # agents.slice itself.
+  sliceOf = kind: if kind == "background" then "agents-background.slice" else "agents.slice";
   loadsCode = [
     "NODE_OPTIONS"
     "NODE_PATH"
@@ -327,7 +331,7 @@ in
           environment = lib.toList (service.Environment or [ ]);
         in
         service.Type or null == "exec"
-        && service.Slice or null == "agents.slice"
+        && service.Slice or null == sliceOf kind
         && service.Restart or null == "no"
         && !(service ? WatchdogSec)
         # Read only from [Unit], where systemd looks for it.
@@ -369,11 +373,56 @@ in
         && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);
     in
     holds "pi-conversations-run-apart"
-      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, can't keep its core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
+      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, leaves its inspector open or the user manager's code-loading variables in place, runs outside its kind's slice in agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, can't keep its core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
       (
         runsApart "attended"
         && runsApart "background"
         && lib.filter (lib.hasPrefix "pi-conversation-") (lib.attrNames mac) == [ ]
+      );
+
+  # Background's host and conversations run in a slice of their own inside
+  # agents.slice, slowed past 30% of the machine's memory, so their pages
+  # are reclaimed before Joel's windows' are; attended's stay in
+  # agents.slice itself. Only a machine that names a realm, on Linux, gets
+  # the slice.
+  pi-background-gives-way-to-his-windows =
+    let
+      hosts.one = {
+        pi = "${pkgs.emptyDirectory}/pi";
+        node = "${pkgs.emptyDirectory}/node";
+        proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
+      };
+      machine = bareNixos [
+        self.nixosModules.workstation
+        { home-manager.users.someone.jitsusama.pi = { inherit hosts; }; }
+      ];
+      home = account machine;
+      # jobs-sorter ranks and sorts the host units it finds directly under
+      # each slice it's given, so it must be given background's too.
+      under = lib.escapeShellArg "agents.slice/agents-background.slice=jobs.slice/jobs.service";
+      sorter = machine.config.systemd.user.services.jobs-sorter.serviceConfig.ExecStart;
+      sorted = lib.hasInfix " --under ${under} " "${sorter} ";
+      mac = account (bareDarwin [
+        self.darwinModules.workstation
+        { home-manager.users.someone.jitsusama.pi = { inherit hosts; }; }
+      ]);
+      services = home.systemd.user.services;
+      slice = home.systemd.user.slices.agents-background or { };
+      sliceOfUnit = name: services.${name}.Service.Slice or null;
+    in
+    holds "pi-background-gives-way-to-his-windows"
+      "A realm's background pi host or its conversations run outside agents-background.slice, that slice has no ceiling of 30%, sits outside agents.slice or goes unseen by jobs-sorter, attended's host or conversations leave agents.slice itself, or a machine naming no realm, or a Mac, gets the slice."
+      (
+        sliceOfUnit "pi-host-one-background" == "agents-background.slice"
+        && sliceOfUnit "pi-conversation-one-background@" == "agents-background.slice"
+        && sliceOfUnit "pi-host-one-attended" == "agents.slice"
+        && sliceOfUnit "pi-conversation-one-attended@" == "agents.slice"
+        # systemd puts a slice named a-b.slice inside a.slice.
+        && slice.Slice.MemoryHigh or null == "30%"
+        && !(slice.Slice ? Slice)
+        && sorted
+        && !((account workstation).systemd.user.slices ? agents-background)
+        && !(mac.systemd.user.slices ? agents-background)
       );
 
   # A realm a machine names gets two hosts, attended and background, started
@@ -472,7 +521,7 @@ in
         in
         unit.Service.Type == "notify"
         && unit.Service.NotifyAccess == "all"
-        && unit.Service.Slice == "agents.slice"
+        && unit.Service.Slice == sliceOf kind
         && first unit.Service.RestartPreventExitStatus == "78"
         && unit.Service.WatchdogSec or null == "2min"
         # A watchdog's abort is followed by a kill 10 s on.
@@ -540,7 +589,7 @@ in
         && lib.hasSuffix "/bin/pi-host-down %i" (first (unit.Service.ExecStart or ""));
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, leaves its inspector open to SIGUSR1, opens it another way or leaves NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, the loader's LD_PRELOAD, LD_AUDIT or LD_LIBRARY_PATH, or OpenSSL's OPENSSL_CONF or OPENSSL_MODULES to the user manager, or clears more than those and the TPM agent's variable, says ready before it listens, runs outside its kind's slice in agents.slice, restarts after a refusal or at a switch, stops when the kernel kills one of its commands for memory, isn't watched for a wedged loop or isn't killed soon after the watchdog aborts it, isn't given 20 minutes to start, isn't given 150 s to park at a stop or isn't told so, shares pi's two codemode workers among all its conversations, has only node's default heap rather than its realm's, misses node's async context frame flag after --disable-sigusr1 where its realm asks for V8's frame, or has it where its realm doesn't, points its conversations at no SSH agent where pi's proxy runs, passes them the TPM agent's own variable, or leaves its commands' processes behind, can't keep its core when it dies, restarts without limit, isn't said to be down once left down or is said to be at each restart, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         readsOptions
         && starts "attended"

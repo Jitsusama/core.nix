@@ -2996,13 +2996,20 @@
     quits, builds nothing an extension asks of it once stopped and tells every screen of a
     theme change, while ordinary pi keeps its process exits
   '';
+  pi-background-gives-way-to-his-windows = ''
+    a realm's background pi host and its conversations run in agents-background.slice, a slice
+    inside agents.slice slowed past 30% of the machine's memory, while its attended host and
+    conversations stay in agents.slice itself; a machine naming no realm, and a Mac, get no
+    such slice
+  '';
   pi-conversations-run-apart = ''
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's
     environment, proof, node, frame flag and SSH agent but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
-    agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
+    agents.slice, background's in agents-background.slice within it, slowed past 12 GB, its
+    core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
@@ -3013,7 +3020,8 @@
     inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
     through env, with just the eight variables that load code into it, as
     pi-hosts-refuse-code-loading-variables names them, and the TPM agent's cleared, ready once it
-    says so, in agents.slice with its realm's environment and its folders first on its PATH, left
+    says so, in agents.slice (background's in agents-background.slice within it) with its
+    realm's environment and its folders first on its PATH, left
     stopped after refusing what it was given and left running through a switch and through the
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
