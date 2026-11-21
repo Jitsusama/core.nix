@@ -261,9 +261,11 @@ impl Inputs {
     /// Keeps where each session's window sits now (arrangement.rs),
     /// writing it to `path` when it moved and saying when it can't. Nothing's kept on a boot
     /// Linux doesn't name, nor before the windows daemon has said a window.
-    pub fn keep_places(&mut self, path: &Path) {
+    /// It answers when, in ms since the epoch, a place closed by hand is
+    /// to be let go, so it's kept again then.
+    pub fn keep_places(&mut self, path: &Path) -> Option<u64> {
         if self.boot.is_empty() || self.windows.records().next().is_none() {
-            return;
+            return None;
         }
         let sessions: Vec<Session> = self
             .sessions
@@ -278,19 +280,22 @@ impl Inputs {
             screens: &screens,
         };
         let now = arrangement::now(sessions.iter().copied(), &paired, &desk);
+        let unwindowed = arrangement::unwindowed(sessions.iter().copied(), &paired, &desk);
         let kept = self.arrangement.kept(
             &self.boot,
             self.restoring(),
             now,
             arrangement::others(&desk),
+            &unwindowed,
+            u64::try_from(clock::now_ms()).unwrap_or(u64::MAX),
         );
-        if kept == self.arrangement {
-            return;
+        if kept != self.arrangement {
+            if let Err(why) = kept.write(path) {
+                eprintln!("agents: can't keep {}: {why}", path.display());
+            }
+            self.arrangement = kept;
         }
-        if let Err(why) = kept.write(path) {
-            eprintln!("agents: can't keep {}: {why}", path.display());
-        }
-        self.arrangement = kept;
+        self.arrangement.let_go_at(&self.boot)
     }
 
     /// Every session there is to reopen, by the sessions running or

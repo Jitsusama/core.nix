@@ -40,6 +40,14 @@ pub const KIND: &str = "arrangement";
 /// shell waited.
 pub const STILL: Duration = Duration::from_secs(2);
 
+/// How long a session runs on here with no window before its place is let
+/// go, so Reopen Them All brings it back with none, as it had. A boot's end
+/// closes each window before its session ends, a stop taking up to its
+/// 90 s timeout, so a window gone for longer was closed while the boot ran
+/// on: after the 10:05 restart on 2026-11-21, five sessions whose windows
+/// had been closed hours before came back in windows.
+pub const CLOSED_FOR: Duration = Duration::from_secs(180);
+
 /// Each lit screen's connector and what the screen is, from the windows
 /// daemon's Screens rows, each sent whole under `row` and holding what
 /// its screen is and how it stands (modules/windows, screens.rs); rows
@@ -160,6 +168,28 @@ pub fn now<'a>(
         .collect()
 }
 
+/// The sessions running here now with no window, by pi's id: none paired
+/// with it, or one niri no longer lists.
+pub fn unwindowed<'a>(
+    sessions: impl Iterator<Item = Session<'a>>,
+    paired: &[Value],
+    desk: &Desk<'_>,
+) -> HashSet<String> {
+    let windows: HashMap<&str, &str> = paired
+        .iter()
+        .filter_map(|one| Some((one["address"].as_str()?, one["window"].as_str()?)))
+        .collect();
+    sessions
+        .filter(|one| one.here() && one.lives() == Lives::Running)
+        .filter(|one| {
+            windows
+                .get(one.address())
+                .is_none_or(|window| desk.windows.get(window).is_none())
+        })
+        .filter_map(|one| Some(one.presence()?.get("session")?.as_str()?.to_owned()))
+        .collect()
+}
+
 /// Every tiled window but kitty's, whose windows are sessions or a
 /// terminal of Joel's own, oldest first: Chrome's, Slack's and the like.
 pub fn others(desk: &Desk<'_>) -> Vec<Value> {
@@ -241,8 +271,11 @@ impl Arrangement {
             .find(|kept| *kept != boot)
     }
 
-    /// The places kept once `now` and `others` are, this boot's added to
-    /// what it kept already, so one that's ended keeps its place.
+    /// The places kept once `now` and `others` are at `at` (ms since the
+    /// epoch), this boot's added to what it kept already, so one that's
+    /// ended keeps its place. One of the sessions `unwindowed`, running on
+    /// with its window closed, is marked `closed` when first seen so, and
+    /// let go once it has been for [`CLOSED_FOR`].
     #[must_use]
     pub fn kept(
         &self,
@@ -250,6 +283,8 @@ impl Arrangement {
         restoring: &str,
         now: Map<String, Value>,
         others: Vec<Value>,
+        unwindowed: &HashSet<String>,
+        at: u64,
     ) -> Self {
         let mut this = self
             .boots
@@ -257,6 +292,20 @@ impl Arrangement {
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
+        this.retain(|id, place| {
+            if now.contains_key(id) || !unwindowed.contains(id) {
+                return true;
+            }
+            let Some(place) = place.as_object_mut() else {
+                return false;
+            };
+            let closed = place
+                .entry("closed")
+                .or_insert_with(|| json!(at))
+                .as_u64()
+                .unwrap_or(at);
+            at.saturating_sub(closed) < closed_for()
+        });
         this.extend(now);
         let mut kept = Self::default();
         kept.boots.insert(boot.to_owned(), Value::Object(this));
@@ -270,6 +319,19 @@ impl Arrangement {
             }
         }
         kept
+    }
+
+    /// When, in ms since the epoch, the first of `boot`'s places marked
+    /// closed is to be let go, or none while none is.
+    #[must_use]
+    pub fn let_go_at(&self, boot: &str) -> Option<u64> {
+        self.boots
+            .get(boot)?
+            .as_object()?
+            .values()
+            .filter_map(|place| place["closed"].as_u64())
+            .min()
+            .map(|closed| closed.saturating_add(closed_for()))
     }
 
     /// The sessions the boot being restored kept a place of, by pi's id.
@@ -298,11 +360,18 @@ impl Arrangement {
     }
 }
 
+/// [`CLOSED_FOR`] in ms, as places are stamped.
+fn closed_for() -> u64 {
+    u64::try_from(CLOSED_FOR.as_millis()).unwrap_or(u64::MAX)
+}
+
 /// When the windows were last seen to move, so their places are kept only
-/// once they've been still [`STILL`].
+/// once they've been still [`STILL`], and when a place closed is to be let
+/// go, so it's kept again then though nothing moves.
 #[derive(Debug, Default)]
 pub struct Still {
     moved: Option<Instant>,
+    again: Option<Instant>,
 }
 
 impl Still {
@@ -314,8 +383,18 @@ impl Still {
     /// How long from `at` until they've been still long enough, or none
     /// while nothing waits to be kept.
     pub fn wait(&self, at: Instant) -> Option<Duration> {
-        self.moved
-            .map(|moved| (moved + STILL).saturating_duration_since(at))
+        let still = self.moved.map(|moved| moved + STILL);
+        match (still, self.again) {
+            (Some(one), Some(other)) => Some(one.min(other)),
+            (one, other) => one.or(other),
+        }
+        .map(|due| due.saturating_duration_since(at))
+    }
+
+    /// Its places are to be kept again at `at`, as a place closed is let
+    /// go then.
+    pub fn again(&mut self, at: Instant) {
+        self.again = Some(at);
     }
 
     /// Whether they've been still long enough at `at`, after which nothing
@@ -324,6 +403,7 @@ impl Still {
         let due = self.wait(at) == Some(Duration::ZERO);
         if due {
             self.moved = None;
+            self.again = None;
         }
         due
     }
