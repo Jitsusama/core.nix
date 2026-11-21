@@ -246,16 +246,18 @@ fn the_words_land_on_the_pitch_a_paragraph_one_and_a_half() {
 }
 
 #[test]
-fn a_page_ends_a_line_under_its_last_baseline() {
+fn a_page_ends_a_line_under_its_mark() {
     let page = page_of("foot", &format!("{OPENING}Omega.\n"));
     let last = crate::text::runs(&page.frame)
         .iter()
         .map(|run| run.baseline_pt)
         .fold(f64::NEG_INFINITY, f64::max);
+    // The end's mark stands two lines under the last words, as a break
+    // does, and the page ends a line under it.
     let foot = page.frame.height().to_pt() - last;
     assert!(
-        (foot - super::pitch_pt()).abs() < 0.01,
-        "the page ends {foot} pt under its last baseline, not a line of {} pt",
+        (foot - 3.0 * super::pitch_pt()).abs() < 0.01,
+        "the page ends {foot} pt under its last words, not three lines of {} pt",
         super::pitch_pt()
     );
 }
@@ -320,7 +322,9 @@ fn a_line_all_of_code_steps_one_line_as_any_other() {
     );
     let (pitch, lines) = baselines("code-lines", &markdown, "opening", "Omega");
     let steps = steps(pitch, &lines);
-    assert!(steps.len() >= 6, "too few lines: {steps:?}");
+    // The opening's two lines or more, and three for the code, of which
+    // its three commands fill one whole.
+    assert!(steps.len() >= 4, "too few lines: {steps:?}");
     assert!(
         steps.iter().all(|s| *s == 100 || *s == 150),
         "a line of code stepped its own distance: {steps:?}"
@@ -348,7 +352,7 @@ fn an_emoji_is_drawn_in_the_colour_face_and_keeps_its_line() {
     );
     let (pitch, lines) = baselines("emoji", &markdown, "opening", "Omega");
     let steps = steps(pitch, &lines);
-    assert!(steps.len() >= 4, "too few lines: {steps:?}");
+    assert!(steps.len() >= 3, "too few lines: {steps:?}");
     assert!(
         steps.iter().all(|s| *s == 100 || *s == 150),
         "an emoji's taller face grew its line: {steps:?}"
@@ -375,6 +379,70 @@ fn an_emoji_is_drawn_in_the_colour_face_and_keeps_its_line() {
             "{words} is drawn as a picture: {faces:?}"
         );
     }
+}
+
+#[test]
+fn a_long_opening_drops_its_capital_and_reads_as_it_did() {
+    let long = "The opening paragraph of this page runs long enough to wrap onto a second line, a third and a fourth at the measure, however wide its face sets, so that it opens on a letter dropped two lines down beside its first words, which then run on at the whole measure under it to the end, at Omega.\n";
+    let page = page_of("drop", long);
+    let runs = crate::text::runs(&page.frame);
+    let words = runs
+        .iter()
+        .filter(|run| run.chars.len() > 2)
+        .map(|run| run.size_pt)
+        .fold(0.0, f64::max);
+    let letter = runs
+        .iter()
+        .find(|run| run.size_pt > 2.0 * words)
+        .expect("no letter was dropped");
+    assert_eq!(letter.chars.iter().map(|c| c.0).collect::<String>(), "T");
+    // Past the eyebrow, the opening's lines, read as they were written.
+    let lines: Vec<_> = crate::text::lines(runs)
+        .into_iter()
+        .skip_while(|line| !line.text.contains("opening"))
+        .collect();
+    assert!(
+        lines[0].text.starts_with("The opening paragraph"),
+        "the first line reads {:?}",
+        lines[0].text
+    );
+    // The letter's capitals stand from the first line's to the second's
+    // baseline, on which it sits.
+    let pitch = super::pitch_pt();
+    assert!(
+        (letter.baseline_pt - lines[1].baseline_pt).abs() < 0.01,
+        "the letter sits on {} pt, not the second line's {} pt",
+        letter.baseline_pt,
+        lines[1].baseline_pt
+    );
+    assert!(
+        (letter.cap_pt - (pitch + lines[0].cap_pt)).abs() < 1.0,
+        "its capitals stand {} pt, not two lines' {} pt",
+        letter.cap_pt,
+        pitch + lines[0].cap_pt
+    );
+    let steps = steps(
+        pitch,
+        &lines
+            .iter()
+            .map(|line| line.baseline_pt)
+            .collect::<Vec<_>>(),
+    );
+    assert!(steps.len() >= 3, "too few lines: {steps:?}");
+    assert!(
+        steps.iter().all(|s| *s == 100),
+        "the opening's lines step one apart: {steps:?}"
+    );
+    // One of two lines keeps its own small letter.
+    let short = page_of("no-drop", "The opening is short.\n");
+    let sizes: Vec<f64> = crate::text::runs(&short.frame)
+        .iter()
+        .map(|run| run.size_pt)
+        .collect();
+    assert!(
+        sizes.iter().all(|size| *size < 1.5 * words),
+        "a short opening dropped a letter: {sizes:?}"
+    );
 }
 
 #[test]

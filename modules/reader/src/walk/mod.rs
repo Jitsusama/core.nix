@@ -162,6 +162,7 @@ pub fn program(
         blocks: 0,
         after_title: false,
         titled: false,
+        begun: false,
         after_box: false,
         caption: None,
         source: markdown.lines().collect(),
@@ -247,6 +248,9 @@ struct Walker<'a> {
     after_title: bool,
     /// Whether the page opens with its title.
     titled: bool,
+    /// Whether the page's words have begun: any block but its title, its
+    /// lede and its headings, so the next paragraph isn't its opening.
+    begun: bool,
     /// Whether a task's box was just passed over, so the space after it
     /// goes.
     after_box: bool,
@@ -504,8 +508,14 @@ impl Walker<'_> {
         if opening {
             self.titled = true;
         }
+        // The page's first paragraph of words opens it, on a drop cap when
+        // it's long enough for one, with nothing before it but headings.
+        let first_words = top && name == "p" && !lede && !self.begun && !lone_picture(node);
         if top && BLOCKS.contains(&name.as_str()) {
             self.after_title = opening;
+            if !lede && !matches!(name.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+                self.begun = true;
+            }
         }
         match name.as_str() {
             "html" | "body" | "span" | "section" | "picture" | "thead" | "tbody" => {
@@ -522,6 +532,7 @@ impl Walker<'_> {
                 .is_some_and(|class| class.starts_with("markdown-alert-title")) => {}
             "p" if lone_picture(node) => self.alone(node),
             "p" if lede => self.wrap_unit("#lede[", node, "]\n"),
+            "p" if first_words => self.wrap_unit("#opening[", node, "]\n"),
             "p" => self.wrap_unit("#par[", node, "]\n"),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = &name[1..];

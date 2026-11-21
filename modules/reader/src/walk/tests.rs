@@ -47,9 +47,8 @@ fn a_title_opening_the_page_has_the_eyebrow_over_it_and_its_lede_after() {
         titled.contains("#lede[#metadata(\"s 3-3\")#\"The lede.\"]"),
         "{titled}"
     );
-    // The last words carry the page's end mark.
     assert!(
-        titled.contains("#par[#metadata(\"s 5-5\")#\"The words.\""),
+        titled.contains("#opening[#metadata(\"s 5-5\")#\"The words.\""),
         "{titled}"
     );
     let untitled = walk("The words.\n\n# Later\n\nMore.\n");
@@ -158,7 +157,32 @@ fn a_picture_alone_is_a_figure_and_one_among_words_stays_in_its_line() {
     );
     let among = walk("Words ![What it shows](missing.png) and more.\n");
     assert!(!among.contains("#alone"), "{among}");
-    assert!(among.contains("#par["), "{among}");
+    assert!(among.contains("#opening["), "{among}");
+}
+
+#[test]
+fn the_pages_first_paragraph_of_words_opens_it() {
+    let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+    let walk = |markdown: &str| walked(&world, markdown);
+    // Past the title, its lede and a section's heading, the first words
+    // open the page, and only they do.
+    let opened = walk("# Title\n\nThe lede.\n\n## Summary\n\nFirst words.\n\nMore words.\n");
+    assert!(
+        opened.contains("#opening[#metadata(\"s 7-7\")#\"First words.\""),
+        "{opened}"
+    );
+    assert!(
+        opened.contains("#par[#metadata(\"s 9-9\")#\"More words.\""),
+        "{opened}"
+    );
+    assert_eq!(opened.matches("#opening[").count(), 1, "{opened}");
+    // A page whose words begin with a list, a table or code has begun
+    // before its first paragraph, which stands as any other.
+    let listed = walk("- One\n- Two\n\nWords after.\n");
+    assert!(!listed.contains("#opening["), "{listed}");
+    // A quote's words are the quote's.
+    let quoted = walk("> Quoted words.\n\nWords after.\n");
+    assert!(!quoted.contains("#opening["), "{quoted}");
 }
 
 #[test]

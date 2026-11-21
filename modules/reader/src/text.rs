@@ -88,6 +88,15 @@ const SAME_EDGE_PT: f64 = 1.0;
 /// The soft hyphen Typst sets at a break hyphenation made.
 const BREAK: char = '\u{ad}';
 
+/// A letter this many times the size of the words on its baseline is a
+/// drop cap, dropped across the lines beside it.
+const DROPPED: f64 = 2.0;
+
+/// The air the page sets after a drop cap, in ems of its size, as
+/// page.rs's `drop-air` says; a word after it a space further on starts a
+/// word of its own.
+const DROP_AIR_EM: f64 = 0.08;
+
 /// Takes every run of text out of a page's frame, with where it sits.
 pub fn runs(frame: &Frame) -> Vec<Run> {
     let mut found = Vec::new();
@@ -138,15 +147,19 @@ fn walk(frame: &Frame, at: Point, found: &mut Vec<Run>) {
 /// between two runs a gap apart that neither one spells.
 pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
     runs.retain(|run| !run.chars.is_empty());
-    runs.sort_by(|a, b| {
-        a.baseline_pt
-            .total_cmp(&b.baseline_pt)
-            .then(a.x_pt.total_cmp(&b.x_pt))
-    });
-    let mut rows: Vec<Vec<Run>> = Vec::new();
+    let by_place = |a: &(Run, Option<f64>), b: &(Run, Option<f64>)| {
+        a.0.baseline_pt
+            .total_cmp(&b.0.baseline_pt)
+            .then(a.0.x_pt.total_cmp(&b.0.x_pt))
+    };
+    let mut runs: Vec<(Run, Option<f64>)> = runs.into_iter().map(|run| (run, None)).collect();
+    runs.sort_by(by_place);
+    read_drops_first(&mut runs);
+    runs.sort_by(by_place);
+    let mut rows: Vec<Vec<(Run, Option<f64>)>> = Vec::new();
     for run in runs {
         match rows.last_mut() {
-            Some(row) if (run.baseline_pt - row[0].baseline_pt).abs() < SAME_LINE_PT => {
+            Some(row) if (run.0.baseline_pt - row[0].0.baseline_pt).abs() < SAME_LINE_PT => {
                 row.push(run);
             }
             _ => rows.push(vec![run]),
@@ -154,13 +167,15 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
     }
     let mut lines = Vec::new();
     for mut row in rows {
-        row.sort_by(|a, b| a.x_pt.total_cmp(&b.x_pt));
+        row.sort_by(|a, b| a.0.x_pt.total_cmp(&b.0.x_pt));
         let mut line: Option<Line> = None;
-        for run in row {
+        // The air a drop cap just joined stands off its line's words.
+        let mut air_pt = 0.0;
+        for (run, dropped) in row {
             let starts_at = run.chars[0].1;
             if let Some(open) = line.as_mut() {
                 let end = open.spans.last().map_or(open.x_pt, |span| span.1);
-                let gap = starts_at - end;
+                let gap = starts_at - end - air_pt;
                 if gap > run.size_pt * APART_EM {
                     lines.extend(line.take());
                 } else if gap > run.size_pt * SPACED_EM
@@ -171,6 +186,7 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
                     open.spans.push((end, starts_at));
                 }
             }
+            air_pt = dropped.map_or(0.0, |size| size * DROP_AIR_EM);
             let open = line.get_or_insert_with(|| Line {
                 x_pt: starts_at,
                 tail_x_pt: starts_at,
@@ -180,8 +196,12 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
                 text: String::new(),
                 spans: Vec::new(),
             });
-            open.size_pt = open.size_pt.max(run.size_pt);
-            open.cap_pt = open.cap_pt.max(run.cap_pt);
+            // A drop cap stands down the lines beside it, so the line it's
+            // read on keeps its words' height.
+            if dropped.is_none() {
+                open.size_pt = open.size_pt.max(run.size_pt);
+                open.cap_pt = open.cap_pt.max(run.cap_pt);
+            }
             open.tail_x_pt = starts_at;
             for (c, from, to) in run.chars {
                 open.text.push(c);
@@ -196,6 +216,40 @@ pub fn lines(mut runs: Vec<Run>) -> Vec<Line> {
             .then(a.x_pt.total_cmp(&b.x_pt))
     });
     lines
+}
+
+/// Reads each drop cap where its word starts: a letter standing on a
+/// line's baseline beside words far smaller, its capitals reaching up
+/// the lines above, is moved to the first of them, ahead of its words,
+/// and marked with its size. Runs come sorted by where they sit.
+fn read_drops_first(runs: &mut [(Run, Option<f64>)]) {
+    for i in 0..runs.len() {
+        let drop = &runs[i].0;
+        let beside = |other: &Run| {
+            (other.baseline_pt - drop.baseline_pt).abs() < SAME_LINE_PT
+                && other.x_pt > drop.x_pt
+                && other.size_pt * DROPPED <= drop.size_pt
+        };
+        if drop.chars.len() > 2 || !runs.iter().any(|(other, _)| beside(other)) {
+            continue;
+        }
+        let top = drop.baseline_pt - drop.cap_pt - SAME_LINE_PT;
+        let first = runs
+            .iter()
+            .map(|(other, _)| other)
+            .filter(|other| {
+                other.x_pt > drop.x_pt
+                    && other.baseline_pt >= top
+                    && other.baseline_pt < drop.baseline_pt - SAME_LINE_PT
+            })
+            .map(|other| other.baseline_pt)
+            .fold(f64::INFINITY, f64::min);
+        if first.is_finite() {
+            let size = drop.size_pt;
+            runs[i].0.baseline_pt = first;
+            runs[i].1 = Some(size);
+        }
+    }
 }
 
 /// The line a line ending in a break goes on to: the next one down
@@ -350,6 +404,50 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].text, "hello world");
         assert_eq!(lines[1].text, "next");
+    }
+
+    /// A drop cap two lines tall, its baseline the second line's at 121,
+    /// its capitals reaching the first's at 100, the page's air after it.
+    fn drop(letter: char) -> Run {
+        Run {
+            x_pt: 0.0,
+            baseline_pt: 121.0,
+            size_pt: 43.7,
+            cap_pt: 30.6,
+            chars: vec![(letter, 0.0, 24.0)],
+        }
+    }
+
+    #[test]
+    fn a_drop_cap_is_read_at_the_start_of_its_word() {
+        let lines = lines(vec![
+            drop('T'),
+            run(27.5, 100.0, "he first line"),
+            run(27.5, 121.0, "the second"),
+            run(0.0, 142.0, "and the third"),
+        ]);
+        let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(texts, ["The first line", "the second", "and the third"]);
+        let near = |a: f64, b: f64| (a - b).abs() < 0.01;
+        assert!(near(lines[0].x_pt, 0.0), "its line starts at the letter");
+        assert!(
+            near(lines[0].size_pt, 13.1) && near(lines[0].cap_pt, 9.2),
+            "its line keeps its words' height"
+        );
+        assert!(
+            near(lines[1].x_pt, 27.5),
+            "the second line starts at its words"
+        );
+    }
+
+    #[test]
+    fn a_drop_cap_that_is_a_word_alone_is_read_a_space_from_the_next() {
+        let lines = lines(vec![
+            drop('A'),
+            run(30.9, 100.0, "word alone"),
+            run(30.9, 121.0, "opens it"),
+        ]);
+        assert_eq!(lines[0].text, "A word alone");
     }
 
     #[test]

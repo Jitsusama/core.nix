@@ -226,6 +226,59 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 // words, and the last is wider than one paragraph is from the next, so
 // the head reads as a group of its own.
 #let lede(body) = block(above: 0pt, below: 2 * pitch - cap, par(text(..level.voice.text, top-edge: cap, body)))
+// The page's first paragraph of words opens on a drop cap, two lines
+// tall, when it sets three lines or more at the measure, as a chapter
+// opens; a shorter one, or one opening on anything but a capital, stands
+// as any paragraph. The letter is the title's cut in the title's ink, its
+// capitals reaching from the first line's to the second's baseline, with
+// the first two lines beside it. Typst flows no words round a shape, so
+// the paragraph is set in two: as many of its words as fill two lines
+// beside the letter, then the rest at the whole measure, a line under.
+#let drop-size = (pitch + cap) / caps
+// The letter's air, which the reader's lines know too (text.rs), to read
+// a word of one letter apart from the next.
+#let drop-air = 0.08 * drop-size
+// A paragraph's pieces: each word and each space of its words alone, and
+// whatever else it holds whole, so it can be cut between two words.
+#let pieces-of(it) = if it.func() == [].func() {
+  it.children.map(pieces-of).flatten()
+} else if it.func() == text and it.fields().keys() == ("text",) {
+  it.text.split(" ").map(word => (text(word),)).intersperse(([ ],)).flatten().filter(piece => piece != text(""))
+} else { (it,) }
+#let opening(body) = layout(size => {
+  let plain = par(body)
+  if measure(block(width: size.width, plain)).height < 2 * pitch + cap - 0.01pt { return plain }
+  let pieces = pieces-of(body)
+  let first = pieces.position(piece => piece.func() != metadata)
+  let word = if first == none { none } else { pieces.at(first) }
+  if word == none or word.func() != text or word.text.match(regex("^\\p{Lu}")) == none { return plain }
+  let letter = word.text.clusters().first()
+  let after = word.text.slice(letter.len())
+  let big = text(..level.title.text, size: drop-size, top-edge: "cap-height", bottom-edge: "baseline", letter)
+  // A letter that is a word of its own stands a space from the next.
+  let alone = after == ""
+  let indent = measure(big).width + drop-air + if alone { 0.25em } else { 0pt }
+  let pieces = pieces.slice(0, first) + if alone { () } else { (text(after),) } + pieces.slice(first + 1)
+  let pieces = if alone and pieces.at(first, default: none) == [ ] { pieces.slice(0, first) + pieces.slice(first + 1) } else { pieces }
+  let fits(k) = measure(block(width: size.width - indent, par(pieces.slice(0, k).join()))).height < pitch + cap + 0.01pt
+  let (low, high) = (first, pieces.len())
+  while low < high {
+    let middle = calc.ceil((low + high) / 2)
+    if fits(middle) { low = middle } else { high = middle - 1 }
+  }
+  // Cut at a space between two words, never inside a run of strong or
+  // code; past the last word, nothing is left for the whole measure.
+  let cut = low
+  while cut > first and pieces.at(cut, default: [ ]) != [ ] { cut -= 1 }
+  if cut <= first { return plain }
+  let rest = pieces.slice(calc.min(cut + 1, pieces.len())).join()
+  block({
+    set par(spacing: pitch - cap)
+    place(top + left, big)
+    pad(left: indent, par(pieces.slice(0, cut).join()))
+    if rest != none { par(rest) }
+  })
+})
 #show math.equation: set text(font: "New Computer Modern Math")
 #let mx(s, b) = math.equation(block: b, eval(s, mode: "math", scope: mitex-scope))
 #let broken(s) = text(fill: ink.muted, raw(s))
