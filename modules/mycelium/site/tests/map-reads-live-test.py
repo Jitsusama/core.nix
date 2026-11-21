@@ -526,6 +526,10 @@ def test_the_builders_stand_under_the_machines_in_a_shape_of_their_own(
             assert ("off" in look.split()) == idle, f"{key} drawn {look}, idle {idle}"
         else:
             assert corner != "7px", f"the machine {key} took a builder's corners"
+    # With nothing open, each builder's mark says how it stands under its name.
+    expect(
+        page.locator('.labels .t-builder[data-mark="b:tern"]'), "a builder's mark misread it"
+    ).to_contain_text(LENT_WORDS)
     page.evaluate(f"location.hash = '#builder={IDLE_BUILDER}'")
     expect(page.locator("#panel-title"), "#builder= didn't open its drawer").to_have_text(
         IDLE_BUILDER
@@ -533,9 +537,6 @@ def test_the_builders_stand_under_the_machines_in_a_shape_of_their_own(
     expect(
         page.locator("#panel-body [data-builder-says]"), "the drawer misread the builder"
     ).to_have_text(IDLE_SAYS)
-    expect(
-        page.locator('.labels .t-builder[data-mark="b:tern"]'), "a builder's mark misread it"
-    ).to_contain_text(LENT_WORDS)
     # Hiding the machines lets go of a builder's drawer, and a builder's
     # link shows them again.
     page.locator("#map-view").focus()
