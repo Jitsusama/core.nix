@@ -910,7 +910,7 @@ fn a_command_that_hangs_is_stopped_at_its_limit() {
 }
 
 #[test]
-fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
+fn a_command_whose_child_keeps_its_output_open_is_stopped_soon_after_it_ends() {
     let _turn = one_at_a_time();
     let begun = Instant::now();
     let folder = folder("held-open");
@@ -987,6 +987,21 @@ fn a_read_still_running_and_one_whose_output_never_came_read_apart_in_the_log() 
     assert_eq!(
         Unheard::Unread(limit).to_string(),
         "it ended, but what it printed wasn't read within 20 s, nor 2 s after it ended"
+    );
+}
+
+#[test]
+fn a_command_whose_output_comes_just_after_its_limit_is_read() {
+    let _turn = one_at_a_time();
+    // It ends at once, and what it started prints and lets go of its
+    // output a little after the limit, well within `READ_AFTER_END`.
+    assert_eq!(
+        within(
+            Command::new("sh").args(["-c", "(sleep 1.3; echo late) & exit 0"]),
+            Duration::from_secs(1)
+        ),
+        Ok("late\n".into()),
+        "output that came through just after the limit was told as unread"
     );
 }
 
