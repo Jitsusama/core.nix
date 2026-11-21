@@ -3,8 +3,13 @@
 //! hears. Its meetings were held in one room, so nobody joined them: here
 //! the far end's speakers join one at a time, in the order they first
 //! spoke, the first at the start and each next a like share of the meeting
-//! later, and a take holding words of anyone before they joined is left
-//! out, as no call would hold it. The takes left are grouped as hear.rs
+//! later, and a take where anyone not yet joined holds `LEAST_SHARE` or
+//! more of the speech is left out, as no call would hold it. A take where
+//! they only murmur under another, as one does through most of a meeting
+//! held in a room, is kept, since the meetings' sound can't be pulled
+//! apart by speaker, and leaving out every such take leaves out nearly
+//! all; it makes the voices harder to tell apart, never easier. The takes
+//! left are grouped as hear.rs
 //! groups a call's whose Meet says how many were on it, and each voice is
 //! named as presence.rs names it.
 //!
@@ -16,7 +21,7 @@
 use std::collections::HashMap;
 
 use dictation::transcript::Side;
-use dictation::voices::{self, Heard, Voices};
+use dictation::voices::{self, Heard, LEAST_SHARE, Voices};
 
 use crate::apart::{self, Cut};
 use crate::presence::{self, Present, Spoke, Who};
@@ -112,14 +117,7 @@ pub fn names(
 /// holds, so a meeting naming little can be seen to.
 fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> (Names, String) {
     let joins = joins(cuts, length);
-    let kept: Vec<&Cut> = cuts
-        .iter()
-        .filter(|cut| {
-            cut.speakers
-                .keys()
-                .all(|speaker| joins[speaker] <= cut.start)
-        })
-        .collect();
+    let kept: Vec<&Cut> = cuts.iter().filter(|cut| !before(cut, &joins)).collect();
     // The takes kept, as hear.rs has a call's, and which of them each is.
     let mut grouped_heard = Vec::new();
     let mut at = Vec::new();
@@ -175,6 +173,23 @@ fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> (Names, String) {
         }
     }
     (named, described(&who, &held))
+}
+
+/// Whether `cut` is said by someone before they joined: `LEAST_SHARE` or
+/// more of its speech is theirs.
+fn before(cut: &Cut, joins: &HashMap<String, usize>) -> bool {
+    let speech: usize = cut.speakers.values().sum();
+    let early: usize = cut
+        .speakers
+        .iter()
+        .filter(|(speaker, _)| joins[*speaker] > cut.start)
+        .map(|(_, &samples)| samples)
+        .sum();
+    speech > 0 && as_f64(early) >= LEAST_SHARE * as_f64(speech)
+}
+
+fn as_f64(n: usize) -> f64 {
+    f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 /// Who each voice was taken to be, and whose speech it holds, by share.
@@ -309,6 +324,22 @@ mod tests {
             (named.right, named.named, named.speech),
             (35 * SECOND, 35 * SECOND, 35 * SECOND),
             "what B said before joining wasn't left out, or a voice went unnamed or misnamed"
+        );
+    }
+
+    #[test]
+    fn a_murmur_before_joining_keeps_its_take_and_more_leaves_it_out() {
+        let joins = HashMap::from([("A".to_owned(), 0), ("B".to_owned(), 10 * MINUTE)]);
+        let (_, mut cuts) = meeting(&[("A", 2), ("A", 4)]);
+        cuts[0].speakers.insert("B".to_owned(), SECOND / 4);
+        cuts[1].speakers.insert("B".to_owned(), SECOND);
+        assert!(
+            !before(&cuts[0], &joins),
+            "a take of A's with a murmur of B's before B joined was left out"
+        );
+        assert!(
+            before(&cuts[1], &joins),
+            "a take a sixth B's before B joined was kept"
         );
     }
 
