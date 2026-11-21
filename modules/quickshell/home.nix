@@ -2376,7 +2376,12 @@ in
         # 2026-11-10). niri asks a window it doesn't show for about one frame
         # a second, so the hidden ones go quiet; a shown one waits at most a
         # frame, 8.3 ms at 120 Hz.
+        # It's started without the runtime folder systemd tells it of, which it
+        # would pass to every session's window, where a program reading it, as
+        # warp-cli does, took the sessions' socket folder as its own (OSPHT4,
+        # 2026-11-20). Its own lines use %t instead.
         ExecStart = lib.concatStringsSep " " [
+          "${lib.getExe' pkgs.coreutils "env"} -u RUNTIME_DIRECTORY"
           "${config.home.profileDirectory}/bin/kitty"
           "--listen-on unix:%t/pi-sessions/kitty.sock -o allow_remote_control=socket-only"
           "-o sync_to_monitor=yes"
