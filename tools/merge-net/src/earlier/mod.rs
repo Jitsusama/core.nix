@@ -1,6 +1,11 @@
 //! What the earlier commits of a head's change say for it, when the head
 //! has no run of its own: `ready` merges a rebased head on one, and
-//! `needs` reads what one named moved rather than evaluating again.
+//! `needs` reads what one named moved rather than evaluating again. Beside
+//! it, whether a review round read a head or an earlier commit of it
+//! (`same`), and what the harness's rounds say they read (`seen`).
+
+pub mod same;
+mod seen;
 
 use std::cell::LazyCell;
 use std::path::Path;

@@ -7,7 +7,8 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::{candidates, git_at, patch_of, ready, seen, short};
+use super::seen;
+use crate::{candidates, git_at, patch_of, ready, short};
 
 /// How a change from a base to a head, in a repo, is told from others.
 pub type PatchId = fn(&Path, &str, &str) -> Option<String>;

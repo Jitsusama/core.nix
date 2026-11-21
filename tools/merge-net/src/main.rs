@@ -74,8 +74,6 @@ mod ready;
 mod rerun;
 mod rules;
 mod running;
-mod same;
-mod seen;
 mod sharing;
 mod stall;
 mod state;
@@ -355,7 +353,7 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
         }
         // Before the right of way, which boards the train itself, so a
         // head no round read neither boards it nor merges.
-        if let Err(said) = same::read_by_a_round(commit, main, files) {
+        if let Err(said) = earlier::same::read_by_a_round(commit, main, files) {
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
         }
@@ -411,7 +409,7 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
         return true;
     }
     let records = ready::recent_records();
-    let earlier: Vec<String> = same::same_change(commit, main, files, &records, patch_id)
+    let earlier: Vec<String> = earlier::same::same_change(commit, main, files, &records, patch_id)
         .into_iter()
         .filter(|candidate| knows_rules(candidate))
         .collect();
@@ -514,7 +512,7 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             }
             // The train merges what it carries, so a head no round read
             // boards no more than it merges through may_merge.
-            if let Err(said) = same::read_by_a_round(commit, main, &files) {
+            if let Err(said) = earlier::same::read_by_a_round(commit, main, &files) {
                 eprintln!("merge-net: {said}");
                 return Ok(ExitCode::FAILURE);
             }
