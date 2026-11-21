@@ -12299,26 +12299,32 @@ Scope {
     onRowsChanged: {
         if (homeHeld)
             keepHome();
-        fitOpen();
+        Qt.callLater(fitOpen);
     }
     onRowSizesChanged: {
         if (homeHeld)
             keepHome();
-        fitOpen();
+        Qt.callLater(fitOpen);
     }
 
     // An open card keeps the height it opened at, so its rows never jump
     // as Joel reads them, but a screen that shrinks under it (a dock, a
-    // new scale, a smaller output taking focus) fits it again to as many
-    // of home's rows as now fit, or it stands taller than the screen: the
-    // net's Networks card stood 493.5 tall, its top 53 above a screen 388
-    // high (2026-11-19 and 20). Only as the room drops below it, so a
-    // screen that grows under it leaves it as it stands until it closes.
-    // Before an opening has found home, the room alone, which its find
-    // sizes again.
+    // new scale) fits it again to as many of home's rows as now fit, as
+    // every opening sizes it, or it stands taller than the screen
+    // (Steady.refitted). Called later, once for both handlers, so it reads
+    // rows and their sizes both worked out from the new room, whichever
+    // Qt worked out first. The chosen row is shown again, as a card cut
+    // short under it would leave it below the foot.
     function fitOpen() {
-        if ((open || opening) && tall > listRoom)
-            tall = homeKept.length > 0 ? sizedFor(homeKept) : Math.floor(listRoom);
+        if (!open && !opening)
+            return;
+        const fitted = Steady.refitted(tall, { shown: homeKept, rows, sizes: rowSizes,
+            heading: Headings.isHeading });
+        if (fitted === tall)
+            return;
+        tall = fitted;
+        if (current >= 0)
+            list.reveal(current);
     }
 
     function keepHome() {

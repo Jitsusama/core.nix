@@ -368,6 +368,23 @@ QtObject {
                 failures.push(`${what}: its rows stand ${stood}, the card ${sized}`);
         }
 
+        // An open card keeps its height while the screen's room holds it,
+        // however much the room grows, and is sized again by tallFor's rule
+        // once the room drops below it, whole rows to the foot, home or none.
+        const refits = [
+            ["a room that still holds the card", 32, [{}, {}, {}], 2, 32, 32],
+            ["a room grown under the card", 32, [{}, {}, {}], 2, 1000, 32],
+            ["a room shrunk below the card", 48, [{}, {}, {}], 3, 40, 32],
+            ["a room shrunk with home not yet found", 48, [], 3, 40, 32],
+            ["a room too small for a row", 48, [{}, {}, {}], 3, 10, 0]
+        ];
+        for (const [what, tall, shown, fit, room, want] of refits) {
+            const sizes = Object.assign({}, rowSizes, { room: room });
+            const refitted = Steady.refitted(tall, { shown, rows: fit, sizes, heading: headed });
+            if (refitted !== want)
+                failures.push(`${what}: stands ${refitted}, not ${want}`);
+        }
+
         const rowHeights = [
             ["a row", false, undefined, 1, 16],
             ["a row standing apart", false, true, 1, 24],
