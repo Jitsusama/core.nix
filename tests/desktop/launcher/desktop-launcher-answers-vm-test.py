@@ -1422,9 +1422,9 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         desktop.shoot("launcher-firmware-install-asks")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         # Return again writes its line, banged, since the step was the asking, and a fresh
-        # Return there installs, keeping the launcher and saying so; a third Return while
-        # it goes in installs nothing more, at most writing the line again, which Escape
-        # lets go.
+        # Return there installs, keeping the launcher and saying so; a third Return, as it
+        # goes in or once it's in, installs nothing more, at most writing the line again,
+        # which Escape lets go. Which it was, the net's logs say by its footer.
         desktop.line("install!")
         machine.fail(desktop.in_session(f"test -e {said}/installed"))
         machine.send_key("ret")
@@ -1470,8 +1470,13 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         if shown["command"] is not None:
             line = shown["command"].get("line")
             assert line in {"install", "install!"}, shown["command"]
-            # Said so the net's logs count which line comes, and when it's seen.
-            print(f"firmware: the third Return wrote {line!r}, seen {seen}, let go with Escape")
+            # Said so the net's logs count which line comes, over what, and when it's seen, and
+            # whether the Return was taken while it went in or once it was in.
+            under = "the step back" if stepped_back({**shown, "command": None}) else "the asking"
+            print(
+                f"firmware: the third Return wrote {line!r} over {under}, its footer"
+                f" {shown['footer']!r}, seen {seen}, let go with Escape"
+            )
             machine.send_key("esc")
             desktop.launcher_until(stepped_back)
         desktop.shoot("launcher-firmware-install-waits")

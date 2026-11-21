@@ -103,6 +103,27 @@ def test_a_wait_that_stops_hearing_before_a_state_passes_fails() -> None:
     assert str(never.value) == wanted, f"the wait that stopped early said: {never.value}"
 
 
+def test_a_wait_whose_hearer_heard_nothing_fails_on_the_first_read() -> None:
+    def hear(_passes: Callable[[str], object]) -> None:
+        return
+
+    with pytest.raises(AssertionError) as never:
+        until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
+    wanted = 'it nothing that passed before the wait stopped hearing\nit, last heard: {"rows": []}'
+    assert str(never.value) == wanted, f"the wait that heard nothing said: {never.value}"
+
+
+def test_only_the_last_change_heard_counts() -> None:
+    # A state that passed and then one refused, before the hearer stopped, is the refused one.
+    def hear(passes: Callable[[str], object]) -> None:
+        passes('{"rows": ["Restart"]}')
+        passes('{"rows": ["Install"]}')
+
+    with pytest.raises(AssertionError) as never:
+        until_heard({"rows": []}, lambda now: now["rows"] == ["Restart"], hear, "it")
+    assert str(never.value).endswith('last heard: {"rows": ["Install"]}'), str(never.value)
+
+
 def test_a_line_that_isnt_json_is_said_as_it_came() -> None:
     # A journal can split a long line, and the half heard is what explains the failure, not
     # the state before it.

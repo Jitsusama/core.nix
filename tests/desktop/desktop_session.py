@@ -521,13 +521,13 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         deadline = time.monotonic() + timeout.total_seconds() * pace
         start = since
 
+        # The journal is printed as well as it can be, since a session gone bad, when the reader
+        # stopped, is when reading it fails too, and that error would stand in for the wait's.
         def never() -> str:
             point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
-            print(
-                self.as_account(
-                    f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
-                )
-            )
+            read = f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"
+            _, journal = self.machine.execute(self.in_session(read), timeout=ANSWERING * pace)
+            print(journal)
             return f"the shell never reported {prefix!r} as wanted"
 
         while True:
@@ -537,9 +537,11 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
                 self.in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
                 timeout=timedelta(seconds=left + 30),
             )
-            # Said apart from a wait that ran out, since a reader stopped hearing then, and what
-            # it last heard is no sign of where the shell settled.
-            assert status == 0, f"{never()}, since reports stopped with {status}"
+            # reports stops with 1 once its time runs out, the wait's own end; any other status
+            # is said, since a reader stopped then, and what it last heard is no sign of where
+            # the shell settled.
+            assert status in {0, 1}, f"{never()}, since reports stopped with {status}"
+            assert status == 0, never()
             for line in said.splitlines():
                 kind, what = line.split("\t", 1)
                 if kind == "cursor":
