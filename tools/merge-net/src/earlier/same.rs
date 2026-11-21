@@ -4,7 +4,7 @@
 //! pull requests merged at a head no round had read, a fix pushed after
 //! the council going to main unread.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::seen;
@@ -17,55 +17,86 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// the same change that a clean rebase carried here (`same_patch`). The
 /// earlier commits are looked for among those the rounds read, so a
 /// reviewed commit with no pass of its own still counts. Why not, when not.
+///
+/// Only the rounds of `commit` and of the earlier commits that could be its
+/// change have their base asked after, one git each: on 21 November the
+/// rounds held about 2,300 bases, and asking after every one held each
+/// `ready` past 15 minutes while four ran at once.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    let read = in_full(
-        Path::new("."),
-        main,
-        seen::witnessed(&seen::rounds_folder())?,
-    );
-    read_among(commit, &read, |witnessed| {
-        same_change(commit, main, files, witnessed, read_patch_id)
-    })
+    let repo = Path::new(".");
+    let rounds = seen::witnessed(&seen::rounds_folder())?;
+    read_in(
+        commit,
+        &rounds,
+        on_main_at(repo, main),
+        |witnessed| candidates(commit, main, files, witnessed).unwrap_or_default(),
+        |read| same_patch(repo, commit, main, read, read_patch_id),
+    )
 }
 
-/// The commits of `rounds` read in full, in the repo at `repo`: each a
-/// change's round read, and each a range's whose base is on `main`, so a
-/// round over only a head's newest commit doesn't stand for the commits
-/// under it.
-fn in_full(repo: &Path, main: &str, rounds: HashSet<seen::Read>) -> HashSet<String> {
-    let mut on_main = std::collections::HashMap::new();
-    rounds
-        .into_iter()
-        .filter(|read| {
-            read.from.as_ref().is_none_or(|base| {
-                *on_main.entry(base.clone()).or_insert_with(|| {
-                    // One git would read as an option is no base.
-                    !base.is_empty()
-                        && !base.starts_with('-')
-                        && git_at(repo, &["merge-base", "--is-ancestor", base, main]).is_ok()
-                })
-            })
-        })
-        .map(|read| read.commit)
-        .collect()
-}
-
-/// Whether `commit` is among the commits the rounds `read`, or `earlier`,
-/// given those commits, finds one of the same change among them.
-fn read_among(
+/// Whether `rounds` read `commit` in full, or an earlier commit of its
+/// change: `could_be`, given every commit the rounds read, sorted, names
+/// those that might be its change, and `same` keeps those of the ones read
+/// in full that are. A base is put to `on_main` only for the rounds of
+/// `commit` and of what `could_be` names, which keeps the gits to a few.
+fn read_in(
     commit: &str,
-    read: &HashSet<String>,
-    earlier: impl FnOnce(&[String]) -> Vec<String>,
+    rounds: &HashSet<seen::Read>,
+    mut on_main: impl FnMut(&str) -> bool,
+    could_be: impl FnOnce(&[String]) -> Vec<String>,
+    same: impl FnOnce(Vec<String>) -> Vec<String>,
 ) -> Result<(), String> {
-    if read.contains(commit) {
+    let mut full = |among: &HashSet<&str>| {
+        let of_them = rounds
+            .iter()
+            .filter(|read| among.contains(read.commit.as_str()));
+        in_full(of_them, &mut on_main)
+    };
+    if !full(&HashSet::from([commit])).is_empty() {
         return Ok(());
     }
-    let mut witnessed: Vec<String> = read.iter().cloned().collect();
+    let mut witnessed: Vec<String> = rounds
+        .iter()
+        .map(|read| read.commit.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
     witnessed.sort();
-    if earlier(&witnessed).is_empty() {
+    let could_be = could_be(&witnessed);
+    let mut read: Vec<String> = full(&could_be.iter().map(String::as_str).collect())
+        .into_iter()
+        .collect();
+    read.sort();
+    if same(read).is_empty() {
         Err(seen::unread(short(commit)))
     } else {
         Ok(())
+    }
+}
+
+/// The commits of `rounds` read in full: each a change's round read, and
+/// each a range's whose base `on_main` finds on main, so a round over only
+/// a head's newest commit doesn't stand for the commits under it.
+fn in_full<'a>(
+    rounds: impl Iterator<Item = &'a seen::Read>,
+    on_main: &mut impl FnMut(&str) -> bool,
+) -> HashSet<String> {
+    rounds
+        .filter(|read| read.from.as_deref().is_none_or(&mut *on_main))
+        .map(|read| read.commit.clone())
+        .collect()
+}
+
+/// Whether a base is on `main`, in the repo at `repo`, one git a base.
+fn on_main_at<'a>(repo: &'a Path, main: &'a str) -> impl FnMut(&str) -> bool + 'a {
+    let mut known = HashMap::new();
+    move |base: &str| {
+        *known.entry(base.to_owned()).or_insert_with(|| {
+            // One git would read as an option is no base.
+            !base.is_empty()
+                && !base.starts_with('-')
+                && git_at(repo, &["merge-base", "--is-ancestor", base, main]).is_ok()
+        })
     }
 }
 
@@ -138,31 +169,88 @@ mod tests {
     use super::*;
     use crate::tests::{commit, git_in};
 
-    // A head a round read passes; one it didn't passes only when an
-    // earlier commit of its change is found among the commits the rounds
-    // read, which are what's searched, not the day's passes, so a reviewed
-    // commit that never passed alone still speaks for its clean rebase.
+    fn round(commit: &str, from: Option<&str>) -> seen::Read {
+        seen::Read {
+            commit: commit.to_owned(),
+            from: from.map(str::to_owned),
+        }
+    }
+
+    // A head a round read in full passes with nothing searched; one it
+    // didn't passes only when an earlier commit of its change is found
+    // among every commit the rounds read, and that commit was itself read
+    // in full, so a range over a head's newest commit alone stands for no
+    // rebase of it.
     #[test]
-    fn a_head_is_read_when_a_round_read_it_or_its_change_before_a_rebase() {
-        let read = HashSet::from(["aaa".to_owned(), "bbb".to_owned()]);
+    fn a_head_is_read_when_a_round_read_it_or_its_change_in_full() {
+        let rounds = HashSet::from([
+            round("aaa", None),
+            round("bbb", None),
+            round("bbb", Some("main")),
+            round("eee", Some("off")),
+        ]);
+        let on_main = |base: &str| base == "main";
         let never = |_: &[String]| -> Vec<String> { panic!("searched for a head a round read") };
-        assert_eq!(read_among("aaa", &read, never), Ok(()));
+        assert_eq!(read_in("aaa", &rounds, on_main, never, |read| read), Ok(()));
         let mut searched = Vec::new();
-        let found = read_among("ccc", &read, |witnessed| {
-            searched = witnessed.to_vec();
-            vec!["bbb".to_owned()]
-        });
+        let mut matched = Vec::new();
+        let found = read_in(
+            "ccc",
+            &rounds,
+            on_main,
+            |witnessed| {
+                searched = witnessed.to_vec();
+                vec!["bbb".to_owned(), "eee".to_owned()]
+            },
+            |read| {
+                matched.clone_from(&read);
+                read
+            },
+        );
         assert_eq!(found, Ok(()), "a clean rebase of a read commit was refused");
         assert_eq!(
             searched,
-            ["aaa", "bbb"],
-            "the search wasn't over what the rounds read"
+            ["aaa", "bbb", "eee"],
+            "the search wasn't over every commit the rounds read, once each"
         );
-        let refused = read_among("ccc", &read, |_| Vec::new()).unwrap_err();
+        assert_eq!(matched, ["bbb"], "a commit read only off main was matched");
+        let refused = read_in(
+            "ccc",
+            &rounds,
+            on_main,
+            |_| vec!["eee".to_owned()],
+            |read| read,
+        )
+        .unwrap_err();
         assert!(
             refused.contains("no review round of ours read"),
             "{refused}"
         );
+    }
+
+    // Each base is a git, and on 21 November the rounds held about 2,300,
+    // so only the head's own rounds and those of what could be its change
+    // have theirs asked after.
+    #[test]
+    fn only_the_heads_and_its_candidates_bases_are_asked_after() {
+        let rounds = HashSet::from([
+            round("aaa", Some("for-aaa")),
+            round("bbb", Some("for-bbb")),
+            round("fff", Some("for-fff")),
+        ]);
+        let mut asked = Vec::new();
+        let _ = read_in(
+            "aaa",
+            &rounds,
+            |base: &str| {
+                asked.push(base.to_owned());
+                false
+            },
+            |_| vec!["bbb".to_owned()],
+            |read| read,
+        );
+        asked.sort();
+        assert_eq!(asked, ["for-aaa", "for-bbb"]);
     }
 
     // A reviewed commit rebased cleanly onto a main that moved elsewhere
@@ -205,11 +293,15 @@ mod tests {
             range_diff.contains(" = "),
             "the rebase wasn't clean: {range_diff}"
         );
-        let read = HashSet::from([reviewed.clone()]);
+        let rounds = HashSet::from([round(&reviewed, None)]);
         let search = |head: &str| {
-            read_among(head, &read, |witnessed| {
-                same_patch(&repo, head, &main, witnessed.to_vec(), read_patch_id)
-            })
+            read_in(
+                head,
+                &rounds,
+                |_| true,
+                <[String]>::to_vec,
+                |read| same_patch(&repo, head, &main, read, read_patch_id),
+            )
         };
         assert_eq!(search(&rebased), Ok(()), "a clean rebase lost its review");
         assert!(
@@ -239,11 +331,8 @@ mod tests {
         git_in(&repo, &["tag", "trunk"]);
         let unread = commit(&repo, "b\n");
         let head = commit(&repo, "c\n");
-        let read = |from: Option<&str>| seen::Read {
-            commit: head.clone(),
-            from: from.map(str::to_owned),
-        };
-        let full = |round| in_full(&repo, &main, HashSet::from([round]));
+        let read = |from: Option<&str>| round(&head, from);
+        let full = |read: seen::Read| in_full([&read].into_iter(), &mut on_main_at(&repo, &main));
         assert_eq!(
             full(read(None)),
             HashSet::from([head.clone()]),
