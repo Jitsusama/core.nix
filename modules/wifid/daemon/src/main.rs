@@ -253,9 +253,10 @@ async fn serve(
     // reached a point of its choosing, so the move isn't sent back and
     // that point's channel is kept; name the point a move goes back to;
     // end a look early, so a move is sent back after its second; or say a
-    // card is gone, so wifid forgets the hold and the networks it kept
-    // off while wpa_supplicant keeps them, until wpa_supplicant starts
-    // again. It moves the card no further than its own networks.
+    // card came off its network mid-move, so wifid itself sends it back.
+    // A card said gone is forgotten only once wpa_supplicant no longer has
+    // it, so a forger can't have wifid drop a hold it would lift later.
+    // It moves the card no further than its own networks.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -377,7 +378,12 @@ async fn follow(
         let deadline = joining.as_ref().map(|joining| joining.deadline);
         let stalled = air.stalls.due();
         let unreached = wifid.arrivals.borrow().due();
+        // In order, so what wpa_supplicant has said is taken in before a
+        // move's time is judged: a move that completed as its time ran
+        // out, the signal still queued, would otherwise be sent back off
+        // the point it reached.
         tokio::select! {
+            biased;
             Some(change) = owners.recv() => {
                 wifid.owner_changed(&change, &mut air, &mut networks).await;
             }
@@ -393,7 +399,7 @@ async fn follow(
                     wifid.settled(&card, free).await;
                 }
                 for card in std::mem::take(&mut air.gone) {
-                    wifid.gone(&card);
+                    wifid.gone(&card).await;
                 }
             }
             Some(event) = switched.recv() => {
@@ -1670,7 +1676,7 @@ impl Wifid<'_> {
                 // Forgotten now, not as the next signal comes, which would
                 // take the holds the cards handed over below have since.
                 for card in std::mem::take(&mut air.gone) {
-                    self.gone(&card);
+                    self.gone(&card).await;
                 }
                 // It starts again on no network, Joel's pick or another,
                 // and with every network on.
@@ -1765,13 +1771,9 @@ impl Wifid<'_> {
     ) -> Option<Joining> {
         match self.start(&name, password, account, air).await {
             Ok((card, new, since)) => {
-                // Joel's pick ends any move or way back the card was on,
-                // which, stranded later, would let go of the join he
-                // asked for. The join turns the card's networks on as it
-                // ends, however it ends.
-                self.arrivals.borrow_mut().forget(&card);
+                // The join turns the card's networks on as it ends,
+                // however it ends.
                 self.alone.borrow_mut().remove(&card);
-                self.let_go(&card, false).await;
                 let joining = Joining {
                     name,
                     card,
@@ -1837,6 +1839,11 @@ impl Wifid<'_> {
         let Some((_, path)) = joinable.into_iter().find(|(held, _)| held == name) else {
             return Err(failed(format!("wpa_supplicant wasn't given {name}")));
         };
+        // Joel's pick ends any move or way back the card was on, which,
+        // stranded later, would let go of the join he asked for, and lets
+        // go of its hold first, so the join isn't aimed at a point gone.
+        self.arrivals.borrow_mut().forget(&card.name);
+        self.let_go(&card.name, false).await;
         let selected = match self.supplicant.get_interface(&card.name).await {
             Ok(at) => match interface(self.bus, at).await {
                 Ok(interface) => interface.select_network(&path.as_ref()).await,
@@ -2370,8 +2377,13 @@ impl Wifid<'_> {
 
     /// Forgets what a move kept of a card wpa_supplicant has let go of: a
     /// card handed over again holds new networks, which a move it no
-    /// longer makes would keep off.
-    fn gone(&self, card: &str) {
+    /// longer makes would keep off. One wpa_supplicant still has keeps
+    /// them, since only a hold wifid remembers is ever lifted.
+    async fn gone(&self, card: &str) {
+        if self.supplicant.get_interface(card).await.is_ok() {
+            println!("<4>{card} was said gone, but wpa_supplicant still has it");
+            return;
+        }
         self.astray.borrow_mut().remove(card);
         self.alone.borrow_mut().remove(card);
         self.held.borrow_mut().remove(card);
@@ -2521,6 +2533,12 @@ impl Wifid<'_> {
     /// silent as one, 253 ms with 57 of them the look's (2026-11-15).
     async fn ready(&self, bssid: &str) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
+        // Held anew, a way back couldn't reach the point it went back to.
+        if self.arrivals.borrow().going_back(&card) {
+            return Err(Refused::Failed {
+                reason: format!("{card} is on its way back to the point it left"),
+            });
+        }
         let frequency = self
             .state
             .borrow()

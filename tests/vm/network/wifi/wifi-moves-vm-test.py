@@ -42,6 +42,13 @@ LOADED_SLACK = 1.5
 STAMPED_LATE = 0.1
 
 
+def first_line(said: list[str], words: str, after: int = -1) -> int:
+    """Give the place of the first line past `after` holding the words, failing with them."""
+    found = next((i for i, line in enumerate(said) if i > after and words in line), None)
+    assert found is not None, f"no line says {words!r}"
+    return found
+
+
 def knows_a_neighbour(machine: BaseMachine) -> None:
     """Have the Wi-Fi card know the neighbour, as it knows one it has asked after lately."""
     # The Wi-Fi card keeps what it knows through a moment without its carrier, and a cable
@@ -298,11 +305,19 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
             " 02:00:00:00:05:00.*, so goes back to 02:00:00:00:00:00$'",
             timeout=timedelta(seconds=30),
         )
+        # Back past its 2 s, wifid lets the card go, so being back unstranded is its bound
+        # here, and whichever comes first is waited for so a stranded card fails as one.
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
-            " | grep -qE '^wlan2 reached 02:00:00:00:00:00 [0-9]+ ms after it was asked'",
+            " | grep -qE '^wlan2 (reached 02:00:00:00:00:00 [0-9]+ ms after it was asked"
+            "|didn.t get back to 02:00:00:00:00:00 within [0-9]+ ms, so may join any network$)'",
             timeout=timedelta(seconds=30),
         )
+        stranded = machine.succeed(
+            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep 'so may join any network'"
+            " || true"
+        )
+        assert not stranded, f"stranded on the way back: {stranded}"
         # Moved with its other networks off, it has them on again once back.
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
@@ -314,14 +329,16 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     said = machine.succeed(
         f"journalctl -o short-unix -u wifid -u wpa_supplicant --after-cursor='{since}'"
     ).splitlines()
-    moved = next(line for line in said if "wlan2 moved to 02:00:00:00:05:00, as asked" in line)
-    sent = next(line for line in said if ", so goes back to 02:00:00:00:00:00" in line)
+    moved = said[first_line(said, "wlan2 moved to 02:00:00:00:05:00, as asked")]
+    sent = said[first_line(said, ", so goes back to 02:00:00:00:00:00")]
     late = "didn't reach" in sent
-    back = next(
-        line
-        for line in said
-        if "wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:00:00" in line
-    )
+    back = said[first_line(said, "wlan2: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:00:00")]
+    # The gone point refuses the card's join within its first second, so it comes off its
+    # network and goes back at once, not once its move's time is up: about 0.1 s after the move
+    # in the runs so far, with room here for a loaded builder.
+    off = float(sent.split()[0]) - float(moved.split()[0])
+    assert not late, f"sent back only once its time was up, {off:.3f} s after the move"
+    assert off < WAY_BACK + LOADED_SLACK, f"sent back {off:.3f} s after the move"
     took = float(back.split()[0]) - float(moved.split()[0])
     returned = float(back.split()[0]) - float(sent.split()[0])
     bidden = machine.succeed(
@@ -339,9 +356,6 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         f"back {took:.3f} s after the move was asked and {returned:.3f} s after it was sent,"
         f" {'late' if late else 'as it fell off'}, bidden wait {waited} s, bar 1 s"
     )
-    # Back past its 2 s, wifid lets the card go, so being back unstranded is its bound here.
-    stranded = [line for line in said if "so may join any network" in line]
-    assert not stranded, f"stranded on the way back: {stranded}"
     tried = [line for line in said if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn on the way back: {tried}"
     inn_turns_on(machine)
@@ -389,26 +403,25 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     said = machine.succeed(
         f"journalctl -o short-unix -u wifid -u wpa_supplicant --after-cursor='{since}'"
     ).splitlines()
-    sent = next(i for i, line in enumerate(said) if ", so goes back to 02:00:00:00:00:00" in line)
-    let_go = next(i for i, line in enumerate(said) if "so may join any network" in line)
+    sent = first_line(said, ", so goes back to 02:00:00:00:00:00")
+    let_go = first_line(said, "so may join any network")
     # Held to its way back for wifid's 2 s, it's let go then, not before, and never tries the
     # Inn meanwhile.
     held = float(said[let_go].split()[0]) - float(said[sent].split()[0])
     assert WAY_BACK - STAMPED_LATE <= held < WAY_BACK + LOADED_SLACK, (
         f"let go {held:.3f} s after it was sent back"
     )
-    unheld = next(
-        i
-        for i, line in enumerate(said)
-        if i > sent and "wlan2 may join any access point of its network again" in line
-    )
+    unheld = first_line(said, "wlan2 may join any access point of its network again", sent)
     assert unheld > let_go, f"its hold let go before its 2 s were up: {said[unheld]}"
     tried = [line for line in said[:let_go] if "SSID='Roadside Inn'" in line]
     assert not tried, f"tried the Inn before it was let go: {tried}"
     # The Inn's tries are found by these words, as they are once it's let go.
     tries = [line for line in said[let_go:] if "SSID='Roadside Inn'" in line]
     assert tries, "the Inn's tries are said as searched for"
-    # Let go while elsewhere, a stranded card isn't pulled off the network it takes.
+    # Let go while elsewhere, a stranded card isn't pulled off the network it takes. wifid
+    # marks a card to look again only when wpa_supplicant is already joining elsewhere as its
+    # hold is lifted, so this catches that coming back only in the runs where the Inn's join
+    # has begun by then; main.rs's decisions want unit cases for the rest.
     looked = [line for line in said if "looks again, having taken another network" in line]
     assert not looked, f"looked again off the Inn: {looked}"
     rejoined_unpicked(machine)
