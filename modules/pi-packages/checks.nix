@@ -52,6 +52,38 @@
       );
 }
 // onLinux {
+  # pi loads its packages' dependencies from the store pnpm installs them
+  # into, so that store lies under the folder the agent fence holds
+  # read-only (the harness's fence-home.ts), never in the account's one
+  # store, which fenced commands write.
+  pi-packages-keeps-its-own-store =
+    let
+      home = account workstation;
+      inherit (home.jitsusama.pi-packages) root;
+      held = "${home.home.homeDirectory}/.local/share/pi-packages";
+      start = lib.concatStringsSep " " (
+        lib.toList home.systemd.user.services.pi-packages.Service.ExecStart
+      );
+    in
+    pkgs.runCommandLocal "pi-packages-keeps-its-own-store" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      config=$(grep -o '/nix/store/[^ ]*-pi-packages.json' <<< ${lib.escapeShellArg start})
+      [ ${lib.escapeShellArg root} = ${lib.escapeShellArg held} ] || {
+        echo "pi-packages installs into ${root}, not the folder the fence holds, ${held}"
+        exit 1
+      }
+      for name in npm_config_store_dir pnpm_config_store_dir; do
+        store=$(jq -r --arg name "$name" '.env[$name] // ""' "$config")
+        case $store in
+          ${lib.escapeShellArg root}/*) ;;
+          *)
+            echo "pi-packages gives pnpm $name='$store', outside ${root}, which fenced commands may write"
+            exit 1
+            ;;
+        esac
+      done
+      touch $out
+    '';
+
   # clippy finds nothing in pi-packages, its tests included. This check only
   # lints; the tests run when the package itself builds (package.nix), and
   # prove a live process keeps its version, files unchanged, through an
