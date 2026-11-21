@@ -1,6 +1,11 @@
 //! What the earlier commits of a head's change say for it, when the head
 //! has no run of its own: `ready` merges a rebased head on one, and
-//! `needs` reads what one named moved rather than evaluating again.
+//! `needs` reads what one named moved rather than evaluating again. Beside
+//! it, whether a review round read a head or an earlier commit of it
+//! (`same`), and what the harness's rounds say they read (`seen`).
+
+pub mod same;
+mod seen;
 
 use std::cell::LazyCell;
 use std::path::Path;
@@ -120,7 +125,11 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         naming.extend(crates.beside(&files, &since));
         Some(naming)
     };
-    let candidates = ready::speakers(commit, behind, &candidates(commit, main, &files)?);
+    let candidates = ready::speakers(
+        commit,
+        behind,
+        &candidates(commit, main, &files, &ready::recent_records())?,
+    );
     let before = match ready::checked_before(&candidates, &ready::record, on_main, &same) {
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.

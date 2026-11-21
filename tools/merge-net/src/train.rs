@@ -30,7 +30,7 @@
 //! unless GitHub refused the first rider twice in a row, when they fall
 //! too (`landing.rs`). A draft never boards. When main moved before the merges, the candidate is
 //! cut again on it, and goes when its pass still speaks for it as one for
-//! a rebased change would (`earlier.rs`); otherwise it runs again with
+//! a rebased change would (`earlier/`); otherwise it runs again with
 //! whoever has boarded since, holding the right of way meanwhile, so
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).

@@ -256,13 +256,17 @@ fn rounds(
 
 /// The recent passed runs that could be `commit`'s change, as
 /// `candidates::could_be` chooses them from what git says of each.
-fn candidates(commit: &str, main: &str, files: &[String]) -> Result<Vec<String>, String> {
-    let records = ready::recent_records();
+fn candidates(
+    commit: &str,
+    main: &str,
+    files: &[String],
+    records: &[String],
+) -> Result<Vec<String>, String> {
     let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
-    let said = logged(&records, &["--format=%H%x01%s"]);
+    let said = logged(records, &["--format=%H%x01%s"]);
     let touched = |records: &[String]| logged(records, &["--format=%x01%H", "--name-only"]);
     Ok(candidates::could_be(
-        &records,
+        records,
         said.as_deref(),
         &subjects,
         touched,
@@ -347,6 +351,12 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
         }
+        // Before the right of way, which boards the train itself, so a
+        // head no round read neither boards it nor merges.
+        if let Err(said) = earlier::same::read_by_a_round(commit, main, files) {
+            eprintln!("merge-net: {said}");
+            return ExitCode::FAILURE;
+        }
         if let Some(said) = train::gives_way(commit) {
             eprintln!("merge-net: {said}");
             return ExitCode::FAILURE;
@@ -398,24 +408,10 @@ fn needs_heard(commit: &str, main: &str, passes: &[&str], files: &[String]) -> b
     if gated::asked(&asked) {
         return true;
     }
-    let base = git(&["merge-base", main, commit]).unwrap_or_else(|_| main.to_owned());
-    let Some(change) = patch_id(Path::new("."), &base, commit) else {
-        return false;
-    };
-    let earlier: Vec<String> = candidates(commit, main, files)
-        .unwrap_or_default()
+    let records = ready::recent_records();
+    let earlier: Vec<String> = earlier::same::same_change(commit, main, files, &records, patch_id)
         .into_iter()
         .filter(|candidate| knows_rules(candidate))
-        .filter(|candidate| {
-            ready::when_same(
-                candidate,
-                &change,
-                |at| git(&["merge-base", at, main]).ok(),
-                |base, at| patch_id(Path::new("."), base, at),
-                |_| Some(()),
-            )
-            .is_some()
-        })
         .collect();
     gated::asked(&earlier.iter().map(String::as_str).collect::<Vec<_>>())
 }
@@ -514,6 +510,12 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             if let Some(said) = lists::say(commit, &shared, &quarantine, &passes) {
                 return Ok(said);
             }
+            // The train merges what it carries, so a head no round read
+            // boards no more than it merges through may_merge.
+            if let Err(said) = earlier::same::read_by_a_round(commit, main, &files) {
+                eprintln!("merge-net: {said}");
+                return Ok(ExitCode::FAILURE);
+            }
             // A head behind main boards the train as one on it does
             // (`boarding.rs`), and one that can't is told why.
             if behind {
@@ -608,10 +610,18 @@ fn lines(text: &str) -> Vec<String> {
 /// run stopped counting. What main moved in the change's files is caught
 /// by the files it shares, not by the id.
 fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
+    patch_of(repo, base, head, &["--unified=0"], "--stable")
+}
+
+/// The id `git patch-id` gives, taken `kind`, of the diff from `base` to
+/// `head` with `options`.
+fn patch_of(repo: &Path, base: &str, head: &str, options: &[&str], kind: &str) -> Option<String> {
     let diff = Command::new("git")
         .arg("-C")
         .arg(repo)
-        .args(["diff", "--unified=0", base, head])
+        .arg("diff")
+        .args(options)
+        .args([base, head])
         .output()
         .ok()
         .filter(|ran| ran.status.success())?
@@ -619,7 +629,7 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
     let mut id = Command::new("git")
         .arg("-C")
         .arg(repo)
-        .args(["patch-id", "--stable"])
+        .args(["patch-id", kind])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -662,7 +672,14 @@ fn logged(commits: &[String], format: &[&str]) -> Option<String> {
 }
 
 fn git(arguments: &[&str]) -> Result<String, String> {
+    git_at(Path::new("."), arguments)
+}
+
+/// What git says, run in the repo at `repo`.
+fn git_at(repo: &Path, arguments: &[&str]) -> Result<String, String> {
     let ran = Command::new("git")
+        .arg("-C")
+        .arg(repo)
         .args(arguments)
         .output()
         .map_err(|error| format!("running git: {error}"))?;
@@ -701,7 +718,7 @@ mod tests {
     }
 
     /// Commits `words` as the file `w` and gives the commit.
-    fn commit(repo: &Path, words: &str) -> String {
+    pub(crate) fn commit(repo: &Path, words: &str) -> String {
         fs::write(repo.join("w"), words).unwrap();
         git_in(repo, &["commit", "-qam", "w"]);
         git_in(repo, &["rev-parse", "HEAD"])
